@@ -1,5 +1,5 @@
 ---
-description: "Stand up the Python Felix harness locally and make your first chat request."
+description: "Stand up Felix locally, create Cloudflare resources, and make your first chat request."
 ---
 
 # Getting Started

@@ -2,7 +2,7 @@
   "name": "@felix/design",
   "version": "0.1.0",
   "private": true,
-  "description": "Felix design tokens — shared palette for docs (Starlight) and chat-ui chrome",
+  "description": "Felix design tokens — the shared neutral palette and theme CSS builders consumed by docs (Starlight) and chat-ui",
   "type": "module",
   "exports": {
     "./*": "./src/*.ts"

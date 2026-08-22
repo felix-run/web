@@ -2,19 +2,31 @@
   "name": "felix-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Felix web surfaces — chat-ui and docs on Cloudflare Workers. Talks to the self-hosted Python harness (felix-run/felix).",
+  "description": "Felix web monorepo — chat-ui + docs on Cloudflare Workers, talking to the self-hosted Python harness (felix-run/felix).",
   "type": "module",
   "scripts": {
-    "chat:dev": "pnpm --filter @felix/chat-ui dev",
-    "chat:build": "pnpm --filter @felix/chat-ui build",
-    "chat:deploy": "pnpm --filter @felix/chat-ui run deploy",
+    "build": "turbo run build",
     "docs:dev": "pnpm --filter @felix/docs dev",
     "docs:build": "pnpm --filter @felix/docs build",
     "docs:deploy": "pnpm --filter @felix/docs run deploy",
-    "build": "pnpm -r run build"
+    "chat:dev": "pnpm --filter @felix/chat-ui dev",
+    "chat:build": "pnpm --filter @felix/chat-ui build",
+    "chat:deploy": "pnpm --filter @felix/chat-ui run deploy",
+    "lint": "biome check packages apps",
+    "lint:fix": "biome check --write packages apps",
+    "format": "biome format --write packages apps",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
+    "@cloudflare/workers-types": "^4.20260511.1",
+    "@types/node": "^25.7.0",
+    "turbo": "^2.5.8",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.12"
   },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@10.33.2"
 }

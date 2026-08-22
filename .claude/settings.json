@@ -1,0 +1,133 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.sh\""
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/compact-reminder.sh\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/block-generated.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/stale-bundle-reminder.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/doc-sync-reminder.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/test-failure-hint.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-log.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/doc-drift-stop.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm build)",
+      "Bash(pnpm build:manifests)",
+      "Bash(pnpm docs:build)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm lint:fix)",
+      "Bash(pnpm format)",
+      "Bash(pnpm migrate:local)",
+      "Bash(pnpm tsx apps/api/scripts/mint-jwt.ts *)",
+      "Bash(docker exec felix-pg psql *)",
+      "Bash(docker compose up *)"
+    ],
+    "ask": [
+      "Bash(pnpm deploy)",
+      "Bash(pnpm deploy:staging)",
+      "Bash(pnpm migrate:staging)",
+      "Bash(pnpm migrate:production)",
+      "Bash(pnpm run deploy*)",
+      "Bash(pnpm run migrate:staging)",
+      "Bash(pnpm run migrate:production)",
+      "Bash(pnpm --filter * deploy*)",
+      "Bash(pnpm --filter * migrate:staging)",
+      "Bash(pnpm --filter * migrate:production)",
+      "Bash(wrangler deploy *)",
+      "Bash(node-pg-migrate *)",
+      "Bash(wrangler secret *)",
+      "Bash(pnpm setup:vectorize:*)",
+      "Bash(pnpm eval*)"
+    ],
+    "deny": [
+      "Read(./packages/harness/.secrets/**)",
+      "Read(./apps/api/.dev.vars)",
+      "Read(./apps/api/.dev.vars.*)",
+      "Read(./.secrets/**)",
+      "Read(./.dev.vars)"
+    ]
+  }
+}

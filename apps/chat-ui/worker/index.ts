@@ -1,28 +1,18 @@
 /**
  * Proxy Worker for the Felix chat UI.
  *
- * Two responsibilities, both same-origin so the browser never makes a
- * cross-origin request (no CORS needed on Felix):
- *
- *   1. /api/*  → strip the `/api` prefix and forward to FELIX_ORIGIN
- *               (self-hosted Python harness). Streaming SSE is preserved.
- *   2. else    → serve the built SPA from the ASSETS binding.
- *
- * This mirrors the Vite dev proxy (see vite.config.ts) so the front-end code
- * is identical in dev and production.
+ * Serves the SPA from ASSETS and proxies `/api/*` to the self-hosted Python
+ * Felix harness (`FELIX_ORIGIN`), stripping the `/api` prefix. Same contract
+ * as the Vite dev proxy.
  */
 
 interface Env {
   ASSETS: Fetcher;
-  /** Public origin of the Python Felix API, e.g. https://api.example.com */
+  /** Public origin of Python Felix, e.g. https://api.example.com */
   FELIX_ORIGIN: string;
-  // Optional shared access key. When set (`wrangler secret put CHAT_UI_KEY`),
-  // every /api/* request must carry a matching `x-chat-key` header. Unset →
-  // the proxy is open (local/demo default).
   CHAT_UI_KEY?: string;
 }
 
-/** Length-safe constant-time string compare (avoids early-exit timing leaks). */
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;

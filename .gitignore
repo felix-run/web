@@ -1,12 +1,30 @@
 node_modules
-dist
-.turbo
 .wrangler
-.astro
-*.tsbuildinfo
-apps/docs/src/content/docs
+dist
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.log
+packages/harness/src/manifests/bundled.ts
+packages/harness/src/skills/bundled.ts
+
+# self-issued JWT signing key (mint-jwt.ts)
+.secrets/
+
+# Real deployment config (copy from wrangler.example.jsonc; holds account/resource ids)
+wrangler.jsonc
+# Docs + chat-ui checked-in configs use vars only (no account ids).
+!apps/docs/wrangler.jsonc
+!apps/chat-ui/wrangler.jsonc
+
+# Generated docs-site content (synced from packages/harness/docs + design tokens)
+apps/docs/src/content/docs/
 apps/docs/src/styles/theme.css
-.env
-.env.*
-!.env.example
-.DS_Store
+apps/docs/.astro/
+
+# Claude Code local audit trail (subagent-log hook)
+.claude/logs/
+
+# Turborepo local cache
+.turbo/
+.neon

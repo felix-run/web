@@ -5,8 +5,8 @@ import { defineConfig } from 'vite';
 
 /**
  * Local-dev config. `vite dev` serves the SPA on :5173 and proxies every
- * `/api/*` call to a locally-running Python Felix (`make up` / `make dev` → :8080),
- * stripping the `/api` prefix. This mirrors the proxy Worker in production.
+ * `/api/*` call to the self-hosted Python Felix harness (`make up` → :8080),
+ * stripping the `/api` prefix. Mirrors the production proxy Worker.
  */
 export default defineConfig({
   plugins: [react(), tailwindcss()],

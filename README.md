@@ -1,27 +1,29 @@
 # Felix web
 
-Cloudflare Workers frontends for the self-hosted Python harness
+Chat UI and docs for the self-hosted Python harness
 ([felix-run/felix](https://github.com/felix-run/felix)).
 
-| App | Role | Deploy |
-|-----|------|--------|
-| `apps/chat-ui` | Streaming chat + harness inspector | Workers (static assets + `/api` proxy) |
-| `apps/docs` | Public docs (Starlight) | Workers static assets |
-| `packages/design` | Shared tokens | library |
-| `packages/harness/docs` | Docs markdown source | synced into Starlight |
+This monorepo is the TypeScript orchestrator workspace **with the Workers API /
+harness / commerce packages removed**. `apps/chat-ui` and `apps/docs` (plus
+`packages/design` and `packages/harness/docs`) are kept **as-is** and pointed at
+Python Felix.
 
-The **harness itself stays out of this repo** (CPython / Compose / Helm). Chat-ui
-proxies `/api/*` to your Felix origin (`FELIX_ORIGIN`).
+| Path | Role |
+|------|------|
+| `apps/chat-ui` | Streaming chat + inspector (Vite SPA → CF Workers) |
+| `apps/docs` | Starlight docs site → CF Workers static assets |
+| `packages/design` | Shared design tokens |
+| `packages/harness/docs` | Markdown source synced into Starlight |
 
-## Quick start
+## Develop
 
 ```bash
 pnpm install
 
-# Terminal A — Python Felix (from felix-run/felix)
-# make up && make migrate
+# Terminal A — Python Felix
+#   cd ../felix && make up && make migrate
 
-# Terminal B — chat UI (proxies to :8080)
+# Terminal B — chat UI (proxies /api → http://127.0.0.1:8080)
 pnpm chat:dev
 
 # Docs
@@ -31,17 +33,13 @@ pnpm docs:dev
 ## Deploy (Cloudflare Workers)
 
 ```bash
-# Chat UI — set origin to your public Felix API
-cd apps/chat-ui
-# wrangler.jsonc: vars.FELIX_ORIGIN = "https://api.your-domain.com"
-pnpm deploy
-
-# Docs
-pnpm --filter @felix/docs deploy
+# Set vars.FELIX_ORIGIN to your public Python Felix API
+pnpm chat:deploy
+pnpm docs:deploy
 ```
 
-Optional gate: `wrangler secret put CHAT_UI_KEY` then send `x-chat-key` from the SPA.
+Optional: `wrangler secret put CHAT_UI_KEY` in `apps/chat-ui`.
 
 ## License
 
-MIT — same as Felix.
+MIT

@@ -1,14 +1,11 @@
 # Chat UI — streaming chat + a harness inspector
 
-A React + Vite SPA (shadcn/ui + Tailwind v4) for the **self-hosted Python Felix**
-harness ([felix-run/felix](https://github.com/felix-run/felix)). Deployed as a
-Cloudflare Worker that serves the static build and proxies `/api/*` to
-`FELIX_ORIGIN` (your Felix API). Locally, Vite proxies `/api` → `http://127.0.0.1:8080`.
+A React + Vite SPA (**shadcn/ui + Tailwind CSS v4**) for the **self-hosted Python
+Felix** harness ([felix-run/felix](https://github.com/felix-run/felix)). UI components
+are unchanged from the TypeScript orchestrator chat-ui; the Worker/Vite proxy now
+targets Python Felix (`FELIX_ORIGIN` / `:8080`) instead of the Workers API.
 
-The chat components follow the [Vercel AI Elements](https://ai-sdk.dev/elements) shape —
-streaming `Conversation`, markdown `Response` (via [`streamdown`](https://www.npmjs.com/package/streamdown)),
-inline tool cards, a `Composer`, and a manifest selector — wired to Felix's SSE event
-model (`on_chat_model_stream` / `on_tool_start` / `on_tool_end` / `on_error`).
+The chat components follow the [Vercel AI Elements](https://ai-sdk.dev/elements) shape — a streaming `Conversation`, markdown `Response` (via [`streamdown`](https://www.npmjs.com/package/streamdown)), inline tool cards, a `Composer`, and a manifest selector — but are wired to Felix's SSE event model (`on_chat_model_stream` / `on_tool_start` / `on_tool_end` / `on_error`) rather than the AI SDK's `useChat`/`UIMessage`.
 
 ## What it demonstrates
 

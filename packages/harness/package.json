@@ -1,0 +1,6 @@
+{
+  "name": "@felix/harness-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Markdown source for the Felix docs site (synced by apps/docs)."
+}

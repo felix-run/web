@@ -1,5 +1,5 @@
 ---
-description: "Felix is a self-hostable managed agents harness — manifests, patterns, sessions, governance (Python / Compose / Helm)."
+description: "Felix is a self-hostable managed agents harness — manifests, patterns, sessions, and governance (Python)."
 ---
 
 # Felix Documentation
