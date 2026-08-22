@@ -74,6 +74,12 @@ Non-negotiables in this repo:
   ```
 - `chmod +x` the script, use `"$CLAUDE_PROJECT_DIR"` for paths, and remember that a blocking gate
   (`permissionDecision: deny`, or exit 2) needs a reason a reader can act on.
+- **A blocking hook needs a test battery**, checked in under `.claude/hooks/tests/`. It is wrong in
+  two directions — a false negative lets through what it exists to stop, and a false positive blocks
+  real work — and neither shows up until someone is mid-task. `block-main-commit.test.sh` is the
+  model: cases for what must be denied, what must be allowed, and a regression case for every
+  false positive ever found. Match on argument tokens, not on substrings of the whole command; a
+  command's text often quotes the very thing you are matching against.
 
 ## After any change
 
