@@ -80,6 +80,11 @@ Non-negotiables in this repo:
   model: cases for what must be denied, what must be allowed, and a regression case for every
   false positive ever found. Match on argument tokens, not on substrings of the whole command; a
   command's text often quotes the very thing you are matching against.
+- **A hook test must be hermetic** — it must never read the state of the repo it lives in. Build a
+  scratch repo per state you need (`git init` in a `mktemp -d`, one per branch) and point
+  `CLAUDE_PROJECT_DIR` at it. A suite that inspects the real checkout passes or fails according to
+  what the developer happens to have checked out, which is how a green run turns red on someone
+  else's machine for reasons that have nothing to do with the code.
 
 ## After any change
 
