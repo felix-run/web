@@ -148,4 +148,9 @@ the `toolkit-authoring` skill is how to extend it.
 - Biome, not ESLint/Prettier: single quotes, semicolons, trailing commas, 2-space indent, 100 cols.
   `noExplicitAny` is a warning; a11y rules are relaxed under `packages/ui/src` and
   `apps/chat-ui/src/components`.
+- **Shared dependency versions live in `pnpm-workspace.yaml` under `catalog:`.** Anything used by
+  2+ workspace packages is declared once there and referenced as `"catalog:"` in each `package.json`;
+  a single-use dep keeps its literal version where it is. Bump a shared version in the catalog, not
+  in a manifest. Note that `pnpm add` writes a **literal** version even for a package already in the
+  catalog (pnpm's default `catalogMode: manual`) — fix it to `"catalog:"` by hand. See `README.md`.
 - Node ≥ 20, pnpm 10.33.2 (`packageManager` pinned). React 18, Tailwind v4 (CSS-first, no config file).
