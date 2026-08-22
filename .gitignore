@@ -1,0 +1,11 @@
+node_modules
+dist
+.turbo
+.wrangler
+.astro
+*.tsbuildinfo
+src/content/docs
+.env
+.env.*
+!.env.example
+.DS_Store

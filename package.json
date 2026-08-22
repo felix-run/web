@@ -1,0 +1,20 @@
+{
+  "name": "felix-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Felix web surfaces — chat-ui and docs on Cloudflare Workers. Talks to the self-hosted Python harness (felix-run/felix).",
+  "type": "module",
+  "scripts": {
+    "chat:dev": "pnpm --filter @felix/chat-ui dev",
+    "chat:build": "pnpm --filter @felix/chat-ui build",
+    "chat:deploy": "pnpm --filter @felix/chat-ui run deploy",
+    "docs:dev": "pnpm --filter @felix/docs dev",
+    "docs:build": "pnpm --filter @felix/docs build",
+    "docs:deploy": "pnpm --filter @felix/docs run deploy",
+    "build": "pnpm -r run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

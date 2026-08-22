@@ -1,0 +1,10 @@
+{
+  "name": "@felix/design",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Felix design tokens — shared palette for docs (Starlight) and chat-ui chrome",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  }
+}
