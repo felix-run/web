@@ -1,6 +1,6 @@
 import { MessageSquareIcon, PlusIcon, Trash2Icon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@felix/ui/button';
+import { ScrollArea } from '@felix/ui/scroll-area';
 import type { ThreadMeta } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 

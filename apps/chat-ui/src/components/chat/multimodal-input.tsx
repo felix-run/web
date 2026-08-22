@@ -12,14 +12,14 @@ import {
   usePromptInputController,
   useProviderAttachments,
 } from '@/components/ai-elements/prompt-input';
-import { Button } from '@/components/ui/button';
+import { Button } from '@felix/ui/button';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@felix/ui/select';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { cn } from '@/lib/utils';
 import { PaperclipIcon, StopIcon } from './icons';

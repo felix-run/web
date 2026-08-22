@@ -1,8 +1,8 @@
 import { Command as CommandPrimitive } from 'cmdk';
 import { Search } from 'lucide-react';
 import type * as React from 'react';
-import { InputGroup, InputGroupAddon } from '@/components/ui/input-group';
-import { cn } from '@/lib/utils';
+import { InputGroup, InputGroupAddon } from './input-group';
+import { cn } from './lib/utils';
 
 // Note: the upstream shadcn `command` ships a `CommandDialog` wrapper too; it's
 // omitted here because nothing in this example uses it (and it would pull in a

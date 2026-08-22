@@ -1,7 +1,7 @@
 import { CheckIcon, CopyIcon, RefreshCwIcon } from 'lucide-react';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@felix/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 /**

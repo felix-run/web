@@ -1,15 +1,15 @@
 import { BotIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@felix/ui/badge';
+import { ScrollArea } from '@felix/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
+} from '@felix/ui/sheet';
 import type { AgentCard, ResolvedManifest } from '@/types';
 
 /**

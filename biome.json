@@ -51,7 +51,8 @@
   "overrides": [
     {
       "includes": [
-        "apps/chat-ui/src/components/ui/**"
+        "packages/ui/src/**",
+        "apps/chat-ui/src/components/**"
       ],
       "linter": {
         "rules": {

@@ -17,7 +17,9 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["@cloudflare/workers-types", "vite/client"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@felix/ui/*": ["../../packages/ui/src/*"],
+      "@felix/ui/lib/utils": ["../../packages/ui/src/lib/utils.ts"]
     }
   },
   "include": ["src", "worker"]

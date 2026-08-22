@@ -23,8 +23,8 @@ import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
 import {
   eventsToTurns,
   indexThread,

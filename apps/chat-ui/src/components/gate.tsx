@@ -10,8 +10,8 @@
  */
 
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@felix/ui/button';
+import { Input } from '@felix/ui/input';
 import { getApiKey, setApiKey, setUnauthorizedHandler } from '@/lib/auth';
 
 type Phase = 'checking' | 'locked' | 'open';

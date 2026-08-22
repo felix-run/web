@@ -1,10 +1,10 @@
 import { XIcon } from 'lucide-react';
 import { decideApproval, getToolMetrics, listApprovals, listAudit, listPlans } from '@/api';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
+import { ScrollArea } from '@felix/ui/scroll-area';
+import { Skeleton } from '@felix/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, Plan, PlanStepStatus, ToolMetricsRow } from '@/types';

@@ -8,17 +8,17 @@ import {
   listEvalRuns,
   runEvalDataset,
 } from '@/api';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
+import { Input } from '@felix/ui/input';
+import { ScrollArea } from '@felix/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
+} from '@felix/ui/sheet';
 import { cn } from '@/lib/utils';
 import type { EvalDataset, EvalDatasetItem, EvalRun } from '@/types';
 

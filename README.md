@@ -1,44 +1,50 @@
 # Felix web
 
-Chat UI and docs for the self-hosted Python harness
+Turborepo + [Biome](https://biomejs.dev/) monorepo for Felix frontends on
+Cloudflare Workers. Talks to the self-hosted Python harness
 ([felix-run/felix](https://github.com/felix-run/felix)).
 
-This monorepo is the TypeScript orchestrator workspace **with the Workers API /
-harness / commerce packages removed**. `apps/chat-ui` and `apps/docs` (plus
-`packages/design` and `packages/harness/docs`) are kept **as-is** and pointed at
-Python Felix.
+Layout follows the [Turborepo basic example](https://github.com/vercel/turborepo/tree/main/examples/basic)
+(`apps/*` + shared `packages/*`). UI primitives are **[shadcn/ui](https://ui.shadcn.com/)**
+in `packages/ui` (`@felix/ui`).
 
 | Path | Role |
 |------|------|
-| `apps/chat-ui` | Streaming chat + inspector (Vite SPA → CF Workers) |
-| `apps/docs` | Starlight docs site → CF Workers static assets |
-| `packages/design` | Shared design tokens |
+| `apps/chat-ui` | Streaming chat + inspector (Vite → CF Workers) |
+| `apps/docs` | Starlight docs → CF Workers |
+| `packages/ui` | Shared [shadcn/ui](https://ui.shadcn.com/) components |
+| `packages/design` | Design tokens for docs / chrome |
+| `packages/typescript-config` | Shared `tsconfig` bases |
 | `packages/harness/docs` | Markdown source synced into Starlight |
 
-## Develop
+## Commands
 
 ```bash
 pnpm install
-
-# Terminal A — Python Felix
-#   cd ../felix && make up && make migrate
-
-# Terminal B — chat UI (proxies /api → http://127.0.0.1:8080)
-pnpm chat:dev
-
-# Docs
+pnpm chat:dev          # Vite → proxies /api to Python Felix :8080
 pnpm docs:dev
+pnpm build             # turbo run build
+pnpm lint              # turbo → biome
+pnpm format            # biome format
+pnpm check-types
 ```
 
-## Deploy (Cloudflare Workers)
+### Add a shadcn component
 
 ```bash
-# Set vars.FELIX_ORIGIN to your public Python Felix API
+# Install into the shared UI package
+pnpm dlx shadcn@latest add button --cwd packages/ui
+```
+
+Apps import from `@felix/ui/<name>` (e.g. `import { Button } from '@felix/ui/button'`).
+
+## Deploy
+
+```bash
+# Set apps/chat-ui wrangler vars.FELIX_ORIGIN to your public API
 pnpm chat:deploy
 pnpm docs:deploy
 ```
-
-Optional: `wrangler secret put CHAT_UI_KEY` in `apps/chat-ui`.
 
 ## License
 

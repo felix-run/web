@@ -31,29 +31,29 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-} from '@/components/ui/command';
+} from '@felix/ui/command';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+} from '@felix/ui/dropdown-menu';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@felix/ui/hover-card';
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
-} from '@/components/ui/input-group';
+} from '@felix/ui/input-group';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Spinner } from '@/components/ui/spinner';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+} from '@felix/ui/select';
+import { Spinner } from '@felix/ui/spinner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import type { ChatStatus, FileUIPart, SourceDocumentUIPart } from '@/lib/ai-types';
 import { cn } from '@/lib/utils';
 

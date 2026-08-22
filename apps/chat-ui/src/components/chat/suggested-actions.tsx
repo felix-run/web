@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/button';
+import { Button } from '@felix/ui/button';
 
 /**
  * A grid of starter prompts — vercel/ai-chatbot's `SuggestedActions`. Clicking

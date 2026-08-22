@@ -2,20 +2,20 @@
   "name": "felix-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Felix web monorepo — chat-ui + docs on Cloudflare Workers, talking to the self-hosted Python harness (felix-run/felix).",
+  "description": "Felix web monorepo — chat-ui + docs on Cloudflare Workers for the Python harness. Turborepo + Biome + shared @felix/ui.",
   "type": "module",
   "scripts": {
     "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "format": "biome format --write .",
+    "check-types": "turbo run check-types",
     "docs:dev": "pnpm --filter @felix/docs dev",
     "docs:build": "pnpm --filter @felix/docs build",
     "docs:deploy": "pnpm --filter @felix/docs run deploy",
     "chat:dev": "pnpm --filter @felix/chat-ui dev",
     "chat:build": "pnpm --filter @felix/chat-ui build",
-    "chat:deploy": "pnpm --filter @felix/chat-ui run deploy",
-    "lint": "biome check packages apps",
-    "lint:fix": "biome check --write packages apps",
-    "format": "biome format --write packages apps",
-    "typecheck": "tsc --noEmit"
+    "chat:deploy": "pnpm --filter @felix/chat-ui run deploy"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

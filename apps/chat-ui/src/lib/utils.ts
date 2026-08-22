@@ -1,7 +1,2 @@
-import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-/** Merge conditional class names, de-duplicating conflicting Tailwind utilities. */
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+/** Re-export shared `cn` from `@felix/ui` for local `@/lib/utils` imports. */
+export { cn } from '@felix/ui/lib/utils';

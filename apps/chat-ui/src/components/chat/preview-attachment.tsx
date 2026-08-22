@@ -1,4 +1,4 @@
-import { Spinner } from '@/components/ui/spinner';
+import { Spinner } from '@felix/ui/spinner';
 import { CrossSmallIcon } from './icons';
 
 export type Attachment = {

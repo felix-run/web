@@ -5,17 +5,17 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "src/index.css",
+    "css": "../../apps/chat-ui/src/index.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "@/components",
+    "components": "@felix/ui",
     "utils": "@felix/ui/lib/utils",
     "ui": "@felix/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
+    "lib": "@felix/ui/lib",
+    "hooks": "@felix/ui/hooks"
   }
 }
