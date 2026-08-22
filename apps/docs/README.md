@@ -3,7 +3,7 @@
 Public Felix docs — [Starlight](https://starlight.astro.build) static site at `docs.felix.run`
 (Cloudflare Workers static assets).
 
-Edit MDX under **`src/content/docs/`**. Theme CSS (`src/styles/theme.css`) is checked in from
+Edit MDX under **`content/`**. Theme CSS (`src/styles/theme.css`) is checked in from
 `@felix/design` (`starlightThemeCss()`).
 
 ```bash

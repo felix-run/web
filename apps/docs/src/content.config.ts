@@ -1,9 +1,16 @@
-// Starlight docs collection — edit MDX under src/content/docs/ directly.
-
+// Starlight docs collection — edit MDX under content/ directly.
+import { glob } from 'astro/loaders';
 import { defineCollection } from 'astro:content';
-import { docsLoader } from '@astrojs/starlight/loaders';
 import { docsSchema } from '@astrojs/starlight/schema';
 
 export const collections = {
-  docs: defineCollection({ loader: docsLoader(), schema: docsSchema() }),
+  docs: defineCollection({
+    // Starlight's docsLoader() hardcodes src/content/docs/; we keep prose at
+    // apps/docs/content/ instead.
+    loader: glob({
+      pattern: '**/[^_]*.{md,mdx}',
+      base: './content',
+    }),
+    schema: docsSchema(),
+  }),
 };
