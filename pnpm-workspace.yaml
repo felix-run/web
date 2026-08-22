@@ -1,3 +1,36 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+
+# Single source of truth for every dependency used by more than one workspace
+# package. Bump the version here and it moves everywhere at once — see README.md.
+# A dependency used by exactly one package keeps its version in that package.json.
+catalog:
+  # React
+  react: ^18.3.1
+  react-dom: ^18.3.1
+  '@types/react': ^18.3.12
+  '@types/react-dom': ^18.3.1
+
+  # shadcn/ui primitives (shared by packages/ui and both apps)
+  class-variance-authority: ^0.7.1
+  clsx: ^2.1.1
+  cmdk: ^1.0.0
+  lucide-react: ^0.469.0
+  radix-ui: ^1.6.0
+  sonner: ^1.7.1
+  tailwind-merge: ^3.0.2
+  nanoid: ^5.0.9
+
+  # Styling — Tailwind v4 is CSS-first; keep the plugin and core in lockstep
+  tailwindcss: ^4.1.13
+  '@tailwindcss/vite': ^4.1.13
+
+  # Build toolchain
+  typescript: ^6.0.3
+  vite: ^8.0.12
+  '@vitejs/plugin-react': ^6.0.3
+
+  # Cloudflare
+  wrangler: ^4.90.1
+  '@cloudflare/workers-types': ^4.20260511.1
