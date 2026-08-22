@@ -9,7 +9,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\""
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"",
+            "timeout": 10
           }
         ]
       },
@@ -18,7 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/compact-reminder.sh\""
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/compact-reminder.sh\"",
+            "timeout": 10
           }
         ]
       }
@@ -33,6 +35,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/block-main-commit.sh\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -41,12 +53,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/stale-bundle-reminder.sh\"",
-            "timeout": 10
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/format-touched.sh\"",
+            "timeout": 20
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/doc-sync-reminder.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/impact-reminder.sh\"",
             "timeout": 10
           }
         ]
@@ -58,7 +70,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/test-failure-hint.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/failure-hint.sh\"",
             "timeout": 10
           }
         ]
@@ -80,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/doc-drift-stop.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-gate.sh\"",
             "timeout": 15
           }
         ]
@@ -91,43 +103,48 @@
     "allow": [
       "Bash(pnpm install)",
       "Bash(pnpm build)",
-      "Bash(pnpm build:manifests)",
-      "Bash(pnpm docs:build)",
-      "Bash(pnpm test)",
-      "Bash(pnpm test:*)",
-      "Bash(pnpm test *)",
-      "Bash(pnpm typecheck)",
       "Bash(pnpm lint)",
-      "Bash(pnpm lint:fix)",
       "Bash(pnpm format)",
-      "Bash(pnpm migrate:local)",
-      "Bash(pnpm tsx apps/api/scripts/mint-jwt.ts *)",
-      "Bash(docker exec felix-pg psql *)",
-      "Bash(docker compose up *)"
+      "Bash(pnpm check-types)",
+      "Bash(pnpm chat:build)",
+      "Bash(pnpm float:build)",
+      "Bash(pnpm docs:build)",
+      "Bash(pnpm --filter * build)",
+      "Bash(pnpm --filter * lint)",
+      "Bash(pnpm --filter * check-types)",
+      "Bash(./node_modules/.bin/biome *)",
+      "Bash(diff *)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git switch:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr checks:*)"
     ],
     "ask": [
-      "Bash(pnpm deploy)",
-      "Bash(pnpm deploy:staging)",
-      "Bash(pnpm migrate:staging)",
-      "Bash(pnpm migrate:production)",
-      "Bash(pnpm run deploy*)",
-      "Bash(pnpm run migrate:staging)",
-      "Bash(pnpm run migrate:production)",
+      "Bash(pnpm chat:deploy)",
+      "Bash(pnpm float:deploy)",
+      "Bash(pnpm docs:deploy)",
       "Bash(pnpm --filter * deploy*)",
-      "Bash(pnpm --filter * migrate:staging)",
-      "Bash(pnpm --filter * migrate:production)",
-      "Bash(wrangler deploy *)",
-      "Bash(node-pg-migrate *)",
-      "Bash(wrangler secret *)",
-      "Bash(pnpm setup:vectorize:*)",
-      "Bash(pnpm eval*)"
+      "Bash(pnpm --filter * run deploy*)",
+      "Bash(pnpm run deploy*)",
+      "Bash(wrangler *)",
+      "Bash(pnpm exec wrangler *)",
+      "Bash(pnpm --filter * exec wrangler *)",
+      "Bash(gh pr merge *)",
+      "Bash(git push --force*)",
+      "Bash(*migrate:staging*)",
+      "Bash(*migrate:production*)"
     ],
     "deny": [
-      "Read(./packages/harness/.secrets/**)",
-      "Read(./apps/api/.dev.vars)",
-      "Read(./apps/api/.dev.vars.*)",
+      "Read(./.dev.vars)",
       "Read(./.secrets/**)",
-      "Read(./.dev.vars)"
+      "Read(./apps/*/.dev.vars)",
+      "Read(./apps/*/.dev.vars.*)"
     ]
   }
 }

@@ -8,7 +8,7 @@ color: blue
 
 You keep **felix-web** documentation true to this monorepo and the live Python harness.
 
-This repo is **chat-ui + docs** on Cloudflare Workers. The harness runtime lives in
+This repo is **chat-ui, float, and docs** on Cloudflare Workers. The harness runtime lives in
 [felix-run/felix](https://github.com/felix-run/felix) (Python). Do **not** document commerce
 plugins, Hyperdrive/`apps/api`, Durable Objects as the live harness, or TypeScript Workers
 runtime paths as current truth.
@@ -27,6 +27,10 @@ change runtime behavior in `apps/chat-ui` unless the prompt explicitly asks. Nev
   `Aside` note at the top when that is the case; prefer surgical cuts over full rewrites.
 - Commerce is out of scope for Felix — remove tool catalogs, commerce route tables, and
   dead `commerce/docs` links; do not reintroduce them.
+
+Follow the **`docs-sync`** skill for the mechanics — the non-standard content directory, the manual
+sidebar in `astro.config.mjs`, and the generated `src/styles/theme.css`. This file adds the editorial
+judgment: what is true, what is out of scope, and what tone to write in.
 
 ## Procedure
 

@@ -1,8 +1,151 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Felix web
 
-pnpm monorepo: `apps/chat-ui`, `apps/docs` (`@felix/docs`), `packages/design`, `packages/ui`.
+Turborepo + Biome pnpm monorepo of **Cloudflare Workers frontends** for Felix. The agent runtime
+itself is **not here** — it is the self-hosted Python harness at
+[felix-run/felix](https://github.com/felix-run/felix), reached over HTTP. There is no server logic
+in this repo beyond two thin proxy Workers.
 
-Harness runtime lives in **felix-run/felix** (Python). This repo only hosts Workers frontends.
+| Path | Role |
+|---|---|
+| `apps/chat-ui` (`@felix/chat-ui`) | Full streaming chat + harness inspector (React/Vite → Worker) |
+| `apps/float` (`@felix/float`) | Minimal always-on workspace client, pinned to the `cowork` manifest |
+| `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
+| `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
+| `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
+| `packages/design` | Neutral palette + theme-CSS builders (docs theme is generated from these) |
+| `packages/typescript-config` | Shared tsconfig bases |
 
-- Chat proxies `/api/*` → `FELIX_ORIGIN` (local Vite → `:8080`).
-- Docs prose: edit `apps/docs/src/content/` (MDX) directly.
+## Commands
+
+```bash
+pnpm install
+pnpm chat:dev          # Vite :5173 — /api/* proxied to Python Felix on :8080
+pnpm float:dev         # Vite :5174 — same proxy
+pnpm docs:dev
+pnpm build             # turbo run build (tsc -b && vite build; astro build)
+pnpm lint              # turbo → biome check
+pnpm format            # biome format --write
+pnpm check-types       # turbo → tsc --noEmit
+pnpm --filter @felix/chat-ui <script>   # scope to one package
+pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
+```
+
+Local dev needs the Python harness running separately (`make up && make migrate` in felix-run/felix
+→ `:8080`). Without it, both apps load but every `/api/*` call fails.
+
+**There is no test suite in this repo** — no `test` script, no test files. CI (`.github/workflows/ci.yml`)
+only runs `pnpm install` + a build of `@felix/chat-ui` and `@felix/docs`. Verification here means
+`pnpm check-types`, `pnpm lint`, and a build (plus running the app against a live harness).
+
+## Architecture
+
+### The `/api/*` proxy contract
+
+Felix serves no static assets and no CORS headers, so the browser can never call it directly. Both
+`apps/chat-ui/worker/index.ts` and `apps/float/worker/index.ts` implement the *same* contract, and
+`vite.config.ts` mirrors it in dev:
+
+```
+browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──▶ Python Felix
+```
+
+- The `/api` prefix is **stripped**; everything else (SSE bodies, `x-manifest-variant`) passes through.
+- `CHAT_UI_KEY` (a Worker secret) gates browser clients: the SPA sends `x-chat-key` from
+  `localStorage`, the Worker compares it, then **deletes the header** before going upstream.
+  A 401 anywhere drops the stored key and re-prompts via `src/lib/auth.ts` → `components/gate.tsx`.
+- `FELIX_API_KEY` (optional) is injected upstream as `Authorization: Bearer …`.
+- In `vite dev` the Worker is not in the loop, so the gate is skipped entirely.
+
+Keep the two Workers in sync — they are deliberate near-duplicates, not a shared module.
+
+### Client ↔ harness protocol (the part that is easy to get wrong)
+
+`apps/chat-ui/src/api.ts` + `src/types.ts` are the hand-mirrored wire contract. `types.ts`
+`StreamEvent` is the authoritative list of SSE frames; it ends in an open `{ event: string; ... }`
+arm, so an unknown event compiles fine and silently does nothing — when the harness gains an event,
+add the arm *and* a `switch` case in `App.tsx`.
+
+Flows worth knowing before editing either app:
+
+- **Streaming** — `POST /chat/stream`, SSE decoded with a carry buffer (frames split across network
+  chunks). Deltas append to the current turn; `on_tool_start`/`on_tool_end` become inline tool cards;
+  the terminal `on_chain_end` carries per-turn `usage`.
+- **Client tools** — a `tool_request` frame means the *browser* runs the tool
+  (`@felix/cowork-client` → in-tab VFS or a File System Access mount), then answers with
+  `POST /chat/tool_result`. This is a real round trip inside the model loop; failing to post a
+  result hangs the run.
+- **Durable runs** — `POST /chat` may return `202 + resume_token`; poll `GET /chat/runs/{token}`
+  (`pollDurableRun`) instead of streaming.
+- **Session state is server-authoritative** — `GET /chat/sessions/{id}` returns the snapshot
+  (transcript, phase, thinking level, leaf, lease) used to hydrate a thread. `chat-ui` additionally
+  keeps a `localStorage` mirror (`src/lib/threads.ts`) because `GET /chat/history/{id}` rejects
+  anonymous callers.
+- **Leases** — each tab mints a holder id and takes an exclusive lease
+  (`/chat/sessions/lease`, released best-effort on unload); a 409 means another tab holds the session.
+- **Sticky interrupts** — `approval_required` and `ui_request` frames render as banners and are
+  answered out-of-band (`/approvals/{id}/decide`, `/chat/ui`); the run is waiting on them.
+- **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
+  (`/chat/rewind` moves the active leaf), and full-text `/chat/sessions/search`.
+
+Each turn sends **only the new user message** — Felix replays thread history server-side.
+
+### chat-ui vs float
+
+`float` is a deliberately reduced second client over the same protocol (recent history is literally
+"bring float to parity with X"). It has no inspector/eval/jobs/manifest surfaces, pins
+`MANIFEST = 'cowork'`, and keeps its own copy of `api.ts`/`types.ts` and its own VFS storage key.
+A protocol change generally needs applying in **both** apps.
+
+### Packages
+
+`@felix/ui` and `@felix/cowork-client` have **no build step** — they export `.tsx`/`.ts` source
+directly, resolved via `paths` in each app's `tsconfig.json`. Adding an export means updating the
+package `exports` map *and* the tsconfig `paths` in `apps/chat-ui` and `apps/float`.
+
+The root `tsconfig.json` explicitly **excludes** `apps/chat-ui` and `apps/docs` (JSX / Astro virtual
+modules don't resolve under the workspace options); those apps type-check via their own configs.
+
+### Docs
+
+Prose is MDX under `apps/docs/src/content/` — note **not** `src/content/docs/`; `content.config.ts`
+overrides Starlight's loader base for that reason. New pages must also be added to the explicit
+`sidebar` in `astro.config.mjs` (autogenerate is off). `src/styles/theme.css` is checked in but
+derived from `@felix/design`'s `starlightThemeCss()` — change tokens there and regenerate rather than
+hand-editing the CSS.
+
+## Claude Code toolkit
+
+`.claude/` carries project agents, skills, rules, and hooks. **`.claude/README.md` is the index**;
+the `toolkit-authoring` skill is how to extend it.
+
+- **Skills** (`/name`): `preflight` (verify), `branch-pr-workflow`, `api-contract-change`,
+  `add-ui-primitive`, `docs-sync`, `deploy-runbook`, `python-harness`, `postgres-migration`,
+  `threat-review`, `toolkit-authoring`. They follow the [Agent Skills](https://agentskills.io) spec.
+- **Subagents**: `workers-engineer`, `ui-engineer`, `python-harness-engineer`, `postgres-engineer`,
+  `devops-engineer`, `code-reviewer`, `security-reviewer`, `dx-engineer`, `felix-docs-writer`.
+  The two reviewers are read-only by design.
+- **Hooks that can block you**: `block-generated.sh` (edits to generated files and build output),
+  `block-main-commit.sh` (commits on `main`, direct pushes to `origin main`), and `stop-gate.sh`
+  (once per session, when documented surfaces changed and no docs did). Others are advisory:
+  `format-touched.sh` runs Biome on files you edit — **re-read a file after editing it**, because
+  the copy in your context may be stale — and `impact-reminder.sh` names the counterpart file for
+  the duplicated surfaces below.
+- Editing `.claude/settings.json` needs a session restart; skills, agents, and rules hot-reload.
+
+## Conventions & gotchas
+
+- **Git: never commit to `main`; never stack PRs.** Every change goes on a `<type>/<slug>` branch and
+  a PR into `main`, and merging is the human's call. Enforced by `.claude/hooks/block-main-commit.sh`;
+  full procedure in the `branch-pr-workflow` skill and `.claude/rules/git-workflow.md`.
+- **Deploy config is local-only.** `apps/chat-ui/wrangler.jsonc` and `apps/float/wrangler.jsonc` are
+  gitignored (copy `apps/chat-ui/wrangler.example.jsonc`; float has no example — mirror chat-ui's,
+  changing `name`/route). `apps/docs/wrangler.jsonc` is tracked because it holds no ids.
+  Secrets go through `wrangler secret put`, never `vars`.
+- Biome, not ESLint/Prettier: single quotes, semicolons, trailing commas, 2-space indent, 100 cols.
+  `noExplicitAny` is a warning; a11y rules are relaxed under `packages/ui/src` and
+  `apps/chat-ui/src/components`.
+- Node ≥ 20, pnpm 10.33.2 (`packageManager` pinned). React 18, Tailwind v4 (CSS-first, no config file).

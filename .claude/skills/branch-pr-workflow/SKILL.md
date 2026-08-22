@@ -1,7 +1,9 @@
 ---
 name: branch-pr-workflow
-description: Mandatory git workflow for felix-web — every change lands via a feature branch and a pull request into main; direct commits to main are forbidden (hook-enforced).
-when_to_use: 'Before committing ANY change; requests like "commit this", "ship this", "create a PR", "merge this"; when the block-main-commit hook fires; starting a new piece of work.'
+description: Mandatory git workflow for felix-web — every change lands via a feature branch and a pull request into main; direct commits to main are forbidden (hook-enforced). Use before committing ANY change, for requests like "commit this", "ship this", "create a PR", or "merge this", when the block-main-commit hook fires, and when starting a new piece of work.
+license: MIT
+metadata:
+  repo: felix-web
 ---
 
 # Branch + PR workflow
@@ -39,10 +41,14 @@ See also [.claude/rules/git-workflow.md](../../rules/git-workflow.md).
    number* of feature-scoped PRs, not dozens of tiny ones. Don't batch *unrelated* features
    together, and never stack. Reserve a one-fix PR for a genuinely isolated one-off change.
 
-2. **Work + verify** on the branch. This monorepo is chat-ui + docs Workers only (runtime is
-   [felix-run/felix](https://github.com/felix-run/felix)). Prefer the package under change:
-   `pnpm --filter @felix/chat-ui …` / `pnpm --filter @felix/docs …`, or root scripts when they
-   apply. Docs prose lives in `apps/docs/src/content/` (MDX). Commit messages follow the repo style
+2. **Work + verify** on the branch. This monorepo is the chat-ui, float, and docs Workers only —
+   the runtime is [felix-run/felix](https://github.com/felix-run/felix) (Python). Prefer the package
+   under change: `pnpm --filter @felix/chat-ui …` / `@felix/float` / `@felix/docs`, or root scripts
+   when they apply. Docs prose lives in `apps/docs/src/content/` (MDX).
+
+   **There is no test suite in this repo** — verification is `pnpm check-types`, `pnpm lint`, and
+   `pnpm build`, plus a manual run against the harness on `:8080`. Use the `preflight` skill, and
+   never write "tests pass" in a commit or PR body. Commit messages follow the repo style
    (imperative subject, body explains why) and end with the Claude co-author line.
 
 3. **Push + open the PR**
