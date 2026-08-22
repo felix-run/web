@@ -11,7 +11,12 @@ function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
       data-slot="input-group"
       role="group"
       className={cn(
-        'group/input-group relative flex h-9 w-full min-w-0 items-center rounded-md border border-input bg-input/30 transition-colors outline-none has-[textarea]:h-auto has-[textarea]:flex-col has-[textarea]:items-stretch has-[textarea]:rounded-xl has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-end]]:items-stretch has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-start]]:items-stretch',
+        'group/input-group relative flex h-9 w-full min-w-0 items-center rounded-md border border-input bg-input/30 transition-colors outline-none',
+        // Textarea composers must stack; without this the addon can sit
+        // beside the textarea and crush it to a one-character column.
+        'has-[textarea]:h-auto has-[textarea]:flex-col has-[textarea]:items-stretch has-[textarea]:rounded-xl',
+        'has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-end]]:items-stretch',
+        'has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-start]]:items-stretch',
         className,
       )}
       {...props}

@@ -1,45 +1,56 @@
 import { CheckCircle2Icon, ChevronDownIcon, LoaderIcon, WrenchIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '@felix/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { cn } from '@/lib/utils';
 import type { ToolCall } from '@/types';
 
 /**
- * Collapsible tool-call card. Unlike AI Elements' Tool (which keys off the AI
- * SDK `ToolUIPart.state`), this is driven by our SSE-derived `ToolCall.done`
- * flag — `on_tool_start` creates it (running), `on_tool_end` completes it.
+ * Collapsible tool-call card driven by SSE `ToolCall.done`.
+ * In verbose mode, input/output stay expanded.
  */
-export function Tool({ tool }: { tool: ToolCall }) {
-  const [open, setOpen] = useState(false);
+export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: boolean }) {
+  const [open, setOpen] = useState(verbose);
+  useEffect(() => {
+    if (verbose) setOpen(true);
+  }, [verbose]);
+
   return (
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className="rounded-lg border bg-muted/40 text-sm"
+      className="overflow-hidden rounded-xl border border-border/60 bg-muted/30 text-sm"
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 font-mono text-xs">
-        <WrenchIcon className="size-3.5 text-muted-foreground" />
-        <span className="font-medium">{tool.name}</span>
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-xs hover:bg-muted/40">
+        <WrenchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 truncate font-medium">{tool.name}</span>
         {tool.done ? (
-          <Badge variant="secondary" className="gap-1 py-0">
-            <CheckCircle2Icon className="size-3 text-emerald-500" /> done
+          <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
+            <CheckCircle2Icon className="size-3 text-emerald-500" />
+            done
           </Badge>
         ) : (
-          <Badge variant="secondary" className="gap-1 py-0">
-            <LoaderIcon className="size-3 animate-spin" /> running
+          <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
+            <LoaderIcon className="size-3 animate-spin" />
+            running
           </Badge>
         )}
         <ChevronDownIcon
           className={cn(
-            'ml-auto size-4 text-muted-foreground transition-transform',
+            'size-4 shrink-0 text-muted-foreground transition-transform duration-200',
             open && 'rotate-180',
           )}
         />
       </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-2 border-t px-3 py-2">
+      <CollapsibleContent className="space-y-2 border-t border-border/50 px-3 py-2.5">
         <Field label="input" value={tool.input} />
-        {tool.done && <Field label="output" value={tool.output} emphasis />}
+        {tool.done ? (
+          <Field label="output" value={tool.output} emphasis />
+        ) : (
+          verbose && (
+            <p className="text-[11px] text-muted-foreground italic">Waiting for tool output…</p>
+          )
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
@@ -48,10 +59,12 @@ export function Tool({ tool }: { tool: ToolCall }) {
 function Field({ label, value, emphasis }: { label: string; value: unknown; emphasis?: boolean }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+      </div>
       <pre
         className={cn(
-          'overflow-x-auto rounded bg-background p-2 text-xs',
+          'max-h-64 overflow-auto rounded-lg bg-background/80 p-2.5 text-xs leading-relaxed',
           emphasis ? 'text-foreground' : 'text-muted-foreground',
         )}
       >

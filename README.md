@@ -11,6 +11,7 @@ in `packages/ui` (`@felix/ui`).
 | Path | Role |
 |------|------|
 | `apps/chat-ui` | Streaming chat + inspector (Vite → CF Workers) |
+| `apps/float` | Workspace float client (`cowork` manifest, client tools, approvals) |
 | `apps/docs` | Starlight docs site (`@felix/docs`) → CF Workers |
 | `packages/ui` | Shared [shadcn/ui](https://ui.shadcn.com/) components |
 | `packages/design` | Design tokens for docs / chrome |
@@ -21,6 +22,7 @@ in `packages/ui` (`@felix/ui`).
 ```bash
 pnpm install
 pnpm chat:dev          # Vite → proxies /api to Python Felix :8080
+pnpm float:dev         # Float client on :5174 → same /api proxy
 pnpm docs:dev
 pnpm build             # turbo run build
 pnpm lint              # turbo → biome

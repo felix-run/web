@@ -1,6 +1,7 @@
 import {
   BotIcon,
   ClockIcon,
+  EllipsisIcon,
   FlaskConicalIcon,
   GitBranchIcon,
   HistoryIcon,
@@ -26,6 +27,15 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@felix/ui/dropdown-menu';
+import {
   eventsToTurns,
   indexThread,
   listThreads,
@@ -40,12 +50,24 @@ import type { ChatMessage, ImageAttachment, ToolCall, Turn, Variant } from '@/ty
 
 const THREAD_KEY = 'felix.threadId';
 const MANIFEST_KEY = 'felix.manifest';
+const HISTORY_KEY = 'felix.historyOpen';
+const INSPECTOR_KEY = 'felix.inspectorOpen';
+const VERBOSE_KEY = 'felix.verbose';
+/** Bundled Python harness default — not the old Workers `chat-ui-demo`. */
+const DEFAULT_MANIFEST = 'quick';
+
+function readBool(key: string, fallback: boolean): boolean {
+  const raw = localStorage.getItem(key);
+  if (raw === null) return fallback;
+  return raw === '1' || raw === 'true';
+}
 
 export default function App() {
   const [manifests, setManifests] = useState<string[]>([]);
-  const [manifest, setManifest] = useState(
-    () => localStorage.getItem(MANIFEST_KEY) ?? 'chat-ui-demo',
-  );
+  const [manifest, setManifest] = useState(() => {
+    const stored = localStorage.getItem(MANIFEST_KEY)?.trim();
+    return stored || DEFAULT_MANIFEST;
+  });
   const [threadId, setThreadId] = useState(
     () => localStorage.getItem(THREAD_KEY) ?? crypto.randomUUID(),
   );
@@ -56,8 +78,13 @@ export default function App() {
   const [variant, setVariant] = useState<Variant | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  // History open by default only when there are prior threads; inspector off
+  // so chat owns the first viewport.
+  const [historyOpen, setHistoryOpen] = useState(() =>
+    readBool(HISTORY_KEY, listThreads().length > 0),
+  );
+  const [inspectorOpen, setInspectorOpen] = useState(() => readBool(INSPECTOR_KEY, false));
+  const [verbose, setVerbose] = useState(() => readBool(VERBOSE_KEY, false));
   const [evalOpen, setEvalOpen] = useState(false);
   const [manifestsOpen, setManifestsOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
@@ -66,22 +93,37 @@ export default function App() {
   const { resolved, setTheme } = useTheme();
 
   const abortRef = useRef<AbortController | null>(null);
-  // Always-current threadId for async callbacks (avoids stale-closure guards
-  // when a server-history response lands after the user switched threads).
+  const verboseRef = useRef(verbose);
   const threadIdRef = useRef(threadId);
   useEffect(() => {
     threadIdRef.current = threadId;
   }, [threadId]);
+  useEffect(() => {
+    verboseRef.current = verbose;
+  }, [verbose]);
 
   useEffect(() => localStorage.setItem(THREAD_KEY, threadId), [threadId]);
   useEffect(() => localStorage.setItem(MANIFEST_KEY, manifest), [manifest]);
-  // Persist the active transcript blob on every change (cheap; no list churn).
+  useEffect(() => localStorage.setItem(HISTORY_KEY, historyOpen ? '1' : '0'), [historyOpen]);
+  useEffect(() => localStorage.setItem(INSPECTOR_KEY, inspectorOpen ? '1' : '0'), [inspectorOpen]);
+  useEffect(() => localStorage.setItem(VERBOSE_KEY, verbose ? '1' : '0'), [verbose]);
   useEffect(() => saveTurns(threadId, turns), [threadId, turns]);
 
   useEffect(() => {
     const ctrl = new AbortController();
     listManifests(ctrl.signal)
-      .then((names) => names.length && setManifests(names))
+      .then((names) => {
+        if (!names.length) return;
+        setManifests(names);
+        // Drop stale localStorage (e.g. chat-ui-demo) that isn't on this harness.
+        setManifest((cur) =>
+          names.includes(cur)
+            ? cur
+            : names.includes(DEFAULT_MANIFEST)
+              ? DEFAULT_MANIFEST
+              : names[0]!,
+        );
+      })
       .catch(() => {});
     return () => ctrl.abort();
   }, []);
@@ -171,6 +213,7 @@ export default function App() {
                 patch((t) => ({ ...t, content: t.content + ev.data.chunk.content }));
                 break;
               case 'on_tool_start':
+                if (verboseRef.current) setInspectorOpen(true);
                 patch((t) => ({
                   ...t,
                   tools: [
@@ -308,6 +351,13 @@ export default function App() {
         case 'theme':
           setTheme(resolved === 'dark' ? 'light' : 'dark');
           break;
+        case 'verbose':
+          setVerbose((v) => {
+            const next = !v;
+            if (next) setInspectorOpen(true);
+            return next;
+          });
+          break;
       }
     },
     [newThread, clearThread, setTheme, resolved],
@@ -317,83 +367,100 @@ export default function App() {
   const modelOptions = useMemo(() => options.map((id) => ({ id, label: id })), [options]);
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center gap-3 border-b px-4 py-2.5">
+    <div className="flex h-screen flex-col bg-background">
+      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border/60 px-3">
         <Button
           variant={historyOpen ? 'secondary' : 'ghost'}
-          size="icon"
-          className="size-8"
+          size="icon-sm"
           onClick={() => setHistoryOpen((o) => !o)}
           aria-label="Toggle history"
           title="Conversation history"
         >
           <HistoryIcon className="size-4" />
         </Button>
-        <span className="font-semibold">Felix chat</span>
-        <ThemeToggle />
-        <Button
-          variant={agentOpen ? 'secondary' : 'ghost'}
-          size="icon"
-          className="size-8"
-          onClick={() => setAgentOpen((o) => !o)}
-          aria-label="Agent spec"
-          title="Inspect the resolved agent spec"
-        >
-          <BotIcon className="size-4" />
-        </Button>
-        {variant && (
-          <Badge variant={variant === 'canary' ? 'default' : 'secondary'} className="uppercase">
-            {variant}
-          </Badge>
-        )}
-        <span
-          className="ml-auto font-mono text-xs text-muted-foreground"
-          title={`thread: ${threadId}`}
-        >
-          {threadId.slice(0, 8)}
-        </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={newThread}
-          disabled={streaming}
-          className="gap-1.5"
-        >
-          <PlusIcon className="size-4" /> New thread
-        </Button>
-        <Button
-          variant={manifestsOpen ? 'secondary' : 'ghost'}
-          size="sm"
-          className="gap-1.5"
-          onClick={() => setManifestsOpen((o) => !o)}
-        >
-          <GitBranchIcon className="size-4" /> Manifests
-        </Button>
-        <Button
-          variant={jobsOpen ? 'secondary' : 'ghost'}
-          size="sm"
-          className="gap-1.5"
-          onClick={() => setJobsOpen((o) => !o)}
-        >
-          <ClockIcon className="size-4" /> Jobs
-        </Button>
-        <Button
-          variant={evalOpen ? 'secondary' : 'ghost'}
-          size="sm"
-          className="gap-1.5"
-          onClick={() => setEvalOpen((o) => !o)}
-        >
-          <FlaskConicalIcon className="size-4" /> Eval
-        </Button>
-        <Button
-          variant={inspectorOpen ? 'secondary' : 'ghost'}
-          size="icon"
-          className="size-8"
-          onClick={() => setInspectorOpen((o) => !o)}
-          aria-label="Toggle inspector"
-        >
-          <PanelRightIcon className="size-4" />
-        </Button>
+        <div className="flex min-w-0 items-center gap-2 px-1.5">
+          <span className="truncate font-semibold tracking-tight">Felix</span>
+          {verbose && (
+            <Badge variant="secondary" className="hidden font-normal sm:inline-flex">
+              Verbose
+            </Badge>
+          )}
+          {variant && (
+            <Badge
+              variant={variant === 'canary' ? 'default' : 'secondary'}
+              className="hidden uppercase sm:inline-flex"
+            >
+              {variant}
+            </Badge>
+          )}
+        </div>
+
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={newThread}
+            disabled={streaming}
+            className="gap-1.5 rounded-full px-3"
+          >
+            <PlusIcon className="size-4" />
+            <span className="hidden sm:inline">New chat</span>
+          </Button>
+          <ThemeToggle />
+          <Button
+            variant={inspectorOpen ? 'secondary' : 'ghost'}
+            size="icon-sm"
+            onClick={() => setInspectorOpen((o) => !o)}
+            aria-label="Toggle inspector"
+            title="Inspector"
+          >
+            <PanelRightIcon className="size-4" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="More tools">
+                <EllipsisIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>View</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={verbose}
+                onCheckedChange={(checked) => {
+                  setVerbose(checked);
+                  if (checked) setInspectorOpen(true);
+                }}
+              >
+                Verbose tools
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Tools</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => setAgentOpen(true)}>
+                <BotIcon className="size-4" />
+                Agent spec
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setManifestsOpen(true)}>
+                <GitBranchIcon className="size-4" />
+                Manifests
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setJobsOpen(true)}>
+                <ClockIcon className="size-4" />
+                Jobs
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setEvalOpen(true)}>
+                <FlaskConicalIcon className="size-4" />
+                Eval
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled
+                className="font-mono text-xs text-muted-foreground data-disabled:opacity-100"
+              >
+                {threadId.slice(0, 8)}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -419,17 +486,21 @@ export default function App() {
                   key={t.id}
                   turn={t}
                   streaming={streaming && isLast}
+                  verbose={verbose}
                   onRegenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
                 />
               );
             })}
             {error && (
-              <div className="mx-auto rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                ⚠ {error}
+              <div
+                role="alert"
+                className="mx-auto max-w-2xl rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {error}
               </div>
             )}
           </Conversation>
-          <div className="border-t pt-3">
+          <div className="border-t border-border/50 bg-background/80 pt-3 backdrop-blur-sm">
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
               isConnected

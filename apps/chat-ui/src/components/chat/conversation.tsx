@@ -5,19 +5,19 @@ import { Button } from '@felix/ui/button';
 import { cn } from '@/lib/utils';
 
 /**
- * Auto-scrolling transcript container. Sticks to the bottom as new tokens
- * stream in, but lets the user scroll up freely; a jump-to-latest button
- * appears when they're not pinned. Built on `use-stick-to-bottom` (the same
- * primitive AI Elements' Conversation uses).
+ * Auto-scrolling transcript. Sticks to the bottom while streaming; a jump
+ * button appears when the user scrolls up.
  */
 export function Conversation({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <StickToBottom
-      className={cn('relative flex-1 overflow-hidden', className)}
+      className={cn('relative min-h-0 flex-1 overflow-hidden', className)}
       initial="smooth"
       resize="smooth"
     >
-      <StickToBottom.Content className="flex flex-col gap-4 p-4">{children}</StickToBottom.Content>
+      <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
+        {children}
+      </StickToBottom.Content>
       <ScrollToBottom />
     </StickToBottom>
   );
@@ -29,9 +29,9 @@ function ScrollToBottom() {
   return (
     <Button
       type="button"
-      size="icon"
+      size="icon-sm"
       variant="outline"
-      className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-full shadow-md"
+      className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border-border/60 bg-card/90 shadow-md backdrop-blur"
       onClick={() => scrollToBottom()}
       aria-label="Scroll to latest"
     >

@@ -1,4 +1,4 @@
-import { Eraser, Palette, PenSquare } from 'lucide-react';
+import { Bug, Eraser, Palette, PenSquare } from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -15,7 +15,7 @@ export type SlashCommand = {
 export const slashCommands: SlashCommand[] = [
   {
     name: 'new',
-    description: 'Start a new thread',
+    description: 'Start a new chat',
     icon: <PenSquare className="size-3.5" />,
     action: 'new',
   },
@@ -26,8 +26,14 @@ export const slashCommands: SlashCommand[] = [
     action: 'clear',
   },
   {
+    name: 'verbose',
+    description: 'Toggle tool I/O + inspector',
+    icon: <Bug className="size-3.5" />,
+    action: 'verbose',
+  },
+  {
     name: 'theme',
-    description: 'Toggle dark / light mode',
+    description: 'Toggle light and dark',
     icon: <Palette className="size-3.5" />,
     action: 'theme',
   },
@@ -56,10 +62,10 @@ export function SlashCommandMenu({
 
   return (
     <div
-      className="absolute right-0 bottom-full left-0 z-50 mb-2 overflow-hidden rounded-xl border border-border/50 bg-card/95 shadow-lg backdrop-blur-xl"
+      className="absolute right-0 bottom-full left-0 z-50 mb-2 overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-[var(--shadow-composer-focus)] backdrop-blur-xl"
       ref={menuRef}
     >
-      <div className="px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+      <div className="px-4 py-2 text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
         Commands
       </div>
       <div className="max-h-64 overflow-y-auto pb-1">
@@ -67,7 +73,7 @@ export function SlashCommandMenu({
           <button
             className={cn(
               'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
-              index === selectedIndex ? 'bg-muted/70' : 'hover:bg-muted/40',
+              index === selectedIndex ? 'bg-muted' : 'hover:bg-muted/50',
             )}
             data-selected={index === selectedIndex}
             key={cmd.name}
@@ -75,7 +81,7 @@ export function SlashCommandMenu({
             onMouseDown={(e) => e.preventDefault()}
             type="button"
           >
-            <div className="flex size-6 shrink-0 items-center justify-center text-muted-foreground/70">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
               {cmd.icon}
             </div>
             <span className="font-mono text-[13px] text-foreground">/{cmd.name}</span>

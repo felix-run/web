@@ -8,7 +8,7 @@
     "not_found_handling": "single-page-application"
   },
   "vars": {
-    "FELIX_ORIGIN": "https://make.felix.run"
+    "FELIX_ORIGIN": "https://api.felix.run"
   },
   "routes": [{ "pattern": "chat.felix.run", "custom_domain": true }]
 }

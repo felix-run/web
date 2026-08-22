@@ -1,55 +1,110 @@
 import { Button } from '@felix/ui/button';
 
 /**
- * A grid of starter prompts — vercel/ai-chatbot's `SuggestedActions`. Clicking
- * one sends it as the first user turn. The prompts lean into what the bundled
- * `chat-ui-demo` agent surfaces (the approval-gated calculator, skills) so the
- * Inspector panels light up immediately.
+ * Starter prompts for the empty state. Tuned per agent so suggestions match
+ * what the selected Python harness manifest can actually do.
  */
-const SUGGESTIONS: Array<{ title: string; label: string; prompt: string }> = [
-  {
-    title: 'What is 7 × 6?',
-    label: 'exercises the approval-gated calculator',
-    prompt: 'What is 7 × 6?',
-  },
-  {
-    title: 'List your skills',
-    label: 'and tell me which are active',
-    prompt: 'List your available skills and tell me which ones are active right now.',
-  },
-  {
-    title: 'Explain this harness',
-    label: 'sessions, patterns, tool transports',
-    prompt:
-      'Briefly explain how a managed agents harness virtualizes sessions, patterns, and tools.',
-  },
-  {
-    title: 'Write a haiku',
-    label: 'about streaming tokens',
-    prompt: 'Write a haiku about streaming tokens from a language model.',
-  },
-];
+type Suggestion = { title: string; label: string; prompt: string };
+
+const BY_MANIFEST: Record<string, Suggestion[]> = {
+  quick: [
+    {
+      title: 'Summarize Felix',
+      label: 'in two sentences',
+      prompt: 'In two sentences, what is Felix and who is it for?',
+    },
+    {
+      title: 'Draft a reply',
+      label: 'polite and concise',
+      prompt: 'Draft a short, polite reply declining a meeting that conflicts with a deadline.',
+    },
+    {
+      title: 'Explain a tradeoff',
+      label: 'Compose vs Kubernetes',
+      prompt:
+        'Compare Docker Compose and Kubernetes for running a small self-hosted agent API. Keep it practical.',
+    },
+    {
+      title: 'Write a haiku',
+      label: 'about streaming tokens',
+      prompt: 'Write a haiku about streaming tokens from a language model.',
+    },
+  ],
+  deep: [
+    {
+      title: 'Plan a rollout',
+      label: 'multi-step with risks',
+      prompt:
+        'Plan a multi-step rollout of a public API behind a chat UI. Include risks and validation steps.',
+    },
+    {
+      title: 'Break down a bug',
+      label: 'symptoms → hypotheses',
+      prompt:
+        'Walk through diagnosing a chat stream that returns 500 only for unknown manifests. List hypotheses and checks.',
+    },
+    {
+      title: 'Design a eval set',
+      label: 'five golden prompts',
+      prompt: 'Propose five golden eval prompts for a general-purpose chat agent and how to judge them.',
+    },
+    {
+      title: 'Architecture sketch',
+      label: 'API, worker, store',
+      prompt:
+        'Sketch how an agent harness should split API, worker, and session store responsibilities.',
+    },
+  ],
+  'oss-only': [
+    {
+      title: 'Local-only chat',
+      label: 'no cloud keys',
+      prompt: 'What does an oss-only agent imply for model routing and secrets?',
+    },
+    {
+      title: 'Pick a model',
+      label: 'for coding help',
+      prompt: 'Recommend an open model size for coding help on a 16GB laptop and why.',
+    },
+    {
+      title: 'Offline tips',
+      label: 'when the LLM is slow',
+      prompt: 'Give three practical tips when a local LLM feels too slow for interactive chat.',
+    },
+    {
+      title: 'Write a haiku',
+      label: 'about local inference',
+      prompt: 'Write a haiku about running inference on a laptop fan.',
+    },
+  ],
+};
+
+const FALLBACK = BY_MANIFEST.quick!;
 
 export function SuggestedActions({
+  manifest,
   disabled,
   onSend,
 }: {
+  manifest?: string;
   disabled?: boolean;
   onSend: (text: string) => void;
 }) {
+  const suggestions = (manifest && BY_MANIFEST[manifest]) || FALLBACK;
+
   return (
     <div className="grid w-full gap-2 sm:grid-cols-2">
-      {SUGGESTIONS.map((s, i) => (
+      {suggestions.map((s, i) => (
         <Button
-          key={s.title}
+          key={`${manifest ?? 'default'}-${s.title}`}
           variant="outline"
           disabled={disabled}
           onClick={() => onSend(s.prompt)}
-          style={{ animationDelay: `${i * 60}ms` }}
-          className="fade-in-50 slide-in-from-bottom-1 h-auto animate-in flex-col items-start gap-0.5 whitespace-normal rounded-xl px-4 py-3 text-left"
+          style={{ animationDelay: `${i * 50}ms` }}
+          className="h-auto flex-col items-start gap-0.5 whitespace-normal rounded-xl border-border/60 bg-card/40 px-4 py-3 text-left shadow-none transition-colors hover:bg-accent/60"
         >
-          <span className="font-medium">{s.title}</span>
-          <span className="text-muted-foreground">{s.label}</span>
+          <span className="text-sm font-medium text-foreground">{s.title}</span>
+          <span className="text-xs text-muted-foreground">{s.label}</span>
         </Button>
       ))}
     </div>

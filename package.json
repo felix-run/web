@@ -15,7 +15,10 @@
     "docs:deploy": "pnpm --filter @felix/docs run deploy",
     "chat:dev": "pnpm --filter @felix/chat-ui dev",
     "chat:build": "pnpm --filter @felix/chat-ui build",
-    "chat:deploy": "pnpm --filter @felix/chat-ui run deploy"
+    "chat:deploy": "pnpm --filter @felix/chat-ui run deploy",
+    "float:dev": "pnpm --filter @felix/float dev",
+    "float:build": "pnpm --filter @felix/float build",
+    "float:deploy": "pnpm --filter @felix/float run deploy"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

@@ -82,7 +82,7 @@ export function migrateLegacy(now: number): void {
     return;
   }
   const id = localStorage.getItem(LEGACY_THREAD) ?? crypto.randomUUID();
-  const manifest = localStorage.getItem('felix.manifest') ?? 'chat-ui-demo';
+  const manifest = localStorage.getItem('felix.manifest')?.trim() || 'quick';
   const firstUser = legacyTurns.find((t) => t.role === 'user');
   saveTurns(id, legacyTurns);
   indexThread({ id, manifest, title: titleFromText(firstUser?.content ?? ''), updatedAt: now });

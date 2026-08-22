@@ -1,21 +1,12 @@
 /**
- * Proxy Worker for the Felix chat UI.
- *
- * Serves the SPA from ASSETS and proxies `/api/*` to the self-hosted Python
- * Felix harness (`FELIX_ORIGIN`), stripping the `/api` prefix. Same contract
- * as the Vite dev proxy.
- *
- * When `CHAT_UI_KEY` is set, browser clients must send `x-chat-key` (see Gate).
- * That header is stripped before the upstream Felix request.
+ * Proxy Worker for the Felix float client.
+ * Same /api/* contract as chat-ui: strip prefix, optional gate key, inject API key.
  */
 
 interface Env {
   ASSETS: Fetcher;
-  /** Public origin of Python Felix, e.g. https://api.example.com */
   FELIX_ORIGIN: string;
-  /** Shared gate key for browser clients (`x-chat-key`). */
   CHAT_UI_KEY?: string;
-  /** Upstream Felix API key injected as `Authorization: Bearer …` (api_key mode). */
   FELIX_API_KEY?: string;
 }
 

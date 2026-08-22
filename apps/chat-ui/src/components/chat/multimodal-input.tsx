@@ -68,7 +68,7 @@ function MultimodalInputInner({
   models,
   modelId,
   onModelChange,
-  placeholder = 'Ask anything…',
+  placeholder = 'Message Felix…',
   className,
 }: MultimodalInputProps) {
   const controller = usePromptInputController();
@@ -295,12 +295,18 @@ function MultimodalInputInner({
           maxFiles={MAX_FILES}
           maxFileSize={MAX_FILE_SIZE}
           className={cn(
-            // Composer surface: resting drop shadow swaps for a slightly
-            // stronger focus shadow when the textarea grabs focus.
-            '[&>div]:rounded-2xl [&>div]:border [&>div]:border-border/40 [&>div]:bg-card/70 [&>div]:shadow-[var(--shadow-composer)] [&>div]:transition-all [&>div]:duration-200 [&>div]:has-[textarea:focus-visible]:border-foreground/30 [&>div]:has-[textarea:focus-visible]:shadow-[var(--shadow-composer-focus)]',
-            '[&_textarea]:focus-visible:ring-0 [&_textarea]:focus-visible:ring-offset-0 [&_textarea]:focus-visible:outline-none',
+            // Force column layout: InputGroup defaults can collapse the
+            // textarea to a 1-char column when flex-col selectors miss.
+            '[&>[data-slot=input-group]]:flex [&>[data-slot=input-group]]:flex-col [&>[data-slot=input-group]]:items-stretch',
+            '[&>[data-slot=input-group]]:rounded-2xl [&>[data-slot=input-group]]:border [&>[data-slot=input-group]]:border-border/50',
+            '[&>[data-slot=input-group]]:bg-card/80 [&>[data-slot=input-group]]:backdrop-blur-md',
+            '[&>[data-slot=input-group]]:shadow-[var(--shadow-composer)]',
+            '[&>[data-slot=input-group]]:transition-[border-color,box-shadow,background-color] [&>[data-slot=input-group]]:duration-200',
+            '[&>[data-slot=input-group]]:has-[textarea:focus-visible]:border-ring/60',
+            '[&>[data-slot=input-group]]:has-[textarea:focus-visible]:shadow-[var(--shadow-composer-focus)]',
+            '[&_textarea]:min-w-0 [&_textarea]:w-full [&_textarea]:focus-visible:ring-0 [&_textarea]:focus-visible:ring-offset-0 [&_textarea]:focus-visible:outline-none',
             isDragging &&
-              '[&>div]:border-primary/70 [&>div]:bg-primary/5 [&>div]:ring-2 [&>div]:ring-primary/30',
+              '[&>[data-slot=input-group]]:border-primary/60 [&>[data-slot=input-group]]:bg-primary/5 [&>[data-slot=input-group]]:ring-2 [&>[data-slot=input-group]]:ring-primary/25',
           )}
           onError={(err) => {
             const messages: Record<typeof err.code, string> = {
@@ -316,15 +322,15 @@ function MultimodalInputInner({
 
           <PromptInputTextarea
             ref={textareaRef}
-            className="field-sizing-fixed w-full min-h-24 px-4 pt-3.5 pb-1.5 text-[13px] leading-relaxed placeholder:text-muted-foreground/50"
+            className="field-sizing-content max-h-48 min-h-[4.5rem] w-full min-w-0 px-4 pt-3.5 pb-2 text-sm leading-relaxed placeholder:text-muted-foreground"
             placeholder={placeholder}
             maxLength={MAX_TEXT_LENGTH + 200 /* slack so the toast can fire */}
             aria-invalid={tooLong || undefined}
             onKeyDown={handleTextareaKeyDown}
           />
 
-          <PromptInputFooter className="px-3 pb-3">
-            <PromptInputTools className="flex items-center gap-2">
+          <PromptInputFooter className="gap-2 px-2.5 pb-2.5 pt-0">
+            <PromptInputTools className="flex min-w-0 flex-1 items-center gap-1">
               <AttachmentsButton disabled={isBusy} count={files.length} max={MAX_FILES} />
               {speech.isSupported && (
                 <MicButton
@@ -337,7 +343,7 @@ function MultimodalInputInner({
               )}
               {models && models.length > 0 && (
                 <InlinePicker
-                  ariaLabel="Choose manifest"
+                  ariaLabel="Choose agent"
                   options={models}
                   value={modelId}
                   onChange={onModelChange}
@@ -347,12 +353,12 @@ function MultimodalInputInner({
               <HelperHint text={helperText} />
             </PromptInputTools>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {showCharCount && (
                 <span
                   className={cn(
                     'text-[11px] tabular-nums',
-                    tooLong ? 'text-destructive' : 'text-muted-foreground/60',
+                    tooLong ? 'text-destructive' : 'text-muted-foreground',
                   )}
                   aria-live="polite"
                 >
@@ -390,8 +396,8 @@ function AttachmentsButton({
       variant="ghost"
       size="icon-sm"
       className={cn(
-        'h-7 w-7 rounded-lg border border-border/40 p-1',
-        atLimit && 'text-muted-foreground/30',
+        'size-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground',
+        atLimit && 'opacity-40',
       )}
       disabled={disabled || atLimit}
       onClick={(e) => {
@@ -400,7 +406,7 @@ function AttachmentsButton({
       }}
       aria-label={atLimit ? `Attachment limit reached (${max})` : 'Attach images'}
     >
-      <PaperclipIcon className="size-3.5" />
+      <PaperclipIcon className="size-4" />
     </Button>
   );
 }
@@ -408,7 +414,7 @@ function AttachmentsButton({
 function HelperHint({ text }: { text: string | null }) {
   if (!text) return null;
   return (
-    <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+    <span className="ml-1 hidden items-center gap-1.5 truncate text-xs text-muted-foreground sm:flex">
       {text === 'Reconnecting…' && <Loader2 className="size-3 animate-spin" />}
       {text}
     </span>
@@ -416,9 +422,8 @@ function HelperHint({ text }: { text: string | null }) {
 }
 
 /**
- * Web Speech API toggle. Idle = ghost outline + mic icon. Listening = solid
- * red ring + animated pulse + filled mic + a 1-line interim transcript shown
- * inline beside the button so the user knows their voice is being heard.
+ * Web Speech API toggle. Idle = ghost mic. Listening = soft red pulse +
+ * interim transcript so the user knows voice is being heard.
  */
 function MicButton({
   isListening,
@@ -434,7 +439,7 @@ function MicButton({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex min-w-0 items-center gap-1.5">
       <Button
         type="button"
         variant="ghost"
@@ -448,22 +453,22 @@ function MicButton({
         aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
         title={isListening ? 'Stop voice input' : 'Voice input'}
         className={cn(
-          'relative h-7 w-7 rounded-lg border p-1 transition-colors',
+          'relative size-8 rounded-full transition-colors',
           isListening
-            ? 'border-red-500/60 bg-red-500/10 text-red-600 dark:text-red-400'
-            : 'border-border/40',
+            ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
       >
-        {isListening ? <MicOff className="size-3.5" /> : <Mic className="size-3.5" />}
+        {isListening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
         {isListening && (
           <span
-            className="absolute inset-0 -z-10 animate-pulse rounded-lg bg-red-500/20"
+            className="absolute inset-0 -z-10 animate-pulse rounded-full bg-destructive/20"
             aria-hidden
           />
         )}
       </Button>
       {isListening && interim && (
-        <span className="max-w-[20ch] truncate text-[11px] italic text-red-600/80 dark:text-red-400/80">
+        <span className="max-w-[16ch] truncate text-xs text-destructive/80 italic sm:max-w-[24ch]">
           {interim}
         </span>
       )}
@@ -493,7 +498,7 @@ function InlinePicker({
     >
       <SelectTrigger
         size="sm"
-        className="h-7 gap-1.5 rounded-lg border-border/40 bg-transparent px-2 text-[12px] text-muted-foreground hover:text-foreground"
+        className="h-8 max-w-[10rem] gap-1.5 rounded-full border-border/40 bg-muted/40 px-2.5 text-xs font-medium text-foreground/80 shadow-none hover:bg-muted hover:text-foreground"
         aria-label={ariaLabel}
       >
         {/* SelectValue's default would render the SelectItem's full children
@@ -502,11 +507,11 @@ function InlinePicker({
       </SelectTrigger>
       <SelectContent align="start">
         {options.map((o) => (
-          <SelectItem key={o.id} value={o.id} className="text-[12px]">
-            <span className="flex flex-col">
+          <SelectItem key={o.id} value={o.id} className="text-sm">
+            <span className="flex flex-col gap-0.5">
               <span className="font-medium">{o.label}</span>
               {o.description && (
-                <span className="text-[11px] text-muted-foreground">{o.description}</span>
+                <span className="text-xs text-muted-foreground">{o.description}</span>
               )}
             </span>
           </SelectItem>
@@ -531,7 +536,7 @@ function SendOrStop({
         type="button"
         size="icon-sm"
         variant="secondary"
-        className="h-7 w-7 rounded-xl shadow-sm transition-transform duration-150 hover:scale-105 active:scale-95"
+        className="size-8 rounded-full shadow-sm transition-transform duration-150 hover:scale-105 active:scale-95"
         onClick={onStop}
         aria-label="Stop generating"
       >
@@ -546,15 +551,15 @@ function SendOrStop({
       size="icon-sm"
       variant="default"
       className={cn(
-        'h-7 w-7 rounded-xl transition-all duration-200',
+        'size-8 rounded-full transition-all duration-200',
         canSubmit
-          ? 'bg-foreground text-background hover:opacity-85 active:scale-95'
-          : 'cursor-not-allowed bg-muted text-muted-foreground/30 hover:bg-muted',
+          ? 'bg-foreground text-background shadow-sm hover:opacity-90 active:scale-95'
+          : 'cursor-not-allowed bg-muted text-muted-foreground/40 shadow-none hover:bg-muted',
       )}
       disabled={!canSubmit}
       aria-label="Send message"
     >
-      <ArrowUp className="size-4" />
+      <ArrowUp className="size-4" strokeWidth={2.25} />
     </Button>
   );
 }
@@ -600,27 +605,28 @@ function DropOverlay() {
 
 function KeyboardHint() {
   return (
-    <div className="mt-1.5 flex justify-center gap-3 text-[10px] text-muted-foreground/50">
+    <p className="mt-2 text-center text-[11px] text-muted-foreground">
       <span className="inline-flex items-center gap-1">
         <Kbd>
           <CornerDownLeft className="size-2.5" />
         </Kbd>
-        send
+        <span>to send</span>
       </span>
+      <span className="mx-2 text-border">·</span>
       <span className="inline-flex items-center gap-1">
         <Kbd>⇧</Kbd>
         <Kbd>
           <CornerDownLeft className="size-2.5" />
         </Kbd>
-        new line
+        <span>for a new line</span>
       </span>
-    </div>
+    </p>
   );
 }
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-card px-1 font-sans text-[10px] text-muted-foreground/70">
+    <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/60 bg-muted/50 px-1 font-sans text-[10px] text-muted-foreground">
       {children}
     </kbd>
   );

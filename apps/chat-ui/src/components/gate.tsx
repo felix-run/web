@@ -9,6 +9,7 @@
  * That branch lives in main.tsx (so this component's hooks stay unconditional).
  */
 
+import { Loader2Icon } from 'lucide-react';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
@@ -18,7 +19,6 @@ type Phase = 'checking' | 'locked' | 'open';
 
 async function keyWorks(): Promise<boolean> {
   try {
-    // authHeaders() picks up whatever is currently stored.
     const res = await fetch('/api/v1/models', {
       headers: { ...(getApiKey() ? { 'x-chat-key': getApiKey() as string } : {}) },
     });
@@ -34,7 +34,6 @@ export function Gate({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Re-lock whenever any API call reports 401 (wrong / rotated key).
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setError('That key was rejected. Try again.');
@@ -43,7 +42,6 @@ export function Gate({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  // On load with a stored key, validate it before showing the app.
   useEffect(() => {
     if (phase !== 'checking') return;
     let alive = true;
@@ -77,28 +75,49 @@ export function Gate({ children }: { children: ReactNode }) {
 
   if (phase === 'open') return <>{children}</>;
 
+  const busy = submitting || phase === 'checking';
+
   return (
-    <div className="flex h-screen items-center justify-center p-6">
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
       <form
         onSubmit={submit}
-        className="w-full max-w-sm space-y-4 rounded-xl border bg-card p-6 shadow-sm"
+        className="w-full max-w-sm space-y-5 rounded-2xl border border-border/60 bg-card p-6 shadow-[var(--shadow-composer)]"
       >
-        <div className="space-y-1">
-          <h1 className="font-semibold">Felix chat</h1>
-          <p className="text-sm text-muted-foreground">Enter the access key to continue.</p>
+        <div className="space-y-1.5">
+          <h1 className="text-lg font-semibold tracking-tight">Felix chat</h1>
+          <p className="text-sm text-muted-foreground">
+            {phase === 'checking'
+              ? 'Checking your access key…'
+              : 'Enter your access key to open the chat.'}
+          </p>
         </div>
-        <Input
-          type="password"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Access key"
-          autoFocus
-          aria-invalid={error ? true : undefined}
-          disabled={phase === 'checking'}
-        />
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" className="w-full" disabled={submitting || phase === 'checking'}>
-          {submitting ? 'Checking…' : phase === 'checking' ? 'Checking…' : 'Continue'}
+        <div className="space-y-2">
+          <Input
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Access key"
+            autoFocus={phase === 'locked'}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? 'gate-error' : undefined}
+            disabled={busy}
+            className="h-10"
+          />
+          {error && (
+            <p id="gate-error" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+        <Button type="submit" className="h-10 w-full" disabled={busy || !value.trim()}>
+          {busy ? (
+            <>
+              <Loader2Icon className="size-4 animate-spin" />
+              Checking…
+            </>
+          ) : (
+            'Continue'
+          )}
         </Button>
       </form>
     </div>

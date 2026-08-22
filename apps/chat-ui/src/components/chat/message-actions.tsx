@@ -5,9 +5,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 /**
- * Hover actions for a transcript turn — vercel/ai-chatbot's `MessageActions`.
- * Copy is available on any turn with text; Regenerate is offered only on the
- * last assistant turn (the harness can only re-run from the tail of the log).
+ * Hover / focus actions for a transcript turn. Copy on any text turn;
+ * Regenerate only on the last assistant turn.
  */
 export function MessageActions({
   content,
@@ -26,7 +25,7 @@ export function MessageActions({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard unavailable (insecure context) — no-op
+      // clipboard unavailable — no-op
     }
   }
 
@@ -35,7 +34,7 @@ export function MessageActions({
   return (
     <div
       className={cn(
-        'flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+        'flex items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100',
         className,
       )}
     >
@@ -44,7 +43,7 @@ export function MessageActions({
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               className="size-7 text-muted-foreground"
               onClick={copy}
               aria-label="Copy message"
@@ -60,7 +59,7 @@ export function MessageActions({
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               className="size-7 text-muted-foreground"
               onClick={onRegenerate}
               aria-label="Regenerate response"

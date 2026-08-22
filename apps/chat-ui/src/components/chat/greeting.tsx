@@ -1,9 +1,7 @@
 import { SuggestedActions } from './suggested-actions';
 
 /**
- * Empty-conversation overview — the analogue of vercel/ai-chatbot's `Greeting`
- * (the welcome heading) plus `SuggestedActions` (the clickable prompt grid).
- * Shown until the first turn lands.
+ * Empty-conversation overview: welcome + starter prompts for the active agent.
  */
 export function Greeting({
   manifest,
@@ -15,16 +13,20 @@ export function Greeting({
   onSend: (text: string) => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-2 pt-12 md:pt-20">
-      <div className="flex flex-col gap-1.5">
-        <h2 className="fade-in-50 slide-in-from-bottom-2 animate-in text-2xl font-semibold duration-500">
-          Hello there!
+    <div className="mx-auto flex min-h-[min(52vh,28rem)] w-full max-w-2xl flex-col justify-center gap-8 px-1 py-4">
+      <div className="flex flex-col gap-2">
+        <p className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+          {manifest}
+        </p>
+        <h2 className="text-balance text-2xl font-semibold tracking-tight md:text-[1.75rem]">
+          What do you want to work on?
         </h2>
-        <p className="fade-in-50 slide-in-from-bottom-2 animate-in text-2xl text-muted-foreground duration-700">
-          Ask the <span className="font-mono text-xl">{manifest}</span> agent anything.
+        <p className="max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground">
+          You&apos;re chatting with <span className="font-medium text-foreground">{manifest}</span>.
+          Pick a starter or type below — switch agents anytime from the composer.
         </p>
       </div>
-      <SuggestedActions disabled={disabled} onSend={onSend} />
+      <SuggestedActions manifest={manifest} disabled={disabled} onSend={onSend} />
     </div>
   );
 }

@@ -122,6 +122,61 @@ importers:
         specifier: ^4.90.1
         version: 4.90.1(@cloudflare/workers-types@4.20260511.1)
 
+  apps/float:
+    dependencies:
+      '@felix/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      lucide-react:
+        specifier: ^0.469.0
+        version: 0.469.0(react@18.3.1)
+      nanoid:
+        specifier: ^5.0.9
+        version: 5.1.11
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+      sonner:
+        specifier: ^1.7.1
+        version: 1.7.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      tailwind-merge:
+        specifier: ^3.0.2
+        version: 3.6.0
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20250109.0
+        version: 4.20260511.1
+      '@tailwindcss/vite':
+        specifier: ^4.1.13
+        version: 4.3.2(vite@8.1.4(@types/node@25.7.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ^18.3.1
+        version: 18.3.7(@types/react@18.3.31)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.3
+        version: 6.0.3(vite@8.1.4(@types/node@25.7.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+      tailwindcss:
+        specifier: ^4.1.13
+        version: 4.3.2
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.12
+        version: 8.1.4(@types/node@25.7.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)
+      wrangler:
+        specifier: ^4.0.0
+        version: 4.90.1(@cloudflare/workers-types@4.20260511.1)
+
   packages/design: {}
 
   packages/typescript-config: {}
