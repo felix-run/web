@@ -1,127 +1,72 @@
 ---
-description: "Stand up Felix locally, create Cloudflare resources, and make your first chat request."
+description: "Stand up the Python Felix harness locally and make your first chat request."
 ---
 
 # Getting Started
 
-This walks through standing up Felix locally and making your first request. Felix is a [managed agents harness](https://www.anthropic.com/engineering/managed-agents) on Cloudflare Workers — the runtime owns plumbing (auth, audit, limits, session persistence, HTTP surface) and a manifest declares the agent's pattern, model, tools, and governance. For the mental model, read [concepts.md](concepts.md) after this. For deployment to staging or production, see [deploy.md](deploy.md).
+Stand up **Felix** locally and send your first request. Felix is a self-hostable
+**managed agents harness**: YAML manifests (`apiVersion: felix/v1`) compile into
+runnable agents with governance, durable execution, and multi-protocol surfaces.
+
+- **Harness (runtime):** [felix-run/felix](https://github.com/felix-run/felix) — CPython, Compose / Helm
+- **Web (optional):** [felix-run/web](https://github.com/felix-run/web) — chat-ui + docs on Cloudflare Workers
+
+For the mental model, read [concepts.md](concepts.md) after this. For production
+deploy shape, see [deploy.md](deploy.md).
 
 ## Prerequisites
 
-- Node.js 20 or newer
-- `pnpm` 9 or newer
-- Wrangler 4 (installed transitively via `pnpm install`)
-- Docker (for the local Postgres + pgvector container used by `pnpm db:up`)
-- A Cloudflare account with Hyperdrive, KV, R2, and Queues enabled
-- A [Neon](https://neon.tech) Postgres project (staging/production; local dev uses the Dockerized Postgres instead) with the `vector` and `pg_trgm` extensions available
-- For external LLM providers: an Anthropic and/or OpenAI API key (Workers AI requires no extra setup)
+- Docker + Docker Compose
+- [uv](https://docs.astral.sh/uv/) (Python 3.14+) for local CLI / non-Compose runs
+- Optional: `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`, or a local [Ollama](https://ollama.com) daemon
 
-## Bootstrap
+## Bootstrap (Compose)
 
 <Steps>
 
-1. **Clone the repo and install dependencies**
+1. **Clone and configure**
 
    ```bash
-   git clone <repo-url> felix && cd felix
-   pnpm install
-   cp apps/api/wrangler.example.jsonc apps/api/wrangler.jsonc
+   git clone https://github.com/felix-run/felix.git && cd felix
+   cp .env.example .env
+   # set POSTGRES_PASSWORD (and keep FELIX_DATABASE_URL in sync):
+   openssl rand -hex 32
    ```
 
-   `apps/api/wrangler.jsonc` is your local copy of the tracked template — it's gitignored so account-specific ids stay out of the repo.
-
-2. **Start local Postgres**
-
-   ```bash title="From the repo root"
-   pnpm db:up
-   ```
-
-   Brings up a Dockerized `pgvector/pgvector:pg17` container (`docker compose up --wait -d db`) that `wrangler dev` routes the `HYPERDRIVE` binding to via `localConnectionString` — no Neon project or Hyperdrive config needed for local dev.
-
-3. **Create Cloudflare resources**
-
-   Bare `wrangler` commands run from `apps/api/`:
+2. **Start the lean stack**
 
    ```bash
-   cd apps/api
-   pnpm wrangler kv namespace create CACHE
-   pnpm wrangler r2 bucket create felix-orchestrator-bundles
-   pnpm wrangler queues create felix-audit
+   make up
+   # or: docker compose up --build
    ```
 
-   Staging/production also need a Hyperdrive config pointed at a Neon **DIRECT** connection string (no `-pooler` suffix — Hyperdrive owns pooling) with caching disabled, since Felix depends on read-after-write:
+   Brings up **api** (`:8080`), **worker**, **scheduler**, Postgres+pgvector, and Valkey.
+   Object store defaults to `fs` under `/data` (no MinIO required).
+
+   Small hosts: `make up-lite`. MinIO + S3 extras: `make up-full`.
+
+3. **Migrate**
 
    ```bash
-   pnpm wrangler hyperdrive create felix-hyperdrive-staging \
-     --connection-string='postgresql://<user>:<pass>@<neon-direct-host>/<db>' --caching-disabled
+   make migrate
+   # or: docker compose exec api felix migrate head
    ```
 
-   :::note
-   Local `pnpm dev` never touches a real Hyperdrive config — it always routes through the Docker Postgres started in the previous step.
-   :::
-
-4. **Populate wrangler.jsonc with resource ids**
-
-   Paste the Hyperdrive config `id` and KV namespace `id` from the create commands into `wrangler.jsonc` (lines that say `REPLACE_AFTER_wrangler_hyperdrive_create` / `REPLACE_AFTER_wrangler_kv_create`), along with your `AI_GATEWAY_ACCOUNT_ID`.
-
-5. **Configure local secrets**
-
-   :::caution
-   Never commit secret values to `wrangler.jsonc`. Use `.dev.vars` for local-only values; `wrangler dev` reads it but deployed environments do not.
-   :::
+4. **Health check**
 
    ```bash
-   cp apps/api/.dev.vars.example apps/api/.dev.vars
-   $EDITOR apps/api/.dev.vars
+   curl -s http://localhost:8080/health | jq
+   make doctor   # from a uv-synced checkout, or: docker compose exec api felix doctor
    ```
-
-   The minimum to send a request through the default `claude-sonnet-4` route is `ANTHROPIC_API_KEY`. Other variables in the template:
-
-   | Variable | When needed |
-   |---|---|
-   | `OPENAI_API_KEY` | Only if a manifest routes to `provider: openai`. |
-   | `CF_AIG_TOKEN` | Only when the AI Gateway slug has Authenticated Gateway enabled. |
-   | `OAUTH_CACHE_KEY` | Optional in dev (plaintext fallback with warning); required in staging/prod. Generate: `openssl rand -base64 32`. |
-   | `POLICY_BUNDLE_PUBKEY` | Optional in dev (unsigned bundles warn and proceed); required in staging/prod. |
-
-</Steps>
-
-## Build and run
-
-<Steps>
-
-1. **Build manifests**
-
-   ```bash title="From the repo root"
-   pnpm build:manifests
-   ```
-
-   This reads `packages/harness/manifests/*.yaml` and `packages/harness/skills/*/SKILL.md`, validates each against the Zod schema, and emits `packages/harness/src/{manifests,skills}/bundled.ts`. Empty directories → empty bundles (tests stub manifests directly via `parseManifest`).
-
-2. **Apply local DB migrations**
-
-   ```bash
-   pnpm migrate:local
-   ```
-
-   Applies `apps/api/migrations/0001_baseline.sql` (node-pg-migrate) to the local `felix` database started by `pnpm db:up`. Run this before `pnpm dev` any time the schema changes.
-
-3. **Start the dev server**
-
-   ```bash
-   pnpm dev
-   ```
-
-   Runs `build:manifests` first, then `wrangler dev` on `http://localhost:8787`.
 
 </Steps>
 
 ## First request — Felix-native `/chat`
 
-The bundled default manifest is named `quick`. Send an anonymous request:
+The bundled default manifest is `quick`. With `FELIX_AUTH_MODE=none` (dev default):
 
 ```bash
-curl -s -X POST http://localhost:8787/chat \
+curl -s -X POST http://localhost:8080/chat \
   -H 'content-type: application/json' \
   -d '{
     "manifest": "quick",
@@ -129,23 +74,10 @@ curl -s -X POST http://localhost:8787/chat \
   }' | jq
 ```
 
-Response shape:
-
-```json
-{
-  "messages": [
-    { "role": "user", "content": "What is 7 * 6?" },
-    { "role": "assistant", "content": "7 * 6 = 42." }
-  ],
-  "final": { "role": "assistant", "content": "7 * 6 = 42." },
-  "thread_id": null
-}
-```
-
-To persist the transcript across requests, pass a `thread_id` (the server prefixes your tenant id so the value you supply is a suffix):
+Pass `thread_id` as a **suffix** (no `:` / `#`); the server prefixes the tenant id:
 
 ```bash
-curl -s -X POST http://localhost:8787/chat \
+curl -s -X POST http://localhost:8080/chat \
   -H 'content-type: application/json' \
   -d '{
     "manifest": "quick",
@@ -154,33 +86,50 @@ curl -s -X POST http://localhost:8787/chat \
   }' | jq
 ```
 
-:::note
-Suffixes containing `:` or `#` are rejected with HTTP 400 so the tenant prefix cannot be smuggled away.
-:::
+Streaming:
+
+```bash
+curl -N -X POST http://localhost:8080/chat/stream \
+  -H 'content-type: application/json' \
+  -d '{"manifest":"quick","messages":[{"role":"user","content":"Say hi."}]}'
+```
 
 ## First request — OpenAI-shaped `/v1`
 
-Drop-in for any OpenAI SDK client. The `model` field is a Felix manifest name (run `GET /v1/models` to list them):
+`model` is a Felix **manifest name** (`GET /v1/models`):
 
 ```bash
-curl -s -X POST http://localhost:8787/v1/chat/completions \
+curl -s -X POST http://localhost:8080/v1/chat/completions \
   -H 'content-type: application/json' \
-  -H 'x-thread-id: openai-session-1' \
   -d '{
     "model": "quick",
     "messages": [{ "role": "user", "content": "Say hi." }]
   }' | jq
 ```
 
-Add `"stream": true` to receive `text/event-stream` chunks instead of a single JSON response.
+## Chat UI (optional)
 
-For authenticated requests, supply a Cloudflare Access or Cognito JWT in the `Authorization` header. Without it the request is anonymous and only manifests with `auth.inbound.allow_anonymous: true` will accept it. See [auth.md](../internals/auth.md) for verifier configuration.
+From [felix-run/web](https://github.com/felix-run/web), with Compose Felix already on `:8080`:
+
+```bash
+git clone https://github.com/felix-run/web.git felix-web && cd felix-web
+pnpm install
+pnpm chat:dev     # Vite :5173, proxies /api → http://127.0.0.1:8080
+```
+
+## Offline eval (CI / no API keys)
+
+```bash
+uv sync --dev
+FELIX_DATABASE_URL=memory://local FELIX_OBJECT_STORE=memory FELIX_ALLOW_INSECURE=true \
+  uv run felix eval -d smoke -m quick -f fixtures/eval/smoke.json --mock
+```
 
 ## Where to next
 
 <CardGrid>
-  <LinkCard title="Concepts" href="/guide/concepts/" description="The mental model behind manifests, tenants, threads, patterns." />
-  <LinkCard title="Manifest Reference" href="/guide/manifest-reference/" description="Write your own manifest — every field with defaults." />
-  <LinkCard title="REST API" href="/guide/rest-api/" description="Every public endpoint with worked curl examples." />
-  <LinkCard title="Deploy" href="/guide/deploy/" description="Bindings, secrets, custom domains for staging and production." />
+  <LinkCard title="Concepts" href="/guide/concepts/" description="Manifests, tenants, threads, patterns." />
+  <LinkCard title="Manifest Reference" href="/guide/manifest-reference/" description="Every field with defaults." />
+  <LinkCard title="REST API" href="/guide/rest-api/" description="Public endpoints with curl examples." />
+  <LinkCard title="Deploy" href="/guide/deploy/" description="Compose, Helm, AWS/GCP notes." />
 </CardGrid>
