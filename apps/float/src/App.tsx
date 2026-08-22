@@ -13,6 +13,8 @@ import {
   postToolResult,
   releaseSessionLease,
   respondUiRequest,
+  rewindChat,
+  searchSessions,
   setThinkingLevel,
   startChat,
   steerChat,
@@ -74,6 +76,11 @@ export default function App() {
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
   const [sessionPhase, setSessionPhase] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchHits, setSearchHits] = useState<
+    Array<{ thread_id: string; content: string; event_id?: string }>
+  >([]);
+  const [searching, setSearching] = useState(false);
   const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
   const [files, setFiles] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -124,7 +131,7 @@ export default function App() {
     };
   }, [threadId]);
 
-  // Hydrate thinking level / phase from snapshot when present.
+  // Hydrate thinking / phase / transcript from authoritative snapshot.
   useEffect(() => {
     void getSessionSnapshot(threadId).then((snap) => {
       if (!snap) return;
@@ -132,8 +139,51 @@ export default function App() {
         setThinkingLevelState(snap.thinkingLevel as ThinkingLevel);
       }
       if (snap.phase) setSessionPhase(snap.phase);
+      const rows = (snap.transcript ?? [])
+        .filter(
+          (ev) =>
+            (ev.kind === 'message' || ev.kind === 'custom') &&
+            (ev.role === 'user' || ev.role === 'assistant') &&
+            (ev.content || '').trim(),
+        )
+        .map((ev) => ({
+          id: ev.id ?? nanoid(),
+          kind: (ev.role === 'user' ? 'user' : 'assistant') as TimelineItem['kind'],
+          title: ev.role === 'user' ? 'You' : 'Felix',
+          body: ev.content ?? '',
+          status: 'done' as const,
+          eventId: ev.id,
+        }));
+      if (rows.length) setTimeline(rows);
     });
   }, [threadId]);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchHits([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void searchSessions(q)
+        .then((hits) => {
+          if (!cancelled) setSearchHits(hits);
+        })
+        .catch(() => {
+          if (!cancelled) setSearchHits([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -584,14 +634,67 @@ export default function App() {
       .catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
   }, [streaming, threadId]);
 
-  const cycleThinking = useCallback(() => {
-    const idx = THINKING_LEVELS.indexOf(thinkingLevel);
-    const next = THINKING_LEVELS[(idx + 1) % THINKING_LEVELS.length]!;
-    setThinkingLevelState(next);
-    void setThinkingLevel({ threadId, thinkingLevel: next })
-      .then(() => toast.message(`Thinking: ${next}`))
-      .catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
-  }, [thinkingLevel, threadId]);
+  const chooseThinking = useCallback(
+    (level: ThinkingLevel) => {
+      setThinkingLevelState(level);
+      void setThinkingLevel({ threadId, thinkingLevel: level })
+        .then(() => toast.message(`Thinking: ${level}`))
+        .catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
+    },
+    [threadId],
+  );
+
+  const rewindTo = useCallback(
+    (eventId: string) => {
+      if (streaming) return;
+      void rewindChat({ threadId, eventId, summarize: false, manifest: MANIFEST })
+        .then(() => {
+          toast.message('Rewound');
+          return getSessionSnapshot(threadId);
+        })
+        .then((snap) => {
+          if (!snap?.transcript?.length) return;
+          const rows = snap.transcript
+            .filter(
+              (ev) =>
+                (ev.kind === 'message' || ev.kind === 'custom') &&
+                (ev.role === 'user' || ev.role === 'assistant') &&
+                (ev.content || '').trim(),
+            )
+            .map((ev) => ({
+              id: ev.id ?? nanoid(),
+              kind: (ev.role === 'user' ? 'user' : 'assistant') as TimelineItem['kind'],
+              title: ev.role === 'user' ? 'You' : 'Felix',
+              body: ev.content ?? '',
+              status: 'done' as const,
+              eventId: ev.id,
+            }));
+          // Keep items up through the rewind target when leaf is known.
+          const leaf = snap.leafId;
+          const cut = leaf ? rows.findIndex((r) => r.eventId === leaf) : -1;
+          setTimeline(cut >= 0 ? rows.slice(0, cut + 1) : rows);
+          if (snap.phase) setSessionPhase(snap.phase);
+        })
+        .catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
+    },
+    [streaming, threadId],
+  );
+
+  const openSearchHit = useCallback((fullThreadId: string) => {
+    const suffix = fullThreadId.includes(':')
+      ? fullThreadId.slice(fullThreadId.indexOf(':') + 1)
+      : fullThreadId;
+    if (suffix === threadId) return;
+    stopRun();
+    setThreadId(suffix);
+    setTimeline([]);
+    setAssistantDraft('');
+    setPendingQueue([]);
+    setUiPrompt(null);
+    setSessionPhase(null);
+    setSearchQuery('');
+    setSearchHits([]);
+  }, [threadId, stopRun]);
 
   const onUiRespond = useCallback(
     async (value: unknown) => {
@@ -647,25 +750,29 @@ export default function App() {
             Hand off a goal. Client tools run in this tab; gated writes wait for your approval.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="rounded border border-border px-2 py-1 font-mono">{MANIFEST}</span>
           <span className="rounded border border-border px-2 py-1 font-mono">
             {threadId.slice(0, 8)}
           </span>
-          {thinkingLevel !== 'off' ? (
-            <span className="rounded border border-border px-2 py-1">think:{thinkingLevel}</span>
-          ) : null}
           {sessionPhase && sessionPhase !== 'idle' ? (
             <span className="rounded border border-border px-2 py-1">{sessionPhase}</span>
           ) : null}
-          <button
-            type="button"
-            className="rounded border border-border px-2 py-1 hover:bg-accent"
-            onClick={cycleThinking}
-            title="Cycle thinking level"
-          >
-            Think
-          </button>
+          <label className="flex items-center gap-1 rounded border border-border px-2 py-1">
+            <span className="sr-only">Thinking level</span>
+            <select
+              className="bg-transparent outline-none"
+              value={thinkingLevel}
+              onChange={(e) => chooseThinking(e.target.value as ThinkingLevel)}
+              title="Thinking level"
+            >
+              {THINKING_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  think:{level}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             className="rounded border border-border px-2 py-1 hover:bg-accent disabled:opacity-50"
@@ -683,6 +790,41 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      <div className="relative max-w-md">
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search sessions…"
+          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-ring focus:ring-2"
+        />
+        {(searchHits.length > 0 || (searchQuery.trim().length >= 2 && !searching)) && (
+          <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-card shadow-md">
+            {searchHits.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                {searching ? 'Searching…' : 'No matches'}
+              </p>
+            ) : (
+              searchHits.map((hit, i) => (
+                <button
+                  key={`${hit.thread_id}-${hit.event_id ?? i}`}
+                  type="button"
+                  className="block w-full truncate px-3 py-2 text-left text-xs hover:bg-accent"
+                  onClick={() => openSearchHit(hit.thread_id)}
+                >
+                  <span className="font-medium">{hit.content.slice(0, 72)}</span>
+                  <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
+                    {hit.thread_id.includes(':')
+                      ? hit.thread_id.slice(hit.thread_id.indexOf(':') + 1, hit.thread_id.indexOf(':') + 9)
+                      : hit.thread_id.slice(0, 8)}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       {pending ? (
         <div className="rounded-lg border border-primary/40 bg-accent/50 p-4 shadow-sm">
@@ -862,11 +1004,23 @@ export default function App() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-medium">{item.title}</h2>
-                  {item.status ? (
-                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {item.status}
-                    </span>
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {item.eventId && !streaming ? (
+                      <button
+                        type="button"
+                        className="text-[11px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                        onClick={() => rewindTo(item.eventId!)}
+                        title="Rewind to this message"
+                      >
+                        Rewind
+                      </button>
+                    ) : null}
+                    {item.status ? (
+                      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        {item.status}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 {item.body ? (
                   <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">

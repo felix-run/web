@@ -74,7 +74,9 @@ export interface SessionSnapshot {
   id: string;
   phase?: string;
   thinkingLevel?: string;
+  leafId?: string | null;
   transcript?: Array<{
+    id?: string;
     seq: number;
     kind: string;
     role?: string | null;
@@ -88,4 +90,6 @@ export interface TimelineItem {
   title: string;
   body?: string;
   status?: 'pending' | 'running' | 'done' | 'error' | 'denied';
+  /** Server event id when hydrated from a snapshot (enables rewind). */
+  eventId?: string;
 }
