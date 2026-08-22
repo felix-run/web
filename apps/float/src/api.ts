@@ -142,6 +142,139 @@ export async function steerChat(args: {
   }
 }
 
+export async function abortChat(threadId: string): Promise<void> {
+  const res = await apiFetch('/api/chat/abort', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ thread_id: threadId }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`abort: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+export async function continueChat(args: {
+  threadId: string;
+  manifest: string;
+}): Promise<unknown> {
+  const res = await apiFetch('/api/chat/continue', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      manifest: args.manifest,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`continue: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+export async function setThinkingLevel(args: {
+  threadId: string;
+  thinkingLevel: string;
+}): Promise<void> {
+  const res = await apiFetch('/api/chat/thinking', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      thinking_level: args.thinkingLevel,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`thinking: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+export async function getSessionSnapshot(
+  threadId: string,
+): Promise<import('./types').SessionSnapshot | null> {
+  try {
+    const res = await fetch(`/api/chat/sessions/${encodeURIComponent(threadId)}`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as import('./types').SessionSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+export async function acquireSessionLease(args: {
+  threadId: string;
+  holderId: string;
+  mode?: 'exclusive' | 'shared';
+  token?: string;
+}): Promise<{ ok: boolean; token?: string; error?: string }> {
+  const res = await apiFetch('/api/chat/sessions/lease', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      holder_id: args.holderId,
+      mode: args.mode ?? 'exclusive',
+      ttl_seconds: 300,
+      ...(args.token ? { token: args.token } : {}),
+    }),
+  });
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string };
+    return { ok: false, error: body.detail || 'lease_held' };
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`lease: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as { ok: boolean; token?: string };
+}
+
+export async function releaseSessionLease(args: {
+  threadId: string;
+  holderId?: string;
+  token?: string;
+}): Promise<void> {
+  try {
+    await apiFetch('/api/chat/sessions/lease/release', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        thread_id: args.threadId,
+        ...(args.holderId ? { holder_id: args.holderId } : {}),
+        ...(args.token ? { token: args.token } : {}),
+      }),
+    });
+  } catch {
+    // best-effort
+  }
+}
+
+export async function respondUiRequest(args: {
+  requestId: string;
+  value?: unknown;
+  cancelled?: boolean;
+  note?: string;
+}): Promise<void> {
+  const res = await apiFetch('/api/chat/ui', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      request_id: args.requestId,
+      value: args.value,
+      cancelled: args.cancelled ?? false,
+      note: args.note ?? '',
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`ui: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
 export interface DurableRun {
   status?: string;
   resume_token?: string;

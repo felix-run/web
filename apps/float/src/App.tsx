@@ -3,10 +3,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { readExisting, summarizeToolArgs, type PendingApproval } from '@felix/cowork-client';
 import {
+  abortChat,
+  acquireSessionLease,
+  continueChat,
   decideApproval,
+  getSessionSnapshot,
   listApprovals,
   pollDurableRun,
   postToolResult,
+  releaseSessionLease,
+  respondUiRequest,
+  setThinkingLevel,
   startChat,
   steerChat,
   streamChat,
@@ -22,13 +29,36 @@ import {
   vfs,
 } from '@/lib/client-tools';
 import { cn } from '@/lib/utils';
-import type { TimelineItem } from '@/types';
+import type { PendingUiRequest, ThinkingLevel, TimelineItem } from '@/types';
 
 const MANIFEST = 'cowork';
 const THREAD_KEY = 'felix.float.threadId';
+const HOLDER_KEY = 'felix.float.holderId';
+const THINKING_LEVELS: ThinkingLevel[] = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
 
 function loadThreadId(): string {
   return localStorage.getItem(THREAD_KEY) || nanoid(12);
+}
+
+function tabHolderId(): string {
+  try {
+    let id = sessionStorage.getItem(HOLDER_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      sessionStorage.setItem(HOLDER_KEY, id);
+    }
+    return id;
+  } catch {
+    return 'float-anon';
+  }
 }
 
 export default function App() {
@@ -40,9 +70,14 @@ export default function App() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
   const [deciding, setDeciding] = useState(false);
+  const [uiPrompt, setUiPrompt] = useState<PendingUiRequest | null>(null);
+  const [uiResolving, setUiResolving] = useState(false);
+  const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
+  const [sessionPhase, setSessionPhase] = useState<string | null>(null);
   const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
   const [files, setFiles] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const leaseTokenRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const canMount = supportsDirectoryPicker();
 
@@ -50,6 +85,54 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem(THREAD_KEY, threadId);
+  }, [threadId]);
+
+  // Exclusive lease while this tab owns the float thread.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await acquireSessionLease({
+          threadId,
+          holderId: tabHolderId(),
+          mode: 'exclusive',
+        });
+        if (cancelled) return;
+        if (result.ok && result.token) {
+          leaseTokenRef.current = result.token;
+        } else {
+          const shared = await acquireSessionLease({
+            threadId,
+            holderId: tabHolderId(),
+            mode: 'shared',
+          });
+          if (!cancelled && shared.token) leaseTokenRef.current = shared.token;
+        }
+      } catch {
+        // best-effort
+      }
+    })();
+    return () => {
+      cancelled = true;
+      const token = leaseTokenRef.current;
+      leaseTokenRef.current = null;
+      void releaseSessionLease({
+        threadId,
+        holderId: tabHolderId(),
+        token: token ?? undefined,
+      });
+    };
+  }, [threadId]);
+
+  // Hydrate thinking level / phase from snapshot when present.
+  useEffect(() => {
+    void getSessionSnapshot(threadId).then((snap) => {
+      if (!snap) return;
+      if (snap.thinkingLevel && THINKING_LEVELS.includes(snap.thinkingLevel as ThinkingLevel)) {
+        setThinkingLevelState(snap.thinkingLevel as ThinkingLevel);
+      }
+      if (snap.phase) setSessionPhase(snap.phase);
+    });
   }, [threadId]);
 
   useEffect(() => {
@@ -114,16 +197,24 @@ export default function App() {
     };
   }, [push]);
 
-  const resetSession = useCallback(() => {
+  const stopRun = useCallback(() => {
+    void abortChat(threadId).catch(() => {});
     abortRef.current?.abort();
+    setSessionPhase('aborted');
+  }, [threadId]);
+
+  const resetSession = useCallback(() => {
+    stopRun();
     const next = nanoid(12);
     setThreadId(next);
     setTimeline([]);
     setAssistantDraft('');
     setPendingQueue([]);
+    setUiPrompt(null);
     setStreaming(false);
     setBackground(false);
-  }, []);
+    setSessionPhase(null);
+  }, [stopRun]);
 
   const clearVfs = useCallback(() => {
     vfs.reset();
@@ -271,6 +362,40 @@ export default function App() {
           error: result.error,
         });
         await refreshFiles();
+        return;
+      }
+
+      if (event.event === 'aborted') {
+        setSessionPhase('aborted');
+        return;
+      }
+
+      if (event.event === 'session_progress') {
+        const phase = (event.data as { phase?: string }).phase;
+        if (phase) setSessionPhase(phase);
+        return;
+      }
+
+      if (event.event === 'ui_request') {
+        const data = event.data as {
+          request_id: string;
+          kind: 'select' | 'confirm' | 'input';
+          prompt: string;
+          options?: Array<string | { id?: string; label?: string; value?: string }>;
+          default?: unknown;
+        };
+        const options = (data.options ?? []).map((opt) => {
+          if (typeof opt === 'string') return { value: opt, label: opt };
+          const value = String(opt.value ?? opt.id ?? opt.label ?? '');
+          return { value, label: String(opt.label ?? value) };
+        });
+        setUiPrompt({
+          requestId: data.request_id,
+          kind: data.kind,
+          prompt: data.prompt,
+          options,
+          defaultValue: data.default,
+        });
       }
     },
     [push, refreshFiles, threadId],
@@ -394,6 +519,7 @@ export default function App() {
         setStreaming(false);
         setBackground(false);
         abortRef.current = null;
+        setSessionPhase((p) => (p === 'aborted' ? p : 'idle'));
         if (draftRef.current) {
           push({
             id: nanoid(),
@@ -448,6 +574,58 @@ export default function App() {
     }
   }, [goal, streaming, threadId, push]);
 
+  const continueRun = useCallback(() => {
+    if (streaming) return;
+    void continueChat({ threadId, manifest: MANIFEST })
+      .then(() => {
+        toast.message('Continued');
+        setSessionPhase('idle');
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
+  }, [streaming, threadId]);
+
+  const cycleThinking = useCallback(() => {
+    const idx = THINKING_LEVELS.indexOf(thinkingLevel);
+    const next = THINKING_LEVELS[(idx + 1) % THINKING_LEVELS.length]!;
+    setThinkingLevelState(next);
+    void setThinkingLevel({ threadId, thinkingLevel: next })
+      .then(() => toast.message(`Thinking: ${next}`))
+      .catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
+  }, [thinkingLevel, threadId]);
+
+  const onUiRespond = useCallback(
+    async (value: unknown) => {
+      if (!uiPrompt) return;
+      setUiResolving(true);
+      try {
+        await respondUiRequest({ requestId: uiPrompt.requestId, value });
+        setUiPrompt(null);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      } finally {
+        setUiResolving(false);
+      }
+    },
+    [uiPrompt],
+  );
+
+  const onUiCancel = useCallback(async () => {
+    if (!uiPrompt) return;
+    setUiResolving(true);
+    try {
+      await respondUiRequest({
+        requestId: uiPrompt.requestId,
+        cancelled: true,
+        note: 'cancelled',
+      });
+      setUiPrompt(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUiResolving(false);
+    }
+  }, [uiPrompt]);
+
   const filePreview = useMemo(() => files.slice(0, 80), [files]);
 
   const writeDiff = useMemo(() => {
@@ -474,6 +652,28 @@ export default function App() {
           <span className="rounded border border-border px-2 py-1 font-mono">
             {threadId.slice(0, 8)}
           </span>
+          {thinkingLevel !== 'off' ? (
+            <span className="rounded border border-border px-2 py-1">think:{thinkingLevel}</span>
+          ) : null}
+          {sessionPhase && sessionPhase !== 'idle' ? (
+            <span className="rounded border border-border px-2 py-1">{sessionPhase}</span>
+          ) : null}
+          <button
+            type="button"
+            className="rounded border border-border px-2 py-1 hover:bg-accent"
+            onClick={cycleThinking}
+            title="Cycle thinking level"
+          >
+            Think
+          </button>
+          <button
+            type="button"
+            className="rounded border border-border px-2 py-1 hover:bg-accent disabled:opacity-50"
+            disabled={streaming}
+            onClick={continueRun}
+          >
+            Continue
+          </button>
           <button
             type="button"
             className="rounded border border-border px-2 py-1 hover:bg-accent"
@@ -537,6 +737,106 @@ export default function App() {
               {JSON.stringify(pending.args, null, 2)}
             </pre>
           )}
+        </div>
+      ) : null}
+
+      {uiPrompt ? (
+        <div className="rounded-lg border border-primary/40 bg-accent/50 p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {uiPrompt.kind === 'confirm'
+              ? 'Confirm'
+              : uiPrompt.kind === 'select'
+                ? 'Select'
+                : 'Input'}{' '}
+            required
+          </p>
+          <h2 className="mt-1 text-base font-semibold">{uiPrompt.prompt}</h2>
+          {uiPrompt.kind === 'confirm' ? (
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                disabled={uiResolving}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+                onClick={() => void onUiRespond(true)}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                disabled={uiResolving}
+                className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                onClick={() => void onUiRespond(false)}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                disabled={uiResolving}
+                className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                onClick={() => void onUiCancel()}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
+          {uiPrompt.kind === 'select' ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {uiPrompt.options.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={uiResolving}
+                  className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                  onClick={() => void onUiRespond(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={uiResolving}
+                className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                onClick={() => void onUiCancel()}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
+          {uiPrompt.kind === 'input' ? (
+            <form
+              className="mt-3 flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                void onUiRespond(String(fd.get('value') ?? ''));
+              }}
+            >
+              <input
+                name="value"
+                defaultValue={
+                  typeof uiPrompt.defaultValue === 'string' ? uiPrompt.defaultValue : ''
+                }
+                disabled={uiResolving}
+                className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                placeholder="Type a response…"
+              />
+              <button
+                type="submit"
+                disabled={uiResolving}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+              >
+                Send
+              </button>
+              <button
+                type="button"
+                disabled={uiResolving}
+                className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                onClick={() => void onUiCancel()}
+              >
+                Cancel
+              </button>
+            </form>
+          ) : null}
         </div>
       ) : null}
 
@@ -619,7 +919,7 @@ export default function App() {
                   <button
                     type="button"
                     className="rounded-md border border-border px-3 py-1.5 text-sm"
-                    onClick={() => abortRef.current?.abort()}
+                    onClick={stopRun}
                   >
                     Stop
                   </button>

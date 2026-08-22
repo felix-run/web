@@ -38,7 +38,49 @@ export type StreamEvent =
   | ToolRequestEvent
   | ApprovalRequiredEvent
   | { event: 'done'; data: { final?: ChatMessage } }
+  | { event: 'aborted'; data: { thread_id?: string } }
+  | { event: 'session_progress'; data: { phase?: string; reason?: string } }
+  | {
+      event: 'ui_request';
+      data: {
+        request_id: string;
+        kind: 'select' | 'confirm' | 'input';
+        prompt: string;
+        options?: Array<string | { id?: string; label?: string; value?: string }>;
+        default?: unknown;
+        thread_id?: string;
+      };
+    }
   | { event: string; data: Record<string, unknown> };
+
+export type ThinkingLevel =
+  | 'off'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max';
+
+export interface PendingUiRequest {
+  requestId: string;
+  kind: 'select' | 'confirm' | 'input';
+  prompt: string;
+  options: Array<{ value: string; label: string }>;
+  defaultValue?: unknown;
+}
+
+export interface SessionSnapshot {
+  id: string;
+  phase?: string;
+  thinkingLevel?: string;
+  transcript?: Array<{
+    seq: number;
+    kind: string;
+    role?: string | null;
+    content?: string;
+  }>;
+}
 
 export interface TimelineItem {
   id: string;
