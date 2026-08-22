@@ -12,7 +12,20 @@
  * new layout so existing sessions don't lose their conversation.
  */
 
-import type { SessionEvent, ToolCall, Turn } from '@/types';
+import type { SessionEvent, SessionSnapshot, ToolCall, Turn } from '@/types';
+
+/** Map a session snapshot transcript onto SessionEvent rows for eventsToTurns. */
+export function snapshotToEvents(snapshot: SessionSnapshot): SessionEvent[] {
+  return (snapshot.transcript ?? []).map((item) => ({
+    seq: item.seq,
+    kind: item.kind,
+    role: item.role ?? undefined,
+    content: item.content,
+    tool_call_id: item.toolCallId,
+    name: item.toolName,
+    tool_calls: item.toolCalls,
+  }));
+}
 
 export interface ThreadMeta {
   id: string;

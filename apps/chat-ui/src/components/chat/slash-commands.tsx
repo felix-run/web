@@ -1,4 +1,4 @@
-import { Bug, Eraser, Palette, PenSquare } from 'lucide-react';
+import { Brain, Bug, Eraser, Palette, PenSquare, Play } from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +24,18 @@ export const slashCommands: SlashCommand[] = [
     description: 'Clear this conversation',
     icon: <Eraser className="size-3.5" />,
     action: 'clear',
+  },
+  {
+    name: 'continue',
+    description: 'Resume after abort or error',
+    icon: <Play className="size-3.5" />,
+    action: 'continue',
+  },
+  {
+    name: 'think',
+    description: 'Cycle thinking level (off → max)',
+    icon: <Brain className="size-3.5" />,
+    action: 'think',
   },
   {
     name: 'verbose',

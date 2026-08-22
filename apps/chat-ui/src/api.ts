@@ -33,7 +33,9 @@ import type {
   Plan,
   ResolvedManifest,
   Rubric,
+  SessionSnapshot,
   StreamEvent,
+  ThinkingLevel,
   ThreadHistory,
   ToolMetrics,
   UsageEvent,
@@ -308,6 +310,147 @@ export async function steerChat(args: {
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(`steer: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+/** GET /chat/sessions/{thread_id} — authoritative snapshot (truth over local cache). */
+export async function getSessionSnapshot(threadId: string): Promise<SessionSnapshot | null> {
+  try {
+    const res = await fetch(`/api/chat/sessions/${encodeURIComponent(threadId)}`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as SessionSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+/** POST /chat/abort — cancel the in-flight server run. */
+export async function abortChat(threadId: string): Promise<void> {
+  const res = await apiFetch('/api/chat/abort', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ thread_id: threadId }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`abort: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+/** POST /chat/continue — resume after abort/error without a new user message. */
+export async function continueChat(args: {
+  threadId: string;
+  manifest: string;
+  model?: string;
+}): Promise<unknown> {
+  const res = await apiFetch('/api/chat/continue', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      manifest: args.manifest,
+      ...(args.model ? { model: args.model } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`continue: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+/** POST /chat/thinking — set live thinking level for the thread. */
+export async function setThinkingLevel(args: {
+  threadId: string;
+  thinkingLevel: ThinkingLevel;
+}): Promise<void> {
+  const res = await apiFetch('/api/chat/thinking', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      thinking_level: args.thinkingLevel,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`thinking: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+/** POST /chat/sessions/lease — exclusive/shared attach for multi-tab. */
+export async function acquireSessionLease(args: {
+  threadId: string;
+  holderId: string;
+  mode?: 'exclusive' | 'shared';
+  ttlSeconds?: number;
+  token?: string;
+}): Promise<{ ok: boolean; token?: string; error?: string }> {
+  const res = await apiFetch('/api/chat/sessions/lease', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      holder_id: args.holderId,
+      mode: args.mode ?? 'exclusive',
+      ttl_seconds: args.ttlSeconds ?? 300,
+      ...(args.token ? { token: args.token } : {}),
+    }),
+  });
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string };
+    return { ok: false, error: body.detail || 'lease_held' };
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`lease: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as { ok: boolean; token?: string };
+}
+
+/** POST /chat/sessions/lease/release */
+export async function releaseSessionLease(args: {
+  threadId: string;
+  holderId?: string;
+  token?: string;
+}): Promise<void> {
+  try {
+    await apiFetch('/api/chat/sessions/lease/release', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        thread_id: args.threadId,
+        ...(args.holderId ? { holder_id: args.holderId } : {}),
+        ...(args.token ? { token: args.token } : {}),
+      }),
+    });
+  } catch {
+    // best-effort on tab close / navigate
+  }
+}
+
+/** POST /chat/ui — answer a select/confirm/input prompt. */
+export async function respondUiRequest(args: {
+  requestId: string;
+  value?: unknown;
+  cancelled?: boolean;
+  note?: string;
+}): Promise<void> {
+  const res = await apiFetch('/api/chat/ui', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      request_id: args.requestId,
+      value: args.value,
+      cancelled: args.cancelled ?? false,
+      note: args.note ?? '',
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`ui: ${res.status} ${detail.slice(0, 200)}`);
   }
 }
 

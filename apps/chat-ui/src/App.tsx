@@ -12,13 +12,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { summarizeToolArgs } from '@felix/cowork-client';
 import {
+  abortChat,
+  acquireSessionLease,
+  continueChat,
   decideApproval,
   deleteThreadHistory,
+  getSessionSnapshot,
   getThreadHistory,
   listApprovals,
   listManifests,
   pollDurableRun,
   postToolResult,
+  releaseSessionLease,
+  respondUiRequest,
+  setThinkingLevel,
   startChat,
   steerChat,
   streamChat,
@@ -32,6 +39,7 @@ import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import { ThreadList } from '@/components/chat/thread-list';
+import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { WorkspaceStrip } from '@/components/chat/workspace-strip';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { Inspector, type SkillState } from '@/components/inspector/inspector';
@@ -59,6 +67,7 @@ import {
   migrateLegacy,
   removeThread,
   saveTurns,
+  snapshotToEvents,
   type ThreadMeta,
   titleFromText,
 } from '@/lib/threads';
@@ -66,6 +75,8 @@ import type {
   ChatMessage,
   ImageAttachment,
   PendingApproval,
+  PendingUiRequest,
+  ThinkingLevel,
   ToolCall,
   Turn,
   Variant,
@@ -76,8 +87,31 @@ const MANIFEST_KEY = 'felix.manifest';
 const HISTORY_KEY = 'felix.historyOpen';
 const INSPECTOR_KEY = 'felix.inspectorOpen';
 const VERBOSE_KEY = 'felix.verbose';
+const HOLDER_KEY = 'felix.holderId';
+const THINKING_LEVELS: ThinkingLevel[] = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
 /** Bundled workspace agent — same path as float. */
 const DEFAULT_MANIFEST = 'cowork';
+
+function tabHolderId(): string {
+  try {
+    let id = sessionStorage.getItem(HOLDER_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      sessionStorage.setItem(HOLDER_KEY, id);
+    }
+    return id;
+  } catch {
+    return 'anonymous';
+  }
+}
 
 function readBool(key: string, fallback: boolean): boolean {
   const raw = localStorage.getItem(key);
@@ -103,6 +137,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
   const [deciding, setDeciding] = useState(false);
+  const [uiPrompt, setUiPrompt] = useState<PendingUiRequest | null>(null);
+  const [uiResolving, setUiResolving] = useState(false);
+  const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
+  const [sessionPhase, setSessionPhase] = useState<string | null>(null);
   // History open by default only when there are prior threads; inspector off
   // so chat owns the first viewport.
   const [historyOpen, setHistoryOpen] = useState(() =>
@@ -118,6 +156,7 @@ export default function App() {
   const { resolved, setTheme } = useTheme();
 
   const abortRef = useRef<AbortController | null>(null);
+  const leaseTokenRef = useRef<string | null>(null);
   const verboseRef = useRef(verbose);
   const threadIdRef = useRef(threadId);
   useEffect(() => {
@@ -153,20 +192,66 @@ export default function App() {
     return () => ctrl.abort();
   }, []);
 
-  // Replace the active transcript with the server-checkpointed one when it
-  // exists (richer than the local cache: survives across browsers/clears).
+  // Prefer authoritative snapshot; fall back to history events.
   const hydrateFromServer = useCallback((id: string) => {
-    getThreadHistory(id)
-      .then((h) => {
+    void (async () => {
+      try {
+        const snap = await getSessionSnapshot(id);
+        if (snap?.transcript?.length) {
+          const rebuilt = eventsToTurns(snapshotToEvents(snap));
+          if (rebuilt.length && id === threadIdRef.current) {
+            setTurns(rebuilt);
+            saveTurns(id, rebuilt);
+          }
+          if (snap.thinkingLevel && THINKING_LEVELS.includes(snap.thinkingLevel as ThinkingLevel)) {
+            setThinkingLevelState(snap.thinkingLevel as ThinkingLevel);
+          }
+          if (snap.phase) setSessionPhase(snap.phase);
+          return;
+        }
+        const h = await getThreadHistory(id);
         if (!h || h.events.length === 0) return;
         const rebuilt = eventsToTurns(h.events);
-        if (rebuilt.length) {
-          // Only swap into view if the user is still on this thread.
-          setTurns((cur) => (id === threadIdRef.current ? rebuilt : cur));
+        if (rebuilt.length && id === threadIdRef.current) {
+          setTurns(rebuilt);
           saveTurns(id, rebuilt);
         }
-      })
-      .catch(() => {});
+      } catch {
+        // local cache remains source of truth
+      }
+    })();
+  }, []);
+
+  const attachLease = useCallback(async (id: string) => {
+    try {
+      const result = await acquireSessionLease({
+        threadId: id,
+        holderId: tabHolderId(),
+        mode: 'exclusive',
+      });
+      if (result.ok && result.token) leaseTokenRef.current = result.token;
+      else if (!result.ok) {
+        // Another tab holds exclusive — attach as shared observer.
+        const shared = await acquireSessionLease({
+          threadId: id,
+          holderId: tabHolderId(),
+          mode: 'shared',
+        });
+        if (shared.token) leaseTokenRef.current = shared.token;
+      }
+    } catch {
+      // leases are best-effort
+    }
+  }, []);
+
+  const detachLease = useCallback(async (id: string) => {
+    const token = leaseTokenRef.current;
+    leaseTokenRef.current = null;
+    await releaseSessionLease({
+      threadId: id,
+      holderId: tabHolderId(),
+      token: token ?? undefined,
+    });
   }, []);
 
   // On mount: migrate legacy storage, load the thread list, and hydrate the
@@ -179,28 +264,47 @@ export default function App() {
     hydrateFromServer(threadId);
   }, []);
 
-  const newThread = useCallback(() => {
+  // Exclusive lease while this tab is attached to a thread.
+  useEffect(() => {
+    void attachLease(threadId);
+    return () => {
+      void detachLease(threadId);
+    };
+  }, [threadId, attachLease, detachLease]);
+
+  const stopRun = useCallback(() => {
+    const tid = threadIdRef.current;
+    void abortChat(tid).catch(() => {});
     abortRef.current?.abort();
+    setSessionPhase('aborted');
+  }, []);
+
+  const newThread = useCallback(() => {
+    stopRun();
     setThreadId(crypto.randomUUID());
     setTurns([]);
     setVariant(null);
     setSkills(null);
     setError(null);
     setPendingQueue([]);
-  }, []);
+    setUiPrompt(null);
+    setSessionPhase(null);
+  }, [stopRun]);
 
   const selectThread = useCallback(
     (id: string) => {
       if (id === threadId) return;
-      abortRef.current?.abort();
+      stopRun();
       setThreadId(id);
       setTurns(loadTurns(id));
       setVariant(null);
       setSkills(null);
       setError(null);
+      setUiPrompt(null);
+      setSessionPhase(null);
       hydrateFromServer(id);
     },
-    [threadId, hydrateFromServer],
+    [threadId, hydrateFromServer, stopRun],
   );
 
   const deleteThread = useCallback(
@@ -229,6 +333,7 @@ export default function App() {
       abortRef.current = ctrl;
       setStreaming(true);
       setError(null);
+      setSessionPhase('turn');
 
       const handleEvent = async (ev: {
         event: string;
@@ -340,6 +445,36 @@ export default function App() {
           case 'on_error':
             setError(String((ev.data as { message?: string }).message ?? 'error'));
             break;
+          case 'aborted':
+            setSessionPhase('aborted');
+            break;
+          case 'session_progress': {
+            const phase = (ev.data as { phase?: string }).phase;
+            if (phase) setSessionPhase(phase);
+            break;
+          }
+          case 'ui_request': {
+            const data = ev.data as {
+              request_id: string;
+              kind: 'select' | 'confirm' | 'input';
+              prompt: string;
+              options?: Array<string | { id?: string; label?: string; value?: string }>;
+              default?: unknown;
+            };
+            const options = (data.options ?? []).map((opt) => {
+              if (typeof opt === 'string') return { value: opt, label: opt };
+              const value = String(opt.value ?? opt.id ?? opt.label ?? '');
+              return { value, label: String(opt.label ?? value) };
+            });
+            setUiPrompt({
+              requestId: data.request_id,
+              kind: data.kind,
+              prompt: data.prompt,
+              options,
+              defaultValue: data.default,
+            });
+            break;
+          }
         }
       };
 
@@ -404,6 +539,7 @@ export default function App() {
         .finally(() => {
           setStreaming(false);
           abortRef.current = null;
+          setSessionPhase((p) => (p === 'aborted' ? p : 'idle'));
         });
     },
     [manifest],
@@ -535,15 +671,70 @@ export default function App() {
   // Clear the current conversation in place (keeps the thread id; best-effort
   // server reset). Distinct from "New thread" which mints a fresh id.
   const clearThread = useCallback(() => {
-    abortRef.current?.abort();
+    stopRun();
     setTurns([]);
     setVariant(null);
     setSkills(null);
     setError(null);
     setPendingQueue([]);
+    setUiPrompt(null);
+    setSessionPhase(null);
     void deleteThreadHistory(threadId);
     saveTurns(threadId, []);
-  }, [threadId]);
+  }, [threadId, stopRun]);
+
+  const continueRun = useCallback(() => {
+    if (streaming) return;
+    void continueChat({ threadId, manifest })
+      .then(() => {
+        toast.message('Continued');
+        hydrateFromServer(threadId);
+        setSessionPhase('idle');
+      })
+      .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+  }, [streaming, threadId, manifest, hydrateFromServer]);
+
+  const cycleThinking = useCallback(() => {
+    const idx = THINKING_LEVELS.indexOf(thinkingLevel);
+    const next = THINKING_LEVELS[(idx + 1) % THINKING_LEVELS.length]!;
+    setThinkingLevelState(next);
+    void setThinkingLevel({ threadId, thinkingLevel: next })
+      .then(() => toast.message(`Thinking: ${next}`))
+      .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+  }, [thinkingLevel, threadId]);
+
+  const onUiRespond = useCallback(
+    async (value: unknown) => {
+      if (!uiPrompt) return;
+      setUiResolving(true);
+      try {
+        await respondUiRequest({ requestId: uiPrompt.requestId, value });
+        setUiPrompt(null);
+      } catch (err) {
+        toast.error(String((err as Error)?.message ?? err));
+      } finally {
+        setUiResolving(false);
+      }
+    },
+    [uiPrompt],
+  );
+
+  const onUiCancel = useCallback(async () => {
+    if (!uiPrompt) return;
+    setUiResolving(true);
+    try {
+      await respondUiRequest({
+        requestId: uiPrompt.requestId,
+        cancelled: true,
+        note: 'cancelled',
+      });
+      setUiPrompt(null);
+    } catch (err) {
+      toast.error(String((err as Error)?.message ?? err));
+    } finally {
+      setUiResolving(false);
+    }
+  }, [uiPrompt]);
 
   // Map a composer submission (text + browser File parts, already converted to
   // data URLs by PromptInput) onto our send(). Image parts become attachments.
@@ -566,6 +757,12 @@ export default function App() {
         case 'clear':
           clearThread();
           break;
+        case 'continue':
+          continueRun();
+          break;
+        case 'think':
+          cycleThinking();
+          break;
         case 'theme':
           setTheme(resolved === 'dark' ? 'light' : 'dark');
           break;
@@ -578,7 +775,7 @@ export default function App() {
           break;
       }
     },
-    [newThread, clearThread, setTheme, resolved],
+    [newThread, clearThread, continueRun, cycleThinking, setTheme, resolved],
   );
 
   const options = manifests.length ? manifests : [manifest];
@@ -609,6 +806,16 @@ export default function App() {
               className="hidden uppercase sm:inline-flex"
             >
               {variant}
+            </Badge>
+          )}
+          {thinkingLevel !== 'off' && (
+            <Badge variant="outline" className="hidden font-normal sm:inline-flex">
+              think:{thinkingLevel}
+            </Badge>
+          )}
+          {sessionPhase && sessionPhase !== 'idle' && (
+            <Badge variant="secondary" className="hidden font-normal sm:inline-flex">
+              {sessionPhase}
             </Badge>
           )}
         </div>
@@ -651,6 +858,14 @@ export default function App() {
               >
                 Verbose tools
               </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Session</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => cycleThinking()}>
+                Thinking: {thinkingLevel}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={streaming} onSelect={() => continueRun()}>
+                Continue run
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Tools</DropdownMenuLabel>
               <DropdownMenuItem onSelect={() => setAgentOpen(true)}>
@@ -727,13 +942,21 @@ export default function App() {
                 onDecide={(status) => void onDecide(status)}
               />
             ) : null}
+            {uiPrompt ? (
+              <UiPromptBanner
+                pending={uiPrompt}
+                resolving={uiResolving}
+                onRespond={(value) => void onUiRespond(value)}
+                onCancel={() => void onUiCancel()}
+              />
+            ) : null}
             {manifest === DEFAULT_MANIFEST ? <WorkspaceStrip /> : null}
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
               isConnected
               onSubmit={submit}
               onBackground={(message) => submit(message, 'background')}
-              onStop={() => abortRef.current?.abort()}
+              onStop={stopRun}
               onSlashCommand={onSlashCommand}
               models={modelOptions}
               modelId={manifest}

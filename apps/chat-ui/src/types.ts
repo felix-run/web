@@ -57,7 +57,69 @@ export type StreamEvent =
   | { event: 'on_chain_end'; data: { output?: { usage?: TokenUsage } } }
   | { event: 'on_error'; data: { message: string } }
   | { event: 'done'; data: { final?: ChatMessage } }
+  | { event: 'aborted'; data: { thread_id?: string } }
+  | {
+      event: 'session_progress';
+      data: { phase?: string; reason?: string; [k: string]: unknown };
+    }
+  | {
+      event: 'ui_request';
+      data: {
+        request_id: string;
+        kind: 'select' | 'confirm' | 'input';
+        prompt: string;
+        options?: Array<string | { id?: string; label?: string; value?: string }>;
+        default?: unknown;
+        thread_id?: string;
+      };
+    }
   | { event: string; data: Record<string, unknown> };
+
+export type ThinkingLevel =
+  | 'off'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max';
+
+/** Authoritative session snapshot from GET /chat/sessions/{id}. */
+export interface SessionSnapshot {
+  id: string;
+  name?: string | null;
+  phase?: string;
+  thinkingLevel?: string;
+  locked?: boolean;
+  attached?: boolean;
+  leafId?: string | null;
+  revision?: number;
+  transcript?: Array<{
+    id?: string;
+    seq: number;
+    kind: string;
+    role?: Role | null;
+    content?: string;
+    toolCallId?: string;
+    toolName?: string;
+    toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+    status?: string;
+  }>;
+  wake?: {
+    fresh?: boolean;
+    endedOnAssistant?: boolean;
+    pendingToolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+  };
+}
+
+/** Sticky mid-stream UI prompt (select / confirm / input). */
+export interface PendingUiRequest {
+  requestId: string;
+  kind: 'select' | 'confirm' | 'input';
+  prompt: string;
+  options: Array<{ value: string; label: string }>;
+  defaultValue?: unknown;
+}
 
 /** Sticky mid-stream approval waiting on decide. */
 export interface PendingApproval {
@@ -94,7 +156,20 @@ export type Variant = 'stable' | 'canary';
 export interface SessionEvent {
   seq: number;
   ts?: number;
-  kind: 'message' | 'tool_result' | 'tool_call' | 'thinking' | 'audit';
+  kind:
+    | 'message'
+    | 'tool_result'
+    | 'tool_call'
+    | 'thinking'
+    | 'audit'
+    | 'compaction'
+    | 'branch_summary'
+    | 'thinking_level_change'
+    | 'model_change'
+    | 'custom'
+    | 'label'
+    | 'session_info'
+    | string;
   role?: Role;
   content?: string;
   tool_call_id?: string;
