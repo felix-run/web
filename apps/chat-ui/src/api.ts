@@ -431,6 +431,49 @@ export async function releaseSessionLease(args: {
   }
 }
 
+/** GET /chat/sessions/search — full-text hits across the tenant's event log. */
+export async function searchSessions(
+  q: string,
+  limit = 20,
+): Promise<Array<{ thread_id: string; content: string; event_id?: string; rank?: number }>> {
+  const query = q.trim();
+  if (!query) return [];
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const res = await apiFetch(`/api/chat/sessions/search?${params}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`search: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  const body = (await res.json()) as {
+    hits?: Array<{ thread_id: string; content: string; event_id?: string; rank?: number }>;
+  };
+  return body.hits ?? [];
+}
+
+/** POST /chat/rewind — set the active leaf to an earlier event. */
+export async function rewindChat(args: {
+  threadId: string;
+  eventId: string;
+  summarize?: boolean;
+  manifest?: string;
+}): Promise<{ ok: boolean; leaf_id?: string }> {
+  const res = await apiFetch('/api/chat/rewind', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      event_id: args.eventId,
+      summarize: args.summarize ?? false,
+      ...(args.manifest ? { manifest: args.manifest } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`rewind: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as { ok: boolean; leaf_id?: string };
+}
+
 /** POST /chat/ui — answer a select/confirm/input prompt. */
 export async function respondUiRequest(args: {
   requestId: string;

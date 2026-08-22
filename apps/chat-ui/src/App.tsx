@@ -25,6 +25,7 @@ import {
   postToolResult,
   releaseSessionLease,
   respondUiRequest,
+  rewindChat,
   setThinkingLevel,
   startChat,
   steerChat,
@@ -56,7 +57,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
 import {
@@ -703,6 +709,29 @@ export default function App() {
       .catch((err) => toast.error(String((err as Error)?.message ?? err)));
   }, [thinkingLevel, threadId]);
 
+  const chooseThinking = useCallback(
+    (level: ThinkingLevel) => {
+      setThinkingLevelState(level);
+      void setThinkingLevel({ threadId, thinkingLevel: level })
+        .then(() => toast.message(`Thinking: ${level}`))
+        .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+    },
+    [threadId],
+  );
+
+  const rewindTo = useCallback(
+    (eventId: string) => {
+      if (streaming) return;
+      void rewindChat({ threadId, eventId, summarize: false, manifest })
+        .then(() => {
+          toast.message('Rewound');
+          hydrateFromServer(threadId);
+        })
+        .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+    },
+    [streaming, threadId, manifest, hydrateFromServer],
+  );
+
   const onUiRespond = useCallback(
     async (value: unknown) => {
       if (!uiPrompt) return;
@@ -860,9 +889,21 @@ export default function App() {
               </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Session</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => cycleThinking()}>
-                Thinking: {thinkingLevel}
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Thinking: {thinkingLevel}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-40">
+                  <DropdownMenuRadioGroup
+                    value={thinkingLevel}
+                    onValueChange={(v) => chooseThinking(v as ThinkingLevel)}
+                  >
+                    {THINKING_LEVELS.map((level) => (
+                      <DropdownMenuRadioItem key={level} value={level}>
+                        {level}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuItem disabled={streaming} onSelect={() => continueRun()}>
                 Continue run
               </DropdownMenuItem>
@@ -921,6 +962,9 @@ export default function App() {
                   streaming={streaming && isLast}
                   verbose={verbose}
                   onRegenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
+                  onRewind={
+                    !streaming && t.eventId && !isLast ? () => rewindTo(t.eventId!) : undefined
+                  }
                 />
               );
             })}

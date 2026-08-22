@@ -148,12 +148,15 @@ export interface Turn {
   attachments?: ImageAttachment[];
   /** Set on assistant turns from the terminal `on_chain_end` usage payload. */
   usage?: TokenUsage;
+  /** Server event id when hydrated from a session snapshot (enables rewind). */
+  eventId?: string;
 }
 
 export type Variant = 'stable' | 'canary';
 
 /** One event from GET /chat/history/{thread_id} (the ConversationDO log). */
 export interface SessionEvent {
+  id?: string;
   seq: number;
   ts?: number;
   kind:

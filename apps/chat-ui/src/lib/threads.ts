@@ -17,6 +17,7 @@ import type { SessionEvent, SessionSnapshot, ToolCall, Turn } from '@/types';
 /** Map a session snapshot transcript onto SessionEvent rows for eventsToTurns. */
 export function snapshotToEvents(snapshot: SessionSnapshot): SessionEvent[] {
   return (snapshot.transcript ?? []).map((item) => ({
+    id: item.id,
     seq: item.seq,
     kind: item.kind,
     role: item.role ?? undefined,
@@ -124,7 +125,7 @@ export function eventsToTurns(events: SessionEvent[]): Turn[] {
       }
       continue;
     }
-    if (ev.kind !== 'message') continue;
+    if (ev.kind !== 'message' && ev.kind !== 'custom') continue;
 
     if (ev.role === 'user') {
       // Flush any dangling tool-only assistant turn before the next user turn.
@@ -137,7 +138,12 @@ export function eventsToTurns(events: SessionEvent[]): Turn[] {
         });
         pendingTools = [];
       }
-      turns.push({ id: crypto.randomUUID(), role: 'user', content: ev.content ?? '' });
+      turns.push({
+        id: ev.id ?? crypto.randomUUID(),
+        role: 'user',
+        content: ev.content ?? '',
+        eventId: ev.id,
+      });
       continue;
     }
     if (ev.role === 'assistant') {
@@ -154,7 +160,13 @@ export function eventsToTurns(events: SessionEvent[]): Turn[] {
         pendingTools = tools;
         continue;
       }
-      turns.push({ id: crypto.randomUUID(), role: 'assistant', content, tools });
+      turns.push({
+        id: ev.id ?? crypto.randomUUID(),
+        role: 'assistant',
+        content,
+        tools,
+        eventId: ev.id,
+      });
     }
   }
   if (pendingTools.length) {

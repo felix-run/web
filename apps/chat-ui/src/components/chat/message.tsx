@@ -11,12 +11,15 @@ export function Message({
   turn,
   streaming,
   onRegenerate,
+  onRewind,
   verbose = false,
 }: {
   turn: Turn;
   streaming?: boolean;
   /** Provided only for the last assistant turn (enables Regenerate). */
   onRegenerate?: () => void;
+  /** Rewind the server leaf to this turn's event id. */
+  onRewind?: () => void;
   /** Expand tool I/O and surface tool counts when set. */
   verbose?: boolean;
 }) {
@@ -40,7 +43,7 @@ export function Message({
             {turn.content}
           </div>
         )}
-        <MessageActions content={turn.content} className="pr-0.5" />
+        <MessageActions content={turn.content} onRewind={onRewind} className="pr-0.5" />
       </div>
     );
   }
@@ -95,7 +98,11 @@ export function Message({
       {empty && streaming && <TypingIndicator />}
 
       {!streaming && !empty && (
-        <MessageActions content={turn.content} onRegenerate={onRegenerate} />
+        <MessageActions
+          content={turn.content}
+          onRegenerate={onRegenerate}
+          onRewind={onRewind}
+        />
       )}
     </div>
   );
