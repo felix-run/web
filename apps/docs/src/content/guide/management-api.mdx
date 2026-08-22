@@ -20,13 +20,8 @@ Tenant-scoped management endpoints for the audit log (`/audit` + `/audit/metrics
 | `/jobs` | `jobs:read` | `jobs:write` |
 | `/manifests` | `manifests:read` | `manifests:write` |
 | `/eval` | `eval:read` | `eval:write` |
-| `/commerce/consents`, `/commerce/attribution/*` | `consent:read` | — |
-| `/geo` | tenant-scoped | `geo:write` |
-| `/brands` | tenant-scoped | `brands:write` |
-| `/b2b` (accounts, quotes, billing) | tenant-scoped | `b2b:write` |
-| `/entities` | tenant-scoped | `entities:write` |
 
-All routes return JSON. Rate limited at 100 req/60s per tenant. The commerce management surfaces (`/brands`, `/b2b`, `/entities`, `/geo`, consent/attribution) are covered in [the commerce docs](https://github.com/felix-run/web/blob/main/commerce/docs/index.md).
+All routes return JSON. Rate limited at 100 req/60s per tenant.
 
 :::note[Dev gate]
 In `ENVIRONMENT=development` without JWT verifiers configured, scope gates fall open so local probes work without minting tokens. In staging and production the gate is strict — anonymous callers get `401`; authenticated callers missing the scope get `403 {"error":"forbidden","missing_scopes":[...]}`.
@@ -106,15 +101,6 @@ Every tool-related event (`tool_call`, `policy_decision`, `limit_exceeded`, `gua
 | `model_switch` | model client when a fallback or confidence escalation fires — payload `{ from, to, reason }` (`provider_error` or `low_confidence`) | `fallback`, `escalated` |
 | `eval_run` | eval runner on completion (reserved) | (none) |
 | `unhandled_error` | `app.onError` boundary | `error` |
-| `commerce_order` | Stripe webhook on `checkout.session.completed` / ACP completion — payload `{ order_id, thread_id, amount_cents, channel, manifest_id }` | `paid` |
-| `brand_provisioned` | `POST /brands` — payload `{ brand_id, name, domain }` | `ok` |
-| `brand_catalog_import` | `POST /brands/:id/catalog` — payload `{ brand_id, product_count, error? }` | `ok`, `error` |
-| `b2b_purchase_check` | `purchase_authority_check` tool / `POST /b2b/accounts/:id/purchase-check` — payload `{ account_id, buyer_id, amount_cents, reason }` | `allowed`, `requires_approval`, `blocked` |
-| `b2b_quote` | Quote lifecycle tools (`create_quote`, `send_quote`, `accept_quote`, `convert_quote`) — payload `{ quote_id, account_id, amount_cents }` | `draft`, `sent`, `accepted`, `ordered` |
-| `geo_observation` | GEO monitor cron per tracked query replay — payload `{ brand_id, query, engine, mentioned, rank?, competitors[] }` | `ok` |
-| `consent_recorded` | `commerce_record_consent` tool / `POST /commerce/consents` — payload `{ thread_id, channel, terms_version }` | `granted`, `withdrawn` |
-| `order_attributed` | Stripe webhook / ACP completion — payload `{ order_id, thread_id, channel, manifest_id, buyer_subject }` | `ok` |
-| `cart_abandoned` | Abandoned-cart cron — payload `{ thread_id, customer_id?, recovery_webhook_sent }` | `detected` |
 
 #### `audit_truncated` is a status, not an event type
 
@@ -325,7 +311,7 @@ curl -s -X POST -H "Authorization: Bearer $JWT" \
 
 ## Manifests
 
-Tenants manage their own manifests through an append-only, version-pinned store. Each write inserts a new version row and (by default) flips the active pointer; rollback is a pointer flip, not a content rewrite. The request-path resolver walks tenant Postgres → tenant R2 → global R2 → bundled, so a tenant manifest with the same name as a bundled one (e.g. `shopping`) shadows the bundled copy for that tenant only. (The resolver's internal `ManifestSource` value for the tenant-Postgres layer is still the string `'tenant_d1'` — a naming holdover from the D1 era, unchanged by the Postgres migration.)
+Tenants manage their own manifests through an append-only, version-pinned store. Each write inserts a new version row and (by default) flips the active pointer; rollback is a pointer flip, not a content rewrite. The request-path resolver walks tenant Postgres → tenant R2 → global R2 → bundled, so a tenant manifest with the same name as a bundled one (e.g. `quick`) shadows the bundled copy for that tenant only. (The resolver's internal `ManifestSource` value for the tenant-Postgres layer is still the string `'tenant_d1'` — a naming holdover from the D1 era, unchanged by the Postgres migration.)
 
 Reads require the `manifests:read` scope; writes require `manifests:write`. All queries are tenant-scoped via the caller's JWT. In `ENVIRONMENT=development` without verifiers configured, the gate falls open so local probes and integration tests work without minting tokens.
 
@@ -343,7 +329,7 @@ curl -s -H "Authorization: Bearer $JWT" \
 ```json
 {
   "manifests": [
-    { "name": "shopping", "active_version": 3, "updated_at": 1747142400000 },
+    { "name": "quick", "active_version": 3, "updated_at": 1747142400000 },
     { "name": "support",  "active_version": 1, "updated_at": 1747100000000 }
   ]
 }
@@ -355,15 +341,15 @@ Return the resolved manifest, with `source` (`tenant_d1` / `tenant_r2` / `global
 
 ```bash
 curl -s -H "Authorization: Bearer $JWT" \
-  $BASE_URL/manifests/shopping | jq
+  $BASE_URL/manifests/quick | jq
 ```
 
 ```json
 {
-  "name": "shopping",
+  "name": "quick",
   "source": "tenant_d1",
   "version": 3,
-  "manifest": { "apiVersion": "orchestrator/v1", "kind": "Agent", "metadata": { "name": "shopping", "version": "2.0.0", "description": "tenant-customized", "tags": [] }, "spec": { /* ... */ } }
+  "manifest": { "apiVersion": "orchestrator/v1", "kind": "Agent", "metadata": { "name": "quick", "version": "2.0.0", "description": "tenant-customized", "tags": [] }, "spec": { /* ... */ } }
 }
 ```
 
@@ -373,7 +359,7 @@ List every tenant-private version row for `:name`, newest first, with an `active
 
 ```json
 {
-  "name": "shopping",
+  "name": "quick",
   "active_version": 3,
   "versions": [
     { "version": 3, "created_at": 1747142400000, "created_by": "user-123", "comment": "bump model", "active": true },
@@ -394,12 +380,12 @@ Append a new version. The server validates the body with `ManifestSchema.parse(.
 ```bash
 curl -s -X POST -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  $BASE_URL/manifests/shopping \
+  $BASE_URL/manifests/quick \
   -d '{
     "manifest": {
       "apiVersion": "orchestrator/v1",
       "kind": "Agent",
-      "metadata": { "name": "shopping", "version": "2.0.0", "description": "tenant-customized" },
+      "metadata": { "name": "quick", "version": "2.0.0", "description": "tenant-customized" },
       "spec": { "pattern": "react", "model": { "id": "@cf/meta/llama-3.1-8b-instruct" } }
     },
     "comment": "bump model"
@@ -408,7 +394,7 @@ curl -s -X POST -H "Authorization: Bearer $JWT" \
 
 ```json
 {
-  "name": "shopping",
+  "name": "quick",
   "version": 4,
   "created_at": 1747200000000,
   "created_by": "user-123",
@@ -426,12 +412,12 @@ Flip the active pointer to a specific version. Used for rollback.
 ```bash
 curl -s -X POST -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  $BASE_URL/manifests/shopping/activate \
+  $BASE_URL/manifests/quick/activate \
   -d '{"version": 2}' | jq
 ```
 
 ```json
-{ "name": "shopping", "active_version": 2, "updated_at": 1747250000000 }
+{ "name": "quick", "active_version": 2, "updated_at": 1747250000000 }
 ```
 
 `404 not_found` if the target version does not exist.
@@ -445,14 +431,14 @@ Two optional body fields make activation refuse to flip a version that has not p
 
 ```bash
 # 1. Upload the candidate without activating it.
-curl -s -X POST ".../manifests/shopping?activate=false" -d '{"manifest": …}'   # → version 3
+curl -s -X POST ".../manifests/quick?activate=false" -d '{"manifest": …}'   # → version 3
 
 # 2. Eval version 3 (pin it — the runner records the version on the run).
 curl -s -X POST ".../eval/datasets/golden/run" \
-  -d '{"candidate_manifest":"shopping","candidate_version":3}'   # → run_id
+  -d '{"candidate_manifest":"quick","candidate_version":3}'   # → run_id
 
 # 3. Activate 3, gated on that passing run.
-curl -s -X POST ".../manifests/shopping/activate" \
+curl -s -X POST ".../manifests/quick/activate" \
   -d '{"version": 3, "require_eval": true, "eval_run_id": "<run_id>"}'
 ```
 
@@ -467,13 +453,13 @@ Requires the `manifests:write` scope.
 ```bash
 curl -s -X POST -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  $BASE_URL/manifests/shopping/canary \
+  $BASE_URL/manifests/quick/canary \
   -d '{"canary_version": 3, "canary_weight": 25}' | jq
 ```
 
 ```json
 {
-  "name": "shopping",
+  "name": "quick",
   "active_version": 2,
   "canary_version": 3,
   "canary_weight": 25,
@@ -496,13 +482,13 @@ Requires the `manifests:write` scope.
 ```bash
 curl -s -X POST -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  $BASE_URL/manifests/shopping/rollback \
+  $BASE_URL/manifests/quick/rollback \
   -d '{"clear_version": false}' | jq
 ```
 
 ```json
 {
-  "name": "shopping",
+  "name": "quick",
   "active_version": 2,
   "canary_version": 3,
   "canary_weight": 0,
@@ -529,7 +515,7 @@ curl -s -X POST -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
   -H "x-manifest-version: 2" \
   $BASE_URL/v1/chat/completions \
-  -d '{"model":"shopping","messages":[{"role":"user","content":"hi"}]}'
+  -d '{"model":"quick","messages":[{"role":"user","content":"hi"}]}'
 ```
 
 ---

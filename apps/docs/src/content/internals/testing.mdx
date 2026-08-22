@@ -7,6 +7,10 @@ sidebar:
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
+:::caution[Former Workers prototype]
+This page describes the former TypeScript Cloudflare Workers harness test layout (vitest + miniflare). The live harness is Python in [felix-run/felix](https://github.com/felix-run/felix). Prefer that repo for current test commands.
+:::
+
 Vitest with two projects covering separate concerns.
 
 ## Topology
@@ -43,7 +47,7 @@ New tables/columns go through `apps/api/migrations/` instead — the workers pro
 
 The integration tests boot the worker via `SELF.fetch`; the miniflare entry needs `main: './apps/api/src/index.ts'` (the deployable shell, which wires the harness + plugins exactly like production) to know where to compile from.
 
-Beyond the core bindings, the miniflare block also declares the `JOBS_QUEUE` producer (`felix-jobs`, the `transport: queue` tool seam) and plain-var test credentials for the commerce/auth surfaces (`ACP_API_KEY`, `ACP_MERCHANT_TENANT`, `JWKS_PUBLIC`) so those integration tests run without real secrets.
+Beyond the core bindings, the miniflare block also declares the `JOBS_QUEUE` producer (`felix-jobs`, the `transport: queue` tool seam) and plain-var test credentials such as `JWKS_PUBLIC` so auth-gated integration tests run without real secrets.
 
 ## Stubbing manifests
 

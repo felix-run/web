@@ -7,17 +7,19 @@ sidebar:
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
+:::caution[Former Workers prototype]
+This page describes the former TypeScript Cloudflare Workers harness (Hyperdrive, DOs, R2). The live harness is Python in [felix-run/felix](https://github.com/felix-run/felix) — Postgres + Valkey + object store. Prefer that repo and [getting started](/guide/getting-started/) / [deploy](/guide/deploy/) for current persistence.
+:::
+
 The data stores Felix uses, what lives in each, and the tenant-scoping conventions.
 
 ## Postgres (via Hyperdrive)
 
 The relational store is Neon Postgres, reached through Cloudflare Hyperdrive (`env.HYPERDRIVE`, config created with `--caching-disabled` — Felix depends on read-after-write everywhere, and Hyperdrive is configured against Neon's **DIRECT** endpoint, replacing Neon's own pooler). Every store opens its client through `getDb(env)` (`src/db/client.ts`, postgres.js tagged templates); the client is cached on the active `RequestContext` so every store in one request/cron-tick shares a connection, and it's closed on teardown in dev/test (never `.end()`'d in production — Worker→Hyperdrive connections tear down with the request while Hyperdrive keeps origin connections warm).
 
-Schema lives in `apps/api/migrations/0001_baseline.sql`, applied with node-pg-migrate (`pnpm migrate:local|staging|production`) over a **direct** Neon connection — never through Hyperdrive (transaction-mode pooling + query caching are wrong for DDL) and never with wrangler. The single baseline file collapses the 22 D1-era migrations at their net shape (a fresh-start cutover; no data was migrated from D1). Dialect conventions that differ from the old SQLite schema: timestamps stay epoch-ms but as `bigint` (the `getDb` client parses `int8` → `number`); `0`/`1` integer booleans become real `boolean`; `*_json` `TEXT` blobs become `jsonb` (queried with `->>` instead of `json_extract`). Unchanged: tenant-first composite primary keys, `(tenant_id, ts DESC)` indexes, every read `WHERE tenant_id = $1`. Multi-statement writes that must be atomic (manifest activate/rollback, order + order_items, quote + quote_items) use real `sql.begin(...)` transactions instead of D1's `DB.batch()`.
+Schema lives in `apps/api/migrations/0001_baseline.sql`, applied with node-pg-migrate (`pnpm migrate:local|staging|production`) over a **direct** Neon connection — never through Hyperdrive (transaction-mode pooling + query caching are wrong for DDL) and never with wrangler. The single baseline file collapses the 22 D1-era migrations at their net shape (a fresh-start cutover; no data was migrated from D1). Dialect conventions that differ from the old SQLite schema: timestamps stay epoch-ms but as `bigint` (the `getDb` client parses `int8` → `number`); `0`/`1` integer booleans become real `boolean`; `*_json` `TEXT` blobs become `jsonb` (queried with `->>` instead of `json_extract`). Unchanged: tenant-first composite primary keys, `(tenant_id, ts DESC)` indexes, every read `WHERE tenant_id = $1`. Multi-statement writes that must be atomic (manifest activate/rollback) use real `sql.begin(...)` transactions instead of D1's `DB.batch()`.
 
-Every table that holds tenant-owned data leads its primary key with `tenant_id` — `(tenant_id, id)` in the common case, with natural composites where the entity demands it (`(tenant_id, name)` for jobs, `(tenant_id, name, version)` for manifests, `(tenant_id, account_id, product_id)` for contract prices, `(tenant_id, thread_id)` for customer sessions / abandoned carts) — so cross-tenant reads/writes require an explicit `WHERE tenant_id = ?` clause. The one deliberate exception is `brand_domains`, keyed by `(host)` alone: it routes anonymous public storefront traffic to a brand before any tenant is known.
-
-The harness core tables and the commerce layer's ~25 tables (products/orders, ACP sessions, brands + domains, data sources, B2B accounts/quotes/pricing/billing, GEO, consent + attribution, personalization, dynamic pricing) all live in the same `apps/api/migrations/0001_baseline.sql` file — documented alongside the features in [the commerce data model + configuration docs](https://github.com/felix-run/web/blob/main/commerce/docs/data-model.md).
+Every table that holds tenant-owned data leads its primary key with `tenant_id` — `(tenant_id, id)` in the common case, with natural composites where the entity demands it (`(tenant_id, name)` for jobs, `(tenant_id, name, version)` for manifests) — so cross-tenant reads/writes require an explicit `WHERE tenant_id = ?` clause.
 
 ### audit_events
 
@@ -152,16 +154,6 @@ CREATE TABLE oauth_token_cache (
 
 `access_token` is encrypted at rest with `OAUTH_CACHE_KEY` (AES-256-GCM). A 96-bit IV is generated per ciphertext and stored as `base64(iv || ciphertext_with_tag)`. In dev a missing key falls back to plaintext with a one-shot warning; in staging/production a missing key fails closed.
 
-### Commerce tables
-
-The commerce layer adds ~25 tables following the same conventions, all in the same `apps/api/migrations/0001_baseline.sql` file; their shapes and semantics are documented alongside the features in [the commerce docs](https://github.com/felix-run/web/blob/main/commerce/docs/index.md). Highlights that affect persistence reasoning:
-
-- **The cart is not a table.** It lives in the ConversationDO session log as the latest `kind: 'audit'` event with `metadata: { type: 'cart', pinned: true }` (`packages/commerce/src/cart-session.ts`) — highest `seq` wins, and render strategies skip audit events so it never enters the model window.
-- `consents` and `behavior_events` are **append-only** streams (consent withdrawal is a new `granted = false` row, never an update).
-- `orders` is written only by verified payment paths (Stripe webhook, ACP complete, B2B convert), with deterministic ids on the ACP path for idempotency.
-- `data_sources` (the entity seam config) can redirect reads of B2B entities to federated/synced 3p systems — native Postgres is the default `native` backend, not an assumption.
-- `products` carries a generated `search_tsv` tsvector column (weighted title > category > description) plus a `pg_trgm` index on `title`, powering `catalog_search`'s full-text + typo-tolerant search — see [the commerce shopping docs](https://github.com/felix-run/web/blob/main/commerce/docs/shopping.md).
-
 ## KV (`CACHE`)
 
 In-memory-style key/value store. Used for:
@@ -280,9 +272,9 @@ Every read is tenant-scoped. Every write tags the tenant. There is no cross-tena
 
 The builder auto-injects two tools (`memory_remember`, `memory_recall`) when this store is enabled, so manifest authors never need to declare them.
 
-`kind` values in the shared table: `fact` / `preference` / `episode` (semantic memory), `procedural` (procedural memory — `storeProcedure` writes successful past plans tagged with the manifest; `recall_procedure` and the `plan_execute` planner few-shots read them back), and `product` / `product_image` (commerce catalog + visual-search embeddings, written by `@felix/commerce`). All share the same 768-dim BGE embedding pipeline.
+`kind` values in the shared table: `fact` / `preference` / `episode` (semantic memory), and `procedural` (procedural memory — `storeProcedure` writes successful past plans tagged with the manifest; `recall_procedure` and the `plan_execute` planner few-shots read them back). All share the same 768-dim BGE embedding pipeline.
 
-Retention: OPT-IN via `MEMORY_RETENTION_DAYS` — unset (the default) keeps memories forever; long-term memory is state, not a log, and product embeddings refresh `created_at` on every catalog upsert so live rows never age out. When set, the `retention_sweep` cron prunes rows older than the window, bounded per tick like the other tables.
+Retention: OPT-IN via `MEMORY_RETENTION_DAYS` — unset (the default) keeps memories forever; long-term memory is state, not a log. When set, the `retention_sweep` cron prunes rows older than the window, bounded per tick like the other tables.
 
 ## R2 (`BUNDLES`) — artifact spill
 

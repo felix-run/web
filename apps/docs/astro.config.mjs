@@ -1,4 +1,4 @@
-// Felix docs — Starlight over MDX in content/.
+// Felix docs — Starlight over MDX in src/content/.
 // Static output only; deployed as a Workers static-assets site (wrangler.jsonc).
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';

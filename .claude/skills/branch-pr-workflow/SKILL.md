@@ -1,6 +1,6 @@
 ---
 name: branch-pr-workflow
-description: Mandatory git workflow for Felix — every change lands via a feature branch and a pull request into main; direct commits to main are forbidden (hook-enforced).
+description: Mandatory git workflow for felix-web — every change lands via a feature branch and a pull request into main; direct commits to main are forbidden (hook-enforced).
 when_to_use: 'Before committing ANY change; requests like "commit this", "ship this", "create a PR", "merge this"; when the block-main-commit hook fires; starting a new piece of work.'
 ---
 
@@ -39,8 +39,10 @@ See also [.claude/rules/git-workflow.md](../../rules/git-workflow.md).
    number* of feature-scoped PRs, not dozens of tiny ones. Don't batch *unrelated* features
    together, and never stack. Reserve a one-fix PR for a genuinely isolated one-off change.
 
-2. **Work + verify** on the branch: felix-dev-loop (`pnpm build` → `typecheck` → `test` → `lint`),
-   docs-sync if API/schema surfaces changed. Commit messages follow the repo style
+2. **Work + verify** on the branch. This monorepo is chat-ui + docs Workers only (runtime is
+   [felix-run/felix](https://github.com/felix-run/felix)). Prefer the package under change:
+   `pnpm --filter @felix/chat-ui …` / `pnpm --filter @felix/docs …`, or root scripts when they
+   apply. Docs prose lives in `apps/docs/src/content/` (MDX). Commit messages follow the repo style
    (imperative subject, body explains why) and end with the Claude co-author line.
 
 3. **Push + open the PR**
@@ -58,7 +60,6 @@ See also [.claude/rules/git-workflow.md](../../rules/git-workflow.md).
 
 6. **After merge**: `git switch main && git pull --ff-only`, delete the branch
    (`git branch -d <branch>`; `gh pr merge` with `--delete-branch` handles the remote).
-   Deploys (`pnpm deploy:staging` / `deploy` / `docs:deploy`) run from updated main.
 
 ## Notes
 
@@ -66,5 +67,3 @@ See also [.claude/rules/git-workflow.md](../../rules/git-workflow.md).
   bypass by design.
 - **No stacked PRs** (see the callout above): branch from `main`, target `main`, always.
   Dependent work goes in one PR or waits for the parent to merge — never a base-chain.
-- The private-history archive branch (`backup/main-2026-07-11` on `felix-run-old`) is never
-  merged or rebased into anything.

@@ -7,6 +7,10 @@ sidebar:
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
+:::caution[Former Workers prototype]
+This page describes the former TypeScript Cloudflare Workers harness. The live harness is Python in [felix-run/felix](https://github.com/felix-run/felix). Prefer that repo and [getting started](/guide/getting-started/) / [deploy](/guide/deploy/) for current auth modes (`jwt` / `api_key` / `none`).
+:::
+
 Inbound JWT verification, outbound OAuth, the `RequestContext`, and the structural defenses that keep tenants isolated.
 
 ## Inbound
@@ -87,7 +91,7 @@ return null;   // allowed
 
 ### requireScope (control-plane authorization)
 
-`requireScope(c, scope)` (`src/auth/middleware.ts`) is the per-endpoint gate on every management and commerce-management route: anonymous callers get 401; authenticated callers missing the scope get `403 {"error":"forbidden","missing_scopes":[scope]}`. In `ENVIRONMENT=development` with no verifiers configured, the gate falls open so local probes work without minting tokens.
+`requireScope(c, scope)` (`src/auth/middleware.ts`) is the per-endpoint gate on every management route: anonymous callers get 401; authenticated callers missing the scope get `403 {"error":"forbidden","missing_scopes":[scope]}`. In `ENVIRONMENT=development` with no verifiers configured, the gate falls open so local probes work without minting tokens.
 
 Enforced scopes:
 
@@ -99,15 +103,10 @@ Enforced scopes:
 | `jobs:read` / `jobs:write` | `/jobs` |
 | `manifests:read` / `manifests:write` | `/manifests` |
 | `eval:read` / `eval:write` | `/eval` |
-| `consent:read` | `/commerce/consents`, `/commerce/attribution/*` |
-| `geo:write` | `/geo` mutations |
-| `brands:write` | `/brands` mutations |
-| `b2b:write` | `/b2b` mutations (accounts, quotes, pricing, billing config) |
-| `entities:write` | `/entities` source config + sync |
 
 ### Self-authenticating mounts
 
-`selfAuthenticatingMounts` (contributed by plugins and threaded into `authMiddleware` by `createApp`; currently `['/acp']` from the commerce plugin) tells `authMiddleware` to skip JWT bearer parsing for those path prefixes — the mount enforces its own credential inside the router (constant-time `ACP_API_KEY` compare for ACP). `/internal/*` and `/entities/:type/push` use the `x-consumer-token` / `x-consumer-secret` header against `CONSUMER_SHARED_SECRET`; Stripe webhooks verify the Stripe signature. All shared-secret compares go through `src/security/constant-time.ts`.
+`selfAuthenticatingMounts` (contributed by plugins and threaded into `authMiddleware` by `createApp`) tells `authMiddleware` to skip JWT bearer parsing for those path prefixes — the mount enforces its own credential inside the router. `/internal/*` uses the `x-consumer-token` / `x-consumer-secret` header against `CONSUMER_SHARED_SECRET`. All shared-secret compares go through `src/security/constant-time.ts`.
 
 ## RequestContext
 

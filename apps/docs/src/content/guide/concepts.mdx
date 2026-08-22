@@ -110,7 +110,7 @@ The `queue` transport is the async case: `execute()` enqueues the job and return
 
 Tools come from these sources (orthogonal to transport):
 
-1. **Built-ins** — registered in `compose(env)` (`apps/api/src/composition.ts`). The core set is `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, plus the commerce suite: catalog/cart/order tools, `commerce_checkout`, `commerce_record_consent`, personalization (`recommend_products`, `identify_customer`), visual search (`search_by_image`), and the B2B quote-to-cash tools — see [the commerce docs](https://github.com/felix-run/web/blob/main/commerce/docs/index.md#tool-catalog) for the full list.
+1. **Built-ins** — registered by the harness composition layer. The core set includes `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, and the scheduling tools when opted into a manifest.
 2. **Skills** — frontmatter `tools:` lists folded in at build time.
 3. **External MCP servers** — namespaced as `${server.name}__${tool.name}`, fetched from each `mcp_servers[].url`.
 4. **A2A peers** — every `peers[]` entry becomes a `peer_${name}` tool. The `peer_` prefix is the contract that increments `peerHops` in the limits wrapper.

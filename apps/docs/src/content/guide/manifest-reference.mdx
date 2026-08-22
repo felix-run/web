@@ -86,7 +86,7 @@ Parts are joined with `"\n\n---\n\n"` in the order **soul → base → inline** 
 tools: []                    # default
 ```
 
-List of tool names registered with the `ToolProvider`. The core built-ins are `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, the scheduling set (`schedule_task`, `list_scheduled_tasks`, `scheduled_task_runs`, `cancel_scheduled_task` — see below), plus the commerce suite registered in `apps/api/src/composition.ts`: catalog/cart/order tools (`catalog_search`, `catalog_get`, `catalog_categories`, `cart_view`, `cart_add`, `cart_update`, `cart_remove`, `order_status`), `commerce_checkout`, `commerce_record_consent`, personalization (`recommend_products`, `identify_customer`), visual search (`search_by_image`), and the B2B suite (`account_get`, `buyer_get`, `purchase_authority_check`, `price_lookup`, `create_quote`, `quote_get`, `send_quote`, `accept_quote`, `convert_quote`, `invoice_get`, `pay_invoice`) — see [Agentic commerce](https://github.com/felix-run/web/blob/main/commerce/docs/index.md). Skills can fold additional tool names into this list at build time.
+List of tool names registered with the `ToolProvider`. The core built-ins are `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, and the scheduling set (`schedule_task`, `list_scheduled_tasks`, `scheduled_task_runs`, `cancel_scheduled_task` — see below). Skills can fold additional tool names into this list at build time.
 
 ### Agent-facing scheduling
 
