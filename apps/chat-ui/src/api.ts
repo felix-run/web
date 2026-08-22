@@ -36,6 +36,7 @@ import type {
   StreamEvent,
   ThreadHistory,
   ToolMetrics,
+  UsageEvent,
   Variant,
 } from './types';
 
@@ -172,6 +173,19 @@ export async function decideApproval(
   });
   if (!res.ok) throw new Error(`decide: ${res.status}`);
   return (await res.json()) as ApprovalRequest;
+}
+
+/** GET /usage → paginated token meter events. */
+export async function listUsage(
+  opts: { limit?: number; cursor?: string; manifest_id?: string } = {},
+): Promise<{ items: UsageEvent[]; next_cursor: string | null }> {
+  const q = new URLSearchParams();
+  q.set('limit', String(opts.limit ?? 50));
+  if (opts.cursor) q.set('cursor', opts.cursor);
+  if (opts.manifest_id) q.set('manifest_id', opts.manifest_id);
+  const res = await apiFetch(`/api/usage?${q}`);
+  if (!res.ok) throw new Error(`usage: ${res.status}`);
+  return (await res.json()) as { items: UsageEvent[]; next_cursor: string | null };
 }
 
 /** POST /chat/tool_result — complete a client-executed tool pause. */

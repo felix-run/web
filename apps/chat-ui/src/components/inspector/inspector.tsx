@@ -3,12 +3,13 @@ import {
   CheckCircle2Icon,
   CircleAlertIcon,
   ClipboardListIcon,
+  CoinsIcon,
   GaugeIcon,
   ListTodoIcon,
   SparklesIcon,
   XIcon,
 } from 'lucide-react';
-import { decideApproval, getToolMetrics, listApprovals, listAudit, listPlans } from '@/api';
+import { decideApproval, getToolMetrics, listApprovals, listAudit, listPlans, listUsage } from '@/api';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
@@ -16,7 +17,7 @@ import { Skeleton } from '@felix/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
-import type { AuditEvent, Plan, PlanStepStatus, ToolMetricsRow } from '@/types';
+import type { AuditEvent, Plan, PlanStepStatus, ToolMetricsRow, UsageEvent } from '@/types';
 
 export interface SkillState {
   declared: string[];
@@ -89,6 +90,9 @@ export function Inspector({
           <InspectorTab value="metrics" icon={<GaugeIcon className="size-3" />}>
             Tools
           </InspectorTab>
+          <InspectorTab value="usage" icon={<CoinsIcon className="size-3" />}>
+            Usage
+          </InspectorTab>
           <InspectorTab value="approvals" icon={<ClipboardListIcon className="size-3" />}>
             Approvals
           </InspectorTab>
@@ -105,6 +109,9 @@ export function Inspector({
         </TabsContent>
         <TabsContent value="metrics" className="mt-0 min-h-0 flex-1 outline-none">
           <MetricsTab enabled={open} />
+        </TabsContent>
+        <TabsContent value="usage" className="mt-0 min-h-0 flex-1 outline-none">
+          <UsageTab enabled={open} />
         </TabsContent>
         <TabsContent value="approvals" className="mt-0 min-h-0 flex-1 outline-none">
           <ApprovalsTab enabled={open} />
@@ -316,6 +323,86 @@ function foldByTool(rows: ToolMetricsRow[]): ToolSummary[] {
     by.set(r.tool, cur);
   }
   return [...by.values()].sort((a, b) => b.count - a.count);
+}
+
+// --- Usage ---
+
+function UsageTab({ enabled }: { enabled: boolean }) {
+  const { data, error, loading } = usePoll(
+    async () => {
+      const page = await listUsage({ limit: 40 });
+      return page.items;
+    },
+    { enabled },
+  );
+  const totals = summarizeUsage(data ?? []);
+
+  return (
+    <PanelBody
+      loading={loading && !data}
+      error={error}
+      empty={data?.length === 0}
+      emptyIcon={<CoinsIcon className="size-5" />}
+      emptyTitle="No usage yet"
+      emptyText="Token meters appear here after model turns flush to the usage store."
+    >
+      <div className="mb-3 grid grid-cols-2 gap-2 text-[11px]">
+        <div className="rounded-lg border border-border/50 bg-background/80 px-2.5 py-2">
+          <div className="text-muted-foreground">Input</div>
+          <div className="mt-0.5 font-mono text-sm font-medium">
+            {totals.in.toLocaleString()}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border/50 bg-background/80 px-2.5 py-2">
+          <div className="text-muted-foreground">Output</div>
+          <div className="mt-0.5 font-mono text-sm font-medium">
+            {totals.out.toLocaleString()}
+          </div>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {data?.map((e) => (
+          <article
+            key={e.id}
+            className="rounded-xl border border-border/50 bg-background/80 px-2.5 py-2 text-xs"
+          >
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium">
+                  {e.manifest_id || '—'}
+                  {e.model_id ? (
+                    <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                      {e.model_id}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                  {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
+                  {(e.tokens_output ?? 0).toLocaleString()} out
+                  {(e.cache_read ?? 0) > 0
+                    ? ` · ${e.cache_read.toLocaleString()} cache`
+                    : ''}
+                </p>
+              </div>
+              {e.ts != null && (
+                <div className="shrink-0 text-[10px] text-muted-foreground">{relTime(e.ts)}</div>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </PanelBody>
+  );
+}
+
+function summarizeUsage(items: UsageEvent[]): { in: number; out: number } {
+  let inn = 0;
+  let out = 0;
+  for (const e of items) {
+    inn += e.tokens_input ?? 0;
+    out += e.tokens_output ?? 0;
+  }
+  return { in: inn, out };
 }
 
 // --- Approvals ---

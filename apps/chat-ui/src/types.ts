@@ -140,6 +140,21 @@ export interface ApprovalRequest {
   edited_args: Record<string, unknown> | null;
 }
 
+/** One row from GET /usage. */
+export interface UsageEvent {
+  id: string;
+  tenant_id: string;
+  ts: number;
+  manifest_id: string;
+  model_id: string;
+  kind: string;
+  tokens_input: number;
+  tokens_output: number;
+  cache_creation: number;
+  cache_read: number;
+  meta_json: Record<string, unknown>;
+}
+
 export type PlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'skipped' | 'failed';
 
 export interface PlanStep {
