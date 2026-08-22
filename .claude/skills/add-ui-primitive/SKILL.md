@@ -51,8 +51,20 @@ top-level `.tsx` — a subdirectory, a `.ts` helper, a hook — needs its own `e
 The wildcard covers new flat components. A new subpath in step 2 needs a matching `paths` entry in
 **both** apps, or one app fails to type-check while the other passes.
 
-Add a dependency that shadcn pulled in (a new Radix package, `cmdk`, …) to
-`packages/ui/package.json` — not just to the app — then `pnpm install`.
+## 3a. Route new dependencies through the catalog
+
+A dependency shadcn pulled in (a new Radix package, `cmdk`, …) belongs in
+`packages/ui/package.json` — not just in the app that consumes the component.
+
+Shared versions live in the `catalog:` block of `pnpm-workspace.yaml`, so:
+
+- **Already in the catalog** → reference it as `"catalog:"`, never a literal version.
+- **Only `packages/ui` uses it** → a literal version in `packages/ui/package.json` is correct.
+- **A second package now needs a dep that was single-use** → promote it: move the version into the
+  catalog and change both manifests to `"catalog:"`.
+
+`pnpm add` writes a literal version even when the catalog already has that package (pnpm's default
+`catalogMode: manual`), so check the manifest after adding. Then `pnpm install`.
 
 ## 4. Verify
 

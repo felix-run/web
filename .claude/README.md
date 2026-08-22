@@ -61,7 +61,7 @@ Path-scoped instructions, loaded only when matching files are in play.
 | `PreToolUse` (Edit/Write) | `block-generated.sh` | **Blocks** edits to generated files and build output |
 | `PreToolUse` (Bash) | `block-main-commit.sh` | **Blocks** commits on `main` and direct pushes to `origin main` |
 | `PostToolUse` (Edit/Write) | `format-touched.sh` | Runs Biome on the edited file; warns when it rewrote it |
-| `PostToolUse` (Edit/Write) | `impact-reminder.sh` | Names the counterpart file for duplicated surfaces |
+| `PostToolUse` (Edit/Write) | `impact-reminder.sh` | Names the counterpart file for duplicated surfaces, and the catalog rule on manifest edits |
 | `PostToolUseFailure` (Bash) | `failure-hint.sh` | Maps a failed build/lint command to this repo's known causes |
 | `Stop` | `stop-gate.sh` | **Blocks once** on docs drift; rate-limited nudge to verify TS changes |
 | `SubagentStop` | `subagent-log.sh` | Appends to the local audit trail in `logs/` (gitignored) |

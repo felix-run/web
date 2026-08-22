@@ -31,6 +31,8 @@ case "$rel" in
     emit "Design tokens changed. apps/docs/src/styles/theme.css is generated from these via starlightThemeCss() and is checked in — regenerate it, or the docs site keeps the old palette. See the docs-sync skill." ;;
   apps/docs/src/content/*)
     emit "Docs content changed. If you ADDED a page, it stays invisible until it is registered in the sidebar in apps/docs/astro.config.mjs (autogenerate is off because prose lives at src/content/, not src/content/docs/). Verify with: pnpm --filter @felix/docs build" ;;
+  package.json|apps/*/package.json|packages/*/package.json)
+    emit "Manifest changed. Shared dependency versions live in the catalog: block of pnpm-workspace.yaml — a dep used by 2+ workspace packages is declared once there and referenced as \"catalog:\" here. pnpm add writes a LITERAL version even when the catalog already has the package (default catalogMode: manual), so check what landed. Promote a dep to the catalog the moment a second package needs it, and run pnpm install." ;;
   .claude/agents/*|.claude/skills/*|.claude/hooks/*)
     emit "Toolkit file changed. Update .claude/README.md if you added or removed a piece. Hooks additionally need wiring in .claude/settings.json and a session restart to take effect; skills and agents hot-reload. See the toolkit-authoring skill." ;;
 esac
