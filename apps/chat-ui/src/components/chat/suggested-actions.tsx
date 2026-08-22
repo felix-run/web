@@ -7,6 +7,30 @@ import { Button } from '@felix/ui/button';
 type Suggestion = { title: string; label: string; prompt: string };
 
 const BY_MANIFEST: Record<string, Suggestion[]> = {
+  cowork: [
+    {
+      title: 'Create a note',
+      label: 'todo.md with three tasks',
+      prompt:
+        'Create notes/todo.md with three short tasks for today, then confirm the file contents.',
+    },
+    {
+      title: 'Search the workspace',
+      label: 'find TODO comments',
+      prompt: 'Search the workspace for TODO and summarize matches by file.',
+    },
+    {
+      title: 'Draft then write',
+      label: 'approve a file write',
+      prompt:
+        'Draft a one-paragraph README for this workspace and write it to README.md (I will approve the write).',
+    },
+    {
+      title: 'List files',
+      label: 'top-level tree',
+      prompt: 'List the top-level files and folders in the workspace.',
+    },
+  ],
   quick: [
     {
       title: 'Summarize Felix',

@@ -1,8 +1,22 @@
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { decideApproval, postToolResult, streamChat } from '@/api';
-import { executeClientTool } from '@/lib/client-tools';
+import {
+  decideApproval,
+  pollDurableRun,
+  postToolResult,
+  startChat,
+  streamChat,
+} from '@/api';
+import {
+  clearMount,
+  executeClientTool,
+  getMountLabel,
+  hasMount,
+  mountTree,
+  pickDirectory,
+  supportsDirectoryPicker,
+} from '@/lib/client-tools';
 import { cn } from '@/lib/utils';
 import { vfs } from '@/lib/vfs';
 import type { PendingApproval, TimelineItem } from '@/types';
@@ -14,16 +28,38 @@ function loadThreadId(): string {
   return localStorage.getItem(THREAD_KEY) || nanoid(12);
 }
 
+function summarizeArgs(toolName: string, args: Record<string, unknown>): string {
+  if (toolName === 'write_file') {
+    const path = typeof args.path === 'string' ? args.path : '?';
+    const len = typeof args.content === 'string' ? args.content.length : 0;
+    return `Write ${path} (${len} chars)${args.append ? ' append' : ''}`;
+  }
+  if (toolName === 'local_shell') {
+    return `Shell: ${typeof args.command === 'string' ? args.command : JSON.stringify(args)}`;
+  }
+  try {
+    return JSON.stringify(args, null, 2);
+  } catch {
+    return String(args);
+  }
+}
+
 export default function App() {
   const [threadId, setThreadId] = useState(loadThreadId);
   const [goal, setGoal] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [background, setBackground] = useState(false);
   const [assistantDraft, setAssistantDraft] = useState('');
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
-  const [pending, setPending] = useState<PendingApproval | null>(null);
-  const [files, setFiles] = useState(() => vfs.tree());
+  const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
+  const [deciding, setDeciding] = useState(false);
+  const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
+  const [files, setFiles] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const canMount = supportsDirectoryPicker();
+
+  const pending = pendingQueue[0] ?? null;
 
   useEffect(() => {
     localStorage.setItem(THREAD_KEY, threadId);
@@ -31,9 +67,19 @@ export default function App() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [timeline, assistantDraft, pending]);
+  }, [timeline, assistantDraft, pendingQueue]);
 
-  const refreshFiles = useCallback(() => setFiles(vfs.tree()), []);
+  const refreshFiles = useCallback(async () => {
+    if (hasMount()) {
+      setFiles(await mountTree());
+    } else {
+      setFiles(vfs.tree());
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshFiles();
+  }, [refreshFiles, mountLabel]);
 
   const push = useCallback((item: TimelineItem) => {
     setTimeline((cur) => [...cur, item]);
@@ -45,210 +91,313 @@ export default function App() {
     setThreadId(next);
     setTimeline([]);
     setAssistantDraft('');
-    setPending(null);
+    setPendingQueue([]);
     setStreaming(false);
+    setBackground(false);
   }, []);
 
   const clearVfs = useCallback(() => {
     vfs.reset();
-    refreshFiles();
-    toast.message('Local files cleared');
+    void refreshFiles();
+    toast.message('Local VFS cleared');
   }, [refreshFiles]);
 
-  const runGoal = useCallback(async () => {
-    const text = goal.trim();
-    if (!text || streaming) return;
-
-    setStreaming(true);
-    setGoal('');
-    setPending(null);
-    setAssistantDraft('');
-    push({ id: nanoid(), kind: 'user', title: 'Goal', body: text, status: 'done' });
-
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    let draft = '';
-
+  const onMount = useCallback(async () => {
     try {
-      await streamChat(
-        {
-          manifest: MANIFEST,
-          messages: [{ role: 'user', content: text }],
+      const name = await pickDirectory();
+      setMountLabel(name);
+      await refreshFiles();
+      toast.success(`Mounted ${name}`);
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    }
+  }, [refreshFiles]);
+
+  const onUnmount = useCallback(() => {
+    clearMount();
+    setMountLabel(null);
+    void refreshFiles();
+    toast.message('Folder unmounted');
+  }, [refreshFiles]);
+
+  const handleStreamEvents = useCallback(
+    async (event: { event: string; data: Record<string, unknown> }, draftRef: { current: string }) => {
+      if (event.event === 'text_delta' || event.event === 'on_chat_model_stream') {
+        const data = event.data as { delta?: string; chunk?: { content?: string } };
+        const chunk = data.delta ?? data.chunk?.content ?? '';
+        if (chunk) {
+          draftRef.current += chunk;
+          setAssistantDraft(draftRef.current);
+        }
+        return;
+      }
+
+      if (event.event === 'tool_start' || event.event === 'on_tool_start') {
+        if (draftRef.current) {
+          push({
+            id: nanoid(),
+            kind: 'assistant',
+            title: 'Update',
+            body: draftRef.current,
+            status: 'done',
+          });
+          draftRef.current = '';
+          setAssistantDraft('');
+        }
+        const data = event.data as { name?: string; input?: unknown };
+        push({
+          id: nanoid(),
+          kind: 'tool',
+          title: String(data.name ?? 'tool'),
+          body: JSON.stringify(data.input ?? {}, null, 2),
+          status: 'running',
+        });
+        return;
+      }
+
+      if (event.event === 'tool_end' || event.event === 'on_tool_end') {
+        const data = event.data as { name?: string; output?: unknown };
+        const name = String(data.name ?? 'tool');
+        const output =
+          typeof data.output === 'string' ? data.output : JSON.stringify(data.output ?? '');
+        setTimeline((cur) => {
+          const next = [...cur];
+          for (let i = next.length - 1; i >= 0; i--) {
+            const item = next[i];
+            if (
+              item &&
+              item.kind === 'tool' &&
+              (item.title === name || item.title === `client · ${name}`) &&
+              item.status === 'running'
+            ) {
+              next[i] = {
+                ...item,
+                body: output.slice(0, 4000),
+                status:
+                  output.startsWith('[approval') || output.startsWith('[error') ? 'error' : 'done',
+              };
+              break;
+            }
+          }
+          return next;
+        });
+        await refreshFiles();
+        return;
+      }
+
+      if (event.event === 'approval_required') {
+        const data = event.data as {
+          approval_id: string;
+          tool_name: string;
+          args?: Record<string, unknown>;
+          rule_id?: string;
+        };
+        const entry: PendingApproval = {
+          approvalId: data.approval_id,
+          toolName: data.tool_name,
+          args: data.args ?? {},
+          ruleId: data.rule_id,
+        };
+        setPendingQueue((q) => [...q, entry]);
+        push({
+          id: nanoid(),
+          kind: 'approval',
+          title: `Needs approval · ${data.tool_name}`,
+          body: summarizeArgs(data.tool_name, data.args ?? {}),
+          status: 'pending',
+        });
+        return;
+      }
+
+      if (event.event === 'tool_request') {
+        const data = event.data as {
+          id: string;
+          name: string;
+          args?: Record<string, unknown>;
+        };
+        push({
+          id: nanoid(),
+          kind: 'tool',
+          title: `client · ${data.name}`,
+          body: JSON.stringify(data.args ?? {}, null, 2),
+          status: 'running',
+        });
+        const result = await executeClientTool({
+          id: data.id,
+          name: data.name,
+          args: data.args ?? {},
+        });
+        await postToolResult({
           threadId,
-          signal: ctrl.signal,
-        },
-        async (event) => {
-          if (event.event === 'text_delta' || event.event === 'on_chat_model_stream') {
-            const data = event.data as {
-              delta?: string;
-              chunk?: { content?: string };
-            };
-            const chunk = data.delta ?? data.chunk?.content ?? '';
-            if (chunk) {
-              draft += chunk;
-              setAssistantDraft(draft);
-            }
-            return;
-          }
+          toolCallId: data.id,
+          content: result.content,
+          error: result.error,
+        });
+        await refreshFiles();
+      }
+    },
+    [push, refreshFiles, threadId],
+  );
 
-          if (event.event === 'tool_start' || event.event === 'on_tool_start') {
-            if (draft) {
-              push({
-                id: nanoid(),
-                kind: 'assistant',
-                title: 'Update',
-                body: draft,
-                status: 'done',
-              });
-              draft = '';
-              setAssistantDraft('');
-            }
-            const data = event.data as { name?: string; input?: unknown };
-            push({
-              id: nanoid(),
-              kind: 'tool',
-              title: String(data.name ?? 'tool'),
-              body: JSON.stringify(data.input ?? {}, null, 2),
-              status: 'running',
-            });
-            return;
-          }
+  const runGoal = useCallback(
+    async (mode: 'stream' | 'background') => {
+      const text = goal.trim();
+      if (!text || streaming) return;
 
-          if (event.event === 'tool_end' || event.event === 'on_tool_end') {
-            const data = event.data as { name?: string; output?: unknown };
-            const name = String(data.name ?? 'tool');
-            const output =
-              typeof data.output === 'string' ? data.output : JSON.stringify(data.output ?? '');
-            setTimeline((cur) => {
-              const next = [...cur];
-              for (let i = next.length - 1; i >= 0; i--) {
-                const item = next[i];
-                if (item && item.kind === 'tool' && item.title === name && item.status === 'running') {
-                  next[i] = {
-                    ...item,
-                    body: output.slice(0, 4000),
-                    status: output.startsWith('[approval') || output.startsWith('[error')
-                      ? 'error'
-                      : 'done',
-                  };
-                  break;
-                }
-              }
-              return next;
-            });
-            refreshFiles();
-            return;
-          }
+      setStreaming(true);
+      setBackground(mode === 'background');
+      setGoal('');
+      setAssistantDraft('');
+      push({ id: nanoid(), kind: 'user', title: 'Goal', body: text, status: 'done' });
 
-          if (event.event === 'approval_required') {
-            const data = event.data as {
-              approval_id: string;
-              tool_name: string;
-              args?: Record<string, unknown>;
-              rule_id?: string;
-            };
-            setPending({
-              approvalId: data.approval_id,
-              toolName: data.tool_name,
-              args: data.args ?? {},
-              ruleId: data.rule_id,
-            });
-            push({
-              id: nanoid(),
-              kind: 'approval',
-              title: `Approval · ${data.tool_name}`,
-              body: JSON.stringify(data.args ?? {}, null, 2),
-              status: 'pending',
-            });
-            return;
-          }
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      const draftRef = { current: '' };
 
-          if (event.event === 'tool_request') {
-            const data = event.data as {
-              id: string;
-              name: string;
-              args?: Record<string, unknown>;
-            };
-            push({
-              id: nanoid(),
-              kind: 'tool',
-              title: `client · ${data.name}`,
-              body: JSON.stringify(data.args ?? {}, null, 2),
-              status: 'running',
-            });
-            const result = await executeClientTool({
-              id: data.id,
-              name: data.name,
-              args: data.args ?? {},
-            });
-            await postToolResult({
-              threadId,
-              toolCallId: data.id,
-              content: result.content,
-              error: result.error,
-            });
-            refreshFiles();
-            return;
-          }
-
-          if (event.event === 'done' && draft) {
+      try {
+        if (mode === 'background') {
+          push({
+            id: nanoid(),
+            kind: 'system',
+            title: 'Background run',
+            body: 'Queued durable job…',
+            status: 'running',
+          });
+          const started = await startChat({
+            manifest: MANIFEST,
+            messages: [{ role: 'user', content: text }],
+            threadId,
+            signal: ctrl.signal,
+          });
+          if (started.kind === 'done') {
             push({
               id: nanoid(),
               kind: 'assistant',
               title: 'Result',
-              body: draft,
+              body: started.final.content,
               status: 'done',
             });
-            draft = '';
-            setAssistantDraft('');
+            return;
           }
-        },
-      );
-    } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        toast.error(err instanceof Error ? err.message : String(err));
-        push({
-          id: nanoid(),
-          kind: 'system',
-          title: 'Error',
-          body: err instanceof Error ? err.message : String(err),
-          status: 'error',
-        });
+          push({
+            id: nanoid(),
+            kind: 'system',
+            title: 'Polling',
+            body: `resume ${started.resumeToken.slice(0, 12)}…`,
+            status: 'running',
+          });
+          const run = await pollDurableRun(started.resumeToken, {
+            signal: ctrl.signal,
+            onTick: (r) => {
+              setAssistantDraft(`status: ${r.status || 'pending'}`);
+            },
+          });
+          setAssistantDraft('');
+          if (run.error) {
+            push({
+              id: nanoid(),
+              kind: 'system',
+              title: 'Failed',
+              body: run.error,
+              status: 'error',
+            });
+          } else {
+            const content =
+              typeof run.final === 'object' && run.final && 'content' in run.final
+                ? String(run.final.content || '')
+                : '';
+            push({
+              id: nanoid(),
+              kind: 'assistant',
+              title: 'Result',
+              body: content || `(${run.status || 'completed'})`,
+              status: 'done',
+            });
+          }
+          return;
+        }
+
+        await streamChat(
+          {
+            manifest: MANIFEST,
+            messages: [{ role: 'user', content: text }],
+            threadId,
+            signal: ctrl.signal,
+          },
+          async (event) => {
+            await handleStreamEvents(
+              event as { event: string; data: Record<string, unknown> },
+              draftRef,
+            );
+            if (event.event === 'done' && draftRef.current) {
+              push({
+                id: nanoid(),
+                kind: 'assistant',
+                title: 'Result',
+                body: draftRef.current,
+                status: 'done',
+              });
+              draftRef.current = '';
+              setAssistantDraft('');
+            }
+          },
+        );
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          toast.error(err instanceof Error ? err.message : String(err));
+          push({
+            id: nanoid(),
+            kind: 'system',
+            title: 'Error',
+            body: err instanceof Error ? err.message : String(err),
+            status: 'error',
+          });
+        }
+      } finally {
+        setStreaming(false);
+        setBackground(false);
+        abortRef.current = null;
+        if (draftRef.current) {
+          push({
+            id: nanoid(),
+            kind: 'assistant',
+            title: 'Result',
+            body: draftRef.current,
+            status: 'done',
+          });
+          setAssistantDraft('');
+        }
       }
-    } finally {
-      setStreaming(false);
-      abortRef.current = null;
-      if (draft) {
-        push({
-          id: nanoid(),
-          kind: 'assistant',
-          title: 'Result',
-          body: draft,
-          status: 'done',
-        });
-        setAssistantDraft('');
-      }
-    }
-  }, [goal, streaming, threadId, push, refreshFiles]);
+    },
+    [goal, streaming, threadId, push, handleStreamEvents],
+  );
 
   const onDecide = useCallback(
     async (status: 'approved' | 'denied') => {
-      if (!pending) return;
+      if (!pending || deciding) return;
+      setDeciding(true);
       try {
         await decideApproval(pending.approvalId, { status });
         setTimeline((cur) =>
           cur.map((item) =>
-            item.kind === 'approval' && item.status === 'pending'
+            item.kind === 'approval' &&
+            item.status === 'pending' &&
+            item.title.includes(pending.toolName)
               ? { ...item, status: status === 'approved' ? 'done' : 'denied' }
               : item,
           ),
         );
-        setPending(null);
+        setPendingQueue((q) => q.slice(1));
+        toast.message(status === 'approved' ? 'Approved — run continues' : 'Denied');
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
+      } finally {
+        setDeciding(false);
       }
     },
-    [pending],
+    [pending, deciding],
   );
 
   const filePreview = useMemo(() => files.slice(0, 80), [files]);
@@ -280,12 +429,50 @@ export default function App() {
         </div>
       </header>
 
+      {pending ? (
+        <div className="rounded-lg border border-primary/40 bg-accent/50 p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Approval required{pendingQueue.length > 1 ? ` · ${pendingQueue.length} queued` : ''}
+              </p>
+              <h2 className="mt-1 text-base font-semibold">{pending.toolName}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {summarizeArgs(pending.toolName, pending.args)}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={deciding}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                onClick={() => void onDecide('approved')}
+              >
+                {deciding ? '…' : 'Approve'}
+              </button>
+              <button
+                type="button"
+                disabled={deciding}
+                className="rounded-md border border-border bg-background px-4 py-2 text-sm disabled:opacity-50"
+                onClick={() => void onDecide('denied')}
+              >
+                Deny
+              </button>
+            </div>
+          </div>
+          <pre className="mt-3 max-h-32 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-xs">
+            {JSON.stringify(pending.args, null, 2)}
+          </pre>
+        </div>
+      ) : null}
+
       <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[1.4fr_0.9fr]">
         <section className="flex min-h-0 flex-col rounded-lg border border-border bg-card shadow-sm">
           <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
             {timeline.length === 0 && !assistantDraft ? (
               <div className="rounded-md border border-dashed border-border p-6 text-sm text-muted-foreground">
                 Try: create notes/todo.md with three tasks, then open it.
+                {canMount ? ' Mount a real folder to write outside the tab VFS.' : ''}
               </div>
             ) : null}
             {timeline.map((item) => (
@@ -294,7 +481,7 @@ export default function App() {
                 className={cn(
                   'rounded-md border border-border px-3 py-2',
                   item.kind === 'user' && 'bg-accent/40',
-                  item.status === 'pending' && 'border-primary/40',
+                  item.kind === 'approval' && item.status === 'pending' && 'border-primary/50',
                   item.status === 'error' && 'border-destructive/40',
                   item.status === 'denied' && 'opacity-70',
                 )}
@@ -316,42 +503,19 @@ export default function App() {
             ))}
             {assistantDraft ? (
               <article className="rounded-md border border-border px-3 py-2">
-                <h2 className="text-sm font-medium">Working…</h2>
+                <h2 className="text-sm font-medium">
+                  {background ? 'Background…' : 'Working…'}
+                </h2>
                 <pre className="mt-2 whitespace-pre-wrap break-words text-sm">{assistantDraft}</pre>
               </article>
             ) : null}
           </div>
 
-          {pending ? (
-            <div className="border-t border-border bg-accent/30 p-4">
-              <p className="text-sm font-medium">Approve `{pending.toolName}`?</p>
-              <pre className="mt-2 max-h-28 overflow-auto rounded bg-background p-2 font-mono text-xs">
-                {JSON.stringify(pending.args, null, 2)}
-              </pre>
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground"
-                  onClick={() => void onDecide('approved')}
-                >
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md border border-border px-3 py-1.5 text-sm"
-                  onClick={() => void onDecide('denied')}
-                >
-                  Deny
-                </button>
-              </div>
-            </div>
-          ) : null}
-
           <form
             className="border-t border-border p-3"
             onSubmit={(e) => {
               e.preventDefault();
-              void runGoal();
+              void runGoal('stream');
             }}
           >
             <textarea
@@ -363,11 +527,11 @@ export default function App() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  void runGoal();
+                  void runGoal('stream');
                 }
               }}
             />
-            <div className="mt-2 flex justify-end gap-2">
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
               {streaming ? (
                 <button
                   type="button"
@@ -378,11 +542,19 @@ export default function App() {
                 </button>
               ) : null}
               <button
+                type="button"
+                className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                disabled={streaming || !goal.trim()}
+                onClick={() => void runGoal('background')}
+              >
+                Background
+              </button>
+              <button
                 type="submit"
                 className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
                 disabled={streaming || !goal.trim()}
               >
-                {streaming ? 'Running…' : 'Run'}
+                {streaming && !background ? 'Running…' : 'Run'}
               </button>
             </div>
           </form>
@@ -390,26 +562,49 @@ export default function App() {
 
         <aside className="flex min-h-0 flex-col rounded-lg border border-border bg-card p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Local VFS</h2>
-            <div className="flex gap-2">
+            <h2 className="text-sm font-semibold">{mountLabel ? 'Mounted folder' : 'Local VFS'}</h2>
+            <div className="flex flex-wrap justify-end gap-2">
+              {canMount ? (
+                mountLabel ? (
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={onUnmount}
+                  >
+                    Unmount
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => void onMount()}
+                  >
+                    Mount folder
+                  </button>
+                )
+              ) : null}
               <button
                 type="button"
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={refreshFiles}
+                onClick={() => void refreshFiles()}
               >
                 Refresh
               </button>
-              <button
-                type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={clearVfs}
-              >
-                Clear
-              </button>
+              {!mountLabel ? (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={clearVfs}
+                >
+                  Clear
+                </button>
+              ) : null}
             </div>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            `local_shell` and `local_open` run against this tab. Closing the tab ends the session.
+            {mountLabel
+              ? `Using ${mountLabel} via File System Access. Client tools write here.`
+              : '`local_shell` / `local_open` use the tab VFS unless you mount a folder.'}
           </p>
           <pre className="mt-3 min-h-0 flex-1 overflow-auto rounded-md border border-border bg-background p-3 font-mono text-xs">
             {filePreview.length ? filePreview.join('\n') : '(empty)'}

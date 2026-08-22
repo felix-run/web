@@ -53,8 +53,8 @@ const MANIFEST_KEY = 'felix.manifest';
 const HISTORY_KEY = 'felix.historyOpen';
 const INSPECTOR_KEY = 'felix.inspectorOpen';
 const VERBOSE_KEY = 'felix.verbose';
-/** Bundled Python harness default — not the old Workers `chat-ui-demo`. */
-const DEFAULT_MANIFEST = 'quick';
+/** Bundled workspace agent — same path as float. */
+const DEFAULT_MANIFEST = 'cowork';
 
 function readBool(key: string, fallback: boolean): boolean {
   const raw = localStorage.getItem(key);

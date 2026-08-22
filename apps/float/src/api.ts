@@ -100,3 +100,78 @@ export async function decideApproval(
     throw new Error(`decide: ${res.status} ${detail.slice(0, 200)}`);
   }
 }
+
+export interface DurableRun {
+  status?: string;
+  resume_token?: string;
+  fiber_id?: string;
+  final?: ChatMessage | { role?: string; content?: string };
+  error?: string;
+}
+
+/** POST /chat — when the manifest is durable, returns 202 + resume_token. */
+export async function startChat(args: {
+  manifest: string;
+  messages: ChatMessage[];
+  threadId: string;
+  signal?: AbortSignal;
+}): Promise<{ kind: 'done'; final: ChatMessage } | { kind: 'durable'; resumeToken: string }> {
+  const res = await apiFetch('/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      manifest: args.manifest,
+      messages: args.messages,
+      thread_id: args.threadId,
+    }),
+    signal: args.signal,
+  });
+
+  if (res.status === 202) {
+    const body = (await res.json()) as { resume_token?: string };
+    if (!body.resume_token) throw new Error('durable chat missing resume_token');
+    return { kind: 'durable', resumeToken: body.resume_token };
+  }
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`chat: ${res.status} ${detail.slice(0, 200)}`);
+  }
+
+  const body = (await res.json()) as { final?: ChatMessage };
+  return {
+    kind: 'done',
+    final: body.final ?? { role: 'assistant', content: '' },
+  };
+}
+
+export async function getDurableRun(resumeToken: string): Promise<DurableRun> {
+  const res = await apiFetch(`/api/chat/runs/${encodeURIComponent(resumeToken)}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`chat/runs: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as DurableRun;
+}
+
+export async function pollDurableRun(
+  resumeToken: string,
+  opts: {
+    signal?: AbortSignal;
+    intervalMs?: number;
+    onTick?: (run: DurableRun) => void;
+  } = {},
+): Promise<DurableRun> {
+  const interval = opts.intervalMs ?? 1500;
+  while (true) {
+    if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const run = await getDurableRun(resumeToken);
+    opts.onTick?.(run);
+    const status = (run.status || '').toLowerCase();
+    if (status === 'completed' || status === 'succeeded' || status === 'failed' || status === 'error') {
+      return run;
+    }
+    if (run.error) return run;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+}

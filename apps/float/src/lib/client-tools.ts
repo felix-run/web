@@ -1,3 +1,15 @@
+import {
+  clearMount,
+  getMountLabel,
+  hasMount,
+  mountList,
+  mountMkdir,
+  mountRead,
+  mountTree,
+  mountWrite,
+  pickDirectory,
+  supportsDirectoryPicker,
+} from './fs-mount';
 import { vfs } from './vfs';
 
 export interface ClientToolRequest {
@@ -10,29 +22,33 @@ function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
-/** Tiny shell against the in-tab VFS — not a host OS shell. */
-function runLocalShell(command: string, cwd = ''): string {
+function joinPath(cwd: string, p: string): string {
+  if (!cwd || p.startsWith('/')) return p.replace(/^\//, '');
+  return `${cwd.replace(/\/$/, '')}/${p}`.replace(/^\.\//, '');
+}
+
+async function runLocalShell(command: string, cwd = ''): Promise<string> {
   const trimmed = command.trim();
   if (!trimmed) return '';
 
   const [bin, ...rest] = trimmed.split(/\s+/);
   const arg = rest.join(' ').replace(/^['"]|['"]$/g, '');
-  const join = (p: string) => {
-    if (!cwd || p.startsWith('/')) return p.replace(/^\//, '');
-    return `${cwd.replace(/\/$/, '')}/${p}`.replace(/^\.\//, '');
-  };
+  const join = (p: string) => joinPath(cwd, p);
+  const mounted = hasMount();
 
   switch (bin) {
     case 'pwd':
-      return cwd || '/';
+      return cwd || (mounted ? `/${getMountLabel()}` : '/');
     case 'ls': {
       const target = join(arg || '.');
-      const entries = vfs.list(target === '' ? '.' : target);
+      const entries = mounted
+        ? await mountList(target === '' ? '.' : target)
+        : vfs.list(target === '' ? '.' : target);
       return entries.map((e) => `${e.type === 'dir' ? 'd' : '-'} ${e.path}`).join('\n') || '(empty)';
     }
     case 'cat': {
       if (!arg) return 'usage: cat <path>';
-      return vfs.read(join(arg));
+      return mounted ? await mountRead(join(arg)) : vfs.read(join(arg));
     }
     case 'echo': {
       if (rest.includes('>')) {
@@ -40,27 +56,32 @@ function runLocalShell(command: string, cwd = ''): string {
         const text = rest.slice(0, idx).join(' ');
         const path = rest.slice(idx + 1).join(' ');
         if (!path) return 'usage: echo text > path';
-        vfs.write(join(path), `${text}\n`);
+        if (mounted) await mountWrite(join(path), `${text}\n`);
+        else vfs.write(join(path), `${text}\n`);
         return '';
       }
       return rest.join(' ');
     }
     case 'mkdir': {
       if (!arg) return 'usage: mkdir <path>';
-      vfs.mkdir(join(arg));
+      if (mounted) await mountMkdir(join(arg));
+      else vfs.mkdir(join(arg));
       return '';
     }
     case 'touch': {
       if (!arg) return 'usage: touch <path>';
+      const path = join(arg);
       try {
-        vfs.read(join(arg));
+        if (mounted) await mountRead(path);
+        else vfs.read(path);
       } catch {
-        vfs.write(join(arg), '');
+        if (mounted) await mountWrite(path, '');
+        else vfs.write(path, '');
       }
       return '';
     }
     case 'tree':
-      return vfs.tree().join('\n') || '(empty)';
+      return (mounted ? await mountTree() : vfs.tree()).join('\n') || '(empty)';
     case 'help':
       return 'commands: pwd ls cat echo mkdir touch tree help';
     default:
@@ -68,12 +89,14 @@ function runLocalShell(command: string, cwd = ''): string {
   }
 }
 
-export async function executeClientTool(req: ClientToolRequest): Promise<{ content: string; error?: boolean }> {
+export async function executeClientTool(
+  req: ClientToolRequest,
+): Promise<{ content: string; error?: boolean }> {
   try {
     if (req.name === 'local_shell') {
       const command = asString(req.args.command);
       const cwd = asString(req.args.cwd);
-      const content = runLocalShell(command, cwd);
+      const content = await runLocalShell(command, cwd);
       return { content: content || '(ok)' };
     }
     if (req.name === 'local_open') {
@@ -84,14 +107,24 @@ export async function executeClientTool(req: ClientToolRequest): Promise<{ conte
         return { content: JSON.stringify({ opened: target, kind: 'url' }) };
       }
       try {
-        const text = vfs.read(target.replace(/^\//, ''));
+        const text = hasMount()
+          ? await mountRead(target.replace(/^\//, ''))
+          : vfs.read(target.replace(/^\//, ''));
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         window.open(url, '_blank', 'noopener,noreferrer');
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        return { content: JSON.stringify({ opened: target, kind: 'vfs' }) };
+        return {
+          content: JSON.stringify({
+            opened: target,
+            kind: hasMount() ? 'mount' : 'vfs',
+          }),
+        };
       } catch (err) {
-        return { content: `error: ${err instanceof Error ? err.message : String(err)}`, error: true };
+        return {
+          content: `error: ${err instanceof Error ? err.message : String(err)}`,
+          error: true,
+        };
       }
     }
     return {
@@ -102,3 +135,12 @@ export async function executeClientTool(req: ClientToolRequest): Promise<{ conte
     return { content: `error: ${err instanceof Error ? err.message : String(err)}`, error: true };
   }
 }
+
+export {
+  clearMount,
+  getMountLabel,
+  hasMount,
+  mountTree,
+  pickDirectory,
+  supportsDirectoryPicker,
+};

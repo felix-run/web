@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/gate.tsx","./src/lib/auth.ts","./src/lib/client-tools.ts","./src/lib/utils.ts","./src/lib/vfs.ts","./worker/index.ts"],"version":"6.0.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/gate.tsx","./src/lib/auth.ts","./src/lib/client-tools.ts","./src/lib/fs-mount.ts","./src/lib/utils.ts","./src/lib/vfs.ts","./worker/index.ts"],"version":"6.0.3"}
