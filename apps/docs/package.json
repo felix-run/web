@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@felix/design": "workspace:*",
-    "wrangler": "^4.90.1"
+    "wrangler": "catalog:"
   },
   "engines": {
     "node": ">=20"
