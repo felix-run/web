@@ -4,7 +4,8 @@ dist
 .wrangler
 .astro
 *.tsbuildinfo
-src/content/docs
+apps/docs/src/content/docs
+apps/docs/src/styles/theme.css
 .env
 .env.*
 !.env.example
