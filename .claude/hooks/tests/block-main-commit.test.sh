@@ -12,23 +12,28 @@
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 HOOK="$here/../block-main-commit.sh"
-repo=$(cd "$here/../../.." && pwd)
 
 [ -x "$HOOK" ] || { echo "not executable: $HOOK"; exit 1; }
 command -v jq >/dev/null || { echo "jq required"; exit 1; }
 
-# A scratch repo whose current branch IS the protected one, for the
-# branch-dependent rules.
-scratch=$(mktemp -d)
-trap 'rm -rf "$scratch"' EXIT
-git init -q -b main "$scratch"
-git -C "$scratch" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+# Two scratch repos, one on each kind of branch. The suite must never read the
+# branch of the repo it lives in: several rules are branch-dependent, so using
+# the real checkout made the result depend on what the developer happened to
+# have checked out — it passed on a feature branch and failed on main.
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkrepo() { # mkrepo <dir> <branch>
+  git init -q -b "$2" "$1"
+  git -C "$1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+}
+mkrepo "$tmp/protected" main
+mkrepo "$tmp/feature" feat/example
 
 pass=0; fail=0
 
 t() { # t <deny|allow> <main|feature> <label> <command>
   local expect="$1" ctx="$2" label="$3" c="$4" dir out got
-  [ "$ctx" = main ] && dir="$scratch" || dir="$repo"
+  [ "$ctx" = main ] && dir="$tmp/protected" || dir="$tmp/feature"
   out=$(jq -cn --arg c "$c" '{tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$dir" bash "$HOOK")
   [ -n "$out" ] && got=deny || got=allow
   if [ "$got" = "$expect" ]; then
