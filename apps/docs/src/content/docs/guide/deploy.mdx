@@ -1,8 +1,11 @@
 ---
+title: "Deploy"
 description: "Deploy self-hosted Felix with Compose or Helm — Postgres, Valkey, object store, auth."
+sidebar:
+  order: 6
 ---
 
-# Deploy
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 Felix runs as containers you operate. There is **no Cloudflare Workers runtime** in the
 harness. Cloudflare (or any CDN) may sit in front for DNS/TLS/WAF only.
@@ -62,6 +65,6 @@ Frontends live in [felix-run/web](https://github.com/felix-run/web). Deploy chat
 
 ## Where to next
 
-- [Getting Started](getting-started.md) — local smoke
-- [REST API](rest-api.md) — surfaces
+- [Getting Started](/guide/getting-started/) — local smoke
+- [REST API](/guide/rest-api/) — surfaces
 - Root [README](https://github.com/felix-run/felix#readme) — lean extras / warehouse

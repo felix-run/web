@@ -1,14 +1,17 @@
 ---
+title: "Model Client"
 description: "AI Gateway routing for Anthropic, OpenAI, and Workers AI — streaming, fallback chains, confidence escalation, prompt caching, and thinking mode."
+sidebar:
+  order: 4
 ---
 
-# Model Client
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 How Felix talks to LLM providers. Source: `src/patterns/model.ts`.
 
 ## Open provider registry
 
-Providers are looked up through a registry, not a hardcoded switch — the open registry is one of the three managed-agents seams (see [docs/README.md](../README.md)). Each provider implements `ModelClient` and registers itself at module load:
+Providers are looked up through a registry, not a hardcoded switch — the open registry is one of the three managed-agents seams (see [docs/README.md](/)). Each provider implements `ModelClient` and registers itself at module load:
 
 ```ts
 // src/patterns/model.ts (bottom)
@@ -17,7 +20,7 @@ registerModelProvider('openai',     (env, modelId, route, spec) => new OpenAIGat
 registerModelProvider('workers-ai', (env, modelId, route, spec) => new WorkersAiClient(env, modelId, route, spec));
 ```
 
-`buildModel(env, spec)` resolves the logical id through `MODEL_ROUTES`, then calls `getModelProvider(route.provider)` ([src/patterns/model-registry.ts](../../src/patterns/model-registry.ts)) to look up the factory. Unknown provider names produce an explicit error listing the registered set. Adding a new provider — say, a Vertex AI gateway — is one `registerModelProvider('vertex', ...)` line in `apps/api/src/composition.ts` (or a sibling module imported before the first agent build); `MODEL_ROUTES` then dispatches `provider: 'vertex'` to it with no edits to `model.ts` or `builder.ts`.
+`buildModel(env, spec)` resolves the logical id through `MODEL_ROUTES`, then calls `getModelProvider(route.provider)` ([src/patterns/model-registry.ts](https://github.com/felix-run/web/blob/main/packages/src/patterns/model-registry.ts)) to look up the factory. Unknown provider names produce an explicit error listing the registered set. Adding a new provider — say, a Vertex AI gateway — is one `registerModelProvider('vertex', ...)` line in `apps/api/src/composition.ts` (or a sibling module imported before the first agent build); `MODEL_ROUTES` then dispatches `provider: 'vertex'` to it with no edits to `model.ts` or `builder.ts`.
 
 `ModelRoute.provider` is typed as `string` (not a literal union) so registry keys aren't constrained by the type system.
 
@@ -60,7 +63,7 @@ The fallback when `spec.model.id` is empty is `env.DEFAULT_MODEL_ID`.
 
 ## Anthropic via AI Gateway
 
-URL: `${AI_GATEWAY_BASE}/${AI_GATEWAY_SLUG}/anthropic/v1/messages`. The `count_tokens` companion lives at `…/anthropic/v1/messages/count_tokens` and is used by `checkPreflightTokenBudget` (see [governance.md](governance.md)).
+URL: `${AI_GATEWAY_BASE}/${AI_GATEWAY_SLUG}/anthropic/v1/messages`. The `count_tokens` companion lives at `…/anthropic/v1/messages/count_tokens` and is used by `checkPreflightTokenBudget` (see [governance.md](/internals/governance/)).
 
 Headers:
 - `x-api-key: ${env.ANTHROPIC_API_KEY}`

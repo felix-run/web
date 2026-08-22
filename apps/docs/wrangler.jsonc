@@ -1,5 +1,5 @@
 // Static-assets Worker for the Felix docs site. No runtime code — Astro's
-// dist/ is served directly. Unlike packages/harness, this config holds no
+// dist/ is served directly. Unlike the Python harness deploy, this config holds no
 // account or resource ids, so it is tracked in git.
 {
   "$schema": "node_modules/wrangler/config-schema.json",

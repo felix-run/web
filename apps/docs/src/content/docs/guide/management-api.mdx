@@ -1,8 +1,11 @@
 ---
+title: "Management API"
 description: "Tenant-scoped management endpoints — audit, plans, jobs, approvals, manifests, eval — with scope requirements and curl examples."
+sidebar:
+  order: 5
 ---
 
-# Management API
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 Tenant-scoped management endpoints for the audit log (`/audit` + `/audit/metrics`), plan store, scheduled jobs, human-in-the-loop approvals queue, tenant-managed manifests (`/manifests`), and golden-dataset evals (`/eval`). Authorization is two-layer:
 
@@ -23,7 +26,7 @@ Tenant-scoped management endpoints for the audit log (`/audit` + `/audit/metrics
 | `/b2b` (accounts, quotes, billing) | tenant-scoped | `b2b:write` |
 | `/entities` | tenant-scoped | `entities:write` |
 
-All routes return JSON. Rate limited at 100 req/60s per tenant. The commerce management surfaces (`/brands`, `/b2b`, `/entities`, `/geo`, consent/attribution) are covered in [the commerce docs](../../../commerce/docs/index.md).
+All routes return JSON. Rate limited at 100 req/60s per tenant. The commerce management surfaces (`/brands`, `/b2b`, `/entities`, `/geo`, consent/attribution) are covered in [the commerce docs](https://github.com/felix-run/web/blob/main/commerce/docs/index.md).
 
 :::note[Dev gate]
 In `ENVIRONMENT=development` without JWT verifiers configured, scope gates fall open so local probes work without minting tokens. In staging and production the gate is strict — anonymous callers get `401`; authenticated callers missing the scope get `403 {"error":"forbidden","missing_scopes":[...]}`.
@@ -299,7 +302,7 @@ curl -s -X POST -H "Authorization: Bearer $JWT" \
   -d '{"name":"nightly","schedule":"0 9 * * 1-5","manifest_id":"research","enabled":true,"payload":{"input":"Daily roundup."}}' | jq
 ```
 
-The server computes `next_run_at` from the schedule and persists the row. `schedule: ""` makes the job on-demand only (it will never be returned by the cron sweep). Schedules use the standard 5-field cron syntax — see [deploy.md](deploy.md) for the supported syntax.
+The server computes `next_run_at` from the schedule and persists the row. `schedule: ""` makes the job on-demand only (it will never be returned by the cron sweep). Schedules use the standard 5-field cron syntax — see [deploy.md](/guide/deploy/) for the supported syntax.
 
 **What makes a job actually run.** Three things together: `enabled: true`, a non-empty `manifest_id`, and a `payload.input` string, which is the prompt sent to the manifest. Miss any one and the job is still swept and still records a run — it just doesn't execute, reported as `skipped` (or `scheduled` for the cron path). Rows that predate execution support are `enabled: false`, so upgrading the runtime cannot start spending model tokens on jobs created when the sweep was bookkeeping-only. On this endpoint an explicit `enabled` wins; **omitting it preserves an existing job's setting**, and a brand-new job defaults to enabled. That three-way rule exists because the endpoint is a full upsert: defaulting to `false` would make a freshly-created job silently never run, and defaulting to `true` would silently re-enable a job you had turned off when you re-POST to tweak its schedule.
 
@@ -309,7 +312,7 @@ Each firing gets its **own thread** (`<tenant>:job-<name>-<slot>`) rather than a
 
 Trigger a job now. If the job is configured to execute (see above) the agent runs **inline** and the response reports the outcome; otherwise the trigger is recorded without executing.
 
-A manual run is **attended** — it happens inside your request, with you waiting on it — so approval-gated tools behave exactly as they do in a chat turn. The cron sweep is unattended and fails those closed instead (see [governance](../internals/governance.md#approvals)). That difference is deliberate: it lets an operator manually drive a job whose tools need a human, without that authorization silently carrying over to the unsupervised schedule.
+A manual run is **attended** — it happens inside your request, with you waiting on it — so approval-gated tools behave exactly as they do in a chat turn. The cron sweep is unattended and fails those closed instead (see [governance](/internals/governance/#approvals)). That difference is deliberate: it lets an operator manually drive a job whose tools need a human, without that authorization silently carrying over to the unsupervised schedule.
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $JWT" \

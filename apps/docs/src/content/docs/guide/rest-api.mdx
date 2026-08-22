@@ -1,14 +1,17 @@
 ---
+title: "REST API"
 description: "All Felix public HTTP endpoints — /chat, /v1, /a2a, /mcp, /health, /.well-known — with curl examples, auth notes, and streaming."
+sidebar:
+  order: 4
 ---
 
-# REST API
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 The public HTTP surface. Every route runs through `authMiddleware` (verifies JWT, populates `RequestContext`) and `rateLimitMiddleware` (per-tenant sliding window of 100 req/60s). `/health`, `/.well-known/*`, `/docs`, `/openapi.json` are exempt from rate limiting.
 
 A few mounts are **self-authenticating** — the middleware still runs, but JWT verification is skipped in favor of the mount's own scheme: `/acp/*` (constant-time `ACP_API_KEY` bearer), `/internal/*` and `/entities/:type/push` (`x-consumer-token` (per-dispatch capability) or `x-consumer-secret` shared secret), and the Stripe webhooks (`/commerce/stripe/webhook`, `/b2b/billing/webhook` — Stripe signature verification).
 
-For the management surfaces (audit, plans, jobs, approvals, manifests, eval), see [management-api.md](management-api.md). For the commerce surfaces (`/acp`, `/shop`, `/widget`, `/structured`, `/brands`, `/b2b`, `/entities`, `/geo`, consent/attribution), see [the commerce docs](../../../commerce/docs/index.md).
+For the management surfaces (audit, plans, jobs, approvals, manifests, eval), see [management-api.md](/guide/management-api/). For the commerce surfaces (`/acp`, `/shop`, `/widget`, `/structured`, `/brands`, `/b2b`, `/entities`, `/geo`, consent/attribution), see [the commerce docs](https://github.com/felix-run/web/blob/main/commerce/docs/index.md).
 
 ## Conventions
 
@@ -76,7 +79,7 @@ See `src/a2a/card.ts:13-50` for the exact shape.
 
 ## GET /openapi.json
 
-OpenAPI 3.1.0 specification covering the core routes — discovery (`/health`, `/.well-known/agent-card.json`), OpenAI-compatible chat (`/v1/*`), Felix-native chat with SSE (`/chat/*`), JSON-RPC protocols (`/a2a`, `/mcp`), tenant manifest CRUD (`/manifests/*`), eval datasets and runs (`/eval/*`), and management (`/audit`, `/audit/metrics`, `/approvals`, `/plans`, `/jobs`). The commerce routers (`/acp`, `/shop`, `/widget`, `/structured`, `/brands`, `/b2b`, `/entities`, `/geo`, consent) are plain Hono routers and do **not** appear in the spec — see [the commerce docs](../../../commerce/docs/index.md) for those. Treat the spec as authoritative for the routes it covers; the prose below is for orientation.
+OpenAPI 3.1.0 specification covering the core routes — discovery (`/health`, `/.well-known/agent-card.json`), OpenAI-compatible chat (`/v1/*`), Felix-native chat with SSE (`/chat/*`), JSON-RPC protocols (`/a2a`, `/mcp`), tenant manifest CRUD (`/manifests/*`), eval datasets and runs (`/eval/*`), and management (`/audit`, `/audit/metrics`, `/approvals`, `/plans`, `/jobs`). The commerce routers (`/acp`, `/shop`, `/widget`, `/structured`, `/brands`, `/b2b`, `/entities`, `/geo`, consent) are plain Hono routers and do **not** appear in the spec — see [the commerce docs](https://github.com/felix-run/web/blob/main/commerce/docs/index.md) for those. Treat the spec as authoritative for the routes it covers; the prose below is for orientation.
 
 ```bash
 curl -s $BASE_URL/openapi.json | jq '.paths | keys'

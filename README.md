@@ -11,11 +11,10 @@ in `packages/ui` (`@felix/ui`).
 | Path | Role |
 |------|------|
 | `apps/chat-ui` | Streaming chat + inspector (Vite → CF Workers) |
-| `apps/docs` | Starlight docs → CF Workers |
+| `apps/docs` | Starlight docs site (`@felix/docs`) → CF Workers |
 | `packages/ui` | Shared [shadcn/ui](https://ui.shadcn.com/) components |
 | `packages/design` | Design tokens for docs / chrome |
 | `packages/typescript-config` | Shared `tsconfig` bases |
-| `packages/harness/docs` | Markdown source synced into Starlight |
 
 ## Commands
 

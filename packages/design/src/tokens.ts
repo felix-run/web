@@ -1,16 +1,12 @@
 /**
  * Felix design tokens — the single source of truth for the neutral
  * monochrome palette (Tailwind's `neutral` scale) shared across the
- * workspace: the Scalar API reference (`packages/harness/src/app.ts` builds
- * its CSS via `scalarThemeCss()`), the Starlight prose site
- * (`packages/docs/scripts/sync-content.ts` writes `starlightThemeCss()`
- * to the site's custom stylesheet at build time), and the commerce
- * storefront widget's neutral chrome (`packages/commerce/src/storefront/`
- * — brand accents stay per-brand; only the grays are shared).
+ * workspace. The Starlight docs site checks in `apps/docs/src/styles/theme.css`
+ * generated via `starlightThemeCss()`.
  *
- * Pure constants + string builders — no imports, safe for the Worker
- * bundle and for node scripts alike. Change a hex here and every surface
- * moves together.
+ * Pure constants + string builders — no imports, safe for Workers and
+ * Node alike. Change a hex here and regenerate theme.css so surfaces move
+ * together.
  */
 
 /** Tailwind `neutral` scale — the only colors the docs surfaces use. */

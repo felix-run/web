@@ -1,8 +1,11 @@
 ---
+title: "Manifest Pipeline"
 description: "The buildAgent compile step — validation, tool binding, governance wrapping, pattern dispatch, and durable execution wrapping."
+sidebar:
+  order: 2
 ---
 
-# Manifest Pipeline
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 How `buildAgent(manifest, deps)` turns a parsed manifest into a runnable `Agent`. Source: `src/manifests/builder.ts`.
 
@@ -48,7 +51,7 @@ Empty parts are filtered out. The result is the **base prompt**; skills will app
 
 Two parts:
 
-- The `SessionStore` and `SessionStrategy` are resolved at step 9 (just before pattern dispatch) via `getSessionStore(env, memory.checkpointer)` and `getSessionStrategy(spec.session.strategy)`. Checkpointer aliases `agentcore` / `sqlite` map to `do`; `none` returns a no-op store. Strategy spec accepts `full_replay` (default), `windowed:N`, `summarizing:N`, `semantic:N` — see [internals/patterns.md](patterns.md) and [persistence.md](persistence.md).
+- The `SessionStore` and `SessionStrategy` are resolved at step 9 (just before pattern dispatch) via `getSessionStore(env, memory.checkpointer)` and `getSessionStrategy(spec.session.strategy)`. Checkpointer aliases `agentcore` / `sqlite` map to `do`; `none` returns a no-op store. Strategy spec accepts `full_replay` (default), `windowed:N`, `summarizing:N`, `semantic:N` — see [internals/patterns.md](/internals/patterns/) and [persistence.md](/internals/persistence/).
 - The long-term `memory.store` is checked here to know whether to auto-inject memory tools later. `vectorize` (default) and `agentcore` (alias) both opt in.
 
 ### 4. Compose skills
@@ -190,7 +193,7 @@ Each wrapper replaces `tool.executor` with a new `ToolExecutor` built via `wrapE
 
 `mergeWithManifest` (`src/policy/bundle.ts`) unions the manifest's policies with the active (Ed25519-verified) `PolicyBundle`'s. Bundle entries win on `id` collision. Bundle-side approvals have a permissive shape today, so manifest approvals are merged in but bundle approvals are not cross-merged.
 
-Wrapper order matters — see [governance.md](governance.md) for the runtime stack semantics. From the model's perspective the wrappers compose outermost-first: a tool call passes through Approvals → LLM Judge → Guardrails → Limits → Policies → inner tool.
+Wrapper order matters — see [governance.md](/internals/governance/) for the runtime stack semantics. From the model's perspective the wrappers compose outermost-first: a tool call passes through Approvals → LLM Judge → Guardrails → Limits → Policies → inner tool.
 
 ### 9. Pattern dispatch through the open registry
 

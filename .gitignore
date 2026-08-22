@@ -17,9 +17,7 @@ wrangler.jsonc
 !apps/docs/wrangler.jsonc
 !apps/chat-ui/wrangler.jsonc
 
-# Generated docs-site content (synced from packages/harness/docs + design tokens)
-apps/docs/src/content/docs/
-apps/docs/src/styles/theme.css
+# Astro / Starlight build cache
 apps/docs/.astro/
 
 # Claude Code local audit trail (subagent-log hook)

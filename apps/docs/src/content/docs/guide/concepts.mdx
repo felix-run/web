@@ -1,24 +1,27 @@
 ---
+title: "Concepts"
 description: "The mental model behind Felix — manifests, tenants, threads, patterns, tools, memory, and auth."
+sidebar:
+  order: 2
 ---
 
-# Concepts
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 The mental model behind Felix. Read this before writing a manifest or integrating a client.
 
-Felix is a **managed agents harness** in the shape Anthropic describes in [Managed Agents](https://www.anthropic.com/engineering/managed-agents): the runtime owns plumbing (auth, audit, limits, persistence, HTTP surface) and the agent itself is composed from three decoupled abstractions — **Session**, **Pattern / Provider registries**, and **ToolExecutor**. Each can be swapped without touching the others. Most of this page is about what the harness exposes to manifest authors; the deep cuts live in the [architecture internals](../internals/architecture.md).
+Felix is a **managed agents harness** in the shape Anthropic describes in [Managed Agents](https://www.anthropic.com/engineering/managed-agents): the runtime owns plumbing (auth, audit, limits, persistence, HTTP surface) and the agent itself is composed from three decoupled abstractions — **Session**, **Pattern / Provider registries**, and **ToolExecutor**. Each can be swapped without touching the others. Most of this page is about what the harness exposes to manifest authors; the deep cuts live in the [architecture internals](/internals/architecture/).
 
 ## Manifest
 
 A YAML or JSON document with `apiVersion: orchestrator/v1` and `kind: Agent`. The schema is defined in `src/manifests/schema.ts` and uses Zod `.strict()`, so unknown keys are rejected outright. A manifest declares everything an agent needs: pattern, model, system prompt, tools, skills, MCP servers, A2A peers, memory backend, auth requirements, policies, limits, guardrails, approvals.
 
 :::tip
-See [manifest-reference.md](manifest-reference.md) for every field with defaults and examples, and [management-api.md](management-api.md) for the `/manifests` REST surface used to deploy manifests at runtime.
+See [manifest-reference.md](/guide/manifest-reference/) for every field with defaults and examples, and [management-api.md](/guide/management-api/) for the `/manifests` REST surface used to deploy manifests at runtime.
 :::
 
 Manifests can be loaded from four sources. The request-path resolver `resolveManifest(env, tenantId, name)` (`src/manifests/resolver.ts`) walks them in order and returns the first hit:
 
-1. **Tenant Postgres active version** — the `manifests` table + `manifest_active` pointer (`apps/api/migrations/0001_baseline.sql`). Tenants populate this through the `/manifests` REST surface; rows are append-only and rollback flips the pointer. (The resolver's internal `source` value stays `tenant_d1` — see [management-api.md](management-api.md).)
+1. **Tenant Postgres active version** — the `manifests` table + `manifest_active` pointer (`apps/api/migrations/0001_baseline.sql`). Tenants populate this through the `/manifests` REST surface; rows are append-only and rollback flips the pointer. (The resolver's internal `source` value stays `tenant_d1` — see [management-api.md](/guide/management-api/).)
 2. **Tenant R2 override** — `manifests/<tenant_id>/<name>.json` in the `BUNDLES` bucket. Useful for bulk pre-population via `wrangler r2 object put`; the management API does not write here.
 3. **Global R2 override** — `manifests/<name>.json` in `BUNDLES`. Affects every tenant.
 4. **Bundled** — `pnpm build:manifests` reads the repo-local `manifests/*.yaml`, validates each with the Zod schema, and emits `src/manifests/bundled.ts`.
@@ -69,7 +72,7 @@ Agents are cached per manifest name inside each router (one cached `Promise<Agen
 
 ## Pattern
 
-Patterns are the agent's loop shape. Felix's pattern registry is open: built-ins self-register at module load and new patterns can be added by `registerPattern(name, build, { kind })` (see [internals/manifest-pipeline.md](../internals/manifest-pipeline.md)). The seven built-ins declared via `spec.pattern`:
+Patterns are the agent's loop shape. Felix's pattern registry is open: built-ins self-register at module load and new patterns can be added by `registerPattern(name, build, { kind })` (see [internals/manifest-pipeline.md](/internals/manifest-pipeline/)). The seven built-ins declared via `spec.pattern`:
 
 - **react** (default) — sequential tool-calling loop bounded by `recursion_limit`
 - **deep** — react plus auto-injected planning tools (`plan_create`, `plan_update_step`, `plan_get`) and a planning suffix on the system prompt
@@ -103,22 +106,22 @@ Anything the model can call. A `Tool` has a `name`, `description`, Zod `args` sc
 
 **`ToolErrorCode` taxonomy.** Every failure across the 7 transports surfaces as one of a stable code set: `invalid_arguments` / `transport_unavailable` / `provider_error` / `timeout` / `user_aborted` / `rate_limited` / `permission_denied` / `internal`. The code lands on `audit_events.payload.error_code` and the `tool_result` text the model sees (`[<source> error/<code>] …`), so anomaly detection can group by `(manifest, tool, error_code)` and the model can branch deterministically.
 
-The `queue` transport is the async case: `execute()` enqueues the job and returns a stub. The model continues this turn assuming the result will arrive later. A separate consumer writes a `tool_result` event back to the session log keyed to the dispatching `tool_call_id`; when the client reconnects via `tasks/resubscribe`, `session.wake()` reports the cycle resolved and the next model step renders the result. See [internals/persistence.md#async-tool-resumption-queue-transport](../internals/persistence.md#async-tool-resumption-queue-transport).
+The `queue` transport is the async case: `execute()` enqueues the job and returns a stub. The model continues this turn assuming the result will arrive later. A separate consumer writes a `tool_result` event back to the session log keyed to the dispatching `tool_call_id`; when the client reconnects via `tasks/resubscribe`, `session.wake()` reports the cycle resolved and the next model step renders the result. See [internals/persistence.md#async-tool-resumption-queue-transport](/internals/persistence/#async-tool-resumption-queue-transport).
 
 Tools come from these sources (orthogonal to transport):
 
-1. **Built-ins** — registered in `compose(env)` (`apps/api/src/composition.ts`). The core set is `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, plus the commerce suite: catalog/cart/order tools, `commerce_checkout`, `commerce_record_consent`, personalization (`recommend_products`, `identify_customer`), visual search (`search_by_image`), and the B2B quote-to-cash tools — see [the commerce docs](../../../commerce/docs/index.md#tool-catalog) for the full list.
+1. **Built-ins** — registered in `compose(env)` (`apps/api/src/composition.ts`). The core set is `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, plus the commerce suite: catalog/cart/order tools, `commerce_checkout`, `commerce_record_consent`, personalization (`recommend_products`, `identify_customer`), visual search (`search_by_image`), and the B2B quote-to-cash tools — see [the commerce docs](https://github.com/felix-run/web/blob/main/commerce/docs/index.md#tool-catalog) for the full list.
 2. **Skills** — frontmatter `tools:` lists folded in at build time.
 3. **External MCP servers** — namespaced as `${server.name}__${tool.name}`, fetched from each `mcp_servers[].url`.
 4. **A2A peers** — every `peers[]` entry becomes a `peer_${name}` tool. The `peer_` prefix is the contract that increments `peerHops` in the limits wrapper.
-5. **Containers** — every `containers[]` entry becomes a tool whose executor is a `ContainerExecutor` pointing at the declared gateway. Used for sandboxed code execution and untrusted side-effects; see [manifest-reference.md#speccontainers](manifest-reference.md#speccontainers) for the gateway contract.
-6. **Queues** — every `queues[]` entry becomes a tool whose executor is a `QueueExecutor` bound to a Cloudflare Queue. Used for long-running async work that resolves across requests via `tasks/resubscribe`. See [manifest-reference.md#specqueues](manifest-reference.md#specqueues).
-7. **Sandboxes** — every `sandboxes[]` entry becomes a tool whose executor is a `SandboxExecutor` targeting a worker-local Fetcher. See [manifest-reference.md#specsandboxes](manifest-reference.md#specsandboxes) and [`examples/sandbox-worker/`](../../examples/sandbox-worker/).
-8. **Browser tools** — every `browser_tools[]` entry becomes a tool whose executor is a `BrowserExecutor` targeting a worker-local Fetcher wrapping `@cloudflare/puppeteer`. See [manifest-reference.md#specbrowser_tools](manifest-reference.md#specbrowser_tools) and [`examples/browser-worker/`](../../examples/browser-worker/).
+5. **Containers** — every `containers[]` entry becomes a tool whose executor is a `ContainerExecutor` pointing at the declared gateway. Used for sandboxed code execution and untrusted side-effects; see [manifest-reference.md#speccontainers](/guide/manifest-reference/#speccontainers) for the gateway contract.
+6. **Queues** — every `queues[]` entry becomes a tool whose executor is a `QueueExecutor` bound to a Cloudflare Queue. Used for long-running async work that resolves across requests via `tasks/resubscribe`. See [manifest-reference.md#specqueues](/guide/manifest-reference/#specqueues).
+7. **Sandboxes** — every `sandboxes[]` entry becomes a tool whose executor is a `SandboxExecutor` targeting a worker-local Fetcher. See [manifest-reference.md#specsandboxes](/guide/manifest-reference/#specsandboxes) and [`examples/sandbox-worker/`](https://github.com/felix-run/web/blob/main/packages/examples/sandbox-worker/).
+8. **Browser tools** — every `browser_tools[]` entry becomes a tool whose executor is a `BrowserExecutor` targeting a worker-local Fetcher wrapping `@cloudflare/puppeteer`. See [manifest-reference.md#specbrowser_tools](/guide/manifest-reference/#specbrowser_tools) and [`examples/browser-worker/`](https://github.com/felix-run/web/blob/main/packages/examples/browser-worker/).
 9. **`fetch_artifact`** — auto-injected by the builder when `spec.artifacts.enabled: true` so the model can read back oversized tool results that were spilled to R2.
 10. **`recall_procedure`** — auto-injected when `spec.procedural_memory.enabled: true` so the model can recall past similar tool-call sequences from pgvector.
 
-Every tool is wrapped by the governance pipeline before being exposed to the model — see [internals/governance.md](../internals/governance.md). Wrappers replace `tool.executor` while preserving the inner `transport` label so audit and observability report the true transport even after composition.
+Every tool is wrapped by the governance pipeline before being exposed to the model — see [internals/governance.md](/internals/governance/). Wrappers replace `tool.executor` while preserving the inner `transport` label so audit and observability report the true transport even after composition.
 
 :::tip[JIT tool retrieval]
 `spec.tools_retrieval.enabled: true` filters the tool list down to the top-K most relevant tools per turn by cosine similarity between BGE-embedded tool descriptions and the recent conversation. Essential at 30+ tool catalogs — without it the full list inflates every model call's prompt. Falls back to the full list when `env.AI` is absent.
@@ -212,4 +215,4 @@ inbound request
       → Session.appendBatch (fire-and-forget via execCtx.waitUntil)
 ```
 
-The full trace is documented in [internals/architecture.md](../internals/architecture.md).
+The full trace is documented in [internals/architecture.md](/internals/architecture/).

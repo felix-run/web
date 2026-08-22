@@ -1,8 +1,11 @@
 ---
+title: "Persistence"
 description: "Postgres (Hyperdrive), pgvector, KV, R2, Queues, and Durable Objects — what lives in each store and the tenant-scoping conventions."
+sidebar:
+  order: 5
 ---
 
-# Persistence
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 The data stores Felix uses, what lives in each, and the tenant-scoping conventions.
 
@@ -14,7 +17,7 @@ Schema lives in `apps/api/migrations/0001_baseline.sql`, applied with node-pg-mi
 
 Every table that holds tenant-owned data leads its primary key with `tenant_id` — `(tenant_id, id)` in the common case, with natural composites where the entity demands it (`(tenant_id, name)` for jobs, `(tenant_id, name, version)` for manifests, `(tenant_id, account_id, product_id)` for contract prices, `(tenant_id, thread_id)` for customer sessions / abandoned carts) — so cross-tenant reads/writes require an explicit `WHERE tenant_id = ?` clause. The one deliberate exception is `brand_domains`, keyed by `(host)` alone: it routes anonymous public storefront traffic to a brand before any tenant is known.
 
-The harness core tables and the commerce layer's ~25 tables (products/orders, ACP sessions, brands + domains, data sources, B2B accounts/quotes/pricing/billing, GEO, consent + attribution, personalization, dynamic pricing) all live in the same `apps/api/migrations/0001_baseline.sql` file — documented alongside the features in [the commerce data model + configuration docs](../../../commerce/docs/data-model.md).
+The harness core tables and the commerce layer's ~25 tables (products/orders, ACP sessions, brands + domains, data sources, B2B accounts/quotes/pricing/billing, GEO, consent + attribution, personalization, dynamic pricing) all live in the same `apps/api/migrations/0001_baseline.sql` file — documented alongside the features in [the commerce data model + configuration docs](https://github.com/felix-run/web/blob/main/commerce/docs/data-model.md).
 
 ### audit_events
 
@@ -120,7 +123,7 @@ The unique index on `(tenant_id, manifest_id, tool_name, call_signature)` is wha
 
 `call_signature = SHA-256(${manifestId}|${toolName}|${canonicalize(args)})`, where `canonicalize` sorts keys before serializing. When the matching rule sets `bind_principal`, the requesting subject is mixed in: `SHA-256(${manifestId}|${subject}|${toolName}|${canonicalize(args)})`. `args_json` is the post-redaction copy of arguments — secrets are stripped before storage.
 
-**Approval grant expiry** (D1-era `0019_approvals_ttl.sql`, now folded into the baseline) hardens grants against permanent, tenant-wide replay ([spec.approvals](../guide/manifest-reference.md#specapprovals)): `ttl_seconds` (the matching rule's TTL, stamped on the pending row so the decide transition can compute expiry) and `expires_at` (`decided_at + ttl_seconds*1000`, set on approval). Two terminal `status` values — `consumed` (a one-shot grant spent on execution, claimed `approved → consumed` through ApprovalsDO before the tool runs) and `expired` (TTL elapsed) — need no DDL (`status` is free `text`). They are **archived** states: the signature index is a partial index over only the live decisions (`pending` / `approved` / `denied`), so a superseded grant no longer authorizes and a fresh request can reuse the signature, while live decisions stay unique (idempotency + sticky-denied preserved).
+**Approval grant expiry** (D1-era `0019_approvals_ttl.sql`, now folded into the baseline) hardens grants against permanent, tenant-wide replay ([spec.approvals](/guide/manifest-reference/#specapprovals)): `ttl_seconds` (the matching rule's TTL, stamped on the pending row so the decide transition can compute expiry) and `expires_at` (`decided_at + ttl_seconds*1000`, set on approval). Two terminal `status` values — `consumed` (a one-shot grant spent on execution, claimed `approved → consumed` through ApprovalsDO before the tool runs) and `expired` (TTL elapsed) — need no DDL (`status` is free `text`). They are **archived** states: the signature index is a partial index over only the live decisions (`pending` / `approved` / `denied`), so a superseded grant no longer authorizes and a fresh request can reuse the signature, while live decisions stay unique (idempotency + sticky-denied preserved).
 
 ### skill_activation
 
@@ -151,13 +154,13 @@ CREATE TABLE oauth_token_cache (
 
 ### Commerce tables
 
-The commerce layer adds ~25 tables following the same conventions, all in the same `apps/api/migrations/0001_baseline.sql` file; their shapes and semantics are documented alongside the features in [the commerce docs](../../../commerce/docs/index.md). Highlights that affect persistence reasoning:
+The commerce layer adds ~25 tables following the same conventions, all in the same `apps/api/migrations/0001_baseline.sql` file; their shapes and semantics are documented alongside the features in [the commerce docs](https://github.com/felix-run/web/blob/main/commerce/docs/index.md). Highlights that affect persistence reasoning:
 
 - **The cart is not a table.** It lives in the ConversationDO session log as the latest `kind: 'audit'` event with `metadata: { type: 'cart', pinned: true }` (`packages/commerce/src/cart-session.ts`) — highest `seq` wins, and render strategies skip audit events so it never enters the model window.
 - `consents` and `behavior_events` are **append-only** streams (consent withdrawal is a new `granted = false` row, never an update).
 - `orders` is written only by verified payment paths (Stripe webhook, ACP complete, B2B convert), with deterministic ids on the ACP path for idempotency.
 - `data_sources` (the entity seam config) can redirect reads of B2B entities to federated/synced 3p systems — native Postgres is the default `native` backend, not an assumption.
-- `products` carries a generated `search_tsv` tsvector column (weighted title > category > description) plus a `pg_trgm` index on `title`, powering `catalog_search`'s full-text + typo-tolerant search — see [the commerce shopping docs](../../../commerce/docs/shopping.md).
+- `products` carries a generated `search_tsv` tsvector column (weighted title > category > description) plus a `pg_trgm` index on `title`, powering `catalog_search`'s full-text + typo-tolerant search — see [the commerce shopping docs](https://github.com/felix-run/web/blob/main/commerce/docs/shopping.md).
 
 ## KV (`CACHE`)
 
@@ -319,7 +322,7 @@ A second queue, `JOBS_QUEUE` (`felix-jobs`), backs the `transport: queue` tool s
 
 ### Async tool resumption (queue transport)
 
-`QueueExecutor` (`transport: queue`, [`src/tools/queue-executor.ts`](../../src/tools/queue-executor.ts)) is the dispatch half of an async-tool protocol that uses the session log as the rendezvous point. The full path:
+`QueueExecutor` (`transport: queue`, [`src/tools/queue-executor.ts`](https://github.com/felix-run/web/blob/main/packages/src/tools/queue-executor.ts)) is the dispatch half of an async-tool protocol that uses the session log as the rendezvous point. The full path:
 
 1. The model emits an assistant turn carrying `tool_calls: [{ id: 'tc1', name: '…', args: {…} }]`. The react/deep loop persists that turn as a session event.
 2. `QueueExecutor.execute(args, ctx)` runs in the request:
@@ -337,11 +340,11 @@ Failure modes:
 - `toolCallId` missing in ctx → executor returns `[queue error] … no tool_call_id …` and does **not** enqueue. A consumer-side result with no matching tool_call_id can never resolve, so refusing here is the safer default.
 - Consumer never writes back → the assistant tool_call stays unresolved on the session. `wake()` keeps reporting it; the client can keep retrying `tasks/resubscribe` until it gives up. The orphan event is fine to leave in the log.
 
-The protocol is pinned by [`tests/unit/queue_async_resume.test.ts`](../../tests/unit/queue_async_resume.test.ts).
+The protocol is pinned by [`tests/unit/queue_async_resume.test.ts`](https://github.com/felix-run/web/blob/main/packages/tests/unit/queue_async_resume.test.ts).
 
 ## Durable Objects
 
-See [architecture.md](architecture.md) for the inventory. Each DO is its own piece of state:
+See [architecture.md](/internals/architecture/) for the inventory. Each DO is its own piece of state:
 
 | Class | Key | Role |
 |---|---|---|

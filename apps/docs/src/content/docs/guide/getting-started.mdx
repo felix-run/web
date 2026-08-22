@@ -1,8 +1,11 @@
 ---
+title: "Getting Started"
 description: "Stand up the Python Felix harness locally and make your first chat request."
+sidebar:
+  order: 1
 ---
 
-# Getting Started
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 Stand up **Felix** locally and send your first request. Felix is a self-hostable
 **managed agents harness**: YAML manifests (`apiVersion: felix/v1`) compile into
@@ -11,8 +14,8 @@ runnable agents with governance, durable execution, and multi-protocol surfaces.
 - **Harness (runtime):** [felix-run/felix](https://github.com/felix-run/felix) — CPython, Compose / Helm
 - **Web (optional):** [felix-run/web](https://github.com/felix-run/web) — chat-ui + docs on Cloudflare Workers
 
-For the mental model, read [concepts.md](concepts.md) after this. For production
-deploy shape, see [deploy.md](deploy.md).
+For the mental model, read [concepts.md](/guide/concepts/) after this. For production
+deploy shape, see [deploy.md](/guide/deploy/).
 
 ## Prerequisites
 

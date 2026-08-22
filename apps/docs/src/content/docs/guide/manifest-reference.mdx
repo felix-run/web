@@ -1,8 +1,11 @@
 ---
+title: "Manifest Reference"
 description: "Every field in the orchestrator/v1 manifest schema with defaults, types, ceilings, and examples."
+sidebar:
+  order: 3
 ---
 
-# Manifest Reference
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
 Every field in the `apiVersion: orchestrator/v1` manifest schema. Source of truth: `src/manifests/schema.ts` plus cross-field rules in `src/manifests/validate.ts`.
 
@@ -34,7 +37,7 @@ pattern: react | deep | router | parallel | groupchat | reflect | plan_execute  
 
 - **react** / **deep** — single-agent. Tool loop. `deep` adds planning tools.
 - **router** / **parallel** / **groupchat** — multi-agent. Require `sub_agents`; forbid `peers`, `containers`, `queues`, `sandboxes`, `browser_tools`.
-- **reflect** — single-agent. Wraps a react loop with a verifier model that scores each final response against `spec.reflect.criteria`; below threshold the critique is appended as a synthetic user turn and react replays up to `spec.reflect.max_iterations`. See [internals/patterns.md](../internals/patterns.md#reflect).
+- **reflect** — single-agent. Wraps a react loop with a verifier model that scores each final response against `spec.reflect.criteria`; below threshold the critique is appended as a synthetic user turn and react replays up to `spec.reflect.max_iterations`. See [internals/patterns.md](/internals/patterns/#reflect).
 - **plan_execute** — single-agent planner/executor split. Decomposes the user goal into a JSON plan, runs each subtask through the executor model in a bounded react sub-loop, optionally re-calls the planner on failure. Configure via `spec.plan_execute` (see below). Requires at least one tool / peer / container — bare-chat plan_execute is rejected at validate time.
 
 ## spec.model
@@ -56,7 +59,7 @@ model:
     min_response_chars: 40   # default: 40; responses shorter than this also escalate
 ```
 
-The `id` is a **logical** id resolved through `MODEL_ROUTES` (a JSON map in env vars) to `{ provider, model }`. See [deploy.md](deploy.md) for examples.
+The `id` is a **logical** id resolved through `MODEL_ROUTES` (a JSON map in env vars) to `{ provider, model }`. See [deploy.md](/guide/deploy/) for examples.
 
 `cache: true` tags the system prompt, the last tool definition, and the last conversation message with `cache_control: ephemeral` on Anthropic-routed calls so subsequent turns read those prefixes from Anthropic's prompt cache (~10% input cost, lower TTFT). No-op on OpenAI / Workers AI — OpenAI prompt caching is automatic and surfaces via `cached_tokens` regardless of this flag.
 
@@ -83,7 +86,7 @@ Parts are joined with `"\n\n---\n\n"` in the order **soul → base → inline** 
 tools: []                    # default
 ```
 
-List of tool names registered with the `ToolProvider`. The core built-ins are `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, the scheduling set (`schedule_task`, `list_scheduled_tasks`, `scheduled_task_runs`, `cancel_scheduled_task` — see below), plus the commerce suite registered in `apps/api/src/composition.ts`: catalog/cart/order tools (`catalog_search`, `catalog_get`, `catalog_categories`, `cart_view`, `cart_add`, `cart_update`, `cart_remove`, `order_status`), `commerce_checkout`, `commerce_record_consent`, personalization (`recommend_products`, `identify_customer`), visual search (`search_by_image`), and the B2B suite (`account_get`, `buyer_get`, `purchase_authority_check`, `price_lookup`, `create_quote`, `quote_get`, `send_quote`, `accept_quote`, `convert_quote`, `invoice_get`, `pay_invoice`) — see [Agentic commerce](../../../commerce/docs/index.md). Skills can fold additional tool names into this list at build time.
+List of tool names registered with the `ToolProvider`. The core built-ins are `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, the scheduling set (`schedule_task`, `list_scheduled_tasks`, `scheduled_task_runs`, `cancel_scheduled_task` — see below), plus the commerce suite registered in `apps/api/src/composition.ts`: catalog/cart/order tools (`catalog_search`, `catalog_get`, `catalog_categories`, `cart_view`, `cart_add`, `cart_update`, `cart_remove`, `order_status`), `commerce_checkout`, `commerce_record_consent`, personalization (`recommend_products`, `identify_customer`), visual search (`search_by_image`), and the B2B suite (`account_get`, `buyer_get`, `purchase_authority_check`, `price_lookup`, `create_quote`, `quote_get`, `send_quote`, `accept_quote`, `convert_quote`, `invoice_get`, `pay_invoice`) — see [Agentic commerce](https://github.com/felix-run/web/blob/main/commerce/docs/index.md). Skills can fold additional tool names into this list at build time.
 
 ### Agent-facing scheduling
 
@@ -100,7 +103,7 @@ Four guards, because scheduling is a privilege:
 
 Creating, replacing, and cancelling emit a `job_scheduled` audit event; until a task first fires there would otherwise be no trace of it at all.
 
-Scheduled runs are [unattended](../internals/governance.md#approvals), so approval-gated tools fail closed inside them regardless of what gets scheduled. See [spec.memory](#specmemory) for how a task can leave itself notes across firings.
+Scheduled runs are [unattended](/internals/governance/#approvals), so approval-gated tools fail closed inside them regardless of what gets scheduled. See [spec.memory](#specmemory) for how a task can leave itself notes across firings.
 
 ## spec.skills
 
@@ -185,7 +188,7 @@ Each entry becomes a `Tool` whose executor is a `QueueExecutor` (`transport: que
 
 `queue_binding` is the Worker binding name (under `wrangler.jsonc`'s `queues.producers[]`) the executor sends to. The builder resolves it against `env[binding]` at build time — a missing or wrong binding fails the build so a misconfigured manifest never silently no-ops at request time.
 
-**Resume protocol.** The consumer side (a separate Worker reading from the same queue, deliberately not part of Felix) does the work and writes a `kind: 'tool_result'` event back to `ConversationDO` keyed by `thread_id`, with the dispatched `tool_call_id` as the rendezvous key. When the client reconnects via `tasks/resubscribe`, `session.wake()` reports the cycle resolved and the next model step renders the new `tool_result` through the strategy. See [`docs/internals/persistence.md#async-tool-resumption-queue-transport`](../internals/persistence.md#async-tool-resumption-queue-transport) and [`examples/queue-consumer/`](../../examples/queue-consumer/) for the consumer-side shape.
+**Resume protocol.** The consumer side (a separate Worker reading from the same queue, deliberately not part of Felix) does the work and writes a `kind: 'tool_result'` event back to `ConversationDO` keyed by `thread_id`, with the dispatched `tool_call_id` as the rendezvous key. When the client reconnects via `tasks/resubscribe`, `session.wake()` reports the cycle resolved and the next model step renders the new `tool_result` through the strategy. See [`docs/internals/persistence.md#async-tool-resumption-queue-transport`](/internals/persistence/#async-tool-resumption-queue-transport) and [`examples/queue-consumer/`](https://github.com/felix-run/web/blob/main/packages/examples/queue-consumer/) for the consumer-side shape.
 
 Queue tools are **forbidden** when `pattern ∈ {router, parallel, groupchat}`, same as containers and peers.
 
@@ -219,7 +222,7 @@ non-2xx       → [sandbox error] tool: status …  (mapped via codeForStatus: 4
 exit_code N≠0 → [sandbox exit N] tool: stderr/content  (provider_error)
 ```
 
-Felix passes the request's `threadId` as `session` so a multi-turn conversation reuses the same sandbox DO and filesystem state persists across turns. See [`examples/sandbox-worker/`](../../examples/sandbox-worker/) for the reference adapter.
+Felix passes the request's `threadId` as `session` so a multi-turn conversation reuses the same sandbox DO and filesystem state persists across turns. See [`examples/sandbox-worker/`](https://github.com/felix-run/web/blob/main/packages/examples/sandbox-worker/) for the reference adapter.
 
 Sandboxes are **forbidden** when `pattern ∈ {router, parallel, groupchat}`, same as containers / queues.
 
@@ -250,7 +253,7 @@ Built-in ops:
 | `pdf`        | `data:application/pdf;base64,...` text | Print-friendly snapshot. |
 | `json`       | response body verbatim (passthrough) | Skip Chromium for endpoints that already return JSON. |
 
-See [`examples/browser-worker/`](../../examples/browser-worker/) for the reference adapter.
+See [`examples/browser-worker/`](https://github.com/felix-run/web/blob/main/packages/examples/browser-worker/) for the reference adapter.
 
 Browser tools are **forbidden** when `pattern ∈ {router, parallel, groupchat}`, same as containers / queues / sandboxes.
 
@@ -302,11 +305,11 @@ Two properties of the extraction prompt are load-bearing:
 - **Provenance.** A preference, intent, or instruction counts only when the *user's own message* states it. Models will readily turn their own suggestion ("I could send this weekly") into a remembered user preference, and that fabricated fact then steers every later turn with no trace of where it came from.
 - **Nothing is free to store.** Every stored fact costs recall precision later, so one-off trivia, restatements of the current task, secrets, and anything already obvious are excluded. An empty capture is a correct outcome, not a failure.
 
-On an [unattended run](../internals/governance.md#approvals) — a cron tick, a replay — an addendum forbids preference/intent facts about any person entirely: no human spoke, so anything preference-shaped is the model narrating its own behavior, and storing it would let an automated run quietly rewrite what the agent believes about someone who was never there.
+On an [unattended run](/internals/governance/#approvals) — a cron tick, a replay — an addendum forbids preference/intent facts about any person entirely: no human spoke, so anything preference-shaped is the model narrating its own behavior, and storing it would let an automated run quietly rewrite what the agent believes about someone who was never there.
 
 Capture requires a real `store`; with `store: none` there is nowhere to write. Set `max_facts` low — it is a quality knob more than a cost one.
 
-Three things capture deliberately does **not** do. It does not run on a [continuous-eval replay](../internals/observability.md), which regenerates an answer to a historical input under the real tenant — capturing there would write facts derived from a synthetic reply into live memory from a benchmarking pass nobody sees. Under `pattern: reflect` it fires once on the verifier-**accepted** answer rather than once per iteration, so claims from rejected drafts are never stored. And it checks the store before writing, so a fact that stays in the extraction window across several turns is not written once per turn — though a fact that genuinely *conflicts* with a stored one is still written, because reconciling those is consolidation's job and nearness in embedding space is not sameness (`in Berlin` and `in Lisbon` are neighbours and opposites).
+Three things capture deliberately does **not** do. It does not run on a [continuous-eval replay](/internals/observability/), which regenerates an answer to a historical input under the real tenant — capturing there would write facts derived from a synthetic reply into live memory from a benchmarking pass nobody sees. Under `pattern: reflect` it fires once on the verifier-**accepted** answer rather than once per iteration, so claims from rejected drafts are never stored. And it checks the store before writing, so a fact that stays in the extraction window across several turns is not written once per turn — though a fact that genuinely *conflicts* with a stored one is still written, because reconciling those is consolidation's job and nearness in embedding space is not sameness (`in Berlin` and `in Lisbon` are neighbours and opposites).
 
 Every capture writes a `memory_captured` audit event carrying the stored facts, so what the agent decided to believe is reconstructable from `/audit` rather than visible only as a counter.
 
@@ -527,7 +530,7 @@ policies:
 
 Tools listed in multiple policies must satisfy **all** policies (AND logic). Federation bundle policies merge with these and win on id collision.
 
-**Targeting MCP-server tools — use a `server__*` glob.** A `tools` entry matches by exact name or a **trailing-`*` prefix**. MCP tools are named `${serverName}__${remoteToolName}` where the *remote server* chooses the suffix — so gating individual names (`stripe__create_charge`) lets a malicious/compromised server dodge the policy by renaming its tools. Gate the whole server with the manifest-controlled prefix `stripe__*` (the `serverName` comes from your `mcp_servers[].name`, which the server can't change). The same glob applies to `approvals[].tools` and `judges[].target_tools`. See [internals/governance.md](../internals/governance.md).
+**Targeting MCP-server tools — use a `server__*` glob.** A `tools` entry matches by exact name or a **trailing-`*` prefix**. MCP tools are named `${serverName}__${remoteToolName}` where the *remote server* chooses the suffix — so gating individual names (`stripe__create_charge`) lets a malicious/compromised server dodge the policy by renaming its tools. Gate the whole server with the manifest-controlled prefix `stripe__*` (the `serverName` comes from your `mcp_servers[].name`, which the server can't change). The same glob applies to `approvals[].tools` and `judges[].target_tools`. See [internals/governance.md](/internals/governance/).
 
 ## spec.limits
 
@@ -549,7 +552,7 @@ Per-run caps. `null` means "no manifest-level cap" (the absolute ceiling still a
 
 When the wall-clock cap fires, the per-request `AbortController` is aborted — tools that pass `ctx.signal` through to `fetch(url, { signal })` cancel mid-flight instead of just being blocked from starting. This applies to peer (A2A) and MCP tools by default; custom tool authors should propagate the signal to their own outbound calls.
 
-Absolute ceilings ([src/limits/models.ts](../../src/limits/models.ts)):
+Absolute ceilings ([src/limits/models.ts](https://github.com/felix-run/web/blob/main/packages/src/limits/models.ts)):
 
 | Limit | Ceiling |
 |---|---|
@@ -576,7 +579,7 @@ guardrails:
   judges: []                   # default: []; declared JudgeRule entries
 ```
 
-`pii` runs four regex patterns (email, SSN, US phone, credit card) with SHA-256 fingerprints written to audit (never the raw value). `pii` is currently the only accepted provider — **any unknown provider name is rejected at parse time** (an unregistered provider would otherwise be silently skipped, disabling filtering while appearing protected), and `bedrock` is explicitly rejected until an AI Gateway content-policy hook lands. Omitting `targets` scans **both** input and output (the default is `[input, output]`, not `[]`). See [internals/governance.md](../internals/governance.md).
+`pii` runs four regex patterns (email, SSN, US phone, credit card) with SHA-256 fingerprints written to audit (never the raw value). `pii` is currently the only accepted provider — **any unknown provider name is rejected at parse time** (an unregistered provider would otherwise be silently skipped, disabling filtering while appearing protected), and `bedrock` is explicitly rejected until an AI Gateway content-policy hook lands. Omitting `targets` scans **both** input and output (the default is `[input, output]`, not `[]`). See [internals/governance.md](/internals/governance/).
 
 ### Final-response guard
 
