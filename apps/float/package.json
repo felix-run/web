@@ -12,6 +12,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@felix/cowork-client": "workspace:*",
     "@felix/ui": "workspace:*",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",

@@ -29,6 +29,9 @@ importers:
 
   apps/chat-ui:
     dependencies:
+      '@felix/cowork-client':
+        specifier: workspace:*
+        version: link:../../packages/cowork-client
       '@felix/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -124,6 +127,9 @@ importers:
 
   apps/float:
     dependencies:
+      '@felix/cowork-client':
+        specifier: workspace:*
+        version: link:../../packages/cowork-client
       '@felix/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -176,6 +182,15 @@ importers:
       wrangler:
         specifier: ^4.0.0
         version: 4.90.1(@cloudflare/workers-types@4.20260511.1)
+
+  packages/cowork-client:
+    devDependencies:
+      '@felix/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/design: {}
 

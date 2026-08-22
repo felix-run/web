@@ -47,10 +47,3 @@ export interface TimelineItem {
   body?: string;
   status?: 'pending' | 'running' | 'done' | 'error' | 'denied';
 }
-
-export interface PendingApproval {
-  approvalId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  ruleId?: string;
-}

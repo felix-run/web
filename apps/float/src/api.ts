@@ -101,6 +101,47 @@ export async function decideApproval(
   }
 }
 
+export async function listApprovals(
+  status: 'pending' | 'approved' | 'denied' = 'pending',
+): Promise<
+  Array<{
+    id: string;
+    tool_name: string;
+    args: Record<string, unknown>;
+    status: string;
+  }>
+> {
+  const res = await apiFetch(`/api/approvals?status=${status}`);
+  if (!res.ok) throw new Error(`approvals: ${res.status}`);
+  const body = (await res.json()) as { items?: unknown[]; requests?: unknown[] };
+  return (body.requests ?? body.items ?? []) as Array<{
+    id: string;
+    tool_name: string;
+    args: Record<string, unknown>;
+    status: string;
+  }>;
+}
+
+export async function steerChat(args: {
+  threadId: string;
+  text: string;
+  kind?: 'steer' | 'follow_up';
+}): Promise<void> {
+  const res = await apiFetch('/api/chat/steer', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      text: args.text,
+      kind: args.kind ?? 'steer',
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`steer: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
 export interface DurableRun {
   status?: string;
   resume_token?: string;

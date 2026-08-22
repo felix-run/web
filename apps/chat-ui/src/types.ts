@@ -30,11 +30,43 @@ export interface TokenUsage {
 
 /** One `data: <json>` line from POST /chat/stream. */
 export type StreamEvent =
-  | { event: 'on_chat_model_stream'; data: { chunk: { content: string } } }
-  | { event: 'on_tool_start'; data: { name: string; input: unknown } }
-  | { event: 'on_tool_end'; data: { name: string; output: unknown } }
+  | { event: 'on_chat_model_stream'; data: { chunk?: { content?: string }; delta?: string } }
+  | { event: 'text_delta'; data: { chunk?: { content?: string }; delta?: string } }
+  | { event: 'on_tool_start'; data: { name: string; input?: unknown } }
+  | { event: 'on_tool_end'; data: { name: string; output?: unknown } }
+  | { event: 'tool_start'; data: { name: string; input?: unknown; id?: string } }
+  | { event: 'tool_end'; data: { name: string; output?: unknown; id?: string } }
+  | {
+      event: 'tool_request';
+      data: {
+        id: string;
+        name: string;
+        args?: Record<string, unknown>;
+        thread_id?: string;
+      };
+    }
+  | {
+      event: 'approval_required';
+      data: {
+        approval_id: string;
+        tool_name: string;
+        args?: Record<string, unknown>;
+        rule_id?: string;
+      };
+    }
   | { event: 'on_chain_end'; data: { output?: { usage?: TokenUsage } } }
-  | { event: 'on_error'; data: { message: string } };
+  | { event: 'on_error'; data: { message: string } }
+  | { event: 'done'; data: { final?: ChatMessage } }
+  | { event: string; data: Record<string, unknown> };
+
+/** Sticky mid-stream approval waiting on decide. */
+export interface PendingApproval {
+  approvalId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  ruleId?: string;
+  before?: string | null;
+}
 
 /** A finished or in-flight tool call, rendered inline in the transcript. */
 export interface ToolCall {

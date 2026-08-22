@@ -1,5 +1,5 @@
 /**
- * Thin re-exports of @felix/cowork-client bound to float's VFS key.
+ * Chat-ui binding of @felix/cowork-client (separate VFS from float).
  */
 import {
   clearMount,
@@ -9,14 +9,19 @@ import {
   hasMount,
   mountTree,
   pickDirectory,
+  readExisting,
   supportsDirectoryPicker,
   type ClientToolRequest,
 } from '@felix/cowork-client';
 
-const vfs = getVfs('felix.float.vfs');
+const vfs = getVfs('felix.chat.vfs');
 
 export async function executeClientTool(req: ClientToolRequest) {
   return exec(req, vfs);
+}
+
+export async function readWorkspaceFile(path: string): Promise<string | null> {
+  return readExisting(path, vfs);
 }
 
 export {

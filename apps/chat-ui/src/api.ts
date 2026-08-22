@@ -64,7 +64,7 @@ export async function listManifests(signal?: AbortSignal): Promise<string[]> {
 export interface StreamHandlers {
   /** Header arrived; carries the resolved manifest variant (stable/canary). */
   onVariant?: (variant: Variant) => void;
-  onEvent: (event: StreamEvent) => void;
+  onEvent: (event: StreamEvent) => void | Promise<void>;
 }
 
 export interface StreamArgs {
@@ -123,7 +123,7 @@ export async function streamChat(args: StreamArgs, handlers: StreamHandlers): Pr
       if (payload === '[DONE]') return;
 
       try {
-        handlers.onEvent(JSON.parse(payload) as StreamEvent);
+        await handlers.onEvent(JSON.parse(payload) as StreamEvent);
       } catch {
         // Ignore unparseable frames rather than tearing down the stream.
       }
@@ -159,7 +159,11 @@ export async function listApprovals(
 /** POST /approvals/:id/decide → approve or deny a gated tool call. */
 export async function decideApproval(
   id: string,
-  decision: { status: 'approved' | 'denied'; note?: string },
+  decision: {
+    status: 'approved' | 'denied';
+    note?: string;
+    edited_args?: Record<string, unknown>;
+  },
 ): Promise<ApprovalRequest> {
   const res = await apiFetch(`/api/approvals/${encodeURIComponent(id)}/decide`, {
     method: 'POST',
@@ -168,6 +172,129 @@ export async function decideApproval(
   });
   if (!res.ok) throw new Error(`decide: ${res.status}`);
   return (await res.json()) as ApprovalRequest;
+}
+
+/** POST /chat/tool_result — complete a client-executed tool pause. */
+export async function postToolResult(args: {
+  threadId: string;
+  toolCallId: string;
+  content: string;
+  error?: boolean;
+}): Promise<void> {
+  const res = await apiFetch('/api/chat/tool_result', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      tool_call_id: args.toolCallId,
+      content: args.content,
+      error: args.error ?? false,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`tool_result: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+export interface DurableRun {
+  status?: string;
+  resume_token?: string;
+  fiber_id?: string;
+  final?: ChatMessage | { role?: string; content?: string };
+  error?: string;
+}
+
+/** POST /chat — durable manifests return 202 + resume_token. */
+export async function startChat(args: {
+  manifest: string;
+  messages: ChatMessage[];
+  threadId?: string;
+  signal?: AbortSignal;
+}): Promise<{ kind: 'done'; final: ChatMessage } | { kind: 'durable'; resumeToken: string }> {
+  const res = await apiFetch('/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      manifest: args.manifest,
+      messages: args.messages,
+      ...(args.threadId ? { thread_id: args.threadId } : {}),
+    }),
+    signal: args.signal,
+  });
+
+  if (res.status === 202) {
+    const body = (await res.json()) as { resume_token?: string };
+    if (!body.resume_token) throw new Error('durable chat missing resume_token');
+    return { kind: 'durable', resumeToken: body.resume_token };
+  }
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`chat: ${res.status} ${detail.slice(0, 200)}`);
+  }
+
+  const body = (await res.json()) as { final?: ChatMessage };
+  return {
+    kind: 'done',
+    final: body.final ?? { role: 'assistant', content: '' },
+  };
+}
+
+export async function getDurableRun(resumeToken: string): Promise<DurableRun> {
+  const res = await apiFetch(`/api/chat/runs/${encodeURIComponent(resumeToken)}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`chat/runs: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as DurableRun;
+}
+
+export async function pollDurableRun(
+  resumeToken: string,
+  opts: {
+    signal?: AbortSignal;
+    intervalMs?: number;
+    onTick?: (run: DurableRun) => void;
+  } = {},
+): Promise<DurableRun> {
+  const interval = opts.intervalMs ?? 1500;
+  while (true) {
+    if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const run = await getDurableRun(resumeToken);
+    opts.onTick?.(run);
+    const status = (run.status || '').toLowerCase();
+    if (
+      status === 'completed' ||
+      status === 'succeeded' ||
+      status === 'failed' ||
+      status === 'error'
+    ) {
+      return run;
+    }
+    if (run.error) return run;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+}
+
+export async function steerChat(args: {
+  threadId: string;
+  text: string;
+  kind?: 'steer' | 'follow_up';
+}): Promise<void> {
+  const res = await apiFetch('/api/chat/steer', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      text: args.text,
+      kind: args.kind ?? 'steer',
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`steer: ${res.status} ${detail.slice(0, 200)}`);
+  }
 }
 
 /** GET /plans → plan/step progress (populated by the `deep` pattern). */

@@ -1,9 +1,6 @@
 /**
- * In-tab virtual filesystem. Close the tab and the mount is gone unless
- * persisted to localStorage.
+ * In-tab virtual filesystem. Persists to localStorage under a caller-chosen key.
  */
-
-const STORAGE_KEY = 'felix.float.vfs';
 
 export type VfsNode =
   | { type: 'file'; content: string; updatedAt: number }
@@ -28,26 +25,28 @@ function normalize(path: string): string {
   return out.join('/');
 }
 
-function load(): VfsMap {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { '': { type: 'dir', updatedAt: Date.now() } };
-    return JSON.parse(raw) as VfsMap;
-  } catch {
-    return { '': { type: 'dir', updatedAt: Date.now() } };
-  }
-}
-
-function save(map: VfsMap): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-}
-
 export class VirtualFs {
   private map: VfsMap;
+  private readonly storageKey: string;
 
-  constructor() {
-    this.map = load();
+  constructor(storageKey: string) {
+    this.storageKey = storageKey;
+    this.map = this.load();
     if (!this.map['']) this.map[''] = { type: 'dir', updatedAt: Date.now() };
+  }
+
+  private load(): VfsMap {
+    try {
+      const raw = localStorage.getItem(this.storageKey);
+      if (!raw) return { '': { type: 'dir', updatedAt: Date.now() } };
+      return JSON.parse(raw) as VfsMap;
+    } catch {
+      return { '': { type: 'dir', updatedAt: Date.now() } };
+    }
+  }
+
+  private save(): void {
+    localStorage.setItem(this.storageKey, JSON.stringify(this.map));
   }
 
   list(path = '.'): Array<{ path: string; type: 'file' | 'dir' }> {
@@ -92,17 +91,16 @@ export class VirtualFs {
       if (!existing) this.map[dir] = { type: 'dir', updatedAt: Date.now() };
     }
     const prev = this.map[key];
-    const next =
-      append && prev?.type === 'file' ? `${prev.content}${content}` : content;
+    const next = append && prev?.type === 'file' ? `${prev.content}${content}` : content;
     this.map[key] = { type: 'file', content: next, updatedAt: Date.now() };
-    save(this.map);
+    this.save();
   }
 
   mkdir(path: string): void {
     const key = normalize(path);
     if (this.map[key]?.type === 'file') throw new Error(`file exists: ${path}`);
     this.map[key] = { type: 'dir', updatedAt: Date.now() };
-    save(this.map);
+    this.save();
   }
 
   tree(limit = 200): string[] {
@@ -115,8 +113,18 @@ export class VirtualFs {
 
   reset(): void {
     this.map = { '': { type: 'dir', updatedAt: Date.now() } };
-    save(this.map);
+    this.save();
   }
 }
 
-export const vfs = new VirtualFs();
+const instances = new Map<string, VirtualFs>();
+
+/** Shared VFS instance for a storage key (one per tab origin + key). */
+export function getVfs(storageKey: string): VirtualFs {
+  let vfs = instances.get(storageKey);
+  if (!vfs) {
+    vfs = new VirtualFs(storageKey);
+    instances.set(storageKey, vfs);
+  }
+  return vfs;
+}

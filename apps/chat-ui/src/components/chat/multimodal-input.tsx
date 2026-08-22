@@ -38,6 +38,7 @@ export type MultimodalInputProps = {
   status: Status;
   isConnected: boolean;
   onSubmit: (message: PromptInputMessage) => void | Promise<void>;
+  onBackground?: (message: PromptInputMessage) => void | Promise<void>;
   onStop?: () => void;
   onSlashCommand?: (command: SlashCommand) => void;
   /** Names of slash commands that won't toast as "not implemented". Default: every name in slashCommands. */
@@ -62,6 +63,7 @@ function MultimodalInputInner({
   status,
   isConnected,
   onSubmit,
+  onBackground,
   onStop,
   onSlashCommand,
   enabledSlashCommands,
@@ -174,12 +176,15 @@ function MultimodalInputInner({
   const trimmedText = text.trim();
   const tooLong = text.length > MAX_TEXT_LENGTH;
   const canSubmit =
-    isConnected && !isBusy && (trimmedText.length > 0 || files.length > 0) && !tooLong;
+    isConnected && (trimmedText.length > 0 || files.length > 0) && !tooLong;
+  // Background only when idle (durable poll path).
+  const canBackground =
+    Boolean(onBackground) && isConnected && !isBusy && trimmedText.length > 0 && !tooLong;
 
   const helperText = !isConnected
     ? 'Reconnecting…'
     : isBusy
-      ? 'Generating response…'
+      ? 'Generating — Enter steers'
       : files.length >= MAX_FILES
         ? `Max ${MAX_FILES} attachments`
         : null;
@@ -226,16 +231,14 @@ function MultimodalInputInner({
         toast.error('Disconnected. Reconnecting…');
         return;
       }
-      if (isBusy) {
-        toast.error('Wait for the current response to finish.');
-        return;
-      }
+      // While streaming, submit steers the active run (handled by App.send).
       if (message.text.length > MAX_TEXT_LENGTH) {
         toast.error(`Message exceeds ${MAX_TEXT_LENGTH.toLocaleString()} characters.`);
         return;
       }
       if (!message.text.trim() && message.files.length === 0) return;
       await onSubmit(message);
+      if (isBusy) controller.textInput.clear();
     },
     [isConnected, isBusy, onSubmit, controller, handleSlashSelect],
   );
@@ -353,7 +356,7 @@ function MultimodalInputInner({
               <HelperHint text={helperText} />
             </PromptInputTools>
 
-            <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
               {showCharCount && (
                 <span
                   className={cn(
@@ -365,6 +368,25 @@ function MultimodalInputInner({
                   {text.length.toLocaleString()} / {MAX_TEXT_LENGTH.toLocaleString()}
                 </span>
               )}
+
+              {onBackground && !isBusy ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-full px-3 text-xs"
+                  disabled={!canBackground}
+                  onClick={() => {
+                    void onBackground({
+                      text: controller.textInput.value,
+                      files: attachments.files,
+                    });
+                    controller.textInput.clear();
+                  }}
+                >
+                  Background
+                </Button>
+              ) : null}
 
               <SendOrStop canSubmit={canSubmit} isBusy={isBusy} onStop={onStop} />
             </div>

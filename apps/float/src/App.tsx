@@ -1,11 +1,14 @@
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { readExisting, summarizeToolArgs, type PendingApproval } from '@felix/cowork-client';
 import {
   decideApproval,
+  listApprovals,
   pollDurableRun,
   postToolResult,
   startChat,
+  steerChat,
   streamChat,
 } from '@/api';
 import {
@@ -16,32 +19,16 @@ import {
   mountTree,
   pickDirectory,
   supportsDirectoryPicker,
+  vfs,
 } from '@/lib/client-tools';
 import { cn } from '@/lib/utils';
-import { vfs } from '@/lib/vfs';
-import type { PendingApproval, TimelineItem } from '@/types';
+import type { TimelineItem } from '@/types';
 
 const MANIFEST = 'cowork';
 const THREAD_KEY = 'felix.float.threadId';
 
 function loadThreadId(): string {
   return localStorage.getItem(THREAD_KEY) || nanoid(12);
-}
-
-function summarizeArgs(toolName: string, args: Record<string, unknown>): string {
-  if (toolName === 'write_file') {
-    const path = typeof args.path === 'string' ? args.path : '?';
-    const len = typeof args.content === 'string' ? args.content.length : 0;
-    return `Write ${path} (${len} chars)${args.append ? ' append' : ''}`;
-  }
-  if (toolName === 'local_shell') {
-    return `Shell: ${typeof args.command === 'string' ? args.command : JSON.stringify(args)}`;
-  }
-  try {
-    return JSON.stringify(args, null, 2);
-  } catch {
-    return String(args);
-  }
 }
 
 export default function App() {
@@ -84,6 +71,48 @@ export default function App() {
   const push = useCallback((item: TimelineItem) => {
     setTimeline((cur) => [...cur, item]);
   }, []);
+
+  // Restore pending approvals after refresh (run may still be waiting).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const items = await listApprovals('pending');
+        if (cancelled || !items.length) return;
+        const restored: PendingApproval[] = [];
+        for (const item of items) {
+          const args = item.args ?? {};
+          let before: string | null = null;
+          if (item.tool_name === 'write_file' && typeof args.path === 'string') {
+            before = await readExisting(args.path, vfs);
+          }
+          restored.push({
+            approvalId: item.id,
+            toolName: item.tool_name,
+            args,
+            before,
+          });
+        }
+        if (!cancelled) {
+          setPendingQueue(restored);
+          for (const entry of restored) {
+            push({
+              id: nanoid(),
+              kind: 'approval',
+              title: `Needs approval · ${entry.toolName}`,
+              body: summarizeToolArgs(entry.toolName, entry.args),
+              status: 'pending',
+            });
+          }
+        }
+      } catch {
+        // ignore — approvals endpoint may be unavailable offline
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [push]);
 
   const resetSession = useCallback(() => {
     abortRef.current?.abort();
@@ -194,18 +223,24 @@ export default function App() {
           args?: Record<string, unknown>;
           rule_id?: string;
         };
+        const args = data.args ?? {};
+        let before: string | null = null;
+        if (data.tool_name === 'write_file' && typeof args.path === 'string') {
+          before = await readExisting(args.path, vfs);
+        }
         const entry: PendingApproval = {
           approvalId: data.approval_id,
           toolName: data.tool_name,
-          args: data.args ?? {},
+          args,
           ruleId: data.rule_id,
+          before,
         };
         setPendingQueue((q) => [...q, entry]);
         push({
           id: nanoid(),
           kind: 'approval',
           title: `Needs approval · ${data.tool_name}`,
-          body: summarizeArgs(data.tool_name, data.args ?? {}),
+          body: summarizeToolArgs(data.tool_name, args),
           status: 'pending',
         });
         return;
@@ -400,7 +435,27 @@ export default function App() {
     [pending, deciding],
   );
 
+  const onSteer = useCallback(async () => {
+    const text = goal.trim();
+    if (!text || !streaming) return;
+    try {
+      await steerChat({ threadId, text });
+      push({ id: nanoid(), kind: 'user', title: 'Steer', body: text, status: 'done' });
+      setGoal('');
+      toast.message('Steer queued');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  }, [goal, streaming, threadId, push]);
+
   const filePreview = useMemo(() => files.slice(0, 80), [files]);
+
+  const writeDiff = useMemo(() => {
+    if (!pending || pending.toolName !== 'write_file') return null;
+    const next = typeof pending.args.content === 'string' ? pending.args.content : '';
+    const before = pending.before ?? '';
+    return { before, next, isNew: pending.before == null };
+  }, [pending]);
 
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col gap-4 p-4 md:p-6">
@@ -438,7 +493,7 @@ export default function App() {
               </p>
               <h2 className="mt-1 text-base font-semibold">{pending.toolName}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {summarizeArgs(pending.toolName, pending.args)}
+                {summarizeToolArgs(pending.toolName, pending.args)}
               </p>
             </div>
             <div className="flex gap-2">
@@ -460,9 +515,28 @@ export default function App() {
               </button>
             </div>
           </div>
-          <pre className="mt-3 max-h-32 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-xs">
-            {JSON.stringify(pending.args, null, 2)}
-          </pre>
+          {writeDiff ? (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <div>
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {writeDiff.isNew ? 'Before (new file)' : 'Before'}
+                </p>
+                <pre className="max-h-40 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-xs">
+                  {writeDiff.isNew ? '(empty)' : writeDiff.before.slice(0, 8000)}
+                </pre>
+              </div>
+              <div>
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">After</p>
+                <pre className="max-h-40 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-xs">
+                  {writeDiff.next.slice(0, 8000)}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <pre className="mt-3 max-h-32 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-xs">
+              {JSON.stringify(pending.args, null, 2)}
+            </pre>
+          )}
         </div>
       ) : null}
 
@@ -533,13 +607,23 @@ export default function App() {
             />
             <div className="mt-2 flex flex-wrap justify-end gap-2">
               {streaming ? (
-                <button
-                  type="button"
-                  className="rounded-md border border-border px-3 py-1.5 text-sm"
-                  onClick={() => abortRef.current?.abort()}
-                >
-                  Stop
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                    disabled={!goal.trim()}
+                    onClick={() => void onSteer()}
+                  >
+                    Steer
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-3 py-1.5 text-sm"
+                    onClick={() => abortRef.current?.abort()}
+                  >
+                    Stop
+                  </button>
+                </>
               ) : null}
               <button
                 type="button"

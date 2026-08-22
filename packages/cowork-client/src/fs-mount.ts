@@ -32,7 +32,7 @@ export async function pickDirectory(): Promise<string> {
 async function resolve(
   path: string,
   opts: { create?: boolean } = {},
-): Promise<{ parent: DirHandle; name: string; handle?: FileSystemHandle }> {
+): Promise<{ parent: DirHandle; name: string }> {
   if (!root) throw new Error('no folder mounted');
   const parts = path
     .replace(/\\/g, '/')
@@ -130,4 +130,18 @@ export async function mountTree(limit = 200): Promise<string[]> {
 
 export function hasMount(): boolean {
   return root !== null;
+}
+
+/** Best-effort read of an existing file from mount or VFS for approval diffs. */
+export async function readExisting(
+  path: string,
+  vfs: { read: (p: string) => string },
+): Promise<string | null> {
+  const cleaned = path.replace(/^\//, '');
+  try {
+    if (hasMount()) return await mountRead(cleaned);
+    return vfs.read(cleaned);
+  } catch {
+    return null;
+  }
 }

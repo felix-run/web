@@ -366,7 +366,7 @@ function ApprovalsTab({ enabled }: { enabled: boolean }) {
               </Button>
             </div>
             <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-              After deciding, re-send the message so the retry with the same args can proceed.
+              Deciding resumes the paused run — no need to re-send.
             </p>
           </article>
         ))}

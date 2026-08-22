@@ -9,21 +9,37 @@ import {
   PlusIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { deleteThreadHistory, getThreadHistory, listManifests, streamChat } from '@/api';
+import { toast } from 'sonner';
+import { summarizeToolArgs } from '@felix/cowork-client';
+import {
+  decideApproval,
+  deleteThreadHistory,
+  getThreadHistory,
+  listApprovals,
+  listManifests,
+  pollDurableRun,
+  postToolResult,
+  startChat,
+  steerChat,
+  streamChat,
+} from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
+import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { Conversation } from '@/components/chat/conversation';
 import { Greeting } from '@/components/chat/greeting';
 import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import { ThreadList } from '@/components/chat/thread-list';
+import { WorkspaceStrip } from '@/components/chat/workspace-strip';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { Inspector, type SkillState } from '@/components/inspector/inspector';
 import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import {
@@ -46,7 +62,14 @@ import {
   type ThreadMeta,
   titleFromText,
 } from '@/lib/threads';
-import type { ChatMessage, ImageAttachment, ToolCall, Turn, Variant } from '@/types';
+import type {
+  ChatMessage,
+  ImageAttachment,
+  PendingApproval,
+  ToolCall,
+  Turn,
+  Variant,
+} from '@/types';
 
 const THREAD_KEY = 'felix.threadId';
 const MANIFEST_KEY = 'felix.manifest';
@@ -78,6 +101,8 @@ export default function App() {
   const [variant, setVariant] = useState<Variant | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
+  const [deciding, setDeciding] = useState(false);
   // History open by default only when there are prior threads; inspector off
   // so chat owns the first viewport.
   const [historyOpen, setHistoryOpen] = useState(() =>
@@ -161,6 +186,7 @@ export default function App() {
     setVariant(null);
     setSkills(null);
     setError(null);
+    setPendingQueue([]);
   }, []);
 
   const selectThread = useCallback(
@@ -195,49 +221,183 @@ export default function App() {
   // turn identified by `assistantId`. Shared by `send` (new user message) and
   // `regenerate` (replays prior history). Returns the streaming promise.
   const streamInto = useCallback(
-    (messagesToSend: ChatMessage[], assistantId: string) => {
+    (messagesToSend: ChatMessage[], assistantId: string, mode: 'stream' | 'background' = 'stream') => {
       const patch = (fn: (t: Turn) => Turn) =>
         setTurns((prev) => prev.map((t) => (t.id === assistantId ? fn(t) : t)));
 
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       setStreaming(true);
+      setError(null);
 
-      return streamChat(
-        { manifest, messages: messagesToSend, threadId, signal: ctrl.signal },
-        {
-          onVariant: setVariant,
-          onEvent: (ev) => {
-            switch (ev.event) {
-              case 'on_chat_model_stream':
-                patch((t) => ({ ...t, content: t.content + ev.data.chunk.content }));
-                break;
-              case 'on_tool_start':
-                if (verboseRef.current) setInspectorOpen(true);
-                patch((t) => ({
-                  ...t,
-                  tools: [
-                    ...(t.tools ?? []),
-                    { name: ev.data.name, input: ev.data.input, done: false },
-                  ],
-                }));
-                break;
-              case 'on_tool_end':
-                patch((t) => ({ ...t, tools: closeTool(t.tools, ev.data.name, ev.data.output) }));
-                captureSkills(ev.data.name, ev.data.output, setSkills);
-                break;
-              case 'on_chain_end': {
-                const usage = ev.data.output?.usage;
-                if (usage) patch((t) => ({ ...t, usage }));
-                break;
-              }
-              case 'on_error':
-                setError(ev.data.message);
-                break;
+      const handleEvent = async (ev: {
+        event: string;
+        data: Record<string, unknown>;
+      }) => {
+        switch (ev.event) {
+          case 'on_chat_model_stream':
+          case 'text_delta': {
+            const data = ev.data as { chunk?: { content?: string }; delta?: string };
+            const chunk = data.delta ?? data.chunk?.content ?? '';
+            if (chunk) patch((t) => ({ ...t, content: t.content + chunk }));
+            break;
+          }
+          case 'on_tool_start':
+          case 'tool_start': {
+            if (verboseRef.current) setInspectorOpen(true);
+            const data = ev.data as { name?: string; input?: unknown };
+            patch((t) => ({
+              ...t,
+              tools: [
+                ...(t.tools ?? []),
+                { name: String(data.name ?? 'tool'), input: data.input, done: false },
+              ],
+            }));
+            break;
+          }
+          case 'on_tool_end':
+          case 'tool_end': {
+            const data = ev.data as { name?: string; output?: unknown };
+            const name = String(data.name ?? 'tool');
+            patch((t) => ({ ...t, tools: closeTool(t.tools, name, data.output) }));
+            captureSkills(name, data.output, setSkills);
+            break;
+          }
+          case 'approval_required': {
+            const data = ev.data as {
+              approval_id: string;
+              tool_name: string;
+              args?: Record<string, unknown>;
+              rule_id?: string;
+            };
+            const args = data.args ?? {};
+            let before: string | null = null;
+            if (data.tool_name === 'write_file' && typeof args.path === 'string') {
+              before = await readWorkspaceFile(args.path);
             }
+            setPendingQueue((q) => [
+              ...q,
+              {
+                approvalId: data.approval_id,
+                toolName: data.tool_name,
+                args,
+                ruleId: data.rule_id,
+                before,
+              },
+            ]);
+            patch((t) => ({
+              ...t,
+              tools: [
+                ...(t.tools ?? []),
+                {
+                  name: `approval · ${data.tool_name}`,
+                  input: summarizeToolArgs(data.tool_name, args),
+                  done: false,
+                },
+              ],
+            }));
+            break;
+          }
+          case 'tool_request': {
+            const data = ev.data as {
+              id: string;
+              name: string;
+              args?: Record<string, unknown>;
+            };
+            patch((t) => ({
+              ...t,
+              tools: [
+                ...(t.tools ?? []),
+                {
+                  name: `client · ${data.name}`,
+                  input: data.args,
+                  done: false,
+                },
+              ],
+            }));
+            const result = await executeClientTool({
+              id: data.id,
+              name: data.name,
+              args: data.args ?? {},
+            });
+            await postToolResult({
+              threadId: threadIdRef.current,
+              toolCallId: data.id,
+              content: result.content,
+              error: result.error,
+            });
+            patch((t) => ({
+              ...t,
+              tools: closeTool(t.tools, `client · ${data.name}`, result.content),
+            }));
+            break;
+          }
+          case 'on_chain_end': {
+            const usage = (ev.data as { output?: { usage?: Turn['usage'] } }).output?.usage;
+            if (usage) patch((t) => ({ ...t, usage }));
+            break;
+          }
+          case 'on_error':
+            setError(String((ev.data as { message?: string }).message ?? 'error'));
+            break;
+        }
+      };
+
+      const run = async () => {
+        if (mode === 'background') {
+          patch((t) => ({ ...t, content: t.content || 'Queued durable job…' }));
+          const started = await startChat({
+            manifest,
+            messages: messagesToSend,
+            threadId: threadIdRef.current,
+            signal: ctrl.signal,
+          });
+          if (started.kind === 'done') {
+            patch((t) => ({ ...t, content: started.final.content }));
+            return;
+          }
+          const runResult = await pollDurableRun(started.resumeToken, {
+            signal: ctrl.signal,
+            onTick: (r) => {
+              patch((t) => ({
+                ...t,
+                content: `Background · ${r.status || 'pending'}…`,
+              }));
+            },
+          });
+          if (runResult.error) {
+            setError(runResult.error);
+            return;
+          }
+          const content =
+            typeof runResult.final === 'object' &&
+            runResult.final &&
+            'content' in runResult.final
+              ? String(runResult.final.content || '')
+              : '';
+          patch((t) => ({
+            ...t,
+            content: content || `(${runResult.status || 'completed'})`,
+          }));
+          return;
+        }
+
+        await streamChat(
+          {
+            manifest,
+            messages: messagesToSend,
+            threadId: threadIdRef.current,
+            signal: ctrl.signal,
           },
-        },
-      )
+          {
+            onVariant: setVariant,
+            onEvent: (ev) =>
+              handleEvent(ev as { event: string; data: Record<string, unknown> }),
+          },
+        );
+      };
+
+      return run()
         .catch((err) => {
           if (!ctrl.signal.aborted) setError(String((err as Error)?.message ?? err));
         })
@@ -246,12 +406,69 @@ export default function App() {
           abortRef.current = null;
         });
     },
-    [manifest, threadId],
+    [manifest],
   );
 
+  const pending = pendingQueue[0] ?? null;
+
+  const onDecide = useCallback(
+    async (status: 'approved' | 'denied') => {
+      if (!pending || deciding) return;
+      setDeciding(true);
+      try {
+        await decideApproval(pending.approvalId, { status });
+        setPendingQueue((q) => q.slice(1));
+        toast.message(status === 'approved' ? 'Approved — run continues' : 'Denied');
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      } finally {
+        setDeciding(false);
+      }
+    },
+    [pending, deciding],
+  );
+
+  // Restore pending approvals after refresh.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const items = await listApprovals('pending');
+        if (cancelled || !items.length) return;
+        const restored: PendingApproval[] = [];
+        for (const item of items) {
+          const args = item.args ?? {};
+          let before: string | null = null;
+          if (item.tool_name === 'write_file' && typeof args.path === 'string') {
+            before = await readWorkspaceFile(args.path);
+          }
+          restored.push({
+            approvalId: item.id,
+            toolName: item.tool_name,
+            args,
+            before,
+          });
+        }
+        if (!cancelled) setPendingQueue(restored);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const send = useCallback(
-    (text: string, attachments?: ImageAttachment[]) => {
-      if (streaming) return;
+    (text: string, attachments?: ImageAttachment[], mode: 'stream' | 'background' = 'stream') => {
+      if (streaming) {
+        if (text.trim()) {
+          void steerChat({ threadId, text: text.trim() })
+            .then(() => toast.message('Steer queued'))
+            .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+        }
+        return;
+      }
       const hasAttachments = !!attachments && attachments.length > 0;
       if (!text.trim() && !hasAttachments) return;
       setError(null);
@@ -285,7 +502,7 @@ export default function App() {
       // Steady state: send only the new user message; Felix replays the thread.
       const userMessage: ChatMessage = { role: 'user', content: text };
       if (hasAttachments) userMessage.attachments = attachments;
-      void streamInto([userMessage], assistantId);
+      void streamInto([userMessage], assistantId, mode);
     },
     [streaming, manifest, threadId, turns, threads, streamInto],
   );
@@ -323,6 +540,7 @@ export default function App() {
     setVariant(null);
     setSkills(null);
     setError(null);
+    setPendingQueue([]);
     void deleteThreadHistory(threadId);
     saveTurns(threadId, []);
   }, [threadId]);
@@ -330,11 +548,11 @@ export default function App() {
   // Map a composer submission (text + browser File parts, already converted to
   // data URLs by PromptInput) onto our send(). Image parts become attachments.
   const submit = useCallback(
-    (message: PromptInputMessage) => {
+    (message: PromptInputMessage, mode: 'stream' | 'background' = 'stream') => {
       const attachments: ImageAttachment[] = message.files
         .filter((f) => f.mediaType.startsWith('image/'))
         .map((f) => ({ url: f.url, media_type: f.mediaType, filename: f.filename }));
-      send(message.text, attachments);
+      send(message.text, attachments, mode);
     },
     [send],
   );
@@ -501,15 +719,32 @@ export default function App() {
             )}
           </Conversation>
           <div className="border-t border-border/50 bg-background/80 pt-3 backdrop-blur-sm">
+            {pending ? (
+              <ApprovalBanner
+                pending={pending}
+                queueLength={pendingQueue.length}
+                deciding={deciding}
+                onDecide={(status) => void onDecide(status)}
+              />
+            ) : null}
+            {manifest === DEFAULT_MANIFEST ? <WorkspaceStrip /> : null}
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
               isConnected
               onSubmit={submit}
+              onBackground={(message) => submit(message, 'background')}
               onStop={() => abortRef.current?.abort()}
               onSlashCommand={onSlashCommand}
               models={modelOptions}
               modelId={manifest}
               onModelChange={setManifest}
+              placeholder={
+                streaming
+                  ? 'Type to steer the run…'
+                  : manifest === DEFAULT_MANIFEST
+                    ? 'Describe a workspace goal…'
+                    : 'Message Felix…'
+              }
             />
           </div>
         </main>
