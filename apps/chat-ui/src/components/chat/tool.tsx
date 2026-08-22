@@ -1,7 +1,7 @@
-import { CheckCircle2Icon, ChevronDownIcon, LoaderIcon, WrenchIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { Badge } from '@felix/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
+import { CheckCircle2Icon, ChevronDownIcon, LoaderIcon, WrenchIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { ToolCall } from '@/types';
 

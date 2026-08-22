@@ -1,3 +1,8 @@
+import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
+import { Input } from '@felix/ui/input';
+import { ScrollArea } from '@felix/ui/scroll-area';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
 import { FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -8,17 +13,6 @@ import {
   listEvalRuns,
   runEvalDataset,
 } from '@/api';
-import { Badge } from '@felix/ui/badge';
-import { Button } from '@felix/ui/button';
-import { Input } from '@felix/ui/input';
-import { ScrollArea } from '@felix/ui/scroll-area';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@felix/ui/sheet';
 import { cn } from '@/lib/utils';
 import type { EvalDataset, EvalDatasetItem, EvalRun } from '@/types';
 

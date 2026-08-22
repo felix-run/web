@@ -53,7 +53,9 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
       const entries = mounted
         ? await mountList(target === '' ? '.' : target)
         : vfs.list(target === '' ? '.' : target);
-      return entries.map((e) => `${e.type === 'dir' ? 'd' : '-'} ${e.path}`).join('\n') || '(empty)';
+      return (
+        entries.map((e) => `${e.type === 'dir' ? 'd' : '-'} ${e.path}`).join('\n') || '(empty)'
+      );
     }
     case 'cat': {
       if (!arg) return 'usage: cat <path>';
@@ -165,11 +167,4 @@ export function summarizeToolArgs(toolName: string, args: Record<string, unknown
   }
 }
 
-export {
-  clearMount,
-  getMountLabel,
-  hasMount,
-  mountTree,
-  pickDirectory,
-  supportsDirectoryPicker,
-};
+export { clearMount, getMountLabel, hasMount, mountTree, pickDirectory, supportsDirectoryPicker };

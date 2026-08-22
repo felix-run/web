@@ -1,3 +1,4 @@
+import { Button } from '@felix/ui/button';
 import { useCallback, useEffect, useState } from 'react';
 import {
   clearMount,
@@ -8,7 +9,6 @@ import {
   supportsDirectoryPicker,
   vfs,
 } from '@/lib/cowork';
-import { Button } from '@felix/ui/button';
 
 /** Compact cowork workspace strip — mount folder or inspect the tab VFS. */
 export function WorkspaceStrip() {

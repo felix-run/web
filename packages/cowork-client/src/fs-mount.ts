@@ -50,7 +50,9 @@ async function resolve(
   return { parent: dir, name };
 }
 
-export async function mountList(path = '.'): Promise<Array<{ path: string; type: 'file' | 'dir' }>> {
+export async function mountList(
+  path = '.',
+): Promise<Array<{ path: string; type: 'file' | 'dir' }>> {
   if (!root) throw new Error('no folder mounted');
   let dir = root;
   const base = path === '.' || path === '' ? '' : path.replace(/^\.\//, '');

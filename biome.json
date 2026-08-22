@@ -7,12 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": [
-      "**",
-      "!**/.wrangler",
-      "!**/dist",
-      "!**/node_modules"
-    ]
+    "includes": ["**", "!**/.wrangler", "!**/dist", "!**/node_modules"]
   },
   "formatter": {
     "enabled": true,
@@ -50,10 +45,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "packages/ui/src/**",
-        "apps/chat-ui/src/components/**"
-      ],
+      "includes": ["packages/ui/src/**", "apps/chat-ui/src/components/**"],
       "linter": {
         "rules": {
           "a11y": {

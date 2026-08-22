@@ -1,10 +1,10 @@
+import { TooltipProvider } from '@felix/ui/tooltip';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Toaster } from 'sonner';
 import App from './App';
 import { Gate } from './components/gate';
 import { ThemeProvider } from './components/theme-provider';
-import { TooltipProvider } from '@felix/ui/tooltip';
 import './index.css';
 
 // In dev the Vite proxy reaches Felix directly (no proxy Worker / secret), so

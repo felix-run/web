@@ -1,3 +1,8 @@
+import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
+import { ScrollArea } from '@felix/ui/scroll-area';
+import { Skeleton } from '@felix/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import {
   ActivityIcon,
   CheckCircle2Icon,
@@ -9,12 +14,14 @@ import {
   SparklesIcon,
   XIcon,
 } from 'lucide-react';
-import { decideApproval, getToolMetrics, listApprovals, listAudit, listPlans, listUsage } from '@/api';
-import { Badge } from '@felix/ui/badge';
-import { Button } from '@felix/ui/button';
-import { ScrollArea } from '@felix/ui/scroll-area';
-import { Skeleton } from '@felix/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
+import {
+  decideApproval,
+  getToolMetrics,
+  listApprovals,
+  listAudit,
+  listPlans,
+  listUsage,
+} from '@/api';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, Plan, PlanStepStatus, ToolMetricsRow, UsageEvent } from '@/types';
@@ -64,9 +71,7 @@ export function Inspector({
       <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium tracking-tight">Inspector</div>
-          <div className="truncate text-[11px] text-muted-foreground">
-            Live harness activity
-          </div>
+          <div className="truncate text-[11px] text-muted-foreground">Live harness activity</div>
         </div>
         <Button
           variant="ghost"
@@ -349,15 +354,11 @@ function UsageTab({ enabled }: { enabled: boolean }) {
       <div className="mb-3 grid grid-cols-2 gap-2 text-[11px]">
         <div className="rounded-lg border border-border/50 bg-background/80 px-2.5 py-2">
           <div className="text-muted-foreground">Input</div>
-          <div className="mt-0.5 font-mono text-sm font-medium">
-            {totals.in.toLocaleString()}
-          </div>
+          <div className="mt-0.5 font-mono text-sm font-medium">{totals.in.toLocaleString()}</div>
         </div>
         <div className="rounded-lg border border-border/50 bg-background/80 px-2.5 py-2">
           <div className="text-muted-foreground">Output</div>
-          <div className="mt-0.5 font-mono text-sm font-medium">
-            {totals.out.toLocaleString()}
-          </div>
+          <div className="mt-0.5 font-mono text-sm font-medium">{totals.out.toLocaleString()}</div>
         </div>
       </div>
       <div className="space-y-1.5">
@@ -379,9 +380,7 @@ function UsageTab({ enabled }: { enabled: boolean }) {
                 <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                   {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
                   {(e.tokens_output ?? 0).toLocaleString()} out
-                  {(e.cache_read ?? 0) > 0
-                    ? ` · ${e.cache_read.toLocaleString()} cache`
-                    : ''}
+                  {(e.cache_read ?? 0) > 0 ? ` · ${e.cache_read.toLocaleString()} cache` : ''}
                 </p>
               </div>
               {e.ts != null && (
@@ -679,9 +678,7 @@ function PanelBody({
             <Skeleton className="h-14 w-full rounded-xl" />
           </div>
         )}
-        {!loading && empty && (
-          <EmptyState icon={emptyIcon} title={emptyTitle} text={emptyText} />
-        )}
+        {!loading && empty && <EmptyState icon={emptyIcon} title={emptyTitle} text={emptyText} />}
         {!loading && !empty && children}
       </div>
     </ScrollArea>

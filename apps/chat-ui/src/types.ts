@@ -75,14 +75,7 @@ export type StreamEvent =
     }
   | { event: string; data: Record<string, unknown> };
 
-export type ThinkingLevel =
-  | 'off'
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max';
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** Authoritative session snapshot from GET /chat/sessions/{id}. */
 export interface SessionSnapshot {

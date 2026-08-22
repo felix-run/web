@@ -10,6 +10,7 @@
     "lint": "turbo run lint",
     "format": "biome format --write .",
     "check-types": "turbo run check-types",
+    "sync:theme": "pnpm --filter @felix/design sync:theme",
     "docs:dev": "pnpm --filter @felix/docs dev",
     "docs:build": "pnpm --filter @felix/docs build",
     "docs:deploy": "pnpm --filter @felix/docs run deploy",

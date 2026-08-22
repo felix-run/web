@@ -10,12 +10,17 @@ You own how **felix-web** builds, checks, and ships.
 
 ## The actual pipeline
 
-- **CI** (`.github/workflows/ci.yml`): two jobs, `chat-ui` and `docs`. Each does `pnpm install` then
-  a single build (`pnpm --filter @felix/chat-ui build`, `pnpm --filter @felix/docs build`) on
-  Node 22. Concurrency-cancelled per ref. That is the whole gate.
-- **Gaps you should know about, and may propose closing**: `apps/float` is not built in CI;
-  `lint` and `check-types` are not run in CI at all; there is no test job because **there is no test
-  suite in this repo**. Propose additions as a PR, don't silently expand the pipeline's cost.
+- **CI** (`.github/workflows/ci.yml`): one `verify` job on Node 22 — `pnpm install --frozen-lockfile`,
+  then lint, check-types, build (turbo covers chat-ui, float, and docs), then the hook test battery.
+  Every step carries `if: ${{ !cancelled() }}` so one red run reports all its failures instead of one
+  per push. Concurrency-cancelled per ref.
+- **Remaining gap**: there is no **application** test suite — the only automated tests are
+  `.claude/hooks/tests/`. Nothing verifies runtime behavior of the SPAs or the Workers; that still
+  needs a human running them against a live harness. Propose additions as a PR, don't silently expand
+  the pipeline's cost.
+- **`main` has no branch protection or rulesets on GitHub.** The branch/PR rule is enforced only by a
+  local PreToolUse hook, which anyone can bypass by not using Claude Code. Worth raising with the
+  user; enabling it is their call.
 - **Turbo** (`turbo.json`): `build` depends on `^build` and caches `dist/**`; `lint` and
   `check-types` fan out; `dev` is persistent and uncached. Local cache in `.turbo/` (gitignored).
 - **Package manager is pinned**: pnpm 10.33.2 via `packageManager`, Node ≥ 20 (CI uses 22).

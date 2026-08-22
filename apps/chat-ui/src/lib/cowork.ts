@@ -2,6 +2,7 @@
  * Chat-ui binding of @felix/cowork-client (separate VFS from float).
  */
 import {
+  type ClientToolRequest,
   clearMount,
   executeClientTool as exec,
   getMountLabel,
@@ -11,7 +12,6 @@ import {
   pickDirectory,
   readExisting,
   supportsDirectoryPicker,
-  type ClientToolRequest,
 } from '@felix/cowork-client';
 
 const vfs = getVfs('felix.chat.vfs');

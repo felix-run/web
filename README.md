@@ -28,7 +28,10 @@ pnpm build             # turbo run build
 pnpm lint              # turbo → biome
 pnpm format            # biome format
 pnpm check-types
+pnpm sync:theme        # regenerate apps/docs theme.css from @felix/design tokens
 ```
+
+CI runs `lint`, `check-types`, `build`, and the hook tests in `.claude/hooks/tests/` on every PR.
 
 ## Dependencies — pnpm catalogs
 

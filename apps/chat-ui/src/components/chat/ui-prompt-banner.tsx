@@ -27,12 +27,7 @@ export function UiPromptBanner({
           <Button size="sm" disabled={resolving} onClick={() => onRespond(true)}>
             Yes
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={resolving}
-            onClick={() => onRespond(false)}
-          >
+          <Button size="sm" variant="outline" disabled={resolving} onClick={() => onRespond(false)}>
             No
           </Button>
           <Button size="sm" variant="ghost" disabled={resolving} onClick={onCancel}>
@@ -71,9 +66,7 @@ export function UiPromptBanner({
         >
           <input
             name="value"
-            defaultValue={
-              typeof pending.defaultValue === 'string' ? pending.defaultValue : ''
-            }
+            defaultValue={typeof pending.defaultValue === 'string' ? pending.defaultValue : ''}
             disabled={resolving}
             className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
             placeholder="Type a response…"

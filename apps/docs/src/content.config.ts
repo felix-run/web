@@ -1,7 +1,8 @@
 // Starlight docs collection — edit MDX under src/content/ directly.
-import { glob } from 'astro/loaders';
+
 import { defineCollection } from 'astro:content';
 import { docsSchema } from '@astrojs/starlight/schema';
+import { glob } from 'astro/loaders';
 
 export const collections = {
   docs: defineCollection({

@@ -73,7 +73,6 @@ export function Message({
       {turn.tools && turn.tools.length > 0 && (
         <div className="flex flex-col gap-2">
           {turn.tools.map((tool, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: tool calls are append-only within a turn
             <Tool key={`${tool.name}-${i}`} tool={tool} verbose={verbose} />
           ))}
         </div>
@@ -98,11 +97,7 @@ export function Message({
       {empty && streaming && <TypingIndicator />}
 
       {!streaming && !empty && (
-        <MessageActions
-          content={turn.content}
-          onRegenerate={onRegenerate}
-          onRewind={onRewind}
-        />
+        <MessageActions content={turn.content} onRegenerate={onRegenerate} onRewind={onRewind} />
       )}
     </div>
   );
@@ -111,6 +106,8 @@ export function Message({
 function TypingIndicator() {
   return (
     <div
+      role="status"
+      aria-live="polite"
       className="flex items-center gap-1.5 py-1 text-muted-foreground"
       aria-label="Felix is typing"
     >
