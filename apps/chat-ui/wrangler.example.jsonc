@@ -1,0 +1,14 @@
+{
+  "name": "felix-chat-ui",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-01-15",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "FELIX_ORIGIN": "https://make.felix.run"
+  },
+  "routes": [{ "pattern": "chat.felix.run", "custom_domain": true }]
+}

@@ -54,27 +54,27 @@ Pick `chat-ui-demo` in the switcher and ask *"what is 7 × 6?"*: the calculator 
 
 ## Why a proxy Worker
 
-Felix serves no static assets and sets no CORS headers, so a browser app can't call it cross-origin. This example is a **standalone Worker** that (1) serves the built SPA (`./dist`) from a Workers Assets binding and (2) proxies `/api/*` to the Felix Worker over a **service binding**, stripping the `/api` prefix. Same-origin → no CORS changes to core. Returning the binding's `Response` verbatim preserves the streaming SSE body and the `x-manifest-variant` header. See [`worker/index.ts`](./worker/index.ts).
+Felix serves no static assets and sets no CORS headers, so a browser app can't call it
+cross-origin. This Worker (1) serves the built SPA from Assets and (2) proxies `/api/*`
+to `FELIX_ORIGIN` (HTTP), stripping the `/api` prefix. Same-origin → no CORS on the harness.
+SSE bodies and `x-manifest-variant` pass through. See [`worker/index.ts`](./worker/index.ts).
 
 ```
-browser ──/api/*──▶ chat-ui Worker ──FELIX binding──▶ Felix
-        ◀── SSE / JSON ──            ◀── SSE / JSON ──
+browser ──/api/*──▶ chat-ui Worker ──FELIX_ORIGIN──▶ Felix (Python)
+        ◀── SSE / JSON ──              ◀── SSE / JSON ──
 ```
+
+When `CHAT_UI_KEY` is set (production), the Gate prompts for that shared key and sends
+`x-chat-key`; the Worker checks it and **strips** the header before upstream.
 
 ## Local dev
 
-Two terminals. The Vite dev server proxies `/api` to a locally-running Felix, mirroring the production Worker — so the front-end code is identical in both.
-
 ```bash
-# repo root — bundle manifests (picks up chat-ui-demo), then run Felix on :8787
-pnpm build:manifests
-pnpm migrate:local      # first run only — creates the local D1 tables
-pnpm dev
+# terminal 1 — Python Felix (repo: felix-run/felix)
+make up && make migrate
 
-# this dir — SPA on :5173, /api → :8787
-cd apps/chat-ui
-pnpm install --ignore-workspace   # standalone project; the flag keeps the install out of the repo's pnpm workspace
-pnpm dev
+# terminal 2 — this monorepo
+pnpm chat:dev   # Vite :5173, /api → :8080 (no CHAT_UI_KEY gate)
 ```
 
 Open http://localhost:5173.
@@ -82,14 +82,15 @@ Open http://localhost:5173.
 ## Deploy
 
 ```bash
-cp wrangler.example.jsonc wrangler.jsonc   # edit the service name if needed
-pnpm build                                 # vite → ./dist
-wrangler deploy
+cp wrangler.example.jsonc wrangler.jsonc
+# set vars.FELIX_ORIGIN to your public Python Felix API
+pnpm --filter @felix/chat-ui build
+pnpm --filter @felix/chat-ui exec wrangler secret put CHAT_UI_KEY   # once
+pnpm --filter @felix/chat-ui exec wrangler deploy
 ```
 
-`services[].service` must match the deployed Felix Worker's `name` (`felix-orchestrator` by default). Build before deploy so `./dist` exists for the assets binding.
-
-For a separate production deployment, keep a second config (e.g. `wrangler.prod.jsonc` pointing at the production Felix Worker + domain) and deploy with `wrangler deploy -c wrangler.prod.jsonc`.
+Production today: `chat.felix.run` → `FELIX_ORIGIN=https://make.felix.run`. Enter the
+`CHAT_UI_KEY` in the Gate when prompted. Rotate with `wrangler secret put CHAT_UI_KEY`.
 
 ## Files
 

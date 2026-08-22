@@ -4,6 +4,9 @@
  * Serves the SPA from ASSETS and proxies `/api/*` to the self-hosted Python
  * Felix harness (`FELIX_ORIGIN`), stripping the `/api` prefix. Same contract
  * as the Vite dev proxy.
+ *
+ * When `CHAT_UI_KEY` is set, browser clients must send `x-chat-key` (see Gate).
+ * That header is stripped before the upstream Felix request.
  */
 
 interface Env {
@@ -42,7 +45,23 @@ export default {
 
       const rest = url.pathname.slice('/api'.length);
       const target = `${origin}${rest}${url.search}`;
-      return fetch(new Request(target, req));
+
+      const headers = new Headers(req.headers);
+      headers.delete('x-chat-key');
+      headers.delete('host');
+      headers.delete('cf-connecting-ip');
+      headers.delete('cf-ray');
+      headers.delete('cf-visitor');
+      headers.delete('cf-ipcountry');
+
+      return fetch(target, {
+        method: req.method,
+        headers,
+        body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
+        redirect: 'manual',
+        // @ts-expect-error Workers duplex streaming
+        duplex: 'half',
+      });
     }
 
     return env.ASSETS.fetch(req);

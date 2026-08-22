@@ -1,124 +1,68 @@
 ---
 title: "Testing"
-description: "Vitest unit and workers (miniflare) test projects — topology, patterns, adding tests, and integration test bindings."
+description: "pytest unit and integration layout, mock eval, and local check commands."
 sidebar:
   order: 9
 ---
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
-:::caution[Former Workers prototype]
-This page describes the former TypeScript Cloudflare Workers harness test layout (vitest + miniflare). The live harness is Python in [felix-run/felix](https://github.com/felix-run/felix). Prefer that repo for current test commands.
+How the Python harness is tested. Repo: [felix-run/felix](https://github.com/felix-run/felix).
+
+## Layout
+
+| Suite | Path | Role |
+|---|---|---|
+| **Unit** | `tests/unit/` | Schema, patterns, governance, stores (often `memory://` DB + `object_store=memory`), auth modes |
+| **Integration** | `tests/integration/` | FastAPI HTTP surfaces (`/health`, `/chat`, `/v1`, …) against a test app |
+| **Smoke** | `tests/test_smoke.py` | Coarse import / build / optional live-model checks |
+| **Eval** | CLI + `felix.eval` | Offline datasets; `--mock` scores rubric without a live model |
+
+No Vitest / miniflare. Run via:
+
+```bash
+make check          # ruff + ty + pytest
+# or
+uv run pytest
+uv run pytest tests/unit -q
+uv run pytest tests/integration -q
+```
+
+## Patterns when adding tests
+
+1. **Settings** — construct `Settings(auth_mode="none", allow_insecure=True, database_url="memory://…", object_store="memory")` so tests stay hermetic.
+2. **Stub tools** — pass an explicit `ToolProvider` / in-memory tools; don't depend on full Compose wiring.
+3. **Manifests** — build with `apiVersion: felix/v1` dicts or `parse_manifest`; don't require the on-disk bundle.
+4. **Tenant isolation** — assert another tenant cannot read rows you wrote.
+5. **Async** — mark with `@pytest.mark.asyncio` where the harness APIs are async.
+
+## Mock eval
+
+```bash
+felix eval -d my-dataset -m quick --fixture ./dataset.json --mock
+```
+
+`--mock` compares against rubric `mock_answer` / `expect` fields — CI-friendly without provider keys. Omit `--mock` to drive the candidate manifest through a real model.
+
+## CLI helpers used in CI / ops
+
+| Command | Purpose |
+|---|---|
+| `felix migrate` | Alembic upgrade |
+| `felix doctor` | Read-only config / connectivity checks |
+| `felix eval …` | Offline eval runs |
+| `felix mint-jwt` | Self-issued JWT for `jwt` mode |
+| `felix bundle-manifests` | Validate bundled YAML |
+
+## Local stack for integration
+
+```bash
+make install && make up && make migrate
+# API :8080 — see getting started
+```
+
+Lean hosts: `make up-lite`. Details: [getting started](/guide/getting-started/), [deploy](/guide/deploy/).
+
+:::tip
+Prefer unit tests with in-memory Postgres/object store for governance and pattern loops; reserve integration tests for HTTP contract and auth middleware behavior.
 :::
-
-Vitest with two projects covering separate concerns.
-
-## Topology
-
-`vitest.config.ts` defines two projects:
-
-| Project | Pool | Includes | Bindings |
-|---|---|---|---|
-| `unit` | node | `packages/*/tests/**/*.test.ts` + `apps/*/tests/**/*.test.ts` (excluding integration) | none — pure logic, schema, governance wrappers, fake DOs (and a fake postgres.js client, see below), the plugin-boundary guard |
-| `workers` | `@cloudflare/vitest-pool-workers` (miniflare/workerd) | `apps/api/tests/integration/**/*.test.ts` | declared explicitly in the config (not read from `wrangler.jsonc`); real Postgres via `miniflare.hyperdrives` |
-
-The workers project does **not** point at `wrangler.jsonc` because the bundled workerd doesn't support the wrapped `AI` binding the production config declares. Bindings are explicitly enumerated in `vitest.config.ts` under `miniflare.{bindings, hyperdrives, kvNamespaces, r2Buckets, queueProducers, queueConsumers, durableObjects}` and the AI binding is stubbed via a service worker in test code.
-
-`miniflare.hyperdrives` points `HYPERDRIVE` at a real Postgres instance — `TEST_DATABASE_URL` if set, else `postgresql://postgres:postgres@localhost:5432/felix_test` (Docker locally, a service container in CI; `pnpm db:up` starts the same `pgvector/pgvector:pg17` image used for dev). A Node-side `globalSetup` (`apps/api/tests/integration/global-setup.ts`) waits for Postgres, resets the `felix_test` schema, and applies `apps/api/migrations/` via node-pg-migrate before any test file runs. Because Postgres is shared across test files — unlike miniflare's per-test D1 isolation in the old setup — the workers project sets `fileParallelism: false` and runs files serially; tests isolate by using distinct tenant ids, and serial order keeps the tenant-agnostic scans (anomaly detector, retention sweep, audit metrics) deterministic.
-
-## Running
-
-```bash
-pnpm test                                          # both projects
-pnpm test:watch                                    # watch mode
-pnpm test -- packages/harness/tests/unit/manifest_schema.test.ts    # single file
-pnpm test -- --project unit -t "rejects unknown kind"   # single test by name
-pnpm test -- --project workers                     # workers only
-```
-
-## Adding integration bindings
-
-When a new test needs a Cloudflare binding (e.g. a new DO class, a new Queue), it must be added in **two places**:
-
-1. `apps/api/wrangler.jsonc` for production.
-2. `vitest.config.ts` under the appropriate `miniflare` sub-block (`bindings`, `hyperdrives`, `kvNamespaces`, `r2Buckets`, `queueProducers`, `queueConsumers`, `durableObjects`) for the workers test project.
-
-New tables/columns go through `apps/api/migrations/` instead — the workers project's `globalSetup` reapplies every migration against `felix_test` before each run, so no separate test-schema step is needed.
-
-The integration tests boot the worker via `SELF.fetch`; the miniflare entry needs `main: './apps/api/src/index.ts'` (the deployable shell, which wires the harness + plugins exactly like production) to know where to compile from.
-
-Beyond the core bindings, the miniflare block also declares the `JOBS_QUEUE` producer (`felix-jobs`, the `transport: queue` tool seam) and plain-var test credentials such as `JWKS_PUBLIC` so auth-gated integration tests run without real secrets.
-
-## Stubbing manifests
-
-The bundle script (`pnpm build:manifests`) reads YAML manifests from this repo's own `manifests/*.yaml`. If that directory is empty, the bundle is empty.
-
-Unit and integration tests don't rely on the on-disk bundle. They stub manifests directly:
-
-```ts
-import { _clearManifestCaches, parseManifest } from '../../src/manifests/loader';
-
-beforeEach(() => _clearManifestCaches());
-
-it('builds a minimal agent', () => {
-  const m = parseManifest({ apiVersion: 'orchestrator/v1', kind: 'Agent',
-    metadata: { name: 'unit' },
-    spec: { pattern: 'react', auth: { inbound: { allow_anonymous: true } } } });
-  // ...
-});
-```
-
-This keeps tests deterministic and decoupled from the build step.
-
-## Linting and type checking
-
-```bash
-pnpm typecheck        # tsc --noEmit
-pnpm lint             # biome check packages apps
-pnpm lint:fix         # biome check --write packages apps
-pnpm format           # biome format --write packages apps
-```
-
-Biome config: single quotes, semicolons, trailing commas, 100-column width, 2-space indent. `noExplicitAny: warn`, `noUnusedImports: error`.
-
-## What each project is good for
-
-### Unit project — `packages/harness/tests/unit/**` (+ `apps/api/tests/unit/**` for wiring guards)
-
-- Manifest schema and validation logic
-- Governance wrappers (policy/limits/guardrails/approvals): construct a fake `Tool`, run the wrapper, assert audit + return value
-- Tool registration with `InMemoryToolProvider`; tool transport seam via `tests/unit/tools/executor.test.ts` and `tests/unit/tools/container_executor.test.ts`
-- Pattern and model-provider registries (`tests/unit/patterns/registry.test.ts`, `tests/unit/patterns/model_registry.test.ts`)
-- Session rendering: `tests/unit/session/strategies.test.ts` covers `full_replay` / `windowed:N`; `tests/unit/session/summarizing.test.ts` covers `summarizing:N` including cache reuse and degraded-windowed fallback; `tests/unit/session_semantic.test.ts` covers `semantic:N` BGE retrieval and pinned-anchor inclusion
-- Pure model code: `parseModelRoutes`, `zodToJsonSchema`, the cron matcher
-- Store logic against the fake postgres.js client (`packages/harness/tests/helpers/fake-sql.ts`) — assert on query shape (`{ text, params }`) and drive fake rows back, no real database needed
-- Anything that doesn't need a real DO or a real database
-
-### Workers project — `apps/api/tests/integration/**`
-
-- HTTP routes via `SELF.fetch`
-- Real Postgres reads/writes over the `HYPERDRIVE` binding (`miniflare.hyperdrives`; schema applied by the `globalSetup`)
-- Durable Object behavior (real DO state, real `blockConcurrencyWhile`)
-- Queue producer + consumer round-trips
-- End-to-end agent builds and tool dispatch
-
-## Patterns to follow when writing a new test
-
-1. **Boot the app with a stub provider.** Don't rely on `compose(env)` in tests — pass an explicit `InMemoryToolProvider` with the exact tools the test exercises. Easier to assert against, no cross-test contamination.
-2. **Reset module-level caches.** `_clearManifestCaches()` between tests; the per-router agent cache lives on a router instance, so use a fresh `buildChatRouter({ tools })` for each test.
-3. **Time control.** Tests that exercise wall-clock limits or cron should pass an explicit `at` parameter where the production code supports it (e.g. `runScheduledJobs(env, at)`) — avoid mocking `Date.now()` across the whole suite.
-4. **Audit events.** Read them back via `listEvents(env, { tenantId, limit })` and assert event_type + status + payload keys. Don't snapshot the full payload — the audit shape evolves and the tenant id / timestamps churn.
-5. **Tenant isolation.** Always write at least one assertion proving a different tenant cannot see the rows you just wrote. Composite-key invariants are easy to break in a follow-up; the test is the safety net. `apps/api/tests/integration/cross_tenant.test.ts` is the dedicated cross-tenant probe and the right reference when adding similar coverage.
-
-## Common test fixtures (informal)
-
-There is no shared fixtures module today. Common ad-hoc patterns in the existing suite:
-
-- `makeFakeTool(name, returns)` — `defineTool({ name, args: z.object({}), async handler() { return returns; } })`. For non-local transports, build with `defineToolWithExecutor({ ..., executor: { transport: 'fake', async execute() { return returns; } } })`.
-- `withCtx(authCtx, fn)` — wraps `fn` in `runWithContext({ env, auth: authCtx, limitState: newLimitState() }, fn)` so wrappers reading `getContext()` find what the test expects.
-- `makeFakeSql(handler)` + `withFakeDb(env, sql, fn)` (`packages/harness/tests/helpers/fake-sql.ts`) — `makeFakeSql` builds a fake postgres.js client from a `({ text, params }) => rows | count | throw` handler; `withFakeDb` installs it on a RequestContext so `getDb(env)` inside the code under test returns it, and store-layer unit tests never open a real connection.
-- Building principals: `{ subject: 'u1', tenantId: 't1', scopes: ['a'], issuer: 'https://test' }` and passing them through a constructed `AuthContext`.
-- `recordingSessionStore()` / `mutableSession()` — in-memory `SessionStore` / `Session` implementations for pattern tests (see `tests/unit/react_hydration.test.ts`, `tests/unit/groupchat_persistence.test.ts`, `tests/unit/session/summarizing.test.ts`).
-- Pattern registry tests use module-level side-effect imports (`import '../../../src/patterns/react'`) so the built-ins self-register before assertions run. The registry is a process singleton; tests register additional patterns with names that can't collide with built-ins (e.g. `'echo-test-pattern'`).
-
-Promote a fixtures module once the same boilerplate appears in more than three test files.

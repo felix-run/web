@@ -48,7 +48,8 @@ export default defineConfig({
             { label: 'Testing', slug: 'internals/testing' },
           ],
         },
-        // API reference is served by a running harness (Scalar over /openapi.json).
+        // Live OpenAPI UI (Scalar) from a running harness — hosted demo at make.felix.run;
+        // locally: http://localhost:8080/docs over /openapi.json.
         { label: 'API reference ↗', link: 'https://make.felix.run/docs' },
       ],
     }),
