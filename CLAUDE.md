@@ -41,8 +41,8 @@ pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 Local dev needs the Python harness running separately (`make up && make migrate` in felix-run/felix
 → `:8080`). Without it, both apps load but every `/api/*` call fails.
 
-**Test coverage is partial, and knowing where it stops matters.** `pnpm test` covers the VFS
-(`packages/cowork-client`), the SSE reader (now one implementation in `@felix/protocol`, exercised
+**Test coverage is partial, and knowing where it stops matters.** `pnpm test` covers the VFS and
+the File System Access mount (`packages/cowork-client`), the SSE reader (now one implementation in `@felix/protocol`, exercised
 through both apps' `streamChat`), and the proxy Worker — the last via a shared suite in
 `@felix/test-kit` run against **both** copies, which is the only mechanical check that the two
 deliberately-duplicated Workers still agree. **No test exercises any React code**, so UI behavior is
