@@ -104,7 +104,7 @@ export function Gate({ children }: { children: ReactNode }) {
             className="h-10"
           />
           {error && (
-            <p id="gate-error" className="text-sm text-destructive">
+            <p id="gate-error" className="text-sm text-state-failed">
               {error}
             </p>
           )}

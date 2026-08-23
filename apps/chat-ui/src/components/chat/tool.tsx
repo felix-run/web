@@ -26,7 +26,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         <span className="min-w-0 truncate font-medium">{tool.name}</span>
         {tool.done ? (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
-            <CheckCircle2Icon className="size-3 text-emerald-500" />
+            <CheckCircle2Icon className="size-3 text-state-done" />
             done
           </Badge>
         ) : (
@@ -48,7 +48,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
           <Field label="output" value={tool.output} emphasis />
         ) : (
           verbose && (
-            <p className="text-[11px] text-muted-foreground italic">Waiting for tool output…</p>
+            <p className="text-xs text-muted-foreground italic">Waiting for tool output…</p>
           )
         )}
       </CollapsibleContent>
@@ -59,7 +59,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
 function Field({ label, value, emphasis }: { label: string; value: unknown; emphasis?: boolean }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+      <div className="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
         {label}
       </div>
       <pre

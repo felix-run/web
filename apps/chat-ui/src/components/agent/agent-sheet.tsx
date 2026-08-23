@@ -59,7 +59,7 @@ export function AgentSheet({
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-4 p-4 text-xs">
-            {error && <p className="text-destructive">⚠ {error}</p>}
+            {error && <p className="text-state-failed">⚠ {error}</p>}
             {!resolved && !error && <p className="text-muted-foreground">Loading…</p>}
 
             {resolved && spec && (
@@ -237,7 +237,7 @@ function modelField(
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1 rounded-md border bg-card/40 p-2.5">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {title}
       </div>
       {children}
@@ -271,7 +271,7 @@ function Chips({ label, items }: { label: string; items: string[] }) {
           <span className="font-mono text-muted-foreground/50">—</span>
         ) : (
           items.map((it) => (
-            <Badge key={it} variant="secondary" className="py-0 font-mono text-[10px]">
+            <Badge key={it} variant="secondary" className="py-0 font-mono text-xs">
               {it}
             </Badge>
           ))

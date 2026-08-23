@@ -177,7 +177,7 @@ function MultimodalInputInner({
   const helperText = !isConnected
     ? 'Reconnecting…'
     : isBusy
-      ? 'Generating — Enter steers'
+      ? 'Generating. Press Enter to steer.'
       : files.length >= MAX_FILES
         ? `Max ${MAX_FILES} attachments`
         : null;
@@ -353,8 +353,8 @@ function MultimodalInputInner({
               {showCharCount && (
                 <span
                   className={cn(
-                    'text-[11px] tabular-nums',
-                    tooLong ? 'text-destructive' : 'text-muted-foreground',
+                    'text-xs tabular-nums',
+                    tooLong ? 'text-state-failed' : 'text-muted-foreground',
                   )}
                   aria-live="polite"
                 >
@@ -470,7 +470,7 @@ function MicButton({
         className={cn(
           'relative size-8 rounded-full transition-colors',
           isListening
-            ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
+            ? 'bg-state-failed/15 text-state-failed hover:bg-state-failed/20'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
       >
@@ -483,7 +483,7 @@ function MicButton({
         )}
       </Button>
       {isListening && interim && (
-        <span className="max-w-[16ch] truncate text-xs text-destructive/80 italic sm:max-w-[24ch]">
+        <span className="max-w-[16ch] truncate text-xs text-state-failed/80 italic sm:max-w-[24ch]">
           {interim}
         </span>
       )}
@@ -599,7 +599,7 @@ function AttachmentsPreview() {
 
 function ConnectionBanner() {
   return (
-    <div className="mx-auto mb-2 flex w-fit items-center gap-2 rounded-full border border-border/50 bg-card/80 px-3 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+    <div className="mx-auto mb-2 flex w-fit items-center gap-2 rounded-full border border-border/50 bg-card/80 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
       <Loader2 className="size-3 animate-spin" />
       Reconnecting to the assistant
     </div>
@@ -620,14 +620,19 @@ function DropOverlay() {
 
 function KeyboardHint() {
   return (
-    <p className="mt-2 text-center text-[11px] text-muted-foreground">
+    <p className="mt-2 text-center text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1">
         <Kbd>
           <CornerDownLeft className="size-2.5" />
         </Kbd>
         <span>to send</span>
       </span>
-      <span className="mx-2 text-border">·</span>
+      {/* Decorative separator: `text-border` is a hairline colour and rendered this at
+          1.24:1, effectively invisible. Hidden from assistive tech and given a colour
+          that can actually be seen. */}
+      <span aria-hidden className="mx-2 text-muted-foreground">
+        ·
+      </span>
       <span className="inline-flex items-center gap-1">
         <Kbd>⇧</Kbd>
         <Kbd>
@@ -641,7 +646,7 @@ function KeyboardHint() {
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/60 bg-muted/50 px-1 font-sans text-[10px] text-muted-foreground">
+    <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/60 bg-muted/50 px-1 font-sans text-xs text-muted-foreground">
       {children}
     </kbd>
   );

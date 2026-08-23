@@ -61,13 +61,13 @@ export function PanelErrorFallback({
   return (
     <div
       role="alert"
-      className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
+      className="flex flex-col gap-2 rounded-lg border border-state-failed/30 bg-state-failed/10 px-2.5 py-2 text-xs text-state-failed"
     >
       <div className="flex items-start gap-2">
         <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
         <div className="min-w-0">
           <p className="font-medium">{what} could not be displayed</p>
-          <p className="mt-0.5 break-words opacity-80">{error.message}</p>
+          <p className="mt-0.5 font-mono break-words">{error.message}</p>
         </div>
       </div>
       <Button size="sm" variant="outline" className="h-7 self-start text-xs" onClick={reset}>
@@ -92,7 +92,7 @@ export function AppErrorFallback({ error }: { error: Error }) {
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Reloading usually clears it. Your conversations are stored locally and are not affected.
         </p>
-        <pre className="mt-3 max-h-40 overflow-auto rounded-lg border border-border/50 bg-muted/40 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+        <pre className="mt-3 max-h-40 overflow-auto rounded-lg border border-border/50 bg-muted/40 p-2 font-mono text-xs leading-relaxed text-muted-foreground">
           {error.message}
         </pre>
         <Button className="mt-4" onClick={() => window.location.reload()}>

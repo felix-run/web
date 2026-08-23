@@ -17,7 +17,7 @@ export function UiPromptBanner({
 
   return (
     <div className="mx-auto mb-3 w-full max-w-2xl rounded-xl border border-primary/40 bg-accent/40 p-4 shadow-sm">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {kindLabel} required
       </p>
       <h2 className="mt-1 text-sm font-semibold">{pending.prompt}</h2>

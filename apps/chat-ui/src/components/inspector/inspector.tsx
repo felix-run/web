@@ -27,6 +27,7 @@ import {
 } from '@/api';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { usePoll } from '@/hooks/usePoll';
+import { describeError } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, Plan, PlanStepStatus, UsageEvent } from '@/types';
 
@@ -46,17 +47,38 @@ const EVENT_LABEL: Record<string, string> = {
 };
 
 /**
- * Tones for the events worth interrupting a scan for. `tool_call` is deliberately
- * absent: it is the overwhelming majority of the feed, so badging it too would put
- * every row at the same volume and the exceptions would stop reading as exceptions.
+ * What each event type actually means, for the reader who has not memorised the
+ * harness vocabulary. Surfaced as the badge's `title`, so it costs nothing to
+ * anyone who already knows and answers the question for anyone who does not.
+ */
+const EVENT_HELP: Record<string, string> = {
+  tool_call: 'The agent called a tool.',
+  judge_score: 'An automated judge scored the response.',
+  guardrail_block: 'A policy rule stopped a tool call before it ran.',
+  approval_request: 'A gated tool call paused, waiting for a person to decide.',
+  approval_decision: 'Someone approved or denied a gated tool call.',
+  plan_step: 'A step in a multi-step plan changed state.',
+  model_switch: 'The run moved to a different model.',
+};
+
+/**
+ * Tones for the events worth interrupting a scan for.
+ *
+ * Colour here means run state, not event category. The previous version gave each of
+ * six event types its own hue, which spent the whole colour budget on telling violet
+ * from indigo: neither carries urgency, neither is worth an operator's attention, and
+ * six hues in a 22rem panel is noise. What the reader needs is which events are
+ * waiting on a person and which resolved. The type is already written on the badge.
+ *
+ * `tool_call` is deliberately absent: it is the overwhelming majority of the feed, so
+ * badging it too would put every row at the same volume and the exceptions would stop
+ * reading as exceptions. `judge_score`, `plan_step` and `model_switch` are absent for
+ * the same reason: they are routine, and their labels say what they are.
  */
 const EVENT_TONE: Record<string, string> = {
-  judge_score: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
-  guardrail_block: 'bg-amber-500/15 text-amber-800 dark:text-amber-300',
-  approval_request: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
-  approval_decision: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-  plan_step: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300',
-  model_switch: 'bg-pink-500/15 text-pink-700 dark:text-pink-300',
+  guardrail_block: 'bg-state-blocked/15 text-state-blocked',
+  approval_request: 'bg-state-blocked/15 text-state-blocked',
+  approval_decision: 'bg-state-done/15 text-state-done',
 };
 
 /** Rows rendered per section before the footer starts saying what was left out. */
@@ -83,12 +105,15 @@ export function Inspector({
   onClose,
   skills,
   onSuggest,
+  busy,
   className,
 }: {
   open: boolean;
   onClose: () => void;
   skills: SkillState | null;
   onSuggest: (text: string) => void;
+  /** A run is in flight. Anything that posts to the thread has to stand down. */
+  busy?: boolean;
   /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
@@ -118,7 +143,7 @@ export function Inspector({
       )}
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
-        <h2 id="inspector-heading" className="text-sm font-medium">
+        <h2 id="inspector-heading" className="text-base font-semibold">
           Inspector
         </h2>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close inspector">
@@ -170,6 +195,7 @@ export function Inspector({
               onToggle={() => toggle('skills')}
               skills={skills}
               onSuggest={onSuggest}
+              busy={busy}
             />
           </SectionBoundary>
         </div>
@@ -233,13 +259,13 @@ function Section({
           className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90"
         />
         <span className="shrink-0 text-muted-foreground">{icon}</span>
-        <span className="flex-1 truncate text-[13px] font-medium">{title}</span>
+        <span className="flex-1 truncate text-sm font-semibold">{title}</span>
         {meta ? (
           <span
             className={cn(
-              'shrink-0 text-[11px] tabular-nums',
+              'shrink-0 text-xs tabular-nums',
               metaTone === 'attention'
-                ? 'rounded-full bg-amber-500/20 px-1.5 py-0.5 font-medium text-amber-800 dark:text-amber-300'
+                ? 'rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-medium text-state-blocked'
                 : 'text-muted-foreground',
             )}
           >
@@ -262,6 +288,7 @@ function Section({
 function SectionBody({
   loading,
   error,
+  doing,
   empty,
   emptyText,
   status,
@@ -270,6 +297,8 @@ function SectionBody({
 }: {
   loading: boolean;
   error: string | null;
+  /** Verb phrase completing "Could not …", used to write the failure message. */
+  doing: string;
   empty?: boolean;
   emptyText: string;
   status?: string;
@@ -280,30 +309,29 @@ function SectionBody({
   // A failed fetch leaves no data, which also reads as "empty". Showing both at once
   // says the harness is idle *and* unreachable; the error is the true one.
   if (error) {
+    const described = describeError(error, doing);
     // No sr-only status line here: `role="alert"` is already a live region, and
     // carrying the same text in both makes a screen reader read the failure twice.
     return (
-      <>
-        <div
-          role="alert"
-          className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
-        >
-          <div className="flex items-start gap-2">
-            <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-            <span className="min-w-0 break-words">{error}</span>
+      <div
+        role="alert"
+        className="flex flex-col gap-2 rounded-lg border border-state-failed/30 bg-state-failed/10 px-2.5 py-2 text-xs text-state-failed"
+      >
+        <div className="flex items-start gap-2">
+          <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="break-words">{described.message}</p>
+            {/* The mono face separates the raw status from the sentence; dimming it
+                further would put it under the contrast floor. */}
+            <p className="mt-0.5 font-mono break-words">{described.detail}</p>
           </div>
-          {onRetry && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 self-start text-xs"
-              onClick={onRetry}
-            >
-              Try again
-            </Button>
-          )}
         </div>
-      </>
+        {onRetry && (
+          <Button size="sm" variant="outline" className="h-7 self-start text-xs" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+      </div>
     );
   }
 
@@ -318,9 +346,7 @@ function SectionBody({
           <Skeleton className="h-8 w-full rounded-md" />
         </div>
       )}
-      {!loading && empty && (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">{emptyText}</p>
-      )}
+      {!loading && empty && <p className="text-sm text-muted-foreground">{emptyText}</p>}
       {!loading && !empty && children}
     </>
   );
@@ -330,7 +356,7 @@ function SectionBody({
 function Truncated({ shown, total, noun }: { shown: number; total: number; noun: string }) {
   if (total <= shown) return null;
   return (
-    <p className="mt-2 text-[10px] text-muted-foreground">
+    <p className="mt-2 text-xs text-muted-foreground">
       Showing {shown} of {total} {noun}
     </p>
   );
@@ -362,6 +388,7 @@ function ActivitySection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load recent activity"
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
@@ -372,13 +399,14 @@ function ActivitySection({
           {rows.map((e) => {
             const tone = EVENT_TONE[e.event_type];
             return (
-              <li key={e.id} className="flex items-start gap-2 py-1.5 text-xs">
+              <li key={e.id} className="flex items-start gap-2 py-1.5 text-sm">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     {tone && (
                       <Badge
                         variant="secondary"
-                        className={cn('shrink-0 px-1 py-0 font-sans text-[10px] font-medium', tone)}
+                        title={EVENT_HELP[e.event_type]}
+                        className={cn('shrink-0 px-1 py-0 font-sans text-xs font-medium', tone)}
                       >
                         {EVENT_LABEL[e.event_type] ?? e.event_type}
                       </Badge>
@@ -386,7 +414,7 @@ function ActivitySection({
                     <span className="truncate font-medium">{toolOf(e)}</span>
                   </div>
                   {summary(e) && (
-                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                       {summary(e)}
                     </p>
                   )}
@@ -394,7 +422,7 @@ function ActivitySection({
                 <div className="flex shrink-0 flex-col items-end gap-0.5">
                   <StatusDot status={e.status} />
                   {e.ts != null && (
-                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                    <span className="text-xs tabular-nums text-muted-foreground">
                       {relTime(e.ts)}
                     </span>
                   )}
@@ -415,9 +443,9 @@ function StatusDot({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 text-[10px] capitalize',
-        ok && 'text-emerald-600 dark:text-emerald-400',
-        bad && 'text-destructive',
+        'inline-flex items-center gap-1 text-xs capitalize',
+        ok && 'text-state-done',
+        bad && 'text-state-failed',
         !ok && !bad && 'text-muted-foreground',
       )}
     >
@@ -425,7 +453,7 @@ function StatusDot({ status }: { status: string }) {
         aria-hidden
         className={cn(
           'size-1.5 rounded-full',
-          ok && 'bg-emerald-500',
+          ok && 'bg-state-done',
           bad && 'bg-destructive',
           !ok && !bad && 'bg-muted-foreground/50',
         )}
@@ -435,9 +463,17 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
+/**
+ * The row's subject line. Most audit events are tool calls and carry the tool name;
+ * the rest fall back to whatever identifies them. The old last resort was the literal
+ * word "event", which told the reader nothing they could not already see, so an event
+ * with no tool and no manifest now says what kind of event it is instead.
+ */
 function toolOf(e: AuditEvent): string {
   const t = e.payload?.tool;
-  return typeof t === 'string' ? t : e.manifest_id || 'event';
+  if (typeof t === 'string') return t;
+  if (e.manifest_id) return e.manifest_id;
+  return (EVENT_LABEL[e.event_type] ?? e.event_type).toLowerCase();
 }
 
 function summary(e: AuditEvent): string {
@@ -507,9 +543,8 @@ function ApprovalsSection({
       toast.success(`${status === 'approved' ? 'Approved' : 'Denied'} ${tool}`);
       refresh();
     } catch (err) {
-      toast.error(`Could not ${status === 'approved' ? 'approve' : 'deny'} ${tool}`, {
-        description: String((err as Error)?.message ?? err),
-      });
+      const described = describeError(err, `${status === 'approved' ? 'approve' : 'deny'} ${tool}`);
+      toast.error(described.message, { description: described.detail });
     } finally {
       decidingRef.current = null;
       setDeciding(null);
@@ -527,6 +562,7 @@ function ApprovalsSection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load pending approvals"
         loading={loading && !data}
         error={error}
         empty={count === 0}
@@ -543,10 +579,10 @@ function ApprovalsSection({
           {data?.map((a) => (
             <article
               key={a.id}
-              className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2.5 text-xs"
+              className="rounded-lg border border-state-blocked/40 bg-state-blocked/5 p-2.5 text-xs"
             >
               <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="py-0 font-mono text-[10px]">
+                <Badge variant="secondary" className="py-0 font-mono text-xs">
                   {a.tool_name}
                 </Badge>
                 <span className="truncate text-muted-foreground">{a.manifest_id}</span>
@@ -571,7 +607,7 @@ function ApprovalsSection({
                   Deny
                 </Button>
               </div>
-              <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+              <p className="mt-2 text-xs text-muted-foreground">
                 Deciding resumes the paused run, no need to re-send.
               </p>
             </article>
@@ -604,7 +640,7 @@ function ApprovalArgs({ args }: { args: unknown }) {
     <div className="mt-2">
       <pre
         className={cn(
-          'overflow-x-auto rounded-md border border-border/40 bg-background/60 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-foreground/80',
+          'overflow-x-auto rounded-md border border-border/40 bg-background/60 p-2 font-mono text-sm whitespace-pre-wrap break-words text-foreground/80',
           expanded && 'max-h-64 overflow-y-auto',
         )}
       >
@@ -614,7 +650,7 @@ function ApprovalArgs({ args }: { args: unknown }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-1 rounded text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          className="mt-1 rounded text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
           {expanded
             ? 'Show less'
@@ -640,10 +676,10 @@ function safeStringify(value: unknown): string {
 
 const STEP_TONE: Record<PlanStepStatus, string> = {
   pending: 'text-muted-foreground',
-  in_progress: 'text-sky-600 dark:text-sky-400',
-  completed: 'text-emerald-600 dark:text-emerald-400',
+  in_progress: 'text-state-running',
+  completed: 'text-state-done',
   skipped: 'text-muted-foreground line-through',
-  failed: 'text-destructive',
+  failed: 'text-state-failed',
 };
 
 const STEP_MARK: Record<PlanStepStatus, string> = {
@@ -675,6 +711,7 @@ function PlansSection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load plans"
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
@@ -689,7 +726,7 @@ function PlansSection({
               <article key={p.id} className="text-xs">
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-medium leading-snug">{p.title}</h3>
-                  <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
+                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
                     {done}/{p.steps.length}
                   </span>
                 </div>
@@ -701,7 +738,7 @@ function PlansSection({
                 </div>
                 <ol className="mt-2 space-y-1">
                   {p.steps.map((s) => (
-                    <li key={s.id} className={cn('flex gap-2 text-[11px]', STEP_TONE[s.status])}>
+                    <li key={s.id} className={cn('flex gap-2 text-xs', STEP_TONE[s.status])}>
                       <span className="w-3 shrink-0 font-mono" aria-hidden>
                         {STEP_MARK[s.status]}
                       </span>
@@ -749,19 +786,20 @@ function MetricsSection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load tool metrics"
         loading={loading && !data}
         error={error}
         empty={tools.length === 0}
         emptyText="Ask the agent to use a tool. Rollups cover the last hour."
         status={data ? `${tools.length} tools called in the last hour` : undefined}
       >
-        <p className="mb-2 text-[10px] text-muted-foreground">Last 60 minutes</p>
+        <p className="mb-2 text-xs text-muted-foreground">Last 60 minutes</p>
         <ol className="space-y-2">
           {tools.map((t) => (
             <li key={t.tool} className="text-xs">
               <div className="flex items-baseline gap-2">
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{t.tool}</span>
-                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{t.tool}</span>
+                <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
                   {t.calls}×
                 </span>
               </div>
@@ -771,8 +809,8 @@ function MetricsSection({
                   style={{ width: `${Math.max(4, (t.calls / maxCalls) * 100)}%` }}
                 />
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 text-[10px] text-muted-foreground">
-                <span className={cn(t.errors > 0 && 'font-medium text-destructive')}>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 text-xs text-muted-foreground">
+                <span className={cn(t.errors > 0 && 'font-medium text-state-failed')}>
                   {t.errors > 0 ? `${t.errors} error${t.errors === 1 ? '' : 's'}` : 'healthy'}
                 </span>
                 {t.avg_latency_ms > 0 && <span>avg {Math.round(t.avg_latency_ms)}ms</span>}
@@ -816,6 +854,7 @@ function UsageSection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load token usage"
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
@@ -828,11 +867,11 @@ function UsageSection({
       >
         <dl className="mb-2.5 flex gap-6 border-b border-border/40 pb-2.5">
           <div>
-            <dt className="text-[10px] text-muted-foreground">Input</dt>
+            <dt className="text-xs text-muted-foreground">Input</dt>
             <dd className="mt-0.5 tabular-nums font-mono text-sm">{totals.in.toLocaleString()}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-muted-foreground">Output</dt>
+            <dt className="text-xs text-muted-foreground">Output</dt>
             <dd className="mt-0.5 tabular-nums font-mono text-sm">{totals.out.toLocaleString()}</dd>
           </div>
         </dl>
@@ -843,19 +882,19 @@ function UsageSection({
                 <div className="truncate">
                   {e.manifest_id || '—'}
                   {e.model_id ? (
-                    <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                    <span className="ml-1 font-mono text-xs text-muted-foreground">
                       {e.model_id}
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-0.5 tabular-nums font-mono text-[11px] text-muted-foreground">
+                <p className="mt-0.5 tabular-nums font-mono text-xs text-muted-foreground">
                   {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
                   {(e.tokens_output ?? 0).toLocaleString()} out
                   {(e.cache_read ?? 0) > 0 ? ` · ${e.cache_read.toLocaleString()} cache` : ''}
                 </p>
               </div>
               {e.ts != null && (
-                <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
+                <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
                   {relTime(e.ts)}
                 </span>
               )}
@@ -892,11 +931,13 @@ function SkillsSection({
   onToggle,
   skills,
   onSuggest,
+  busy,
 }: {
   open: boolean;
   onToggle: () => void;
   skills: SkillState | null;
   onSuggest: (text: string) => void;
+  busy?: boolean;
 }) {
   return (
     <Section
@@ -907,7 +948,7 @@ function SkillsSection({
       onToggle={onToggle}
     >
       <div className="space-y-3">
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Skills activate through the <code className="font-mono">list_skills</code> and{' '}
           <code className="font-mono">activate_skill</code> tools during chat. This reads whatever
           the agent last reported.
@@ -923,19 +964,27 @@ function SkillsSection({
             />
           </div>
         ) : (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             No <code className="rounded bg-muted px-1 py-0.5 font-mono">list_skills</code> result in
             this session yet.
           </p>
         )}
+        {/* This is the only control outside the composer that posts to the thread, so
+            it says so, and it stands down mid-run: `send` steers an in-flight run
+            rather than starting a turn, so firing this during a stream would inject
+            an unrelated instruction into whatever the agent is currently doing. */}
         <Button
           size="sm"
           variant="outline"
           className="h-8 w-full"
-          onClick={() => onSuggest('List your skills — which are declared and which are active?')}
+          disabled={busy}
+          onClick={() => onSuggest('List your skills: which are declared, and which are active?')}
         >
-          Ask agent to list skills
+          Send "list your skills" to this chat
         </Button>
+        {busy && (
+          <p className="text-xs text-muted-foreground">Available once the current run finishes.</p>
+        )}
       </div>
     </Section>
   );
@@ -954,9 +1003,9 @@ function SkillList({
 }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] font-medium text-muted-foreground">{label}</div>
+      <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
       {names.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">None</p>
+        <p className="text-xs text-muted-foreground">None</p>
       ) : (
         <div className="flex flex-wrap gap-1">
           {names.map((n) => {
@@ -965,7 +1014,7 @@ function SkillList({
               <Badge
                 key={n}
                 variant={isActive && kind === 'active' ? 'default' : 'secondary'}
-                className="gap-1 font-mono text-[10px]"
+                className="gap-1 font-mono text-xs"
               >
                 {kind === 'active' && <CheckCircle2Icon className="size-3" />}
                 {n}

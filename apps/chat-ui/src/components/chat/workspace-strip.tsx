@@ -154,7 +154,7 @@ export function WorkspaceStrip() {
         </div>
       </div>
       {open ? (
-        <pre className="mt-2 max-h-40 overflow-auto rounded-lg border border-border/40 bg-background p-2 font-mono text-[11px] text-muted-foreground">
+        <pre className="mt-2 max-h-40 overflow-auto rounded-lg border border-border/40 bg-background p-2 font-mono text-xs text-muted-foreground">
           {files.length ? files.slice(0, 80).join('\n') : '(empty)'}
         </pre>
       ) : null}

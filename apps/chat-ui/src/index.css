@@ -9,6 +9,36 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Type ramp.
+   Before this the app used ten sizes between 10px and 24px, five of them inside a
+   4px band (10/11/12/13/14), which is not a hierarchy: at those deltas the reader
+   cannot tell a caption from a value from a label, so nothing in a panel reads as
+   more important than anything else.
+
+   Two ramps, because two densities are doing genuinely different jobs.
+
+   Dense UI, for rails and panels where information-per-pixel is the point:
+     xs  11px  timestamps, counts, badges, captions
+     sm  13px  rows, labels, controls, instructional copy
+
+   Prose, for the transcript, which is read rather than scanned:
+     base 16px  message bodies
+     2xl  24px  the greeting
+
+   `xs` and `sm` are redefined rather than given new names so the existing ~80 uses
+   across the app and `@felix/ui` land on the ramp without touching every call site.
+   The 11 -> 13 -> 16 steps are 1.18 and 1.23 apart, which is visible; the old
+   12 -> 14 pair was 1.17 but started too high to leave room beneath it, which is
+   what pushed metadata down to 10px in the first place. */
+@theme {
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.6;
+}
+
 /* Map shadcn design tokens onto Tailwind's theme so `bg-background`,
    `text-muted-foreground`, `rounded-lg`, etc. resolve. */
 @theme inline {
@@ -27,6 +57,10 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-state-blocked: var(--state-blocked);
+  --color-state-done: var(--state-done);
+  --color-state-running: var(--state-running);
+  --color-state-failed: var(--state-failed);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
@@ -58,9 +92,23 @@
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
+  /* Run state, and nothing else. Each doubles as text colour and, at /15, as its own
+     surface tint, so both roles come from one value and get verified once.
+     Failure reuses --destructive rather than adding a fourth hue. */
+  --state-blocked: oklch(0.473 0.137 46.201);
+  --state-done: oklch(0.432 0.095 166.913);
+  --state-running: oklch(0.443 0.11 240.79);
+  /* Failure as *text*. `--destructive` is tuned to carry white on a solid fill, and
+     at 0.577 it only reaches 3.97:1 as text on its own 10% tint, so error copy needs
+     its own darker value rather than reusing the button colour. */
+  --state-failed: oklch(0.44 0.19 27.3);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
+  /* A scrollbar thumb is a control, not a hairline, so it is not `--border`: that
+     token measured 1.27:1 here, which is invisible. WCAG 1.4.11 asks 3:1 of an
+     essential UI component; these clear it on both the base and card surfaces. */
+  --scrollbar-thumb: oklch(0.62 0.01 285.9);
   /* Composer surface shadows (resting / focused) used by the multimodal input. */
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 5%), 0 4px 16px oklch(0 0 0 / 6%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 6%), 0 8px 28px oklch(0 0 0 / 10%);
@@ -83,9 +131,14 @@
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
+  --state-blocked: oklch(0.879 0.169 91.605);
+  --state-done: oklch(0.845 0.143 164.978);
+  --state-running: oklch(0.828 0.111 230.318);
+  --state-failed: oklch(0.75 0.16 22.2);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);
+  --scrollbar-thumb: oklch(1 0 0 / 36%);
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 30%), 0 4px 16px oklch(0 0 0 / 35%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 35%), 0 8px 28px oklch(0 0 0 / 45%);
 }
@@ -93,6 +146,36 @@
 @layer base {
   * {
     border-color: var(--border);
+  }
+
+  /* Scrollbars follow the theme instead of the OS.
+     On a machine set to always show scrollbars these are 30px in the transcript and
+     16px inside the inspector, painted near-black in light mode, which is a lot of a
+     22rem panel spent on chrome and reads as a structural divider rather than a
+     control. `scrollbar-color` covers Chromium and Firefox; the `::-webkit-` rules
+     are for Safari, which still ignores it. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
   body {
     background-color: var(--background);

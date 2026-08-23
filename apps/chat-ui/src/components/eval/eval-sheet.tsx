@@ -85,7 +85,7 @@ export function EvalSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error && <p className="text-xs text-destructive">⚠ {error}</p>}
+          {error && <p className="text-xs text-state-failed">⚠ {error}</p>}
 
           {/* Dataset picker + create */}
           <div className="flex flex-wrap items-center gap-1.5">
@@ -111,7 +111,7 @@ export function EvalSheet({
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="new-dataset-name"
-              className="h-8 font-mono text-xs"
+              className="h-8 font-mono text-sm"
               onKeyDown={(e) => e.key === 'Enter' && create()}
             />
             <Button
@@ -285,13 +285,13 @@ function AddItemForm({
         value={criteria}
         onChange={(e) => setCriteria(e.target.value)}
         placeholder="Pass criteria (judge), e.g. answers 42"
-        className="h-8 text-xs"
+        className="h-8 text-sm"
       />
       <Input
         value={mustInclude}
         onChange={(e) => setMustInclude(e.target.value)}
         placeholder="must include (comma-separated), e.g. 42"
-        className="h-8 text-xs"
+        className="h-8 text-sm"
       />
       <Button size="sm" className="h-7 gap-1" disabled={busy || !input.trim()} onClick={add}>
         <PlusIcon className="size-3.5" /> Add
@@ -309,10 +309,8 @@ function RunCard({ run }: { run: EvalRun }) {
         <Badge variant={run.fail_count === 0 ? 'default' : 'secondary'} className="py-0">
           {run.pass_count}/{total} pass · {rate}%
         </Badge>
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {run.candidate_manifest}
-        </span>
-        <span className="ml-auto text-[10px] text-muted-foreground">{run.status}</span>
+        <span className="font-mono text-xs text-muted-foreground">{run.candidate_manifest}</span>
+        <span className="ml-auto text-xs text-muted-foreground">{run.status}</span>
       </div>
       {run.scores.length > 0 && (
         <ul className="mt-1.5 space-y-1">
@@ -320,10 +318,8 @@ function RunCard({ run }: { run: EvalRun }) {
             <li key={s.item_id} className="flex items-start gap-2">
               <span
                 className={cn(
-                  'mt-0.5 font-mono text-[10px] uppercase',
-                  s.verdict === 'pass'
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-destructive',
+                  'mt-0.5 font-mono text-xs uppercase',
+                  s.verdict === 'pass' ? 'text-state-done' : 'text-state-failed',
                 )}
               >
                 {s.verdict}
@@ -331,9 +327,7 @@ function RunCard({ run }: { run: EvalRun }) {
               <span className="flex-1 text-muted-foreground" title={s.reasoning}>
                 {s.response.slice(0, 80) || s.reasoning.slice(0, 80)}
               </span>
-              <span className="font-mono text-[10px] text-muted-foreground">
-                {s.score.toFixed(2)}
-              </span>
+              <span className="font-mono text-xs text-muted-foreground">{s.score.toFixed(2)}</span>
             </li>
           ))}
         </ul>
@@ -344,7 +338,7 @@ function RunCard({ run }: { run: EvalRun }) {
 
 function Heading({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
       {children}
     </div>
   );
