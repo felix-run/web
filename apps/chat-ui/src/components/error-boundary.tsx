@@ -61,13 +61,13 @@ export function PanelErrorFallback({
   return (
     <div
       role="alert"
-      className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
+      className="flex flex-col gap-2 rounded-lg border border-state-failed/30 bg-state-failed/10 px-2.5 py-2 text-xs text-state-failed"
     >
       <div className="flex items-start gap-2">
         <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
         <div className="min-w-0">
           <p className="font-medium">{what} could not be displayed</p>
-          <p className="mt-0.5 break-words opacity-80">{error.message}</p>
+          <p className="mt-0.5 font-mono break-words">{error.message}</p>
         </div>
       </div>
       <Button size="sm" variant="outline" className="h-7 self-start text-xs" onClick={reset}>

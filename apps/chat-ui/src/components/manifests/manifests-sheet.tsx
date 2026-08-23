@@ -119,7 +119,7 @@ export function ManifestsSheet({
             ))}
             {rows.length === 0 && (
               <span className="text-xs text-muted-foreground">
-                No tenant-managed manifests yet — import one below.
+                No tenant-managed manifests yet. Import one below to start a version log.
               </span>
             )}
           </div>

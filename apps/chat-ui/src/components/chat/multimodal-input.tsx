@@ -177,7 +177,7 @@ function MultimodalInputInner({
   const helperText = !isConnected
     ? 'Reconnecting…'
     : isBusy
-      ? 'Generating — Enter steers'
+      ? 'Generating. Press Enter to steer.'
       : files.length >= MAX_FILES
         ? `Max ${MAX_FILES} attachments`
         : null;

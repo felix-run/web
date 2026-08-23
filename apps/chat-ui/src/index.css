@@ -60,6 +60,7 @@
   --color-state-blocked: var(--state-blocked);
   --color-state-done: var(--state-done);
   --color-state-running: var(--state-running);
+  --color-state-failed: var(--state-failed);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
@@ -97,6 +98,10 @@
   --state-blocked: oklch(0.473 0.137 46.201);
   --state-done: oklch(0.432 0.095 166.913);
   --state-running: oklch(0.443 0.11 240.79);
+  /* Failure as *text*. `--destructive` is tuned to carry white on a solid fill, and
+     at 0.577 it only reaches 3.97:1 as text on its own 10% tint, so error copy needs
+     its own darker value rather than reusing the button colour. */
+  --state-failed: oklch(0.44 0.19 27.3);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
@@ -125,6 +130,7 @@
   --state-blocked: oklch(0.879 0.169 91.605);
   --state-done: oklch(0.845 0.143 164.978);
   --state-running: oklch(0.828 0.111 230.318);
+  --state-failed: oklch(0.75 0.16 22.2);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);

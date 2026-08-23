@@ -125,7 +125,7 @@ export function JobsSheet({
               <Input
                 value={schedule}
                 onChange={(e) => setSchedule(e.target.value)}
-                placeholder="cron (m h dom mon dow) — empty = never swept"
+                placeholder="cron (m h dom mon dow); leave empty to never run"
                 className="h-8 font-mono text-sm"
                 title="Standard 5-field cron, UTC. Empty disables automatic scheduling."
               />

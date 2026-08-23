@@ -725,7 +725,7 @@ export default function App() {
       try {
         await decideApproval(pending.approvalId, { status });
         setPendingQueue((q) => q.slice(1));
-        toast.message(status === 'approved' ? 'Approved — run continues' : 'Denied');
+        toast.message(status === 'approved' ? 'Approved. The run continues.' : 'Denied.');
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
       } finally {

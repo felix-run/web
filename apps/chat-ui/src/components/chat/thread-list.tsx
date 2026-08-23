@@ -136,7 +136,7 @@ export function ThreadList({
               <button
                 type="button"
                 className="min-w-0 flex-1 truncate text-left"
-                title={t.title}
+                title={`${t.title}\nAgent: ${t.manifest}`}
                 onClick={() => onSelect(t.id)}
               >
                 <span className="block truncate font-medium">{t.title}</span>

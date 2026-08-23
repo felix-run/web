@@ -27,6 +27,7 @@ import {
 } from '@/api';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { usePoll } from '@/hooks/usePoll';
+import { describeError } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, Plan, PlanStepStatus, UsageEvent } from '@/types';
 
@@ -43,6 +44,21 @@ const EVENT_LABEL: Record<string, string> = {
   approval_decision: 'Decision',
   plan_step: 'Plan',
   model_switch: 'Model',
+};
+
+/**
+ * What each event type actually means, for the reader who has not memorised the
+ * harness vocabulary. Surfaced as the badge's `title`, so it costs nothing to
+ * anyone who already knows and answers the question for anyone who does not.
+ */
+const EVENT_HELP: Record<string, string> = {
+  tool_call: 'The agent called a tool.',
+  judge_score: 'An automated judge scored the response.',
+  guardrail_block: 'A policy rule stopped a tool call before it ran.',
+  approval_request: 'A gated tool call paused, waiting for a person to decide.',
+  approval_decision: 'Someone approved or denied a gated tool call.',
+  plan_step: 'A step in a multi-step plan changed state.',
+  model_switch: 'The run moved to a different model.',
 };
 
 /**
@@ -268,6 +284,7 @@ function Section({
 function SectionBody({
   loading,
   error,
+  doing,
   empty,
   emptyText,
   status,
@@ -276,6 +293,8 @@ function SectionBody({
 }: {
   loading: boolean;
   error: string | null;
+  /** Verb phrase completing "Could not …", used to write the failure message. */
+  doing: string;
   empty?: boolean;
   emptyText: string;
   status?: string;
@@ -286,16 +305,22 @@ function SectionBody({
   // A failed fetch leaves no data, which also reads as "empty". Showing both at once
   // says the harness is idle *and* unreachable; the error is the true one.
   if (error) {
+    const described = describeError(error, doing);
     // No sr-only status line here: `role="alert"` is already a live region, and
     // carrying the same text in both makes a screen reader read the failure twice.
     return (
       <div
         role="alert"
-        className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
+        className="flex flex-col gap-2 rounded-lg border border-state-failed/30 bg-state-failed/10 px-2.5 py-2 text-xs text-state-failed"
       >
         <div className="flex items-start gap-2">
           <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-          <span className="min-w-0 break-words">{error}</span>
+          <div className="min-w-0">
+            <p className="break-words">{described.message}</p>
+            {/* The mono face separates the raw status from the sentence; dimming it
+                further would put it under the contrast floor. */}
+            <p className="mt-0.5 font-mono break-words">{described.detail}</p>
+          </div>
         </div>
         {onRetry && (
           <Button size="sm" variant="outline" className="h-7 self-start text-xs" onClick={onRetry}>
@@ -359,6 +384,7 @@ function ActivitySection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load recent activity"
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
@@ -375,6 +401,7 @@ function ActivitySection({
                     {tone && (
                       <Badge
                         variant="secondary"
+                        title={EVENT_HELP[e.event_type]}
                         className={cn('shrink-0 px-1 py-0 font-sans text-xs font-medium', tone)}
                       >
                         {EVENT_LABEL[e.event_type] ?? e.event_type}
@@ -432,9 +459,17 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
+/**
+ * The row's subject line. Most audit events are tool calls and carry the tool name;
+ * the rest fall back to whatever identifies them. The old last resort was the literal
+ * word "event", which told the reader nothing they could not already see, so an event
+ * with no tool and no manifest now says what kind of event it is instead.
+ */
 function toolOf(e: AuditEvent): string {
   const t = e.payload?.tool;
-  return typeof t === 'string' ? t : e.manifest_id || 'event';
+  if (typeof t === 'string') return t;
+  if (e.manifest_id) return e.manifest_id;
+  return (EVENT_LABEL[e.event_type] ?? e.event_type).toLowerCase();
 }
 
 function summary(e: AuditEvent): string {
@@ -504,9 +539,8 @@ function ApprovalsSection({
       toast.success(`${status === 'approved' ? 'Approved' : 'Denied'} ${tool}`);
       refresh();
     } catch (err) {
-      toast.error(`Could not ${status === 'approved' ? 'approve' : 'deny'} ${tool}`, {
-        description: String((err as Error)?.message ?? err),
-      });
+      const described = describeError(err, `${status === 'approved' ? 'approve' : 'deny'} ${tool}`);
+      toast.error(described.message, { description: described.detail });
     } finally {
       decidingRef.current = null;
       setDeciding(null);
@@ -524,6 +558,7 @@ function ApprovalsSection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load pending approvals"
         loading={loading && !data}
         error={error}
         empty={count === 0}
@@ -672,6 +707,7 @@ function PlansSection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load plans"
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
@@ -746,6 +782,7 @@ function MetricsSection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load tool metrics"
         loading={loading && !data}
         error={error}
         empty={tools.length === 0}
@@ -813,6 +850,7 @@ function UsageSection({
     >
       <SectionBody
         onRetry={refresh}
+        doing="load token usage"
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
@@ -929,7 +967,7 @@ function SkillsSection({
           size="sm"
           variant="outline"
           className="h-8 w-full"
-          onClick={() => onSuggest('List your skills — which are declared and which are active?')}
+          onClick={() => onSuggest('List your skills: which are declared, and which are active?')}
         >
           Ask agent to list skills
         </Button>
