@@ -1,689 +1,345 @@
 ---
 title: "Management API"
-description: "Tenant-scoped management endpoints — audit, plans, jobs, approvals, manifests, eval — with scope requirements and curl examples."
+description: "Tenant-scoped management endpoints — audit, approvals, plans, jobs, manifests, eval, usage — with scope requirements and curl examples."
 sidebar:
   order: 5
 ---
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
-Tenant-scoped management endpoints for the audit log (`/audit` + `/audit/metrics`), plan store, scheduled jobs, human-in-the-loop approvals queue, tenant-managed manifests (`/manifests`), and golden-dataset evals (`/eval`). Authorization is two-layer:
+Operator surfaces for inspecting and governing a running harness. The conversational endpoints are in
+the [REST API](/guide/rest-api/).
 
-1. **Tenant scoping** — every route constrains queries to `principal.tenantId`, so there is no cross-tenant query path, even for an authenticated principal.
-2. **Scopes** — every management route additionally requires a scope claim on the bearer token (`requireScope` in `src/auth/middleware.ts`). Anonymous callers get `401`; authenticated callers missing the scope get `403 {"error":"forbidden","missing_scopes":[...]}`. In `ENVIRONMENT=development` without verifiers configured the gate falls open so local probes work without minting tokens.
+Every route here is **tenant-scoped** — the tenant comes from the authenticated principal, never from
+the request body, so a caller cannot read or write another tenant's rows.
 
-| Surface | Read scope | Write scope |
-|---|---|---|
-| `/audit`, `/audit/metrics` | `audit:read` | — |
-| `/approvals` | `approvals:read` | `approvals:decide` (decide endpoint) |
-| `/plans` | `plans:read` | — |
-| `/jobs` | `jobs:read` | `jobs:write` |
-| `/manifests` | `manifests:read` | `manifests:write` |
-| `/eval` | `eval:read` | `eval:write` |
+## Scopes
 
-All routes return JSON. Rate limited at 100 req/60s per tenant.
+Management routes require a scope on the bearer token in addition to authentication.
 
-:::note[Dev gate]
-In `ENVIRONMENT=development` without JWT verifiers configured, scope gates fall open so local probes work without minting tokens. In staging and production the gate is strict — anonymous callers get `401`; authenticated callers missing the scope get `403 {"error":"forbidden","missing_scopes":[...]}`.
-:::
+| Scope | Grants |
+|---|---|
+| `audit:read` | `/audit`, `/audit/metrics` |
+| `approvals:read` / `approvals:write` | read requests / decide them |
+| `plans:read` / `plans:write` | read plans / upsert and delete |
+| `jobs:read` / `jobs:write` | read jobs and runs / upsert and delete |
+| `manifests:read` / `manifests:write` | read manifests / publish, canary, rollback |
+| `eval:read` / `eval:write` | read datasets and runs / write and run them |
+| `usage:read` | `/usage` |
 
-Examples below use `$BASE_URL` — set it to your deployment (e.g. `export BASE_URL=http://localhost:8787` for `pnpm dev`, or `https://make.felix.run` in production).
+Three rules make this practical:
 
-> Formal request/response schemas live in `GET /openapi.json` and the Scalar UI at `GET /docs`. The prose tables below are the human-readable reference.
+- **`admin` or `*` bypasses every check.**
+- **`x:write` satisfies `x:read`** — you do not need to grant both.
+- **When `FELIX_AUTH_MODE=none`, checks are skipped entirely**, so local development works without
+  minting tokens.
 
----
+A caller missing a scope gets `403 {"detail":"missing scopes: manifests:write"}`. An unauthenticated
+caller gets `401`.
+
+```bash
+export BASE_URL=http://localhost:8080
+export FELIX_KEY=sk-felix-local-…
+```
+
+Keys carry their scopes in `FELIX_AUTH_API_KEYS`:
+
+```json
+{"sk-demo": {"tenant_id": "acme", "sub": "ops", "scopes": ["audit:read", "manifests:write"]}}
+```
 
 ## Audit
 
-### GET /audit
+Every governed action writes an audit row. Audit events are buffered in the process that emits them
+and flushed to Postgres on a timer (`FELIX_AUDIT_FLUSH_SECONDS`, default 5 s) plus a drain on
+shutdown. The agent loop runs in the API process, so the API flushes too — not only the worker.
 
-List recent audit events for the authenticated tenant.
+### `GET /audit`
 
-**Query params**
+<Badge text="audit:read" variant="note" />
 
-| Param | Default | Notes |
+| Query | Type | Default |
 |---|---|---|
-| `status` | (unset) | Filter to one status, e.g. `denied`, `pending`, `matched`. |
-| `limit` | 100 | Max rows. |
+| `limit` | int 1–500 | `50` |
+| `cursor` | string | — |
+| `event_type` | string | — |
+| `status` | string | — |
 
 ```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  '$BASE_URL/audit?status=denied&limit=50' | jq
+curl -s "$BASE_URL/audit?limit=20&status=denied" \
+  -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
-Response:
+Event types you will see, and what emits them:
 
-```json
-{
-  "events": [
-    {
-      "id": "uuid",
-      "tenant_id": "acme",
-      "ts": 1747100000123,
-      "event_type": "policy_decision",
-      "manifest_id": "research",
-      "principal_subject": "user:alice",
-      "status": "denied",
-      "payload": { "policy_id": "write-paths", "tool": "notion__create_page", "missing_scopes": ["research:write"] }
-    }
-  ]
-}
-```
-
-### Audit event types
-
-Recorded by the runtime as side effects of governance and tool dispatch:
-
-Every tool-related event (`tool_call`, `policy_decision`, `limit_exceeded`, `guardrail_block`, `judge_score`, `approval_request`, `approval_decision`) carries `transport` in its payload — the executor's transport label (`local` / `mcp` / `a2a` / `container` / `queue` / `sandbox` / `browser`). Tool-call rows additionally carry `error_code` (the `ToolErrorCode` taxonomy) on failures. The matching counters (`orchestrator_tool_calls`, `orchestrator_policy_decisions`, `orchestrator_limit_breaches`, `orchestrator_guardrail_blocks`, `orchestrator_judge_scores`, `orchestrator_approval_*`) carry the same labels. Slice an audit query or dashboard by transport / error_code to answer questions like "how many `container` tool calls failed today with `rate_limited`?" or "which transport ate the most peer-hop budget?"
-
-| `event_type` | Emitted by | Common `status` values |
+| `event_type` | Emitted by | Typical `status` |
 |---|---|---|
-| `tool_call` | `react.ts` `dispatchToolCall` — one per tool invocation. Payload carries `{ tool, transport, args, output_preview?, error?, error_code?, duration_ms }`. A peer invocation is `tool_call` with `transport: 'a2a'`, not a separate event type. Skipped when a governance wrapper denied (the wrapper emits its own event below). | `ok`, `error` |
-| `policy_decision` | `policy/wrap.ts` — payload `{ policy_id, tool, transport, missing_scopes, outcome }` | `denied` |
-| `limit_exceeded` | `limits/wrap.ts` — payload `{ tool, transport?, limit, cap, observed }` (transport omitted for model-side breaches like preflight/cumulative token caps) | `denied` |
-| `guardrail_block` | `guardrails/wrap.ts` (tool side, `surface: input`/`output`) and `guardrails/final-response.ts` (`surface: final_response`, no `tool`/`transport`) — payload `{ surface, matches, [tool, transport] }` | `matched`, `clean` |
-| `judge_score` | `guardrails/judge-wrap.ts` (tool judges) + `guardrails/final-response.ts` (`source: 'final_response'`) + eval runner + reflect pattern. Payload `{ judge?, tool?, transport?, score, threshold?, reasoning, source? }`. The `source` field disambiguates: absent for the tool-side governance wrapper, `'final_response'` for a judge scoring the model's final answer, `'reflect'` for the reflection pattern's per-iteration scores, set by the eval runner when scoring dataset items. | `pass`, `fail` |
-| `plan_step` | `plans/tools.ts` `plan_update_step` — one per step transition. Payload `{ plan_id, step_id, result_present }`. | `pending`, `in_progress`, `completed`, `skipped`, `failed` |
-| `job_run` | Cron sweep + manual triggers | `ok`, `error`, `skipped`, `scheduled`, `manual` |
-| `approval_request` | `approvals/wrap.ts` first invocation — payload `{ approval_id, tool, transport }` | `pending` |
-| `approval_decision` | `/approvals/:id/decide` and retry-time wrapper — payload `{ approval_id, tool, transport }` | `approved`, `denied`, `pending` |
-| `checkpoint_failure` | Session `appendBatch` failed after retry | `failed` |
-| `queue_dispatch` | `QueueExecutor` — payload `{ job_id, tool, tool_call_id, thread_id, deadline_ms? }` | `enqueued` |
-| `queue_complete` | Emitted server-side on a successful `POST /internal/sessions/:thread_id/events` write-back (the route pairs the `tool_result` to an outstanding `queue_dispatch` first; unpaired or already-resolved → 409) — payload `{ tool, tool_call_id, thread_id, job_id? }`, `manifest_id` carried over from the paired dispatch | `ok` |
-| `queue_expired` | Orphan-cleanup cron for unresolved `queue_dispatch` rows — payload `{ job_id, tool_call_id, thread_id, age_ms }` | `expired` |
-| `manifest_created` | `POST /manifests/:name` | (none) |
-| `manifest_activated` | `POST /manifests/:name/activate` (or implicit on create) | (none) |
-| `manifest_deleted` | `DELETE /manifests/:name` or `/versions/:version` | (none) |
-| `manifest_canary_set` | `POST /manifests/:name/canary` — payload `{ canary_version, canary_weight, stable_version }` | `<canary_weight>` |
-| `manifest_canary_cleared` | `POST /manifests/:name/rollback` or auto-rollback — payload `{ canary_version_before?, canary_weight_before?, stable_version, clear_version? }` | `manual`, `auto_rollback` |
-| `auto_rollback` | anomaly detector cron when a flagged manifest has an active canary | `rolled_back` |
-| `anomaly_detected` | anomaly detector cron — payload `{ tool, error_code, recent_rate, baseline_rate, recent_count, window_ms }` | `alert` |
-| `model_switch` | model client when a fallback or confidence escalation fires — payload `{ from, to, reason }` (`provider_error` or `low_confidence`) | `fallback`, `escalated` |
-| `eval_run` | eval runner on completion (reserved) | (none) |
-| `unhandled_error` | `app.onError` boundary | `error` |
+| `tool_call` | the agent loop, one per tool invocation | `ok`, `error` |
+| `policy_decision` | the `spec.policies` wrapper | `denied` |
+| `limit_exceeded` | the `spec.limits` wrapper | `denied` |
+| `guardrail_block` | the `spec.guardrails` wrapper | `matched`, `clean` |
+| `judge_score` | guardrail judges and the eval runner | `pass`, `fail` |
+| `command_screened` | the `spec.command_screening` wrapper | `matched` |
+| `content_screened` | the `spec.content_screening` wrapper | `matched` |
+| `approval_request` | first call of a gated tool | `pending` |
+| `approval_consumed` / `approval_expired` | the approvals wrapper | — |
+| `model_switch` | a fallback or confidence escalation fired | — |
+| `memory_captured` | `spec.memory.capture` | — |
+| `plan_step` | the `deep` pattern's plan tools | `pending`, `in_progress`, `completed`, `skipped`, `failed` |
+| `job_scheduled` | the scheduling tools | — |
 
-#### `audit_truncated` is a status, not an event type
+Secret values are masked out of payloads before they are written.
 
-The runtime caps audit events at 200 per request (`PER_REQUEST_AUDIT_CAP` in `src/audit/store.ts`). When the cap is hit, the next call to `recordEvent` emits one marker — carrying the **original `event_type`** of whatever was being recorded and `status: 'audit_truncated'` with payload `{ reason: 'per_request_cap', cap: 200 }`. Subsequent calls during the same request return silently with `status: 'dropped_after_truncation'` and are not persisted. To find truncation events for a tenant, query `GET /audit?status=audit_truncated`.
+### `GET /audit/metrics`
 
-Audit events go through `AUDIT_QUEUE` and land in Postgres via the batched `queue` consumer (≤50 per batch, one multi-row INSERT). Payloads are passed through `redactSecrets` before persistence — tokens, bearer headers, and similar are replaced with `[REDACTED]`.
+<Badge text="audit:read" variant="note" />
 
----
+Per-tool rollups — call counts, error rates and durations.
+
+| Query | Type | Default |
+|---|---|---|
+| `since` | int (epoch ms) | — |
+| `limit` | int 1–2000 | `200` |
+
+For time-series monitoring prefer Prometheus at `GET /metrics`; see
+[Observability](/internals/observability/).
 
 ## Approvals
 
-### GET /approvals
+A tool gated by `spec.approvals` creates a pending request, emits an `approval_required` stream
+frame, and blocks until someone decides or the rule's `ttl_seconds` expires. It **fails closed**.
 
-List approval requests for the tenant.
+### `GET /approvals`
 
-**Query params**
+<Badge text="approvals:read" variant="note" />
 
-| Param | Default | Notes |
+| Query | Type | Default |
 |---|---|---|
-| `status` | (unset) | `pending`, `approved`, `denied`. |
-| `limit` | 100 | Max rows. |
+| `status` | string | `pending` |
+| `limit` | int 1–200 | `50` |
 
 ```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  '$BASE_URL/approvals?status=pending&limit=25' | jq
+curl -s "$BASE_URL/approvals?status=pending" -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
-```json
-{
-  "requests": [
-    {
-      "id": "uuid",
-      "tenant_id": "acme",
-      "manifest_id": "research",
-      "tool_name": "notion__create_page",
-      "call_signature": "<sha256>",
-      "args_json": "{ ...redacted... }",
-      "principal_subj": "user:alice",
-      "status": "pending",
-      "created_at": 1747100000123
-    }
-  ]
-}
-```
+`GET /approvals/{approval_id}` returns one request.
 
-`args_json` is the redacted version of the original arguments — secrets are stripped before persistence.
+### `POST /approvals/{approval_id}/decide`
 
-### GET /approvals/:id
-
-Fetch one approval. Returns 404 if it doesn't belong to the caller's tenant.
+<Badge text="approvals:write" variant="note" />
 
 ```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  $BASE_URL/approvals/<uuid> | jq
+curl -s -X POST "$BASE_URL/approvals/apr_123/decide" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"decision":"approved","note":"reviewed the diff"}'
 ```
 
-### POST /approvals/:id/decide
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `decision` | `approved` \| `denied` | — | |
+| `status` | `approved` \| `denied` | — | Accepted as an alias for `decision`. |
+| `note` | string | `""` | |
+| `edited_args` | object \| null | `null` | **Replaces** the tool's arguments before it runs. |
 
-Approve or deny. The route pre-checks tenant ownership in Postgres (returns 404 if not owned) and then routes the write through `ApprovalsDO` so concurrent decisions on the same id are serialized in a critical section.
+Two rules change who a grant covers:
 
-**Body**
+- **`one_shot: true`** — the grant is consumed once, with a conditional update, so two concurrent
+  identical calls cannot both spend it.
+- **`bind_principal: true`** — the grant is bound to the approving principal, so approving your own
+  call does not silently authorize somebody else's identical one.
 
-```json
-{
-  "status": "approved",
-  "note": "Looks fine, ship it.",
-  "edited_args": null
-}
-```
-
-- `status` — `approved` or `denied`.
-- `note` — free-form text persisted in `decision_note`.
-- `edited_args` — optional. If supplied, the agent's next retry uses these args instead of the original. Useful for redacting or tightening arguments before allowing the call.
-
-```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H 'content-type: application/json' \
-  $BASE_URL/approvals/<uuid>/decide \
-  -d '{"status":"approved"}' | jq
-```
-
-Response is the updated `ApprovalRequest` row. An `approval_decision` audit event is emitted with `status: approved` or `status: denied`.
-
-A decision is a **one-way transition**: deciding a request that is no longer `pending` (already approved or denied) changes nothing and returns `409 { "error": "already_decided", "detail": "<current status>" }`. This is what prevents an operator from flipping an approved request to denied — or re-approving it with different `edited_args` that a later retry would run on.
-
----
+A `require_approval` rule in `spec.command_screening` creates a real approval too, bounded by
+`command_screening.approval_ttl_seconds` (default 300 s) so a run cannot block forever.
 
 ## Plans
 
-### GET /plans
+The `deep` pattern records a plan and its step transitions.
 
-List plans for the tenant, ordered by `updated_at DESC`.
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/plans?limit=` | `plans:read` |
+| `GET` | `/plans/{plan_id}` | `plans:read` |
+| `PUT` | `/plans/{plan_id}` | `plans:write` |
+| `DELETE` | `/plans/{plan_id}` | `plans:write` |
 
-```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  '$BASE_URL/plans?limit=20' | jq
-```
-
-```json
-{
-  "plans": [
-    {
-      "id": "uuid",
-      "tenant_id": "acme",
-      "manifest_id": "research",
-      "title": "Investigate Q3 churn",
-      "steps": [
-        { "id": "s1", "description": "Pull churn data", "status": "completed", "result": "..." },
-        { "id": "s2", "description": "Segment by region", "status": "in_progress", "result": "" }
-      ],
-      "created_at": 1747100000123,
-      "updated_at": 1747100012345
-    }
-  ]
-}
-```
-
-### GET /plans/:id
-
-Fetch one plan with full steps.
-
-```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  $BASE_URL/plans/<uuid> | jq
-```
-
-Plans are written and updated by the deep-pattern auto-injected tools: `plan_create`, `plan_update_step`, `plan_get`. They live in the `plans` Postgres table with a 30-day TTL.
-
----
+`PUT` takes `{plan, manifest_id, expires_at}` where `plan` is the plan document and `expires_at` is
+epoch ms. `limit` is 1–200, default 50.
 
 ## Jobs
 
-A simple per-tenant registry of scheduled and on-demand agent invocations. The cron trigger (`*/10 * * * *`) sweeps the table and runs each due job under its owning tenant's identity.
+Scheduled agent runs. The worker's `run_scheduled_jobs` cron sweeps due rows every minute — which
+means **`felix-scheduler` must be running alongside `felix-worker`**, or nothing ever fires.
 
-### GET /jobs/list
-
-```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  $BASE_URL/jobs/list | jq
-```
-
-```json
-{
-  "jobs": [
-    {
-      "tenant_id": "acme",
-      "name": "nightly-research",
-      "schedule": "0 9 * * 1-5",
-      "manifest_id": "research",
-      "next_run_at": 1747119600000,
-      "last_run_at": 1747033200000,
-      "last_status": "scheduled",
-      "last_error": "",
-      "created_at": 1746000000000,
-      "payload_json": "{ ... }"
-    }
-  ]
-}
-```
-
-### GET /jobs/:name
-
-Fetch one job by name. 404 if it isn't owned by the caller's tenant.
-
-### POST /jobs
-
-Upsert a job. The caller cannot impersonate another tenant — `tenant_id` is overwritten from the authenticated principal (`src/api/jobs.ts:39-44`).
-
-**Body**
-
-```json
-{
-  "name": "nightly-research",
-  "schedule": "0 9 * * 1-5",
-  "manifest_id": "research",
-  "enabled": true,
-  "payload": { "input": "Summarize yesterday's orders and flag anything unusual." }
-}
-```
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/jobs` | `jobs:read` |
+| `GET` | `/jobs/{name}` | `jobs:read` |
+| `GET` | `/jobs/{name}/runs` | `jobs:read` |
+| `PUT` | `/jobs/{name}` | `jobs:write` |
+| `DELETE` | `/jobs/{name}` | `jobs:write` |
 
 ```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H 'content-type: application/json' \
-  $BASE_URL/jobs \
-  -d '{"name":"nightly","schedule":"0 9 * * 1-5","manifest_id":"research","enabled":true,"payload":{"input":"Daily roundup."}}' | jq
+curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"schedule":"0 3 * * *","manifest_id":"deep","payload":{"topic":"changelog"},"enabled":true}'
 ```
 
-The server computes `next_run_at` from the schedule and persists the row. `schedule: ""` makes the job on-demand only (it will never be returned by the cron sweep). Schedules use the standard 5-field cron syntax — see [deploy.md](/guide/deploy/) for the supported syntax.
+| Field | Type | Default |
+|---|---|---|
+| `schedule` | string (5-field cron) | `""` |
+| `manifest_id` | string | `""` |
+| `payload` | object | `{}` |
+| `enabled` | bool | `true` |
 
-**What makes a job actually run.** Three things together: `enabled: true`, a non-empty `manifest_id`, and a `payload.input` string, which is the prompt sent to the manifest. Miss any one and the job is still swept and still records a run — it just doesn't execute, reported as `skipped` (or `scheduled` for the cron path). Rows that predate execution support are `enabled: false`, so upgrading the runtime cannot start spending model tokens on jobs created when the sweep was bookkeeping-only. On this endpoint an explicit `enabled` wins; **omitting it preserves an existing job's setting**, and a brand-new job defaults to enabled. That three-way rule exists because the endpoint is a full upsert: defaulting to `false` would make a freshly-created job silently never run, and defaulting to `true` would silently re-enable a job you had turned off when you re-POST to tweak its schedule.
-
-Each firing gets its **own thread** (`<tenant>:job-<name>-<slot>`) rather than appending to a long-lived one — a job running hourly for a year would otherwise accumulate a session no context strategy could render. State a job needs across firings belongs in memory or a store the agent writes to explicitly.
-
-### POST /jobs/run/:name
-
-Trigger a job now. If the job is configured to execute (see above) the agent runs **inline** and the response reports the outcome; otherwise the trigger is recorded without executing.
-
-A manual run is **attended** — it happens inside your request, with you waiting on it — so approval-gated tools behave exactly as they do in a chat turn. The cron sweep is unattended and fails those closed instead (see [governance](/internals/governance/#approvals)). That difference is deliberate: it lets an operator manually drive a job whose tools need a human, without that authorization silently carrying over to the unsupervised schedule.
-
-```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  $BASE_URL/jobs/run/nightly-research | jq
-```
-
-```json
-{ "ok": true, "executed": true, "status": "ok", "duration_ms": 4210 }
-```
+Schedules use standard five-field cron — see [Deploy](/guide/deploy/#cron-schedules).
 
 ## Manifests
 
-Tenants manage their own manifests through an append-only, version-pinned store. Each write inserts a new version row and (by default) flips the active pointer; rollback is a pointer flip, not a content rewrite. The request-path resolver walks tenant Postgres → tenant R2 → global R2 → bundled, so a tenant manifest with the same name as a bundled one (e.g. `quick`) shadows the bundled copy for that tenant only. (The resolver's internal `ManifestSource` value for the tenant-Postgres layer is still the string `'tenant_d1'` — a naming holdover from the D1 era, unchanged by the Postgres migration.)
+Tenants manage their own manifests in an append-only, version-pinned store. Each write inserts a new
+version row and flips the active pointer; a rollback is a pointer flip, not a content rewrite.
 
-Reads require the `manifests:read` scope; writes require `manifests:write`. All queries are tenant-scoped via the caller's JWT. In `ENVIRONMENT=development` without verifiers configured, the gate falls open so local probes and integration tests work without minting tokens.
+The request-path resolver walks four layers and returns the first hit:
 
-Audit events: `manifest_created`, `manifest_activated`, `manifest_deleted`, `manifest_canary_set`, `manifest_canary_cleared`.
+1. **Tenant Postgres** — the active pointer for this tenant (`source: tenant_postgres`)
+2. **Tenant object store** — `manifests/{tenant_id}/{name}.json` (`source: tenant_object`)
+3. **Global object store** — `manifests/{name}.json` (`source: global_object`)
+4. **Bundled** — the YAML shipped in the image (`source: bundled`)
 
-### GET /manifests
+So a tenant manifest named `quick` shadows the bundled `quick` for that tenant only. Active pointers
+are cached for 30 seconds.
 
-List the tenant's active manifests.
+### Read
 
-```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  "$BASE_URL/manifests?limit=20" | jq
-```
-
-```json
-{
-  "manifests": [
-    { "name": "quick", "active_version": 3, "updated_at": 1747142400000 },
-    { "name": "support",  "active_version": 1, "updated_at": 1747100000000 }
-  ]
-}
-```
-
-### GET /manifests/:name
-
-Return the resolved manifest, with `source` (`tenant_d1` / `tenant_r2` / `global_r2` / `bundled`) and `version` (set only when `source` is `tenant_d1`). Supports `?version=N` to pin to a specific tenant version.
+<Badge text="manifests:read" variant="note" />
 
 ```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  $BASE_URL/manifests/quick | jq
+curl -s "$BASE_URL/manifests" -H "authorization: Bearer $FELIX_KEY" | jq
+curl -s "$BASE_URL/manifests/support?version=3" -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
-```json
-{
-  "name": "quick",
-  "source": "tenant_d1",
-  "version": 3,
-  "manifest": { "apiVersion": "orchestrator/v1", "kind": "Agent", "metadata": { "name": "quick", "version": "2.0.0", "description": "tenant-customized", "tags": [] }, "spec": { /* ... */ } }
-}
-```
+`GET /manifests/{name}` returns `{name, version, variant, manifest}`, where `variant` is `stable` or
+`canary`.
 
-### GET /manifests/:name/versions
+### `PUT /manifests/{name}`
 
-List every tenant-private version row for `:name`, newest first, with an `active` flag.
+<Badge text="manifests:write" variant="note" />
 
-```json
-{
-  "name": "quick",
-  "active_version": 3,
-  "versions": [
-    { "version": 3, "created_at": 1747142400000, "created_by": "user-123", "comment": "bump model", "active": true },
-    { "version": 2, "created_at": 1747100000000, "created_by": "user-123", "comment": "",          "active": false },
-    { "version": 1, "created_at": 1747000000000, "created_by": "user-456", "comment": "initial",  "active": false }
-  ]
-}
-```
-
-### GET /manifests/:name/versions/:version
-
-Return a specific tenant version blob. 404 if the version does not exist for this tenant.
-
-### POST /manifests/:name
-
-Append a new version. The server validates the body with `ManifestSchema.parse(...)` plus `validateManifest(...)`, refuses if `metadata.name !== :name` (returns `400 name_mismatch`), then inserts the row and (by default) flips the active pointer atomically. Pass `?activate=false` to insert without activating.
+Publish a new version. The body is validated against the full `felix/v1` schema before it is stored,
+and stdio MCP commands are checked against the operator allowlist here too — so a hostile manifest
+cannot be stored and then executed by the next request that resolves it. A rejected manifest is
+`400`.
 
 ```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  $BASE_URL/manifests/quick \
-  -d '{
-    "manifest": {
-      "apiVersion": "orchestrator/v1",
-      "kind": "Agent",
-      "metadata": { "name": "quick", "version": "2.0.0", "description": "tenant-customized" },
-      "spec": { "pattern": "react", "model": { "id": "@cf/meta/llama-3.1-8b-instruct" } }
-    },
-    "comment": "bump model"
-  }' | jq
+curl -s -X PUT "$BASE_URL/manifests/support" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"manifest":{"apiVersion":"felix/v1","kind":"Agent",
+       "metadata":{"name":"support"},
+       "spec":{"pattern":"react","model":{"id":"claude-sonnet-4"}}},
+       "comment":"tighten the refund prompt"}'
 ```
 
-```json
-{
-  "name": "quick",
-  "version": 4,
-  "created_at": 1747200000000,
-  "created_by": "user-123",
-  "comment": "bump model",
-  "activated": true
-}
-```
+| Field | Type | Default |
+|---|---|---|
+| `manifest` | object | required |
+| `comment` | string | `""` |
 
-Status codes: `201` on success, `400 bad_request` for malformed JSON / missing `manifest`, `400 validation_failed` for schema or cross-field violations, `400 name_mismatch` when URL and `metadata.name` disagree, `403 forbidden` when `manifests:write` is missing.
+### Canary and rollback
 
-### POST /manifests/:name/activate
+<Badge text="manifests:write" variant="note" />
 
-Flip the active pointer to a specific version. Used for rollback.
+| Method | Path | Body |
+|---|---|---|
+| `POST` | `/manifests/{name}/canary` | `{canary_version, canary_weight}` — weight 0–100 |
+| `DELETE` | `/manifests/{name}/canary` | — clears the canary |
+| `POST` | `/manifests/{name}/rollback` | `{version, comment}` — default comment `"rollback"` |
 
 ```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  $BASE_URL/manifests/quick/activate \
-  -d '{"version": 2}' | jq
+curl -s -X POST "$BASE_URL/manifests/support/canary" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"canary_version":7,"canary_weight":10}'
 ```
 
-```json
-{ "name": "quick", "active_version": 2, "updated_at": 1747250000000 }
-```
+Routing is deterministic, not random: the harness hashes
+`"{tenant}|{thread}|{manifest}|{stable_version}|{canary_version}"` with SHA-256 and takes the first
+four bytes modulo 100, sending the request to the canary when that bucket is below `canary_weight`.
+A given thread therefore pins to one side for the life of the rollout, instead of flapping between
+versions mid-conversation.
 
-`404 not_found` if the target version does not exist.
-
-#### Eval activation gate (opt-in)
-
-Two optional body fields make activation refuse to flip a version that has not passed an eval. **Both default to off** — a request with only `version` behaves exactly as before.
-
-- `eval_run_id` — an `/eval` run id. Supplying it always enforces the gate: the run must be `completed`, have zero failing items, and its recorded `manifest_version` must equal the version being activated.
-- `require_eval: true` — refuse the flip unless a passing `eval_run_id` is supplied (so an operator can force every activation through the gate even when no run id is passed).
-
-```bash
-# 1. Upload the candidate without activating it.
-curl -s -X POST ".../manifests/quick?activate=false" -d '{"manifest": …}'   # → version 3
-
-# 2. Eval version 3 (pin it — the runner records the version on the run).
-curl -s -X POST ".../eval/datasets/golden/run" \
-  -d '{"candidate_manifest":"quick","candidate_version":3}'   # → run_id
-
-# 3. Activate 3, gated on that passing run.
-curl -s -X POST ".../manifests/quick/activate" \
-  -d '{"version": 3, "require_eval": true, "eval_run_id": "<run_id>"}'
-```
-
-`409 eval_gate_failed` (with a `detail` string) when the referenced run is missing, tested a different manifest or version, is not `completed`, or has failing items — or when `require_eval` is set and no run id is supplied.
-
-### POST /manifests/:name/canary
-
-Set or update the canary pointer on the active manifest. The stable version is unchanged; the resolver hash-buckets each thread by `(tenant_id, thread_id, manifest_name, stable_v, canary_v)` so a single conversation stays on one side across the rollout. Flipping `canary_version` or `canary_weight` re-randomises bucket assignment.
-
-Requires the `manifests:write` scope.
-
-```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  $BASE_URL/manifests/quick/canary \
-  -d '{"canary_version": 3, "canary_weight": 25}' | jq
-```
-
-```json
-{
-  "name": "quick",
-  "active_version": 2,
-  "canary_version": 3,
-  "canary_weight": 25,
-  "updated_at": 1747260000000
-}
-```
-
-`canary_weight` is 0..100. Pass `canary_version: null` to clear the version pointer entirely (equivalent to `POST /rollback` with `clear_version: true`). The OpenAI-compatible surface (`/v1/chat/completions`, sync + stream) sets `x-manifest-variant: stable|canary` on every response that resolves through the tenant Postgres layer so an operator can verify the canary is reaching real traffic.
-
-The same opt-in eval gate as `activate` applies: pass `eval_run_id` (and/or `require_eval: true`) to refuse pointing the canary at a version that has no passing run for it (`409 eval_gate_failed`). The gate is skipped when `canary_version` is `null` (clearing).
-
-Emits `manifest_canary_set` audit.
-
-### POST /manifests/:name/rollback
-
-Atomically zero the canary weight (and optionally clear the canary version pointer too). Counterpart to the anomaly cron's auto-rollback path — both call into the same `clearCanary` primitive and emit `manifest_canary_cleared` audit events.
-
-Requires the `manifests:write` scope.
-
-```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  $BASE_URL/manifests/quick/rollback \
-  -d '{"clear_version": false}' | jq
-```
-
-```json
-{
-  "name": "quick",
-  "active_version": 2,
-  "canary_version": 3,
-  "canary_weight": 0,
-  "updated_at": 1747270000000
-}
-```
-
-`clear_version: false` (default) keeps the version pinned so a follow-up `POST /canary` can re-flip without re-supplying the version. `clear_version: true` resets `canary_version` to null.
-
-### DELETE /manifests/:name
-
-Drop every version row and the active pointer for `:name`. After this, the resolver falls through to tenant R2 / global R2 / bundled.
-
-### DELETE /manifests/:name/versions/:version
-
-Drop a single version row. Refuses with `409 conflict` if it is the currently-active version — activate another version first.
-
-### Version pinning at request time
-
-The OpenAI-compatible endpoint accepts an `x-manifest-version` header to pin a specific tenant version for one request. Useful for canary or diagnostic — production traffic continues to hit the active pointer.
-
-```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  -H "x-manifest-version: 2" \
-  $BASE_URL/v1/chat/completions \
-  -d '{"model":"quick","messages":[{"role":"user","content":"hi"}]}'
-```
-
----
+:::note
+There is no request header that selects a variant. Variant choice is entirely server-side; the
+resolved value is reported on `GET /manifests/{name}`.
+:::
 
 ## Eval
 
-Golden-dataset evals backed by `eval_datasets` / `eval_dataset_items` / `eval_runs` Postgres tables. Tenant-scoped; reads filter on `auth.principal.tenantId`. Reads require the `eval:read` scope; writes require `eval:write`.
+Datasets and scored runs, stored in Postgres.
 
-### POST /eval/datasets
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/eval/datasets` | `eval:read` |
+| `GET` | `/eval/datasets/{name}` | `eval:read` |
+| `PUT` | `/eval/datasets/{name}` | `eval:write` |
+| `POST` | `/eval/datasets/{name}/run` | `eval:write` |
+| `POST` | `/eval/runs` | `eval:write` |
+| `POST` | `/eval/runs/compare` | `eval:write` |
+| `GET` | `/eval/runs?limit=&dataset=` | `eval:read` |
+| `GET` | `/eval/runs/{run_id}` | `eval:read` |
 
-Create or upsert an eval dataset.
-
-```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  $BASE_URL/eval/datasets \
-  -d '{"name":"golden","description":"baseline regressions"}' | jq
-```
-
-### GET /eval/datasets
-
-List datasets for the authenticated tenant.
-
-### GET /eval/datasets/:name
-
-Fetch a single dataset metadata row.
-
-### POST /eval/datasets/:name/items
-
-Add (or upsert by `item_id`) an item to a dataset.
+A dataset is written whole — name, description and its items — in one `PUT`:
 
 ```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  $BASE_URL/eval/datasets/golden/items \
-  -d '{
-    "item_id": "q1",
-    "user_input": "What is the capital of France?",
-    "rubric": {
-      "criteria": "response identifies Paris",
-      "must_include": ["paris"],
-      "must_not_include": [],
-      "pass_threshold": 0.7,
-      "trajectory": {
-        "max_tool_calls": 5,
-        "forbidden_tools": ["memory_remember"],
-        "required_tool_sequence": []
-      }
-    }
-  }' | jq
+curl -s -X PUT "$BASE_URL/eval/datasets/refunds" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"description":"Refund policy questions",
+       "items":[{"user_input":"Can I refund after 40 days?",
+                 "rubric":{"criteria":"States the 30-day limit","pass_threshold":0.7}}]}'
 ```
 
-The rubric layers — trajectory gates run first (deterministic, free), then substring gates (`must_include` / `must_not_include`), then the LLM judge against `criteria`. Each layer can short-circuit to fail.
-
-### GET /eval/datasets/:name/items
-
-List items in a dataset, ordered by creation time.
-
-### POST /eval/datasets/:name/run
-
-Create a run and execute it **in the background**. The route returns `202` immediately so large datasets don't hit the Worker CPU / subrequest ceiling; the actual scoring runs in a detached job (`execCtx.waitUntil`) that finalizes the run row when it settles. Poll `GET /eval/runs/:id` for the terminal status and per-item scores.
+Run one:
 
 ```bash
-curl -s -X POST -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  $BASE_URL/eval/datasets/golden/run \
-  -d '{"candidate_manifest":"research","deterministic_judge":false}' | jq
+curl -s -X POST "$BASE_URL/eval/datasets/refunds/run" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"candidate_manifest":"support","deterministic_judge":true}'
 ```
 
-```json
-{
-  "run_id": "uuid",
-  "status": "in_progress"
-}
-```
-
-Then poll until the run finalizes:
-
-```bash
-curl -s -H "Authorization: Bearer $JWT" $BASE_URL/eval/runs/<run_id> | jq '{status, pass_count, fail_count}'
-# → { "status": "completed", "pass_count": 23, "fail_count": 2 }
-```
-
-`deterministic_judge: true` uses substring + trajectory gates only — no `env.AI` calls. Useful for CI environments without an AI binding wired.
-
-`candidate_version: N` pins the run to a specific tenant-managed manifest version instead of the active pointer — the only way to eval an inactive version before promoting it. The version the run tested is stored on the run row as `manifest_version` (null for bundled / R2 candidates) and is what the `/manifests` activate + canary eval gate matches against.
-
-Because execution is deferred, a candidate manifest that cannot be resolved (or an agent build error) surfaces as a run that finalizes `failed` — **not** as a 4xx on this call. The only 4xx here is `404` when the dataset itself does not exist for the tenant. The run row moves `in_progress → completed | failed`; it is never left stuck `in_progress`.
-
-> **Ideal upgrade:** the detached `waitUntil` job is bounded by the request's overall lifetime. For very large / long-running batches a dedicated Cloudflare Workflow (`EvalRunWorkflow`, bound as `EVAL_WORKFLOW`, mirroring `AgentWorkflow`) would survive a Worker eviction mid-run and replay from the last completed step. It is a drop-in swap for `runDatasetDetached` once the binding is wired in `wrangler.jsonc` (all envs) and the vitest miniflare config.
-
-### GET /eval/runs
-
-List runs for the tenant, optionally filtered by `?dataset=…`.
-
-### GET /eval/runs/:id
-
-Fetch one run with per-item `ItemScore` rows: `{item_id, score, verdict, reasoning, response, tokens_input?, tokens_output?, tool_call_count?, duration_ms?}`. The cost dimensions enable the CI gate's `--cost-tolerance` check.
-
-### `pnpm eval` — the CI gate
-
-`scripts/eval.ts` is the merge-blocking gate. It POSTs to `/eval/datasets/:name/run`, polls `GET /eval/runs/:id` until the background run finalizes (deriving `pass_rate` and cost dimensions from the terminal row), and compares against a `--baseline` JSON file:
-
-```bash
-pnpm eval -- --base-url https://staging-make.felix.run \
-  --dataset golden --candidate research \
-  --baseline evals/baseline.json \
-  --cost-tolerance 1.5 \
-  --include-adversarial --adversarial-floor 0.95
-```
-
-Flags:
-
-- `--min-pass-rate <f>` — default 0.8; floor when no baseline exists
-- `--tolerance <f>` — default 0.05; slack against the baseline's pass_rate
-- `--cost-tolerance <f>` — default 1.5; fail if `mean_tokens > baseline.mean_tokens × tolerance`. Set to 0 to disable
-- `--deterministic` — uses substring + trajectory gates only (no `env.AI`)
-- `--include-adversarial` — runs `<dataset>_adversarial` after the happy-path
-- `--adversarial-floor <f>` — default 0.95; safety gate
-- `--update-baseline` — on pass, write the new pass_rate + mean_tokens back to the baseline file
-
-Exit codes: `0` clean pass, `1` regression (pass_rate or cost or adversarial), `2` argument error.
-
----
-
-## Audit metrics
-
-### GET /audit/metrics
-
-Aggregated tool-call audit roll-up by `(manifest_id, tool, transport, status, error_code)` for a time window. Pairs with the Analytics Engine `orchestrator_tool_calls` dataset (longer retention) and the anomaly detector cron (which uses the same query shape).
-
-```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  "$BASE_URL/audit/metrics?since=$(( $(date +%s) - 3600 ))000&manifest_id=research" | jq
-```
-
-```json
-{
-  "since": 1747270000000,
-  "until": 1747273600000,
-  "rows": [
-    {
-      "manifest_id": "research",
-      "tool": "memory_recall",
-      "transport": "local",
-      "status": "ok",
-      "error_code": null,
-      "count": 142,
-      "avg_duration_ms": 3.2
-    },
-    {
-      "manifest_id": "research",
-      "tool": "notion__create_page",
-      "transport": "mcp",
-      "status": "error",
-      "error_code": "provider_error",
-      "count": 5,
-      "avg_duration_ms": 1284.5
-    }
-  ]
-}
-```
-
-Query params:
-
-| Param | Type | Default | Notes |
+| Field | Type | Default | Notes |
 |---|---|---|---|
-| `since` | int (ms epoch) | 1 hour ago | Lower bound, inclusive |
-| `until` | int (ms epoch) | now | Upper bound, inclusive |
-| `manifest_id` | string | (all) | Filter rows to one manifest |
-| `limit` | int | 100 | Max rows (1..500) |
+| `dataset_name` | string \| null | `null` | Implied by the path on `/datasets/{name}/run`. |
+| `candidate_manifest` | string | required | |
+| `manifest_version` | int \| null | `null` | Pin to a specific version — the only way to eval an inactive one before promoting it. |
+| `deterministic_judge` | bool | `false` | Rubric matching only, no model calls. |
+| `use_llm_judge` | bool | `false` | Score with a judge model. |
+
+`POST /eval/runs/compare` scores a baseline against candidates in one call.
+
+### The CI gate
+
+Run a dataset offline, with no model calls and no database, using the CLI:
+
+```bash
+uv run felix eval --dataset smoke --manifest quick \
+  --fixture fixtures/eval/smoke.json --mock
+```
+
+That is the merge-blocking path in the harness repo's CI. See [Testing](/internals/testing/).
+
+## Usage
+
+<Badge text="usage:read" variant="note" />
+
+Per-request token counts and derived cost.
+
+| Query | Type | Default |
+|---|---|---|
+| `limit` | int 1–200 | `50` |
+| `cursor` | string | — |
+| `manifest_id` | string | — |
+
+```bash
+curl -s "$BASE_URL/usage?limit=50&manifest_id=support" \
+  -H "authorization: Bearer $FELIX_KEY" | jq
+```
+
+Cost comes from a built-in per-model price table, overridable per manifest with `spec.model.price`
+(USD per 1M tokens).

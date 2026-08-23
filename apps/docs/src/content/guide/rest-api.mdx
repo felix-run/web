@@ -7,464 +7,406 @@ sidebar:
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
-The public HTTP surface. Every route runs through `authMiddleware` (verifies JWT, populates `RequestContext`) and `rateLimitMiddleware` (per-tenant sliding window of 100 req/60s). `/health`, `/.well-known/*`, `/docs`, `/openapi.json` are exempt from rate limiting.
+The public surface of a running harness. Management endpoints (`/audit`, `/approvals`, `/plans`,
+`/jobs`, `/manifests`, `/eval`, `/usage`) are in the [Management API](/guide/management-api/).
 
-A few mounts are **self-authenticating** — the middleware still runs, but JWT verification is skipped in favor of the mount's own scheme: `/internal/*` uses `x-consumer-token` (per-dispatch capability) or `x-consumer-secret` against the consumer shared secret.
+A live, always-accurate reference is served by the harness itself: **`GET /openapi.json`**, rendered
+at **`/docs`** (Scalar) and **`/redoc`**.
 
-For the management surfaces (audit, plans, jobs, approvals, manifests, eval), see [management-api.md](/guide/management-api/).
+## Base URL and auth
 
-## Conventions
-
-- Examples below use `$BASE_URL` — set it to your deployment, e.g. `export BASE_URL=http://localhost:8787` for `pnpm dev`, or `https://make.felix.run` in production.
-- All bodies are `application/json` unless noted.
-- Streaming endpoints emit `text/event-stream`.
-- Authentication is by `Authorization: Bearer <jwt>`. Anonymous calls (no header) succeed only on manifests with `auth.inbound.allow_anonymous: true`. Invalid or expired tokens return 401 (they do **not** silently demote to anonymous).
-- Thread ids in client-visible APIs are **suffixes**; the server enforces a `${tenantId}:` prefix and rejects suffixes containing `:` or `#` with 400.
-- Rate limited requests return HTTP 429.
-
----
-
-## GET /health
-
-Liveness probe plus active federation `PolicyBundle` metadata. Public; no auth.
+Examples use `$BASE_URL` — set it to your deployment:
 
 ```bash
-curl -s $BASE_URL/health | jq
+export BASE_URL=http://localhost:8080
 ```
 
-```json
-{
-  "status": "ok",
-  "env": "development",
-  "multi_region": false,
-  "federation": null
-}
-```
-
-When a signed bundle has loaded from R2, `federation` is `{ "bundleVersion": "...", "issuer": "..." }`.
-
----
-
-## GET /.well-known/agent-card.json
-
-A2A discovery document for the default manifest (configured at `createApp({ defaultManifest })` time; currently `quick`). Public; no auth.
+Requests carry a bearer token unless the harness runs with `FELIX_AUTH_MODE=none`:
 
 ```bash
-curl -s $BASE_URL/.well-known/agent-card.json | jq
+export FELIX_KEY=sk-felix-local-…
+curl -s "$BASE_URL/health" -H "authorization: Bearer $FELIX_KEY"
 ```
 
-```json
-{
-  "name": "quick",
-  "description": "",
-  "version": "1.0.0",
-  "protocols": ["a2a/jsonrpc/2.0", "openai/chat/v1", "mcp/sse"],
-  "endpoints": {
-    "a2a": "http://localhost:8787/a2a",
-    "mcp": "http://localhost:8787/mcp"
-  },
-  "auth": {
-    "schemes": [],
-    "required_scopes": [],
-    "allow_anonymous": true
-  },
-  "capabilities": [],
-  "federation": null
-}
-```
+`api_key` mode also accepts `Authorization: ApiKey <k>` and `X-Api-Key: <k>`. See
+[Auth](/internals/auth/).
 
-See `src/a2a/card.ts:13-50` for the exact shape.
+:::caution
+`FELIX_AUTH_MODE=none` is only legal on a loopback bind. The harness refuses to start if it is set
+while `FELIX_HOST` is reachable off-host, in every environment — `FELIX_ALLOW_INSECURE` does not
+override that. Compose defaults to `api_key` and `make up` mints a local key for you.
+:::
 
----
+Always public, in every mode: `/health`, `/metrics`, `/docs`, `/openapi.json`, `/redoc`, and
+everything under `/.well-known/`.
 
-## GET /openapi.json
+## Cross-cutting behaviour
 
-OpenAPI 3.1.0 specification covering the core routes — discovery (`/health`, `/.well-known/agent-card.json`), OpenAI-compatible chat (`/v1/*`), Felix-native chat with SSE (`/chat/*`), JSON-RPC protocols (`/a2a`, `/mcp`), tenant manifest CRUD (`/manifests/*`), eval datasets and runs (`/eval/*`), and management (`/audit`, `/audit/metrics`, `/approvals`, `/plans`, `/jobs`). Treat the spec as authoritative for the routes it covers; the prose below is for orientation.
+Middleware runs **body limit → rate limit → auth**.
 
-```bash
-curl -s $BASE_URL/openapi.json | jq '.paths | keys'
-```
-
-## GET /docs
-
-Scalar API reference UI rendered from `/openapi.json`. Open `$BASE_URL/docs` in a browser — endpoints are grouped by tag (`System`, `OpenAI`, `Threads`, `A2A`, `MCP`, `Manifests`, `Audit`, `Approvals`, `Plans`, `Jobs`) with request/response schemas, examples, and an `Authorize` button for the `bearerAuth` scheme.
-
----
-
-## GET /v1/models
-
-Lists every bundled manifest as an OpenAI-shaped model entry.
-
-```bash
-curl -s $BASE_URL/v1/models | jq
-```
-
-```json
-{
-  "object": "list",
-  "data": [
-    { "id": "quick", "object": "model", "created": 0, "owned_by": "orchestrator" }
-  ]
-}
-```
-
-## POST /v1/chat/completions
-
-OpenAI-compatible chat completions. Any OpenAI SDK should work — point it at `$BASE_URL/v1` and use a manifest name as the `model`.
-
-**Headers**
-
-| Header | Purpose |
+| Condition | Response |
 |---|---|
-| `Authorization: Bearer <jwt>` | Required if the target manifest's `auth.inbound.allow_anonymous` is false. |
-| `x-thread-id` | Optional thread suffix. Without it, each request is stateless and gets a fresh `${tenant}:openai-<uuid>` thread. Suffixes containing `:` or `#` return 400. Also seeds the canary bucket — a single thread stays on one variant across the rollout. |
-| `x-manifest-version` | Optional positive integer pinning a specific tenant-managed manifest version (bypasses canary routing). |
-| `content-type: application/json` | Required. |
+| Body over 1 MiB | `413 {"error":"payload_too_large"}` |
+| Per-tenant rate limit exceeded | `429 {"error":"rate_limited"}` |
+| Missing or bad credentials | `401 {"error":"unauthorized","reason":"missing_credentials"\|"invalid_api_key"}` |
+| Manifest requires a scope the caller lacks | `403` |
+| Unknown manifest | `404 unknown_manifest:<name>` |
+| Manifest pinned and drifted | `409` |
+| A `secret:NAME` cannot be resolved | `503` |
+| Upstream model provider failed | `502` |
 
-**Response headers**
+### Thread ids
 
-| Header | When set | Value |
+`thread_id` on the wire is a **suffix**; the server prefixes the tenant id, so the real id is
+`{tenant_id}:{suffix}`. A suffix containing `:` or `#` is rejected with `400 invalid_thread_id`.
+Omit it and the turn is stateless.
+
+## System
+
+| Method | Path | Purpose |
 |---|---|---|
-| `x-manifest-variant` | Set on every chat call that resolves through the tenant Postgres layer | `stable` or `canary` — which side of an active canary rollout served the request. Absent when no canary is active or the manifest came from R2 / bundled. |
+| `GET` | `/health` | Liveness — `{"status":"ok","env":…,"version":…,"multi_region":false,"federation":null}` |
+| `GET` | `/metrics` | Prometheus text exposition |
+| `GET` | `/openapi.json` | OpenAPI 3.1 document |
+| `GET` | `/docs`, `/redoc` | Rendered API reference |
 
-**Body**
+```bash
+curl -s "$BASE_URL/health" | jq
+```
+
+## `POST /chat`
+
+Run a turn and wait for the result.
+
+```bash
+curl -s -X POST "$BASE_URL/chat" \
+  -H "authorization: Bearer $FELIX_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"manifest":"quick","messages":[{"role":"user","content":"What is 7 * 6?"}]}' | jq
+```
+
+Request (`extra: forbid`):
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `manifest` | string | required | Manifest name. |
+| `messages` | object[] | `[]` | OpenAI-shaped message dicts. |
+| `thread_id` | string \| null | `null` | Suffix only. |
+| `model` | string \| null | `null` | Mid-session override; allowlisted. |
+| `template` | string \| null | `null` | Named template from `spec.prompts`. |
+| `template_args` | string[] | `[]` | |
+
+Either `messages` or `template` must produce a message, else `400
+messages_or_template_required`. An empty `manifest` is `400 manifest_required`. A `model` outside the
+allowlist is `400 model_not_allowlisted:<id>`.
+
+Response:
 
 ```json
 {
-  "model": "quick",
-  "messages": [{ "role": "user", "content": "What is 7 * 6?" }],
-  "stream": false,
-  "temperature": 0,
-  "max_tokens": 1024
+  "messages": [ ... ],
+  "final": { "role": "assistant", "content": "42" },
+  "thread_id": "default:my-thread",
+  "model": "claude-sonnet-4",
+  "leaf_id": "evt_..."
 }
 ```
 
-**Synchronous response**
+### Durable runs
+
+If the manifest sets `spec.execution.mode: durable`, `POST /chat` instead returns **`202`**:
+
+```json
+{
+  "status": "accepted",
+  "resume_token": "fib_...",
+  "fiber_id": "fib_...",
+  "expires_at": "2026-08-22T12:34:56Z",
+  "thread_id": "default:my-thread"
+}
+```
+
+Poll it:
 
 ```bash
-curl -s -X POST $BASE_URL/v1/chat/completions \
+curl -s "$BASE_URL/chat/runs/$RESUME_TOKEN" -H "authorization: Bearer $FELIX_KEY" | jq
+```
+
+`GET /chat/runs/{resume_token}` returns `{status, fiber_id, resume_token, expires_at, final, error,
+manifest_id}`, or `404 run_not_found`. Fibers checkpoint in Postgres and are resumed by the worker's
+`fiber_scheduler` cron — so **`felix-scheduler` must be running**.
+
+## `POST /chat/stream`
+
+Same request body as `/chat`, streamed as Server-Sent Events.
+
+```bash
+curl -N -X POST "$BASE_URL/chat/stream" \
+  -H "authorization: Bearer $FELIX_KEY" \
   -H 'content-type: application/json' \
-  -H 'x-thread-id: demo' \
+  -d '{"manifest":"quick","thread_id":"demo","messages":[{"role":"user","content":"Hi"}]}'
+```
+
+:::caution
+`/chat/stream` **ignores** `spec.execution.mode: durable` and always runs inline. Use `POST /chat`
+plus polling when you need a run to survive a process restart.
+:::
+
+### Frame format
+
+Every frame is a bare `data:` line — there is **no SSE `event:` field** — and the stream ends with a
+literal `data: [DONE]`. Each payload is the same envelope:
+
+```json
+{ "event": "text_delta", "type": "text_delta", "data": { ... }, "text": "derived" }
+```
+
+`event` and `type` always carry the same name. `text` is a convenience: `data.chunk.content` if
+present, else `data.text` or `data.delta`, else `""`.
+
+### Events
+
+| `event` | `data` | When |
+|---|---|---|
+| `session_progress` | `{"phase":"turn"}` | A turn started on a thread |
+| `session_progress` | `{"phase":"compaction","reason":"after_turn"}` | Compaction fired mid-loop |
+| `session_progress` | `{"progress":{"type":"assistant_delta","kind":"text","delta":str}}` | Paired with each `text_delta` |
+| `text_delta` | `{"chunk":{"content":str},"delta":str}` | A model token chunk |
+| `on_chat_model_stream` | `{"chunk":{"content":str}}` | Composite patterns only (`deep`, `router`, `parallel`, `groupchat`, `reflect`, `plan_execute`) |
+| `tool_start` | `{"name":str,"input":dict,"id":str}` | Before a tool runs |
+| `tool_execution_update` | `{"name":str,"id":str,"status":"running"}` | Right after `tool_start` |
+| `tool_end` | `{"name":str,"output":str,"id":str}` | A tool returned |
+| `tool_execution_update` | `{"name":str,"id":str,"status":"complete"}` | Right after `tool_end` |
+| `tool_request` | `{"id","name","args","thread_id","transport":"client"}` | **The client must run this tool** |
+| `approval_required` | `{"approval_id","tool_name","args","rule_id","reason"?,"thread_id","tool_call_id"}` | A gated tool is waiting on a human |
+| `ui_request` | `{"request_id","kind","prompt","default","thread_id","options":[…],"metadata":{}}` | The agent is asking the user something |
+| `steer` | `{"content":str}` | A queued steer was drained into the loop |
+| `follow_up` | `{"content":str}` | A queued follow-up was drained after idle |
+| `aborted` | `{"thread_id":str}` | `POST /chat/abort` was observed |
+| `on_chain_end` | `{"output": InvokeOutput}` | Penultimate frame; carries per-turn `usage` |
+| `done` | `{"final": ChatMessage, "messages":[…]}` | Final frame before `[DONE]` |
+
+:::note
+`tool_request`, `approval_required` and `ui_request` are **side-channel** frames: the blocked tool
+pushes them onto a per-thread in-process queue, which the stream drains. Because that queue lives in
+the process running the turn, the SSE consumer must reach the **same API replica** as the run.
+:::
+
+## Sticky interrupts
+
+Three frames pause the run until something answers them out of band. The run is not failing — it is
+waiting.
+
+### Client-executed tools
+
+A `tool_request` frame means the **caller** runs the tool. The harness blocks on a waiter keyed
+`client:{thread_id}:{tool_call_id}` and resumes when you post the result:
+
+```bash
+curl -s -X POST "$BASE_URL/chat/tool_result" \
+  -H "authorization: Bearer $FELIX_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"thread_id":"demo","tool_call_id":"call_123","content":"total 4\n-rw-r--r-- README.md"}'
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `thread_id` | string | required |
+| `tool_call_id` | string | required |
+| `content` | string \| object \| array | `""` |
+| `error` | bool | `false` |
+
+Non-string `content` is JSON-serialized server-side. Returns `{ok, signaled, thread_id,
+tool_call_id}`; the loop then emits a normal `tool_end`.
+
+Failing to answer stalls the run until the tool's timeout — `spec.client_tools[].timeout_seconds`,
+default **120 s**, max 3600 — after which the result becomes
+`[error/timeout] client tool timed out`.
+
+### Approvals
+
+An `approval_required` frame waits up to the rule's `ttl_seconds`. Decide with
+`POST /approvals/{approval_id}/decide` — see the
+[Management API](/guide/management-api/#approvals).
+
+### UI prompts
+
+A `ui_request` frame asks the user a question. `kind` is `select`, `confirm` or `input`. Answer it:
+
+```bash
+curl -s -X POST "$BASE_URL/chat/ui" \
+  -H "authorization: Bearer $FELIX_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"request_id":"abc123","value":"option-a"}'
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `request_id` | string | required |
+| `value` | any | `null` |
+| `cancelled` | bool | `false` |
+| `note` | string | `""` |
+
+The default wait is **300 s**; on timeout the agent sees `cancelled: true` with `note: "timeout"`.
+
+## Steering a live run
+
+```bash
+curl -s -X POST "$BASE_URL/chat/steer" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"thread_id":"demo","text":"Focus on the migration instead.","kind":"steer"}'
+```
+
+`kind: "steer"` interrupts the remaining tool batch mid-run; `kind: "follow_up"` is delivered once
+the run goes idle. Drain behaviour is `session.steering_mode` / `follow_up_mode` (`all` or
+`one-at-a-time`). The queues are Redis lists, so this works across replicas.
+
+## Abort, continue, thinking, compact
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `POST` | `/chat/abort` | `{thread_id}` | Sets a flag the loop polls each step; emits `aborted`, phase becomes `aborted`. |
+| `POST` | `/chat/continue` | `{thread_id, manifest, model?}` | Resumes after an abort or error with no new user message. `400 nothing_to_continue` / `already_complete`. |
+| `POST` | `/chat/thinking` | `{thread_id, thinking_level}` | `off` `minimal` `low` `medium` `high` `xhigh` `max`. Persisted as a `thinking_level_change` event. |
+| `POST` | `/chat/compact` | `{thread_id, manifest, instructions?}` | Compact the transcript now. |
+
+Thinking levels map to token budgets: `off` (none), `minimal` 128, `low` 512, `medium` 1024,
+`high` 2048, `xhigh` 8192, `max` 32000 — and to OpenAI `reasoning_effort` for OpenAI models.
+
+## Sessions
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/chat/sessions` | List sessions — `{sessions:[…], items:[…]}` |
+| `GET` | `/chat/sessions/search?q=&limit=` | Postgres full-text search — `{query, hits}` |
+| `GET` | `/chat/sessions/{thread_id}` | **Authoritative snapshot** |
+| `GET` | `/chat/sessions/{thread_id}/export` | Active branch as JSONL (`application/x-ndjson`, attachment) |
+| `POST` | `/chat/sessions/name` | `{thread_id, name}` — also appends a `session_info` event |
+| `POST` | `/chat/sessions/label` | `{thread_id, event_id, label}` |
+| `POST` | `/chat/sessions/custom` | `{thread_id, content, in_context, metadata, role}` |
+| `GET` | `/chat/history/{thread_id}` | Flat transcript — `{thread_id, messages, events}` |
+| `DELETE` | `/chat/history/{thread_id}` | Reset the session log |
+
+### The session snapshot
+
+`GET /chat/sessions/{thread_id}` is the contract a client hydrates from. Its keys are **camelCase**,
+deliberately:
+
+```json
+{
+  "id": "default:demo",
+  "name": "Migration work",
+  "parentSessionId": null,
+  "createdAt": "…", "updatedAt": "…",
+  "phase": "idle",
+  "model": { "id": "claude-sonnet-4" },
+  "thinkingLevel": "medium",
+  "attached": false,
+  "locked": false,
+  "revision": 12,
+  "leafId": "evt_…",
+  "labels": {},
+  "transcript": [ { "id","seq","kind","role","content","timestamp","status","metadata",
+                    "toolCallId","toolName","toolCalls","usage" } ],
+  "queuedSteer": [], "queuedSteerCount": 0,
+  "wake": { "fresh": true, "headSeq": 41, "endedOnAssistant": true, "pendingToolCalls": [] }
+}
+```
+
+`phase` is one of `idle`, `turn`, `compaction`, `branch_summary`, `retry`, `aborted`. An `idle`
+phase with pending tool calls is reported as `turn`.
+
+Session event kinds: `message`, `tool_call`, `tool_result`, `thinking`, `audit`, `compaction`,
+`model_change`, `thinking_level_change`, `branch_summary`, `custom`, `label`, `session_info`.
+
+## Leases
+
+Each client takes a lease so two tabs cannot drive one session at once.
+
+```bash
+curl -s -X POST "$BASE_URL/chat/sessions/lease" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"thread_id":"demo","holder_id":"tab-7","mode":"exclusive","ttl_seconds":300}'
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `thread_id` | string | required |
+| `holder_id` | string, ≤128 chars | required |
+| `mode` | `exclusive` \| `shared` | `exclusive` |
+| `ttl_seconds` | float, 5–86400 | `300` |
+| `token` | string \| null | `null` |
+
+`exclusive` sets `locked: true` on the snapshot; `shared` marks observers `attached: true`.
+Contention returns **`409`**. Release with `POST /chat/sessions/lease/release`
+(`{thread_id, holder_id?, token?}`); failure is `403`. Leases are Redis-backed, with an in-process
+fallback.
+
+## Fork and rewind
+
+```bash
+curl -s -X POST "$BASE_URL/chat/fork" -H "authorization: Bearer $FELIX_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"thread_id":"demo","new_thread_id":"demo-branch","from_event_id":"evt_123"}'
+```
+
+`POST /chat/rewind` takes `{thread_id, event_id, summarize?, instructions?, manifest?}` and moves the
+active leaf back to `event_id`. Unless `summarize: false` (or `session.branch_summary: false`), the
+abandoned branch is summarized into a `branch_summary` event using the manifest's model.
+
+## OpenAI-compatible surface
+
+`model` is the **manifest name**.
+
+```bash
+curl -s "$BASE_URL/v1/chat/completions" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
   -d '{"model":"quick","messages":[{"role":"user","content":"hi"}]}' | jq
 ```
 
-```json
-{
-  "id": "chatcmpl-...",
-  "object": "chat.completion",
-  "created": 1747100000,
-  "model": "quick",
-  "choices": [
-    {
-      "index": 0,
-      "message": { "role": "assistant", "content": "Hi! How can I help?" },
-      "finish_reason": "stop"
-    }
-  ],
-  "usage": { "prompt_tokens": 412, "completion_tokens": 9, "total_tokens": 421 }
-}
-```
-
-`usage` is the request's cumulative token count across every model call in the tool loop (from the same accumulator that enforces `max_input_tokens` / `max_output_tokens`). On streamed responses the final chunk (the one carrying `finish_reason`) includes the same `usage` object.
-
-When the model emits tool calls on the final assistant message, they appear in OpenAI's `tool_calls` array and `finish_reason` is `tool_calls`:
-
-```json
-"message": {
-  "role": "assistant",
-  "content": "",
-  "tool_calls": [
-    { "id": "call_abc", "type": "function", "function": { "name": "calculator", "arguments": "{\"expression\":\"7*6\"}" } }
-  ]
-},
-"finish_reason": "tool_calls"
-```
-
-**Streaming response**
-
-Set `"stream": true`. Response is `text/event-stream`; each chunk is a JSON object on a `data:` line, and the stream terminates with `data: [DONE]\n\n`.
-
-```bash
-curl -N -X POST $BASE_URL/v1/chat/completions \
-  -H 'content-type: application/json' \
-  -d '{"model":"quick","stream":true,"messages":[{"role":"user","content":"Say hi"}]}'
-```
-
-```
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
-
-data: [DONE]
-```
-
-**Errors**
-
-| Status | Body | Cause |
+| Method | Path | Notes |
 |---|---|---|
-| 400 | `{"error":{"message":"x-thread-id may not contain ':' or '#'"}}` | Malformed thread suffix. |
-| 401 | `{"error":"unauthorized","manifest":"<name>"}` | Manifest disallows anonymous and no valid principal was presented. |
-| 403 | `{"error":"forbidden","missing_scopes":["..."]}` | Required scopes from `auth.inbound.required_scopes` are missing. |
-| 404 | `{"error":{"message":"Unknown model/manifest: foo"}}` | The `model` field is not a known manifest. |
-| 429 | rate limited | Per-tenant sliding window exceeded. |
-| 502 | `{"error":{"message":"agent invocation failed: ..."}}` | Upstream agent/model invocation failed (gateway error, model timeout, etc). Message truncated to 500 chars. |
+| `GET` | `/v1/models` | Bundled manifests as OpenAI model objects |
+| `POST` | `/v1/chat/completions` | `stream: true` emits `chat.completion.chunk` frames, a final chunk carrying `usage`, then `data: [DONE]` |
 
----
+The optional `user` field becomes the thread suffix (`{tenant}:{user}`). Errors come back in OpenAI
+shape — `{"error": {...}}` — including `manifest_drift`, `content_filter` and `model_gateway_error`.
 
-## POST /chat
+## A2A
 
-Felix-native synchronous chat. Same agent runtime as `/v1/chat/completions`, but the request and response shape are simpler.
+`POST /a2a` speaks A2A JSON-RPC for agent-to-agent calls. Peers declared in `spec.peers` become
+`peer__{name}` tools on the calling agent, and hop depth is bounded by `limits.max_peer_hops`.
 
-**Body**
+## MCP
 
-```json
-{
-  "manifest": "quick",
-  "thread_id": "session-1",
-  "messages": [{ "role": "user", "content": "hello" }]
-}
-```
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/mcp` | JSON-RPC: `initialize`, `tools/list`, `tools/call`. `params.manifest` selects the agent. |
+| `GET` | `/mcp` | Human-readable info |
 
-**Response**
+Tool `inputSchema` is generated from each tool's argument schema. A remote MCP tool that already
+supplies JSON Schema is forwarded verbatim through `raw_input_schema`, preserving its descriptions
+and enums.
 
-```json
-{
-  "messages": [...],
-  "final": { "role": "assistant", "content": "Hello." },
-  "thread_id": "session-1"
-}
-```
+## Well-known
 
-`messages` is the full transcript from this turn; `final` is the last assistant message.
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/.well-known/agent-card.json` | Built from `FELIX_DEFAULT_MANIFEST` |
+| `GET` | `/.well-known/jwks.json` | `{"error":"not_configured","keys":[]}` until `FELIX_JWKS_PUBLIC` is set |
 
-If the agent throws (upstream gateway error, model timeout, binding outage), the route returns HTTP 502 with `{"error":"invocation_failed","detail":"<message>"}` rather than a bare 500. Malformed thread suffixes return HTTP 400 with `{"error":"invalid_thread_id","detail":"thread_id may not contain ':' or '#'"}`.
+## Internal
 
-```bash
-curl -s -X POST $BASE_URL/chat \
-  -H 'content-type: application/json' \
-  -d '{"manifest":"quick","messages":[{"role":"user","content":"hi"}]}' | jq
-```
+`POST /internal/sessions/{session_id}/events` lets a queue consumer write a tool result back onto a
+session. It requires the `X-Felix-Consumer-Secret` header matching `FELIX_CONSUMER_SHARED_SECRET`.
+With the secret unset the route is available **only** when `FELIX_AUTH_MODE=none` outside production;
+otherwise it returns `503 consumer_shared_secret_required`. Content is screened, so a hostile payload
+gets `422 content_screening_denied`.
 
-## POST /chat/stream
+## Manifest variants
 
-Felix-native SSE stream. Same body as `/chat`. Each event is one line of `data: {...JSON...}\n\n`; the stream ends with `data: [DONE]\n\n`. Events come straight from `agent.streamEvents()` and include `on_chat_model_stream`, `on_tool_start`, `on_tool_end`, `on_chain_end`. On invocation failure the server emits a final `{ event: 'on_error', data: { message } }` event before `[DONE]` so the client sees the cause rather than an abruptly-closed stream.
-
-```bash
-curl -N -X POST $BASE_URL/chat/stream \
-  -H 'content-type: application/json' \
-  -d '{"manifest":"quick","messages":[{"role":"user","content":"hi"}]}'
-```
-
-## GET /chat/history/:thread_id
-
-Fetch the session event log for a thread. Requires an authenticated principal; returns 401 for anonymous callers. The `:thread_id` is a suffix; the server prefixes the tenant id before reading the `ConversationDO`.
-
-```bash
-curl -s -H "Authorization: Bearer $JWT" \
-  $BASE_URL/chat/history/session-1 | jq
-```
-
-Returns `{ events: SessionEvent[], head: number }`, where each event carries `{ seq, ts, kind, role?, content?, tool_call_id?, name?, tool_calls?, metadata? }` and `head` is the next sequence number that would be assigned on append. Returns 400 if the suffix contains `:`/`#`.
-
-## DELETE /chat/history/:thread_id
-
-Reset a thread. Requires authentication.
-
-```bash
-curl -s -X DELETE -H "Authorization: Bearer $JWT" \
-  $BASE_URL/chat/history/session-1
-```
-
-Returns `{ "ok": true }`.
-
----
-
-## POST /a2a
-
-Single JSON-RPC 2.0 endpoint that dispatches to one of five methods: `tasks/send`, `tasks/sendSubscribe`, `tasks/get`, `tasks/cancel`, `tasks/resubscribe`.
-
-```
-POST /a2a
-content-type: application/json
-
-{ "jsonrpc": "2.0", "id": <number|string>, "method": "<method>", "params": {...} }
-```
-
-The default manifest (`quick`) handles requests by default; supply `params.task.manifest` to dispatch a different one. `tasks/send` and `tasks/sendSubscribe` enforce the target manifest's inbound auth; all five methods are tenant-scoped through the `A2ATaskDO` key.
-
-### tasks/send
-
-Create a task, run the agent synchronously, return the result.
-
-```bash
-curl -s -X POST $BASE_URL/a2a \
-  -H 'content-type: application/json' \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tasks/send",
-    "params": {
-      "task": {
-        "id": "task-001",
-        "manifest": "quick",
-        "input": { "messages": [{ "role": "user", "content": "ping" }] }
-      }
-    }
-  }' | jq
-```
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "id": "task-001",
-    "status": "completed",
-    "output": { "messages": [...] },
-    "continuation": null
-  }
-}
-```
-
-If `params.task.id` is omitted (or contains `:` / `#`), the server generates a fresh UUID. The task id becomes the conversation thread id (`${tenant}:a2a-<taskId>`), so a continuation task with the same id replays history.
-
-### tasks/sendSubscribe
-
-Same params as `tasks/send`, but the response is `text/event-stream`. The first event signals `in_progress`, intermediate events come from `agent.streamEvents()`, and the last event reports `completed`.
-
-```bash
-curl -N -X POST $BASE_URL/a2a \
-  -H 'content-type: application/json' \
-  -d '{
-    "jsonrpc": "2.0", "id": 2, "method": "tasks/sendSubscribe",
-    "params": { "task": { "input": { "messages": [{"role":"user","content":"ping"}] } } }
-  }'
-```
-
-### tasks/get
-
-Fetch a task's current state from its `A2ATaskDO`. Tenant-scoped: a probe targeting another tenant's task returns `-32001 task not found`.
-
-```bash
-curl -s -X POST $BASE_URL/a2a \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tasks/get","params":{"id":"task-001"}}' | jq
-```
-
-### tasks/cancel
-
-Mark a task cancelled.
-
-```bash
-curl -s -X POST $BASE_URL/a2a \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":4,"method":"tasks/cancel","params":{"id":"task-001"}}' | jq
-```
-
-### tasks/resubscribe
-
-Reattach to a previously-created task. Anthropic's Managed Agents framing of `wake(sessionId)` for the A2A surface: a client that lost its connection (network drop, browser refresh, worker eviction) calls `tasks/resubscribe` with the task id and gets the persisted session events replayed as SSE.
-
-Response is `text/event-stream`. The first event is a preamble with the task status and wake summary:
-
-```json
-{ "id": "task-001", "status": "in_progress", "resumed_from_seq": 0, "head_seq": 4, "pending_tool_calls": 1 }
-```
-
-Subsequent events are `replay` rows, one per persisted session event the client missed:
-
-```json
-{ "event": "replay", "seq": 0, "message": { "role": "user", "content": "..." } }
-{ "event": "replay", "seq": 1, "message": { "role": "assistant", "content": "...", "tool_calls": [...] } }
-```
-
-The final event depends on the task's status:
-
-- **Terminal** (`completed` / `cancelled` / `failed`) — the stream emits the cached output and closes:
-  ```json
-  { "id": "task-001", "status": "completed", "output": { "messages": [...] }, "error": null }
-  ```
-- **Non-terminal** (`pending` / `in_progress`) — the stream emits a `continue_hint` and closes. Felix doesn't run agent work inside the resubscribe request itself; to continue from the resume point the client issues a fresh `tasks/sendSubscribe` with the same task id, and the session log carries the resume state:
-  ```json
-  { "id": "task-001", "status": "in_progress",
-    "continue_hint": "issue tasks/sendSubscribe with the same task id to continue from the resume point" }
-  ```
-
-```bash
-curl -N -X POST $BASE_URL/a2a \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":5,"method":"tasks/resubscribe","params":{"id":"task-001"}}'
-```
-
-Tenant-scoped: a probe for another tenant's task id returns the same `task not found` error as a probe for a non-existent id.
-
-**Error envelope**
-
-```json
-{ "jsonrpc": "2.0", "id": <id>, "error": { "code": -32601, "message": "unknown method ..." } }
-```
-
-| Code | Meaning |
-|---|---|
-| `-32000` | Generic server error (thrown exception). |
-| `-32001` | Task not found (or not owned by the caller's tenant). |
-| `-32601` | Unknown JSON-RPC method. |
-| `-32602` | Invalid params (e.g. unknown manifest). |
-
----
-
-## POST /mcp
-
-Minimal MCP JSON-RPC server. The default manifest (`quick`) gates inbound auth; the manifest's tools, after governance wrapping, are what the MCP client sees.
-
-### tools/list
-
-```bash
-curl -s -X POST $BASE_URL/mcp \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq
-```
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "tools": [
-      {
-        "name": "calculator",
-        "description": "Evaluate a basic arithmetic expression (...)",
-        "inputSchema": { "type": "object", "properties": { "expression": { "type": "string" } }, "required": ["expression"] }
-      }
-    ]
-  }
-}
-```
-
-`inputSchema` is generated from each tool's Zod schema (via Zod v4's native `z.toJSONSchema`, target `draft-7`) in `src/patterns/zod-to-json-schema.ts`. Remote MCP tools whose `inputSchema` is already JSON Schema arrive with `rawInputSchema` set on the tool and that JSON Schema is forwarded verbatim, preserving any descriptions / enums the upstream server declared.
-
-### tools/call
-
-```bash
-curl -s -X POST $BASE_URL/mcp \
-  -H 'content-type: application/json' \
-  -d '{
-    "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-    "params": { "name": "calculator", "arguments": { "expression": "7*6" } }
-  }' | jq
-```
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "result": { "content": [{ "type": "text", "text": "42" }] }
-}
-```
-
-Errors:
-
-- `-32601 unknown method` — method other than `tools/list` / `tools/call`.
-- `-32601 unknown tool: <name>` — the tool isn't exposed by the default manifest.
+There is **no request header that selects a variant**. When a canary is active, the harness picks a
+side deterministically from a hash of tenant, thread, manifest and the two version numbers, so a
+given thread stays pinned to one variant for the life of the rollout. The resolved variant is
+reported on `GET /manifests/{name}`. See
+[Manifests](/guide/management-api/#manifests).

@@ -14,8 +14,8 @@ runnable agents with governance, durable execution, and multi-protocol surfaces.
 - **Harness (runtime):** [felix-run/felix](https://github.com/felix-run/felix) — CPython, Compose / Helm
 - **Web (optional):** [felix-run/web](https://github.com/felix-run/web) — chat-ui + docs on Cloudflare Workers
 
-For the mental model, read [concepts.md](/guide/concepts/) after this. For production
-deploy shape, see [deploy.md](/guide/deploy/).
+For the mental model, read [Concepts](/guide/concepts/) after this. For production
+deploy shape, see [Deploy](/guide/deploy/).
 
 ## Prerequisites
 
@@ -62,14 +62,30 @@ deploy shape, see [deploy.md](/guide/deploy/).
    make doctor   # from a uv-synced checkout, or: docker compose exec api felix doctor
    ```
 
+5. **Export your local API key**
+
+   `make up` runs `scripts/dev-key.sh`, which writes an API key into `.env` on first run and
+   prints it. The Compose stack is **authenticated by default** and publishes on `127.0.0.1`.
+
+   ```bash
+   export FELIX_KEY=$(grep -o 'sk-felix-local-[a-f0-9]*' .env | head -1)
+   ```
+
 </Steps>
+
+:::note[Authenticated by default]
+Compose sets `FELIX_AUTH_MODE=api_key`, so every example below sends a bearer token. If you instead
+run without Compose via `make dev`, the harness starts with `FELIX_AUTH_MODE=none` bound to
+loopback and you can drop the `authorization` header. `none` is refused on any non-loopback bind.
+:::
 
 ## First request — Felix-native `/chat`
 
-The bundled default manifest is `quick`. With `FELIX_AUTH_MODE=none` (dev default):
+The bundled default manifest is `quick`.
 
 ```bash
 curl -s -X POST http://localhost:8080/chat \
+  -H "authorization: Bearer $FELIX_KEY" \
   -H 'content-type: application/json' \
   -d '{
     "manifest": "quick",
@@ -81,6 +97,7 @@ Pass `thread_id` as a **suffix** (no `:` / `#`); the server prefixes the tenant 
 
 ```bash
 curl -s -X POST http://localhost:8080/chat \
+  -H "authorization: Bearer $FELIX_KEY" \
   -H 'content-type: application/json' \
   -d '{
     "manifest": "quick",
@@ -93,6 +110,7 @@ Streaming:
 
 ```bash
 curl -N -X POST http://localhost:8080/chat/stream \
+  -H "authorization: Bearer $FELIX_KEY" \
   -H 'content-type: application/json' \
   -d '{"manifest":"quick","messages":[{"role":"user","content":"Say hi."}]}'
 ```
@@ -103,6 +121,7 @@ curl -N -X POST http://localhost:8080/chat/stream \
 
 ```bash
 curl -s -X POST http://localhost:8080/v1/chat/completions \
+  -H "authorization: Bearer $FELIX_KEY" \
   -H 'content-type: application/json' \
   -d '{
     "model": "quick",
