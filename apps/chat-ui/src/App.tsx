@@ -1,3 +1,20 @@
+import { summarizeToolArgs } from '@felix/cowork-client';
+import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@felix/ui/dropdown-menu';
 import {
   BotIcon,
   ClockIcon,
@@ -10,7 +27,6 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { summarizeToolArgs } from '@felix/cowork-client';
 import {
   abortChat,
   acquireSessionLease,
@@ -49,22 +65,6 @@ import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
-import { Badge } from '@felix/ui/badge';
-import { Button } from '@felix/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from '@felix/ui/dropdown-menu';
 import {
   eventsToTurns,
   indexThread,
@@ -262,7 +262,7 @@ export default function App() {
 
   // On mount: migrate legacy storage, load the thread list, and hydrate the
   // active thread from local cache + server. Intentionally runs once.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only bootstrap
+  // mount-only bootstrap
   useEffect(() => {
     migrateLegacy(Date.now());
     setThreads(listThreads());
@@ -331,7 +331,11 @@ export default function App() {
   // turn identified by `assistantId`. Shared by `send` (new user message) and
   // `regenerate` (replays prior history). Returns the streaming promise.
   const streamInto = useCallback(
-    (messagesToSend: ChatMessage[], assistantId: string, mode: 'stream' | 'background' = 'stream') => {
+    (
+      messagesToSend: ChatMessage[],
+      assistantId: string,
+      mode: 'stream' | 'background' = 'stream',
+    ) => {
       const patch = (fn: (t: Turn) => Turn) =>
         setTurns((prev) => prev.map((t) => (t.id === assistantId ? fn(t) : t)));
 
@@ -341,10 +345,7 @@ export default function App() {
       setError(null);
       setSessionPhase('turn');
 
-      const handleEvent = async (ev: {
-        event: string;
-        data: Record<string, unknown>;
-      }) => {
+      const handleEvent = async (ev: { event: string; data: Record<string, unknown> }) => {
         switch (ev.event) {
           case 'on_chat_model_stream':
           case 'text_delta': {
@@ -511,9 +512,7 @@ export default function App() {
             return;
           }
           const content =
-            typeof runResult.final === 'object' &&
-            runResult.final &&
-            'content' in runResult.final
+            typeof runResult.final === 'object' && runResult.final && 'content' in runResult.final
               ? String(runResult.final.content || '')
               : '';
           patch((t) => ({
@@ -532,8 +531,7 @@ export default function App() {
           },
           {
             onVariant: setVariant,
-            onEvent: (ev) =>
-              handleEvent(ev as { event: string; data: Record<string, unknown> }),
+            onEvent: (ev) => handleEvent(ev as { event: string; data: Record<string, unknown> }),
           },
         );
       };

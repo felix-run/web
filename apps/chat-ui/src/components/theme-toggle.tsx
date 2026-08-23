@@ -1,4 +1,3 @@
-import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react';
 import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
@@ -6,6 +5,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
+import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type Theme, useTheme } from './theme-provider';
 

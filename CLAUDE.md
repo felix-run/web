@@ -37,9 +37,11 @@ pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 Local dev needs the Python harness running separately (`make up && make migrate` in felix-run/felix
 → `:8080`). Without it, both apps load but every `/api/*` call fails.
 
-**There is no test suite in this repo** — no `test` script, no test files. CI (`.github/workflows/ci.yml`)
-only runs `pnpm install` + a build of `@felix/chat-ui` and `@felix/docs`. Verification here means
-`pnpm check-types`, `pnpm lint`, and a build (plus running the app against a live harness).
+**There is no application test suite** — no `test` script, no test files for the apps. The only
+automated tests are the hook batteries in `.claude/hooks/tests/`. CI (`.github/workflows/ci.yml`) is
+one `verify` job: `pnpm install --frozen-lockfile`, then lint, check-types, build (chat-ui, float,
+docs), then those hook tests — each step runs even if an earlier one fails, so one red run reports
+everything. Verification of app behavior still means running it against a live harness.
 
 ## Architecture
 
@@ -114,8 +116,9 @@ modules don't resolve under the workspace options); those apps type-check via th
 Prose is MDX under `apps/docs/src/content/` — note **not** `src/content/docs/`; `content.config.ts`
 overrides Starlight's loader base for that reason. New pages must also be added to the explicit
 `sidebar` in `astro.config.mjs` (autogenerate is off). `src/styles/theme.css` is checked in but
-derived from `@felix/design`'s `starlightThemeCss()` — change tokens there and regenerate rather than
-hand-editing the CSS.
+generated from `@felix/design`'s `starlightThemeCss()` — change the tokens in
+`packages/design/src/tokens.ts` and run `pnpm sync:theme`. Hand edits to the CSS are blocked by a
+hook, because the next regeneration would silently revert them.
 
 ## Claude Code toolkit
 

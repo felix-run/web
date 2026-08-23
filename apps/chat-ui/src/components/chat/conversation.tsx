@@ -1,7 +1,7 @@
+import { Button } from '@felix/ui/button';
 import { ArrowDownIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
-import { Button } from '@felix/ui/button';
 import { cn } from '@/lib/utils';
 
 /**

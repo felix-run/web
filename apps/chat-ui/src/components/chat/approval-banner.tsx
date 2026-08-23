@@ -1,4 +1,4 @@
-import { summarizeToolArgs, type PendingApproval } from '@felix/cowork-client';
+import { type PendingApproval, summarizeToolArgs } from '@felix/cowork-client';
 import { Button } from '@felix/ui/button';
 
 export function ApprovalBanner({

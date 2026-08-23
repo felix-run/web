@@ -1,15 +1,9 @@
+import { Badge } from '@felix/ui/badge';
+import { ScrollArea } from '@felix/ui/scroll-area';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
 import { BotIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
-import { Badge } from '@felix/ui/badge';
-import { ScrollArea } from '@felix/ui/scroll-area';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@felix/ui/sheet';
 import type { AgentCard, ResolvedManifest } from '@/types';
 
 /**
@@ -124,7 +118,7 @@ export function AgentSheet({
                       const judge = j as { name?: string; threshold?: number };
                       return (
                         <Row
-                          // biome-ignore lint/suspicious/noArrayIndexKey: static read-only manifest list, never reordered
+                          // static read-only manifest list, never reordered
                           key={`judge-${i}`}
                           label={`judge: ${judge.name ?? i}`}
                           value={`≥ ${judge.threshold ?? '—'}`}
@@ -135,7 +129,7 @@ export function AgentSheet({
                       const ap = a as { id?: string; tools?: string[] };
                       return (
                         <Row
-                          // biome-ignore lint/suspicious/noArrayIndexKey: static read-only manifest list, never reordered
+                          // static read-only manifest list, never reordered
                           key={`appr-${i}`}
                           label={`approval: ${ap.id ?? i}`}
                           value={asArray(ap.tools).join(', ')}
@@ -144,7 +138,7 @@ export function AgentSheet({
                     })}
                     {asArray(spec.policies).map((p, i) => {
                       const pol = p as { id?: string };
-                      // biome-ignore lint/suspicious/noArrayIndexKey: static read-only manifest list, never reordered
+                      // static read-only manifest list, never reordered
                       return <Row key={`pol-${i}`} label="policy" value={pol.id ?? String(i)} />;
                     })}
                     {spec.limits &&

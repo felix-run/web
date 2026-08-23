@@ -9,10 +9,10 @@
  * That branch lives in main.tsx (so this component's hooks stay unconditional).
  */
 
-import { Loader2Icon } from 'lucide-react';
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
+import { Loader2Icon } from 'lucide-react';
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { getApiKey, setApiKey, setUnauthorizedHandler } from '@/lib/auth';
 
 type Phase = 'checking' | 'locked' | 'open';

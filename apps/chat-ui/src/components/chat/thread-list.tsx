@@ -1,10 +1,10 @@
+import { Button } from '@felix/ui/button';
+import { ScrollArea } from '@felix/ui/scroll-area';
 import { MessageSquareIcon, PlusIcon, SearchIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { searchSessions } from '@/api';
 import type { ThreadMeta } from '@/lib/threads';
 import { cn } from '@/lib/utils';
-import { Button } from '@felix/ui/button';
-import { ScrollArea } from '@felix/ui/scroll-area';
 
 /**
  * Left rail listing past conversations from localStorage. Selecting a thread

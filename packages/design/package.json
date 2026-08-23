@@ -6,5 +6,15 @@
   "type": "module",
   "exports": {
     "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "sync:theme": "tsx scripts/sync-theme.ts",
+    "lint": "biome check .",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@felix/typescript-config": "workspace:*",
+    "tsx": "^4.21.0",
+    "typescript": "catalog:"
   }
 }

@@ -10,7 +10,7 @@
     "preview": "astro preview",
     "deploy": "pnpm build && wrangler deploy",
     "lint": "biome check .",
-    "check-types": "tsc --noEmit"
+    "check-types": "astro sync && tsc --noEmit"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.3",

@@ -70,7 +70,8 @@ const BY_MANIFEST: Record<string, Suggestion[]> = {
     {
       title: 'Design a eval set',
       label: 'five golden prompts',
-      prompt: 'Propose five golden eval prompts for a general-purpose chat agent and how to judge them.',
+      prompt:
+        'Propose five golden eval prompts for a general-purpose chat agent and how to judge them.',
     },
     {
       title: 'Architecture sketch',

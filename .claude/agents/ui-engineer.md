@@ -47,7 +47,8 @@ Use the `api-contract-change` skill for the full procedure.
 
 ## Verification
 
-There is **no test suite in this repo**. Never say "tests pass". Verify with:
+There is **no application test suite** (only the hook batteries in `.claude/hooks/tests/`). Never
+say "tests pass" as if the UI were covered. Verify with:
 
 ```bash
 pnpm --filter @felix/chat-ui check-types    # or @felix/float

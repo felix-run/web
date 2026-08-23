@@ -1,7 +1,7 @@
+import { type PendingApproval, readExisting, summarizeToolArgs } from '@felix/cowork-client';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { readExisting, summarizeToolArgs, type PendingApproval } from '@felix/cowork-client';
 import {
   abortChat,
   acquireSessionLease,
@@ -293,7 +293,10 @@ export default function App() {
   }, [refreshFiles]);
 
   const handleStreamEvents = useCallback(
-    async (event: { event: string; data: Record<string, unknown> }, draftRef: { current: string }) => {
+    async (
+      event: { event: string; data: Record<string, unknown> },
+      draftRef: { current: string },
+    ) => {
       if (event.event === 'text_delta' || event.event === 'on_chat_model_stream') {
         const data = event.data as { delta?: string; chunk?: { content?: string } };
         const chunk = data.delta ?? data.chunk?.content ?? '';
@@ -680,21 +683,24 @@ export default function App() {
     [streaming, threadId],
   );
 
-  const openSearchHit = useCallback((fullThreadId: string) => {
-    const suffix = fullThreadId.includes(':')
-      ? fullThreadId.slice(fullThreadId.indexOf(':') + 1)
-      : fullThreadId;
-    if (suffix === threadId) return;
-    stopRun();
-    setThreadId(suffix);
-    setTimeline([]);
-    setAssistantDraft('');
-    setPendingQueue([]);
-    setUiPrompt(null);
-    setSessionPhase(null);
-    setSearchQuery('');
-    setSearchHits([]);
-  }, [threadId, stopRun]);
+  const openSearchHit = useCallback(
+    (fullThreadId: string) => {
+      const suffix = fullThreadId.includes(':')
+        ? fullThreadId.slice(fullThreadId.indexOf(':') + 1)
+        : fullThreadId;
+      if (suffix === threadId) return;
+      stopRun();
+      setThreadId(suffix);
+      setTimeline([]);
+      setAssistantDraft('');
+      setPendingQueue([]);
+      setUiPrompt(null);
+      setSessionPhase(null);
+      setSearchQuery('');
+      setSearchHits([]);
+    },
+    [threadId, stopRun],
+  );
 
   const onUiRespond = useCallback(
     async (value: unknown) => {
@@ -816,7 +822,10 @@ export default function App() {
                   <span className="font-medium">{hit.content.slice(0, 72)}</span>
                   <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
                     {hit.thread_id.includes(':')
-                      ? hit.thread_id.slice(hit.thread_id.indexOf(':') + 1, hit.thread_id.indexOf(':') + 9)
+                      ? hit.thread_id.slice(
+                          hit.thread_id.indexOf(':') + 1,
+                          hit.thread_id.indexOf(':') + 9,
+                        )
                       : hit.thread_id.slice(0, 8)}
                   </span>
                 </button>
@@ -868,7 +877,9 @@ export default function App() {
                 </pre>
               </div>
               <div>
-                <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">After</p>
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  After
+                </p>
                 <pre className="max-h-40 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-xs">
                   {writeDiff.next.slice(0, 8000)}
                 </pre>
@@ -1031,9 +1042,7 @@ export default function App() {
             ))}
             {assistantDraft ? (
               <article className="rounded-md border border-border px-3 py-2">
-                <h2 className="text-sm font-medium">
-                  {background ? 'Background…' : 'Working…'}
-                </h2>
+                <h2 className="text-sm font-medium">{background ? 'Background…' : 'Working…'}</h2>
                 <pre className="mt-2 whitespace-pre-wrap break-words text-sm">{assistantDraft}</pre>
               </article>
             ) : null}

@@ -64,7 +64,7 @@ export function SlashCommandMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const filtered = slashCommands.filter((cmd) => cmd.name.startsWith(query.toLowerCase()));
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies(selectedIndex): re-run when the selection moves — the [data-selected] attribute this queries is rendered from selectedIndex
+  // re-run when the selection moves — the [data-selected] attribute this queries is rendered from selectedIndex
   useEffect(() => {
     const selected = menuRef.current?.querySelector("[data-selected='true']");
     if (selected) selected.scrollIntoView({ block: 'nearest' });

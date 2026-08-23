@@ -25,12 +25,13 @@ spec.
 
 - A fresh clone cannot deploy: `apps/chat-ui/wrangler.jsonc` and `apps/float/wrangler.jsonc` are
   gitignored, and **float has no `wrangler.example.jsonc`** to copy.
-- CI builds `chat-ui` and `docs` only — `apps/float` is unbuilt, and `lint`/`check-types` never run
-  in CI.
+- No application test suite: CI runs lint, check-types, build, and the hook batteries, but nothing
+  exercises the SPAs or the Workers at runtime.
 - `api.ts` and `types.ts` are duplicated between chat-ui and float with no mechanical check that they
   agree; parity is maintained by discipline alone.
-- There is **no test suite**, so "verified" means type-check + lint + build + a manual run against a
-  live harness. Any proposal to add tests is a real change in scope — raise it, don't sneak it in.
+- "Verified" for app code means type-check + lint + build + a manual run against a live harness.
+  Any proposal to add an application test suite is a real change in scope — raise it, don't sneak
+  it in.
 
 ## How to work
 

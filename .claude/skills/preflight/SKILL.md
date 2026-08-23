@@ -18,11 +18,13 @@ Changed files:
 
 ## What "verified" means here
 
-**This repo has no test suite** — no `test` script, no test files. CI only runs `pnpm install` plus a
-build of `@felix/chat-ui` and `@felix/docs`. So verification is type-check + lint + build, and
-anything behavioral has to be exercised by hand against a running harness.
+**This repo has no application test suite** — no `test` script, no test files for the apps. The only
+automated tests are the hook batteries in `.claude/hooks/tests/`. CI runs lint, check-types, build,
+and those hook tests; nothing verifies runtime behavior. So verification is type-check + lint +
+build, and anything behavioral has to be exercised by hand against a running harness.
 
-Never report "tests pass". Report exactly which commands you ran and what they returned.
+Never report "tests pass" as if the apps were covered. Report exactly which commands you ran and
+what they returned.
 
 ## The loop
 

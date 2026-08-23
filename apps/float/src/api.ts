@@ -101,9 +101,7 @@ export async function decideApproval(
   }
 }
 
-export async function listApprovals(
-  status: 'pending' | 'approved' | 'denied' = 'pending',
-): Promise<
+export async function listApprovals(status: 'pending' | 'approved' | 'denied' = 'pending'): Promise<
   Array<{
     id: string;
     tool_name: string;
@@ -154,10 +152,7 @@ export async function abortChat(threadId: string): Promise<void> {
   }
 }
 
-export async function continueChat(args: {
-  threadId: string;
-  manifest: string;
-}): Promise<unknown> {
+export async function continueChat(args: { threadId: string; manifest: string }): Promise<unknown> {
   const res = await apiFetch('/api/chat/continue', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -385,7 +380,12 @@ export async function pollDurableRun(
     const run = await getDurableRun(resumeToken);
     opts.onTick?.(run);
     const status = (run.status || '').toLowerCase();
-    if (status === 'completed' || status === 'succeeded' || status === 'failed' || status === 'error') {
+    if (
+      status === 'completed' ||
+      status === 'succeeded' ||
+      status === 'failed' ||
+      status === 'error'
+    ) {
       return run;
     }
     if (run.error) return run;

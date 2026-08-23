@@ -19,8 +19,9 @@ Docs live in `apps/docs` (Starlight on Astro), deployed as a static-assets Worke
 2. **The sidebar is manual.** `astro.config.mjs` lists every page explicitly, because autogenerate
    expects the default directory. **A new MDX file is invisible until you add it to `sidebar`.**
 3. **`src/styles/theme.css` is generated.** It is checked in, but derived from `@felix/design`
-   (`packages/design/src/tokens.ts` → `starlightThemeCss()`). Change the tokens and regenerate;
-   never hand-edit the CSS, or the next regeneration silently reverts you.
+   (`packages/design/src/tokens.ts` → `starlightThemeCss()`). Change the tokens and run
+   `pnpm sync:theme`; never hand-edit the CSS, or the next regeneration silently reverts you.
+   A PreToolUse hook blocks the hand edit.
 
 ## What is documented here versus elsewhere
 
@@ -49,7 +50,7 @@ API, deploy, and internals. The harness itself is a separate repo
    | Auth, the `x-chat-key` gate | `internals/auth.mdx`, `guide/deploy.mdx` |
    | Manifest fields | `guide/manifest-reference.mdx`, `internals/manifest-pipeline.mdx` |
    | Audit/metrics surfaces | `internals/observability.mdx` |
-   | `packages/design/src/tokens.ts` | regenerate `src/styles/theme.css` |
+   | `packages/design/src/tokens.ts` | `pnpm sync:theme` to regenerate `src/styles/theme.css` |
    | Repo architecture | `CLAUDE.md` (not a docs page, but keep it true) |
 
 3. **Write in the existing voice**: dense, factual, present tense, identifiers in backticks, no

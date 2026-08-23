@@ -53,14 +53,7 @@ export type StreamEvent =
     }
   | { event: string; data: Record<string, unknown> };
 
-export type ThinkingLevel =
-  | 'off'
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max';
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface PendingUiRequest {
   requestId: string;

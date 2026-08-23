@@ -114,7 +114,7 @@ export function scalarThemeCss(): string {
 /**
  * Starlight custom stylesheet: overrides the `--sl-*` custom properties for
  * both schemes. Starlight is dark-first (`:root` is dark; light is
- * `:root[data-theme='light']`), and its gray ramp is *semantic* — `white` is
+ * `:root[data-theme="light"]`), and its gray ramp is *semantic* — `white` is
  * "highest-contrast text" and `black` is "page background" in BOTH schemes,
  * so the light block re-fills the same slots with flipped values.
  */
@@ -135,7 +135,7 @@ export function starlightThemeCss(): string {
   --sl-color-hairline: ${DARK.border};
   --sl-color-bg-inline-code: ${DARK.bgMuted};
 }
-:root[data-theme='light'] {
+:root[data-theme="light"] {
   --sl-color-accent-low: ${LIGHT.bgMuted};
   --sl-color-accent: ${LIGHT.accent};
   --sl-color-accent-high: ${LIGHT.text};

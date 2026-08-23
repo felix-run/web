@@ -10,9 +10,7 @@ export default defineConfig({
       title: 'Felix',
       description:
         'Felix — self-hostable managed agents harness: manifests, patterns, sessions, and governance.',
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/felix-run/felix' },
-      ],
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/felix-run/felix' }],
       // Palette from @felix/design (checked-in src/styles/theme.css).
       customCss: ['./src/styles/theme.css'],
       head: [

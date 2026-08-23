@@ -2,6 +2,7 @@
  * Thin re-exports of @felix/cowork-client bound to float's VFS key.
  */
 import {
+  type ClientToolRequest,
   clearMount,
   executeClientTool as exec,
   getMountLabel,
@@ -10,7 +11,6 @@ import {
   mountTree,
   pickDirectory,
   supportsDirectoryPicker,
-  type ClientToolRequest,
 } from '@felix/cowork-client';
 
 const vfs = getVfs('felix.float.vfs');

@@ -52,7 +52,7 @@ client possible at all. Same-origin in, HTTP out.
 1. Read both Workers before editing either. State in your output whether the change applies to one
    or both, and why.
 2. Type-check with `pnpm --filter @felix/chat-ui check-types` (and the float equivalent). There is
-   **no test suite in this repo** — do not claim tests pass.
+   **no application test suite** — do not claim tests cover the Workers.
 3. For runtime verification, `wrangler dev` in the app directory, against a running harness on
    `:8080`. Deploys are ask-gated: never run `wrangler deploy` or `wrangler secret put` yourself
    unless the user explicitly asks in that turn.

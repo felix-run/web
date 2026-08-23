@@ -1,3 +1,5 @@
+import { Button } from '@felix/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import equal from 'fast-deep-equal';
 import { ArrowUp, CornerDownLeft, ImagePlus, Loader2, Mic, MicOff, Upload } from 'lucide-react';
 import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -12,14 +14,6 @@ import {
   usePromptInputController,
   useProviderAttachments,
 } from '@/components/ai-elements/prompt-input';
-import { Button } from '@felix/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@felix/ui/select';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { cn } from '@/lib/utils';
 import { PaperclipIcon, StopIcon } from './icons';
@@ -175,8 +169,7 @@ function MultimodalInputInner({
   const isBusy = status === 'streaming' || status === 'submitted';
   const trimmedText = text.trim();
   const tooLong = text.length > MAX_TEXT_LENGTH;
-  const canSubmit =
-    isConnected && (trimmedText.length > 0 || files.length > 0) && !tooLong;
+  const canSubmit = isConnected && (trimmedText.length > 0 || files.length > 0) && !tooLong;
   // Background only when idle (durable poll path).
   const canBackground =
     Boolean(onBackground) && isConnected && !isBusy && trimmedText.length > 0 && !tooLong;
@@ -356,7 +349,7 @@ function MultimodalInputInner({
               <HelperHint text={helperText} />
             </PromptInputTools>
 
-              <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {showCharCount && (
                 <span
                   className={cn(
