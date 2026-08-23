@@ -7,26 +7,28 @@ import { GitBranchIcon, RotateCcwIcon, SaveIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   activateManifestVersion,
+  clearManifestCanary,
   createManifestVersion,
   getResolvedManifest,
-  listManifestVersions,
   listTenantManifests,
-  rollbackManifestCanary,
   setManifestCanary,
 } from '@/api';
-import { cn } from '@/lib/utils';
-import type { ManifestSummary, ManifestVersionList } from '@/types';
+import type { ManifestSummary } from '@/types';
 
 /**
  * Manifest lifecycle workbench — the `/manifests` surface as a slide-over.
  * Tenant-managed manifests are an append-only version log with an active
  * pointer and an optional weighted canary pointer. Here you can import the
  * current agent into the tenant version log, append edited versions, flip the
- * active pointer (rollback), and drive a weighted canary → the `x-manifest-
- * variant` header (the stable/canary badge in the header) reflects the split.
+ * active pointer, and drive a weighted canary.
  *
- * Writes need the `manifests:write` scope; local dev (no JWT_VERIFIERS) lets
- * anonymous callers through, so the whole flow is drivable unauthed.
+ * The harness exposes no version *list* route, so there is no version log to
+ * render: `GET /manifests` returns active pointers only, and a version is acted
+ * on by number. Canary routing is decided server-side by a deterministic hash,
+ * not by a request header.
+ *
+ * Writes need the `manifests:write` scope; with FELIX_AUTH_MODE=none the harness
+ * skips scope checks, so the whole flow is drivable unauthenticated locally.
  */
 export function ManifestsSheet({
   open,
@@ -157,30 +159,23 @@ function VersionsPanel({
   onError: (msg: string) => void;
 }) {
   const name = summary.name;
-  const [list, setList] = useState<ManifestVersionList | null>(null);
-  const [weight, setWeight] = useState(summary.canary_weight ?? 25);
-  const [canaryVersion, setCanaryVersion] = useState<number | null>(summary.canary_version ?? null);
+  const activeV = summary.version;
+  const liveCanaryV = summary.canary_version ?? null;
+  const liveWeight = summary.canary_weight ?? 0;
+
+  const [weight, setWeight] = useState(liveWeight || 25);
+  const [canaryVersion, setCanaryVersion] = useState<string>(
+    liveCanaryV != null ? String(liveCanaryV) : '',
+  );
+  const [targetVersion, setTargetVersion] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<string | null>(null);
   const [comment, setComment] = useState('');
-
-  const refresh = useCallback(async () => {
-    try {
-      setList(await listManifestVersions(name));
-    } catch (err) {
-      onError(String((err as Error)?.message ?? err));
-    }
-  }, [name, onError]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true);
     try {
       await fn();
-      await refresh();
       onChanged();
     } catch (err) {
       onError(String((err as Error)?.message ?? err));
@@ -216,12 +211,51 @@ function VersionsPanel({
     });
   }
 
-  const activeV = list?.active_version ?? summary.active_version;
-  const liveCanaryV = summary.canary_version ?? null;
-  const liveWeight = summary.canary_weight ?? 0;
+  const canaryN = Number(canaryVersion);
+  const canaryValid = canaryVersion.trim() !== '' && Number.isInteger(canaryN) && canaryN > 0;
+  const targetN = Number(targetVersion);
+  const targetValid =
+    targetVersion.trim() !== '' && Number.isInteger(targetN) && targetN > 0 && targetN !== activeV;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {/* Active pointer */}
+      <div className="rounded-md border bg-card/40 p-2.5 text-xs">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="font-medium">Active</span>
+          {activeV != null ? (
+            <Badge variant="secondary" className="py-0 font-mono text-[10px]">
+              v{activeV}
+            </Badge>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">no tenant version</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            value={targetVersion}
+            onChange={(e) => setTargetVersion(e.target.value)}
+            inputMode="numeric"
+            placeholder="version number"
+            className="h-7 flex-1 font-mono text-xs"
+          />
+          <Button
+            size="sm"
+            className="h-7 gap-1"
+            disabled={busy || !targetValid}
+            onClick={() =>
+              act(async () => {
+                await activateManifestVersion(name, targetN);
+                setTargetVersion('');
+              })
+            }
+            title="Flip the active pointer to this version"
+          >
+            <RotateCcwIcon className="size-3.5" /> Activate
+          </Button>
+        </div>
+      </div>
+
       {/* Canary control */}
       <div className="rounded-md border bg-card/40 p-2.5 text-xs">
         <div className="mb-2 flex items-center gap-2">
@@ -235,19 +269,13 @@ function VersionsPanel({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={canaryVersion ?? ''}
-            onChange={(e) => setCanaryVersion(e.target.value ? Number(e.target.value) : null)}
-            className="h-7 rounded-md border bg-transparent px-1.5 text-xs outline-none"
-          >
-            <option value="">version…</option>
-            {list?.versions.map((v) => (
-              <option key={v.version} value={v.version}>
-                v{v.version}
-                {v.version === activeV ? ' (active)' : ''}
-              </option>
-            ))}
-          </select>
+          <Input
+            value={canaryVersion}
+            onChange={(e) => setCanaryVersion(e.target.value)}
+            inputMode="numeric"
+            placeholder="version"
+            className="h-7 w-24 font-mono text-xs"
+          />
           <input
             type="range"
             min={0}
@@ -262,41 +290,40 @@ function VersionsPanel({
           <Button
             size="sm"
             className="h-7 flex-1"
-            disabled={busy || canaryVersion == null}
-            onClick={() => act(() => setManifestCanary(name, canaryVersion, weight))}
+            disabled={busy || !canaryValid}
+            onClick={() => act(() => setManifestCanary(name, canaryN, weight))}
           >
             Apply canary
           </Button>
           <Button
             size="sm"
             variant="outline"
-            className="h-7 gap-1"
-            disabled={busy || liveWeight === 0}
-            onClick={() => act(() => rollbackManifestCanary(name, false))}
-            title="Zero the canary weight (keeps the version pinned)"
-          >
-            <RotateCcwIcon className="size-3.5" /> Rollback
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
             className="h-7"
             disabled={busy || liveCanaryV == null}
-            onClick={() => act(() => rollbackManifestCanary(name, true))}
-            title="Clear the canary version pointer entirely"
+            onClick={() =>
+              act(async () => {
+                await clearManifestCanary(name);
+                setCanaryVersion('');
+              })
+            }
+            title="Drop the canary version and zero its weight"
           >
-            Clear
+            Clear canary
           </Button>
         </div>
+        <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+          Routing is a deterministic hash of tenant, thread and both versions, so a thread stays on
+          one side for the whole rollout.
+        </p>
       </div>
 
-      {/* Version log + editor */}
+      {/* Editor */}
       <div className="flex items-center gap-2">
         <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          Versions
+          New version
         </span>
         <Button size="sm" variant="outline" className="ml-auto h-7 gap-1" onClick={openEditor}>
-          <SaveIcon className="size-3.5" /> New version
+          <SaveIcon className="size-3.5" /> Edit current
         </Button>
       </div>
 
@@ -312,7 +339,7 @@ function VersionsPanel({
             value={editor}
             onChange={(e) => setEditor(e.target.value)}
             spellCheck={false}
-            rows={10}
+            rows={12}
             className="w-full resize-y rounded-md border bg-transparent p-2 font-mono text-[11px] leading-snug outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
           <div className="flex gap-2">
@@ -326,48 +353,14 @@ function VersionsPanel({
         </div>
       )}
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-1.5 pr-3">
-          {list?.versions.map((v) => (
-            <div key={v.version} className="rounded-md border bg-background px-2.5 py-1.5 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-mono font-medium">v{v.version}</span>
-                {v.version === activeV && (
-                  <Badge variant="secondary" className="py-0 text-[10px]">
-                    active
-                  </Badge>
-                )}
-                {v.version === liveCanaryV && liveWeight > 0 && (
-                  <Badge className="py-0 text-[10px]">canary</Badge>
-                )}
-                <span
-                  className={cn(
-                    'truncate text-[10px] text-muted-foreground',
-                    !v.comment && 'italic',
-                  )}
-                >
-                  {v.comment || 'no comment'}
-                </span>
-                {v.version !== activeV && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="ml-auto h-6 px-2 text-[10px]"
-                    disabled={busy}
-                    onClick={() => act(() => activateManifestVersion(name, v.version))}
-                    title="Flip the active pointer to this version"
-                  >
-                    Activate
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
-          {list && list.versions.length === 0 && (
-            <p className="text-xs text-muted-foreground">No versions.</p>
-          )}
-        </div>
-      </ScrollArea>
+      {editor == null && (
+        <ScrollArea className="min-h-0 flex-1">
+          <p className="pr-3 text-xs text-muted-foreground">
+            Publishing appends a new version and activates it. The harness does not expose a version
+            history endpoint, so activate an earlier version by number above.
+          </p>
+        </ScrollArea>
+      )}
     </div>
   );
 }

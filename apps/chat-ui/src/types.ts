@@ -276,17 +276,19 @@ export interface Rubric {
 }
 
 export interface EvalDataset {
+  tenant_id?: string;
   name: string;
   description: string;
-  created_at: number;
+  created_at?: number;
 }
 
 export interface EvalDatasetItem {
-  dataset_name: string;
+  /** Absent on items nested in a dataset response; present on standalone rows. */
+  dataset_name?: string;
   item_id: string;
   user_input: string;
   rubric: Rubric;
-  created_at: number;
+  created_at?: number;
 }
 
 export interface ItemScore {
@@ -326,56 +328,57 @@ export interface EvalRunSummary {
 // append-only version log with an active pointer + optional canary pointer.
 
 /** One row from GET /manifests — an active tenant-managed manifest. */
-export interface ManifestSummary {
+/**
+ * The active pointer for one tenant-managed manifest, as returned by
+ * `GET /manifests` items and by every write route. Note the active version is
+ * `version` — the harness has no `active_version` field.
+ */
+export interface ManifestPointer {
+  tenant_id?: string;
   name: string;
-  active_version: number | null;
+  version: number | null;
   canary_version?: number | null;
   canary_weight?: number;
   updated_at?: number;
+  updated_by?: string;
 }
 
-/** One version in GET /manifests/{name}/versions. */
-export interface ManifestVersionSummary {
-  version: number;
-  created_at: number;
-  created_by: string;
-  comment: string;
-  active: boolean;
-}
+/** `GET /manifests` returns pointer rows. */
+export type ManifestSummary = ManifestPointer;
 
-/** GET /manifests/{name}/versions response. */
-export interface ManifestVersionList {
+/** `PUT /manifests/{name}` returns the stored version row, not a pointer. */
+export interface ManifestVersionRow {
+  tenant_id?: string;
   name: string;
-  active_version: number | null;
-  versions: ManifestVersionSummary[];
+  version: number;
+  manifest: unknown;
+  created_at?: number;
+  created_by?: string;
+  comment?: string;
 }
 
-/** GET /manifests/{name} — resolved through the 4-layer chain. */
+/**
+ * GET /manifests/{name} — resolved through the 4-layer chain
+ * (tenant Postgres → tenant object store → global object store → bundled).
+ */
 export interface ResolvedManifest {
   name: string;
-  source: 'tenant_d1' | 'tenant_r2' | 'global_r2' | 'bundled';
+  source?: 'tenant_postgres' | 'tenant_object' | 'global_object' | 'bundled';
   version: number | null;
+  variant?: Variant;
   manifest: unknown;
 }
 
-/** Canary/rollback/activate response (the active pointer state). */
-export interface ManifestPointer {
-  name: string;
-  active_version: number;
-  canary_version: number | null;
-  canary_weight: number;
-  updated_at: number;
-}
-
 // --- Scheduled jobs (/jobs) ---
-// Shapes mirror src/jobs/models.ts. A job is a persistent, tenant-scoped record
-// the cron sweep invokes on its `schedule`; it can also be triggered manually.
+// A job is a persistent, tenant-scoped record the worker's cron sweep invokes on
+// its `schedule`. There is no run-now route; runs are observed, not triggered.
 
 export interface JobRecord {
   tenant_id: string;
   name: string;
   schedule: string;
   manifest_id: string;
+  enabled?: boolean;
   last_run_at?: number | null;
   next_run_at?: number | null;
   last_status: string;
@@ -384,8 +387,18 @@ export interface JobRecord {
   payload: Record<string, unknown>;
 }
 
+/** One row from GET /jobs/{name}/runs. */
+export interface JobRun {
+  job_name?: string;
+  run_id?: string;
+  status?: string;
+  error?: string;
+  started_at?: number | null;
+  finished_at?: number | null;
+}
+
 // --- A2A discovery card (/.well-known/agent-card.json) ---
-// Shape mirrors src/a2a/card.ts. Built for the orchestrator's *default* manifest
+// Built for the harness's *default* manifest
 // — the peer-facing discovery document (endpoints, protocols, capabilities).
 
 export interface AgentCard {

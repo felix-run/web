@@ -243,6 +243,22 @@ curl -s -X PUT "$BASE_URL/manifests/support" \
 | `manifest` | object | required |
 | `comment` | string | `""` |
 
+`PUT` returns the stored **version row** — `{tenant_id, name, version, manifest, created_at,
+created_by, comment}`.
+
+Every other manifest write returns the **active pointer**:
+
+```json
+{ "tenant_id": "default", "name": "support", "version": 7,
+  "canary_version": null, "canary_weight": 0,
+  "updated_at": 1787448845351, "updated_by": "ops" }
+```
+
+:::note
+The active version on a pointer is `version`, not `active_version`. `GET /manifests` returns these
+same pointer rows under both `items` and `manifests`.
+:::
+
 ### Canary and rollback
 
 <Badge text="manifests:write" variant="note" />
@@ -251,7 +267,7 @@ curl -s -X PUT "$BASE_URL/manifests/support" \
 |---|---|---|
 | `POST` | `/manifests/{name}/canary` | `{canary_version, canary_weight}` — weight 0–100 |
 | `DELETE` | `/manifests/{name}/canary` | — clears the canary |
-| `POST` | `/manifests/{name}/rollback` | `{version, comment}` — default comment `"rollback"` |
+| `POST` | `/manifests/{name}/rollback` | `{version, comment}` — default comment `"rollback"`. Activates any version, forward or back; this is the only way to flip the active pointer. |
 
 ```bash
 curl -s -X POST "$BASE_URL/manifests/support/canary" \

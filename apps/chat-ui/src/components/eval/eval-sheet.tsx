@@ -7,10 +7,10 @@ import { FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   addEvalItem,
-  createEvalDataset,
   listEvalDatasets,
   listEvalItems,
   listEvalRuns,
+  putEvalDataset,
   runEvalDataset,
 } from '@/api';
 import { cn } from '@/lib/utils';
@@ -20,7 +20,10 @@ import type { EvalDataset, EvalDatasetItem, EvalRun } from '@/types';
  * Eval workbench — the `/eval` offline-benchmark surface as a slide-over.
  * Create a golden dataset, append items with a (simplified) rubric, replay the
  * dataset against the currently-selected manifest, and read back per-item
- * pass/fail scores. Tenant-scoped; works anonymously against tenant `default`.
+ * pass/fail scores. Tenant-scoped.
+ *
+ * The harness writes datasets whole — there is no per-item route — so appending
+ * an item is a read-modify-write of the whole dataset.
  */
 export function EvalSheet({
   open,
@@ -57,7 +60,7 @@ export function EvalSheet({
     if (!name) return;
     setCreating(true);
     try {
-      await createEvalDataset(name);
+      await putEvalDataset(name);
       setNewName('');
       await refreshDatasets();
       setSelected(name);

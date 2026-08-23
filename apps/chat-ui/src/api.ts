@@ -27,9 +27,10 @@ import type {
   EvalRun,
   EvalRunSummary,
   JobRecord,
+  JobRun,
   ManifestPointer,
   ManifestSummary,
-  ManifestVersionList,
+  ManifestVersionRow,
   Plan,
   ResolvedManifest,
   Rubric,
@@ -534,44 +535,62 @@ async function evalFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** GET /eval/datasets → the tenant's golden datasets. */
 export async function listEvalDatasets(): Promise<EvalDataset[]> {
-  const body = await evalFetch<{ datasets?: EvalDataset[] }>('/datasets');
-  return body.datasets ?? [];
+  const body = await evalFetch<{ items?: EvalDataset[]; datasets?: EvalDataset[] }>('/datasets');
+  return body.items ?? body.datasets ?? [];
 }
 
-/** POST /eval/datasets → create a dataset. */
-export async function createEvalDataset(name: string, description = ''): Promise<EvalDataset> {
-  return evalFetch<EvalDataset>('/datasets', {
-    method: 'POST',
+/**
+ * PUT /eval/datasets/{name} → upsert a dataset *whole*. The harness has no
+ * per-item route: `items` replaces the dataset's contents on every write.
+ */
+export async function putEvalDataset(
+  name: string,
+  description = '',
+  items: Array<{ user_input: string; rubric: Rubric }> = [],
+): Promise<EvalDataset> {
+  return evalFetch<EvalDataset>(`/datasets/${encodeURIComponent(name)}`, {
+    method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name, description }),
+    body: JSON.stringify({ description, items }),
   });
 }
 
-/** GET /eval/datasets/{name}/items → items in a dataset. */
-export async function listEvalItems(dataset: string): Promise<EvalDatasetItem[]> {
-  const body = await evalFetch<{ items?: EvalDatasetItem[] }>(
-    `/datasets/${encodeURIComponent(dataset)}/items`,
+/** GET /eval/datasets/{name} → the dataset with its items. */
+export async function getEvalDataset(
+  name: string,
+): Promise<EvalDataset & { items: EvalDatasetItem[] }> {
+  const body = await evalFetch<EvalDataset & { items?: EvalDatasetItem[] }>(
+    `/datasets/${encodeURIComponent(name)}`,
   );
-  return body.items ?? [];
+  return { ...body, items: body.items ?? [] };
 }
 
-/** POST /eval/datasets/{name}/items → append an item with a rubric. */
+/** Items in a dataset — read from the dataset itself; there is no /items route. */
+export async function listEvalItems(dataset: string): Promise<EvalDatasetItem[]> {
+  return (await getEvalDataset(dataset)).items;
+}
+
+/**
+ * Append one item. Datasets are written whole, so this is a read-modify-write:
+ * fetch current items, append, PUT the result back.
+ */
 export async function addEvalItem(
   dataset: string,
   item: { user_input: string; rubric: Rubric },
-): Promise<EvalDatasetItem> {
-  return evalFetch<EvalDatasetItem>(`/datasets/${encodeURIComponent(dataset)}/items`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(item),
-  });
+): Promise<EvalDataset> {
+  const current = await getEvalDataset(dataset);
+  const items = [
+    ...current.items.map((i) => ({ user_input: i.user_input, rubric: i.rubric })),
+    item,
+  ];
+  return putEvalDataset(dataset, current.description ?? '', items);
 }
 
 /**
  * POST /eval/datasets/{name}/run → replay the dataset against a manifest and
- * judge each item. Synchronous: returns the summary; per-item scores come back
- * via getEvalRun(run_id). `deterministic_judge` skips the Workers-AI judge
- * (substring gates only) for environments without the AI binding.
+ * judge each item. Returns the summary; per-item scores come back via
+ * getEvalRun(run_id). `deterministic_judge` skips the LLM judge and scores with
+ * rubric heuristics only — the path CI uses.
  */
 export async function runEvalDataset(
   dataset: string,
@@ -592,8 +611,8 @@ export async function runEvalDataset(
 export async function listEvalRuns(dataset?: string, limit = 25): Promise<EvalRun[]> {
   const q = new URLSearchParams({ limit: String(limit) });
   if (dataset) q.set('dataset', dataset);
-  const body = await evalFetch<{ runs?: EvalRun[] }>(`/runs?${q}`);
-  return body.runs ?? [];
+  const body = await evalFetch<{ items?: EvalRun[]; runs?: EvalRun[] }>(`/runs?${q}`);
+  return body.items ?? body.runs ?? [];
 }
 
 /** GET /eval/runs/{id} → one run with per-item scores. */
@@ -603,9 +622,12 @@ export async function getEvalRun(id: string): Promise<EvalRun> {
 
 // --- Manifest lifecycle (/manifests) ---
 //
-// Writes (create/activate/canary/rollback) require the `manifests:write` scope.
-// In local dev (ENVIRONMENT=development, no JWT_VERIFIERS) the harness lets
-// anonymous callers through, so the demo drives the full lifecycle unauthed.
+// Writes require the `manifests:write` scope. With FELIX_AUTH_MODE=none the
+// harness skips scope checks entirely, so local dev drives the full lifecycle
+// unauthenticated.
+//
+// The harness exposes no version *list* route: `GET /manifests` returns active
+// pointers, and a specific version is read with `GET /manifests/{name}?version=N`.
 
 async function manifestFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(`/api/manifests${path}`, init);
@@ -618,13 +640,10 @@ async function manifestFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** GET /manifests → tenant-managed manifests (active pointer + canary state). */
 export async function listTenantManifests(): Promise<ManifestSummary[]> {
-  const body = await manifestFetch<{ manifests?: ManifestSummary[] }>('');
-  return body.manifests ?? [];
-}
-
-/** GET /manifests/{name}/versions → the append-only version log. */
-export async function listManifestVersions(name: string): Promise<ManifestVersionList> {
-  return manifestFetch<ManifestVersionList>(`/${encodeURIComponent(name)}/versions`);
+  const body = await manifestFetch<{ items?: ManifestSummary[]; manifests?: ManifestSummary[] }>(
+    '',
+  );
+  return body.items ?? body.manifests ?? [];
 }
 
 /** GET /manifests/{name}[?version=] → resolved manifest + which layer it came from. */
@@ -636,28 +655,36 @@ export async function getResolvedManifest(
   return manifestFetch<ResolvedManifest>(`/${encodeURIComponent(name)}${q}`);
 }
 
-/** POST /manifests/{name} → append a new version (activates by default). */
+/**
+ * PUT /manifests/{name} → append a new version and activate it. The body's
+ * `metadata.name` must equal `name` or the harness answers 400 `name_mismatch`.
+ */
 export async function createManifestVersion(
   name: string,
   manifest: unknown,
   comment = '',
-): Promise<{ version: number; activated: boolean }> {
-  return manifestFetch(`/${encodeURIComponent(name)}`, {
-    method: 'POST',
+): Promise<ManifestVersionRow> {
+  return manifestFetch<ManifestVersionRow>(`/${encodeURIComponent(name)}`, {
+    method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ manifest, comment }),
   });
 }
 
-/** POST /manifests/{name}/activate → flip the active pointer (rollback to a version). */
+/**
+ * POST /manifests/{name}/rollback → flip the active pointer to `version`.
+ * This is the harness's activate: the route name reflects its common use, but
+ * it activates any version, forward or back.
+ */
 export async function activateManifestVersion(
   name: string,
   version: number,
+  comment = 'activate',
 ): Promise<ManifestPointer> {
-  return manifestFetch<ManifestPointer>(`/${encodeURIComponent(name)}/activate`, {
+  return manifestFetch<ManifestPointer>(`/${encodeURIComponent(name)}/rollback`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ version }),
+    body: JSON.stringify({ version, comment }),
   });
 }
 
@@ -675,56 +702,64 @@ export async function setManifestCanary(
 }
 
 /**
- * POST /manifests/{name}/rollback → zero the canary weight. `clearVersion` also
- * drops the canary_version pointer; default keeps it pinned for a retry.
+ * DELETE /manifests/{name}/canary → clear the canary. The harness drops the
+ * canary version and zeroes its weight together; there is no "keep it pinned at
+ * 0%" variant.
  */
-export async function rollbackManifestCanary(
-  name: string,
-  clearVersion = false,
-): Promise<ManifestPointer> {
-  return manifestFetch<ManifestPointer>(`/${encodeURIComponent(name)}/rollback`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ clear_version: clearVersion }),
+export async function clearManifestCanary(name: string): Promise<ManifestPointer> {
+  return manifestFetch<ManifestPointer>(`/${encodeURIComponent(name)}/canary`, {
+    method: 'DELETE',
   });
 }
 
 // --- Scheduled jobs (/jobs) ---
 //
-// The cron sweep (jobs/cron.ts) invokes each job's manifest on its schedule;
-// jobs can also be triggered manually. Tenant-scoped to `default` anonymously.
+// The worker's `run_scheduled_jobs` cron invokes each job's manifest on its
+// schedule — which needs felix-scheduler running alongside felix-worker. There
+// is no run-now route; inspect `listJobRuns` for what the sweep has done.
 
-/** GET /jobs/list → the tenant's persistent job registry. */
-export async function listJobs(): Promise<JobRecord[]> {
-  const res = await apiFetch('/api/jobs/list');
-  if (!res.ok) throw new Error(`jobs: ${res.status}`);
-  const body = (await res.json()) as { jobs?: JobRecord[] };
-  return body.jobs ?? [];
+async function jobsFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await apiFetch(`/api/jobs${path}`, init);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`jobs ${path}: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as T;
 }
 
-/** POST /jobs → create/upsert a job. Empty `schedule` = manual-only. */
-export async function createJob(job: {
+/** GET /jobs → the tenant's persistent job registry. */
+export async function listJobs(): Promise<JobRecord[]> {
+  const body = await jobsFetch<{ items?: JobRecord[]; jobs?: JobRecord[] }>('');
+  return body.items ?? body.jobs ?? [];
+}
+
+/** PUT /jobs/{name} → create or update a job. Empty `schedule` = never swept. */
+export async function upsertJob(job: {
   name: string;
   schedule?: string;
   manifest_id?: string;
   payload?: Record<string, unknown>;
+  enabled?: boolean;
 }): Promise<JobRecord> {
-  const res = await apiFetch('/api/jobs', {
-    method: 'POST',
+  const { name, schedule = '', manifest_id = '', payload = {}, enabled = true } = job;
+  return jobsFetch<JobRecord>(`/${encodeURIComponent(name)}`, {
+    method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(job),
+    body: JSON.stringify({ schedule, manifest_id, payload, enabled }),
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`create job: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return (await res.json()) as JobRecord;
 }
 
-/** POST /jobs/run/{name} → trigger a job now (records a `job_run` audit event). */
-export async function runJob(name: string): Promise<void> {
-  const res = await apiFetch(`/api/jobs/run/${encodeURIComponent(name)}`, { method: 'POST' });
-  if (!res.ok) throw new Error(`run job: ${res.status}`);
+/** GET /jobs/{name}/runs → recent runs of one job, newest first. */
+export async function listJobRuns(name: string, limit = 20): Promise<JobRun[]> {
+  const body = await jobsFetch<{ items?: JobRun[] }>(
+    `/${encodeURIComponent(name)}/runs?limit=${limit}`,
+  );
+  return body.items ?? [];
+}
+
+/** DELETE /jobs/{name} → remove a job from the registry. */
+export async function deleteJob(name: string): Promise<void> {
+  await jobsFetch<{ status: string }>(`/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
 // --- A2A discovery card (/.well-known/agent-card.json) ---
