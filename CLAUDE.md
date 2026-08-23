@@ -143,6 +143,13 @@ which is now a mode of chat-ui rather than a separate surface. See `PRODUCT.md`.
 directly, resolved via `paths` in each app's `tsconfig.json`. Adding an export means updating the
 package `exports` map *and* the tsconfig `paths` in `apps/chat-ui`.
 
+Because `@felix/ui` lives outside the app root, Tailwind's automatic content detection does not see
+it; `apps/chat-ui/src/index.css` declares `@source "../../../packages/ui/src"` to compensate. Drop
+that line and every utility used *only* inside a primitive (`bg-primary`, the `focus-visible:ring-*`
+set) is silently omitted from the build — the class stays on the element, no CSS is generated, and
+the component renders unstyled with no error anywhere. A new shared package that ships classes needs
+its own `@source` line.
+
 The root `tsconfig.json` explicitly **excludes** `apps/chat-ui` and `apps/docs` (JSX / Astro virtual
 modules don't resolve under the workspace options); those apps type-check via their own configs.
 

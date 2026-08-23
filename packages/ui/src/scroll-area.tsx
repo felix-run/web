@@ -16,9 +16,19 @@ function ScrollArea({
       className={cn('relative', className)}
       {...props}
     >
+      {/*
+        Radix wraps the viewport's children in a div it styles `display: table;
+        min-width: 100%`. Table sizing is shrink-to-fit with a 100% floor, so that
+        wrapper grows to its widest child instead of being bounded by the viewport:
+        rows overflow the container, `truncate` never engages (scrollWidth ends up
+        equal to clientWidth), and anything at the row's trailing edge is pushed
+        outside the scroll area where it cannot be clicked. Forcing `display: block`
+        with `min-width: 0` restores normal block sizing so children constrain and
+        truncate as written.
+      */}
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 [&>div]:!block [&>div]:!min-w-0"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
