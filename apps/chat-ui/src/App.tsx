@@ -336,8 +336,23 @@ export default function App() {
       assistantId: string,
       mode: 'stream' | 'background' = 'stream',
     ) => {
+      // A drained steer / follow-up splits the reply: the harness appends the
+      // steer as a user message and keeps going, so the UI opens a fresh
+      // assistant turn after it. Everything downstream patches whichever turn
+      // is currently active, not the one we opened with.
+      let activeAssistantId = assistantId;
       const patch = (fn: (t: Turn) => Turn) =>
-        setTurns((prev) => prev.map((t) => (t.id === assistantId ? fn(t) : t)));
+        setTurns((prev) => prev.map((t) => (t.id === activeAssistantId ? fn(t) : t)));
+
+      const interject = (content: string) => {
+        const nextAssistantId = crypto.randomUUID();
+        setTurns((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: 'user', content },
+          { id: nextAssistantId, role: 'assistant', content: '', tools: [] },
+        ]);
+        activeAssistantId = nextAssistantId;
+      };
 
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -455,6 +470,15 @@ export default function App() {
           case 'aborted':
             setSessionPhase('aborted');
             break;
+          // The agent drained a queued steer / follow-up. It is a real user
+          // message in the session log, so render it as one rather than
+          // letting the reply silently change direction.
+          case 'steer':
+          case 'follow_up': {
+            const content = (ev.data as { content?: string }).content?.trim();
+            if (content) interject(content);
+            break;
+          }
           case 'session_progress': {
             const phase = (ev.data as { phase?: string }).phase;
             if (phase) setSessionPhase(phase);

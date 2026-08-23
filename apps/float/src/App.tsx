@@ -423,6 +423,27 @@ export default function App() {
         return;
       }
 
+      // The agent drained a queued steer / follow-up. Settle the pending item we
+      // optimistically pushed; if it came from elsewhere (another tab, the CLI)
+      // there is nothing to settle, so record it.
+      if (event.event === 'steer' || event.event === 'follow_up') {
+        const content = (event.data as { content?: string }).content?.trim();
+        if (!content) return;
+        const title = event.event === 'steer' ? 'Steer' : 'Follow-up';
+        setTimeline((cur) => {
+          const i = cur.findIndex(
+            (t) => t.kind === 'user' && t.status === 'pending' && t.body === content,
+          );
+          if (i === -1) {
+            return [...cur, { id: nanoid(), kind: 'user', title, body: content, status: 'done' }];
+          }
+          const next = [...cur];
+          next[i] = { ...next[i], status: 'done' };
+          return next;
+        });
+        return;
+      }
+
       if (event.event === 'session_progress') {
         const phase = (event.data as { phase?: string }).phase;
         if (phase) setSessionPhase(phase);
@@ -619,7 +640,10 @@ export default function App() {
     if (!text || !streaming) return;
     try {
       await steerChat({ threadId, text });
-      push({ id: nanoid(), kind: 'user', title: 'Steer', body: text, status: 'done' });
+      // Queued, not applied: the agent drains it between steps and answers with
+      // a `steer` frame. Left pending until then so the timeline does not claim
+      // the run has taken it on board when it has not.
+      push({ id: nanoid(), kind: 'user', title: 'Steer', body: text, status: 'pending' });
       setGoal('');
       toast.message('Steer queued');
     } catch (err) {
