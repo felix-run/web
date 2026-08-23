@@ -1,9 +1,13 @@
 /**
  * @vitest-environment happy-dom
  */
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Response } from '@/components/chat/response';
+
+// This config does not set `globals`, so testing-library's automatic cleanup
+// never registers and renders would otherwise pile up in one document.
+afterEach(cleanup);
 
 /**
  * float rendered assistant output as `<pre>` until now, which made these
@@ -51,5 +55,82 @@ describe('Response sanitization', () => {
     );
     await screen.findByText('text');
     expect(container.querySelector('iframe')).toBeNull();
+  });
+});
+
+describe('file mentions', () => {
+  const mentions = new Map([
+    ['notes/todo.md', 'notes/todo.md'],
+    ['App.tsx', 'apps/float/src/App.tsx'],
+  ]);
+
+  it('leaves everything plain when nothing is confirmed', async () => {
+    const { container } = render(<Response mentions={new Map()}>{'see notes/todo.md'}</Response>);
+    await screen.findByText(/notes\/todo\.md/);
+    expect(container.querySelector('button')).toBeNull();
+  });
+
+  it('turns a confirmed mention into a button', async () => {
+    const onOpenFile = vi.fn();
+    render(
+      <Response mentions={mentions} onOpenFile={onOpenFile}>
+        {'I wrote notes/todo.md for you'}
+      </Response>,
+    );
+    const button = await screen.findByRole('button', { name: 'notes/todo.md' });
+    button.click();
+    expect(onOpenFile).toHaveBeenCalledWith('notes/todo.md', undefined);
+  });
+
+  it('passes the line number through', async () => {
+    const onOpenFile = vi.fn();
+    render(
+      <Response mentions={mentions} onOpenFile={onOpenFile}>
+        {'look at App.tsx:42 there'}
+      </Response>,
+    );
+    (await screen.findByRole('button', { name: 'App.tsx:42' })).click();
+    expect(onOpenFile).toHaveBeenCalledWith('apps/float/src/App.tsx', 42);
+  });
+
+  it('leaves an unconfirmed name plain even beside a confirmed one', async () => {
+    const { container } = render(
+      <Response mentions={mentions} onOpenFile={vi.fn()}>
+        {'notes/todo.md and imaginary.md'}
+      </Response>,
+    );
+    await screen.findByText(/imaginary\.md/);
+    const labels = [...container.querySelectorAll('button')].map((b) => b.textContent);
+    expect(labels).toEqual(['notes/todo.md']);
+  });
+
+  it('links a name written in inline code', async () => {
+    render(
+      <Response mentions={mentions} onOpenFile={vi.fn()}>
+        {'the `notes/todo.md` file'}
+      </Response>,
+    );
+    expect(await screen.findByRole('button', { name: 'notes/todo.md' })).toBeTruthy();
+  });
+
+  // Fenced blocks are full of paths that are examples, not references.
+  it('leaves a path inside a fenced code block plain', async () => {
+    const { container } = render(
+      <Response mentions={mentions} onOpenFile={vi.fn()}>
+        {'before\n\n```\ncat notes/todo.md\n```\n\nafter'}
+      </Response>,
+    );
+    await screen.findByText(/before/);
+    expect(container.querySelector('button')).toBeNull();
+  });
+
+  it('keeps the surrounding prose intact', async () => {
+    const { container } = render(
+      <Response mentions={mentions} onOpenFile={vi.fn()}>
+        {'I wrote notes/todo.md for you'}
+      </Response>,
+    );
+    await screen.findByRole('button', { name: 'notes/todo.md' });
+    expect(container.textContent).toBe('I wrote notes/todo.md for you');
   });
 });
