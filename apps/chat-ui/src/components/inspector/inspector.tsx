@@ -118,7 +118,7 @@ export function Inspector({
       )}
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
-        <h2 id="inspector-heading" className="text-sm font-medium">
+        <h2 id="inspector-heading" className="text-base font-semibold">
           Inspector
         </h2>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close inspector">
@@ -233,11 +233,11 @@ function Section({
           className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90"
         />
         <span className="shrink-0 text-muted-foreground">{icon}</span>
-        <span className="flex-1 truncate text-[13px] font-medium">{title}</span>
+        <span className="flex-1 truncate text-sm font-semibold">{title}</span>
         {meta ? (
           <span
             className={cn(
-              'shrink-0 text-[11px] tabular-nums',
+              'shrink-0 text-xs tabular-nums',
               metaTone === 'attention'
                 ? 'rounded-full bg-amber-500/20 px-1.5 py-0.5 font-medium text-amber-800 dark:text-amber-300'
                 : 'text-muted-foreground',
@@ -318,9 +318,7 @@ function SectionBody({
           <Skeleton className="h-8 w-full rounded-md" />
         </div>
       )}
-      {!loading && empty && (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">{emptyText}</p>
-      )}
+      {!loading && empty && <p className="text-sm text-muted-foreground">{emptyText}</p>}
       {!loading && !empty && children}
     </>
   );
@@ -330,7 +328,7 @@ function SectionBody({
 function Truncated({ shown, total, noun }: { shown: number; total: number; noun: string }) {
   if (total <= shown) return null;
   return (
-    <p className="mt-2 text-[10px] text-muted-foreground">
+    <p className="mt-2 text-xs text-muted-foreground">
       Showing {shown} of {total} {noun}
     </p>
   );
@@ -372,13 +370,13 @@ function ActivitySection({
           {rows.map((e) => {
             const tone = EVENT_TONE[e.event_type];
             return (
-              <li key={e.id} className="flex items-start gap-2 py-1.5 text-xs">
+              <li key={e.id} className="flex items-start gap-2 py-1.5 text-sm">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     {tone && (
                       <Badge
                         variant="secondary"
-                        className={cn('shrink-0 px-1 py-0 font-sans text-[10px] font-medium', tone)}
+                        className={cn('shrink-0 px-1 py-0 font-sans text-xs font-medium', tone)}
                       >
                         {EVENT_LABEL[e.event_type] ?? e.event_type}
                       </Badge>
@@ -386,7 +384,7 @@ function ActivitySection({
                     <span className="truncate font-medium">{toolOf(e)}</span>
                   </div>
                   {summary(e) && (
-                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                       {summary(e)}
                     </p>
                   )}
@@ -394,7 +392,7 @@ function ActivitySection({
                 <div className="flex shrink-0 flex-col items-end gap-0.5">
                   <StatusDot status={e.status} />
                   {e.ts != null && (
-                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                    <span className="text-xs tabular-nums text-muted-foreground">
                       {relTime(e.ts)}
                     </span>
                   )}
@@ -415,7 +413,7 @@ function StatusDot({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 text-[10px] capitalize',
+        'inline-flex items-center gap-1 text-xs capitalize',
         ok && 'text-emerald-600 dark:text-emerald-400',
         bad && 'text-destructive',
         !ok && !bad && 'text-muted-foreground',
@@ -546,7 +544,7 @@ function ApprovalsSection({
               className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2.5 text-xs"
             >
               <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="py-0 font-mono text-[10px]">
+                <Badge variant="secondary" className="py-0 font-mono text-xs">
                   {a.tool_name}
                 </Badge>
                 <span className="truncate text-muted-foreground">{a.manifest_id}</span>
@@ -571,7 +569,7 @@ function ApprovalsSection({
                   Deny
                 </Button>
               </div>
-              <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+              <p className="mt-2 text-xs text-muted-foreground">
                 Deciding resumes the paused run, no need to re-send.
               </p>
             </article>
@@ -604,7 +602,7 @@ function ApprovalArgs({ args }: { args: unknown }) {
     <div className="mt-2">
       <pre
         className={cn(
-          'overflow-x-auto rounded-md border border-border/40 bg-background/60 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-foreground/80',
+          'overflow-x-auto rounded-md border border-border/40 bg-background/60 p-2 font-mono text-sm whitespace-pre-wrap break-words text-foreground/80',
           expanded && 'max-h-64 overflow-y-auto',
         )}
       >
@@ -614,7 +612,7 @@ function ApprovalArgs({ args }: { args: unknown }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-1 rounded text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          className="mt-1 rounded text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
           {expanded
             ? 'Show less'
@@ -689,7 +687,7 @@ function PlansSection({
               <article key={p.id} className="text-xs">
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-medium leading-snug">{p.title}</h3>
-                  <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
+                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
                     {done}/{p.steps.length}
                   </span>
                 </div>
@@ -701,7 +699,7 @@ function PlansSection({
                 </div>
                 <ol className="mt-2 space-y-1">
                   {p.steps.map((s) => (
-                    <li key={s.id} className={cn('flex gap-2 text-[11px]', STEP_TONE[s.status])}>
+                    <li key={s.id} className={cn('flex gap-2 text-xs', STEP_TONE[s.status])}>
                       <span className="w-3 shrink-0 font-mono" aria-hidden>
                         {STEP_MARK[s.status]}
                       </span>
@@ -755,13 +753,13 @@ function MetricsSection({
         emptyText="Ask the agent to use a tool. Rollups cover the last hour."
         status={data ? `${tools.length} tools called in the last hour` : undefined}
       >
-        <p className="mb-2 text-[10px] text-muted-foreground">Last 60 minutes</p>
+        <p className="mb-2 text-xs text-muted-foreground">Last 60 minutes</p>
         <ol className="space-y-2">
           {tools.map((t) => (
             <li key={t.tool} className="text-xs">
               <div className="flex items-baseline gap-2">
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{t.tool}</span>
-                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{t.tool}</span>
+                <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
                   {t.calls}×
                 </span>
               </div>
@@ -771,7 +769,7 @@ function MetricsSection({
                   style={{ width: `${Math.max(4, (t.calls / maxCalls) * 100)}%` }}
                 />
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 text-[10px] text-muted-foreground">
+              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 text-xs text-muted-foreground">
                 <span className={cn(t.errors > 0 && 'font-medium text-destructive')}>
                   {t.errors > 0 ? `${t.errors} error${t.errors === 1 ? '' : 's'}` : 'healthy'}
                 </span>
@@ -828,11 +826,11 @@ function UsageSection({
       >
         <dl className="mb-2.5 flex gap-6 border-b border-border/40 pb-2.5">
           <div>
-            <dt className="text-[10px] text-muted-foreground">Input</dt>
+            <dt className="text-xs text-muted-foreground">Input</dt>
             <dd className="mt-0.5 tabular-nums font-mono text-sm">{totals.in.toLocaleString()}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-muted-foreground">Output</dt>
+            <dt className="text-xs text-muted-foreground">Output</dt>
             <dd className="mt-0.5 tabular-nums font-mono text-sm">{totals.out.toLocaleString()}</dd>
           </div>
         </dl>
@@ -843,19 +841,19 @@ function UsageSection({
                 <div className="truncate">
                   {e.manifest_id || '—'}
                   {e.model_id ? (
-                    <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                    <span className="ml-1 font-mono text-xs text-muted-foreground">
                       {e.model_id}
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-0.5 tabular-nums font-mono text-[11px] text-muted-foreground">
+                <p className="mt-0.5 tabular-nums font-mono text-xs text-muted-foreground">
                   {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
                   {(e.tokens_output ?? 0).toLocaleString()} out
                   {(e.cache_read ?? 0) > 0 ? ` · ${e.cache_read.toLocaleString()} cache` : ''}
                 </p>
               </div>
               {e.ts != null && (
-                <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
+                <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
                   {relTime(e.ts)}
                 </span>
               )}
@@ -907,7 +905,7 @@ function SkillsSection({
       onToggle={onToggle}
     >
       <div className="space-y-3">
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Skills activate through the <code className="font-mono">list_skills</code> and{' '}
           <code className="font-mono">activate_skill</code> tools during chat. This reads whatever
           the agent last reported.
@@ -923,7 +921,7 @@ function SkillsSection({
             />
           </div>
         ) : (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             No <code className="rounded bg-muted px-1 py-0.5 font-mono">list_skills</code> result in
             this session yet.
           </p>
@@ -954,9 +952,9 @@ function SkillList({
 }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] font-medium text-muted-foreground">{label}</div>
+      <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
       {names.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">None</p>
+        <p className="text-xs text-muted-foreground">None</p>
       ) : (
         <div className="flex flex-wrap gap-1">
           {names.map((n) => {
@@ -965,7 +963,7 @@ function SkillList({
               <Badge
                 key={n}
                 variant={isActive && kind === 'active' ? 'default' : 'secondary'}
-                className="gap-1 font-mono text-[10px]"
+                className="gap-1 font-mono text-xs"
               >
                 {kind === 'active' && <CheckCircle2Icon className="size-3" />}
                 {n}

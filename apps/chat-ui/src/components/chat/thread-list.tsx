@@ -90,7 +90,7 @@ export function ThreadList({
       className={cn('flex h-full w-60 flex-col border-r border-border/60 bg-card/30', className)}
     >
       <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
-        <h2 id="history-heading" className="text-sm font-medium">
+        <h2 id="history-heading" className="text-base font-semibold">
           History
         </h2>
         <Button variant="ghost" size="sm" className="h-7 gap-1" disabled={disabled} onClick={onNew}>
@@ -140,7 +140,7 @@ export function ThreadList({
                 onClick={() => onSelect(t.id)}
               >
                 <span className="block truncate font-medium">{t.title}</span>
-                <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                <span className="block truncate font-mono text-xs text-muted-foreground">
                   {t.manifest} · {rel(t.updatedAt)}
                 </span>
               </button>
@@ -156,7 +156,7 @@ export function ThreadList({
           ))}
           {remoteOnly.length > 0 && (
             <div className="pt-2">
-              <p className="px-2 pb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              <p className="px-2 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Server
               </p>
               {remoteOnly.map((t) => (
@@ -172,7 +172,7 @@ export function ThreadList({
                   <MessageSquareIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{t.snippet.slice(0, 48)}</span>
-                    <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                    <span className="block truncate font-mono text-xs text-muted-foreground">
                       {t.id.slice(0, 8)}
                     </span>
                   </span>

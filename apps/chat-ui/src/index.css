@@ -9,6 +9,36 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Type ramp.
+   Before this the app used ten sizes between 10px and 24px, five of them inside a
+   4px band (10/11/12/13/14), which is not a hierarchy: at those deltas the reader
+   cannot tell a caption from a value from a label, so nothing in a panel reads as
+   more important than anything else.
+
+   Two ramps, because two densities are doing genuinely different jobs.
+
+   Dense UI, for rails and panels where information-per-pixel is the point:
+     xs  11px  timestamps, counts, badges, captions
+     sm  13px  rows, labels, controls, instructional copy
+
+   Prose, for the transcript, which is read rather than scanned:
+     base 16px  message bodies
+     2xl  24px  the greeting
+
+   `xs` and `sm` are redefined rather than given new names so the existing ~80 uses
+   across the app and `@felix/ui` land on the ramp without touching every call site.
+   The 11 -> 13 -> 16 steps are 1.18 and 1.23 apart, which is visible; the old
+   12 -> 14 pair was 1.17 but started too high to leave room beneath it, which is
+   what pushed metadata down to 10px in the first place. */
+@theme {
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.6;
+}
+
 /* Map shadcn design tokens onto Tailwind's theme so `bg-background`,
    `text-muted-foreground`, `rounded-lg`, etc. resolve. */
 @theme inline {

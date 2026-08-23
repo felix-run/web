@@ -39,7 +39,7 @@ export function Message({
           </div>
         )}
         {turn.content && (
-          <div className="max-w-[min(80%,36rem)] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-4 py-2.5 text-sm leading-relaxed text-background">
+          <div className="max-w-[min(80%,36rem)] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-4 py-2.5 text-base text-background">
             {turn.content}
           </div>
         )}
@@ -54,17 +54,15 @@ export function Message({
     <div className="group flex w-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <span
-          className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold tracking-wide text-muted-foreground"
+          className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold tracking-wide text-muted-foreground"
           aria-hidden
         >
           F
         </span>
         <span className="text-xs font-medium text-muted-foreground">Felix</span>
-        {streaming && !empty && (
-          <span className="text-[10px] text-muted-foreground/80">streaming</span>
-        )}
+        {streaming && !empty && <span className="text-xs text-muted-foreground/80">streaming</span>}
         {verbose && toolCount > 0 && (
-          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
             {toolCount} tool{toolCount === 1 ? '' : 's'}
           </span>
         )}
@@ -79,14 +77,14 @@ export function Message({
       )}
 
       {turn.content && (
-        <div className="max-w-none text-sm leading-relaxed text-foreground">
+        <div className="max-w-none text-base text-foreground">
           <Response>{turn.content}</Response>
         </div>
       )}
 
       {turn.usage && (
         <div
-          className="font-mono text-[10px] text-muted-foreground"
+          className="font-mono text-xs text-muted-foreground"
           title="Cumulative tokens for this turn"
         >
           {turn.usage.input.toLocaleString()} in · {turn.usage.output.toLocaleString()} out ·{' '}

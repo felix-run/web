@@ -112,27 +112,27 @@ export function JobsSheet({
 
           {/* Create form */}
           <div className="space-y-1.5 rounded-md border border-dashed p-2.5">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               New job
             </div>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="job name, e.g. nightly-digest"
-              className="h-8 font-mono text-xs"
+              className="h-8 font-mono text-sm"
             />
             <div className="flex gap-2">
               <Input
                 value={schedule}
                 onChange={(e) => setSchedule(e.target.value)}
                 placeholder="cron (m h dom mon dow) — empty = never swept"
-                className="h-8 font-mono text-xs"
+                className="h-8 font-mono text-sm"
                 title="Standard 5-field cron, UTC. Empty disables automatic scheduling."
               />
               <select
                 value={manifestId}
                 onChange={(e) => setManifestId(e.target.value)}
-                className="h-8 rounded-md border bg-transparent px-1.5 font-mono text-xs outline-none"
+                className="h-8 rounded-md border bg-transparent px-1.5 font-mono text-sm outline-none"
               >
                 {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
                   <option key={m} value={m}>
@@ -160,16 +160,14 @@ export function JobsSheet({
                 <div key={j.name} className="rounded-md border bg-background px-2.5 py-1.5 text-xs">
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-medium">{j.name}</span>
-                    <Badge variant="secondary" className="py-0 font-mono text-[10px]">
+                    <Badge variant="secondary" className="py-0 font-mono text-xs">
                       {j.schedule || 'manual'}
                     </Badge>
-                    <span className="text-[10px] text-muted-foreground">
-                      {j.manifest_id || '—'}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{j.manifest_id || '—'}</span>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="ml-auto h-6 gap-1 px-2 text-[10px]"
+                      className="ml-auto h-6 gap-1 px-2 text-xs"
                       onClick={() => toggleRuns(j.name)}
                     >
                       <HistoryIcon className="size-3" /> Runs
@@ -177,7 +175,7 @@ export function JobsSheet({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 px-2 text-[10px] text-muted-foreground hover:text-destructive"
+                      className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
                       disabled={busy}
                       onClick={() => remove(j.name)}
                       title="Delete this job"
@@ -185,7 +183,7 @@ export function JobsSheet({
                       <Trash2Icon className="size-3" />
                     </Button>
                   </div>
-                  <div className="mt-1 flex items-center gap-3 text-[10px] text-muted-foreground">
+                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                     {j.enabled === false && <span>disabled</span>}
                     {j.last_status && <span>last: {j.last_status}</span>}
                     {j.last_run_at && <span>ran {rel(j.last_run_at)}</span>}
@@ -195,12 +193,12 @@ export function JobsSheet({
                   {expanded === j.name && (
                     <div className="mt-1.5 space-y-1 border-t pt-1.5">
                       {runs.length === 0 ? (
-                        <p className="text-[10px] text-muted-foreground">No runs recorded.</p>
+                        <p className="text-xs text-muted-foreground">No runs recorded.</p>
                       ) : (
                         runs.map((r, i) => (
                           <div
                             key={r.run_id ?? `${j.name}-${i}`}
-                            className="flex items-center gap-2 text-[10px] text-muted-foreground"
+                            className="flex items-center gap-2 text-xs text-muted-foreground"
                           >
                             <span className="font-mono">{r.status ?? '—'}</span>
                             {r.started_at && <span>{rel(r.started_at)}</span>}

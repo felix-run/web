@@ -106,7 +106,7 @@ export function ManifestsSheet({
               >
                 {r.name}
                 {r.canary_version != null && (r.canary_weight ?? 0) > 0 && (
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400">◆</span>
+                  <span className="text-xs text-amber-600 dark:text-amber-400">◆</span>
                 )}
               </Button>
             ))}
@@ -122,7 +122,7 @@ export function ManifestsSheet({
               value={importName}
               onChange={(e) => setImportName(e.target.value)}
               placeholder="manifest name to import"
-              className="h-8 font-mono text-xs"
+              className="h-8 font-mono text-sm"
               onKeyDown={(e) => e.key === 'Enter' && importManifest()}
             />
             <Button
@@ -224,11 +224,11 @@ function VersionsPanel({
         <div className="mb-2 flex items-center gap-2">
           <span className="font-medium">Active</span>
           {activeV != null ? (
-            <Badge variant="secondary" className="py-0 font-mono text-[10px]">
+            <Badge variant="secondary" className="py-0 font-mono text-xs">
               v{activeV}
             </Badge>
           ) : (
-            <span className="text-[10px] text-muted-foreground">no tenant version</span>
+            <span className="text-xs text-muted-foreground">no tenant version</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -261,11 +261,11 @@ function VersionsPanel({
         <div className="mb-2 flex items-center gap-2">
           <span className="font-medium">Canary</span>
           {liveCanaryV != null && liveWeight > 0 ? (
-            <Badge className="py-0 text-[10px]">
+            <Badge className="py-0 text-xs">
               v{liveCanaryV} @ {liveWeight}%
             </Badge>
           ) : (
-            <span className="text-[10px] text-muted-foreground">none in flight</span>
+            <span className="text-xs text-muted-foreground">none in flight</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -311,7 +311,7 @@ function VersionsPanel({
             Clear canary
           </Button>
         </div>
-        <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+        <p className="mt-2 text-xs leading-snug text-muted-foreground">
           Routing is a deterministic hash of tenant, thread and both versions, so a thread stays on
           one side for the whole rollout.
         </p>
@@ -319,7 +319,7 @@ function VersionsPanel({
 
       {/* Editor */}
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           New version
         </span>
         <Button size="sm" variant="outline" className="ml-auto h-7 gap-1" onClick={openEditor}>
@@ -340,7 +340,7 @@ function VersionsPanel({
             onChange={(e) => setEditor(e.target.value)}
             spellCheck={false}
             rows={12}
-            className="w-full resize-y rounded-md border bg-transparent p-2 font-mono text-[11px] leading-snug outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="w-full resize-y rounded-md border bg-transparent p-2 font-mono text-xs leading-snug outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
           <div className="flex gap-2">
             <Button size="sm" className="h-7 flex-1" disabled={busy} onClick={saveVersion}>
