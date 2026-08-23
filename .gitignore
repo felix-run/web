@@ -27,3 +27,6 @@ apps/docs/.astro/
 .turbo/
 .neon
 .DS_Store
+
+# Impeccable local working dir (critiques, live-edit config)
+.impeccable/

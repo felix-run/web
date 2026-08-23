@@ -1,6 +1,0 @@
-{
-  "files": ["apps/chat-ui/index.html", "apps/float/index.html"],
-  "insertBefore": "</body>",
-  "commentSyntax": "html",
-  "cspChecked": true
-}
