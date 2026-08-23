@@ -37,6 +37,7 @@ import {
   getThreadHistory,
   listApprovals,
   listManifests,
+  listTenantManifests,
   pollDurableRun,
   postToolResult,
   releaseSessionLease,
@@ -85,7 +86,6 @@ import type {
   ThinkingLevel,
   ToolCall,
   Turn,
-  Variant,
 } from '@/types';
 
 const THREAD_KEY = 'felix.threadId';
@@ -138,7 +138,12 @@ export default function App() {
     loadTurns(localStorage.getItem(THREAD_KEY) ?? ''),
   );
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
-  const [variant, setVariant] = useState<Variant | null>(null);
+  // Canary rollout state for the selected manifest, from the `/manifests`
+  // active pointer. Deliberately *not* "which side served this thread": that
+  // assignment is a server-side hash the harness does not report to clients,
+  // and `GET /manifests/{name}` answers `stable` for any partial rollout
+  // because it resolves without a thread id.
+  const [canary, setCanary] = useState<{ version: number; weight: number } | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
@@ -178,6 +183,26 @@ export default function App() {
   useEffect(() => localStorage.setItem(INSPECTOR_KEY, inspectorOpen ? '1' : '0'), [inspectorOpen]);
   useEffect(() => localStorage.setItem(VERBOSE_KEY, verbose ? '1' : '0'), [verbose]);
   useEffect(() => saveTurns(threadId, turns), [threadId, turns]);
+
+  // Canary state for the selected manifest. Only tenant-managed manifests have
+  // an active pointer, so a bundled one simply has no rollout and no badge.
+  const refreshCanary = useCallback(async () => {
+    try {
+      const rows = await listTenantManifests();
+      const row = rows.find((r) => r.name === manifest);
+      const weight = row?.canary_weight ?? 0;
+      const version = row?.canary_version ?? null;
+      setCanary(version != null && weight > 0 ? { version, weight } : null);
+    } catch {
+      // The tenant store is optional and the route needs `manifests:read`;
+      // a badge is not worth surfacing an error for.
+      setCanary(null);
+    }
+  }, [manifest]);
+
+  useEffect(() => {
+    void refreshCanary();
+  }, [refreshCanary]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -289,7 +314,6 @@ export default function App() {
     stopRun();
     setThreadId(crypto.randomUUID());
     setTurns([]);
-    setVariant(null);
     setSkills(null);
     setError(null);
     setPendingQueue([]);
@@ -303,7 +327,6 @@ export default function App() {
       stopRun();
       setThreadId(id);
       setTurns(loadTurns(id));
-      setVariant(null);
       setSkills(null);
       setError(null);
       setUiPrompt(null);
@@ -554,7 +577,6 @@ export default function App() {
             signal: ctrl.signal,
           },
           {
-            onVariant: setVariant,
             onEvent: (ev) => handleEvent(ev as { event: string; data: Record<string, unknown> }),
           },
         );
@@ -701,7 +723,6 @@ export default function App() {
   const clearThread = useCallback(() => {
     stopRun();
     setTurns([]);
-    setVariant(null);
     setSkills(null);
     setError(null);
     setPendingQueue([]);
@@ -851,12 +872,17 @@ export default function App() {
               Verbose
             </Badge>
           )}
-          {variant && (
+          {canary && (
             <Badge
-              variant={variant === 'canary' ? 'default' : 'secondary'}
-              className="hidden uppercase sm:inline-flex"
+              variant="default"
+              className="hidden font-normal sm:inline-flex"
+              title={
+                `Canary rollout in flight: v${canary.version} at ${canary.weight}%. ` +
+                'Which side serves a given thread is decided server-side and is not reported.'
+              }
             >
-              {variant}
+              canary v{canary.version}
+              {canary.weight < 100 ? ` @ ${canary.weight}%` : ''}
             </Badge>
           )}
           {thinkingLevel !== 'off' && (
@@ -1047,7 +1073,14 @@ export default function App() {
         )}
       </div>
       <EvalSheet open={evalOpen} onOpenChange={setEvalOpen} manifest={manifest} />
-      <ManifestsSheet open={manifestsOpen} onOpenChange={setManifestsOpen} manifest={manifest} />
+      <ManifestsSheet
+        open={manifestsOpen}
+        onOpenChange={(o) => {
+          setManifestsOpen(o);
+          if (!o) void refreshCanary();
+        }}
+        manifest={manifest}
+      />
       <JobsSheet
         open={jobsOpen}
         onOpenChange={setJobsOpen}

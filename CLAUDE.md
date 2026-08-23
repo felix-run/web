@@ -15,6 +15,7 @@ in this repo beyond two thin proxy Workers.
 | `apps/float` (`@felix/float`) | Minimal always-on workspace client, pinned to the `cowork` manifest |
 | `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
 | `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
+| `packages/felix-protocol` (`@felix/protocol`) | The wire contract — SSE reader + shared types, used by both apps |
 | `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
 | `packages/test-kit` | Shared behavioral suites for the surfaces chat-ui and float duplicate |
 | `packages/design` | Neutral palette + theme-CSS builders (docs theme is generated from these) |
@@ -31,7 +32,8 @@ pnpm build             # turbo run build (tsc -b && vite build; astro build)
 pnpm lint              # turbo → biome check
 pnpm format            # biome format --write
 pnpm check-types       # turbo → tsc --noEmit
-pnpm test              # turbo → vitest (cowork-client only, so far)
+pnpm test              # turbo → vitest (cowork-client, chat-ui, float)
+pnpm check-api-drift   # client routes vs the committed harness OpenAPI snapshot
 pnpm --filter @felix/chat-ui <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 ```
@@ -40,13 +42,22 @@ Local dev needs the Python harness running separately (`make up && make migrate`
 → `:8080`). Without it, both apps load but every `/api/*` call fails.
 
 **Test coverage is partial, and knowing where it stops matters.** `pnpm test` covers the VFS
-(`packages/cowork-client`), and — via shared suites in `@felix/test-kit` run against **both** apps —
-the SSE reader and the proxy Worker. That shared-suite arrangement is the only mechanical check that
-the duplicated copies still agree. **No test exercises any React code**, so UI behavior is still
-verified by running it. `.claude/hooks/tests/` covers the hooks. CI (`.github/workflows/ci.yml`) is
-one `verify` job: `pnpm install --frozen-lockfile`, then lint, check-types, build (chat-ui, float,
-docs), then those hook tests — each step runs even if an earlier one fails, so one red run reports
-everything. Verification of app behavior still means running it against a live harness.
+(`packages/cowork-client`), the SSE reader (now one implementation in `@felix/protocol`, exercised
+through both apps' `streamChat`), and the proxy Worker — the last via a shared suite in
+`@felix/test-kit` run against **both** copies, which is the only mechanical check that the two
+deliberately-duplicated Workers still agree. **No test exercises any React code**, so UI behavior is
+still verified by running it. `.claude/hooks/tests/` covers the hooks.
+
+`pnpm check-api-drift` is the other mechanical guard: it walks the fetch call sites in each client
+and diffs path *and* verb against `apps/chat-ui/harness-openapi.json`, a committed snapshot of the
+harness's `/openapi.json`. It catches a route the harness renamed or dropped; it cannot catch a call
+that hits a real route for the wrong purpose, and it says nothing about payload shapes. Refresh the
+snapshot when the harness gains routes — instructions are in `scripts/check-api-drift.mjs`.
+
+CI (`.github/workflows/ci.yml`) is one `verify` job: `pnpm install --frozen-lockfile`, then lint,
+check-types, API drift, build (chat-ui, float, docs), tests, then the hook tests — each step runs
+even if an earlier one fails, so one red run reports everything. Verification of app behavior still
+means running it against a live harness.
 
 ## Architecture
 
@@ -71,10 +82,15 @@ Keep the two Workers in sync — they are deliberate near-duplicates, not a shar
 
 ### Client ↔ harness protocol (the part that is easy to get wrong)
 
-`apps/chat-ui/src/api.ts` + `src/types.ts` are the hand-mirrored wire contract. `types.ts`
+`packages/felix-protocol` is the hand-mirrored wire contract — one copy, shared by both apps. Its
 `StreamEvent` is the authoritative list of SSE frames; it ends in an open `{ event: string; ... }`
 arm, so an unknown event compiles fine and silently does nothing — when the harness gains an event,
-add the arm *and* a `switch` case in `App.tsx`.
+add the arm *and* the handler in each app (`App.tsx`), or it is indistinguishable from an event that
+never arrives. Each app's own `api.ts` still owns its REST calls and auth; `src/types.ts` keeps only
+what is app-specific (chat-ui's `Turn` and management types, float's `TimelineItem`).
+
+Every frame is a bare `data:` line — the harness sets no SSE `event:` field — in one envelope
+`{event, type, data, text}`, terminated by `data: [DONE]`.
 
 Flows worth knowing before editing either app:
 
@@ -104,7 +120,8 @@ Each turn sends **only the new user message** — Felix replays thread history s
 
 `float` is a deliberately reduced second client over the same protocol (recent history is literally
 "bring float to parity with X"). It has no inspector/eval/jobs/manifest surfaces, pins
-`MANIFEST = 'cowork'`, and keeps its own copy of `api.ts`/`types.ts` and its own VFS storage key.
+`MANIFEST = 'cowork'`, and keeps its own `api.ts` and VFS storage key (the wire types and SSE
+reader are shared via `@felix/protocol`).
 A protocol change generally needs applying in **both** apps.
 
 ### Packages
