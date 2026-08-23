@@ -1,21 +1,19 @@
 {
-  "name": "@felix/cowork-client",
+  "name": "@felix/test-kit",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Browser cowork helpers — VFS, File System Access mount, client tools.",
+  "description": "Shared behavioral test suites for the surfaces chat-ui and float duplicate — the proxy Worker and the SSE reader.",
   "exports": {
-    ".": "./src/index.ts",
-    "./vfs": "./src/vfs.ts",
-    "./fs-mount": "./src/fs-mount.ts",
-    "./client-tools": "./src/client-tools.ts"
+    "./proxy-worker": "./src/proxy-worker.ts",
+    "./sse": "./src/sse.ts"
   },
   "scripts": {
-    "test": "vitest run",
     "lint": "biome check .",
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
     "@felix/typescript-config": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:"

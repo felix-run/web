@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test": "vitest run",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
+    "@felix/test-kit": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
@@ -31,6 +33,7 @@
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
+    "vitest": "catalog:",
     "wrangler": "catalog:"
   }
 }
