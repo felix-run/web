@@ -148,15 +148,6 @@ export interface PendingUiRequest {
   defaultValue?: unknown;
 }
 
-/** Sticky mid-stream approval waiting on decide. */
-export interface PendingApproval {
-  approvalId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  ruleId?: string;
-  before?: string | null;
-}
-
 /** POST /chat when the manifest sets `spec.execution.mode: durable`. */
 export interface DurableRun {
   status?: string;

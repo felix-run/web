@@ -19,7 +19,6 @@
     "paths": {
       "@/*": ["./src/*"],
       "@felix/protocol": ["../../packages/felix-protocol/src/index.ts"],
-      "@felix/protocol/*": ["../../packages/felix-protocol/src/*"],
       "@felix/cowork-client": ["../../packages/cowork-client/src/index.ts"],
       "@felix/cowork-client/*": ["../../packages/cowork-client/src/*"],
       "@felix/ui/*": ["../../packages/ui/src/*"],

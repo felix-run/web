@@ -12,14 +12,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface Env {
-  ASSETS: { fetch: (req: Request) => Promise<Response> };
+  ASSETS: Fetcher;
   FELIX_ORIGIN: string;
   CHAT_UI_KEY?: string;
   FELIX_API_KEY?: string;
 }
 
+/**
+ * The shape of each app's default export (`satisfies ExportedHandler<Env>`):
+ * same `Env`, and `ctx` optional so the suite can call `fetch` without one.
+ * Both Workers must assign to this with no cast — that assignment is the only
+ * type-level link between this suite and the code it is holding in agreement.
+ */
 export interface ProxyWorker {
-  fetch(req: Request, env: Env): Promise<Response>;
+  fetch(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response>;
 }
 
 const ORIGIN = 'https://harness.example.com';
@@ -29,7 +35,7 @@ export function describeProxyWorker(label: string, worker: ProxyWorker): void {
   let assets: ReturnType<typeof vi.fn>;
 
   const env = (over: Partial<Env> = {}): Env => ({
-    ASSETS: { fetch: assets as unknown as Env['ASSETS']['fetch'] },
+    ASSETS: { fetch: assets } as unknown as Fetcher,
     FELIX_ORIGIN: ORIGIN,
     ...over,
   });

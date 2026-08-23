@@ -20,7 +20,7 @@ export interface SseAdapter {
 }
 
 /** A Response whose body yields exactly these chunks, in order. */
-export function streamResponse(chunks: Array<string | Uint8Array>, init: ResponseInit = {}) {
+function streamResponse(chunks: Array<string | Uint8Array>, init: ResponseInit = {}) {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder();
@@ -33,12 +33,12 @@ export function streamResponse(chunks: Array<string | Uint8Array>, init: Respons
   return new Response(body, init);
 }
 
-export function frame(payload: unknown): string {
+function frame(payload: unknown): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
 /** Install a global fetch that returns `response` and records the call. */
-export function stubFetch(response: Response) {
+function stubFetch(response: Response) {
   const spy = vi.fn(async () => response);
   vi.stubGlobal('fetch', spy);
   return spy;
