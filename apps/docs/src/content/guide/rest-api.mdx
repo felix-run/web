@@ -183,6 +183,7 @@ present, else `data.text` or `data.delta`, else `""`.
 | `steer` | `{"content":str}` | A queued steer was drained into the loop |
 | `follow_up` | `{"content":str}` | A queued follow-up was drained after idle |
 | `aborted` | `{"thread_id":str}` | `POST /chat/abort` was observed |
+| `on_error` | `{"message":str}` | The run failed mid-stream. Not terminal — the stream still ends with `done`/`[DONE]`, so a client that ignores it reports success |
 | `on_chain_end` | `{"output": InvokeOutput}` | Penultimate frame; carries per-turn `usage` |
 | `done` | `{"final": ChatMessage, "messages":[…]}` | Final frame before `[DONE]` |
 

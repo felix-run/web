@@ -418,6 +418,30 @@ export default function App() {
         return;
       }
 
+      // A mid-stream failure arrives as a frame, not a thrown error, so the
+      // try/catch around the stream never sees it and the run ends looking like
+      // it succeeded. Clearing the draft here is the load-bearing half: the
+      // `finally` in runGoal commits any leftover draft as a `Result` with
+      // status 'done', which would present a truncated failed answer as a
+      // finished one. chat-ui surfaces the same frame via setError.
+      if (event.event === 'on_error') {
+        const message = String((event.data as { message?: string }).message ?? 'error');
+        if (draftRef.current) {
+          push({
+            id: nanoid(),
+            kind: 'assistant',
+            title: 'Partial',
+            body: draftRef.current,
+            status: 'error',
+          });
+          draftRef.current = '';
+          setAssistantDraft('');
+        }
+        toast.error(message);
+        push({ id: nanoid(), kind: 'system', title: 'Error', body: message, status: 'error' });
+        return;
+      }
+
       if (event.event === 'aborted') {
         setSessionPhase('aborted');
         return;
