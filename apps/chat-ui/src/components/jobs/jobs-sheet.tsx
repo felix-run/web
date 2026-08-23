@@ -3,17 +3,19 @@ import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
-import { ClockIcon, PlayIcon, PlusIcon } from 'lucide-react';
+import { ClockIcon, HistoryIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { createJob, listJobs, runJob } from '@/api';
-import type { JobRecord } from '@/types';
+import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
+import type { JobRecord, JobRun } from '@/types';
 
 /**
  * Scheduled-jobs workbench — the `/jobs` registry as a slide-over. A job is a
- * persistent, tenant-scoped record the cron sweep invokes on its cron
- * `schedule` (every ~10 min); an empty schedule means manual-only. "Run now" triggers
- * a job immediately and records a `job_run` audit event (visible in the
- * Inspector Activity feed). Tenant-scoped; works anonymously against `default`.
+ * persistent, tenant-scoped record the worker's `run_scheduled_jobs` cron
+ * invokes on its `schedule`; an empty schedule means it is never swept.
+ *
+ * The sweep only fires when felix-scheduler runs alongside felix-worker. There
+ * is no run-now route on the harness, so runs are observed rather than
+ * triggered — expand a job to see its recent runs.
  */
 export function JobsSheet({
   open,
@@ -32,6 +34,8 @@ export function JobsSheet({
   const [schedule, setSchedule] = useState('0 9 * * *');
   const [manifestId, setManifestId] = useState(manifest);
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [runs, setRuns] = useState<JobRun[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -53,7 +57,7 @@ export function JobsSheet({
     if (!name.trim()) return;
     setBusy(true);
     try {
-      await createJob({ name: name.trim(), schedule: schedule.trim(), manifest_id: manifestId });
+      await upsertJob({ name: name.trim(), schedule: schedule.trim(), manifest_id: manifestId });
       setName('');
       await refresh();
     } catch (err) {
@@ -63,10 +67,25 @@ export function JobsSheet({
     }
   }
 
-  async function trigger(jobName: string) {
+  async function toggleRuns(jobName: string) {
+    if (expanded === jobName) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(jobName);
+    setRuns([]);
+    try {
+      setRuns(await listJobRuns(jobName));
+    } catch (err) {
+      setError(String((err as Error)?.message ?? err));
+    }
+  }
+
+  async function remove(jobName: string) {
     setBusy(true);
     try {
-      await runJob(jobName);
+      await deleteJob(jobName);
+      if (expanded === jobName) setExpanded(null);
       await refresh();
     } catch (err) {
       setError(String((err as Error)?.message ?? err));
@@ -83,8 +102,8 @@ export function JobsSheet({
             <ClockIcon className="size-4" /> Scheduled jobs
           </SheetTitle>
           <SheetDescription>
-            Persistent cron-scheduled agent runs. The sweep runs them automatically; "Run now"
-            triggers one on demand.
+            Persistent cron-scheduled agent runs, swept by the worker. Expand a job for its recent
+            run history.
           </SheetDescription>
         </SheetHeader>
 
@@ -106,9 +125,9 @@ export function JobsSheet({
               <Input
                 value={schedule}
                 onChange={(e) => setSchedule(e.target.value)}
-                placeholder="cron (m h dom mon dow) — empty = manual"
+                placeholder="cron (m h dom mon dow) — empty = never swept"
                 className="h-8 font-mono text-xs"
-                title="Standard 5-field cron. Empty disables automatic scheduling."
+                title="Standard 5-field cron, UTC. Empty disables automatic scheduling."
               />
               <select
                 value={manifestId}
@@ -151,18 +170,46 @@ export function JobsSheet({
                       size="sm"
                       variant="ghost"
                       className="ml-auto h-6 gap-1 px-2 text-[10px]"
-                      disabled={busy}
-                      onClick={() => trigger(j.name)}
+                      onClick={() => toggleRuns(j.name)}
                     >
-                      <PlayIcon className="size-3" /> Run now
+                      <HistoryIcon className="size-3" /> Runs
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-[10px] text-muted-foreground hover:text-destructive"
+                      disabled={busy}
+                      onClick={() => remove(j.name)}
+                      title="Delete this job"
+                    >
+                      <Trash2Icon className="size-3" />
                     </Button>
                   </div>
                   <div className="mt-1 flex items-center gap-3 text-[10px] text-muted-foreground">
+                    {j.enabled === false && <span>disabled</span>}
                     {j.last_status && <span>last: {j.last_status}</span>}
                     {j.last_run_at && <span>ran {rel(j.last_run_at)}</span>}
                     {j.next_run_at && <span>next {rel(j.next_run_at)}</span>}
                     {j.last_error && <span className="text-destructive">{j.last_error}</span>}
                   </div>
+                  {expanded === j.name && (
+                    <div className="mt-1.5 space-y-1 border-t pt-1.5">
+                      {runs.length === 0 ? (
+                        <p className="text-[10px] text-muted-foreground">No runs recorded.</p>
+                      ) : (
+                        runs.map((r, i) => (
+                          <div
+                            key={r.run_id ?? `${j.name}-${i}`}
+                            className="flex items-center gap-2 text-[10px] text-muted-foreground"
+                          >
+                            <span className="font-mono">{r.status ?? '—'}</span>
+                            {r.started_at && <span>{rel(r.started_at)}</span>}
+                            {r.error && <span className="text-destructive">{r.error}</span>}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
