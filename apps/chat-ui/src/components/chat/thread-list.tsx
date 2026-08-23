@@ -19,6 +19,7 @@ export function ThreadList({
   onSelect,
   onNew,
   onDelete,
+  className,
 }: {
   threads: ThreadMeta[];
   currentId: string;
@@ -26,6 +27,8 @@ export function ThreadList({
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  /** Set by the shell when this renders inside a drawer instead of as a column. */
+  className?: string;
 }) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<
@@ -84,7 +87,7 @@ export function ThreadList({
   return (
     <aside
       aria-labelledby="history-heading"
-      className="flex h-full w-60 flex-col border-r border-border/60 bg-card/30"
+      className={cn('flex h-full w-60 flex-col border-r border-border/60 bg-card/30', className)}
     >
       <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
         <h2 id="history-heading" className="text-sm font-medium">
@@ -144,7 +147,7 @@ export function ThreadList({
               <button
                 type="button"
                 aria-label="Delete conversation"
-                className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                 onClick={() => onDelete(t.id)}
               >
                 <Trash2Icon className="size-3.5" />

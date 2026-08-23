@@ -81,11 +81,14 @@ export function Inspector({
   onClose,
   skills,
   onSuggest,
+  className,
 }: {
   open: boolean;
   onClose: () => void;
   skills: SkillState | null;
   onSuggest: (text: string) => void;
+  /** Set by the shell when this renders inside a drawer instead of as a column. */
+  className?: string;
 }) {
   const [expanded, setExpanded] = useState<Record<SectionId, boolean>>({
     activity: true,
@@ -107,7 +110,10 @@ export function Inspector({
   return (
     <aside
       aria-labelledby="inspector-heading"
-      className="flex h-full w-[22rem] shrink-0 flex-col border-l border-border/60 bg-card/40"
+      className={cn(
+        'flex h-full w-[22rem] shrink-0 flex-col border-l border-border/60 bg-card/40',
+        className,
+      )}
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
         <h2 id="inspector-heading" className="text-sm font-medium">
