@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@felix/cowork-client": "workspace:*",
+    "@felix/protocol": "workspace:*",
     "@felix/ui": "workspace:*",
     "clsx": "catalog:",
     "lucide-react": "catalog:",

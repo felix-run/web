@@ -1,130 +1,24 @@
 /**
- * Wire types mirrored from the Felix harness so the client never invents its
- * own shapes:
- *   - ChatMessage / ChatRequest → src/api/chat.ts
- *   - StreamEvent               → src/api/openapi-shared.ts (StreamEventSchema)
+ * chat-ui's view of the harness.
+ *
+ * The wire contract itself lives in `@felix/protocol`, shared with float. What
+ * stays here is either chat-ui's own UI state (`Turn`) or a management surface
+ * float does not have (audit, eval, jobs, manifests, plans, usage).
  */
+export type {
+  ChatMessage,
+  DurableRun,
+  ImageAttachment,
+  PendingApproval,
+  PendingUiRequest,
+  Role,
+  SessionSnapshot,
+  StreamEvent,
+  ThinkingLevel,
+  TokenUsage,
+} from '@felix/protocol';
 
-export type Role = 'system' | 'user' | 'assistant' | 'tool';
-
-/** An image attached to a user message (multimodal/vision input). */
-export interface ImageAttachment {
-  /** Data URL (`data:<mime>;base64,…`) or remote `https://` URL. */
-  url: string;
-  media_type: string;
-  filename?: string;
-}
-
-export interface ChatMessage {
-  role: Role;
-  content: string;
-  /** Image attachments on a user turn (mapped to provider vision blocks). */
-  attachments?: ImageAttachment[];
-}
-
-/** Cumulative token usage for one turn (all model sub-calls summed). */
-export interface TokenUsage {
-  input: number;
-  output: number;
-}
-
-/** One `data: <json>` line from POST /chat/stream. */
-export type StreamEvent =
-  | { event: 'on_chat_model_stream'; data: { chunk?: { content?: string }; delta?: string } }
-  | { event: 'text_delta'; data: { chunk?: { content?: string }; delta?: string } }
-  | { event: 'on_tool_start'; data: { name: string; input?: unknown } }
-  | { event: 'on_tool_end'; data: { name: string; output?: unknown } }
-  | { event: 'tool_start'; data: { name: string; input?: unknown; id?: string } }
-  | { event: 'tool_end'; data: { name: string; output?: unknown; id?: string } }
-  | {
-      event: 'tool_request';
-      data: {
-        id: string;
-        name: string;
-        args?: Record<string, unknown>;
-        thread_id?: string;
-      };
-    }
-  | {
-      event: 'approval_required';
-      data: {
-        approval_id: string;
-        tool_name: string;
-        args?: Record<string, unknown>;
-        rule_id?: string;
-      };
-    }
-  | { event: 'on_chain_end'; data: { output?: { usage?: TokenUsage } } }
-  | { event: 'on_error'; data: { message: string } }
-  | { event: 'done'; data: { final?: ChatMessage } }
-  | { event: 'aborted'; data: { thread_id?: string } }
-  /** A queued steer / follow-up was drained into the run as a user message. */
-  | { event: 'steer'; data: { content: string } }
-  | { event: 'follow_up'; data: { content: string } }
-  | {
-      event: 'session_progress';
-      data: { phase?: string; reason?: string; [k: string]: unknown };
-    }
-  | {
-      event: 'ui_request';
-      data: {
-        request_id: string;
-        kind: 'select' | 'confirm' | 'input';
-        prompt: string;
-        options?: Array<string | { id?: string; label?: string; value?: string }>;
-        default?: unknown;
-        thread_id?: string;
-      };
-    }
-  | { event: string; data: Record<string, unknown> };
-
-export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-
-/** Authoritative session snapshot from GET /chat/sessions/{id}. */
-export interface SessionSnapshot {
-  id: string;
-  name?: string | null;
-  phase?: string;
-  thinkingLevel?: string;
-  locked?: boolean;
-  attached?: boolean;
-  leafId?: string | null;
-  revision?: number;
-  transcript?: Array<{
-    id?: string;
-    seq: number;
-    kind: string;
-    role?: Role | null;
-    content?: string;
-    toolCallId?: string;
-    toolName?: string;
-    toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
-    status?: string;
-  }>;
-  wake?: {
-    fresh?: boolean;
-    endedOnAssistant?: boolean;
-    pendingToolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
-  };
-}
-
-/** Sticky mid-stream UI prompt (select / confirm / input). */
-export interface PendingUiRequest {
-  requestId: string;
-  kind: 'select' | 'confirm' | 'input';
-  prompt: string;
-  options: Array<{ value: string; label: string }>;
-  defaultValue?: unknown;
-}
-
-/** Sticky mid-stream approval waiting on decide. */
-export interface PendingApproval {
-  approvalId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  ruleId?: string;
-  before?: string | null;
-}
+import type { ImageAttachment, Role, TokenUsage } from '@felix/protocol';
 
 /** A finished or in-flight tool call, rendered inline in the transcript. */
 export interface ToolCall {
