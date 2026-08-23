@@ -95,6 +95,9 @@ importers:
       '@felix/cowork-client':
         specifier: workspace:*
         version: link:../../packages/cowork-client
+      '@felix/protocol':
+        specifier: workspace:*
+        version: link:../../packages/felix-protocol
       '@felix/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -199,6 +202,9 @@ importers:
       '@felix/cowork-client':
         specifier: workspace:*
         version: link:../../packages/cowork-client
+      '@felix/protocol':
+        specifier: workspace:*
+        version: link:../../packages/felix-protocol
       '@felix/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -278,6 +284,15 @@ importers:
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/felix-protocol:
+    devDependencies:
+      '@felix/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

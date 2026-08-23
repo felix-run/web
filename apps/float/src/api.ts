@@ -1,3 +1,4 @@
+import { readSseStream } from '@felix/protocol';
 import { authHeaders, handleUnauthorized } from './lib/auth';
 import type { ChatMessage, StreamEvent } from './types';
 
@@ -35,33 +36,7 @@ export async function streamChat(
     throw new Error(`chat/stream: ${res.status} ${detail.slice(0, 200)}`);
   }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let sep = buffer.indexOf('\n\n');
-    while (sep !== -1) {
-      const frame = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      sep = buffer.indexOf('\n\n');
-
-      const line = frame.trim();
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice('data:'.length).trim();
-      if (payload === '[DONE]') return;
-
-      try {
-        await onEvent(JSON.parse(payload) as StreamEvent);
-      } catch {
-        // ignore malformed frames
-      }
-    }
-  }
+  await readSseStream(res, onEvent);
 }
 
 export async function postToolResult(args: {

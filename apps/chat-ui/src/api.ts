@@ -16,6 +16,7 @@
  * produce. Behind real auth, send an Authorization header (see README).
  */
 
+import { readSseStream } from '@felix/protocol';
 import { authHeaders, handleUnauthorized } from './lib/auth';
 import type {
   AgentCard,
@@ -101,38 +102,13 @@ export async function streamChat(args: StreamArgs, handlers: StreamHandlers): Pr
     throw new Error(`chat/stream: ${res.status} ${detail.slice(0, 200)}`);
   }
 
-  // x-manifest-variant is set on every response (defaults to 'stable').
+  // Reported when a canary rollout is in flight. The current harness does not
+  // send this header, so the badge stays dark; kept because the resolved
+  // variant is real and may yet be surfaced here.
   const variant = res.headers.get('x-manifest-variant');
   if (variant === 'stable' || variant === 'canary') handlers.onVariant?.(variant);
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    // Drain whole `data: ...\n\n` frames; leave any partial tail in buffer.
-    let sep = buffer.indexOf('\n\n');
-    while (sep !== -1) {
-      const frame = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      sep = buffer.indexOf('\n\n');
-
-      const line = frame.trim();
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice('data:'.length).trim();
-      if (payload === '[DONE]') return;
-
-      try {
-        await handlers.onEvent(JSON.parse(payload) as StreamEvent);
-      } catch {
-        // Ignore unparseable frames rather than tearing down the stream.
-      }
-    }
-  }
+  await readSseStream(res, handlers.onEvent);
 }
 
 // --- Inspector REST helpers ---
