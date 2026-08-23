@@ -106,6 +106,8 @@
       "Bash(pnpm lint)",
       "Bash(pnpm format)",
       "Bash(pnpm check-types)",
+      "Bash(pnpm test)",
+      "Bash(pnpm --filter * test)",
       "Bash(pnpm chat:build)",
       "Bash(pnpm float:build)",
       "Bash(pnpm docs:build)",

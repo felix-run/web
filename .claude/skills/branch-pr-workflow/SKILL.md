@@ -46,10 +46,10 @@ See also [.claude/rules/git-workflow.md](../../rules/git-workflow.md).
    under change: `pnpm --filter @felix/chat-ui …` / `@felix/float` / `@felix/docs`, or root scripts
    when they apply. Docs prose lives in `apps/docs/src/content/` (MDX).
 
-   **There is no application test suite** — verification is `pnpm check-types`, `pnpm lint`, and
-   `pnpm build`, plus a manual run against the harness on `:8080`. (The only automated tests are the
-   hook batteries in `.claude/hooks/tests/`.) Use the `preflight` skill, and never write "tests pass"
-   in a commit or PR body as if the apps were covered. Commit messages follow the repo style
+   Verification is `pnpm check-types`, `pnpm lint`, `pnpm test`, and `pnpm build`, plus a manual run
+   against the harness on `:8080`. The suites cover the VFS, the SSE reader, the proxy Workers and
+   part of chat-ui's React — **not the chat surface**. Use the `preflight` skill, and never write
+   "tests pass" in a commit or PR body as if that surface were covered. Commit messages follow the repo style
    (imperative subject, body explains why) and end with the Claude co-author line.
 
 3. **Push + open the PR**

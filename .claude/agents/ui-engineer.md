@@ -47,8 +47,9 @@ Use the `api-contract-change` skill for the full procedure.
 
 ## Verification
 
-There is **no application test suite** (only the hook batteries in `.claude/hooks/tests/`). Never
-say "tests pass" as if the UI were covered. Verify with:
+React coverage reaches chat-ui's thread store, theme provider, `usePoll`, and Gate — **not the chat
+surface** (`App.tsx`, the composer, the inspector panels), and float has no React tests at all.
+Never say "tests pass" as if the UI you changed were covered. Verify with:
 
 ```bash
 pnpm --filter @felix/chat-ui check-types    # or @felix/float

@@ -43,12 +43,15 @@ pre-existing code unless the diff makes it newly wrong.
    is a mirror. New persisted keys should follow the `felix.*` convention and must not become a
    second source of truth. Watch for `useEffect` chains that write state on every render, stale
    closures over `threadId`, and missing `AbortController` cleanup on unmount.
-8. **Verification claims.** There is **no application test suite** — only the hook batteries in
-   `.claude/hooks/tests/`. A PR body claiming "tests pass" for app code is a factual error worth
-   flagging.
+8. **Verification claims.** The suites cover the VFS, the SSE reader, the proxy Workers, and part
+   of chat-ui's React (thread store, theme provider, `usePoll`, Gate) — **not the chat surface**
+   (`App.tsx`, composer, inspector panels). A PR body claiming "tested" for that surface is a
+   factual error worth flagging.
 
-Then apply ordinary review judgment: naming, dead code, error handling, duplicated logic that should
-have been reused, accidental `any`, and complexity that isn't earning its keep.
+Then apply ordinary review judgment: naming, error handling, and complexity that isn't earning its
+keep. Quality-only findings — dead code, needless indirection, `any` creep, export-surface and
+dependency drift — belong to `code-quality-reviewer`; note them in one line and move on rather than
+reviewing them here.
 
 ## Calibration
 

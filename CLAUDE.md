@@ -148,12 +148,14 @@ hook, because the next regeneration would silently revert them.
 `.claude/` carries project agents, skills, rules, and hooks. **`.claude/README.md` is the index**;
 the `toolkit-authoring` skill is how to extend it.
 
-- **Skills** (`/name`): `preflight` (verify), `branch-pr-workflow`, `api-contract-change`,
-  `add-ui-primitive`, `docs-sync`, `deploy-runbook`, `python-harness`, `postgres-migration`,
-  `threat-review`, `toolkit-authoring`. They follow the [Agent Skills](https://agentskills.io) spec.
+- **Skills** (`/name`): `preflight` (verify), `code-quality` (quality sweep), `branch-pr-workflow`,
+  `api-contract-change`, `add-ui-primitive`, `docs-sync`, `deploy-runbook`, `python-harness`,
+  `postgres-migration`, `threat-review`, `toolkit-authoring`. They follow the
+  [Agent Skills](https://agentskills.io) spec.
 - **Subagents**: `workers-engineer`, `ui-engineer`, `python-harness-engineer`, `postgres-engineer`,
-  `devops-engineer`, `code-reviewer`, `security-reviewer`, `dx-engineer`, `felix-docs-writer`.
-  The two reviewers are read-only by design.
+  `devops-engineer`, `test-engineer`, `refactor-engineer`, `code-reviewer`, `security-reviewer`,
+  `code-quality-reviewer`, `dx-engineer`, `felix-docs-writer`. The three reviewers are read-only by
+  design.
 - **Hooks that can block you**: `block-generated.sh` (edits to generated files and build output),
   `block-main-commit.sh` (commits on `main`, direct pushes to `origin main`), and `stop-gate.sh`
   (once per session, when documented surfaces changed and no docs did). Others are advisory:
