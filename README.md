@@ -15,6 +15,7 @@ in `packages/ui` (`@felix/ui`).
 | `apps/docs` | Starlight docs site (`@felix/docs`) → CF Workers |
 | `packages/ui` | Shared [shadcn/ui](https://ui.shadcn.com/) components |
 | `packages/design` | Design tokens for docs / chrome |
+| `packages/test-kit` | Shared test suites run against both apps (proxy Worker, SSE reader) |
 | `packages/typescript-config` | Shared `tsconfig` bases |
 
 ## Commands

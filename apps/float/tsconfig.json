@@ -21,8 +21,9 @@
       "@felix/cowork-client": ["../../packages/cowork-client/src/index.ts"],
       "@felix/cowork-client/*": ["../../packages/cowork-client/src/*"],
       "@felix/ui/*": ["../../packages/ui/src/*"],
-      "@felix/ui/lib/utils": ["../../packages/ui/src/lib/utils.ts"]
+      "@felix/ui/lib/utils": ["../../packages/ui/src/lib/utils.ts"],
+      "@felix/test-kit/*": ["../../packages/test-kit/src/*"]
     }
   },
-  "include": ["src", "worker"]
+  "include": ["src", "worker", "tests", "vitest.config.ts"]
 }

@@ -16,6 +16,7 @@ in this repo beyond two thin proxy Workers.
 | `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
 | `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
 | `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
+| `packages/test-kit` | Shared behavioral suites for the surfaces chat-ui and float duplicate |
 | `packages/design` | Neutral palette + theme-CSS builders (docs theme is generated from these) |
 | `packages/typescript-config` | Shared tsconfig bases |
 
@@ -38,10 +39,11 @@ pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 Local dev needs the Python harness running separately (`make up && make migrate` in felix-run/felix
 → `:8080`). Without it, both apps load but every `/api/*` call fails.
 
-**Test coverage is partial, and knowing where it stops matters.** `packages/cowork-client` has a
-Vitest suite (`pnpm test`) covering the VFS — the surface the model drives, where path containment is
-a security property. The apps and the Workers have none: no test exercises the SSE reader, the proxy,
-or any React code. `.claude/hooks/tests/` covers the hooks. CI (`.github/workflows/ci.yml`) is
+**Test coverage is partial, and knowing where it stops matters.** `pnpm test` covers the VFS
+(`packages/cowork-client`), and — via shared suites in `@felix/test-kit` run against **both** apps —
+the SSE reader and the proxy Worker. That shared-suite arrangement is the only mechanical check that
+the duplicated copies still agree. **No test exercises any React code**, so UI behavior is still
+verified by running it. `.claude/hooks/tests/` covers the hooks. CI (`.github/workflows/ci.yml`) is
 one `verify` job: `pnpm install --frozen-lockfile`, then lint, check-types, build (chat-ui, float,
 docs), then those hook tests — each step runs even if an earlier one fails, so one red run reports
 everything. Verification of app behavior still means running it against a live harness.

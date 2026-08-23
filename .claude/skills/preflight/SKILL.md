@@ -18,14 +18,14 @@ Changed files:
 
 ## What "verified" means here
 
-**Test coverage is partial.** `packages/cowork-client` has a Vitest suite covering the VFS; the
-apps and the Workers have none. CI runs lint, check-types, test, build, and the hook batteries in
-`.claude/hooks/tests/`.
+**Test coverage is partial.** `pnpm test` covers the VFS, the SSE reader, and the proxy Worker —
+the last two through shared suites in `@felix/test-kit` that run against both chat-ui and float. CI
+runs lint, check-types, test, build, and the hook batteries in `.claude/hooks/tests/`.
 
-So a green `pnpm test` says the VFS is sound. It says nothing about the SSE reader, the proxy
-Workers, or any React code — those still have to be exercised by hand against a running harness.
-Report exactly which commands you ran and what they returned, and never let "tests pass" imply
-coverage that does not exist.
+So a green `pnpm test` says the wire-level plumbing and path containment are sound. It says nothing
+about **any React code**: components, hooks, and state still have to be exercised by hand against a
+running harness. Report exactly which commands you ran and what they returned, and never let "tests
+pass" imply coverage that does not exist.
 
 ## The loop
 

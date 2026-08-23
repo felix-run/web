@@ -12,8 +12,12 @@ paths:
 
 # Duplicated surfaces — parity rules
 
-Three contracts in this repo exist in more than one file **on purpose**. Nothing checks that the
-copies agree; CI would not notice, and neither does the type system.
+Three contracts in this repo exist in more than one file **on purpose**.
+
+Two of them now have a mechanical check: `@felix/test-kit` exports shared behavioral suites that
+`apps/chat-ui` and `apps/float` each run against their own copy, so a divergence in the SSE reader or
+the proxy Worker fails CI. **The wire types are still unguarded** — nothing compares the two
+`types.ts` files, and the type system will not notice.
 
 ## 1. The wire contract — four files
 
