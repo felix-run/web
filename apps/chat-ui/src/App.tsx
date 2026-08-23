@@ -79,13 +79,13 @@ import {
   type ThreadMeta,
   titleFromText,
 } from '@/lib/threads';
+import { closeTool, markToolPhase } from '@/lib/tools';
 import type {
   ChatMessage,
   ImageAttachment,
   PendingApproval,
   PendingUiRequest,
   ThinkingLevel,
-  ToolCall,
   Turn,
 } from '@/types';
 
@@ -425,21 +425,26 @@ export default function App() {
           case 'on_tool_start':
           case 'tool_start': {
             if (verboseRef.current) setInspectorOpen(true);
-            const data = ev.data as { name?: string; input?: unknown };
+            const data = ev.data as { name?: string; input?: unknown; id?: string };
             patch((t) => ({
               ...t,
               tools: [
                 ...(t.tools ?? []),
-                { name: String(data.name ?? 'tool'), input: data.input, done: false },
+                {
+                  name: String(data.name ?? 'tool'),
+                  input: data.input,
+                  done: false,
+                  ...(data.id ? { callId: data.id } : {}),
+                },
               ],
             }));
             break;
           }
           case 'on_tool_end':
           case 'tool_end': {
-            const data = ev.data as { name?: string; output?: unknown };
+            const data = ev.data as { name?: string; output?: unknown; id?: string };
             const name = String(data.name ?? 'tool');
-            patch((t) => ({ ...t, tools: closeTool(t.tools, name, data.output) }));
+            patch((t) => ({ ...t, tools: closeTool(t.tools, name, data.output, data.id) }));
             captureSkills(name, data.output, setSkills);
             break;
           }
@@ -494,6 +499,7 @@ export default function App() {
                   name: `client · ${data.name}`,
                   input: data.args,
                   done: false,
+                  callId: data.id,
                 },
               ],
             }));
@@ -510,7 +516,7 @@ export default function App() {
             });
             patch((t) => ({
               ...t,
-              tools: closeTool(t.tools, `client · ${data.name}`, result.content),
+              tools: closeTool(t.tools, `client · ${data.name}`, result.content, data.id),
             }));
             break;
           }
@@ -522,9 +528,13 @@ export default function App() {
           // Progress either side of a tool call. Without it a long-running tool
           // shows nothing but "running" for its whole duration.
           case 'tool_execution_update': {
-            const { name, status } = ev.data as { name?: string; status?: string };
+            const { name, status, id } = ev.data as {
+              name?: string;
+              status?: string;
+              id?: string;
+            };
             if (!name || !status) break;
-            patch((t) => ({ ...t, tools: markToolPhase(t.tools, name, status) }));
+            patch((t) => ({ ...t, tools: markToolPhase(t.tools, name, status, id) }));
             break;
           }
           // Terminal frame for the turn. It is not what ends the read loop —
@@ -1182,36 +1192,6 @@ export default function App() {
       <AgentSheet open={agentOpen} onOpenChange={setAgentOpen} manifest={manifest} />
     </div>
   );
-}
-
-function closeTool(tools: ToolCall[] | undefined, name: string, output: unknown): ToolCall[] {
-  const next = [...(tools ?? [])];
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].name === name && !next[i].done) {
-      next[i] = { ...next[i], output, done: true };
-      break;
-    }
-  }
-  return next;
-}
-
-/**
- * Record a running tool's latest phase.
- *
- * Correlates on name like `closeTool` does, which is this file's existing
- * approach and carries its weakness: two concurrent calls to one tool are
- * indistinguishable. A phase landing on the wrong one of a matched pair is
- * cosmetic, which is why it is not worth diverging here.
- */
-function markToolPhase(tools: ToolCall[] | undefined, name: string, phase: string): ToolCall[] {
-  const next = [...(tools ?? [])];
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].name === name && !next[i].done) {
-      next[i] = { ...next[i], phase };
-      break;
-    }
-  }
-  return next;
 }
 
 /** Capture a `list_skills` tool result so the Inspector Skills tab can show it. */
