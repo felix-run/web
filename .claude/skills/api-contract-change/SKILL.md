@@ -75,6 +75,9 @@ catalog and the flows each frame belongs to.
    against a live harness (`pnpm chat:dev`, `pnpm float:dev`) and confirm the UI reacts. Use the
    `preflight` skill for the full loop.
 
+   For an SSE change run `pnpm check-protocol-parity`, which fails when a `StreamEvent` arm has no
+   handler in either app — the failure mode the open union arm hides.
+
    For a REST change also run `pnpm check-api-drift`, which diffs every client call site's path and
    verb against `apps/chat-ui/harness-openapi.json`. If the harness gained the route you are calling,
    refresh that snapshot in the same PR — instructions are in `scripts/check-api-drift.mjs`.

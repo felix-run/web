@@ -34,6 +34,7 @@ pnpm format            # biome format --write
 pnpm check-types       # turbo → tsc --noEmit
 pnpm test              # turbo → vitest (cowork-client, chat-ui, float)
 pnpm check-api-drift   # client routes vs the committed harness OpenAPI snapshot
+pnpm check-protocol-parity  # every SSE event arm has a handler in both apps
 pnpm --filter @felix/chat-ui <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 ```
@@ -49,15 +50,24 @@ deliberately-duplicated Workers still agree. React coverage reaches the thread s
 provider, `usePoll`, and the Gate; **the chat surface itself is untested** — `App.tsx`, the composer,
 and the inspector panels are still verified by running them. `.claude/hooks/tests/` covers the hooks.
 
-`pnpm check-api-drift` is the other mechanical guard: it walks the fetch call sites in each client
-and diffs path *and* verb against `apps/chat-ui/harness-openapi.json`, a committed snapshot of the
-harness's `/openapi.json`. It catches a route the harness renamed or dropped; it cannot catch a call
-that hits a real route for the wrong purpose, and it says nothing about payload shapes. Refresh the
-snapshot when the harness gains routes — instructions are in `scripts/check-api-drift.mjs`.
+Two mechanical guards cover the hand-mirrored wire contract.
+
+`pnpm check-api-drift` walks the fetch call sites in each client and diffs path *and* verb against
+`apps/chat-ui/harness-openapi.json`, a committed snapshot of the harness's `/openapi.json`. It
+catches a route the harness renamed or dropped; it cannot catch a call that hits a real route for
+the wrong purpose, and it says nothing about payload shapes. Refresh the snapshot when the harness
+gains routes — instructions are in `scripts/check-api-drift.mjs`.
+
+`pnpm check-protocol-parity` covers the other half: that every `StreamEvent` arm actually reaches a
+handler in both apps. The union ends in an open arm, so an event nobody handles compiles, lints, and
+does nothing — the type system cannot see it. Pre-existing gaps are grandfathered in
+`scripts/protocol-parity-baseline.json` as a one-way ratchet; new gaps fail, and fixing a
+grandfathered one fails until `pnpm check-protocol-parity --update` banks it. It compares event
+*names* only — it cannot tell you a handler is wrong, just that one exists.
 
 CI (`.github/workflows/ci.yml`) is one `verify` job: `pnpm install --frozen-lockfile`, then lint,
-check-types, API drift, build (chat-ui, float, docs), tests, then the hook tests — each step runs
-even if an earlier one fails, so one red run reports everything. Verification of app behavior still
+check-types, API drift, protocol parity, build (chat-ui, float, docs), tests, then the hook tests —
+each step runs even if an earlier one fails, so one red run reports everything. Verification of app behavior still
 means running it against a live harness.
 
 ## Architecture

@@ -39,6 +39,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm check-api-drift
 
+      # `StreamEvent` ends in an open arm, so an event with no handler compiles,
+      # lints, and silently does nothing. The type system cannot catch it.
+      - name: Protocol parity
+        if: ${{ !cancelled() }}
+        run: pnpm check-protocol-parity
+
       # turbo builds every package with a build script: chat-ui, float, and docs.
       - name: Build
         if: ${{ !cancelled() }}

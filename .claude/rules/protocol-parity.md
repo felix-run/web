@@ -14,10 +14,11 @@ paths:
 
 Three contracts in this repo exist in more than one file **on purpose**.
 
-Two of them now have a mechanical check: `@felix/test-kit` exports shared behavioral suites that
-`apps/chat-ui` and `apps/float` each run against their own copy, so a divergence in the SSE reader or
-the proxy Worker fails CI. **The wire types are still unguarded** — nothing compares the two
-`types.ts` files, and the type system will not notice.
+Two of them have a shared behavioral check: `@felix/test-kit` exports suites that `apps/chat-ui` and
+`apps/float` each run against their own copy, so a divergence in the SSE reader or the proxy Worker
+fails CI. A third — that every wire event actually reaches a handler — is checked by
+`pnpm check-protocol-parity`. **What is still unguarded is the two `api.ts` files**: nothing compares
+them, and the type system will not notice.
 
 ## 1. The wire contract — four files
 
@@ -30,6 +31,15 @@ you chose. Full procedure: the `api-contract-change` skill.
 The union ends in `{ event: string; data: Record<string, unknown> }`. A new event arm with no
 matching `switch` case in `App.tsx` **compiles, passes lint, and does nothing at runtime**. Always
 add the handler with the type.
+
+`pnpm check-protocol-parity` now fails CI on exactly that. It reads the union arms out of
+`packages/felix-protocol/src/types.ts` and the branches out of both `App.tsx` files, and reports any
+arm a client ignores — covering both spellings, chat-ui's `switch` and float's if-chain.
+
+Gaps that predate the check are grandfathered in `scripts/protocol-parity-baseline.json`. It is a
+**one-way ratchet**: a new gap fails, and fixing a grandfathered one also fails until you run
+`pnpm check-protocol-parity --update` to bank it. Never hand-edit an entry in to silence a new gap —
+that is the one move the file exists to prevent.
 
 Frames the run blocks on must be answered on every path, including errors and aborts, or the
 conversation hangs with no error shown:

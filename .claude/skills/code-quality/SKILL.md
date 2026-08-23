@@ -32,6 +32,7 @@ pnpm lint            # biome; noExplicitAny and noUnusedVariables are only WARN,
 pnpm check-types     # per-package tsc — strictness differs by tier, see references/dimensions.md
 pnpm test            # vitest: chat-ui, float, cowork-client
 pnpm check-api-drift # client routes vs the committed harness OpenAPI snapshot
+pnpm check-protocol-parity # every SSE event arm has a handler in both apps
 pnpm build           # vite prints per-chunk sizes for both apps — this is the bundle measurement
 git grep -n 'as any\|as unknown as\|@ts-expect-error\|@ts-ignore'
 ```
