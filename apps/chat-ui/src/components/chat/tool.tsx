@@ -32,7 +32,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         ) : (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
             <LoaderIcon className="size-3 animate-spin" />
-            running
+            {tool.phase ?? 'running'}
           </Badge>
         )}
         <ChevronDownIcon

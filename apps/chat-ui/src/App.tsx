@@ -512,6 +512,29 @@ export default function App() {
             if (usage) patch((t) => ({ ...t, usage }));
             break;
           }
+          // Progress either side of a tool call. Without it a long-running tool
+          // shows nothing but "running" for its whole duration.
+          case 'tool_execution_update': {
+            const { name, status } = ev.data as { name?: string; status?: string };
+            if (!name || !status) break;
+            patch((t) => ({ ...t, tools: markToolPhase(t.tools, name, status) }));
+            break;
+          }
+          // Terminal frame for the turn. It is not what ends the read loop —
+          // `readSseStream` returns on the `[DONE]` sentinel — so the useful
+          // part is `final`, which carries the answer when a model produced no
+          // deltas at all, and the chance to settle anything still marked
+          // running before the spinner outlives the run that owned it.
+          case 'done': {
+            const data = ev.data as { final?: { content?: string } };
+            const final = data.final?.content?.trim();
+            patch((t) => ({
+              ...t,
+              content: t.content.trim() ? t.content : (final ?? t.content),
+              tools: (t.tools ?? []).map((tool) => (tool.done ? tool : { ...tool, done: true })),
+            }));
+            break;
+          }
           case 'on_error':
             setError(String((ev.data as { message?: string }).message ?? 'error'));
             break;
@@ -1125,6 +1148,25 @@ function closeTool(tools: ToolCall[] | undefined, name: string, output: unknown)
   for (let i = next.length - 1; i >= 0; i--) {
     if (next[i].name === name && !next[i].done) {
       next[i] = { ...next[i], output, done: true };
+      break;
+    }
+  }
+  return next;
+}
+
+/**
+ * Record a running tool's latest phase.
+ *
+ * Correlates on name like `closeTool` does, which is this file's existing
+ * approach and carries its weakness: two concurrent calls to one tool are
+ * indistinguishable. A phase landing on the wrong one of a matched pair is
+ * cosmetic, which is why it is not worth diverging here.
+ */
+function markToolPhase(tools: ToolCall[] | undefined, name: string, phase: string): ToolCall[] {
+  const next = [...(tools ?? [])];
+  for (let i = next.length - 1; i >= 0; i--) {
+    if (next[i].name === name && !next[i].done) {
+      next[i] = { ...next[i], phase };
       break;
     }
   }
