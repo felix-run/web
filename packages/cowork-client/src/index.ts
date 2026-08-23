@@ -14,10 +14,13 @@ export {
   supportsDirectoryPicker,
 } from './client-tools';
 export {
+  type MountRestore,
   mountList,
   mountMkdir,
   mountRead,
   mountWrite,
   readExisting,
+  reconnectMount,
+  restoreMount,
 } from './fs-mount';
 export { getVfs, VirtualFs } from './vfs';

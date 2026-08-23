@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Browser cowork helpers — VFS, File System Access mount, client tools.",
+  "description": "Browser cowork helpers \u2014 VFS, File System Access mount, client tools.",
   "exports": {
     ".": "./src/index.ts",
     "./vfs": "./src/vfs.ts",
@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@felix/typescript-config": "workspace:*",
+    "fake-indexeddb": "^6.2.5",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

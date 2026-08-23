@@ -1,4 +1,10 @@
-import { type PendingApproval, readExisting, summarizeToolArgs } from '@felix/cowork-client';
+import {
+  type PendingApproval,
+  readExisting,
+  reconnectMount,
+  restoreMount,
+  summarizeToolArgs,
+} from '@felix/cowork-client';
 import { nanoid } from 'nanoid';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -107,6 +113,8 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null);
   const leaseTokenRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Folder remembered from a previous session, waiting on a click to come back. */
+  const [reconnectName, setReconnectName] = useState<string | null>(null);
   const canMount = supportsDirectoryPicker();
 
   const pending = pendingQueue[0] ?? null;
@@ -286,6 +294,24 @@ export default function App() {
     void refreshFiles();
   }, [refreshFiles, mountLabel]);
 
+  // A folder mounted last session may still be usable. Whether it is depends on
+  // a permission that boot cannot ask for — see restoreMount.
+  useEffect(() => {
+    let cancelled = false;
+    void restoreMount().then((result) => {
+      if (cancelled) return;
+      if (result.status === 'restored') {
+        setMountLabel(result.name);
+        toast.message(`Reattached ${result.name}`);
+      } else if (result.status === 'needs-permission') {
+        setReconnectName(result.name);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const push = useCallback((item: TimelineItem) => {
     setTimeline((cur) => [...cur, item]);
   }, []);
@@ -360,6 +386,7 @@ export default function App() {
   const onMount = useCallback(async () => {
     try {
       const name = await pickDirectory();
+      setReconnectName(null);
       setMountLabel(name);
       await refreshFiles();
       toast.success(`Mounted ${name}`);
@@ -373,8 +400,25 @@ export default function App() {
   const onUnmount = useCallback(() => {
     clearMount();
     setMountLabel(null);
+    setReconnectName(null);
     void refreshFiles();
     toast.message('Folder unmounted');
+  }, [refreshFiles]);
+
+  /**
+   * Must stay inside the click handler: the permission prompt is only allowed
+   * to open while the user's gesture is still being processed.
+   */
+  const onReconnect = useCallback(async () => {
+    const name = await reconnectMount();
+    if (!name) {
+      toast.error('Folder access was not granted');
+      return;
+    }
+    setReconnectName(null);
+    setMountLabel(name);
+    await refreshFiles();
+    toast.success(`Reattached ${name}`);
   }, [refreshFiles]);
 
   const handleStreamEvents = useCallback(
@@ -1446,6 +1490,19 @@ export default function App() {
               ) : null}
             </div>
           </div>
+          {reconnectName && !mountLabel ? (
+            <button
+              type="button"
+              className="mt-3 w-full rounded-md border border-primary/50 bg-accent/40 px-3 py-2 text-left text-xs hover:bg-accent/60"
+              onClick={() => void onReconnect()}
+            >
+              <span className="font-medium">Reconnect {reconnectName}</span>
+              <span className="mt-0.5 block text-muted-foreground">
+                Mounted last session. The browser drops folder access on reload — one click gets it
+                back.
+              </span>
+            </button>
+          ) : null}
           <p className="mt-1 text-xs text-muted-foreground">
             {mountLabel
               ? `Using ${mountLabel} via File System Access. Client tools write here.`
