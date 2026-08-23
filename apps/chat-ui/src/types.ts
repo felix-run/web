@@ -152,22 +152,25 @@ export interface Plan {
   updated_at: number;
 }
 
-/** One row from GET /audit/metrics — a (tool, transport, status) rollup. */
+/**
+ * One per-tool rollup row from GET /audit/metrics.
+ *
+ * The harness aggregates `tool_call` audit events by tool name and returns them already
+ * summed and sorted by `calls` descending, so the client does no folding of its own.
+ * `avg_latency_ms` is a true mean (harness-side `latency_ms_sum / calls`), not a
+ * max across buckets.
+ */
 export interface ToolMetricsRow {
-  manifest_id: string;
   tool: string;
-  transport: string;
-  status: string;
-  error_code: string | null;
-  count: number;
-  avg_duration_ms: number | null;
+  calls: number;
+  errors: number;
+  avg_latency_ms: number;
 }
 
-/** GET /audit/metrics response. */
+/** GET /audit/metrics response. `window_since` is the epoch-ms floor the rollup covers. */
 export interface ToolMetrics {
-  since: number;
-  until: number;
-  rows: ToolMetricsRow[];
+  tools: ToolMetricsRow[];
+  window_since: number;
 }
 
 // --- Eval harness (/eval) ---
