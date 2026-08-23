@@ -100,6 +100,27 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
   }
 }
 
+/**
+ * Open a workspace file in a new tab.
+ *
+ * Shared by the `local_open` tool and by clicking a file mention in the
+ * transcript, so the two cannot drift on which source wins or how the object
+ * URL is cleaned up. Reads mount-first, VFS second — the same precedence every
+ * other client tool uses.
+ *
+ * Returns which source answered. Throws when neither has the file.
+ */
+export async function openWorkspaceFile(path: string, vfs: VirtualFs): Promise<'mount' | 'vfs'> {
+  const cleaned = path.replace(/^\//, '');
+  const mounted = hasMount();
+  const text = mounted ? await mountRead(cleaned) : vfs.read(cleaned);
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  window.open(url, '_blank', 'noopener,noreferrer');
+  // Revoking immediately races the new tab's own load.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return mounted ? 'mount' : 'vfs';
+}
+
 /** Wall-clock ceiling for a browser-executed tool. */
 export const DEFAULT_CLIENT_TOOL_TIMEOUT_MS = 30_000;
 
@@ -171,19 +192,8 @@ async function runClientTool(req: ClientToolRequest, vfs: VirtualFs): Promise<Cl
         return { content: JSON.stringify({ opened: target, kind: 'url' }) };
       }
       try {
-        const text = hasMount()
-          ? await mountRead(target.replace(/^\//, ''))
-          : vfs.read(target.replace(/^\//, ''));
-        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank', 'noopener,noreferrer');
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        return {
-          content: JSON.stringify({
-            opened: target,
-            kind: hasMount() ? 'mount' : 'vfs',
-          }),
-        };
+        const kind = await openWorkspaceFile(target, vfs);
+        return { content: JSON.stringify({ opened: target, kind }) };
       } catch (err) {
         return {
           content: `error: ${err instanceof Error ? err.message : String(err)}`,

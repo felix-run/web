@@ -34,11 +34,13 @@ import {
   getMountLabel,
   hasMount,
   mountTree,
+  openWorkspaceFile,
   pickDirectory,
   supportsDirectoryPicker,
   vfs,
 } from '@/lib/client-tools';
 import { composerKeyAction } from '@/lib/composer';
+import { invalidateMentions, useFileMentions } from '@/lib/mentions';
 import { cn } from '@/lib/utils';
 import type { PendingUiRequest, ThinkingLevel, TimelineItem, TokenUsage } from '@/types';
 
@@ -271,6 +273,9 @@ export default function App() {
   }, [timeline, assistantDraft, pendingQueue]);
 
   const refreshFiles = useCallback(async () => {
+    // Called after every tool, which is exactly when the workspace may have
+    // gained the file the assistant is about to name.
+    invalidateMentions();
     try {
       if (hasMount()) {
         setFiles(await mountTree());
@@ -396,6 +401,17 @@ export default function App() {
       }
     }
   }, [refreshFiles]);
+
+  /**
+   * Open a file the assistant named. Failure is ordinary here — the file may
+   * have been deleted since the message was written — so it reports rather
+   * than throwing into the render tree.
+   */
+  const openMentionedFile = useCallback((path: string) => {
+    void openWorkspaceFile(path).catch((err) => {
+      toast.error(`Could not open ${path}: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }, []);
 
   const onUnmount = useCallback(() => {
     clearMount();
@@ -1327,15 +1343,7 @@ export default function App() {
                   </div>
                   {item.body ? (
                     item.kind === 'assistant' ? (
-                      <Suspense
-                        fallback={
-                          <p className="mt-2 whitespace-pre-wrap break-words text-sm">
-                            {item.body}
-                          </p>
-                        }
-                      >
-                        <Response className="mt-2">{item.body}</Response>
-                      </Suspense>
+                      <AssistantBody text={item.body} onOpenFile={openMentionedFile} />
                     ) : (
                       <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
                         {item.body}
@@ -1348,13 +1356,7 @@ export default function App() {
             {assistantDraft ? (
               <article className="rounded-md border border-border px-3 py-2">
                 <h2 className="text-sm font-medium">{background ? 'Background…' : 'Working…'}</h2>
-                <Suspense
-                  fallback={
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm">{assistantDraft}</p>
-                  }
-                >
-                  <Response className="mt-2">{assistantDraft}</Response>
-                </Suspense>
+                <AssistantBody text={assistantDraft} streaming />
               </article>
             ) : null}
             {hasNewBelow ? (
@@ -1514,5 +1516,32 @@ export default function App() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/**
+ * One assistant turn, with the file names it mentions confirmed against the
+ * workspace and turned into links.
+ *
+ * Resolution lives here rather than in `Response` so each turn resolves once,
+ * for its own text, and a turn still streaming skips it entirely — its text is
+ * rewritten on every delta, and half a path resolves to nothing anyway.
+ */
+function AssistantBody({
+  text,
+  streaming = false,
+  onOpenFile,
+}: {
+  text: string;
+  streaming?: boolean;
+  onOpenFile?: (path: string, line?: number) => void;
+}) {
+  const mentions = useFileMentions(text, !streaming && Boolean(onOpenFile));
+  return (
+    <Suspense fallback={<p className="mt-2 whitespace-pre-wrap break-words text-sm">{text}</p>}>
+      <Response className="mt-2" mentions={mentions} onOpenFile={onOpenFile}>
+        {text}
+      </Response>
+    </Suspense>
   );
 }

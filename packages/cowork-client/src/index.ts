@@ -8,11 +8,19 @@ export {
   getMountLabel,
   hasMount,
   mountTree,
+  openWorkspaceFile,
   type PendingApproval,
   pickDirectory,
   summarizeToolArgs,
   supportsDirectoryPicker,
 } from './client-tools';
+export {
+  FileMentionResolver,
+  type MentionMatch,
+  type ResolverSource,
+  workspaceSource,
+} from './file-mention-resolver';
+export { type FileMention, findFileMentions } from './file-mentions';
 export {
   type MountRestore,
   mountList,
