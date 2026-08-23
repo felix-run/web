@@ -26,7 +26,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         <span className="min-w-0 truncate font-medium">{tool.name}</span>
         {tool.done ? (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
-            <CheckCircle2Icon className="size-3 text-emerald-500" />
+            <CheckCircle2Icon className="size-3 text-state-done" />
             done
           </Badge>
         ) : (

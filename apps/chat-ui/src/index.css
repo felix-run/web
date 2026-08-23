@@ -57,6 +57,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-state-blocked: var(--state-blocked);
+  --color-state-done: var(--state-done);
+  --color-state-running: var(--state-running);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
@@ -88,6 +91,12 @@
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
+  /* Run state, and nothing else. Each doubles as text colour and, at /15, as its own
+     surface tint, so both roles come from one value and get verified once.
+     Failure reuses --destructive rather than adding a fourth hue. */
+  --state-blocked: oklch(0.473 0.137 46.201);
+  --state-done: oklch(0.432 0.095 166.913);
+  --state-running: oklch(0.443 0.11 240.79);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
@@ -113,6 +122,9 @@
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
+  --state-blocked: oklch(0.879 0.169 91.605);
+  --state-done: oklch(0.845 0.143 164.978);
+  --state-running: oklch(0.828 0.111 230.318);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);

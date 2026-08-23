@@ -46,17 +46,23 @@ const EVENT_LABEL: Record<string, string> = {
 };
 
 /**
- * Tones for the events worth interrupting a scan for. `tool_call` is deliberately
- * absent: it is the overwhelming majority of the feed, so badging it too would put
- * every row at the same volume and the exceptions would stop reading as exceptions.
+ * Tones for the events worth interrupting a scan for.
+ *
+ * Colour here means run state, not event category. The previous version gave each of
+ * six event types its own hue, which spent the whole colour budget on telling violet
+ * from indigo: neither carries urgency, neither is worth an operator's attention, and
+ * six hues in a 22rem panel is noise. What the reader needs is which events are
+ * waiting on a person and which resolved. The type is already written on the badge.
+ *
+ * `tool_call` is deliberately absent: it is the overwhelming majority of the feed, so
+ * badging it too would put every row at the same volume and the exceptions would stop
+ * reading as exceptions. `judge_score`, `plan_step` and `model_switch` are absent for
+ * the same reason: they are routine, and their labels say what they are.
  */
 const EVENT_TONE: Record<string, string> = {
-  judge_score: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
-  guardrail_block: 'bg-amber-500/15 text-amber-800 dark:text-amber-300',
-  approval_request: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
-  approval_decision: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-  plan_step: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300',
-  model_switch: 'bg-pink-500/15 text-pink-700 dark:text-pink-300',
+  guardrail_block: 'bg-state-blocked/15 text-state-blocked',
+  approval_request: 'bg-state-blocked/15 text-state-blocked',
+  approval_decision: 'bg-state-done/15 text-state-done',
 };
 
 /** Rows rendered per section before the footer starts saying what was left out. */
@@ -239,7 +245,7 @@ function Section({
             className={cn(
               'shrink-0 text-xs tabular-nums',
               metaTone === 'attention'
-                ? 'rounded-full bg-amber-500/20 px-1.5 py-0.5 font-medium text-amber-800 dark:text-amber-300'
+                ? 'rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-medium text-state-blocked'
                 : 'text-muted-foreground',
             )}
           >
@@ -283,27 +289,20 @@ function SectionBody({
     // No sr-only status line here: `role="alert"` is already a live region, and
     // carrying the same text in both makes a screen reader read the failure twice.
     return (
-      <>
-        <div
-          role="alert"
-          className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
-        >
-          <div className="flex items-start gap-2">
-            <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-            <span className="min-w-0 break-words">{error}</span>
-          </div>
-          {onRetry && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 self-start text-xs"
-              onClick={onRetry}
-            >
-              Try again
-            </Button>
-          )}
+      <div
+        role="alert"
+        className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
+      >
+        <div className="flex items-start gap-2">
+          <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+          <span className="min-w-0 break-words">{error}</span>
         </div>
-      </>
+        {onRetry && (
+          <Button size="sm" variant="outline" className="h-7 self-start text-xs" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+      </div>
     );
   }
 
@@ -414,7 +413,7 @@ function StatusDot({ status }: { status: string }) {
     <span
       className={cn(
         'inline-flex items-center gap-1 text-xs capitalize',
-        ok && 'text-emerald-600 dark:text-emerald-400',
+        ok && 'text-state-done',
         bad && 'text-destructive',
         !ok && !bad && 'text-muted-foreground',
       )}
@@ -423,7 +422,7 @@ function StatusDot({ status }: { status: string }) {
         aria-hidden
         className={cn(
           'size-1.5 rounded-full',
-          ok && 'bg-emerald-500',
+          ok && 'bg-state-done',
           bad && 'bg-destructive',
           !ok && !bad && 'bg-muted-foreground/50',
         )}
@@ -541,7 +540,7 @@ function ApprovalsSection({
           {data?.map((a) => (
             <article
               key={a.id}
-              className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2.5 text-xs"
+              className="rounded-lg border border-state-blocked/40 bg-state-blocked/5 p-2.5 text-xs"
             >
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="py-0 font-mono text-xs">
@@ -638,8 +637,8 @@ function safeStringify(value: unknown): string {
 
 const STEP_TONE: Record<PlanStepStatus, string> = {
   pending: 'text-muted-foreground',
-  in_progress: 'text-sky-600 dark:text-sky-400',
-  completed: 'text-emerald-600 dark:text-emerald-400',
+  in_progress: 'text-state-running',
+  completed: 'text-state-done',
   skipped: 'text-muted-foreground line-through',
   failed: 'text-destructive',
 };

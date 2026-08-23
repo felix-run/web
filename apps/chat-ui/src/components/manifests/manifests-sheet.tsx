@@ -106,7 +106,14 @@ export function ManifestsSheet({
               >
                 {r.name}
                 {r.canary_version != null && (r.canary_weight ?? 0) > 0 && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">◆</span>
+                  <span
+                    role="img"
+                    title={`Canary v${r.canary_version} at ${r.canary_weight}%`}
+                    aria-label="has a canary rollout"
+                    className="text-xs text-foreground"
+                  >
+                    ◆
+                  </span>
                 )}
               </Button>
             ))}

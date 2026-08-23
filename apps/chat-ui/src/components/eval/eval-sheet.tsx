@@ -319,9 +319,7 @@ function RunCard({ run }: { run: EvalRun }) {
               <span
                 className={cn(
                   'mt-0.5 font-mono text-xs uppercase',
-                  s.verdict === 'pass'
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-destructive',
+                  s.verdict === 'pass' ? 'text-state-done' : 'text-destructive',
                 )}
               >
                 {s.verdict}
