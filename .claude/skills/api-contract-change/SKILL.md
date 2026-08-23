@@ -1,6 +1,6 @@
 ---
 name: api-contract-change
-description: Procedure for changing the wire contract between the felix-web browser clients and the Python Felix harness — a new or changed SSE event, REST endpoint, request/response field, or header. Use whenever adding an event type, calling a new /api route, changing types.ts or api.ts, or reconciling the clients with a harness change, because the contract is hand-mirrored across four files in two apps.
+description: Procedure for changing the wire contract between the felix-web browser clients and the Python Felix harness — a new or changed SSE event, REST endpoint, request/response field, or header. Use whenever adding an event type, calling a new /api route, editing @felix/protocol or either app's api.ts, or reconciling the clients with a harness change, because the contract is hand-mirrored from a separate repo and the type union hides missing handlers.
 license: MIT
 metadata:
   repo: felix-web
@@ -8,20 +8,25 @@ metadata:
 
 # Changing the client ↔ harness contract
 
-The contract is **hand-mirrored**, duplicated per app, and has a type-level hole that hides mistakes.
-Follow this in order.
+The contract is **hand-mirrored** from a repo that is not this one, and the type union has a hole
+that hides missing handlers. Follow this in order.
 
-## The four files (plus two more)
+## Where the contract lives
 
 | File | Role |
 |---|---|
-| `apps/chat-ui/src/types.ts` | Wire types + the `StreamEvent` union |
-| `apps/chat-ui/src/api.ts` | `apiFetch` wrapper, SSE reader, one function per endpoint |
-| `apps/float/src/types.ts` | Independent copy, usually a subset |
-| `apps/float/src/api.ts` | Independent copy, usually a subset |
+| `packages/felix-protocol/src/types.ts` | **The wire types and the `StreamEvent` union — one copy, both apps** |
+| `packages/felix-protocol/src/stream.ts` | The SSE reader — one copy, both apps |
+| `apps/chat-ui/src/api.ts` | `apiFetch` wrapper + one function per endpoint |
+| `apps/float/src/api.ts` | Same, for the subset float uses |
+| `apps/chat-ui/src/types.ts` | chat-ui-only: `Turn`, management surfaces |
+| `apps/float/src/types.ts` | float-only: `TimelineItem` |
 
 Plus the consumers: `apps/chat-ui/src/App.tsx` and `apps/float/src/App.tsx`, where the `switch` over
 `StreamEvent` lives.
+
+**Do not re-add wire types to an app's `types.ts`.** They were deliberately collapsed into
+`@felix/protocol` after the two copies drifted apart from each other and from the harness.
 
 ## The trap
 
@@ -48,8 +53,9 @@ catalog and the flows each frame belongs to.
    (`thread_id`, `approval_id`, `request_id`); the clients map to `camelCase` at the boundary and
    nowhere else.
 
-2. **Add the typed arm** in `apps/chat-ui/src/types.ts`, above the catch-all arm. Keep fields
-   optional if the harness may omit them.
+2. **Add the typed arm** in `packages/felix-protocol/src/types.ts`, above the catch-all arm. Keep
+   fields optional only if the harness may genuinely omit them — model what you captured in step 1,
+   not what is convenient.
 
 3. **Add the client function** in `api.ts` if it is a REST call. Match the house style: go through
    `apiFetch` (never bare `fetch`), check `res.ok`, throw
@@ -61,15 +67,17 @@ catalog and the flows each frame belongs to.
    - `approval_required` → `POST /approvals/{id}/decide`
    - `ui_request` → `POST /chat/ui`
 
-5. **Decide about float, explicitly.** Then do it or write down why not. The two apps drift only by
-   intent, never by accident:
-   ```bash
-   diff apps/chat-ui/src/types.ts apps/float/src/types.ts
-   ```
+5. **Decide about float, explicitly.** The types are shared, so a new arm reaches float for free —
+   but the *handler* does not. float renders a timeline, not a transcript, so the same frame often
+   wants different UI. Handle it or write down why not; the two apps drift only by intent.
 
 6. **Verify.** `pnpm check-types && pnpm lint` proves nothing about the frame itself — trigger it
    against a live harness (`pnpm chat:dev`, `pnpm float:dev`) and confirm the UI reacts. Use the
    `preflight` skill for the full loop.
+
+   For a REST change also run `pnpm check-api-drift`, which diffs every client call site's path and
+   verb against `apps/chat-ui/harness-openapi.json`. If the harness gained the route you are calling,
+   refresh that snapshot in the same PR — instructions are in `scripts/check-api-drift.mjs`.
 
 7. **Document it** if the change is user-visible or operator-relevant: `apps/docs/src/content/`
    (see the `docs-sync` skill), and `CLAUDE.md` if it changes the architecture description.

@@ -14,7 +14,9 @@ in `packages/ui` (`@felix/ui`).
 | `apps/float` | Workspace float client (`cowork` manifest, client tools, approvals) |
 | `apps/docs` | Starlight docs site (`@felix/docs`) → CF Workers |
 | `packages/ui` | Shared [shadcn/ui](https://ui.shadcn.com/) components |
-| `packages/design` | Design tokens for docs / chrome |
+| `packages/felix-protocol` | The harness wire contract — SSE reader + shared types, used by both apps |
+| `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
+| `packages/design` | Neutral palette + theme-CSS builders (generates the docs theme) |
 | `packages/test-kit` | Shared test suites run against both apps (proxy Worker, SSE reader) |
 | `packages/typescript-config` | Shared `tsconfig` bases |
 
@@ -74,10 +76,24 @@ If `shadcn` pulls in a new dependency that another package already uses, add it 
 
 ## Deploy
 
+Each app's real `wrangler.jsonc` is **gitignored** — copy the example and set
+`vars.FELIX_ORIGIN` to your public harness API (production: `https://api.felix.run`).
+
 ```bash
-# Set apps/chat-ui wrangler vars.FELIX_ORIGIN to your public API
+cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc
+cp apps/float/wrangler.example.jsonc   apps/float/wrangler.jsonc
+
 pnpm chat:deploy
+pnpm float:deploy
 pnpm docs:deploy
+```
+
+The proxy Workers take two secrets, never `vars`: `CHAT_UI_KEY` gates browser clients (the SPA
+sends it as `x-chat-key`; the Worker strips the header before going upstream), and `FELIX_API_KEY`
+is injected upstream as `Authorization: Bearer`.
+
+```bash
+pnpm --filter @felix/chat-ui exec wrangler secret put CHAT_UI_KEY
 ```
 
 ## License

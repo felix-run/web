@@ -2,7 +2,7 @@
   "name": "felix-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Felix web monorepo — chat-ui + docs on Cloudflare Workers for the Python harness. Turborepo + Biome + shared @felix/ui.",
+  "description": "Felix web monorepo \u2014 chat-ui, float, and docs on Cloudflare Workers for the Python harness. Turborepo + Biome + shared @felix/ui.",
   "type": "module",
   "scripts": {
     "build": "turbo run build",
