@@ -58,6 +58,9 @@ export type StreamEvent =
   | { event: 'on_error'; data: { message: string } }
   | { event: 'done'; data: { final?: ChatMessage } }
   | { event: 'aborted'; data: { thread_id?: string } }
+  /** A queued steer / follow-up was drained into the run as a user message. */
+  | { event: 'steer'; data: { content: string } }
+  | { event: 'follow_up'; data: { content: string } }
   | {
       event: 'session_progress';
       data: { phase?: string; reason?: string; [k: string]: unknown };
