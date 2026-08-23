@@ -42,6 +42,7 @@ import {
 } from '@/lib/client-tools';
 import { composerKeyAction } from '@/lib/composer';
 import { hintsByRow, invalidateMentions, useFileMentions } from '@/lib/mentions';
+import { settleRunningTools } from '@/lib/timeline';
 import { cn } from '@/lib/utils';
 import type { PendingUiRequest, ThinkingLevel, TimelineItem, TokenUsage } from '@/types';
 
@@ -56,6 +57,8 @@ const Response = lazy(() =>
 );
 
 const MANIFEST = 'cowork';
+/** How often to ask the harness for approvals while a run is in flight. */
+const APPROVAL_POLL_MS = 2_500;
 /** Distance from the bottom that still counts as "reading the tail". */
 const FOLLOW_SLACK_PX = 80;
 const THREAD_KEY = 'felix.float.threadId';
@@ -113,6 +116,8 @@ export default function App() {
   const draftFrameRef = useRef<number | null>(null);
   /** Harness tool-call id -> timeline row id, so concurrent calls settle correctly. */
   const toolRowsRef = useRef(new Map<string, string>());
+  /** Approval ids already shown or decided, so neither path re-queues one. */
+  const seenApprovalsRef = useRef(new Set<string>());
   const abortRef = useRef<AbortController | null>(null);
   const leaseTokenRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -324,47 +329,66 @@ export default function App() {
     setTimeline((cur) => [...cur, item]);
   }, []);
 
-  // Restore pending approvals after refresh (run may still be waiting).
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const items = await listApprovals('pending');
-        if (cancelled || !items.length) return;
-        const restored: PendingApproval[] = [];
-        for (const item of items) {
-          const args = item.args ?? {};
-          let before: string | null = null;
-          if (item.tool_name === 'write_file' && typeof args.path === 'string') {
-            before = await readExisting(args.path, vfs);
-          }
-          restored.push({
-            approvalId: item.id,
-            toolName: item.tool_name,
-            args,
-            before,
-          });
-        }
-        if (!cancelled) {
-          setPendingQueue(restored);
-          for (const entry of restored) {
-            push({
-              id: nanoid(),
-              kind: 'approval',
-              title: `Needs approval · ${entry.toolName}`,
-              body: summarizeToolArgs(entry.toolName, entry.args),
-              status: 'pending',
-            });
-          }
-        }
-      } catch {
-        // ignore — approvals endpoint may be unavailable offline
+  /**
+   * Adopt any approval the harness is holding that is not already on screen.
+   *
+   * Merging, never replacing: an `approval_required` frame may have queued the
+   * same one already, and a decision in flight must not be resurrected. Ids are
+   * remembered for the life of the thread, so a decided approval cannot come
+   * back if the server briefly still lists it.
+   */
+  const syncApprovals = useCallback(async () => {
+    let items: Awaited<ReturnType<typeof listApprovals>>;
+    try {
+      items = await listApprovals('pending');
+    } catch {
+      return; // endpoint unavailable; the frame path may still deliver
+    }
+    const fresh = items.filter((item) => !seenApprovalsRef.current.has(item.id));
+    if (!fresh.length) return;
+
+    const entries: PendingApproval[] = [];
+    for (const item of fresh) {
+      seenApprovalsRef.current.add(item.id);
+      const args = item.args ?? {};
+      let before: string | null = null;
+      if (item.tool_name === 'write_file' && typeof args.path === 'string') {
+        before = await readExisting(args.path, vfs);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      entries.push({ approvalId: item.id, toolName: item.tool_name, args, before });
+    }
+
+    setPendingQueue((q) => [...q, ...entries]);
+    for (const entry of entries) {
+      push({
+        id: nanoid(),
+        kind: 'approval',
+        title: `Needs approval · ${entry.toolName}`,
+        body: summarizeToolArgs(entry.toolName, entry.args),
+        status: 'pending',
+      });
+    }
   }, [push]);
+
+  // A run may already have been waiting on one before this tab loaded.
+  useEffect(() => {
+    void syncApprovals();
+  }, [syncApprovals]);
+
+  /**
+   * Ask again while a run is live.
+   *
+   * A gated tool blocks the run until it is answered, and the harness does not
+   * always announce it on the stream — leaving the tool row on 'running' and the
+   * run looking hung, with the prompt appearing only after a reload. Polling is
+   * the only way to notice, and it costs one request every few seconds for as
+   * long as a run is actually in flight.
+   */
+  useEffect(() => {
+    if (!streaming) return;
+    const timer = window.setInterval(() => void syncApprovals(), APPROVAL_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [streaming, syncApprovals]);
 
   const stopRun = useCallback(() => {
     void abortChat(threadId).catch(() => {});
@@ -379,6 +403,7 @@ export default function App() {
     setTimeline([]);
     commitDraft('');
     setPendingQueue([]);
+    seenApprovalsRef.current.clear();
     setUiPrompt(null);
     setStreaming(false);
     setBackground(false);
@@ -552,6 +577,8 @@ export default function App() {
           ruleId: data.rule_id,
           before,
         };
+        if (seenApprovalsRef.current.has(data.approval_id)) return;
+        seenApprovalsRef.current.add(data.approval_id);
         setPendingQueue((q) => [...q, entry]);
         push({
           id: nanoid(),
@@ -840,6 +867,11 @@ export default function App() {
         setBackground(false);
         abortRef.current = null;
         setSessionPhase((p) => (p === 'aborted' ? p : 'idle'));
+        // A row still on 'running' never reported back — the run was aborted,
+        // or ended without a matching tool_end. Leaving the spinner up outlives
+        // the run that owned it and reads as work still in progress.
+        toolRowsRef.current.clear();
+        setTimeline(settleRunningTools);
         if (draftRef.current) {
           push({
             id: nanoid(),
@@ -975,6 +1007,7 @@ export default function App() {
       setTimeline([]);
       commitDraft('');
       setPendingQueue([]);
+      seenApprovalsRef.current.clear();
       setUiPrompt(null);
       setSessionPhase(null);
       setSearchQuery('');
