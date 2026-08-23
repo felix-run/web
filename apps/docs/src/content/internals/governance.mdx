@@ -26,12 +26,31 @@ Wrappers return **deny strings** via `deny_output` (never throw) so the model ca
 |---|---|---|
 | **Secret masking** | always | Strip harness credentials from tool output before the model / audit sees them |
 | **Policies** | `spec.policies` | Principal must hold all `required_scopes` for matched tools (glob: exact, `prefix*`, `*`) |
-| **Command screening** | `spec.command_screening` | Pre-call rules on sandbox/container command args |
-| **Content screening** | `spec.content_screening` | Post-call injection classifier on tool results |
+| **Command screening** | `spec.command_screening` | Pre-call rules over every execution-bearing argument — `command`, `cmd`, `code`, `script`, `stdin`, `argv`, `shell_command`, `args` — and, for `sandbox` / `container` transports, every string argument, since there the payload *is* the program |
+| **Content screening** | `spec.content_screening` | Post-call injection classifier on tool results; honours `on_flag` when the screener itself is unavailable |
 | **Limits** | `spec.limits` | Cap tool calls, wall clock, peer hops, input/output tokens (absolute ceilings apply) |
 | **Guardrails** | `spec.guardrails` | PII-style filters on input/output/(final response); redact or block |
 | **LLM judges** | `spec.guardrails.judges` | Score tool (or final) output against criteria; below threshold → deny |
 | **Approvals** | `spec.approvals` | Human gate by call signature; Postgres is system of record |
+
+## When a control cannot run
+
+A control that cannot run has not cleared anything, so unavailability is never treated as a pass.
+
+- **The LLM injection screener** is tri-state: flagged, clean, or *unavailable*. A missing key, an
+  expired credential, a 429, a provider outage, or a reply whose score cannot be parsed all yield
+  unavailable, which honours `content_screening.on_flag` — `block` denies (inbound: `503`),
+  `quarantine` replaces the content — and emits `felix_control_unavailable{control="content_screening"}`.
+  Marker-based screening still runs regardless of model availability.
+- **The PII guardrail** falls back to three regexes (email, US SSN, card-like digit runs) when
+  Presidio or its spaCy model is absent. That fallback is announced at `WARNING` with
+  `felix_control_degraded{control="pii"}`. Only deterministic outcomes are cached — a *transient*
+  engine-init failure retries on next use rather than pinning the process to the regex path.
+- **`guardrails.providers`** is a closed set, so a typo is a compile error rather than a manifest
+  that reports guardrails enabled while applying no wrapper.
+
+Alert on `felix_control_unavailable` and `felix_control_degraded`: both mean a control named in a
+manifest is not the control actually in force.
 
 ## Limits state
 
