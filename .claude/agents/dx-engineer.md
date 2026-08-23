@@ -26,8 +26,9 @@ spec.
 - Onboarding gaps of the "you cannot run it until you know a thing nobody wrote down" kind. Both
   app `wrangler.jsonc` files are gitignored, so check that each app still ships a current
   `wrangler.example.jsonc` and `.dev.vars.example` as its deploy config evolves.
-- No application test suite: CI runs lint, check-types, build, and the hook batteries, but nothing
-  exercises the SPAs or the Workers at runtime.
+- Test coverage stops at `packages/cowork-client` (Vitest, VFS). Nothing exercises the SPAs, the
+  proxy Workers, or the SSE reader — the highest-value gaps are the SSE carry buffer in `api.ts` and
+  the Workers' header/gate handling, both testable as plain functions.
 - `api.ts` and `types.ts` are duplicated between chat-ui and float with no mechanical check that they
   agree; parity is maintained by discipline alone.
 - "Verified" for app code means type-check + lint + build + a manual run against a live harness.
