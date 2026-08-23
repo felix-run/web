@@ -45,13 +45,18 @@ The browser clients hand-mirror the harness's wire format. These are load-bearin
 - **Blocking round trips**: `tool_request` (answered by `POST /chat/tool_result`),
   `approval_required`, and `ui_request` each hold the run open. Changing their ids or payload shape
   breaks both clients.
-- **`x-manifest-variant`** response header (`stable`/`canary`), read by the UI.
+- **The manifest `variant`** (`stable`/`canary`) on `GET /manifests/{name}`. There is no
+  `x-manifest-variant` response header — the clients stopped reading one that was never sent.
+  Canary assignment is a server-side hash, so a client can only learn it from a route that takes
+  the thread id.
 - **`202 + resume_token`** from `POST /chat`, polled at `GET /chat/runs/{token}`.
 - **`snake_case` on the wire.** The clients convert at the boundary.
 
-When you change any of these, name the felix-web files that must change with it —
-`apps/chat-ui/src/{api,types}.ts`, `apps/float/src/{api,types}.ts`, and the `App.tsx` `switch` in
-each app — and use the `api-contract-change` skill to land the client side.
+When you change any of these, name the felix-web files that must change with it — the shared
+`packages/felix-protocol` (wire types and the SSE reader, one copy for both apps), each app's own
+`src/api.ts`, and the `App.tsx` `switch` in each — and use the `api-contract-change` skill to land
+the client side. Route changes also want `apps/chat-ui/harness-openapi.json` refreshed, which
+`pnpm check-api-drift` enforces.
 
 ## Engineering rules
 
