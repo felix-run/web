@@ -1,6 +1,8 @@
 /**
- * Shared behavioral suite for the SSE reader that chat-ui and float each keep
- * their own copy of.
+ * Shared behavioral suite for the SSE reader, which now lives once in
+ * `@felix/protocol`. Both apps still run this suite: it exercises each app's
+ * own `streamChat` wrapper around that one reader (chat-ui takes `{ onEvent }`,
+ * float takes a bare callback), so the second invocation is not redundant.
  *
  * The reader's job is to turn an arbitrarily chunked byte stream into whole
  * `data: <json>` frames. Network chunk boundaries fall wherever they like, so
@@ -142,6 +144,26 @@ export function describeSseReader(label: string, adapter: SseAdapter): void {
         seen.push(event);
       });
       expect(seen).toEqual(['1', '2']);
+    });
+
+    // The reader must not swallow a handler rejection. `tool_request` is
+    // answered by POST /chat/tool_result inside the handler; if that failure is
+    // hidden, no result is posted and the run hangs forever with nothing shown.
+    it('lets a handler rejection propagate instead of swallowing it', async () => {
+      stubFetch(
+        streamResponse([frame({ event: '1', data: {} }), frame({ event: '2', data: {} })], {
+          status: 200,
+        }),
+      );
+      const seen: string[] = [];
+      await expect(
+        adapter.run(async (e) => {
+          seen.push((e as { event: string }).event);
+          throw new Error('handler exploded');
+        }),
+      ).rejects.toThrow(/handler exploded/);
+      // And it stops there rather than draining the rest of the stream.
+      expect(seen).toEqual(['1']);
     });
 
     it('throws with the status when the response is not ok', async () => {
