@@ -1,6 +1,6 @@
 import { type PendingApproval, readExisting, summarizeToolArgs } from '@felix/cowork-client';
 import { nanoid } from 'nanoid';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   abortChat,
@@ -20,6 +20,8 @@ import {
   steerChat,
   streamChat,
 } from '@/api';
+import { CopyButton } from '@/components/chat/copy-button';
+import { ToolCard } from '@/components/chat/tool-card';
 import {
   clearMount,
   executeClientTool,
@@ -33,6 +35,16 @@ import {
 import { composerKeyAction } from '@/lib/composer';
 import { cn } from '@/lib/utils';
 import type { PendingUiRequest, ThinkingLevel, TimelineItem, TokenUsage } from '@/types';
+
+/**
+ * The markdown renderer pulls in syntax highlighting, math, and diagram
+ * support — together several times the weight of the rest of float. Loading it
+ * with the first assistant message keeps that off the critical path; until then
+ * the raw text shows, which is what float displayed before it existed.
+ */
+const Response = lazy(() =>
+  import('@/components/chat/response').then((m) => ({ default: m.Response })),
+);
 
 const MANIFEST = 'cowork';
 /** Distance from the bottom that still counts as "reading the tail". */
@@ -1047,7 +1059,7 @@ export default function App() {
       </div>
 
       {pending ? (
-        <div className="rounded-lg border border-primary/40 bg-accent/50 p-4 shadow-sm">
+        <div className="relative z-10 rounded-lg border border-primary/40 bg-accent/50 p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -1105,7 +1117,7 @@ export default function App() {
       ) : null}
 
       {uiPrompt ? (
-        <div className="rounded-lg border border-primary/40 bg-accent/50 p-4 shadow-sm">
+        <div className="relative z-10 rounded-lg border border-primary/40 bg-accent/50 p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {uiPrompt.kind === 'confirm'
               ? 'Confirm'
@@ -1204,7 +1216,16 @@ export default function App() {
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[1.4fr_0.9fr]">
+      {/*
+        `isolate` is load-bearing, not cosmetic. Assistant output is rendered as
+        markup now, so the model can emit positioned, stacked elements — and a
+        fake approval prompt drawn over the real one is the attack that buys
+        something. A stacking context here confines every z-index below it,
+        including `position: fixed`, so the banners above (which sit at z-10 in
+        this context) cannot be painted over. Raising the banners' z-index
+        instead would only start a bidding war the model can rejoin.
+      */}
+      <div className="isolate grid min-h-0 flex-1 gap-4 md:grid-cols-[1.4fr_0.9fr]">
         <section className="flex min-h-0 flex-col rounded-lg border border-border bg-card shadow-sm">
           <div
             ref={scrollRef}
@@ -1217,48 +1238,79 @@ export default function App() {
                 {canMount ? ' Mount a real folder to write outside the tab VFS.' : ''}
               </div>
             ) : null}
-            {timeline.map((item) => (
-              <article
-                key={item.id}
-                className={cn(
-                  'rounded-md border border-border px-3 py-2',
-                  item.kind === 'user' && 'bg-accent/40',
-                  item.kind === 'approval' && item.status === 'pending' && 'border-primary/50',
-                  item.status === 'error' && 'border-destructive/40',
-                  item.status === 'denied' && 'opacity-70',
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-medium">{item.title}</h2>
-                  <div className="flex items-center gap-2">
-                    {item.eventId && !streaming ? (
-                      <button
-                        type="button"
-                        className="text-[11px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
-                        onClick={() => rewindTo(item.eventId!)}
-                        title="Rewind to this message"
-                      >
-                        Rewind
-                      </button>
-                    ) : null}
-                    {item.status ? (
-                      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                        {item.phase && item.status === 'running' ? item.phase : item.status}
-                      </span>
-                    ) : null}
+            {timeline.map((item) =>
+              item.kind === 'tool' ? (
+                <ToolCard
+                  key={item.id}
+                  item={item}
+                  action={item.body ? <CopyButton text={item.body} label="Copy output" /> : null}
+                />
+              ) : (
+                <article
+                  key={item.id}
+                  className={cn(
+                    'group rounded-md border border-border px-3 py-2',
+                    item.kind === 'user' && 'bg-accent/40',
+                    item.kind === 'approval' && item.status === 'pending' && 'border-primary/50',
+                    item.status === 'error' && 'border-destructive/40',
+                    item.status === 'denied' && 'opacity-70',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-medium">{item.title}</h2>
+                    <div className="flex items-center gap-2">
+                      {item.body ? (
+                        <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                          <CopyButton text={item.body} />
+                        </span>
+                      ) : null}
+                      {item.eventId && !streaming ? (
+                        <button
+                          type="button"
+                          className="text-[11px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                          onClick={() => rewindTo(item.eventId!)}
+                          title="Rewind to this message"
+                        >
+                          Rewind
+                        </button>
+                      ) : null}
+                      {item.status ? (
+                        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          {item.status}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-                {item.body ? (
-                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
-                    {item.body}
-                  </pre>
-                ) : null}
-              </article>
-            ))}
+                  {item.body ? (
+                    item.kind === 'assistant' ? (
+                      <Suspense
+                        fallback={
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm">
+                            {item.body}
+                          </p>
+                        }
+                      >
+                        <Response className="mt-2">{item.body}</Response>
+                      </Suspense>
+                    ) : (
+                      <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
+                        {item.body}
+                      </pre>
+                    )
+                  ) : null}
+                </article>
+              ),
+            )}
             {assistantDraft ? (
               <article className="rounded-md border border-border px-3 py-2">
                 <h2 className="text-sm font-medium">{background ? 'Background…' : 'Working…'}</h2>
-                <pre className="mt-2 whitespace-pre-wrap break-words text-sm">{assistantDraft}</pre>
+                <Suspense
+                  fallback={
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm">{assistantDraft}</p>
+                  }
+                >
+                  <Response className="mt-2">{assistantDraft}</Response>
+                </Suspense>
               </article>
             ) : null}
             {hasNewBelow ? (
