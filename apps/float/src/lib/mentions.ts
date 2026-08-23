@@ -20,6 +20,27 @@ export function invalidateMentions(): void {
   resolver.invalidate();
 }
 
+/** How many recently-named paths stay available as hints. */
+export const HINT_LIMIT = 200;
+
+/**
+ * The paths known at each point in a transcript.
+ *
+ * Entry `i` holds what the agent had already named *before* row `i`. The cutoff
+ * is the point: a path from a later tool call must not reach back and claim an
+ * earlier mention, or "see foo.md" resolves to a file that did not exist when
+ * it was written.
+ */
+export function hintsByRow(rows: ReadonlyArray<{ paths?: string[] }>): string[][] {
+  const out: string[][] = [];
+  let known: string[] = [];
+  for (const row of rows) {
+    out.push(known);
+    if (row.paths?.length) known = [...known, ...row.paths].slice(-HINT_LIMIT);
+  }
+  return out;
+}
+
 /** Confirmed mentions for one message: the raw text -> the path it opens. */
 export type ResolvedMentions = ReadonlyMap<string, string>;
 
@@ -31,8 +52,15 @@ const EMPTY: ResolvedMentions = new Map();
  * Disabled for a message still streaming: it is rewritten on every delta, and
  * half a path resolves to nothing anyway. Links land with the finished message.
  */
-export function useFileMentions(text: string, enabled: boolean): ResolvedMentions {
+export function useFileMentions(
+  text: string,
+  enabled: boolean,
+  hints: readonly string[] = [],
+): ResolvedMentions {
   const [resolved, setResolved] = useState<ResolvedMentions>(EMPTY);
+  // Hints are rebuilt on every render, so depend on their content rather than
+  // the array identity or the effect never settles.
+  const hintKey = hints.join('\n');
 
   useEffect(() => {
     if (!enabled || !text) {
@@ -49,7 +77,7 @@ export function useFileMentions(text: string, enabled: boolean): ResolvedMention
 
     let cancelled = false;
     const queries = [...new Set(found.map((m) => m.path))];
-    void resolver.resolveAll(queries).then((results) => {
+    void resolver.resolveAll(queries, hintKey ? hintKey.split('\n') : []).then((results) => {
       if (cancelled) return;
       const map = new Map<string, string>();
       results.forEach((result, i) => {
@@ -62,7 +90,7 @@ export function useFileMentions(text: string, enabled: boolean): ResolvedMention
     return () => {
       cancelled = true;
     };
-  }, [text, enabled]);
+  }, [text, enabled, hintKey]);
 
   return resolved;
 }

@@ -146,24 +146,29 @@ export class FileMentionResolver {
       const normalized = normalizeQuery(query);
       if (!normalized) return { query, matches: [] };
 
-      const found = new Set<string>();
-
       // A hint is a path the agent demonstrably just touched, so it outranks
-      // anything the index happens to hold under the same name.
+      // anything the index happens to hold under the same name — kept in its
+      // own bucket, because the depth ordering that is right for index matches
+      // would otherwise bury a deep path the agent literally just wrote.
+      const hinted = new Set<string>();
       for (const hint of hints) {
-        if (matchesSuffix(hint, normalized)) found.add(hint);
+        if (matchesSuffix(hint, normalized)) hinted.add(hint);
       }
 
+      const indexed = new Set<string>();
       const exact = index.byName.get(normalized);
-      if (exact) for (const p of exact) found.add(p);
-
+      if (exact) for (const p of exact) indexed.add(p);
       if (normalized.includes('/')) {
         for (const p of index.files) {
-          if (matchesSuffix(p, normalized)) found.add(p);
+          if (matchesSuffix(p, normalized)) indexed.add(p);
         }
       }
+      for (const p of hinted) indexed.delete(p);
 
-      return { query, matches: [...found].sort(byPreference) };
+      return {
+        query,
+        matches: [...[...hinted].sort(byPreference), ...[...indexed].sort(byPreference)],
+      };
     });
   }
 }

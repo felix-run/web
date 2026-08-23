@@ -1,4 +1,5 @@
 import {
+  collectToolCallPaths,
   type PendingApproval,
   readExisting,
   reconnectMount,
@@ -40,7 +41,7 @@ import {
   vfs,
 } from '@/lib/client-tools';
 import { composerKeyAction } from '@/lib/composer';
-import { invalidateMentions, useFileMentions } from '@/lib/mentions';
+import { hintsByRow, invalidateMentions, useFileMentions } from '@/lib/mentions';
 import { cn } from '@/lib/utils';
 import type { PendingUiRequest, ThinkingLevel, TimelineItem, TokenUsage } from '@/types';
 
@@ -120,6 +121,8 @@ export default function App() {
   const canMount = supportsDirectoryPicker();
 
   const pending = pendingQueue[0] ?? null;
+
+  const rowHints = useMemo(() => hintsByRow(timeline), [timeline]);
 
   useEffect(() => {
     localStorage.setItem(THREAD_KEY, threadId);
@@ -473,6 +476,7 @@ export default function App() {
           title: String(data.name ?? 'tool'),
           body: JSON.stringify(data.input ?? {}, null, 2),
           status: 'running',
+          paths: collectToolCallPaths(data.input),
         });
         return;
       }
@@ -555,6 +559,7 @@ export default function App() {
           title: `Needs approval · ${data.tool_name}`,
           body: summarizeToolArgs(data.tool_name, args),
           status: 'pending',
+          paths: collectToolCallPaths(args),
         });
         return;
       }
@@ -578,6 +583,7 @@ export default function App() {
           title: `client · ${data.name}`,
           body: JSON.stringify(data.args ?? {}, null, 2),
           status: 'running',
+          paths: collectToolCallPaths(data.args),
         });
 
         let result: { content: string; error?: boolean };
@@ -1298,7 +1304,7 @@ export default function App() {
                 {canMount ? ' Mount a real folder to write outside the tab VFS.' : ''}
               </div>
             ) : null}
-            {timeline.map((item) =>
+            {timeline.map((item, index) =>
               item.kind === 'tool' ? (
                 <ToolCard
                   key={item.id}
@@ -1343,7 +1349,11 @@ export default function App() {
                   </div>
                   {item.body ? (
                     item.kind === 'assistant' ? (
-                      <AssistantBody text={item.body} onOpenFile={openMentionedFile} />
+                      <AssistantBody
+                        text={item.body}
+                        hints={rowHints[index]}
+                        onOpenFile={openMentionedFile}
+                      />
                     ) : (
                       <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
                         {item.body}
@@ -1530,13 +1540,15 @@ export default function App() {
 function AssistantBody({
   text,
   streaming = false,
+  hints,
   onOpenFile,
 }: {
   text: string;
   streaming?: boolean;
+  hints?: string[];
   onOpenFile?: (path: string, line?: number) => void;
 }) {
-  const mentions = useFileMentions(text, !streaming && Boolean(onOpenFile));
+  const mentions = useFileMentions(text, !streaming && Boolean(onOpenFile), hints);
   return (
     <Suspense fallback={<p className="mt-2 whitespace-pre-wrap break-words text-sm">{text}</p>}>
       <Response className="mt-2" mentions={mentions} onOpenFile={onOpenFile}>
