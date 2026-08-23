@@ -19,6 +19,14 @@ import type { StreamEvent } from './types';
  * Returns when the stream ends or `[DONE]` arrives. Unparseable frames are
  * skipped rather than tearing down the run — a single malformed frame should
  * not cost the user the rest of a reply.
+ *
+ * A rejection from `onEvent` is NOT swallowed: it propagates out of this
+ * function. The frames the model loop blocks on — `tool_request` above all —
+ * are answered by an HTTP round trip inside the handler, and a swallowed
+ * failure there means the result is never posted and the run hangs forever
+ * with nothing shown to the user. A torn-down stream is a far better outcome
+ * than an invisible deadlock, so handlers must guard whatever they consider
+ * cosmetic themselves.
  */
 export async function readSseStream(
   res: Response,
@@ -47,11 +55,14 @@ export async function readSseStream(
       const payload = line.slice('data:'.length).trim();
       if (payload === '[DONE]') return;
 
+      let event: StreamEvent;
       try {
-        await onEvent(JSON.parse(payload) as StreamEvent);
+        event = JSON.parse(payload) as StreamEvent;
       } catch {
-        // Ignore unparseable frames rather than tearing down the stream.
+        // Ignore an unparseable frame rather than tearing down the stream.
+        continue;
       }
+      await onEvent(event);
     }
   }
 }

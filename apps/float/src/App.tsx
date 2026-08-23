@@ -190,10 +190,22 @@ export default function App() {
   }, [timeline, assistantDraft, pendingQueue]);
 
   const refreshFiles = useCallback(async () => {
-    if (hasMount()) {
-      setFiles(await mountTree());
-    } else {
-      setFiles(vfs.tree());
+    try {
+      if (hasMount()) {
+        setFiles(await mountTree());
+      } else {
+        setFiles(vfs.tree());
+      }
+    } catch {
+      // mountTree walks the File System Access handle with no guard of its own,
+      // so it rejects once a permission grant lapses or the mounted folder is
+      // moved or deleted. The file strip is cosmetic: leaving it stale is
+      // always better than the alternatives. This is awaited inside the
+      // tool_end and tool_request handlers, and readSseStream no longer
+      // swallows handler rejections, so without this a stale mount would tear
+      // down the stream on the first tool call. The `void refreshFiles()` call
+      // sites relied on the same swallow and would otherwise leak an unhandled
+      // rejection.
     }
   }, []);
 
