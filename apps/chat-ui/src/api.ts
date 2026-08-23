@@ -41,7 +41,6 @@ import type {
   ThreadHistory,
   ToolMetrics,
   UsageEvent,
-  Variant,
 } from './types';
 
 /**
@@ -67,8 +66,6 @@ export async function listManifests(signal?: AbortSignal): Promise<string[]> {
 }
 
 export interface StreamHandlers {
-  /** Header arrived; carries the resolved manifest variant (stable/canary). */
-  onVariant?: (variant: Variant) => void;
   onEvent: (event: StreamEvent) => void | Promise<void>;
 }
 
@@ -101,12 +98,6 @@ export async function streamChat(args: StreamArgs, handlers: StreamHandlers): Pr
     const detail = await res.text().catch(() => '');
     throw new Error(`chat/stream: ${res.status} ${detail.slice(0, 200)}`);
   }
-
-  // Reported when a canary rollout is in flight. The current harness does not
-  // send this header, so the badge stays dark; kept because the resolved
-  // variant is real and may yet be surfaced here.
-  const variant = res.headers.get('x-manifest-variant');
-  if (variant === 'stable' || variant === 'canary') handlers.onVariant?.(variant);
 
   await readSseStream(res, handlers.onEvent);
 }

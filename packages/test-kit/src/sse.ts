@@ -15,8 +15,6 @@ import { describe, expect, it, vi } from 'vitest';
 export interface SseAdapter {
   /** Invoke the app's streamChat, collecting every event it dispatches. */
   run(collect: (event: unknown) => void | Promise<void>): Promise<void>;
-  /** Set when the implementation reports the x-manifest-variant header. */
-  runWithVariant?(collect: (variant: string) => void): Promise<void>;
 }
 
 /** A Response whose body yields exactly these chunks, in order. */
@@ -150,36 +148,5 @@ export function describeSseReader(label: string, adapter: SseAdapter): void {
       stubFetch(new Response('upstream exploded', { status: 502 }));
       await expect(adapter.run(() => {})).rejects.toThrow(/502/);
     });
-
-    if (adapter.runWithVariant) {
-      const withVariant = adapter.runWithVariant;
-
-      it('reports a stable manifest variant', async () => {
-        stubFetch(
-          streamResponse(['data: [DONE]\n\n'], { headers: { 'x-manifest-variant': 'stable' } }),
-        );
-        const seen: string[] = [];
-        await withVariant((v) => seen.push(v));
-        expect(seen).toEqual(['stable']);
-      });
-
-      it('reports a canary manifest variant', async () => {
-        stubFetch(
-          streamResponse(['data: [DONE]\n\n'], { headers: { 'x-manifest-variant': 'canary' } }),
-        );
-        const seen: string[] = [];
-        await withVariant((v) => seen.push(v));
-        expect(seen).toEqual(['canary']);
-      });
-
-      it('ignores an absent or unrecognized variant header', async () => {
-        stubFetch(
-          streamResponse(['data: [DONE]\n\n'], { headers: { 'x-manifest-variant': 'weird' } }),
-        );
-        const seen: string[] = [];
-        await withVariant((v) => seen.push(v));
-        expect(seen).toEqual([]);
-      });
-    }
   });
 }

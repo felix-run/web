@@ -5,6 +5,4 @@ const args = { manifest: 'cowork', messages: [{ role: 'user' as const, content: 
 
 describeSseReader('chat-ui', {
   run: (collect) => streamChat(args, { onEvent: collect }),
-  runWithVariant: (collect) =>
-    streamChat(args, { onEvent: () => {}, onVariant: (v) => collect(v) }),
 });
