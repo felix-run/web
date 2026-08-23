@@ -23,15 +23,15 @@ sweep looks in the right place instead of grepping the whole tree.
 
 ## 2. Test quality and coverage
 
-- Three configs: `apps/chat-ui/vitest.config.ts`, `apps/float/vitest.config.ts`,
-  `packages/cowork-client/vitest.config.ts`. No root config, no coverage tool.
-- Shared behavior lives in `packages/test-kit/src/proxy-worker.ts` and `packages/test-kit/src/sse.ts`
-  and is invoked from **both** apps — `apps/chat-ui/tests/sse.test.ts` and the float twin. This is
-  the only mechanical check that the duplicated Workers agree; a new shared behavior that is tested
-  in only one app has quietly given that guarantee up.
+- Two configs: `apps/chat-ui/vitest.config.ts` and `packages/cowork-client/vitest.config.ts`. No
+  root config, no coverage tool.
+- Contract-level behavior lives in `packages/test-kit/src/proxy-worker.ts` and
+  `packages/test-kit/src/sse.ts`, invoked from `apps/chat-ui/tests/`. The suites are parameterized
+  on an injected implementation, which is what lets the contract be stated independently of its
+  caller — see `apps/chat-ui/tests/sse.test.ts`.
 - Covered today: the VFS, the SSE reader, the proxy Worker, and chat-ui's thread store, theme
-  provider, `usePoll`, and Gate. **Uncovered: `App.tsx`, the composer, the inspector panels** — and
-  float has no React tests at all.
+  provider, `usePoll`, presence, and Gate. **Uncovered: `App.tsx`, the composer, the inspector
+  panels.**
 - Coverage questions to ask of an existing suite: does it assert what a user observes, or which
   setter ran; would its failure name the defect; does it pin an error path as well as a happy path.
 
@@ -42,7 +42,7 @@ sweep looks in the right place instead of grepping the whole tree.
   code as a clean bill.
 - Strictness is not uniform, and code moving between tiers can lose a guarantee:
 
-  | Flag | root / `packages/*` | `apps/chat-ui`, `apps/float` |
+  | Flag | root / `packages/*` | `apps/chat-ui` |
   |---|---|---|
   | `strict` | on | on |
   | `noUncheckedIndexedAccess` | **on** | **off** |
@@ -54,10 +54,10 @@ sweep looks in the right place instead of grepping the whole tree.
   do it inside a quality sweep.
 - `StreamEvent` in `packages/felix-protocol/src/types.ts` ends in an open `{ event: string; … }`
   arm. A new frame type compiles with no handler and silently does nothing, so "the types pass" says
-  nothing about SSE completeness. Cross-check the arms against the `switch` in each app's `App.tsx`.
+  nothing about SSE completeness. Cross-check the arms against the `switch` in `App.tsx`.
 - Widening a shared package's surface is a commitment: the `exports` map **and** the `paths` block
-  in `apps/chat-ui/tsconfig.json` and `apps/float/tsconfig.json` all have to change. A helper only
-  one app uses does not belong in a shared package.
+  in `apps/chat-ui/tsconfig.json` both have to change. A helper with a single call site does not
+  belong in a shared package.
 
 ## 4. Dependency and bundle hygiene
 
@@ -70,6 +70,6 @@ sweep looks in the right place instead of grepping the whole tree.
   the catalog only when a second package takes it.
 - Unused dependencies: for each entry in a manifest's `dependencies`, `git grep` the package name
   in that workspace's `src/`. Nothing checks this automatically.
-- Bundle: `pnpm build` prints per-chunk sizes for chat-ui and float. Compare against the same build
+- Bundle: `pnpm build` prints per-chunk sizes for chat-ui. Compare against the same build
   on `main` rather than judging an absolute number, and attribute growth to a specific import — a
   new dependency pulled into the initial chunk is the usual cause.

@@ -11,13 +11,12 @@ in `packages/ui` (`@felix/ui`).
 | Path | Role |
 |------|------|
 | `apps/chat-ui` | Streaming chat + inspector (Vite → CF Workers) |
-| `apps/float` | Workspace float client (`cowork` manifest, client tools, approvals) |
 | `apps/docs` | Starlight docs site (`@felix/docs`) → CF Workers |
 | `packages/ui` | Shared [shadcn/ui](https://ui.shadcn.com/) components |
-| `packages/felix-protocol` | The harness wire contract — SSE reader + shared types, used by both apps |
+| `packages/felix-protocol` | The harness wire contract — SSE reader + shared types |
 | `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
 | `packages/design` | Neutral palette + theme-CSS builders (generates the docs theme) |
-| `packages/test-kit` | Shared test suites run against both apps (proxy Worker, SSE reader) |
+| `packages/test-kit` | Reusable behavioral suites (proxy Worker contract, SSE reader) |
 | `packages/typescript-config` | Shared `tsconfig` bases |
 
 ## Commands
@@ -25,7 +24,6 @@ in `packages/ui` (`@felix/ui`).
 ```bash
 pnpm install
 pnpm chat:dev          # Vite → proxies /api to Python Felix :8080
-pnpm float:dev         # Float client on :5174 → same /api proxy
 pnpm docs:dev
 pnpm build             # turbo run build
 pnpm lint              # turbo → biome
@@ -81,10 +79,8 @@ Each app's real `wrangler.jsonc` is **gitignored** — copy the example and set
 
 ```bash
 cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc
-cp apps/float/wrangler.example.jsonc   apps/float/wrangler.jsonc
 
 pnpm chat:deploy
-pnpm float:deploy
 pnpm docs:deploy
 ```
 

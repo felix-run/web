@@ -15,18 +15,15 @@ that hides missing handlers. Follow this in order.
 
 | File | Role |
 |---|---|
-| `packages/felix-protocol/src/types.ts` | **The wire types and the `StreamEvent` union — one copy, both apps** |
-| `packages/felix-protocol/src/stream.ts` | The SSE reader — one copy, both apps |
+| `packages/felix-protocol/src/types.ts` | **The wire types and the `StreamEvent` union** |
+| `packages/felix-protocol/src/stream.ts` | The SSE reader |
 | `apps/chat-ui/src/api.ts` | `apiFetch` wrapper + one function per endpoint |
-| `apps/float/src/api.ts` | Same, for the subset float uses |
 | `apps/chat-ui/src/types.ts` | chat-ui-only: `Turn`, management surfaces |
-| `apps/float/src/types.ts` | float-only: `TimelineItem` |
 
-Plus the consumers: `apps/chat-ui/src/App.tsx` and `apps/float/src/App.tsx`, where the `switch` over
-`StreamEvent` lives.
+Plus the consumer: `apps/chat-ui/src/App.tsx`, where the `switch` over `StreamEvent` lives.
 
-**Do not re-add wire types to an app's `types.ts`.** They were deliberately collapsed into
-`@felix/protocol` after the two copies drifted apart from each other and from the harness.
+**Do not re-add wire types to the app's `types.ts`.** They were deliberately collapsed into
+`@felix/protocol` after duplicate copies drifted apart from each other and from the harness.
 
 ## The trap
 
@@ -67,13 +64,13 @@ catalog and the flows each frame belongs to.
    - `approval_required` → `POST /approvals/{id}/decide`
    - `ui_request` → `POST /chat/ui`
 
-5. **Decide about float, explicitly.** The types are shared, so a new arm reaches float for free —
-   but the *handler* does not. float renders a timeline, not a transcript, so the same frame often
-   wants different UI. Handle it or write down why not; the two apps drift only by intent.
+5. **Decide about the unattended path.** A frame the run blocks on has to reach an operator who is
+   not looking: a durable run carries no frames at all, so anything blocking needs a `/approvals`-style
+   poll and a `setPresence('blocked')` (`src/lib/presence.ts`), not just a banner.
 
 6. **Verify.** `pnpm check-types && pnpm lint` proves nothing about the frame itself — trigger it
-   against a live harness (`pnpm chat:dev`, `pnpm float:dev`) and confirm the UI reacts. Use the
-   `preflight` skill for the full loop.
+   against a live harness (`pnpm chat:dev`) and confirm the UI reacts. Use the `preflight` skill for
+   the full loop.
 
    For an SSE change run `pnpm check-protocol-parity`, which fails when a `StreamEvent` arm has no
    handler in either app — the failure mode the open union arm hides.

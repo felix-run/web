@@ -30,7 +30,7 @@ type checker, test layout and runner, line length, Python version. Run the proje
 do not invent `make test` if the repo doesn't have it.
 
 Local dev, as referenced from this repo: `make up && make migrate` brings the harness up on
-`:8080`, which is what `pnpm chat:dev` and `pnpm float:dev` proxy to.
+`:8080`, which is what `pnpm chat:dev` proxies to.
 
 ## The contract you must not break casually
 

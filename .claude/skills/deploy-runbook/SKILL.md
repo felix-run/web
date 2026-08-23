@@ -1,10 +1,10 @@
 ---
 name: deploy-runbook
-description: Deploy a felix-web Worker (chat-ui, float, or docs) to Cloudflare — prerequisites, secrets, the deploy command, and post-deploy verification. Invoke manually with /deploy-runbook when you intend to ship; deploys and secret writes are ask-gated and must never be triggered automatically.
+description: Deploy a felix-web Worker (chat-ui or docs) to Cloudflare — prerequisites, secrets, the deploy command, and post-deploy verification. Invoke manually with /deploy-runbook when you intend to ship; deploys and secret writes are ask-gated and must never be triggered automatically.
 license: MIT
 compatibility: Requires wrangler, a Cloudflare account with access to the felix.run zone, and network access
 disable-model-invocation: true
-argument-hint: "[chat-ui|float|docs]"
+argument-hint: "[chat-ui|docs]"
 metadata:
   repo: felix-web
 ---
@@ -21,7 +21,6 @@ around it.
 | App | Script | Route |
 |---|---|---|
 | `@felix/chat-ui` | `pnpm chat:deploy` | `chat.felix.run` |
-| `@felix/float` | `pnpm float:deploy` | `float.felix.run` |
 | `@felix/docs` | `pnpm docs:deploy` | `docs.felix.run` |
 
 Each `*:deploy` script is `pnpm build && wrangler deploy` inside that package.
@@ -31,11 +30,10 @@ Each `*:deploy` script is `pnpm build && wrangler deploy` inside that package.
 - On a branch, with the change **merged to `main`** — `main` is the deploy source. Deploying an
   unmerged branch is a deliberate exception the user has to state.
 - `pnpm check-types && pnpm lint && pnpm build` clean (the `preflight` skill).
-- The config file exists. **Both app `wrangler.jsonc` files are gitignored**, so a fresh clone has
-  neither — copy the tracked example next to it:
+- The config file exists. **`apps/chat-ui/wrangler.jsonc` is gitignored**, so a fresh clone has
+  none — copy the tracked example next to it:
   ```bash
   cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc
-  cp apps/float/wrangler.example.jsonc   apps/float/wrangler.jsonc
   ```
   `apps/docs/wrangler.jsonc` is tracked and needs nothing.
 
@@ -57,7 +55,7 @@ Say so before rotating.
 ## 3. Deploy
 
 ```bash
-pnpm chat:deploy     # or float:deploy / docs:deploy
+pnpm chat:deploy     # or docs:deploy
 ```
 
 ## 4. Verify — actually check, don't assume

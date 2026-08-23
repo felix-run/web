@@ -41,9 +41,9 @@ See also [.claude/rules/git-workflow.md](../../rules/git-workflow.md).
    number* of feature-scoped PRs, not dozens of tiny ones. Don't batch *unrelated* features
    together, and never stack. Reserve a one-fix PR for a genuinely isolated one-off change.
 
-2. **Work + verify** on the branch. This monorepo is the chat-ui, float, and docs Workers only —
+2. **Work + verify** on the branch. This monorepo is the chat-ui and docs Workers only —
    the runtime is [felix-run/felix](https://github.com/felix-run/felix) (Python). Prefer the package
-   under change: `pnpm --filter @felix/chat-ui …` / `@felix/float` / `@felix/docs`, or root scripts
+   under change: `pnpm --filter @felix/chat-ui …` / `@felix/docs`, or root scripts
    when they apply. Docs prose lives in `apps/docs/src/content/` (MDX).
 
    Verification is `pnpm check-types`, `pnpm lint`, `pnpm test`, and `pnpm build`, plus a manual run

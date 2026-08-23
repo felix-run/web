@@ -1,10 +1,9 @@
 /**
  * The wire contract between the browser clients and the Python Felix harness.
  *
- * Hand-mirrored from the harness — there is no generated client. Both chat-ui
- * and float used to keep their own copy of this file and had already drifted
- * apart from each other and from the harness. One copy now, so a protocol
- * change is one edit.
+ * Hand-mirrored from the harness — there is no generated client. This lived as
+ * a per-app copy once, and the copies drifted apart from each other and from the
+ * harness. One copy now, so a protocol change is one edit.
  *
  * Route drift is caught separately by `scripts/check-api-drift.mjs`; this file
  * covers the shapes, which no tooling can check.

@@ -8,7 +8,7 @@ color: blue
 
 You keep **felix-web** documentation true to this monorepo and the live Python harness.
 
-This repo is **chat-ui, float, and docs** on Cloudflare Workers. The harness runtime lives in
+This repo is **chat-ui and docs** on Cloudflare Workers. The harness runtime lives in
 [felix-run/felix](https://github.com/felix-run/felix) (Python). Do **not** document commerce
 plugins, Hyperdrive/`apps/api`, Durable Objects as the live harness, or TypeScript Workers
 runtime paths as current truth.

@@ -11,12 +11,10 @@ add() { out="${out}$1
 [ -f "$root/apps/chat-ui/wrangler.jsonc" ] || \
   add "- apps/chat-ui/wrangler.jsonc missing (gitignored). Only needed to deploy: cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc"
 
-[ -f "$root/apps/float/wrangler.jsonc" ] || \
-  add "- apps/float/wrangler.jsonc missing (gitignored). Only needed to deploy: cp apps/float/wrangler.example.jsonc apps/float/wrangler.jsonc"
 
 # Is the Python harness up? Everything under /api/* fails in dev without it.
 if ! (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null; then
-  add "- Python Felix harness is NOT listening on :8080, so every /api/* call in chat:dev / float:dev will fail. Start it in the felix-run/felix repo: make up && make migrate"
+  add "- Python Felix harness is NOT listening on :8080, so every /api/* call in chat:dev will fail. Start it in the felix-run/felix repo: make up && make migrate"
 fi
 
 branch=$(cd "$root" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null)

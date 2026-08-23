@@ -1,8 +1,7 @@
 /**
- * Shared behavioral suite for the SSE reader, which now lives once in
- * `@felix/protocol`. Both apps still run this suite: it exercises each app's
- * own `streamChat` wrapper around that one reader (chat-ui takes `{ onEvent }`,
- * float takes a bare callback), so the second invocation is not redundant.
+ * Behavioral suite for the SSE reader in `@felix/protocol`, parameterized on the
+ * caller's own `streamChat` wrapper so the reader's contract is stated
+ * independently of who invokes it.
  *
  * The reader's job is to turn an arbitrarily chunked byte stream into whole
  * `data: <json>` frames. Network chunk boundaries fall wherever they like, so

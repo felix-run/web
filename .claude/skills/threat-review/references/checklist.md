@@ -2,7 +2,7 @@
 
 Reference for `threat-review`.
 
-## Proxy Worker — `apps/{chat-ui,float}/worker/index.ts`
+## Proxy Worker — `apps/chat-ui/worker/index.ts`
 
 - [ ] `headers.delete('x-chat-key')` still runs on every upstream path
 - [ ] `host` and the `cf-*` headers still stripped (they are trusted signals upstream)

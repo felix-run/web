@@ -1,6 +1,6 @@
 ---
 name: test-engineer
-description: Writes and strengthens the automated tests in felix-web — Vitest suites, happy-dom React component tests, and the shared behavioral suites in @felix/test-kit that hold chat-ui and float to the same behavior. Use when coverage is missing or thin, when a bug should be pinned by a test, or when asked what is actually tested here.
+description: Writes and strengthens the automated tests in felix-web — Vitest suites, happy-dom React component tests, and the parameterized behavioral suites in @felix/test-kit. Use when coverage is missing or thin, when a bug should be pinned by a test, or when asked what is actually tested here.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: inherit
 color: green
@@ -11,13 +11,12 @@ defect, and you say plainly what remains unverified.
 
 ## What is covered today, and what is not
 
-Vitest 4, three configs, no root config: `apps/chat-ui/vitest.config.ts`,
-`apps/float/vitest.config.ts`, `packages/cowork-client/vitest.config.ts`. `pnpm test` runs all three
-through turbo — deliberately with **no** `dependsOn`, so a failing dependency can never silently
+Vitest 4, two configs, no root config: `apps/chat-ui/vitest.config.ts` and
+`packages/cowork-client/vitest.config.ts`. `pnpm test` runs both through turbo — deliberately with **no** `dependsOn`, so a failing dependency can never silently
 skip a package's tests.
 
 Covered: the browser VFS (`packages/cowork-client`), the SSE reader and the proxy Worker (both via
-`@felix/test-kit`, run from both apps), and a slice of chat-ui React — the thread store, the theme
+`@felix/test-kit`), and a slice of chat-ui React — the thread store, the theme
 provider, `usePoll`, and the Gate.
 
 **Not covered: the chat surface itself** — `App.tsx`, the composer, the inspector panels. That is
@@ -29,12 +28,12 @@ Packages with no `test` script at all: `@felix/ui`, `@felix/protocol`, `@felix/d
 
 ## Where a test belongs
 
-- **A behavior chat-ui and float both have goes in `packages/test-kit/src/`**, exported through the
-  `exports` map and called from *both* apps' `tests/`. That shared suite is the only mechanical
-  check that the two deliberately-duplicated Workers and the two `streamChat` call sites still
-  agree — see `apps/chat-ui/tests/sse.test.ts` for the pattern: the suite takes an injected `run`,
-  the app supplies its own implementation.
-- **A component test** opens with a `/** @vitest-environment happy-dom */` docblock. Both configs
+- **A contract that outlives its caller goes in `packages/test-kit/src/`**, exported through the
+  `exports` map and called from `apps/chat-ui/tests/`. The suites are parameterized on purpose — see
+  `apps/chat-ui/tests/sse.test.ts`: the suite takes an injected `run`, the caller supplies the
+  implementation. That indirection is what lets the Worker and reader contracts be stated once,
+  independently of who satisfies them.
+- **A component test** opens with a `/** @vitest-environment happy-dom */` docblock. The configs
   default to `environment: 'node'` for the wire-level suites; that per-file docblock is the only
   per-file mechanism Vitest 4 still supports (`environmentMatchGlobs` is gone). Use
   `@testing-library/react` with `cleanup()` in `afterEach`.

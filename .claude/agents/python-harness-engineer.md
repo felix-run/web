@@ -24,7 +24,7 @@ not in `felix-web`. Before doing anything:
 
 ## What the web clients depend on
 
-Changes here are load-bearing for `apps/chat-ui` and `apps/float`. Treat these as a public contract:
+Changes here are load-bearing for `apps/chat-ui`. Treat these as a public contract:
 
 - **SSE framing on `POST /chat/stream`** — one event per `\n\n`, `data: <json>` lines, terminated by
   `data: [DONE]`. Clients decode with a carry buffer; a malformed or unterminated frame hangs the UI.
@@ -40,7 +40,7 @@ Changes here are load-bearing for `apps/chat-ui` and `apps/float`. Treat these a
   payload shape is a breaking change on both clients.
 
 Whenever you change one of these, say so explicitly in your output and name the client files that
-must change with it (`apps/chat-ui/src/{api,types}.ts` and `apps/float/src/{api,types}.ts`).
+must change with it (`packages/felix-protocol/src/types.ts`, `apps/chat-ui/src/{api,types}.ts`).
 
 ## Engineering standards
 

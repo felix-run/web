@@ -21,11 +21,10 @@ saying so.
 
 ## Invariants you must not break
 
-1. **chat-ui and float are duplicated on purpose.** Separate `api.ts`, separate `types.ts`, two
-   near-duplicate proxy Workers, and a third copy of the proxy contract in each `vite.config.ts`.
-   Collapsing them into a shared module is wrong by construction, however much duplication it
-   removes (`.claude/rules/protocol-parity.md`). The correct cleanup is the opposite one: make the
-   copies match. A change to one copy must land in the other in the same PR.
+1. **The proxy contract is stated twice on purpose.** `apps/chat-ui/worker/index.ts` runs in
+   production; the `/api` rewrite in `vite.config.ts` runs only in `vite dev`. They cannot be one
+   module (`.claude/rules/protocol-parity.md`). The correct cleanup is the opposite one: make the
+   copies match, in the same PR.
 2. **`@felix/protocol` is the hand-mirrored wire contract.** Do not "tidy" `StreamEvent` by closing
    its open `{ event: string; … }` arm or by dropping an arm that looks unused — the harness is a
    separate repo and its frames are not all handled here yet.

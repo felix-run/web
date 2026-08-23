@@ -19,7 +19,7 @@ state="${TMPDIR:-/tmp}/felix-web-stop-$sid"
 
 # --- 1. docs drift -----------------------------------------------------------
 # Surfaces a reader of the docs would notice changing.
-surfaces=$(printf '%s\n' "$changed" | grep -E '^(apps/(chat-ui|float)/(src/(api|types)\.ts|worker/index\.ts)|apps/(chat-ui|float)/wrangler\.example\.jsonc|packages/design/src/tokens\.ts)$')
+surfaces=$(printf '%s\n' "$changed" | grep -E '^(apps/chat-ui/(src/(api|types)\.ts|worker/index\.ts)|apps/chat-ui/wrangler\.example\.jsonc|packages/design/src/tokens\.ts)$')
 
 if [ -n "$surfaces" ]; then
   # Any doc-side change in the same tree counts as "docs were considered".

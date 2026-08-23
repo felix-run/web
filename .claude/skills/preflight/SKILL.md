@@ -20,7 +20,7 @@ Changed files:
 
 **Test coverage is partial.** `pnpm test` covers the VFS, the disk mount, the SSE reader, and the
 proxy Worker —
-the last two through shared suites in `@felix/test-kit` that run against both chat-ui and float. CI
+the last two through parameterized suites in `@felix/test-kit`. CI
 runs lint, check-types, test, build, and the hook batteries in `.claude/hooks/tests/`.
 
 So a green `pnpm test` says the wire-level plumbing, path containment, and a first slice of the React
@@ -44,7 +44,6 @@ Scope to one package when the change is contained — it is much faster:
 
 ```bash
 pnpm --filter @felix/chat-ui check-types
-pnpm --filter @felix/float lint
 pnpm --filter @felix/docs build
 ```
 
@@ -57,15 +56,15 @@ These checks pass on code that is still broken. If your change is in one of thes
 report that it is unverified, or exercise it manually:
 
 - **Runtime behavior of anything touching `/api/*`.** Needs the Python harness on `:8080`
-  (`make up && make migrate` in felix-run/felix), then `pnpm chat:dev` / `pnpm float:dev`.
+  (`make up && make migrate` in felix-run/felix), then `pnpm chat:dev`.
 - **A new SSE event with no `switch` case.** `StreamEvent` has an open catch-all arm, so this
   type-checks and does nothing. Verify by triggering the frame.
-- **chat-ui / float divergence.** Nothing mechanically checks that the two copies of `api.ts` and
-  `types.ts`, or the two proxy Workers, agree. Diff them yourself:
-  ```bash
-  diff apps/chat-ui/src/types.ts apps/float/src/types.ts
-  diff apps/chat-ui/worker/index.ts apps/float/worker/index.ts
-  ```
+- **Dev/prod proxy divergence.** Nothing mechanically checks that `apps/chat-ui/worker/index.ts`
+  and the `/api` rewrite in `apps/chat-ui/vite.config.ts` still describe the same contract. Read
+  both when you touch either.
+- **The unattended path.** A background run carries no SSE frames, so a blocking state reaches the
+  operator only through the `/approvals` poll and `src/lib/presence.ts`. Streaming green says
+  nothing about it.
 - **The Workers themselves.** `vite build` does not exercise `worker/index.ts`. Use `wrangler dev`
   in the app directory.
 - **Docs prose.** `astro build` catches broken links and bad frontmatter, not wrong claims.

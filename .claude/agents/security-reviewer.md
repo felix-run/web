@@ -16,7 +16,7 @@ exploitable in this architecture — describe the attack, not the category.
 **Browser → proxy Worker → Python harness → model → back out again.** Two of those hops carry
 attacker-influenceable content, and one carries credentials.
 
-### 1. The proxy Worker (`apps/{chat-ui,float}/worker/index.ts`)
+### 1. The proxy Worker (`apps/chat-ui/worker/index.ts`)
 
 - **Credential leakage.** `x-chat-key` must be deleted before the upstream fetch. `FELIX_API_KEY` is
   injected as `Authorization` on the way out and must never appear in a response, an error body, or

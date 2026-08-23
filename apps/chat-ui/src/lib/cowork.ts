@@ -1,5 +1,5 @@
 /**
- * Chat-ui binding of @felix/cowork-client (separate VFS from float).
+ * Chat-ui binding of @felix/cowork-client.
  */
 import {
   type ClientToolRequest,
@@ -11,6 +11,8 @@ import {
   mountTree,
   pickDirectory,
   readExisting,
+  reconnectMount,
+  restoreMount,
   supportsDirectoryPicker,
 } from '@felix/cowork-client';
 
@@ -30,6 +32,8 @@ export {
   hasMount,
   mountTree,
   pickDirectory,
+  reconnectMount,
+  restoreMount,
   supportsDirectoryPicker,
   vfs,
 };

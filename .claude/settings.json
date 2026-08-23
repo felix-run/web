@@ -109,7 +109,6 @@
       "Bash(pnpm test)",
       "Bash(pnpm --filter * test)",
       "Bash(pnpm chat:build)",
-      "Bash(pnpm float:build)",
       "Bash(pnpm docs:build)",
       "Bash(pnpm --filter * build)",
       "Bash(pnpm --filter * lint)",
@@ -129,7 +128,6 @@
     ],
     "ask": [
       "Bash(pnpm chat:deploy)",
-      "Bash(pnpm float:deploy)",
       "Bash(pnpm docs:deploy)",
       "Bash(pnpm --filter * deploy*)",
       "Bash(pnpm --filter * run deploy*)",
