@@ -166,3 +166,30 @@ describe('the index', () => {
     expect(walks).toBe(2);
   });
 });
+
+describe('hints beat the index', () => {
+  const WITH_DUPES = ['f a/foo.md', 'f b/foo.md'];
+
+  // The agent just wrote /home/lars/foo.md; prose says "foo.md". The index has
+  // two other files by that name and cannot know which was meant.
+  it('offers the just-written path first', async () => {
+    const r = new FileMentionResolver(source(WITH_DUPES));
+    const [res] = await r.resolveAll(['foo.md'], ['/home/lars/foo.md']);
+    expect(res?.matches).toContain('/home/lars/foo.md');
+    expect(res?.matches[0]).toBe('/home/lars/foo.md');
+  });
+
+  it('still reports the other candidates', async () => {
+    const r = new FileMentionResolver(source(WITH_DUPES));
+    const [res] = await r.resolveAll(['foo.md'], ['/home/lars/foo.md']);
+    expect(res?.matches).toEqual(
+      expect.arrayContaining(['/home/lars/foo.md', 'a/foo.md', 'b/foo.md']),
+    );
+  });
+
+  it('does not invent a match from an unrelated hint', async () => {
+    const r = new FileMentionResolver(source([]));
+    const [res] = await r.resolveAll(['foo.md'], ['/home/lars/bar.md']);
+    expect(res?.matches).toEqual([]);
+  });
+});
