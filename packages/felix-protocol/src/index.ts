@@ -3,7 +3,6 @@ export type {
   ChatMessage,
   DurableRun,
   ImageAttachment,
-  PendingApproval,
   PendingUiRequest,
   Role,
   SessionSnapshot,

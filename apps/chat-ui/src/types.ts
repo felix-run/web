@@ -5,11 +5,16 @@
  * stays here is either chat-ui's own UI state (`Turn`) or a management surface
  * float does not have (audit, eval, jobs, manifests, plans, usage).
  */
+
+/**
+ * Approval state is client-side: `before` carries the pre-edit file text for the
+ * diff, so the type lives with the client tool executor, not the wire contract.
+ */
+export type { PendingApproval } from '@felix/cowork-client';
 export type {
   ChatMessage,
   DurableRun,
   ImageAttachment,
-  PendingApproval,
   PendingUiRequest,
   Role,
   SessionSnapshot,
