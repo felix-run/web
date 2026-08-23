@@ -354,7 +354,7 @@ function MultimodalInputInner({
                 <span
                   className={cn(
                     'text-xs tabular-nums',
-                    tooLong ? 'text-destructive' : 'text-muted-foreground',
+                    tooLong ? 'text-state-failed' : 'text-muted-foreground',
                   )}
                   aria-live="polite"
                 >
@@ -470,7 +470,7 @@ function MicButton({
         className={cn(
           'relative size-8 rounded-full transition-colors',
           isListening
-            ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
+            ? 'bg-state-failed/15 text-state-failed hover:bg-state-failed/20'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
       >
@@ -483,7 +483,7 @@ function MicButton({
         )}
       </Button>
       {isListening && interim && (
-        <span className="max-w-[16ch] truncate text-xs text-destructive/80 italic sm:max-w-[24ch]">
+        <span className="max-w-[16ch] truncate text-xs text-state-failed/80 italic sm:max-w-[24ch]">
           {interim}
         </span>
       )}

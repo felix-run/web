@@ -93,7 +93,7 @@ export function ManifestsSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error && <p className="text-xs text-destructive">⚠ {error}</p>}
+          {error && <p className="text-xs text-state-failed">⚠ {error}</p>}
 
           <div className="flex flex-wrap items-center gap-1.5">
             {rows.map((r) => (

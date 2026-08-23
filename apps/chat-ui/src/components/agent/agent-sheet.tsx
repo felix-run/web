@@ -59,7 +59,7 @@ export function AgentSheet({
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-4 p-4 text-xs">
-            {error && <p className="text-destructive">⚠ {error}</p>}
+            {error && <p className="text-state-failed">⚠ {error}</p>}
             {!resolved && !error && <p className="text-muted-foreground">Loading…</p>}
 
             {resolved && spec && (

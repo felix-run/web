@@ -105,12 +105,15 @@ export function Inspector({
   onClose,
   skills,
   onSuggest,
+  busy,
   className,
 }: {
   open: boolean;
   onClose: () => void;
   skills: SkillState | null;
   onSuggest: (text: string) => void;
+  /** A run is in flight. Anything that posts to the thread has to stand down. */
+  busy?: boolean;
   /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
@@ -192,6 +195,7 @@ export function Inspector({
               onToggle={() => toggle('skills')}
               skills={skills}
               onSuggest={onSuggest}
+              busy={busy}
             />
           </SectionBoundary>
         </div>
@@ -441,7 +445,7 @@ function StatusDot({ status }: { status: string }) {
       className={cn(
         'inline-flex items-center gap-1 text-xs capitalize',
         ok && 'text-state-done',
-        bad && 'text-destructive',
+        bad && 'text-state-failed',
         !ok && !bad && 'text-muted-foreground',
       )}
     >
@@ -675,7 +679,7 @@ const STEP_TONE: Record<PlanStepStatus, string> = {
   in_progress: 'text-state-running',
   completed: 'text-state-done',
   skipped: 'text-muted-foreground line-through',
-  failed: 'text-destructive',
+  failed: 'text-state-failed',
 };
 
 const STEP_MARK: Record<PlanStepStatus, string> = {
@@ -806,7 +810,7 @@ function MetricsSection({
                 />
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2.5 text-xs text-muted-foreground">
-                <span className={cn(t.errors > 0 && 'font-medium text-destructive')}>
+                <span className={cn(t.errors > 0 && 'font-medium text-state-failed')}>
                   {t.errors > 0 ? `${t.errors} error${t.errors === 1 ? '' : 's'}` : 'healthy'}
                 </span>
                 {t.avg_latency_ms > 0 && <span>avg {Math.round(t.avg_latency_ms)}ms</span>}
@@ -927,11 +931,13 @@ function SkillsSection({
   onToggle,
   skills,
   onSuggest,
+  busy,
 }: {
   open: boolean;
   onToggle: () => void;
   skills: SkillState | null;
   onSuggest: (text: string) => void;
+  busy?: boolean;
 }) {
   return (
     <Section
@@ -963,14 +969,22 @@ function SkillsSection({
             this session yet.
           </p>
         )}
+        {/* This is the only control outside the composer that posts to the thread, so
+            it says so, and it stands down mid-run: `send` steers an in-flight run
+            rather than starting a turn, so firing this during a stream would inject
+            an unrelated instruction into whatever the agent is currently doing. */}
         <Button
           size="sm"
           variant="outline"
           className="h-8 w-full"
+          disabled={busy}
           onClick={() => onSuggest('List your skills: which are declared, and which are active?')}
         >
-          Ask agent to list skills
+          Send "list your skills" to this chat
         </Button>
+        {busy && (
+          <p className="text-xs text-muted-foreground">Available once the current run finishes.</p>
+        )}
       </div>
     </Section>
   );

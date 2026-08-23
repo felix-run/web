@@ -109,4 +109,41 @@ describe('usePoll', () => {
     await flush();
     expect(getByTestId('loading').textContent).toBe('false');
   });
+  /**
+   * A backgrounded tab has nobody reading the Inspector, so it should stop asking
+   * the harness. The unattended-run path is a separate plain interval in App.tsx
+   * and is deliberately not covered by this behaviour.
+   */
+  it('skips ticks while the tab is hidden and refetches on return', async () => {
+    let visibility: DocumentVisibilityState = 'visible';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+
+    const fetcher = vi.fn<() => Promise<string>>().mockResolvedValue('ok');
+    render(<Probe fetcher={fetcher} intervalMs={1000} />);
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // Two intervals elapse while hidden: neither should reach the harness.
+    visibility = 'hidden';
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // Coming back fetches immediately rather than waiting out the interval.
+    visibility = 'visible';
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    // And the interval resumes normally.
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
 });

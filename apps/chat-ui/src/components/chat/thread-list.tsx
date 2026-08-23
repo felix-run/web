@@ -147,7 +147,7 @@ export function ThreadList({
               <button
                 type="button"
                 aria-label="Delete conversation"
-                className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-state-failed focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                 onClick={() => onDelete(t.id)}
               >
                 <Trash2Icon className="size-3.5" />

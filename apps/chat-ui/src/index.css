@@ -105,6 +105,10 @@
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
+  /* A scrollbar thumb is a control, not a hairline, so it is not `--border`: that
+     token measured 1.27:1 here, which is invisible. WCAG 1.4.11 asks 3:1 of an
+     essential UI component; these clear it on both the base and card surfaces. */
+  --scrollbar-thumb: oklch(0.62 0.01 285.9);
   /* Composer surface shadows (resting / focused) used by the multimodal input. */
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 5%), 0 4px 16px oklch(0 0 0 / 6%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 6%), 0 8px 28px oklch(0 0 0 / 10%);
@@ -134,6 +138,7 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);
+  --scrollbar-thumb: oklch(1 0 0 / 36%);
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 30%), 0 4px 16px oklch(0 0 0 / 35%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 35%), 0 8px 28px oklch(0 0 0 / 45%);
 }
@@ -141,6 +146,36 @@
 @layer base {
   * {
     border-color: var(--border);
+  }
+
+  /* Scrollbars follow the theme instead of the OS.
+     On a machine set to always show scrollbars these are 30px in the transcript and
+     16px inside the inspector, painted near-black in light mode, which is a lot of a
+     22rem panel spent on chrome and reads as a structural divider rather than a
+     control. `scrollbar-color` covers Chromium and Firefox; the `::-webkit-` rules
+     are for Safari, which still ignores it. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
   body {
     background-color: var(--background);

@@ -108,7 +108,7 @@ export function JobsSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error && <p className="text-xs text-destructive">⚠ {error}</p>}
+          {error && <p className="text-xs text-state-failed">⚠ {error}</p>}
 
           {/* Create form */}
           <div className="space-y-1.5 rounded-md border border-dashed p-2.5">
@@ -175,7 +175,7 @@ export function JobsSheet({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                      className="h-6 px-2 text-xs text-muted-foreground hover:text-state-failed"
                       disabled={busy}
                       onClick={() => remove(j.name)}
                       title="Delete this job"
@@ -188,7 +188,7 @@ export function JobsSheet({
                     {j.last_status && <span>last: {j.last_status}</span>}
                     {j.last_run_at && <span>ran {rel(j.last_run_at)}</span>}
                     {j.next_run_at && <span>next {rel(j.next_run_at)}</span>}
-                    {j.last_error && <span className="text-destructive">{j.last_error}</span>}
+                    {j.last_error && <span className="text-state-failed">{j.last_error}</span>}
                   </div>
                   {expanded === j.name && (
                     <div className="mt-1.5 space-y-1 border-t pt-1.5">
@@ -202,7 +202,7 @@ export function JobsSheet({
                           >
                             <span className="font-mono">{r.status ?? '—'}</span>
                             {r.started_at && <span>{rel(r.started_at)}</span>}
-                            {r.error && <span className="text-destructive">{r.error}</span>}
+                            {r.error && <span className="text-state-failed">{r.error}</span>}
                           </div>
                         ))
                       )}

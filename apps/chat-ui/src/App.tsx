@@ -1193,7 +1193,7 @@ export default function App() {
             {error && (
               <div
                 role="alert"
-                className="mx-auto max-w-2xl rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                className="mx-auto max-w-2xl rounded-lg border border-state-failed/30 bg-state-failed/10 px-3 py-2 text-sm text-state-failed"
               >
                 {error}
               </div>
@@ -1243,6 +1243,7 @@ export default function App() {
             onClose={() => setInspectorOpen(false)}
             skills={skills}
             onSuggest={send}
+            busy={streaming}
           />
         )}
       </div>
@@ -1290,6 +1291,7 @@ export default function App() {
                 send(text);
                 setInspectorOpen(false);
               }}
+              busy={streaming}
               className="w-full border-l-0 bg-transparent"
             />
           </SheetContent>

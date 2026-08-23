@@ -85,7 +85,7 @@ export function EvalSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error && <p className="text-xs text-destructive">⚠ {error}</p>}
+          {error && <p className="text-xs text-state-failed">⚠ {error}</p>}
 
           {/* Dataset picker + create */}
           <div className="flex flex-wrap items-center gap-1.5">
@@ -319,7 +319,7 @@ function RunCard({ run }: { run: EvalRun }) {
               <span
                 className={cn(
                   'mt-0.5 font-mono text-xs uppercase',
-                  s.verdict === 'pass' ? 'text-state-done' : 'text-destructive',
+                  s.verdict === 'pass' ? 'text-state-done' : 'text-state-failed',
                 )}
               >
                 {s.verdict}
