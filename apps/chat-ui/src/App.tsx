@@ -106,6 +106,8 @@ const THINKING_LEVELS: ThinkingLevel[] = [
 ];
 /** Bundled workspace agent — same path as float. */
 const DEFAULT_MANIFEST = 'cowork';
+/** How often to ask the harness for approvals while a run is in flight. */
+const APPROVAL_POLL_MS = 2_500;
 
 function tabHolderId(): string {
   try {
@@ -175,6 +177,8 @@ export default function App() {
   const leaseTokenRef = useRef<string | null>(null);
   const verboseRef = useRef(verbose);
   const threadIdRef = useRef(threadId);
+  /** Approval ids already shown or decided, so neither path re-queues one. */
+  const seenApprovalsRef = useRef(new Set<string>());
   useEffect(() => {
     threadIdRef.current = threadId;
   }, [threadId]);
@@ -342,6 +346,7 @@ export default function App() {
     setSkills(null);
     setError(null);
     setPendingQueue([]);
+    seenApprovalsRef.current.clear();
     setUiPrompt(null);
     setSessionPhase(null);
   }, [stopRun]);
@@ -450,6 +455,8 @@ export default function App() {
             if (data.tool_name === 'write_file' && typeof args.path === 'string') {
               before = await readWorkspaceFile(args.path);
             }
+            if (seenApprovalsRef.current.has(data.approval_id)) break;
+            seenApprovalsRef.current.add(data.approval_id);
             setPendingQueue((q) => [
               ...q,
               {
@@ -638,6 +645,15 @@ export default function App() {
           setStreaming(false);
           abortRef.current = null;
           setSessionPhase((p) => (p === 'aborted' ? p : 'idle'));
+          // A card still not `done` never reported back — the run was stopped,
+          // or ended with no matching tool_end. The `done` frame settles this
+          // when it arrives; an aborted run has no such frame, and a spinner
+          // that outlives the run that owned it reads as work still going.
+          patch((t) =>
+            (t.tools ?? []).some((tool) => !tool.done)
+              ? { ...t, tools: (t.tools ?? []).map((tool) => ({ ...tool, done: true })) }
+              : t,
+          );
         });
     },
     [manifest],
@@ -662,36 +678,60 @@ export default function App() {
     [pending, deciding],
   );
 
-  // Restore pending approvals after refresh.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const items = await listApprovals('pending');
-        if (cancelled || !items.length) return;
-        const restored: PendingApproval[] = [];
-        for (const item of items) {
-          const args = item.args ?? {};
-          let before: string | null = null;
-          if (item.tool_name === 'write_file' && typeof args.path === 'string') {
-            before = await readWorkspaceFile(args.path);
-          }
-          restored.push({
-            approvalId: item.id,
-            toolName: item.tool_name,
-            args,
-            before,
-          });
-        }
-        if (!cancelled) setPendingQueue(restored);
-      } catch {
-        // ignore
+  /**
+   * Adopt any approval the harness is holding that is not already on screen.
+   *
+   * Merging, never replacing: the `approval_required` frame may have queued the
+   * same one already, and a decision in flight must not be resurrected. Ids stay
+   * remembered for the life of the thread, so an approval that has been answered
+   * cannot come back if the server briefly still lists it as pending.
+   */
+  const syncApprovals = useCallback(async () => {
+    let items: Awaited<ReturnType<typeof listApprovals>>;
+    try {
+      items = await listApprovals('pending');
+    } catch {
+      return; // endpoint unavailable; the frame path may still deliver
+    }
+    const fresh = items.filter((item) => !seenApprovalsRef.current.has(item.id));
+    if (!fresh.length) return;
+
+    const entries: PendingApproval[] = [];
+    for (const item of fresh) {
+      seenApprovalsRef.current.add(item.id);
+      const args = item.args ?? {};
+      let before: string | null = null;
+      if (item.tool_name === 'write_file' && typeof args.path === 'string') {
+        before = await readWorkspaceFile(args.path);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      entries.push({ approvalId: item.id, toolName: item.tool_name, args, before });
+    }
+    setPendingQueue((q) => [...q, ...entries]);
   }, []);
+
+  // A run may already have been waiting on one before this tab loaded.
+  useEffect(() => {
+    void syncApprovals();
+  }, [syncApprovals]);
+
+  /**
+   * Ask again while a run is live.
+   *
+   * A gated tool blocks the run until it is answered, and the harness does not
+   * reliably announce it on the stream — leaving the tool card on 'running' and
+   * the run looking hung, with the prompt appearing only after a reload. Polling
+   * is the only way to notice, and it costs one request every few seconds for as
+   * long as a run is actually in flight.
+   *
+   * A plain interval rather than `usePoll`: that hook holds the latest value and
+   * toggles a loading flag, which would add two renders per tick during a
+   * stream. This wants the side effect, not the data.
+   */
+  useEffect(() => {
+    if (!streaming) return;
+    const timer = window.setInterval(() => void syncApprovals(), APPROVAL_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [streaming, syncApprovals]);
 
   const send = useCallback(
     (text: string, attachments?: ImageAttachment[], mode: 'stream' | 'background' = 'stream') => {
@@ -774,6 +814,7 @@ export default function App() {
     setSkills(null);
     setError(null);
     setPendingQueue([]);
+    seenApprovalsRef.current.clear();
     setUiPrompt(null);
     setSessionPhase(null);
     void deleteThreadHistory(threadId);
