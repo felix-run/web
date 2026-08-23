@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Toaster } from 'sonner';
 import App from './App';
+import { AppErrorFallback, ErrorBoundary } from './components/error-boundary';
 import { Gate } from './components/gate';
 import { ThemeProvider } from './components/theme-provider';
 import './index.css';
@@ -21,7 +22,9 @@ createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
     <ThemeProvider>
       <TooltipProvider delayDuration={300}>
-        {Root}
+        <ErrorBoundary label="app" fallback={(error) => <AppErrorFallback error={error} />}>
+          {Root}
+        </ErrorBoundary>
         <Toaster position="top-center" richColors closeButton />
       </TooltipProvider>
     </ThemeProvider>

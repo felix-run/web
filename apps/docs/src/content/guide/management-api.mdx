@@ -101,6 +101,18 @@ Per-tool rollups — call counts, error rates and durations.
 | `since` | int (epoch ms) | — |
 | `limit` | int 1–2000 | `200` |
 
+Rows arrive already aggregated by tool and sorted by `calls` descending, so clients should render
+them as-is rather than folding again. `avg_latency_ms` is a true mean over `calls`.
+
+```json
+{
+  "tools": [
+    { "tool": "local_shell", "calls": 12, "errors": 1, "avg_latency_ms": 84.5 }
+  ],
+  "window_since": 1787515061000
+}
+```
+
 For time-series monitoring prefer Prometheus at `GET /metrics`; see
 [Observability](/internals/observability/).
 

@@ -15,6 +15,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import {
   BotIcon,
   ClockIcon,
@@ -66,6 +67,7 @@ import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import {
@@ -92,6 +94,9 @@ import type {
 
 const THREAD_KEY = 'felix.threadId';
 const MANIFEST_KEY = 'felix.manifest';
+/** How long a deleted conversation can be restored, and how long the server delete waits. */
+const DELETE_UNDO_MS = 7000;
+
 const HISTORY_KEY = 'felix.historyOpen';
 const INSPECTOR_KEY = 'felix.inspectorOpen';
 const VERBOSE_KEY = 'felix.verbose';
@@ -189,6 +194,21 @@ export default function App() {
 
   useEffect(() => localStorage.setItem(THREAD_KEY, threadId), [threadId]);
   useEffect(() => localStorage.setItem(MANIFEST_KEY, manifest), [manifest]);
+  // Content-driven, not device-driven. The chat column wants ~560px before the
+  // transcript and composer start to feel cramped, and the two rails cost 592px of
+  // chrome, so both fit inline down to 1152. Below that the inspector becomes a
+  // drawer, which buys the chat back to ~790px; below 1024 the history rail follows
+  // and the transcript gets the full width. Neither rail ever squeezes the chat
+  // instead of yielding, which is what the old fixed-width flex row did all the way
+  // down to a 168px transcript.
+  //
+  // The inspector is kept inline as long as it fits rather than switching at a round
+  // number: it is a reference panel read *beside* the chat, and a drawer covers the
+  // thing it is describing. The drawer is the fallback for widths with no room, not
+  // the preferred form.
+  const inspectorInline = useMediaQuery('(min-width: 1152px)');
+  const historyInline = useMediaQuery('(min-width: 1024px)');
+
   useEffect(() => localStorage.setItem(HISTORY_KEY, historyOpen ? '1' : '0'), [historyOpen]);
   useEffect(() => localStorage.setItem(INSPECTOR_KEY, inspectorOpen ? '1' : '0'), [inspectorOpen]);
   useEffect(() => localStorage.setItem(VERBOSE_KEY, verbose ? '1' : '0'), [verbose]);
@@ -369,14 +389,40 @@ export default function App() {
 
   const deleteThread = useCallback(
     (id: string) => {
+      // Capture enough to put it back before anything is destroyed.
+      const meta = listThreads().find((t) => t.id === id);
+      const turns = loadTurns(id);
+
       removeThread(id);
-      void deleteThreadHistory(id);
       const remaining = listThreads();
       setThreads(remaining);
       if (id === threadId) {
         if (remaining.length) selectThread(remaining[0].id);
         else newThread();
       }
+
+      // The server copy is the part that cannot be undone, so it is held back for
+      // the length of the toast rather than fired now. Undo cancels it; letting the
+      // window elapse commits it. A tab closed mid-window leaves the server
+      // transcript behind, which is the safe direction to fail in.
+      let undone = false;
+      const commit = window.setTimeout(() => {
+        if (!undone) void deleteThreadHistory(id).catch(() => {});
+      }, DELETE_UNDO_MS);
+
+      toast('Conversation deleted', {
+        duration: DELETE_UNDO_MS,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            undone = true;
+            window.clearTimeout(commit);
+            if (meta) indexThread(meta);
+            if (turns.length) saveTurns(id, turns);
+            setThreads(listThreads());
+          },
+        },
+      });
     },
     [threadId, selectThread, newThread],
   );
@@ -1114,7 +1160,7 @@ export default function App() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {historyOpen && (
+        {historyOpen && historyInline && (
           <ThreadList
             threads={threads}
             currentId={threadId}
@@ -1191,7 +1237,7 @@ export default function App() {
             />
           </div>
         </main>
-        {inspectorOpen && (
+        {inspectorOpen && inspectorInline && (
           <Inspector
             open={inspectorOpen}
             onClose={() => setInspectorOpen(false)}
@@ -1200,6 +1246,55 @@ export default function App() {
           />
         )}
       </div>
+
+      {/* Below their breakpoints the same rails become overlays. Same components and
+          same toggle state, so the header buttons keep working and nothing is
+          reachable in one layout but missing in the other. */}
+      {!historyInline && (
+        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+          <SheetContent side="left" className="w-[17rem] gap-0 p-0 sm:max-w-none">
+            <SheetTitle className="sr-only">Conversation history</SheetTitle>
+            <ThreadList
+              threads={threads}
+              currentId={threadId}
+              disabled={streaming}
+              onSelect={(id) => {
+                selectThread(id);
+                setHistoryOpen(false);
+              }}
+              onNew={() => {
+                newThread();
+                setHistoryOpen(false);
+              }}
+              onDelete={deleteThread}
+              // The drawer supplies its own close button in the top-right corner, which
+              // would otherwise land on top of this rail's "New chat" control.
+              className="w-full border-r-0 bg-transparent [&>div:first-child]:pr-11"
+            />
+          </SheetContent>
+        </Sheet>
+      )}
+      {!inspectorInline && (
+        <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
+          <SheetContent
+            side="right"
+            showCloseButton={false}
+            className="w-[22rem] gap-0 p-0 sm:max-w-none"
+          >
+            <SheetTitle className="sr-only">Harness inspector</SheetTitle>
+            <Inspector
+              open={inspectorOpen}
+              onClose={() => setInspectorOpen(false)}
+              skills={skills}
+              onSuggest={(text) => {
+                send(text);
+                setInspectorOpen(false);
+              }}
+              className="w-full border-l-0 bg-transparent"
+            />
+          </SheetContent>
+        </Sheet>
+      )}
       <EvalSheet open={evalOpen} onOpenChange={setEvalOpen} manifest={manifest} />
       <ManifestsSheet
         open={manifestsOpen}

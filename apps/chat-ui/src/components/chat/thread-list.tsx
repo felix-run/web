@@ -19,6 +19,7 @@ export function ThreadList({
   onSelect,
   onNew,
   onDelete,
+  className,
 }: {
   threads: ThreadMeta[];
   currentId: string;
@@ -26,6 +27,8 @@ export function ThreadList({
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  /** Set by the shell when this renders inside a drawer instead of as a column. */
+  className?: string;
 }) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<
@@ -82,11 +85,16 @@ export function ThreadList({
   }, [hits, threads]);
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r border-border/60 bg-card/30">
+    <aside
+      aria-labelledby="history-heading"
+      className={cn('flex h-full w-60 flex-col border-r border-border/60 bg-card/30', className)}
+    >
       <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
-        <span className="text-sm font-medium">History</span>
+        <h2 id="history-heading" className="text-sm font-medium">
+          History
+        </h2>
         <Button variant="ghost" size="sm" className="h-7 gap-1" disabled={disabled} onClick={onNew}>
-          <PlusIcon className="size-3.5" /> New
+          <PlusIcon className="size-3.5" /> New chat
         </Button>
       </div>
       <div className="border-b border-border/60 px-2 py-2">
@@ -94,6 +102,7 @@ export function ThreadList({
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
+            aria-label="Search sessions"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search sessions…"
@@ -138,7 +147,7 @@ export function ThreadList({
               <button
                 type="button"
                 aria-label="Delete conversation"
-                className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                 onClick={() => onDelete(t.id)}
               >
                 <Trash2Icon className="size-3.5" />

@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* `@felix/ui` is consumed as raw source from outside this app's root, so Tailwind's
+   automatic content detection never sees it. Without this, every utility that appears
+   *only* in a primitive (`bg-primary`, the `focus-visible:ring-*` set) is silently
+   dropped from the build and the component renders unstyled. */
+@source "../../../packages/ui/src";
+
 @custom-variant dark (&:is(.dark *));
 
 /* Map shadcn design tokens onto Tailwind's theme so `bg-background`,
@@ -45,7 +51,9 @@
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
   --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
+  /* 0.552 measured 4.39:1 against --accent (the selected history row), under AA.
+     0.53 clears it at 4.79:1 there and 5.27:1 on --background. */
+  --muted-foreground: oklch(0.53 0.016 285.938);
   --accent: oklch(0.967 0.001 286.375);
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
@@ -89,5 +97,32 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
+  }
+}
+
+/* Motion in this app is all state feedback (sheet entrances, the tool-metrics bar,
+   spinners), never narrative, so the reduced-motion answer is to collapse it to an
+   instant state change rather than swap in a different animation.
+
+   Deliberately *outside* `@layer base`: the durations being overridden come from
+   Tailwind utilities in `@layer utilities`, which beat any layered rule regardless of
+   specificity. Unlayered styles outrank every layer, so this wins without `!important`.
+
+   `animate-spin` and `animate-pulse` keep cycling, only slower. They mean "still
+   working", and freezing them would misreport a live run as a hung one. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+
+  .animate-spin,
+  .animate-pulse {
+    animation-duration: 1.5s;
+    animation-iteration-count: infinite;
   }
 }
