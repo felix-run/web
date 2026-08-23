@@ -26,9 +26,9 @@ spec.
 - Onboarding gaps of the "you cannot run it until you know a thing nobody wrote down" kind. Both
   app `wrangler.jsonc` files are gitignored, so check that each app still ships a current
   `wrangler.example.jsonc` and `.dev.vars.example` as its deploy config evolves.
-- Test coverage reaches the VFS, the SSE reader, and the proxy Workers; the last two run the shared
-  suites in `@felix/test-kit` against both apps. The remaining gap is **React**: no component, hook,
-  or state transition is covered, which would need a DOM environment and a testing-library setup.
+- Test coverage reaches the VFS, the SSE reader, the proxy Workers, and a first slice of React
+  (thread store, theme provider, `usePoll`, Gate) under happy-dom. The remaining gap is the **chat
+  surface**: `App.tsx` and the inspector panels, which need a live harness or a lot of mocking.
 - `api.ts` and `types.ts` are duplicated between chat-ui and float with no mechanical check that they
   agree; parity is maintained by discipline alone.
 - "Verified" for app code means type-check + lint + build + a manual run against a live harness.

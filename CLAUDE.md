@@ -45,8 +45,9 @@ Local dev needs the Python harness running separately (`make up && make migrate`
 the File System Access mount (`packages/cowork-client`), the SSE reader (now one implementation in `@felix/protocol`, exercised
 through both apps' `streamChat`), and the proxy Worker — the last via a shared suite in
 `@felix/test-kit` run against **both** copies, which is the only mechanical check that the two
-deliberately-duplicated Workers still agree. **No test exercises any React code**, so UI behavior is
-still verified by running it. `.claude/hooks/tests/` covers the hooks.
+deliberately-duplicated Workers still agree. React coverage reaches the thread store, the theme
+provider, `usePoll`, and the Gate; **the chat surface itself is untested** — `App.tsx`, the composer,
+and the inspector panels are still verified by running them. `.claude/hooks/tests/` covers the hooks.
 
 `pnpm check-api-drift` is the other mechanical guard: it walks the fetch call sites in each client
 and diffs path *and* verb against `apps/chat-ui/harness-openapi.json`, a committed snapshot of the
