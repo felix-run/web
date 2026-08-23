@@ -33,6 +33,7 @@ import {
   continueChat,
   decideApproval,
   deleteThreadHistory,
+  getResolvedManifest,
   getSessionSnapshot,
   getThreadHistory,
   listApprovals,
@@ -143,7 +144,11 @@ export default function App() {
   // assignment is a server-side hash the harness does not report to clients,
   // and `GET /manifests/{name}` answers `stable` for any partial rollout
   // because it resolves without a thread id.
-  const [canary, setCanary] = useState<{ version: number; weight: number } | null>(null);
+  const [canary, setCanary] = useState<{
+    version: number;
+    weight: number;
+    onCanary: boolean;
+  } | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
@@ -184,21 +189,41 @@ export default function App() {
   useEffect(() => localStorage.setItem(VERBOSE_KEY, verbose ? '1' : '0'), [verbose]);
   useEffect(() => saveTurns(threadId, turns), [threadId, turns]);
 
-  // Canary state for the selected manifest. Only tenant-managed manifests have
-  // an active pointer, so a bundled one simply has no rollout and no badge.
+  // Canary state for the selected manifest on *this* thread. Two questions, two
+  // sources: whether a rollout exists at all comes from the active pointer, and
+  // which side serves this thread comes from resolving the manifest with the
+  // thread id — the assignment is a server-side hash the client cannot compute.
+  //
+  // Only tenant-managed manifests have a pointer, so a bundled one has no
+  // rollout and no badge, and the second call is skipped entirely.
   const refreshCanary = useCallback(async () => {
     try {
       const rows = await listTenantManifests();
       const row = rows.find((r) => r.name === manifest);
       const weight = row?.canary_weight ?? 0;
       const version = row?.canary_version ?? null;
-      setCanary(version != null && weight > 0 ? { version, weight } : null);
+      if (version == null || weight <= 0) {
+        setCanary(null);
+        return;
+      }
+      // Only a `canary` answer is treated as one. A harness that does not yet
+      // take `thread_id` replies `stable` for every thread, and reporting that
+      // as "this thread is on stable" would be a confident guess — so an
+      // unconfirmed thread shows the rollout, and claims nothing about itself.
+      let onCanary = false;
+      try {
+        const resolved = await getResolvedManifest(manifest, { threadId });
+        onCanary = resolved.variant === 'canary';
+      } catch {
+        // Resolution is best-effort; the rollout badge still stands without it.
+      }
+      setCanary({ version, weight, onCanary });
     } catch {
       // The tenant store is optional and the route needs `manifests:read`;
       // a badge is not worth surfacing an error for.
       setCanary(null);
     }
-  }, [manifest]);
+  }, [manifest, threadId]);
 
   useEffect(() => {
     void refreshCanary();
@@ -874,15 +899,18 @@ export default function App() {
           )}
           {canary && (
             <Badge
-              variant="default"
+              variant={canary.onCanary ? 'default' : 'secondary'}
               className="hidden font-normal sm:inline-flex"
               title={
-                `Canary rollout in flight: v${canary.version} at ${canary.weight}%. ` +
-                'Which side serves a given thread is decided server-side and is not reported.'
+                canary.onCanary
+                  ? `This thread is served by canary v${canary.version} (rollout at ${canary.weight}%).`
+                  : `Canary rollout in flight: v${canary.version} at ${canary.weight}%. ` +
+                    'This thread is not confirmed to be on it.'
               }
             >
-              canary v{canary.version}
-              {canary.weight < 100 ? ` @ ${canary.weight}%` : ''}
+              {canary.onCanary
+                ? `canary v${canary.version}`
+                : `canary v${canary.version}${canary.weight < 100 ? ` @ ${canary.weight}%` : ''}`}
             </Badge>
           )}
           {thinkingLevel !== 'off' && (

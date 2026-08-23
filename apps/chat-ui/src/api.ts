@@ -613,13 +613,25 @@ export async function listTenantManifests(): Promise<ManifestSummary[]> {
   return body.items ?? body.manifests ?? [];
 }
 
-/** GET /manifests/{name}[?version=] → resolved manifest + which layer it came from. */
+/**
+ * GET /manifests/{name} → resolved manifest + which layer it came from.
+ *
+ * `threadId` is the thread-id *suffix*, and it is what makes `variant`
+ * meaningful: canary assignment is a server-side hash over the thread, so the
+ * harness answers `stable` for every caller that does not name one.
+ */
 export async function getResolvedManifest(
   name: string,
-  version?: number,
+  opts: { version?: number; threadId?: string } = {},
 ): Promise<ResolvedManifest> {
-  const q = version ? `?version=${version}` : '';
-  return manifestFetch<ResolvedManifest>(`/${encodeURIComponent(name)}${q}`);
+  const q = new URLSearchParams();
+  if (opts.version) q.set('version', String(opts.version));
+  if (opts.threadId) q.set('thread_id', opts.threadId);
+  // One flat template on purpose: check-api-drift extracts route strings by
+  // regex, and a nested template literal truncates the path it sees.
+  const qs = q.toString();
+  const suffix = qs ? `?${qs}` : '';
+  return manifestFetch<ResolvedManifest>(`/${encodeURIComponent(name)}${suffix}`);
 }
 
 /**
