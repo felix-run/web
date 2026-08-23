@@ -29,16 +29,30 @@ export async function pickDirectory(): Promise<string> {
   return mountName;
 }
 
-async function resolve(
-  path: string,
-  opts: { create?: boolean } = {},
-): Promise<{ parent: DirHandle; name: string }> {
-  if (!root) throw new Error('no folder mounted');
+/**
+ * Split a caller-supplied path into contained segments.
+ *
+ * Every path that reaches a real directory handle goes through here. The mount
+ * is a real folder on the user's disk and these paths arrive in tool calls that
+ * a prompt-injected model chooses, so containment is a security property.
+ * Backslashes are folded to `/` first, otherwise `..\..\x` walks straight past
+ * a check that only compares whole segments to `..`.
+ */
+function splitContainedPath(path: string): string[] {
   const parts = path
     .replace(/\\/g, '/')
     .split('/')
     .filter((p) => p && p !== '.');
   if (parts.some((p) => p === '..')) throw new Error('path escapes mount');
+  return parts;
+}
+
+async function resolve(
+  path: string,
+  opts: { create?: boolean } = {},
+): Promise<{ parent: DirHandle; name: string }> {
+  if (!root) throw new Error('no folder mounted');
+  const parts = splitContainedPath(path);
   if (parts.length === 0) return { parent: root, name: '' };
 
   let dir = root;
@@ -55,12 +69,10 @@ export async function mountList(
 ): Promise<Array<{ path: string; type: 'file' | 'dir' }>> {
   if (!root) throw new Error('no folder mounted');
   let dir = root;
-  const base = path === '.' || path === '' ? '' : path.replace(/^\.\//, '');
-  if (base) {
-    for (const part of base.split('/').filter(Boolean)) {
-      if (part === '..') throw new Error('path escapes mount');
-      dir = await dir.getDirectoryHandle(part);
-    }
+  const parts = splitContainedPath(path);
+  const base = parts.join('/');
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part);
   }
   const out: Array<{ path: string; type: 'file' | 'dir' }> = [];
   for await (const [name, handle] of dir.entries()) {
@@ -97,14 +109,10 @@ export async function mountWrite(path: string, content: string, append = false):
 }
 
 export async function mountMkdir(path: string): Promise<void> {
-  const parts = path
-    .replace(/\\/g, '/')
-    .split('/')
-    .filter((p) => p && p !== '.');
+  const parts = splitContainedPath(path);
   if (!root || !parts.length) throw new Error('invalid path');
   let dir = root;
   for (const part of parts) {
-    if (part === '..') throw new Error('path escapes mount');
     dir = await dir.getDirectoryHandle(part, { create: true });
   }
 }

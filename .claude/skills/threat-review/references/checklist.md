@@ -28,9 +28,13 @@ Reference for `threat-review`.
 
 ## Client tools and VFS — `packages/cowork-client`
 
-- [ ] `normalize()` rejects `..` above root; verify against absolute paths, backslashes,
-      percent-encoded traversal, and unicode lookalikes
-- [ ] Every path from a tool argument is normalized **before** use, on every code path
+- [ ] `normalize()` (VFS) rejects a net escape above root; verify against absolute paths,
+      backslashes, percent-encoded traversal, and unicode lookalikes
+- [ ] `splitContainedPath()` (mount) rejects **every** `..`, not just a net escape — the mount is
+      real disk, so it is deliberately stricter than the in-memory VFS. Keep it that way; do not
+      "unify" the two guards by loosening this one
+- [ ] Every path from a tool argument goes through one of those two checks **before** any handle is
+      opened, on every code path. Both are covered by `packages/cowork-client/tests/`
 - [ ] File System Access writes stay inside the mounted directory handle
 - [ ] The local shell emulation cannot execute real processes or reach outside the mount
 - [ ] Destructive operations (delete, overwrite, bulk write) require approval rather than a

@@ -18,7 +18,8 @@ Changed files:
 
 ## What "verified" means here
 
-**Test coverage is partial.** `pnpm test` covers the VFS, the SSE reader, and the proxy Worker —
+**Test coverage is partial.** `pnpm test` covers the VFS, the disk mount, the SSE reader, and the
+proxy Worker —
 the last two through shared suites in `@felix/test-kit` that run against both chat-ui and float. CI
 runs lint, check-types, test, build, and the hook batteries in `.claude/hooks/tests/`.
 
