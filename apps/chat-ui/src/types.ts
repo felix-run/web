@@ -28,6 +28,8 @@ import type { ImageAttachment, Role, TokenUsage } from '@felix/protocol';
 /** A finished or in-flight tool call, rendered inline in the transcript. */
 export interface ToolCall {
   name: string;
+  /** Harness tool-call id, when the frame carried one. */
+  callId?: string;
   input?: unknown;
   output?: unknown;
   done: boolean;
