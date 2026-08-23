@@ -1,218 +1,315 @@
 ---
 title: "Concepts"
-description: "The mental model behind Felix — manifests, tenants, threads, patterns, tools, memory, and auth."
+description: "The mental model behind Felix — manifests, tenants, threads, patterns, tools, memory, governance, and auth."
 sidebar:
   order: 2
 ---
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
-The mental model behind Felix. Read this before writing a manifest or integrating a client.
+Felix is a **managed agents harness** you run yourself. You describe an agent declaratively; Felix
+compiles that description into a governed, observable, resumable runtime and serves it over several
+protocols at once.
 
-Felix is a **managed agents harness** in the shape Anthropic describes in [Managed Agents](https://www.anthropic.com/engineering/managed-agents): the runtime owns plumbing (auth, audit, limits, persistence, HTTP surface) and the agent itself is composed from three decoupled abstractions — **Session**, **Pattern / Provider registries**, and **ToolExecutor**. Each can be swapped without touching the others. Most of this page is about what the harness exposes to manifest authors; the deep cuts live in the [architecture internals](/internals/architecture/).
+The through-line is: *the manifest is the program, and everything else is machinery that enforces
+it.*
 
 ## Manifest
 
-A YAML or JSON document with `apiVersion: orchestrator/v1` and `kind: Agent`. The schema is defined in `src/manifests/schema.ts` and uses Zod `.strict()`, so unknown keys are rejected outright. A manifest declares everything an agent needs: pattern, model, system prompt, tools, skills, MCP servers, A2A peers, memory backend, auth requirements, policies, limits, guardrails, approvals.
+A YAML or JSON document with `apiVersion: felix/v1` and `kind: Agent`. The schema is Pydantic v2 with
+`extra="forbid"`, so an unknown key is a hard error rather than a silently ignored typo.
 
-:::tip
-See [manifest-reference.md](/guide/manifest-reference/) for every field with defaults and examples, and [management-api.md](/guide/management-api/) for the `/manifests` REST surface used to deploy manifests at runtime.
-:::
+A manifest declares everything an agent needs: pattern, model, system prompt, tools, skills, MCP
+servers, A2A peers, client tools, memory backend, session strategy, auth requirements, policies,
+limits, guardrails, screening, approvals, and framework governance.
 
-Manifests can be loaded from four sources. The request-path resolver `resolveManifest(env, tenantId, name)` (`src/manifests/resolver.ts`) walks them in order and returns the first hit:
+```yaml
+apiVersion: felix/v1
+kind: Agent
+metadata:
+  name: quick
+spec:
+  pattern: react
+  model:
+    id: claude-sonnet-4
+  tools: [calculator]
+```
 
-1. **Tenant Postgres active version** — the `manifests` table + `manifest_active` pointer (`apps/api/migrations/0001_baseline.sql`). Tenants populate this through the `/manifests` REST surface; rows are append-only and rollback flips the pointer. (The resolver's internal `source` value stays `tenant_d1` — see [management-api.md](/guide/management-api/).)
-2. **Tenant R2 override** — `manifests/<tenant_id>/<name>.json` in the `BUNDLES` bucket. Useful for bulk pre-population via `wrangler r2 object put`; the management API does not write here.
-3. **Global R2 override** — `manifests/<name>.json` in `BUNDLES`. Affects every tenant.
-4. **Bundled** — `pnpm build:manifests` reads the repo-local `manifests/*.yaml`, validates each with the Zod schema, and emits `src/manifests/bundled.ts`.
+Every field is catalogued in the [Manifest reference](/guide/manifest-reference/).
 
-:::caution[Use `resolveManifest` in request handlers]
-The sync `loadManifest(name)` (`src/manifests/loader.ts:22-33`) is kept for system-only call sites that have no tenant context — cron, A2A discovery, MCP default. Request handlers (`/chat`, `/v1/chat/completions`, `/a2a` `tasks/send`) MUST use `resolveManifest` so per-tenant overrides take effect.
-:::
+### Where manifests come from
 
-The bundled set is also exposed as OpenAI "models" through `GET /v1/models`.
+The request-path resolver walks four layers and returns the first hit:
+
+1. **Tenant Postgres** — the tenant's active pointer (`source: tenant_postgres`)
+2. **Tenant object store** — `manifests/{tenant_id}/{name}.json` (`source: tenant_object`)
+3. **Global object store** — `manifests/{name}.json`, affecting every tenant (`source: global_object`)
+4. **Bundled** — the YAML shipped in the image (`source: bundled`)
+
+So a tenant manifest named `quick` shadows the bundled `quick` for that tenant alone. Active pointers
+are cached for 30 seconds. Eight manifests ship in the box: `quick`, `deep`, `router`, `oss-only`,
+`hybrid-router`, `support`, `cowork` and `governed`.
+
+Writes go through the [Management API](/guide/management-api/#manifests), which is append-only and
+version-pinned: publishing inserts a new version row and flips a pointer, and rolling back flips the
+pointer again rather than rewriting content.
+
+### Canary rollouts
+
+An active pointer can carry a `canary_version` and a `canary_weight`. Selection is **deterministic**,
+not random — the harness hashes tenant, thread, manifest name and both version numbers, then takes
+that modulo 100. A thread therefore stays on one side for the whole rollout instead of flapping
+between versions mid-conversation.
+
+### Compile pinning
+
+With `spec.governance.pin_compile`, the manifest version a thread started on is frozen for that
+thread. If the active pointer moves underneath a live conversation, the next request fails with
+`409` rather than silently switching behaviour mid-run.
 
 ## Tenant
 
-Multi-tenancy is structural in Felix, not advisory. Every Postgres row uses a composite primary key `(tenant_id, id)`; every `memory_vectors` row is filtered by tenant on `recall`. The tenant id comes from the verified inbound JWT:
+Every row Felix writes is scoped to a tenant id, taken from the **authenticated principal** — never
+from a request field, so a caller cannot address another tenant's data. Under
+`FELIX_AUTH_MODE=none` everything is the anonymous principal in tenant `default`.
 
-1. Custom claim `custom:tenant_id`, if present.
-2. Custom claim `tenant_id`.
-3. First label of the JWT issuer host (e.g. `acme.cloudflareaccess.com` → `acme`).
-4. Anonymous traffic always gets `default`.
+Postgres row-level security is available as opt-in defence in depth: run migration `0006_tenant_rls`
+and set `FELIX_DATABASE_RLS=true`, and the tenant id is applied per transaction.
 
-See `payloadToPrincipal` in `src/auth/jwt.ts` for the exact resolution.
+## Thread
 
-The Cloudflare Rate Limiting binding (`TENANT_RATE_LIMIT`) is keyed by this tenant id with a sliding window of 100 requests per 60 seconds. Anonymous traffic shares the `default` bucket. `/health`, `/docs`, `/openapi.json`, and `/.well-known/*` are exempt.
+A thread is one conversation. Its id is always `{tenant_id}:{suffix}`, where clients supply only the
+suffix — a suffix containing `:` or `#` is rejected with `400 invalid_thread_id`.
 
-## Thread and Session
+## Session
 
-Conversation persistence is per-thread. A thread id is always `${tenantId}:${suffix}` where the suffix is caller-supplied. The server rejects suffixes containing `:` or `#` so the tenant prefix cannot be smuggled away from the authenticated principal:
+The session is the append-only event log behind a thread. It lives **outside** the model's context
+window: the log is the durable record, and a *strategy* decides what the model actually sees each
+turn.
 
-- `POST /chat` and `POST /chat/stream` — `thread_id` in the JSON body
-- `POST /v1/chat/completions` — `x-thread-id` header; **without it each request is stateless**, so `/v1` remains a clean OpenAI-compatible surface by default
-- `POST /a2a` (`tasks/send`, `tasks/sendSubscribe`) — the A2A task id becomes the thread suffix, so a continuation task replays the same conversation
+Event kinds: `message`, `tool_call`, `tool_result`, `thinking`, `audit`, `compaction`,
+`model_change`, `thinking_level_change`, `branch_summary`, `custom`, `label`, `session_info`.
 
-:::note[Thread suffix validation]
-Suffixes containing `:` or `#` are rejected with HTTP 400 so the authenticated tenant prefix cannot be smuggled away. The server always produces the full id as `${tenantId}:${suffix}`.
-:::
+Strategies (`spec.session.strategy`):
 
-A `Session` is the harness's external context object for a thread. The session log is append-only, with each `SessionEvent` carrying `seq`, `kind`, the message-shaped payload, and optional `metadata`. Felix exposes the log via `ConversationDO` (one Durable Object per thread id; `blockConcurrencyWhile` serializes appends so parallel sub-agents writing to the same thread can't race). A pluggable `SessionStrategy` decides what the model sees on each turn — see the Memory section below.
+| Strategy | Behaviour |
+|---|---|
+| `full_replay` | Send the whole transcript. The default. |
+| `windowed:N` | Send the last N events. |
+| `summarizing:N` | Summarize everything older than the last N. |
+| `semantic:N` | Retrieve the N most relevant events (needs the `embeddings` extra). |
+| `compacting` | Compact on a token threshold, keeping `keep_recent_tokens` intact. |
 
-## Agent
+Because the log is authoritative and server-side, a client is a **view**, not the source of truth. It
+hydrates from `GET /chat/sessions/{id}`, whose snapshot carries the transcript, phase, thinking
+level, leaf, lease state and any queued steering.
 
-The compiled output of `buildAgent(manifest, deps)`. An `Agent` has two methods:
+A session moves through phases `idle`, `turn`, `compaction`, `branch_summary`, `retry` and `aborted`.
 
-- `invoke(input): Promise<InvokeOutput>` — run synchronously, return the full message stream
-- `streamEvents(input): AsyncIterable<Event>` — stream events as they're produced
+### Branching
 
-Where `input = { messages, threadId? }`.
+A thread is a tree, not a line. **Fork** copies a session into a new thread up to a chosen event.
+**Rewind** moves the active leaf back to an earlier event in the same thread; unless you opt out, the
+abandoned branch is summarized into a `branch_summary` event so the model does not lose what happened
+there.
 
-Agents are cached per manifest name inside each router (one cached `Promise<Agent>` per `body.model` or `body.manifest`). The cache is keyed only by name — the `compose(env)` ToolProvider is shared, so the cache survives across requests in the same isolate.
+### Leases
+
+Two browser tabs on one session would race. Each client mints a holder id and takes a lease —
+`exclusive` (reported as `locked`) or `shared` (reported as `attached`). Contention returns `409`.
+Leases are Redis-backed, so they hold across replicas.
 
 ## Pattern
 
-Patterns are the agent's loop shape. Felix's pattern registry is open: built-ins self-register at module load and new patterns can be added by `registerPattern(name, build, { kind })` (see [internals/manifest-pipeline.md](/internals/manifest-pipeline/)). The seven built-ins declared via `spec.pattern`:
+The pattern is the control loop. Felix ships seven:
 
-- **react** (default) — sequential tool-calling loop bounded by `recursion_limit`
-- **deep** — react plus auto-injected planning tools (`plan_create`, `plan_update_step`, `plan_get`) and a planning suffix on the system prompt
-- **router** — a classifier model picks one sub-agent by name; the `threadId` is forwarded so the conversation continues across routing decisions
-- **parallel** — fan-out all sub-agents concurrently, then synthesize via an aggregator model; the `threadId` is stripped before fan-out so children cannot race-write the parent's session
-- **groupchat** — round-robin sub-agent turns with a shared transcript and a fixed `max_turns`
-- **reflect** — wraps a react base with a verifier model that scores each final response against `spec.reflect.criteria`; below threshold the critique is appended as a synthetic user turn and react replays up to `spec.reflect.max_iterations`. `judge_score` audit event per iteration
-- **plan_execute** — planner/executor split. A planner model emits a JSON plan; an executor model runs each subtask in a bounded react sub-loop with the manifest's tools; a synthesis pass produces the final assistant turn. Audits as `plan_step` rows. Pairs with `spec.procedural_memory.enabled` for "what plans worked before" few-shots. Pick when the task is genuinely multi-step and a single react loop conflates phases
+| Pattern | Kind | Behaviour |
+|---|---|---|
+| `react` | single | Think → call tools → observe → repeat. The workhorse. |
+| `deep` | single | Plans first, records steps as a plan document, then executes. |
+| `reflect` | single | Generates, critiques against `criteria`, and retries below `threshold`. |
+| `plan_execute` | single | Separate planner and executor models. |
+| `router` | multi | Classifies the request and delegates to one sub-agent. |
+| `parallel` | multi | Fans out to sub-agents and aggregates. |
+| `groupchat` | multi | Sub-agents converse to a joint answer. |
 
-The three multi-agent patterns (router, parallel, groupchat) declare `kind: 'multi-agent'` in their registry entry; the validator (`src/manifests/validate.ts`) queries `isMultiAgentPattern(name)` and enforces that multi-agent patterns require `sub_agents` and forbid `peers`, `containers`, `queues`, `sandboxes`, `browser_tools`. Registering a new multi-agent pattern picks up the same constraints automatically.
+The registry is open — `register_pattern(name, builder)` adds your own, and nothing in core
+enumerates the built-in list. Multi-agent patterns require `sub_agents` and reject the direct
+outbound blocks (`peers`, `containers`, `queues`, `sandboxes`, `browser_tools`); a sub-agent's own
+manifest declares those instead. See [Patterns](/internals/patterns/).
 
 ## Skill
 
-A `SKILL.md` file with YAML frontmatter and a Markdown body. Bundled like manifests via `pnpm build:manifests`. The frontmatter declares tools, MCP servers, and A2A peers to fold into any manifest that lists the skill; the body is appended to the system prompt under a `## Active Skills` header.
+A `SKILL.md` file with YAML frontmatter, living under `skills/<name>/`. The frontmatter can fold
+extra tools, MCP servers and peers into any manifest that lists the skill; the body is appended to
+the system prompt under an `## Active Skills` header.
 
-Skill activation is **per-tenant** and **restriction-only**: a tenant overlay can disable skills the manifest declares, but cannot enable skills the manifest didn't. The overlay is stored as a JSON array on `(tenant_id, manifest_id)` in the `skill_activation` table. `null` means "no overlay — all declared skills active"; `[]` means "all disabled"; `[a, b]` means "intersection with declared". Three tools (`list_skills`, `activate_skill`, `deactivate_skill`) let agents manage their own overlay; see `apps/api/src/composition.ts`.
+Activation is per-tenant and **restriction-only**: a tenant overlay can disable skills the manifest
+declares, but can never enable ones it did not. Agents can manage their own overlay through
+`list_skills`, `activate_skill` and `deactivate_skill`.
 
 ## Tool
 
-Anything the model can call. A `Tool` has a `name`, `description`, Zod `args` schema, and an `executor: ToolExecutor` that owns the transport. The model loop dispatches by name (`tool.executor.execute(args, ctx)`); the harness routes to whichever transport the tool was built with. Today's transports:
+Every tool, wherever it runs, is compiled to the same interface and tagged with a **transport** that
+shows up in audit rows:
 
-| Transport | Built by | Where it runs |
+| Transport | Runs where | Declared by |
 |---|---|---|
-| `local`     | `defineTool({ ..., handler })` — worker-resident handler | inside the Worker |
-| `mcp`       | `McpExecutor` (constructed by `bindExternalMcp` in `src/mcp/client.ts`) | the remote MCP server |
-| `a2a`       | `A2AExecutor` (constructed by `makePeerTool` in `src/a2a/client.ts`) | a remote Felix peer via JSON-RPC `tasks/send` |
-| `container` | `ContainerExecutor` / `containerTool({ ... })` in `src/tools/container-executor.ts` | a sandbox or container gateway reachable by HTTPS |
-| `queue`     | `QueueExecutor` / `queueTool({ ... })` in `src/tools/queue-executor.ts` | a separate consumer Worker reading from a Cloudflare Queue; the result lands back on the session asynchronously |
-| `sandbox`   | `SandboxExecutor` / `sandboxTool({ ... })` in `src/tools/sandbox-executor.ts` | a worker-local Fetcher (Service binding wrapping `@cloudflare/sandbox`, or a DO-stub adapter) — no external HTTPS gateway |
-| `browser`   | `BrowserExecutor` / `browserTool({ ... })` in `src/tools/browser-executor.ts` | a worker-local Fetcher wrapping `@cloudflare/puppeteer` or the Browser Rendering REST API |
+| `local` | In the API process | `spec.tools` |
+| `mcp` | A remote MCP server | `spec.mcp_servers` → `{server}__{tool}` |
+| `a2a` | Another Felix peer | `spec.peers` → `peer__{name}` |
+| `container` | An HTTPS container gateway | `spec.containers` |
+| `sandbox` | A Docker sandbox (`sandbox` extra) | `spec.sandboxes` |
+| `browser` | Playwright (`browser` extra) | `spec.browser_tools` |
+| `queue` | A separate consumer, via a Redis list | `spec.queues` |
+| `client` | **The caller's own machine** | `spec.client_tools` |
 
-**`ToolErrorCode` taxonomy.** Every failure across the 7 transports surfaces as one of a stable code set: `invalid_arguments` / `transport_unavailable` / `provider_error` / `timeout` / `user_aborted` / `rate_limited` / `permission_denied` / `internal`. The code lands on `audit_events.payload.error_code` and the `tool_result` text the model sees (`[<source> error/<code>] …`), so anomaly detection can group by `(manifest, tool, error_code)` and the model can branch deterministically.
+Tool failures come back as strings the model can read and react to, prefixed
+`[error/invalid_arguments]`, `[error/timeout]`, `[error/blocked]` or `[error/internal]`. A ref with
+`fatal: true` aborts the batch instead.
 
-The `queue` transport is the async case: `execute()` enqueues the job and returns a stub. The model continues this turn assuming the result will arrive later. A separate consumer writes a `tool_result` event back to the session log keyed to the dispatching `tool_call_id`; when the client reconnects via `tasks/resubscribe`, `session.wake()` reports the cycle resolved and the next model step renders the result. See [internals/persistence.md#async-tool-resumption-queue-transport](/internals/persistence/#async-tool-resumption-queue-transport).
+### Client-executed tools
 
-Tools come from these sources (orthogonal to transport):
+`spec.client_tools` inverts the usual direction: the harness emits a `tool_request` frame and
+*blocks*, and the browser or CLI runs the tool and answers with `POST /chat/tool_result`. This is a
+real round trip inside the model loop — a client that never answers stalls the run until the tool's
+timeout. It is how the web clients run local shell commands and open local files against a workspace
+the server cannot see.
 
-1. **Built-ins** — registered by the harness composition layer. The core set includes `calculator`, `list_skills`, `activate_skill`, `deactivate_skill`, and the scheduling tools when opted into a manifest.
-2. **Skills** — frontmatter `tools:` lists folded in at build time.
-3. **External MCP servers** — namespaced as `${server.name}__${tool.name}`, fetched from each `mcp_servers[].url`.
-4. **A2A peers** — every `peers[]` entry becomes a `peer_${name}` tool. The `peer_` prefix is the contract that increments `peerHops` in the limits wrapper.
-5. **Containers** — every `containers[]` entry becomes a tool whose executor is a `ContainerExecutor` pointing at the declared gateway. Used for sandboxed code execution and untrusted side-effects; see [manifest-reference.md#speccontainers](/guide/manifest-reference/#speccontainers) for the gateway contract.
-6. **Queues** — every `queues[]` entry becomes a tool whose executor is a `QueueExecutor` bound to a Cloudflare Queue. Used for long-running async work that resolves across requests via `tasks/resubscribe`. See [manifest-reference.md#specqueues](/guide/manifest-reference/#specqueues).
-7. **Sandboxes** — every `sandboxes[]` entry becomes a tool whose executor is a `SandboxExecutor` targeting a worker-local Fetcher. See [manifest-reference.md#specsandboxes](/guide/manifest-reference/#specsandboxes) and [`examples/sandbox-worker/`](https://github.com/felix-run/web/blob/main/packages/examples/sandbox-worker/).
-8. **Browser tools** — every `browser_tools[]` entry becomes a tool whose executor is a `BrowserExecutor` targeting a worker-local Fetcher wrapping `@cloudflare/puppeteer`. See [manifest-reference.md#specbrowser_tools](/guide/manifest-reference/#specbrowser_tools) and [`examples/browser-worker/`](https://github.com/felix-run/web/blob/main/packages/examples/browser-worker/).
-9. **`fetch_artifact`** — auto-injected by the builder when `spec.artifacts.enabled: true` so the model can read back oversized tool results that were spilled to R2.
-10. **`recall_procedure`** — auto-injected when `spec.procedural_memory.enabled: true` so the model can recall past similar tool-call sequences from pgvector.
+### Queue tools
 
-Every tool is wrapped by the governance pipeline before being exposed to the model — see [internals/governance.md](/internals/governance/). Wrappers replace `tool.executor` while preserving the inner `transport` label so audit and observability report the true transport even after composition.
+A queue tool pushes onto a Redis list and returns immediately; a separate consumer does the work and
+writes the result back with `POST /internal/sessions/{session_id}/events`, authenticated with
+`X-Felix-Consumer-Secret`. Use it for work that outlives a request.
 
-:::tip[JIT tool retrieval]
-`spec.tools_retrieval.enabled: true` filters the tool list down to the top-K most relevant tools per turn by cosine similarity between BGE-embedded tool descriptions and the recent conversation. Essential at 30+ tool catalogs — without it the full list inflates every model call's prompt. Falls back to the full list when `env.AI` is absent.
-:::
+## Governance
 
-**Reference-based artifacts** (`spec.artifacts.enabled: true`) spill tool results above `threshold_chars` to R2 and replace them with a `[artifact:REF]` stub the model can fetch piecewise via `fetch_artifact`. Cuts context spent on sandbox stdout dumps, scraped HTML, and large JSON arrays.
+Every tool is cloned through a fixed wrapper stack before the model can call it. The **order is
+load-bearing** and enforced by tests:
+
+**secret masking → policies → command screening → content screening → limits → guardrails → judges →
+approvals → artifact spill**
+
+| Layer | Manifest block | Question it answers |
+|---|---|---|
+| Secret masking | — | Is a resolved credential about to leak into output? |
+| Policies | `spec.policies` | Does the caller hold the scopes this tool requires? |
+| Command screening | `spec.command_screening` | Is this command allowed, denied, or does it need a human? |
+| Content screening | `spec.content_screening` | Is this tool output trying to hijack the model? |
+| Limits | `spec.limits` | Has this run exceeded its budget? |
+| Guardrails | `spec.guardrails` | Does the text match a blocked pattern (e.g. PII)? |
+| Judges | `spec.guardrails.judges` | Does a model score this as acceptable? |
+| Approvals | `spec.approvals` | Has a human said yes? |
+| Artifacts | `spec.artifacts` | Is this output too large to put in context? |
+
+A denial is stamped with a module-private marker, so a model cannot forge one by emitting a
+convincing-looking string. Governance **fails closed** — a missing store or an internal error denies
+rather than allows. See [Governance](/internals/governance/).
+
+`spec.governance.frameworks` additionally maps a manifest onto `soc2` or `eu_ai_act` requirements and
+refuses to compile without the corresponding controls. That is a compile-time check, not a
+certification.
 
 ## Memory
 
-Four orthogonal layers:
+Two independent things share the word.
 
-- **Session checkpointer** (`spec.memory.checkpointer`) — the per-thread session event log. Backed by `ConversationDO`. Enum values: `do` (default), `agentcore` and `sqlite` (legacy aliases), `none`. The `Session` interface (`src/session/types.ts`) is what patterns consume.
-- **Session strategy** (`spec.session.strategy`) — decides how prior events render into the working-set messages the model sees. `full_replay` (default) replays every prior message; `windowed:N` keeps the last N events; `summarizing:N` keeps the last N raw and model-summarizes everything older, caching the summary as a `kind: 'audit'` event so steady-state rendering skips the model call; `semantic:N` keeps the top-N most relevant past events by BGE cosine similarity to the current user message. Events tagged `metadata.pinned: true` survive every strategy's compaction.
-- **Long-term store** (`spec.memory.store`) — semantic memory across threads. Backed by the `memory_vectors` pgvector table with 768-dimensional `@cf/baai/bge-base-en-v1.5` embeddings. Enum values: `vectorize` (default; legacy name, now pgvector-backed), `agentcore` (legacy alias), `memory` (legacy in-process), `none`.
-- **Procedural memory** (`spec.procedural_memory.enabled: true`) — after a successful run, distills `(user_intent, tool_call_sequence)` into a `memory_vectors` row tagged `kind: 'procedural'`. The auto-injected `recall_procedure(query)` tool returns past similar successes so the model can see "last time this came up, the sequence that worked was X → Y → Z." Filter-scoped by tenant.
+**Session memory** is the transcript, above — the checkpointer (`spec.memory.checkpointer`, Postgres)
+plus a strategy.
 
-When `memory.store` resolves to `vectorize`, the builder auto-injects `memory_remember` and `memory_recall` tools. The agent never needs to declare these in `tools:`.
-
-All memory queries are tenant-scoped: `recall` filters on `{ tenant }` and `forget` verifies ownership before deleting.
+**Durable memory** is facts that outlive a thread. With `spec.memory.capture.enabled`, a small model
+extracts facts from each turn into `memory_vectors` (pgvector, HNSW) under kinds `fact`,
+`preference`, `episode` and `procedural`. `spec.procedural_memory` recalls stored how-tos and adds a
+`remember_procedure` tool. Semantic recall and `tools_retrieval` need the `embeddings` extra.
 
 ## Durable execution
 
-`spec.execution.mode: durable` wraps every invocation in an `AgentWorkflow` instance (Cloudflare Workflows, `AGENT_WORKFLOW` binding). The Workflow re-resolves the manifest with `execution.mode` forced to `transient` to break recursion, rebuilds the agent, and runs `agent.invoke()` inside `step.do(...)` with conservative retry policy (3 attempts, exponential backoff, 15-minute timeout). A worker eviction mid-run replays the step rather than losing the branch. The instance id is returned to the caller; A2A `tasks/resubscribe` then resumes from the live Workflow's status.
+By default a run lives and dies with the request. With `spec.execution.mode: durable`, `POST /chat`
+enqueues a **fiber** and returns `202` with a `resume_token`; the fiber checkpoints into Postgres and
+the worker's `fiber_scheduler` cron resumes it, so a process restart does not lose the run. Poll
+`GET /chat/runs/{resume_token}` for the result.
 
-Valid on any single-agent pattern (`react`, `deep`, `reflect`, `plan_execute`). Multi-agent patterns must opt their children's leaf manifests in instead. Requires `memory.checkpointer != 'none'`. Binding-graceful: falls back to in-isolate invocation with a warning when `AGENT_WORKFLOW` is absent (dev probes, unit tests).
+Setting `FELIX_DURABILITY=temporal` additionally drives a Temporal workflow on the `felix-fibers`
+task queue, falling back to the fiber scheduler if that fails.
 
-:::note
-The `orchestrator_durable_fallback` counter fires whenever durable mode degrades to in-isolate execution. It **should be zero in production** — a non-zero value means `AGENT_WORKFLOW` is not bound in the current environment.
+:::caution
+`POST /chat/stream` ignores `execution.mode: durable` and always runs inline.
 :::
 
-## Canary rollouts
+## Steering
 
-`manifest_active` has three columns beyond the stable `version`: `canary_version`, `canary_weight` (0-100), and the stable pointer itself. The resolver hashes `(tenant_id, thread_id, manifest_name, stable_v, canary_v)` via SHA-256 to deterministically bucket each thread into stable or canary — flipping either version re-randomises bucket assignment, so progressive ramps don't carry old buckets forward. A single thread stays on one variant across the rollout.
+A run is not a black box once it starts. `POST /chat/steer` with `kind: "steer"` interrupts the
+remaining tool batch mid-run; `kind: "follow_up"` queues a message delivered once the run goes idle.
+`POST /chat/abort` stops it, and `POST /chat/continue` picks it back up with no new user message. The
+queues are Redis lists, so any replica can accept the steer.
 
-- `POST /manifests/:name/canary` sets `{canary_version, canary_weight}`. Emits `manifest_canary_set` audit.
-- `POST /manifests/:name/rollback` zeroes `canary_weight` (optionally also clears the version pointer). Emits `manifest_canary_cleared`.
-- The anomaly detector cron auto-rolls-back any canaried manifest that trips an error-rate threshold. Emits both `auto_rollback` and `manifest_canary_cleared` audit events.
-- The chat / OpenAI-compat routes set `x-manifest-variant: stable|canary` on the response so an operator can verify a canary is reaching real traffic.
+## Interrupts
 
-## Eval harness
+Three things pause a run until something answers out of band: an `approval_required` frame waiting on
+a human decision, a `tool_request` frame waiting on the client, and a `ui_request` frame asking the
+user to choose, confirm or type something. Each has a timeout and fails closed. See
+[sticky interrupts](/guide/rest-api/#sticky-interrupts).
 
-The eval surface is three Postgres tables (`eval_datasets`, `eval_dataset_items`, `eval_runs`) backing `/eval/datasets`, `/eval/datasets/{name}/items`, `/eval/datasets/{name}/run`, and `/eval/runs`. A run executes off the request path: `POST …/run` returns `202 { run_id }` and the scoring happens in a background job (`execCtx.waitUntil`) so a large dataset can't blow the Worker CPU / subrequest ceiling — poll `GET /eval/runs/{id}` for the terminal `completed` / `failed` status. Each item carries:
+## Surfaces
 
-- `user_input` — the prompt to drive through the candidate manifest
-- `rubric` — pass criteria. Layered scoring:
-  1. **Trajectory gate** — `max_tool_calls`, `forbidden_tools`, `required_tool_sequence` (subsequence). Runs first, free, catches "right answer via wasteful path" regressions.
-  2. **Substring gates** — `must_include` / `must_not_include` (case-insensitive). Cheap deterministic backstop.
-  3. **LLM judge** — `criteria` free-form, scored 0..1 by a Workers-AI model. `panelJudge` composer aggregates N judges by median / mean / min.
+The same compiled agent is reachable four ways, which is the point of compiling from a manifest
+rather than wiring a framework by hand:
 
-Cost dimensions per item — `tokens_input`, `tokens_output`, `tool_call_count`, `duration_ms` — are recorded on each `ItemScore` so the CI gate can fail on "won by brute force" regressions (matched pass rate but 3× the token spend).
-
-`pnpm eval` is the CI gate (`scripts/eval.ts`):
-
-```bash
-pnpm eval -- --base-url https://staging-make.felix.run \
-  --dataset golden --candidate research \
-  --baseline evals/baseline.json --cost-tolerance 1.5 \
-  --include-adversarial --adversarial-floor 0.95
-```
-
-`--include-adversarial` runs a companion `<dataset>_adversarial` dataset seeded from `src/eval/seeds/adversarial.ts` (8 curated items across 5 categories: prompt_injection, jailbreak, tool_misuse, pii_probe, data_exfil). The candidate must pass a higher floor (default 0.95) than the happy-path dataset — safety regressions block rollout even when quality holds.
+| Surface | Entry point |
+|---|---|
+| Native REST + SSE | `POST /chat`, `POST /chat/stream` |
+| OpenAI-compatible | `POST /v1/chat/completions` (`model` = manifest name) |
+| A2A JSON-RPC | `POST /a2a` |
+| MCP | `POST /mcp` |
 
 ## Auth
 
-Inbound: JWT bearer tokens verified against the verifiers configured in `JWT_VERIFIERS` env (Cloudflare Access and Cognito are the two built-in schemes). Anonymous traffic populates a context with `tenantId = 'default'`. A per-manifest `auth.inbound.allow_anonymous` flag decides whether each manifest accepts anonymous calls; `auth.inbound.required_scopes` lets a manifest demand specific OAuth scopes.
+Three modes, set by `FELIX_AUTH_MODE`:
 
-Outbound: client-credentials OAuth tokens cached in the `oauth_token_cache` Postgres table, encrypted at rest with `OAUTH_CACHE_KEY` (AES-256-GCM). Manifests declare which providers they need under `auth.outbound.providers`.
+- **`none`** — everything is anonymous in tenant `default`, and management scope checks are skipped.
+  Legal **only on a loopback bind**; the harness refuses to start otherwise, in every environment.
+- **`api_key`** — `Authorization: Bearer`, `Authorization: ApiKey` or `X-Api-Key`, compared in
+  constant time against `FELIX_AUTH_API_KEYS`, which supplies the subject, tenant and scopes.
+- **`jwt`** — verified against `FELIX_JWT_VERIFIERS` and `FELIX_JWKS_PUBLIC`. Mint tokens locally
+  with `felix mint-jwt`.
 
-## Federation
+A manifest adds its own inbound requirements through `spec.auth.inbound` — `allow_anonymous` and
+`required_scopes` are enforced per request. Management routes layer scopes on top; see
+[Scopes](/guide/management-api/#scopes). A second credential,
+`X-Felix-Consumer-Secret`, gates `POST /internal/*`.
 
-A central authority can ship a signed `PolicyBundle` to R2 at the key configured by `POLICY_BUNDLE_KEY`. Every Felix isolate refreshes its in-process bundle cache from `FederationDO` every 10 minutes via the worker cron (`*/10 * * * *`). The bundle's policies and approvals are merged with each manifest's during `buildAgent` — bundle policies win on `id` collision so a central revocation cannot be silently disabled.
+Details in [Auth](/internals/auth/).
 
-Bundles are signed Ed25519 and the public key lives in `POLICY_BUNDLE_PUBKEY`. In staging and production an unsigned or tampered bundle is rejected; in development it logs a warning and keeps loading so local iteration isn't blocked.
+## Observability
 
-:::caution
-In staging and production, an unsigned or tampered `PolicyBundle` is **rejected** — the previous active bundle is kept. Never test federation bundle changes on production directly; verify on staging first.
-:::
+Prometheus metrics at `GET /metrics`, counters prefixed `orchestrator_*` (a deliberate hold-over so
+existing dashboards keep working). Audit rows are buffered by the process that emits them and flushed
+to Postgres on a timer plus a drain on shutdown — the agent loop runs in the API process, so the API
+flushes too, not only the worker. Optional OTLP tracing with `FELIX_OTEL_ENABLED`, and an optional
+append-only analytics spill (`FELIX_WAREHOUSE`: DuckDB, ClickHouse or Doris).
 
-## Where the request goes
+See [Observability](/internals/observability/).
 
-```
-inbound request
-  → authMiddleware (verify JWT, build AuthContext, install RequestContext via AsyncLocalStorage)
-  → rateLimitMiddleware (sliding window keyed by tenantId)
-  → route handler (enforceManifestAuth + buildAgent or management lookup)
-  → agent.invoke() or agent.streamEvents()
-    → react/deep loop OR multi-agent dispatcher
-      → model call (AI Gateway: Anthropic / OpenAI / Workers AI)
-      → tool.executor.execute (transport: local / mcp / a2a / container / queue / sandbox / browser, wrapped by Approvals → Judge → Guardrails → Limits → Policies)
-        → audit events queued to AUDIT_QUEUE
-      → Session.appendBatch (fire-and-forget via execCtx.waitUntil)
-```
+## Request lifecycle
 
-The full trace is documented in [internals/architecture.md](/internals/architecture/).
+Putting it together, one `POST /chat`:
+
+<Steps>
+
+1. **Middleware** — body limit (1 MiB), then per-tenant rate limit, then authentication.
+
+2. **Resolve** — walk the four manifest layers, pick the canary variant, check the compile pin.
+
+3. **Authorize** — apply `spec.auth.inbound`; screen the inbound user turn.
+
+4. **Compile** — `build_agent` resolves the prompt and sub-agents, binds outbound tools, wires skills
+   and memory, and wraps every tool in the governance stack.
+
+5. **Run** — the pattern loop calls the model and dispatches tools, emitting audit rows and stream
+   frames, and pausing on any interrupt.
+
+6. **Persist** — append events to the session log; buffer audit and usage for flush.
+
+</Steps>
+
+For the mechanism at each step, start at [Architecture](/internals/architecture/).
