@@ -16,6 +16,7 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
   decideApproval,
   getToolMetrics,
@@ -24,6 +25,7 @@ import {
   listPlans,
   listUsage,
 } from '@/api';
+import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, Plan, PlanStepStatus, UsageEvent } from '@/types';
@@ -126,38 +128,50 @@ export function Inspector({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="divide-y divide-border/60">
-          <ActivitySection
-            enabled={open}
-            open={expanded.activity}
-            onToggle={() => toggle('activity')}
-          />
-          <ApprovalsSection
-            enabled={open}
-            open={expanded.approvals}
-            onToggle={() => toggle('approvals')}
-            onPending={expandApprovals}
-          />
-          <PlansSection
-            enabled={open && expanded.plans}
-            open={expanded.plans}
-            onToggle={() => toggle('plans')}
-          />
-          <MetricsSection
-            enabled={open && expanded.metrics}
-            open={expanded.metrics}
-            onToggle={() => toggle('metrics')}
-          />
-          <UsageSection
-            enabled={open && expanded.usage}
-            open={expanded.usage}
-            onToggle={() => toggle('usage')}
-          />
-          <SkillsSection
-            open={expanded.skills}
-            onToggle={() => toggle('skills')}
-            skills={skills}
-            onSuggest={onSuggest}
-          />
+          <SectionBoundary title="Activity">
+            <ActivitySection
+              enabled={open}
+              open={expanded.activity}
+              onToggle={() => toggle('activity')}
+            />
+          </SectionBoundary>
+          <SectionBoundary title="Approvals">
+            <ApprovalsSection
+              enabled={open}
+              open={expanded.approvals}
+              onToggle={() => toggle('approvals')}
+              onPending={expandApprovals}
+            />
+          </SectionBoundary>
+          <SectionBoundary title="Plans">
+            <PlansSection
+              enabled={open && expanded.plans}
+              open={expanded.plans}
+              onToggle={() => toggle('plans')}
+            />
+          </SectionBoundary>
+          <SectionBoundary title="Tools">
+            <MetricsSection
+              enabled={open && expanded.metrics}
+              open={expanded.metrics}
+              onToggle={() => toggle('metrics')}
+            />
+          </SectionBoundary>
+          <SectionBoundary title="Usage">
+            <UsageSection
+              enabled={open && expanded.usage}
+              open={expanded.usage}
+              onToggle={() => toggle('usage')}
+            />
+          </SectionBoundary>
+          <SectionBoundary title="Skills">
+            <SkillsSection
+              open={expanded.skills}
+              onToggle={() => toggle('skills')}
+              skills={skills}
+              onSuggest={onSuggest}
+            />
+          </SectionBoundary>
         </div>
       </ScrollArea>
     </aside>
@@ -165,6 +179,30 @@ export function Inspector({
 }
 
 // --- section shell ---
+
+/**
+ * Wraps a whole section component, not its children.
+ *
+ * A section derives its view from the polled payload during its own render, so a
+ * shape that does not match throws before any element it returns exists. A boundary
+ * placed inside the section would never see it, and the error would keep climbing
+ * until something caught it: the first version of this took the entire app down,
+ * which is the failure it was added to prevent.
+ */
+function SectionBoundary({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <ErrorBoundary
+      label={`inspector:${title}`}
+      fallback={(error, reset) => (
+        <div className="px-3 py-2.5">
+          <PanelErrorFallback error={error} reset={reset} what={title} />
+        </div>
+      )}
+    >
+      {children}
+    </ErrorBoundary>
+  );
+}
 
 /**
  * One disclosure row plus its body. `meta` is the at-a-glance value in the header,
@@ -227,6 +265,7 @@ function SectionBody({
   empty,
   emptyText,
   status,
+  onRetry,
   children,
 }: {
   loading: boolean;
@@ -234,22 +273,45 @@ function SectionBody({
   empty?: boolean;
   emptyText: string;
   status?: string;
+  /** Re-runs this section's fetch. Without it a failed poll is a dead end. */
+  onRetry?: () => void;
   children: React.ReactNode;
 }) {
+  // A failed fetch leaves no data, which also reads as "empty". Showing both at once
+  // says the harness is idle *and* unreachable; the error is the true one.
+  if (error) {
+    // No sr-only status line here: `role="alert"` is already a live region, and
+    // carrying the same text in both makes a screen reader read the failure twice.
+    return (
+      <>
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
+        >
+          <div className="flex items-start gap-2">
+            <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+            <span className="min-w-0 break-words">{error}</span>
+          </div>
+          {onRetry && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 self-start text-xs"
+              onClick={onRetry}
+            >
+              Try again
+            </Button>
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <p className="sr-only" role="status" aria-live="polite">
         {loading && !status ? 'Loading' : status}
       </p>
-      {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
-        >
-          <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
       {loading && (
         <div className="space-y-1.5">
           <Skeleton className="h-8 w-full rounded-md" />
@@ -285,7 +347,7 @@ function ActivitySection({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { data, error, loading } = usePoll(() => listAudit({ limit: 60 }), {
+  const { data, error, loading, refresh } = usePoll(() => listAudit({ limit: 60 }), {
     enabled: enabled && open,
   });
   const rows = data?.slice(0, ACTIVITY_VISIBLE) ?? [];
@@ -299,6 +361,7 @@ function ActivitySection({
       onToggle={onToggle}
     >
       <SectionBody
+        onRetry={refresh}
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
@@ -424,9 +487,33 @@ function ApprovalsSection({
     hadPending.current = count > 0;
   }, [count, onPending]);
 
-  async function decide(id: string, status: 'approved' | 'denied') {
-    await decideApproval(id, { status });
-    refresh();
+  // Approving a gated call is the one irreversible thing this panel does, so a second
+  // decision must not get out while the first is in flight.
+  //
+  // The guard is a ref, not the state below. React batches state updates, so a burst
+  // of clicks in one tick all read the same pre-update value and every one of them
+  // gets through: measured at 10 POSTs from 10 clicks with a state-only guard. A ref
+  // is written synchronously, so the second click sees the first. The state exists
+  // only to disable the buttons and relabel them.
+  const decidingRef = useRef<string | null>(null);
+  const [deciding, setDeciding] = useState<string | null>(null);
+
+  async function decide(id: string, status: 'approved' | 'denied', tool: string) {
+    if (decidingRef.current) return;
+    decidingRef.current = id;
+    setDeciding(id);
+    try {
+      await decideApproval(id, { status });
+      toast.success(`${status === 'approved' ? 'Approved' : 'Denied'} ${tool}`);
+      refresh();
+    } catch (err) {
+      toast.error(`Could not ${status === 'approved' ? 'approve' : 'deny'} ${tool}`, {
+        description: String((err as Error)?.message ?? err),
+      });
+    } finally {
+      decidingRef.current = null;
+      setDeciding(null);
+    }
   }
 
   return (
@@ -439,6 +526,7 @@ function ApprovalsSection({
       onToggle={onToggle}
     >
       <SectionBody
+        onRetry={refresh}
         loading={loading && !data}
         error={error}
         empty={count === 0}
@@ -463,18 +551,22 @@ function ApprovalsSection({
                 </Badge>
                 <span className="truncate text-muted-foreground">{a.manifest_id}</span>
               </div>
-              <pre className="mt-2 max-h-32 overflow-auto rounded-md border border-border/40 bg-background/60 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
-                {JSON.stringify(a.args, null, 2)}
-              </pre>
+              <ApprovalArgs args={a.args} />
               <div className="mt-2.5 flex gap-2">
-                <Button size="sm" className="h-8 flex-1" onClick={() => decide(a.id, 'approved')}>
-                  Approve {a.tool_name}
+                <Button
+                  size="sm"
+                  className="h-8 flex-1"
+                  disabled={deciding !== null}
+                  onClick={() => void decide(a.id, 'approved', a.tool_name)}
+                >
+                  {deciding === a.id ? 'Deciding…' : `Approve ${a.tool_name}`}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-8"
-                  onClick={() => decide(a.id, 'denied')}
+                  disabled={deciding !== null}
+                  onClick={() => void decide(a.id, 'denied', a.tool_name)}
                 >
                   Deny
                 </Button>
@@ -488,6 +580,60 @@ function ApprovalsSection({
       </SectionBody>
     </Section>
   );
+}
+
+/** Lines shown before the payload folds. Chosen to clear a typical shell/file call whole. */
+const ARGS_FOLD_LINES = 14;
+
+/**
+ * The arguments being approved.
+ *
+ * Rendered in full by default rather than inside a fixed-height scroll box: the
+ * reason to read this at all is to catch the destructive part of the call, and a
+ * scroll box puts exactly that below the fold on anything non-trivial. Long
+ * payloads fold, but the fold says how much it is hiding and opens in place.
+ */
+function ApprovalArgs({ args }: { args: unknown }) {
+  const [expanded, setExpanded] = useState(false);
+  const text = safeStringify(args);
+  const lines = text.split('\n');
+  const overlong = lines.length > ARGS_FOLD_LINES;
+  const shown = expanded || !overlong ? text : lines.slice(0, ARGS_FOLD_LINES).join('\n');
+
+  return (
+    <div className="mt-2">
+      <pre
+        className={cn(
+          'overflow-x-auto rounded-md border border-border/40 bg-background/60 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-foreground/80',
+          expanded && 'max-h-64 overflow-y-auto',
+        )}
+      >
+        {shown}
+      </pre>
+      {overlong && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 rounded text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          {expanded
+            ? 'Show less'
+            : `Show all ${lines.length} lines (${lines.length - ARGS_FOLD_LINES} hidden)`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Approval payloads come off the wire; a cycle or a BigInt should not break the panel. */
+function safeStringify(value: unknown): string {
+  try {
+    return (
+      JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? String(v) : v), 2) ?? String(value)
+    );
+  } catch {
+    return String(value);
+  }
 }
 
 // --- Plans ---
@@ -517,7 +663,7 @@ function PlansSection({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { data, error, loading } = usePoll(() => listPlans(), { enabled });
+  const { data, error, loading, refresh } = usePoll(() => listPlans(), { enabled });
 
   return (
     <Section
@@ -528,6 +674,7 @@ function PlansSection({
       onToggle={onToggle}
     >
       <SectionBody
+        onRetry={refresh}
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
@@ -585,7 +732,9 @@ function MetricsSection({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { data, error, loading } = usePoll(() => getToolMetrics({ sinceMs: HOUR_MS }), { enabled });
+  const { data, error, loading, refresh } = usePoll(() => getToolMetrics({ sinceMs: HOUR_MS }), {
+    enabled,
+  });
   // Already aggregated per tool and sorted by calls descending, harness-side.
   const tools = data?.tools ?? [];
   const maxCalls = Math.max(1, ...tools.map((t) => t.calls));
@@ -599,6 +748,7 @@ function MetricsSection({
       onToggle={onToggle}
     >
       <SectionBody
+        onRetry={refresh}
         loading={loading && !data}
         error={error}
         empty={tools.length === 0}
@@ -646,7 +796,7 @@ function UsageSection({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { data, error, loading } = usePoll(
+  const { data, error, loading, refresh } = usePoll(
     async () => {
       const page = await listUsage({ limit: 40 });
       return page.items;
@@ -665,6 +815,7 @@ function UsageSection({
       onToggle={onToggle}
     >
       <SectionBody
+        onRetry={refresh}
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}

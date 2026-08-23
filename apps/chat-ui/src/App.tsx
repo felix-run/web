@@ -94,6 +94,9 @@ import type {
 
 const THREAD_KEY = 'felix.threadId';
 const MANIFEST_KEY = 'felix.manifest';
+/** How long a deleted conversation can be restored, and how long the server delete waits. */
+const DELETE_UNDO_MS = 7000;
+
 const HISTORY_KEY = 'felix.historyOpen';
 const INSPECTOR_KEY = 'felix.inspectorOpen';
 const VERBOSE_KEY = 'felix.verbose';
@@ -386,14 +389,40 @@ export default function App() {
 
   const deleteThread = useCallback(
     (id: string) => {
+      // Capture enough to put it back before anything is destroyed.
+      const meta = listThreads().find((t) => t.id === id);
+      const turns = loadTurns(id);
+
       removeThread(id);
-      void deleteThreadHistory(id);
       const remaining = listThreads();
       setThreads(remaining);
       if (id === threadId) {
         if (remaining.length) selectThread(remaining[0].id);
         else newThread();
       }
+
+      // The server copy is the part that cannot be undone, so it is held back for
+      // the length of the toast rather than fired now. Undo cancels it; letting the
+      // window elapse commits it. A tab closed mid-window leaves the server
+      // transcript behind, which is the safe direction to fail in.
+      let undone = false;
+      const commit = window.setTimeout(() => {
+        if (!undone) void deleteThreadHistory(id).catch(() => {});
+      }, DELETE_UNDO_MS);
+
+      toast('Conversation deleted', {
+        duration: DELETE_UNDO_MS,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            undone = true;
+            window.clearTimeout(commit);
+            if (meta) indexThread(meta);
+            if (turns.length) saveTurns(id, turns);
+            setThreads(listThreads());
+          },
+        },
+      });
     },
     [threadId, selectThread, newThread],
   );
