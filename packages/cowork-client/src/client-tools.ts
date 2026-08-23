@@ -100,10 +100,62 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
   }
 }
 
+/** Wall-clock ceiling for a browser-executed tool. */
+export const DEFAULT_CLIENT_TOOL_TIMEOUT_MS = 30_000;
+
+export interface ClientToolOptions {
+  /** Abandons the in-flight tool, e.g. when the user stops the run. */
+  signal?: AbortSignal;
+  /** Overrides {@link DEFAULT_CLIENT_TOOL_TIMEOUT_MS}. */
+  timeoutMs?: number;
+}
+
+export type ClientToolResult = { content: string; error?: boolean };
+
+/**
+ * Run a tool the harness delegated to the browser, and *always settle*.
+ *
+ * The harness blocks the model loop until it gets a `tool_result`, so the one
+ * outcome this must never produce is a promise that neither resolves nor
+ * rejects. A directory picker the user ignores, or a mount whose permission was
+ * revoked mid-call, would otherwise hang the conversation with nothing shown.
+ * Both the timeout and the abort therefore *resolve* with an error result
+ * rather than throwing — the caller posts it upstream and the run continues.
+ *
+ * The race does not cancel the underlying work; nothing here is cancellable.
+ * It bounds how long the caller waits, which is the property the run needs.
+ */
 export async function executeClientTool(
   req: ClientToolRequest,
   vfs: VirtualFs,
-): Promise<{ content: string; error?: boolean }> {
+  opts: ClientToolOptions = {},
+): Promise<ClientToolResult> {
+  const { signal, timeoutMs = DEFAULT_CLIENT_TOOL_TIMEOUT_MS } = opts;
+  if (signal?.aborted) return { content: `error: ${req.name} aborted`, error: true };
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+
+  const bail = new Promise<ClientToolResult>((resolve) => {
+    timer = setTimeout(
+      () => resolve({ content: `error: ${req.name} timed out after ${timeoutMs}ms`, error: true }),
+      timeoutMs,
+    );
+    if (signal) {
+      onAbort = () => resolve({ content: `error: ${req.name} aborted`, error: true });
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+
+  try {
+    return await Promise.race([runClientTool(req, vfs), bail]);
+  } finally {
+    clearTimeout(timer);
+    if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+async function runClientTool(req: ClientToolRequest, vfs: VirtualFs): Promise<ClientToolResult> {
   try {
     if (req.name === 'local_shell') {
       const command = asString(req.args.command);

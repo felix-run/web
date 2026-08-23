@@ -13,6 +13,7 @@ export type {
   SessionSnapshot,
   StreamEvent,
   ThinkingLevel,
+  TokenUsage,
 } from '@felix/protocol';
 
 export interface TimelineItem {
@@ -21,6 +22,8 @@ export interface TimelineItem {
   title: string;
   body?: string;
   status?: 'pending' | 'running' | 'done' | 'error' | 'denied';
+  /** Latest `tool_execution_update` phase for a running tool row. */
+  phase?: string;
   /** Server event id when hydrated from a snapshot (enables rewind). */
   eventId?: string;
 }
