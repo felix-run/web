@@ -30,6 +30,7 @@ pnpm build             # turbo run build (tsc -b && vite build; astro build)
 pnpm lint              # turbo → biome check
 pnpm format            # biome format --write
 pnpm check-types       # turbo → tsc --noEmit
+pnpm test              # turbo → vitest (cowork-client only, so far)
 pnpm --filter @felix/chat-ui <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 ```
@@ -37,8 +38,10 @@ pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 Local dev needs the Python harness running separately (`make up && make migrate` in felix-run/felix
 → `:8080`). Without it, both apps load but every `/api/*` call fails.
 
-**There is no application test suite** — no `test` script, no test files for the apps. The only
-automated tests are the hook batteries in `.claude/hooks/tests/`. CI (`.github/workflows/ci.yml`) is
+**Test coverage is partial, and knowing where it stops matters.** `packages/cowork-client` has a
+Vitest suite (`pnpm test`) covering the VFS — the surface the model drives, where path containment is
+a security property. The apps and the Workers have none: no test exercises the SSE reader, the proxy,
+or any React code. `.claude/hooks/tests/` covers the hooks. CI (`.github/workflows/ci.yml`) is
 one `verify` job: `pnpm install --frozen-lockfile`, then lint, check-types, build (chat-ui, float,
 docs), then those hook tests — each step runs even if an earlier one fails, so one red run reports
 everything. Verification of app behavior still means running it against a live harness.

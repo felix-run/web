@@ -18,13 +18,14 @@ Changed files:
 
 ## What "verified" means here
 
-**This repo has no application test suite** — no `test` script, no test files for the apps. The only
-automated tests are the hook batteries in `.claude/hooks/tests/`. CI runs lint, check-types, build,
-and those hook tests; nothing verifies runtime behavior. So verification is type-check + lint +
-build, and anything behavioral has to be exercised by hand against a running harness.
+**Test coverage is partial.** `packages/cowork-client` has a Vitest suite covering the VFS; the
+apps and the Workers have none. CI runs lint, check-types, test, build, and the hook batteries in
+`.claude/hooks/tests/`.
 
-Never report "tests pass" as if the apps were covered. Report exactly which commands you ran and
-what they returned.
+So a green `pnpm test` says the VFS is sound. It says nothing about the SSE reader, the proxy
+Workers, or any React code — those still have to be exercised by hand against a running harness.
+Report exactly which commands you ran and what they returned, and never let "tests pass" imply
+coverage that does not exist.
 
 ## The loop
 
@@ -33,6 +34,7 @@ Run these from the repo root, in order. Stop at the first failure, fix, restart.
 ```bash
 pnpm check-types    # turbo → tsc --noEmit per package
 pnpm lint           # turbo → biome check
+pnpm test           # turbo → vitest
 pnpm build          # turbo → tsc -b && vite build; astro build
 ```
 

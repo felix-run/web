@@ -11,11 +11,13 @@
     "./client-tools": "./src/client-tools.ts"
   },
   "scripts": {
+    "test": "vitest run",
     "lint": "biome check .",
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
     "@felix/typescript-config": "workspace:*",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
   }
 }

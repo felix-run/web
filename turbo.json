@@ -10,6 +10,11 @@
     "lint": {
       "dependsOn": ["^lint"]
     },
+    // No dependsOn on purpose: a failing dependency must not silently skip a
+    // package's tests, the way ^lint hid chat-ui's and float's for months.
+    "test": {
+      "outputs": []
+    },
     "check-types": {
       "dependsOn": ["^check-types"]
     },

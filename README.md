@@ -28,6 +28,7 @@ pnpm build             # turbo run build
 pnpm lint              # turbo → biome
 pnpm format            # biome format
 pnpm check-types
+pnpm test              # turbo → vitest
 pnpm sync:theme        # regenerate apps/docs theme.css from @felix/design tokens
 ```
 

@@ -69,6 +69,12 @@ export class VirtualFs {
       if (!rest || rest.includes('/')) continue;
       const node = this.map[key];
       if (!node) continue;
+      // At the root, a directory can arrive twice: once as its own key, and
+      // once folded up from a child path above. Dedupe against the same set.
+      if (!dir) {
+        if (seen.has(rest)) continue;
+        seen.add(rest);
+      }
       entries.push({ path: key, type: node.type });
     }
     return entries.sort((a, b) => a.path.localeCompare(b.path));

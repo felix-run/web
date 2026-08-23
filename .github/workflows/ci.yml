@@ -38,8 +38,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm build
 
-      # The repo has no application test suite; this is the guard that keeps the
-      # branch-protection hook honest, and it caught a real regression once.
+      - name: Test
+        if: ${{ !cancelled() }}
+        run: pnpm test
+
+      # Separate from `pnpm test`: these exercise the .claude/ hooks rather than
+      # workspace packages, and one of them caught a real regression.
       - name: Hook tests
         if: ${{ !cancelled() }}
         run: .claude/hooks/tests/block-main-commit.test.sh
