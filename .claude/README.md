@@ -15,8 +15,11 @@ Delegated by description; invoke explicitly by name when you want a specific one
 | `python-harness-engineer` | Python work on the harness (felix-run/felix); requires that checkout in scope |
 | `postgres-engineer` | Harness schema, migrations, indexing, query plans, tenant-scoped access |
 | `devops-engineer` | CI, turbo/pnpm pipeline, wrangler deploys, secrets, release verification |
+| `test-engineer` | Vitest suites, happy-dom component tests, and the shared `@felix/test-kit` suites |
+| `refactor-engineer` | Behavior-preserving cleanups: dead code, indirection, loose types, catalog drift |
 | `code-reviewer` | Read-only correctness review of a diff, tuned to this repo's real failure modes |
 | `security-reviewer` | Read-only security review: proxy credentials, the key gate, client tools/VFS, rendered output |
+| `code-quality-reviewer` | Read-only quality review: dead code, casts and `any`, export surfaces, dependency and bundle drift |
 | `dx-engineer` | Repo ergonomics and this toolkit |
 | `felix-docs-writer` | Documentation drift audits and repairs in `apps/docs` |
 
@@ -29,7 +32,8 @@ Invoke with `/<name>`, or let Claude match them by description.
 
 | Skill | Use it for |
 |---|---|
-| `preflight` | The verification loop, and what it does not cover (there is no test suite) |
+| `preflight` | The verification loop, and what it does and does not cover |
+| `code-quality` | The quality sweep: dead code, coverage gaps, type and export hygiene, dependency drift |
 | `branch-pr-workflow` | Branch + PR procedure. Never commit to `main`, never stack PRs |
 | `api-contract-change` | Changing the wire contract across the four hand-mirrored client files |
 | `add-ui-primitive` | Adding a shadcn primitive to `packages/ui` and wiring exports + tsconfig paths |
@@ -42,7 +46,8 @@ Invoke with `/<name>`, or let Claude match them by description.
 
 Deeper reference material sits in each skill's `references/` and loads only when needed:
 `api-contract-change/references/wire-protocol.md`, `postgres-migration/references/lock-profiles.md`,
-`threat-review/references/checklist.md`, `toolkit-authoring/references/formats.md`.
+`threat-review/references/checklist.md`, `toolkit-authoring/references/formats.md`,
+`code-quality/references/dimensions.md`.
 
 ## Rules — `rules/`
 

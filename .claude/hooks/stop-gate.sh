@@ -3,7 +3,8 @@
 #   1. Docs drift — user-visible surfaces changed with no docs touched: block ONCE
 #      per drift-set per session and ask for a sync or an explicit "not needed".
 #   2. Verification nudge — TypeScript changed this turn: remind (non-blocking,
-#      rate-limited) that this repo has no tests, so preflight is the only signal.
+#      rate-limited) that the test suites cover the VFS, the SSE reader, the proxy
+#      Workers and a slice of chat-ui React, but not the chat surface itself.
 input=$(cat)
 
 # Never loop: if we already blocked and Claude continued, let it stop.
@@ -42,5 +43,5 @@ last=$(cat "$nudge" 2>/dev/null || echo 0)
 [ $((now - last)) -lt 1200 ] && exit 0   # at most once per 20 minutes
 echo "$now" > "$nudge"
 
-jq -cn '{systemMessage:"TypeScript changed and this repo has no test suite — pnpm check-types + pnpm lint + pnpm build (the /preflight skill) is the only automated signal there is."}'
+jq -cn '{systemMessage:"TypeScript changed — run /preflight (check-types + lint + test + build). The suites cover the VFS, the SSE reader, the proxy Workers and part of chat-ui React; the chat surface itself is not covered, so a green run is not a verified app."}'
 exit 0
