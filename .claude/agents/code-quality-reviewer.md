@@ -46,10 +46,9 @@ The per-dimension checklist with concrete repo targets is in the `code-quality` 
 
 ## What is deliberate here — do not report it as a defect
 
-- **chat-ui and float are duplicated on purpose.** Separate `api.ts`, separate `types.ts`, and two
-  near-duplicate proxy Workers, plus a third copy of the proxy contract in each `vite.config.ts`.
-  "Extract a shared module" is a wrong answer here (`.claude/rules/protocol-parity.md`). Divergence
-  between the copies is a finding; the duplication itself is not.
+- **The proxy contract is stated twice on purpose** — `apps/chat-ui/worker/index.ts` and the `/api`
+  rewrite in `vite.config.ts` — because one runs in production and the other only in `vite dev`
+  (`.claude/rules/protocol-parity.md`). Divergence between them is a finding; the duplication is not.
 - **`@felix/protocol` is hand-mirrored** from the Python harness in a separate repo. It looks
   redundant and is not.
 - **`packages/ui` and `packages/cowork-client` ship raw `.tsx`/`.ts`** with no build step. The

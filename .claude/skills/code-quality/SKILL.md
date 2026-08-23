@@ -30,10 +30,10 @@ adding one is a separate decision to put to the user.
 ```bash
 pnpm lint            # biome; noExplicitAny and noUnusedVariables are only WARN, so read the warnings
 pnpm check-types     # per-package tsc — strictness differs by tier, see references/dimensions.md
-pnpm test            # vitest: chat-ui, float, cowork-client
+pnpm test            # vitest: chat-ui, cowork-client
 pnpm check-api-drift # client routes vs the committed harness OpenAPI snapshot
-pnpm check-protocol-parity # every SSE event arm has a handler in both apps
-pnpm build           # vite prints per-chunk sizes for both apps — this is the bundle measurement
+pnpm check-protocol-parity # every SSE event arm has a handler in App.tsx
+pnpm build           # vite prints per-chunk sizes — this is the bundle measurement
 git grep -n 'as any\|as unknown as\|@ts-expect-error\|@ts-ignore'
 ```
 
@@ -60,9 +60,9 @@ The per-dimension checklist, with the concrete files each one lands on, is in
 
 ## What not to "fix"
 
-- **chat-ui / float duplication is deliberate**, including the two proxy Workers and the third copy
-  of the proxy contract in each `vite.config.ts` (`.claude/rules/protocol-parity.md`). Divergence
-  between the copies is a finding. The duplication is not.
+- **The proxy contract is stated twice on purpose** — `worker/index.ts` for production and the
+  `/api` rewrite in `vite.config.ts` for `vite dev` (`.claude/rules/protocol-parity.md`). Divergence
+  between them is a finding. The duplication is not.
 - **`@felix/protocol` is hand-mirrored** from the Python harness in another repo.
 - **`packages/ui` and `packages/cowork-client` have no build step** — the exports map plus tsconfig
   `paths` double-wiring is the design.

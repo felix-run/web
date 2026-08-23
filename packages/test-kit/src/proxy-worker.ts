@@ -1,13 +1,13 @@
 /**
- * Shared behavioral suite for the proxy Worker that chat-ui and float each keep
- * their own near-identical copy of.
+ * Behavioral suite for the `/api/*` proxy Worker, parameterized on the Worker
+ * under test.
  *
  * These assertions are load-bearing, not cosmetic:
  *   - the gate key must never reach the harness
  *   - the upstream host must never be reachable from a client-chosen path
  *   - the response body must stream through untouched, or SSE dies
- * Running the same suite against both Workers is the only mechanical check in
- * the repo that the two copies still agree.
+ * Stating them here rather than inline keeps them a contract the Worker is held
+ * to, rather than a description of what it currently happens to do.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,10 +19,10 @@ interface Env {
 }
 
 /**
- * The shape of each app's default export (`satisfies ExportedHandler<Env>`):
- * same `Env`, and `ctx` optional so the suite can call `fetch` without one.
- * Both Workers must assign to this with no cast — that assignment is the only
- * type-level link between this suite and the code it is holding in agreement.
+ * The shape of the Worker's default export (`satisfies ExportedHandler<Env>`):
+ * same `Env`, and `ctx` optional so the suite can call `fetch` without one. The
+ * Worker must assign to this with no cast — that assignment is the only
+ * type-level link between this suite and the code it holds to the contract.
  */
 export interface ProxyWorker {
   fetch(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response>;

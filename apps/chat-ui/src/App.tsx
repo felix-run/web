@@ -67,6 +67,7 @@ import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
+import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import {
   eventsToTurns,
   indexThread,
@@ -104,7 +105,7 @@ const THINKING_LEVELS: ThinkingLevel[] = [
   'xhigh',
   'max',
 ];
-/** Bundled workspace agent — same path as float. */
+/** Bundled workspace agent. */
 const DEFAULT_MANIFEST = 'cowork';
 /** How often to ask the harness for approvals while a run is in flight. */
 const APPROVAL_POLL_MS = 2_500;
@@ -743,6 +744,28 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [streaming, syncApprovals]);
 
+  /**
+   * Presence, for the runs nobody is watching.
+   *
+   * The banners above assume a viewport. A background run can block on an
+   * approval minutes after the tab lost focus, so the same state also has to
+   * leave the page: the title carries it always, and an OS notification fires
+   * only while the tab is hidden.
+   */
+  useEffect(() => {
+    if (pendingQueue.length > 0 || uiPrompt) setPresence('blocked');
+    else if (streaming) setPresence('working');
+    else setPresence('idle');
+  }, [pendingQueue.length, uiPrompt, streaming]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') clearNotification();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
   const send = useCallback(
     (text: string, attachments?: ImageAttachment[], mode: 'stream' | 'background' = 'stream') => {
       if (streaming) {
@@ -911,6 +934,9 @@ export default function App() {
   // data URLs by PromptInput) onto our send(). Image parts become attachments.
   const submit = useCallback(
     (message: PromptInputMessage, mode: 'stream' | 'background' = 'stream') => {
+      // Permission is asked for here, inside the click, and only for the mode
+      // that needs it. Prompting on load is how a page trains people to say no.
+      if (mode === 'background') void armNotifications();
       const attachments: ImageAttachment[] = message.files
         .filter((f) => f.mediaType.startsWith('image/'))
         .map((f) => ({ url: f.url, media_type: f.mediaType, filename: f.filename }));

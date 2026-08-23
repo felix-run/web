@@ -20,10 +20,9 @@ pre-existing code unless the diff makes it newly wrong.
 
 ## This repo's real failure modes — check these first
 
-1. **chat-ui / float divergence.** The two apps keep separate copies of `api.ts` and `types.ts`, and
-   the two proxy Workers are near-duplicates. A protocol or proxy change in one and not the other is
-   the single most common defect here. Also check the third copy of the proxy contract: the `/api`
-   rewrite in each `vite.config.ts`.
+1. **Proxy contract divergence.** `apps/chat-ui/worker/index.ts` and the `/api` rewrite in
+   `vite.config.ts` are two copies of the same contract. A change in one and not the other makes dev
+   and production behave differently, and nothing reports it.
 2. **Silently unhandled SSE events.** `StreamEvent` ends in an open `{ event: string; … }` arm, so a
    new frame type type-checks with no handler and does nothing at runtime. A new arm in `types.ts`
    with no matching `switch` case in `App.tsx` is a bug.

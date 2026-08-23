@@ -11,7 +11,7 @@ You own how **felix-web** builds, checks, and ships.
 ## The actual pipeline
 
 - **CI** (`.github/workflows/ci.yml`): one `verify` job on Node 22 — `pnpm install --frozen-lockfile`,
-  then lint, check-types, build (turbo covers chat-ui, float, and docs), then the hook test battery.
+  then lint, check-types, build (turbo covers chat-ui and docs), then the hook test battery.
   Every step carries `if: ${{ !cancelled() }}` so one red run reports all its failures instead of one
   per push. Concurrency-cancelled per ref.
 - **Remaining gap**: there is no **application** test suite — the only automated tests are
@@ -29,11 +29,12 @@ You own how **felix-web** builds, checks, and ships.
 
 Each app deploys as its own Worker: `pnpm <app>:deploy` = build then `wrangler deploy`.
 
-- `apps/chat-ui/wrangler.jsonc` and `apps/float/wrangler.jsonc` are **gitignored**; chat-ui ships a
-  tracked `wrangler.example.jsonc`, float ships none. A fresh clone cannot deploy until those exist.
+- `apps/chat-ui/wrangler.jsonc` is **gitignored**; the app ships a tracked `wrangler.example.jsonc`.
+  A fresh clone cannot deploy until that copy exists.
 - `vars.FELIX_ORIGIN` is public config. `CHAT_UI_KEY` and `FELIX_API_KEY` are **secrets** —
   `wrangler secret put`, never `vars`.
-- Custom domains: `chat.felix.run`, `float.felix.run`, `docs.felix.run`.
+- Custom domains: `chat.felix.run`, `docs.felix.run`. (`float.felix.run` served the removed float
+  app; the Worker `felix-float` may still exist in Cloudflare — deleting it is a human decision.)
 - Rollback is a redeploy of the previous build, or Cloudflare's deployment rollback — know which one
   you are recommending before you recommend it.
 

@@ -45,7 +45,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm check-protocol-parity
 
-      # turbo builds every package with a build script: chat-ui, float, and docs.
+      # turbo builds every package with a build script: chat-ui and docs.
       - name: Build
         if: ${{ !cancelled() }}
         run: pnpm build

@@ -1,9 +1,9 @@
 /**
  * chat-ui's view of the harness.
  *
- * The wire contract itself lives in `@felix/protocol`, shared with float. What
- * stays here is either chat-ui's own UI state (`Turn`) or a management surface
- * float does not have (audit, eval, jobs, manifests, plans, usage).
+ * The wire contract itself lives in `@felix/protocol`. What stays here is
+ * either chat-ui's own UI state (`Turn`) or a management surface (audit, eval,
+ * jobs, manifests, plans, usage).
  */
 
 /**

@@ -1,6 +1,6 @@
 ---
 name: add-ui-primitive
-description: Add or update a shared shadcn/ui primitive in packages/ui so both felix-web apps can use it. Use when a component is needed in chat-ui and float, when running shadcn add, or when an import from @felix/ui fails to resolve — the package has no build step, so exports and tsconfig paths must be wired by hand.
+description: Add or update a shared shadcn/ui primitive in packages/ui. Use when running shadcn add, or when an import from @felix/ui fails to resolve — the package has no build step, so exports and tsconfig paths must be wired by hand.
 license: MIT
 compatibility: Requires pnpm and network access for `pnpm dlx shadcn`
 metadata:
@@ -39,9 +39,9 @@ to the package's own relative path (`./lib/utils`) so the file is valid from ins
 A new `src/<name>.tsx` is exported automatically as `@felix/ui/<name>`. Anything that is **not** a
 top-level `.tsx` — a subdirectory, a `.ts` helper, a hook — needs its own `exports` entry.
 
-## 3. Check the tsconfig paths in both apps
+## 3. Check the tsconfig paths
 
-`apps/chat-ui/tsconfig.json` and `apps/float/tsconfig.json` both carry:
+`apps/chat-ui/tsconfig.json` carries:
 
 ```json
 "@felix/ui/*": ["../../packages/ui/src/*"],
@@ -71,7 +71,6 @@ Shared versions live in the `catalog:` block of `pnpm-workspace.yaml`, so:
 ```bash
 pnpm --filter @felix/ui check-types
 pnpm --filter @felix/chat-ui check-types
-pnpm --filter @felix/float check-types
 pnpm lint
 ```
 

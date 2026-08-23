@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Shared behavioral test suites for the surfaces chat-ui and float duplicate — the proxy Worker and the SSE reader.",
+  "description": "Parameterized behavioral test suites for the contracts this repo has to keep — the proxy Worker and the SSE reader.",
   "exports": {
     "./proxy-worker": "./src/proxy-worker.ts",
     "./sse": "./src/sse.ts"

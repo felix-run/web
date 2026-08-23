@@ -7,17 +7,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Turborepo + Biome pnpm monorepo of **Cloudflare Workers frontends** for Felix. The agent runtime
 itself is **not here** — it is the self-hosted Python harness at
 [felix-run/felix](https://github.com/felix-run/felix), reached over HTTP. There is no server logic
-in this repo beyond two thin proxy Workers.
+in this repo beyond one thin proxy Worker.
 
 | Path | Role |
 |---|---|
 | `apps/chat-ui` (`@felix/chat-ui`) | Full streaming chat + harness inspector (React/Vite → Worker) |
-| `apps/float` (`@felix/float`) | Minimal always-on workspace client, pinned to the `cowork` manifest |
 | `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
 | `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
-| `packages/felix-protocol` (`@felix/protocol`) | The wire contract — SSE reader + shared types, used by both apps |
+| `packages/felix-protocol` (`@felix/protocol`) | The wire contract — SSE reader + shared types |
 | `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
-| `packages/test-kit` | Shared behavioral suites for the surfaces chat-ui and float duplicate |
+| `packages/test-kit` | Reusable behavioral suites — the proxy Worker contract and the SSE reader |
 | `packages/design` | Neutral palette + theme-CSS builders (docs theme is generated from these) |
 | `packages/typescript-config` | Shared tsconfig bases |
 
@@ -26,13 +25,12 @@ in this repo beyond two thin proxy Workers.
 ```bash
 pnpm install
 pnpm chat:dev          # Vite :5173 — /api/* proxied to Python Felix on :8080
-pnpm float:dev         # Vite :5174 — same proxy
 pnpm docs:dev
 pnpm build             # turbo run build (tsc -b && vite build; astro build)
 pnpm lint              # turbo → biome check
 pnpm format            # biome format --write
 pnpm check-types       # turbo → tsc --noEmit
-pnpm test              # turbo → vitest (cowork-client, chat-ui, float)
+pnpm test              # turbo → vitest (cowork-client, chat-ui)
 pnpm check-api-drift   # client routes vs the committed harness OpenAPI snapshot
 pnpm check-protocol-parity  # every SSE event arm has a handler in both apps
 pnpm --filter @felix/chat-ui <script>   # scope to one package
@@ -40,33 +38,33 @@ pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 ```
 
 Local dev needs the Python harness running separately (`make up && make migrate` in felix-run/felix
-→ `:8080`). Without it, both apps load but every `/api/*` call fails.
+→ `:8080`). Without it, the app loads but every `/api/*` call fails.
 
 **Test coverage is partial, and knowing where it stops matters.** `pnpm test` covers the VFS and
-the File System Access mount (`packages/cowork-client`), the SSE reader (now one implementation in `@felix/protocol`, exercised
-through both apps' `streamChat`), and the proxy Worker — the last via a shared suite in
-`@felix/test-kit` run against **both** copies, which is the only mechanical check that the two
-deliberately-duplicated Workers still agree. React coverage reaches the thread store, the theme
-provider, `usePoll`, and the Gate; **the chat surface itself is untested** — `App.tsx`, the composer,
-and the inspector panels are still verified by running them. `.claude/hooks/tests/` covers the hooks.
+the File System Access mount (`packages/cowork-client`), the SSE reader (one implementation in
+`@felix/protocol`, exercised through chat-ui's `streamChat`), and the proxy Worker — the last two via
+parameterized suites in `@felix/test-kit`, which are the contract those surfaces are held to. React
+coverage reaches the thread store, the theme provider, `usePoll`, the presence signals, and the Gate;
+**the chat surface itself is untested** — `App.tsx`, the composer, and the inspector panels are still
+verified by running them. `.claude/hooks/tests/` covers the hooks.
 
 Two mechanical guards cover the hand-mirrored wire contract.
 
-`pnpm check-api-drift` walks the fetch call sites in each client and diffs path *and* verb against
-`apps/chat-ui/harness-openapi.json`, a committed snapshot of the harness's `/openapi.json`. It
-catches a route the harness renamed or dropped; it cannot catch a call that hits a real route for
-the wrong purpose, and it says nothing about payload shapes. Refresh the snapshot when the harness
-gains routes — instructions are in `scripts/check-api-drift.mjs`.
+`pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts` and diffs path *and*
+verb against `apps/chat-ui/harness-openapi.json`, a committed snapshot of the harness's
+`/openapi.json`. It catches a route the harness renamed or dropped; it cannot catch a call that hits
+a real route for the wrong purpose, and it says nothing about payload shapes. Refresh the snapshot
+when the harness gains routes — instructions are in `scripts/check-api-drift.mjs`.
 
 `pnpm check-protocol-parity` covers the other half: that every `StreamEvent` arm actually reaches a
-handler in both apps. The union ends in an open arm, so an event nobody handles compiles, lints, and
-does nothing — the type system cannot see it. Pre-existing gaps are grandfathered in
+handler. The union ends in an open arm, so an event nobody handles compiles, lints, and does nothing
+— the type system cannot see it. Pre-existing gaps are grandfathered in
 `scripts/protocol-parity-baseline.json` as a one-way ratchet; new gaps fail, and fixing a
 grandfathered one fails until `pnpm check-protocol-parity --update` banks it. It compares event
 *names* only — it cannot tell you a handler is wrong, just that one exists.
 
 CI (`.github/workflows/ci.yml`) is one `verify` job: `pnpm install --frozen-lockfile`, then lint,
-check-types, API drift, protocol parity, build (chat-ui, float, docs), tests, then the hook tests —
+check-types, API drift, protocol parity, build (chat-ui, docs), tests, then the hook tests —
 each step runs even if an earlier one fails, so one red run reports everything. Verification of app behavior still
 means running it against a live harness.
 
@@ -74,9 +72,8 @@ means running it against a live harness.
 
 ### The `/api/*` proxy contract
 
-Felix serves no static assets and no CORS headers, so the browser can never call it directly. Both
-`apps/chat-ui/worker/index.ts` and `apps/float/worker/index.ts` implement the *same* contract, and
-`vite.config.ts` mirrors it in dev:
+Felix serves no static assets and no CORS headers, so the browser can never call it directly.
+`apps/chat-ui/worker/index.ts` implements the contract and `vite.config.ts` mirrors it in dev:
 
 ```
 browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──▶ Python Felix
@@ -89,21 +86,22 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
 - `FELIX_API_KEY` (optional) is injected upstream as `Authorization: Bearer …`.
 - In `vite dev` the Worker is not in the loop, so the gate is skipped entirely.
 
-Keep the two Workers in sync — they are deliberate near-duplicates, not a shared module.
+The dev proxy in `apps/chat-ui/vite.config.ts` is a second copy of this contract — change one and
+the other diverges silently.
 
 ### Client ↔ harness protocol (the part that is easy to get wrong)
 
-`packages/felix-protocol` is the hand-mirrored wire contract — one copy, shared by both apps. Its
-`StreamEvent` is the authoritative list of SSE frames; it ends in an open `{ event: string; ... }`
-arm, so an unknown event compiles fine and silently does nothing — when the harness gains an event,
-add the arm *and* the handler in each app (`App.tsx`), or it is indistinguishable from an event that
-never arrives. Each app's own `api.ts` still owns its REST calls and auth; `src/types.ts` keeps only
-what is app-specific (chat-ui's `Turn` and management types, float's `TimelineItem`).
+`packages/felix-protocol` is the hand-mirrored wire contract. Its `StreamEvent` is the authoritative
+list of SSE frames; it ends in an open `{ event: string; ... }` arm, so an unknown event compiles
+fine and silently does nothing — when the harness gains an event, add the arm *and* the handler in
+`App.tsx`, or it is indistinguishable from an event that never arrives. `apps/chat-ui/src/api.ts`
+owns the REST calls and auth; `src/types.ts` keeps only what is app-specific (`Turn` and the
+management types).
 
 Every frame is a bare `data:` line — the harness sets no SSE `event:` field — in one envelope
 `{event, type, data, text}`, terminated by `data: [DONE]`.
 
-Flows worth knowing before editing either app:
+Flows worth knowing before editing the app:
 
 - **Streaming** — `POST /chat/stream`, SSE decoded with a carry buffer (frames split across network
   chunks). Deltas append to the current turn; `on_tool_start`/`on_tool_end` become inline tool cards;
@@ -127,19 +125,23 @@ Flows worth knowing before editing either app:
 
 Each turn sends **only the new user message** — Felix replays thread history server-side.
 
-### chat-ui vs float
+### Unattended runs
 
-`float` is a deliberately reduced second client over the same protocol (recent history is literally
-"bring float to parity with X"). It has no inspector/eval/jobs/manifest surfaces, pins
-`MANIFEST = 'cowork'`, and keeps its own `api.ts` and VFS storage key (the wire types and SSE
-reader are shared via `@felix/protocol`).
-A protocol change generally needs applying in **both** apps.
+A background run (`POST /chat` → `202 + resume_token`) has no stream to carry an approval frame, so
+`src/lib/presence.ts` and the `/approvals` poll in `App.tsx` exist to make an unwatched tab honest:
+the poll surfaces an approval the durable run cannot deliver, and presence puts *working* /
+*blocked* / *idle* into `document.title` plus an OS notification when the tab is hidden. Permission
+is requested inside the background-run click, never on load.
+
+This was previously a second app (`apps/float`, removed 2026-08-23) that served the same operator at
+lower density. What it actually contributed was the constraint above — assume no one is looking —
+which is now a mode of chat-ui rather than a separate surface. See `PRODUCT.md`.
 
 ### Packages
 
 `@felix/ui` and `@felix/cowork-client` have **no build step** — they export `.tsx`/`.ts` source
 directly, resolved via `paths` in each app's `tsconfig.json`. Adding an export means updating the
-package `exports` map *and* the tsconfig `paths` in `apps/chat-ui` and `apps/float`.
+package `exports` map *and* the tsconfig `paths` in `apps/chat-ui`.
 
 The root `tsconfig.json` explicitly **excludes** `apps/chat-ui` and `apps/docs` (JSX / Astro virtual
 modules don't resolve under the workspace options); those apps type-check via their own configs.
@@ -179,8 +181,8 @@ the `toolkit-authoring` skill is how to extend it.
 - **Git: never commit to `main`; never stack PRs.** Every change goes on a `<type>/<slug>` branch and
   a PR into `main`, and merging is the human's call. Enforced by `.claude/hooks/block-main-commit.sh`;
   full procedure in the `branch-pr-workflow` skill and `.claude/rules/git-workflow.md`.
-- **Deploy config is local-only.** `apps/chat-ui/wrangler.jsonc` and `apps/float/wrangler.jsonc` are
-  gitignored; each app ships a tracked `wrangler.example.jsonc` to copy. `apps/docs/wrangler.jsonc`
+- **Deploy config is local-only.** `apps/chat-ui/wrangler.jsonc` is gitignored; the app ships a
+  tracked `wrangler.example.jsonc` to copy. `apps/docs/wrangler.jsonc`
   is tracked because it holds no ids. `vars` is public — only `FELIX_ORIGIN` belongs there; secrets
   go through `wrangler secret put`.
 - Biome, not ESLint/Prettier: single quotes, semicolons, trailing commas, 2-space indent, 100 cols.
