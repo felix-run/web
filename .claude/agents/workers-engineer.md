@@ -40,9 +40,10 @@ client possible at all. Same-origin in, HTTP out.
 
 ## Config facts
 
-- `apps/chat-ui/wrangler.jsonc` and `apps/float/wrangler.jsonc` are **gitignored**. `chat-ui` has a
-  tracked `wrangler.example.jsonc` to copy; **float has no example file** — mirror chat-ui's,
-  changing `name` and the route pattern. `apps/docs/wrangler.jsonc` is tracked because it holds no
+- `apps/chat-ui/wrangler.jsonc` and `apps/float/wrangler.jsonc` are **gitignored**; each ships a
+  tracked `wrangler.example.jsonc` to copy, and a `.dev.vars.example` for `wrangler dev`. Keep the
+  examples in step with the real configs when you change bindings, vars, or routes — they are the
+  only deploy config a fresh clone gets. `apps/docs/wrangler.jsonc` is tracked because it holds no
   account or resource ids.
 - Routes are custom domains: `chat.felix.run`, `float.felix.run`, `docs.felix.run`.
 - Local secrets for `wrangler dev` live in `.dev.vars` (gitignored; `.dev.vars.example` is tracked).

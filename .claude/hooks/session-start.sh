@@ -12,7 +12,7 @@ add() { out="${out}$1
   add "- apps/chat-ui/wrangler.jsonc missing (gitignored). Only needed to deploy: cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc"
 
 [ -f "$root/apps/float/wrangler.jsonc" ] || \
-  add "- apps/float/wrangler.jsonc missing (gitignored, and there is NO example file). Only needed to deploy: mirror chat-ui's, with name felix-float and route float.felix.run"
+  add "- apps/float/wrangler.jsonc missing (gitignored). Only needed to deploy: cp apps/float/wrangler.example.jsonc apps/float/wrangler.jsonc"
 
 # Is the Python harness up? Everything under /api/* fails in dev without it.
 if ! (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null; then

@@ -23,8 +23,9 @@ spec.
 
 ## Known friction in this repo — real candidates
 
-- A fresh clone cannot deploy: `apps/chat-ui/wrangler.jsonc` and `apps/float/wrangler.jsonc` are
-  gitignored, and **float has no `wrangler.example.jsonc`** to copy.
+- Onboarding gaps of the "you cannot run it until you know a thing nobody wrote down" kind. Both
+  app `wrangler.jsonc` files are gitignored, so check that each app still ships a current
+  `wrangler.example.jsonc` and `.dev.vars.example` as its deploy config evolves.
 - No application test suite: CI runs lint, check-types, build, and the hook batteries, but nothing
   exercises the SPAs or the Workers at runtime.
 - `api.ts` and `types.ts` are duplicated between chat-ui and float with no mechanical check that they

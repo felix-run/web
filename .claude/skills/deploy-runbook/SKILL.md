@@ -32,12 +32,12 @@ Each `*:deploy` script is `pnpm build && wrangler deploy` inside that package.
   unmerged branch is a deliberate exception the user has to state.
 - `pnpm check-types && pnpm lint && pnpm build` clean (the `preflight` skill).
 - The config file exists. **Both app `wrangler.jsonc` files are gitignored**, so a fresh clone has
-  neither:
+  neither — copy the tracked example next to it:
   ```bash
   cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc
+  cp apps/float/wrangler.example.jsonc   apps/float/wrangler.jsonc
   ```
-  `apps/float` has **no example file** — mirror chat-ui's, changing `name` to `felix-float` and the
-  route to `float.felix.run`. `apps/docs/wrangler.jsonc` is tracked and needs nothing.
+  `apps/docs/wrangler.jsonc` is tracked and needs nothing.
 
 ## 2. Config and secrets
 
