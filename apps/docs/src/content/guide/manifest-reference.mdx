@@ -418,10 +418,10 @@ spec:
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `inbound.schemes` | string[] | `[]` | **Compile-check only** — not enforced at request time. |
+| `inbound.schemes` | string[] | `[]` | Enforced. The scheme the caller authenticated with (`api_key`, or the JWT verifier scheme) must be listed; `jwt` is an umbrella for every configured JWT scheme. Mismatch → `403`. |
 | `inbound.required_scopes` | string[] | `[]` | Enforced. Missing scopes → `403`. |
 | `inbound.allow_anonymous` | bool | `false` | Enforced. Anonymous callers get `401` unless true. |
-| `outbound.providers` | string[] | `[]` | **Inert today.** |
+| `outbound.providers` | string[] | `[]` | Enforced at **compile**. The resolved provider for the primary model and every fallback must be listed, or the build fails — not the first model call. |
 
 ## `spec.a2a` and `spec.observability`
 
@@ -431,8 +431,12 @@ spec:
     trace: true   # default
 ```
 
-`a2a.publish` / `a2a.capabilities[]` and `observability.metrics[]` parse but are **not yet wired**;
-`observability.trace` is honoured. Do not build on the inert fields.
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `a2a.publish` | bool | `true` | Opt-**out**. `false` withholds the agent from `/.well-known/agent.json`. The default is `true` because the field was never read before, so every agent was already advertised; a `false` default would have 404'd every existing manifest. |
+| `a2a.capabilities[]` | `{id, description, input_schema_ref}` | `[]` | Merged into the agent card, alongside `spec.skills`. |
+| `observability.trace` | bool | `true` | |
+| `observability.metrics[]` | string[] | `[]` | Empty = every counter. Non-empty is an **allowlist**: unlisted counter names are dropped before the series exists, which also bounds the Prometheus cardinality that tenant-supplied manifest ids and remote MCP tool names would otherwise create. |
 
 ## `spec.execution`
 
@@ -574,7 +578,7 @@ spec:
 
 | Field | Type | Default |
 |---|---|---|
-| `providers` | string[] | `[]` |
+| `providers` | list of `pii` | `[]` |
 | `block_on_match` | bool | `false` |
 | `targets` | list of `input` \| `output` \| `final_response` | `["input","output"]` |
 | `judges` | JudgeRule[] | `[]` |
@@ -582,7 +586,12 @@ spec:
 `JudgeRule`: `name` (required), `criteria` (required), `threshold` (float 0–1, default `0.7`),
 `model` (string, `""`), `target_tools` (string[], `[]`), `final_response` (bool, `false`).
 
-The `pii` provider needs the `pii` extra (Presidio). Blocks emit `guardrail_block`; judges emit
+`providers` is a closed set, like `targets` beside it: a typo (`PII`, `pii-redaction`) is a
+compile error rather than a manifest that applies no wrapper while reporting guardrails enabled.
+
+The `pii` provider needs the `pii` extra (Presidio) **plus a spaCy English model**. Without both —
+which is the case on the lean image — it degrades to three regexes (email, US SSN, card-like digit
+runs), announced at `WARNING` with a `felix_control_degraded` counter, not silently. Blocks emit `guardrail_block`; judges emit
 `judge_score` with `pass` / `fail`.
 
 ## `spec.content_screening`
@@ -594,9 +603,15 @@ Screens tool **output** for prompt injection before the model sees it.
 | `enabled` | bool | `false` | |
 | `model` | string | `""` | Empty = marker-based only; set an id to add an LLM injection score. |
 | `tools` | string[] | `[]` | Empty = all tools. |
-| `on_flag` | `quarantine` \| `block` | `quarantine` | |
+| `on_flag` | `quarantine` \| `block` | `quarantine` | Applies to output that is flagged **and** to output that could not be screened. |
 
 Inbound user turns are screened on `/chat`, `/v1` and `/a2a` as well.
+
+A screener that cannot run has not cleared anything. If the model is unreachable — missing key,
+expired credential, 429, provider outage — or returns a score that cannot be parsed, the result is
+*unavailable*, not clean: `on_flag: block` denies (inbound: `503`), `quarantine` replaces the
+content, and a `felix_control_unavailable` counter is emitted. This matters most on the tool-output
+path, which is what screens MCP, A2A, browser, and sandbox content.
 
 ## `spec.command_screening`
 
@@ -631,15 +646,15 @@ required), `reason` (string \| null).
 
 ## `spec.anomaly`
 
-Parses, and defaults to `enabled: true`, but the detector is **not wired up today** — treat the
-block as reserved.
+Thresholds for the worker's anomaly scan. Read from the manifest — findings carry the values
+that produced them.
 
-| Field | Type | Default |
-|---|---|---|
-| `enabled` | bool | `true` |
-| `min_volume` | int ≥ 1 | `10` |
-| `min_rate` | float 0–1 | `0.2` |
-| `baseline_factor` | float ≥ 1 | `3.0` |
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `true` | `false` disables the scan for this manifest. |
+| `min_volume` | int ≥ 1 | `10` | Below this call volume the window is not scored. |
+| `baseline_factor` | float ≥ 1 | `3.0` | Multiple of the baseline that counts as an anomaly. |
+| `min_rate` | float 0–1 | `0.2` | **Still unimplemented** — deliberately, since its intended semantics are not recoverable from the code. |
 
 ## `spec.approvals`
 
@@ -808,6 +823,5 @@ spec:
 ## Fields that parse but do nothing yet
 
 Do not build on these — they validate, but no code path consumes them:
-`spec.a2a.publish` / `capabilities`, `spec.anomaly.*`, `spec.auth.inbound.schemes`,
-`spec.auth.outbound.providers`, `spec.observability.metrics`, `spec.memory.consolidate.*`, and the
-`memory.checkpointer` aliases `agentcore` / `do` / `sqlite`.
+`spec.memory.consolidate.*`, `spec.anomaly.min_rate`, and the `memory.checkpointer` aliases
+`agentcore` / `do` / `sqlite`.
