@@ -30,10 +30,13 @@ import {
   supportsDirectoryPicker,
   vfs,
 } from '@/lib/client-tools';
+import { composerKeyAction } from '@/lib/composer';
 import { cn } from '@/lib/utils';
-import type { PendingUiRequest, ThinkingLevel, TimelineItem } from '@/types';
+import type { PendingUiRequest, ThinkingLevel, TimelineItem, TokenUsage } from '@/types';
 
 const MANIFEST = 'cowork';
+/** Distance from the bottom that still counts as "reading the tail". */
+const FOLLOW_SLACK_PX = 80;
 const THREAD_KEY = 'felix.float.threadId';
 const HOLDER_KEY = 'felix.float.holderId';
 const THINKING_LEVELS: ThinkingLevel[] = [
@@ -76,6 +79,7 @@ export default function App() {
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
   const [sessionPhase, setSessionPhase] = useState<string | null>(null);
+  const [usage, setUsage] = useState<TokenUsage | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHits, setSearchHits] = useState<
     Array<{ thread_id: string; content: string; event_id?: string }>
@@ -83,6 +87,11 @@ export default function App() {
   const [searching, setSearching] = useState(false);
   const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
   const [files, setFiles] = useState<string[]>([]);
+  const [hasNewBelow, setHasNewBelow] = useState(false);
+  const followTailRef = useRef(true);
+  const draftFrameRef = useRef<number | null>(null);
+  /** Harness tool-call id -> timeline row id, so concurrent calls settle correctly. */
+  const toolRowsRef = useRef(new Map<string, string>());
   const abortRef = useRef<AbortController | null>(null);
   const leaseTokenRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -185,8 +194,60 @@ export default function App() {
     };
   }, [searchQuery]);
 
+  // A token-by-token stream renders far faster than a screen refreshes, so
+  // committing every delta to state is work nobody sees. Coalesce into one
+  // paint per frame; anything that ENDS the draft commits synchronously,
+  // because a queued frame would otherwise overwrite the cleared value.
+  const queueDraft = useCallback((text: string) => {
+    if (draftFrameRef.current !== null) return;
+    draftFrameRef.current = requestAnimationFrame(() => {
+      draftFrameRef.current = null;
+      setAssistantDraft(text);
+    });
+  }, []);
+
+  const commitDraft = useCallback((text: string) => {
+    if (draftFrameRef.current !== null) {
+      cancelAnimationFrame(draftFrameRef.current);
+      draftFrameRef.current = null;
+    }
+    setAssistantDraft(text);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (draftFrameRef.current !== null) cancelAnimationFrame(draftFrameRef.current);
+    },
+    [],
+  );
+
+  // Follow the tail only while the reader is already at it. Scrolling up to
+  // re-read something during a long run must not be yanked back by the next
+  // delta; the chip is how they get back down deliberately.
+  const onTranscriptScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atTail = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
+    followTailRef.current = atTail;
+    if (atTail) setHasNewBelow(false);
+  }, []);
+
+  const jumpToTail = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    followTailRef.current = true;
+    setHasNewBelow(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, []);
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (!el) return;
+    if (followTailRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    } else {
+      setHasNewBelow(true);
+    }
   }, [timeline, assistantDraft, pendingQueue]);
 
   const refreshFiles = useCallback(async () => {
@@ -270,7 +331,7 @@ export default function App() {
     const next = nanoid(12);
     setThreadId(next);
     setTimeline([]);
-    setAssistantDraft('');
+    commitDraft('');
     setPendingQueue([]);
     setUiPrompt(null);
     setStreaming(false);
@@ -314,7 +375,7 @@ export default function App() {
         const chunk = data.delta ?? data.chunk?.content ?? '';
         if (chunk) {
           draftRef.current += chunk;
-          setAssistantDraft(draftRef.current);
+          queueDraft(draftRef.current);
         }
         return;
       }
@@ -329,11 +390,13 @@ export default function App() {
             status: 'done',
           });
           draftRef.current = '';
-          setAssistantDraft('');
+          commitDraft('');
         }
-        const data = event.data as { name?: string; input?: unknown };
+        const data = event.data as { name?: string; input?: unknown; id?: string };
+        const rowId = nanoid();
+        if (data.id) toolRowsRef.current.set(data.id, rowId);
         push({
-          id: nanoid(),
+          id: rowId,
           kind: 'tool',
           title: String(data.name ?? 'tool'),
           body: JSON.stringify(data.input ?? {}, null, 2),
@@ -343,32 +406,54 @@ export default function App() {
       }
 
       if (event.event === 'tool_end' || event.event === 'on_tool_end') {
-        const data = event.data as { name?: string; output?: unknown };
+        const data = event.data as { name?: string; output?: unknown; id?: string };
         const name = String(data.name ?? 'tool');
         const output =
           typeof data.output === 'string' ? data.output : JSON.stringify(data.output ?? '');
+        const status =
+          output.startsWith('[approval') || output.startsWith('[error') ? 'error' : 'done';
+        // `tool_start`/`tool_end` carry an id; the `on_*` pair does not. With an
+        // id, settle the exact row — two concurrent calls to the same tool are
+        // otherwise indistinguishable, and the newest-first name scan settles
+        // whichever happened to be pushed last.
+        const rowId = data.id ? toolRowsRef.current.get(data.id) : undefined;
+        if (data.id) toolRowsRef.current.delete(data.id);
         setTimeline((cur) => {
           const next = [...cur];
-          for (let i = next.length - 1; i >= 0; i--) {
-            const item = next[i];
-            if (
-              item &&
-              item.kind === 'tool' &&
-              (item.title === name || item.title === `client · ${name}`) &&
-              item.status === 'running'
-            ) {
-              next[i] = {
-                ...item,
-                body: output.slice(0, 4000),
-                status:
-                  output.startsWith('[approval') || output.startsWith('[error') ? 'error' : 'done',
-              };
-              break;
+          let i = rowId ? next.findIndex((item) => item.id === rowId) : -1;
+          if (i === -1) {
+            for (let j = next.length - 1; j >= 0; j--) {
+              const item = next[j];
+              if (
+                item.kind === 'tool' &&
+                (item.title === name || item.title === `client · ${name}`) &&
+                item.status === 'running'
+              ) {
+                i = j;
+                break;
+              }
             }
           }
+          const target = next[i];
+          if (!target) return cur;
+          next[i] = { ...target, body: output.slice(0, 4000), status };
           return next;
         });
         await refreshFiles();
+        return;
+      }
+
+      // Progress either side of a tool call. Without this the row sits on
+      // 'running' until `tool_end`, which for a long tool is the whole wait.
+      if (event.event === 'tool_execution_update') {
+        const data = event.data as { name?: string; id?: string; status?: string };
+        const rowId = data.id ? toolRowsRef.current.get(data.id) : undefined;
+        if (!rowId || !data.status) return;
+        setTimeline((cur) =>
+          cur.map((item) =>
+            item.id === rowId && item.status === 'running' ? { ...item, phase: data.status } : item,
+          ),
+        );
         return;
       }
 
@@ -402,30 +487,63 @@ export default function App() {
         return;
       }
 
+      // The harness blocks the model loop until this tool_call_id is answered,
+      // so every path below — including a thrown executor and a failed POST —
+      // must end in either a posted result or a visible error. Since the SSE
+      // reader now propagates handler failures, an escaping throw would also
+      // tear down the stream and leave the run silently dead.
       if (event.event === 'tool_request') {
         const data = event.data as {
           id: string;
           name: string;
           args?: Record<string, unknown>;
         };
+        const rowId = nanoid();
+        toolRowsRef.current.set(data.id, rowId);
         push({
-          id: nanoid(),
+          id: rowId,
           kind: 'tool',
           title: `client · ${data.name}`,
           body: JSON.stringify(data.args ?? {}, null, 2),
           status: 'running',
         });
-        const result = await executeClientTool({
-          id: data.id,
-          name: data.name,
-          args: data.args ?? {},
-        });
-        await postToolResult({
-          threadId,
-          toolCallId: data.id,
-          content: result.content,
-          error: result.error,
-        });
+
+        let result: { content: string; error?: boolean };
+        try {
+          result = await executeClientTool(
+            { id: data.id, name: data.name, args: data.args ?? {} },
+            { signal: abortRef.current?.signal },
+          );
+        } catch (err) {
+          result = {
+            content: `error: ${err instanceof Error ? err.message : String(err)}`,
+            error: true,
+          };
+        }
+
+        try {
+          await postToolResult({
+            threadId,
+            toolCallId: data.id,
+            content: result.content,
+            error: result.error,
+          });
+        } catch (err) {
+          // Nothing upstream will retry this, and the run is now waiting on a
+          // result that will never arrive. Say so rather than appearing idle.
+          const message = err instanceof Error ? err.message : String(err);
+          toolRowsRef.current.delete(data.id);
+          setTimeline((cur) =>
+            cur.map((item) =>
+              item.id === rowId
+                ? { ...item, body: `tool result not delivered: ${message}`, status: 'error' }
+                : item,
+            ),
+          );
+          toast.error(`Tool result not delivered: ${message}`);
+          await refreshFiles();
+          return;
+        }
         await refreshFiles();
         return;
       }
@@ -447,10 +565,22 @@ export default function App() {
             status: 'error',
           });
           draftRef.current = '';
-          setAssistantDraft('');
+          commitDraft('');
         }
         toast.error(message);
         push({ id: nanoid(), kind: 'system', title: 'Error', body: message, status: 'error' });
+        return;
+      }
+
+      // Terminal frame of a turn; the only place per-turn usage is reported.
+      if (event.event === 'on_chain_end') {
+        const usage = (event.data as { output?: { usage?: TokenUsage } }).output?.usage;
+        if (usage) {
+          setUsage((cur) => ({
+            input: (cur?.input ?? 0) + (usage.input ?? 0),
+            output: (cur?.output ?? 0) + (usage.output ?? 0),
+          }));
+        }
         return;
       }
 
@@ -508,7 +638,7 @@ export default function App() {
         });
       }
     },
-    [push, refreshFiles, threadId],
+    [push, refreshFiles, threadId, queueDraft, commitDraft],
   );
 
   const runGoal = useCallback(
@@ -517,9 +647,11 @@ export default function App() {
       if (!text || streaming) return;
 
       setStreaming(true);
+      // A run that ended without settling every tool leaves stale ids behind.
+      toolRowsRef.current.clear();
       setBackground(mode === 'background');
       setGoal('');
-      setAssistantDraft('');
+      commitDraft('');
       push({ id: nanoid(), kind: 'user', title: 'Goal', body: text, status: 'done' });
 
       const ctrl = new AbortController();
@@ -561,10 +693,10 @@ export default function App() {
           const run = await pollDurableRun(started.resumeToken, {
             signal: ctrl.signal,
             onTick: (r) => {
-              setAssistantDraft(`status: ${r.status || 'pending'}`);
+              commitDraft(`status: ${r.status || 'pending'}`);
             },
           });
-          setAssistantDraft('');
+          commitDraft('');
           if (run.error) {
             push({
               id: nanoid(),
@@ -610,7 +742,7 @@ export default function App() {
                 status: 'done',
               });
               draftRef.current = '';
-              setAssistantDraft('');
+              commitDraft('');
             }
           },
         );
@@ -638,7 +770,7 @@ export default function App() {
             body: draftRef.current,
             status: 'done',
           });
-          setAssistantDraft('');
+          commitDraft('');
         }
       }
     },
@@ -671,21 +803,32 @@ export default function App() {
     [pending, deciding],
   );
 
-  const onSteer = useCallback(async () => {
-    const text = goal.trim();
-    if (!text || !streaming) return;
-    try {
-      await steerChat({ threadId, text });
-      // Queued, not applied: the agent drains it between steps and answers with
-      // a `steer` frame. Left pending until then so the timeline does not claim
-      // the run has taken it on board when it has not.
-      push({ id: nanoid(), kind: 'user', title: 'Steer', body: text, status: 'pending' });
-      setGoal('');
-      toast.message('Steer queued');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  }, [goal, streaming, threadId, push]);
+  /**
+   * Send into a turn that is already running.
+   *
+   * `steer` is injected as soon as the current step finishes — use it to
+   * redirect. `follow_up` waits for the turn to end — use it to queue the next
+   * thing without interrupting. Both are the same endpoint; only `kind` differs.
+   */
+  const sendDuringRun = useCallback(
+    async (kind: 'steer' | 'follow_up') => {
+      const text = goal.trim();
+      if (!text || !streaming) return;
+      const title = kind === 'steer' ? 'Steer' : 'Follow-up';
+      try {
+        await steerChat({ threadId, text, kind });
+        // Queued, not applied: the agent drains it between steps and answers with
+        // a matching frame. Left pending until then so the timeline does not claim
+        // the run has taken it on board when it has not.
+        push({ id: nanoid(), kind: 'user', title, body: text, status: 'pending' });
+        setGoal('');
+        toast.message(`${title} queued`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [goal, streaming, threadId, push],
+  );
 
   const continueRun = useCallback(() => {
     if (streaming) return;
@@ -752,7 +895,7 @@ export default function App() {
       stopRun();
       setThreadId(suffix);
       setTimeline([]);
-      setAssistantDraft('');
+      commitDraft('');
       setPendingQueue([]);
       setUiPrompt(null);
       setSessionPhase(null);
@@ -823,6 +966,14 @@ export default function App() {
           </span>
           {sessionPhase && sessionPhase !== 'idle' ? (
             <span className="rounded border border-border px-2 py-1">{sessionPhase}</span>
+          ) : null}
+          {usage ? (
+            <span
+              className="rounded border border-border px-2 py-1 font-mono"
+              title="Tokens this session (input / output)"
+            >
+              {usage.input.toLocaleString()} ↓ {usage.output.toLocaleString()} ↑
+            </span>
           ) : null}
           <label className="flex items-center gap-1 rounded border border-border px-2 py-1">
             <span className="sr-only">Thinking level</span>
@@ -1055,7 +1206,11 @@ export default function App() {
 
       <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[1.4fr_0.9fr]">
         <section className="flex min-h-0 flex-col rounded-lg border border-border bg-card shadow-sm">
-          <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          <div
+            ref={scrollRef}
+            onScroll={onTranscriptScroll}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4"
+          >
             {timeline.length === 0 && !assistantDraft ? (
               <div className="rounded-md border border-dashed border-border p-6 text-sm text-muted-foreground">
                 Try: create notes/todo.md with three tasks, then open it.
@@ -1088,7 +1243,7 @@ export default function App() {
                     ) : null}
                     {item.status ? (
                       <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                        {item.status}
+                        {item.phase && item.status === 'running' ? item.phase : item.status}
                       </span>
                     ) : null}
                   </div>
@@ -1106,6 +1261,17 @@ export default function App() {
                 <pre className="mt-2 whitespace-pre-wrap break-words text-sm">{assistantDraft}</pre>
               </article>
             ) : null}
+            {hasNewBelow ? (
+              <div className="pointer-events-none sticky bottom-0 flex h-0 justify-center">
+                <button
+                  type="button"
+                  className="pointer-events-auto -translate-y-2 rounded-full border border-border bg-card px-3 py-1 text-xs shadow-sm hover:bg-accent"
+                  onClick={jumpToTail}
+                >
+                  New messages ↓
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <form
@@ -1117,15 +1283,25 @@ export default function App() {
           >
             <textarea
               className="min-h-20 w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none ring-ring focus:ring-2"
-              placeholder="Describe the goal…"
+              placeholder={streaming ? 'Enter queues, ⌘/Ctrl+Enter steers…' : 'Describe the goal…'}
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              disabled={streaming}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void runGoal('stream');
-                }
+                const action = composerKeyAction(
+                  {
+                    key: e.key,
+                    shiftKey: e.shiftKey,
+                    metaKey: e.metaKey,
+                    ctrlKey: e.ctrlKey,
+                    isComposing: e.nativeEvent.isComposing,
+                  },
+                  { streaming, hasText: goal.trim().length > 0 },
+                );
+                if (action === 'newline') return;
+                e.preventDefault();
+                if (action === 'run') void runGoal('stream');
+                else if (action === 'steer') void sendDuringRun('steer');
+                else if (action === 'follow_up') void sendDuringRun('follow_up');
               }}
             />
             <div className="mt-2 flex flex-wrap justify-end gap-2">
@@ -1135,7 +1311,17 @@ export default function App() {
                     type="button"
                     className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
                     disabled={!goal.trim()}
-                    onClick={() => void onSteer()}
+                    onClick={() => void sendDuringRun('follow_up')}
+                    title="Enter — runs after this turn"
+                  >
+                    Queue
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                    disabled={!goal.trim()}
+                    onClick={() => void sendDuringRun('steer')}
+                    title="⌘/Ctrl+Enter — redirects the running turn"
                   >
                     Steer
                   </button>
