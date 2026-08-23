@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "format": "biome format --write .",
     "check-types": "turbo run check-types",
+    "check-api-drift": "node scripts/check-api-drift.mjs apps/chat-ui/harness-openapi.json apps/chat-ui/src/api.ts apps/float/src/api.ts",
     "sync:theme": "pnpm --filter @felix/design sync:theme",
     "docs:dev": "pnpm --filter @felix/docs dev",
     "docs:build": "pnpm --filter @felix/docs build",
