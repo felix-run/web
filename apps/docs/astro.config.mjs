@@ -13,10 +13,13 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/felix-run/felix' }],
       // Palette from @felix/design (checked-in src/styles/theme.css).
       customCss: ['./src/styles/theme.css'],
+      // Served from apps/docs/public/. Previously hotlinked from the harness
+      // host, which 404s — a docs site should not depend on an API server, and
+      // that one now gates static paths behind auth anyway.
       head: [
         {
           tag: 'link',
-          attrs: { rel: 'icon', href: 'https://make.felix.run/favicon.svg', type: 'image/svg+xml' },
+          attrs: { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
         },
       ],
       // Explicit sidebar (Starlight autogenerate expects src/content/docs/).
@@ -46,9 +49,9 @@ export default defineConfig({
             { label: 'Testing', slug: 'internals/testing' },
           ],
         },
-        // Live OpenAPI UI (Scalar) from a running harness — hosted demo at make.felix.run;
+        // Live OpenAPI UI (Scalar) from a running harness — hosted at api.felix.run;
         // locally: http://localhost:8080/docs over /openapi.json.
-        { label: 'API reference ↗', link: 'https://make.felix.run/docs' },
+        { label: 'API reference ↗', link: 'https://api.felix.run/docs' },
       ],
     }),
   ],

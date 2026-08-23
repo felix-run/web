@@ -42,7 +42,7 @@ Each `*:deploy` script is `pnpm build && wrangler deploy` inside that package.
 ## 2. Config and secrets
 
 `vars` in `wrangler.jsonc` is **public** — the only thing that belongs there is `FELIX_ORIGIN`, the
-public origin of the Python harness (production: `https://make.felix.run`).
+public origin of the Python harness (production: `https://api.felix.run`).
 
 Secrets go through wrangler, once per Worker, and are ask-gated:
 
