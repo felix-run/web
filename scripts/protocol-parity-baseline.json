@@ -1,4 +1,4 @@
 {
   "$comment": "Wire events with no handler, grandfathered so the check could land green. One-way ratchet: never add an entry by hand to silence a new gap — add the handler instead. Regenerate with `pnpm check-protocol-parity --update` only after FIXING something, so entries disappear.",
-  "allowed": ["apps/chat-ui/src/App.tsx done", "apps/chat-ui/src/App.tsx tool_execution_update"]
+  "allowed": []
 }

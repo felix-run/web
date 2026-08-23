@@ -31,6 +31,8 @@ export interface ToolCall {
   input?: unknown;
   output?: unknown;
   done: boolean;
+  /** Latest `tool_execution_update` phase while the call is still running. */
+  phase?: string;
 }
 
 /** A turn in the UI transcript. Assistant turns may carry inline tool calls. */
