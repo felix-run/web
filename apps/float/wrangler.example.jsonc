@@ -3,10 +3,10 @@
 // `vars` is PUBLIC — it ships in the Worker config and is readable by anyone
 // with access to the account. Only FELIX_ORIGIN belongs here. The gate key and
 // the upstream bearer token are secrets:
-//   pnpm --filter @felix/chat-ui exec wrangler secret put CHAT_UI_KEY
-//   pnpm --filter @felix/chat-ui exec wrangler secret put FELIX_API_KEY   # optional
+//   pnpm --filter @felix/float exec wrangler secret put CHAT_UI_KEY
+//   pnpm --filter @felix/float exec wrangler secret put FELIX_API_KEY   # optional
 {
-  "name": "felix-chat-ui",
+  "name": "felix-float",
   "main": "worker/index.ts",
   "compatibility_date": "2025-01-15",
   "assets": {
@@ -18,5 +18,5 @@
     // Public origin of the self-hosted Python Felix harness.
     "FELIX_ORIGIN": "https://api.felix.run"
   },
-  "routes": [{ "pattern": "chat.felix.run", "custom_domain": true }]
+  "routes": [{ "pattern": "float.felix.run", "custom_domain": true }]
 }
