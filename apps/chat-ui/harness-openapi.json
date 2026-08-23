@@ -1,0 +1,200 @@
+{
+  "info": {
+    "title": "Felix",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/.well-known/agent-card.json": {
+      "get": {}
+    },
+    "/.well-known/jwks.json": {
+      "get": {}
+    },
+    "/a2a": {
+      "post": {}
+    },
+    "/a2a/": {
+      "post": {}
+    },
+    "/approvals": {
+      "get": {}
+    },
+    "/approvals/": {
+      "get": {}
+    },
+    "/approvals/{approval_id}": {
+      "get": {}
+    },
+    "/approvals/{approval_id}/decide": {
+      "post": {}
+    },
+    "/audit": {
+      "get": {}
+    },
+    "/audit/": {
+      "get": {}
+    },
+    "/audit/metrics": {
+      "get": {}
+    },
+    "/chat": {
+      "post": {}
+    },
+    "/chat/": {
+      "post": {}
+    },
+    "/chat/abort": {
+      "post": {}
+    },
+    "/chat/compact": {
+      "post": {}
+    },
+    "/chat/continue": {
+      "post": {}
+    },
+    "/chat/fork": {
+      "post": {}
+    },
+    "/chat/history/{thread_id}": {
+      "delete": {},
+      "get": {}
+    },
+    "/chat/rewind": {
+      "post": {}
+    },
+    "/chat/runs/{resume_token}": {
+      "get": {}
+    },
+    "/chat/sessions": {
+      "get": {}
+    },
+    "/chat/sessions/custom": {
+      "post": {}
+    },
+    "/chat/sessions/label": {
+      "post": {}
+    },
+    "/chat/sessions/lease": {
+      "post": {}
+    },
+    "/chat/sessions/lease/release": {
+      "post": {}
+    },
+    "/chat/sessions/name": {
+      "post": {}
+    },
+    "/chat/sessions/search": {
+      "get": {}
+    },
+    "/chat/sessions/{thread_id}": {
+      "get": {}
+    },
+    "/chat/sessions/{thread_id}/export": {
+      "get": {}
+    },
+    "/chat/steer": {
+      "post": {}
+    },
+    "/chat/stream": {
+      "post": {}
+    },
+    "/chat/thinking": {
+      "post": {}
+    },
+    "/chat/tool_result": {
+      "post": {}
+    },
+    "/chat/ui": {
+      "post": {}
+    },
+    "/eval/datasets": {
+      "get": {}
+    },
+    "/eval/datasets/{name}": {
+      "get": {},
+      "put": {}
+    },
+    "/eval/datasets/{name}/run": {
+      "post": {}
+    },
+    "/eval/runs": {
+      "get": {},
+      "post": {}
+    },
+    "/eval/runs/compare": {
+      "post": {}
+    },
+    "/eval/runs/{run_id}": {
+      "get": {}
+    },
+    "/health": {
+      "get": {}
+    },
+    "/internal/sessions/{session_id}/events": {
+      "post": {}
+    },
+    "/jobs": {
+      "get": {}
+    },
+    "/jobs/": {
+      "get": {}
+    },
+    "/jobs/{name}": {
+      "delete": {},
+      "get": {},
+      "put": {}
+    },
+    "/jobs/{name}/runs": {
+      "get": {}
+    },
+    "/manifests": {
+      "get": {}
+    },
+    "/manifests/": {
+      "get": {}
+    },
+    "/manifests/{name}": {
+      "get": {},
+      "put": {}
+    },
+    "/manifests/{name}/canary": {
+      "delete": {},
+      "post": {}
+    },
+    "/manifests/{name}/rollback": {
+      "post": {}
+    },
+    "/mcp": {
+      "get": {},
+      "post": {}
+    },
+    "/mcp/": {
+      "get": {},
+      "post": {}
+    },
+    "/metrics": {
+      "get": {}
+    },
+    "/plans": {
+      "get": {}
+    },
+    "/plans/": {
+      "get": {}
+    },
+    "/plans/{plan_id}": {
+      "delete": {},
+      "get": {},
+      "put": {}
+    },
+    "/usage": {
+      "get": {}
+    },
+    "/v1/chat/completions": {
+      "post": {}
+    },
+    "/v1/models": {
+      "get": {}
+    }
+  }
+}

@@ -33,6 +33,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm check-types
 
+      # The wire contract is hand-mirrored across two apps and a separate repo,
+      # so nothing else notices when the harness renames or drops a route.
+      - name: API drift
+        if: ${{ !cancelled() }}
+        run: pnpm check-api-drift
+
       # turbo builds every package with a build script: chat-ui, float, and docs.
       - name: Build
         if: ${{ !cancelled() }}
