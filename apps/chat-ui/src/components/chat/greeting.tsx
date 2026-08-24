@@ -13,7 +13,15 @@ export function Greeting({
   onSend: (text: string) => void;
 }) {
   return (
-    <div className="mx-auto flex min-h-[min(52vh,28rem)] w-full max-w-2xl flex-col justify-center gap-8 px-1 py-4">
+    // `flex-1` rather than a fixed min-height: the greeting is the only child of the
+    // transcript column when a thread is empty, so it should centre in whatever height
+    // is actually available. The old `min-h-[min(52vh,28rem)]` pinned it to the top of
+    // the scroll area and left a measured 221px gap above the composer at 906px tall,
+    // and 818px on a 1503px display.
+    // `max-w-3xl` matches the composer and the transcript; at `max-w-2xl` the empty
+    // state was 96px narrower than the content that replaces it, so everything shifted
+    // sideways on the first message.
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 py-4">
       <div className="flex flex-col gap-2">
         <p className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">
           {manifest}

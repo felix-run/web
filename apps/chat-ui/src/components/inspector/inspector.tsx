@@ -138,7 +138,9 @@ export function Inspector({
     <aside
       aria-labelledby="inspector-heading"
       className={cn(
-        'flex h-full w-[22rem] shrink-0 flex-col border-l border-border/60 bg-card/40',
+        // Same reasoning as the history rail: the panel is the thing worth widening on a
+        // large display, not the transcript. Floor is the old fixed 22rem.
+        'flex h-full w-[clamp(22rem,24vw,30rem)] shrink-0 flex-col border-l border-border/60 bg-card/40',
         className,
       )}
     >
