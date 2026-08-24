@@ -34,6 +34,13 @@ export interface ApprovalDecisionProps {
   /** How many approvals are waiting in total, when more than one. */
   queueLength?: number;
   /**
+   * The run this belongs to has been aborted. The approval record outlives the run
+   * (the harness's `request_abort` cancels queued tools and marks the queue aborted,
+   * but never touches approvals), so this stays answerable; it just will not restart
+   * anything, and saying otherwise would be a false promise.
+   */
+  runAborted?: boolean;
+  /**
    * Perform the decision. Should throw on failure; this component owns the
    * in-flight guard and both toasts so every caller gets the same behaviour.
    */
@@ -69,6 +76,7 @@ export function ApprovalDecision({
   before,
   context,
   queueLength,
+  runAborted,
   onDecide,
   className,
 }: ApprovalDecisionProps) {
@@ -163,7 +171,9 @@ export function ApprovalDecision({
       </div>
 
       <p className="mt-2 text-xs leading-snug text-muted-foreground">
-        Deciding resumes the paused run, no need to re-send.
+        {runAborted
+          ? 'This run was stopped, so deciding will not restart it. Answering still closes out the request.'
+          : 'Deciding resumes the paused run, no need to re-send.'}
       </p>
     </div>
   );

@@ -69,6 +69,7 @@ import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
+import { describeError } from '@/lib/errors';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import {
   eventsToTurns,
@@ -182,6 +183,9 @@ export default function App() {
   const leaseTokenRef = useRef<string | null>(null);
   const verboseRef = useRef(verbose);
   const threadIdRef = useRef(threadId);
+  /** Latest turns, for callbacks that must not be rebuilt on every streamed delta. */
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
   /** Approval ids already shown or decided, so neither path re-queues one. */
   const seenApprovalsRef = useRef(new Set<string>());
   useEffect(() => {
@@ -923,15 +927,68 @@ export default function App() {
     [threadId],
   );
 
+  /**
+   * Move the thread's active leaf back to an earlier turn.
+   *
+   * This is the third irreversible-looking action in the app, and it used to be the
+   * only one with no guard at all: a hover icon, a two-word tooltip, and everything
+   * after the target vanished from the transcript.
+   *
+   * It gets an undo rather than a confirm, because the harness makes one possible.
+   * `rewind_to` only requires that the target event exists on the session, not that
+   * it is an ancestor of the current leaf, so the pointer can be moved forward again
+   * to exactly where it was. Nothing is deleted by a rewind; the later events stay on
+   * the session and simply stop being on the active branch.
+   */
+  const rewindingRef = useRef(false);
   const rewindTo = useCallback(
     (eventId: string) => {
-      if (streaming) return;
+      if (streaming || rewindingRef.current) return;
+
+      // Where we are now, so undo has somewhere to go, and how much the rewind hides.
+      const currentTurns = turnsRef.current;
+      const targetIndex = currentTurns.findIndex((t) => t.eventId === eventId);
+      const previousLeaf = [...currentTurns].reverse().find((t) => t.eventId)?.eventId ?? null;
+      const hidden = targetIndex >= 0 ? currentTurns.length - 1 - targetIndex : 0;
+      const canUndo = previousLeaf != null && previousLeaf !== eventId;
+
+      rewindingRef.current = true;
       void rewindChat({ threadId, eventId, summarize: false, manifest })
         .then(() => {
-          toast.message('Rewound');
           hydrateFromServer(threadId);
+          toast.message(
+            hidden > 0
+              ? `Rewound. ${hidden} later ${hidden === 1 ? 'turn is' : 'turns are'} off the active branch.`
+              : 'Rewound to this message.',
+            canUndo
+              ? {
+                  action: {
+                    label: 'Undo',
+                    onClick: () => {
+                      void rewindChat({
+                        threadId,
+                        eventId: previousLeaf,
+                        summarize: false,
+                        manifest,
+                      })
+                        .then(() => hydrateFromServer(threadId))
+                        .catch((err) => {
+                          const described = describeError(err, 'undo the rewind');
+                          toast.error(described.message, { description: described.detail });
+                        });
+                    },
+                  },
+                }
+              : undefined,
+          );
         })
-        .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+        .catch((err) => {
+          const described = describeError(err, 'rewind this thread');
+          toast.error(described.message, { description: described.detail });
+        })
+        .finally(() => {
+          rewindingRef.current = false;
+        });
     },
     [streaming, threadId, manifest, hydrateFromServer],
   );
@@ -1197,6 +1254,7 @@ export default function App() {
               <ApprovalBanner
                 pending={pending}
                 queueLength={pendingQueue.length}
+                runAborted={sessionPhase === 'aborted'}
                 onDecide={onDecide}
               />
             ) : null}

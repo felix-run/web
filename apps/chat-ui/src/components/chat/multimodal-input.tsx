@@ -316,10 +316,13 @@ function MultimodalInputInner({
         >
           <AttachmentsPreview />
 
+          {/* The placeholder changes with run state and disappears on the first
+              keystroke, so it cannot be this control's accessible name. */}
           <PromptInputTextarea
             ref={textareaRef}
             className="field-sizing-content max-h-48 min-h-[4.5rem] w-full min-w-0 px-4 pt-3.5 pb-2 text-sm leading-relaxed placeholder:text-muted-foreground"
             placeholder={placeholder}
+            aria-label="Message Felix"
             maxLength={MAX_TEXT_LENGTH + 200 /* slack so the toast can fire */}
             aria-invalid={tooLong || undefined}
             onKeyDown={handleTextareaKeyDown}

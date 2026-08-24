@@ -65,12 +65,14 @@ export function MessageActions({
               size="icon-sm"
               className="size-7 text-muted-foreground"
               onClick={onRewind}
-              aria-label="Rewind to this message"
+              aria-label="Rewind the thread to this message"
             >
               <Undo2Icon className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Rewind here</TooltipContent>
+          {/* Names the consequence, not the mechanism: "Rewind here" told the reader
+              nothing about what happens to everything after it. */}
+          <TooltipContent>Continue from here, setting later turns aside</TooltipContent>
         </Tooltip>
       )}
       {onRegenerate && (

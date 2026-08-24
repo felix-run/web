@@ -7,9 +7,10 @@ import {
   migrateLegacy,
   removeThread,
   saveTurns,
+  snapshotToEvents,
   titleFromText,
 } from '../src/lib/threads';
-import type { SessionEvent } from '../src/types';
+import type { SessionEvent, SessionSnapshot } from '../src/types';
 
 /**
  * The thread store is the only reason a conversation survives a reload for an
@@ -143,5 +144,44 @@ describe('migrateLegacy', () => {
     const first = listThreads();
     migrateLegacy(now);
     expect(listThreads()).toEqual(first);
+  });
+});
+
+describe('snapshotToEvents — trimming to the active branch', () => {
+  /**
+   * `GET /chat/sessions/{id}` returns every event on the session and reports the
+   * active branch separately as `leafId`. Rendering the raw list makes a rewind
+   * invisible: verified against a live harness, moving the leaf to the first of
+   * four events left all four on screen, so the action looked like a no-op while
+   * still changing where the next turn continues from.
+   */
+  const snapshot = (leafId: string | null | undefined): SessionSnapshot =>
+    ({
+      leafId,
+      transcript: [
+        { id: 'e1', seq: 1, kind: 'message', role: 'user', content: 'one' },
+        { id: 'e2', seq: 2, kind: 'message', role: 'assistant', content: 'two' },
+        { id: 'e3', seq: 3, kind: 'message', role: 'user', content: 'three' },
+      ],
+    }) as unknown as SessionSnapshot;
+
+  it('drops everything after the leaf', () => {
+    const events = snapshotToEvents(snapshot('e1'));
+    expect(events.map((e) => e.id)).toEqual(['e1']);
+  });
+
+  it('keeps the whole transcript when the leaf is the newest event', () => {
+    const events = snapshotToEvents(snapshot('e3'));
+    expect(events.map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
+  });
+
+  it('keeps everything when the harness reports no leaf', () => {
+    expect(snapshotToEvents(snapshot(null)).map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
+    expect(snapshotToEvents(snapshot(undefined)).map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
+  });
+
+  it('keeps everything when the leaf is not in the transcript', () => {
+    // Better a transcript that is too long than one silently emptied.
+    expect(snapshotToEvents(snapshot('gone')).map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
   });
 });

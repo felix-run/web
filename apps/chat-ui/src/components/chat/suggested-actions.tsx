@@ -119,13 +119,12 @@ export function SuggestedActions({
 
   return (
     <div className="grid w-full gap-2 sm:grid-cols-2">
-      {suggestions.map((s, i) => (
+      {suggestions.map((s) => (
         <Button
           key={`${manifest ?? 'default'}-${s.title}`}
           variant="outline"
           disabled={disabled}
           onClick={() => onSend(s.prompt)}
-          style={{ animationDelay: `${i * 50}ms` }}
           className="h-auto flex-col items-start gap-0.5 whitespace-normal rounded-xl border-border/60 bg-card/40 px-4 py-3 text-left shadow-none transition-colors hover:bg-accent/60"
         >
           <span className="text-sm font-medium text-foreground">{s.title}</span>

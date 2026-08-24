@@ -16,7 +16,7 @@ import type { SessionEvent, SessionSnapshot, ToolCall, Turn } from '@/types';
 
 /** Map a session snapshot transcript onto SessionEvent rows for eventsToTurns. */
 export function snapshotToEvents(snapshot: SessionSnapshot): SessionEvent[] {
-  return (snapshot.transcript ?? []).map((item) => ({
+  const events = (snapshot.transcript ?? []).map((item) => ({
     id: item.id,
     seq: item.seq,
     kind: item.kind,
@@ -26,6 +26,20 @@ export function snapshotToEvents(snapshot: SessionSnapshot): SessionEvent[] {
     name: item.toolName,
     tool_calls: item.toolCalls,
   }));
+
+  // `GET /chat/sessions/{id}` returns every event on the session, not the active
+  // branch, and reports the branch separately as `leafId`. Rendering the raw list
+  // makes a rewind invisible: verified against a live harness, moving the leaf to
+  // the first of four events left all four on screen, so the action appeared to do
+  // nothing while still changing where the next turn continues from.
+  //
+  // The client models a thread as linear, so the active branch is everything up to
+  // and including the leaf. A leaf that is missing or already last leaves this a
+  // no-op.
+  const leaf = snapshot.leafId;
+  if (!leaf) return events;
+  const cut = events.findIndex((e) => e.id === leaf);
+  return cut === -1 ? events : events.slice(0, cut + 1);
 }
 
 export interface ThreadMeta {
