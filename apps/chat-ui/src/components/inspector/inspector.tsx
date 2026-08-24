@@ -16,7 +16,6 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import {
   decideApproval,
   getToolMetrics,
@@ -25,6 +24,7 @@ import {
   listPlans,
   listUsage,
 } from '@/api';
+import { ApprovalDecision } from '@/components/approval/approval-decision';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { usePoll } from '@/hooks/usePoll';
 import { describeError } from '@/lib/errors';
@@ -523,32 +523,11 @@ function ApprovalsSection({
     hadPending.current = count > 0;
   }, [count, onPending]);
 
-  // Approving a gated call is the one irreversible thing this panel does, so a second
-  // decision must not get out while the first is in flight.
-  //
-  // The guard is a ref, not the state below. React batches state updates, so a burst
-  // of clicks in one tick all read the same pre-update value and every one of them
-  // gets through: measured at 10 POSTs from 10 clicks with a state-only guard. A ref
-  // is written synchronously, so the second click sees the first. The state exists
-  // only to disable the buttons and relabel them.
-  const decidingRef = useRef<string | null>(null);
-  const [deciding, setDeciding] = useState<string | null>(null);
-
-  async function decide(id: string, status: 'approved' | 'denied', tool: string) {
-    if (decidingRef.current) return;
-    decidingRef.current = id;
-    setDeciding(id);
-    try {
-      await decideApproval(id, { status });
-      toast.success(`${status === 'approved' ? 'Approved' : 'Denied'} ${tool}`);
-      refresh();
-    } catch (err) {
-      const described = describeError(err, `${status === 'approved' ? 'approve' : 'deny'} ${tool}`);
-      toast.error(described.message, { description: described.detail });
-    } finally {
-      decidingRef.current = null;
-      setDeciding(null);
-    }
+  // The in-flight guard, the toasts and the payload treatment all live in
+  // `ApprovalDecision` now, shared with the transcript banner.
+  async function decide(id: string, status: 'approved' | 'denied') {
+    await decideApproval(id, { status });
+    refresh();
   }
 
   return (
@@ -577,99 +556,18 @@ function ApprovalsSection({
             this is the one thing that stops a run until a person acts on it. */}
         <div className="space-y-2.5">
           {data?.map((a) => (
-            <article
+            <ApprovalDecision
               key={a.id}
-              className="rounded-lg border border-state-blocked/40 bg-state-blocked/5 p-2.5 text-xs"
-            >
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="py-0 font-mono text-xs">
-                  {a.tool_name}
-                </Badge>
-                <span className="truncate text-muted-foreground">{a.manifest_id}</span>
-              </div>
-              <ApprovalArgs args={a.args} />
-              <div className="mt-2.5 flex gap-2">
-                <Button
-                  size="sm"
-                  className="h-8 flex-1"
-                  disabled={deciding !== null}
-                  onClick={() => void decide(a.id, 'approved', a.tool_name)}
-                >
-                  {deciding === a.id ? 'Deciding…' : `Approve ${a.tool_name}`}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8"
-                  disabled={deciding !== null}
-                  onClick={() => void decide(a.id, 'denied', a.tool_name)}
-                >
-                  Deny
-                </Button>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Deciding resumes the paused run, no need to re-send.
-              </p>
-            </article>
+              toolName={a.tool_name}
+              args={(a.args ?? {}) as Record<string, unknown>}
+              context={a.manifest_id}
+              onDecide={(status) => decide(a.id, status)}
+            />
           ))}
         </div>
       </SectionBody>
     </Section>
   );
-}
-
-/** Lines shown before the payload folds. Chosen to clear a typical shell/file call whole. */
-const ARGS_FOLD_LINES = 14;
-
-/**
- * The arguments being approved.
- *
- * Rendered in full by default rather than inside a fixed-height scroll box: the
- * reason to read this at all is to catch the destructive part of the call, and a
- * scroll box puts exactly that below the fold on anything non-trivial. Long
- * payloads fold, but the fold says how much it is hiding and opens in place.
- */
-function ApprovalArgs({ args }: { args: unknown }) {
-  const [expanded, setExpanded] = useState(false);
-  const text = safeStringify(args);
-  const lines = text.split('\n');
-  const overlong = lines.length > ARGS_FOLD_LINES;
-  const shown = expanded || !overlong ? text : lines.slice(0, ARGS_FOLD_LINES).join('\n');
-
-  return (
-    <div className="mt-2">
-      <pre
-        className={cn(
-          'overflow-x-auto rounded-md border border-border/40 bg-background/60 p-2 font-mono text-sm whitespace-pre-wrap break-words text-foreground/80',
-          expanded && 'max-h-64 overflow-y-auto',
-        )}
-      >
-        {shown}
-      </pre>
-      {overlong && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-1 rounded text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
-          {expanded
-            ? 'Show less'
-            : `Show all ${lines.length} lines (${lines.length - ARGS_FOLD_LINES} hidden)`}
-        </button>
-      )}
-    </div>
-  );
-}
-
-/** Approval payloads come off the wire; a cycle or a BigInt should not break the panel. */
-function safeStringify(value: unknown): string {
-  try {
-    return (
-      JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? String(v) : v), 2) ?? String(value)
-    );
-  } catch {
-    return String(value);
-  }
 }
 
 // --- Plans ---
