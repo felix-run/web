@@ -42,11 +42,15 @@ everything under `/.well-known/`.
 
 ## Cross-cutting behaviour
 
-Middleware runs **body limit → rate limit → auth**.
+Middleware runs **request id → body limit → rate limit → auth**.
+
+Request id is outermost, so every response carries an `x-request-id` — including one rejected by
+the body limit or the rate limiter. Send your own in that header to have it echoed back; otherwise
+one is generated.
 
 | Condition | Response |
 |---|---|
-| Body over 1 MiB | `413 {"error":"payload_too_large"}` |
+| Body over 1 MiB, declared or streamed | `413 {"error":"payload_too_large"}` |
 | Per-tenant rate limit exceeded | `429 {"error":"rate_limited"}` |
 | Missing or bad credentials | `401 {"error":"unauthorized","reason":"missing_credentials"\|"invalid_api_key"}` |
 | Manifest requires a scope the caller lacks | `403` |

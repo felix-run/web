@@ -31,7 +31,7 @@ metadata:
 spec:
   pattern: react
   model:
-    id: claude-sonnet-4
+    id: claude-sonnet
   tools: [calculator]
 ```
 
@@ -282,8 +282,8 @@ Details in [Auth](/internals/auth/).
 
 ## Observability
 
-Prometheus metrics at `GET /metrics`, counters prefixed `orchestrator_*` (a deliberate hold-over so
-existing dashboards keep working). Audit rows are buffered by the process that emits them and flushed
+Prometheus metrics at `GET /metrics`, counters prefixed `felix_*`. Audit rows are buffered by the
+process that emits them and flushed
 to Postgres on a timer plus a drain on shutdown — the agent loop runs in the API process, so the API
 flushes too, not only the worker. Optional OTLP tracing with `FELIX_OTEL_ENABLED`, and an optional
 append-only analytics spill (`FELIX_WAREHOUSE`: DuckDB, ClickHouse or Doris).
@@ -296,7 +296,8 @@ Putting it together, one `POST /chat`:
 
 <Steps>
 
-1. **Middleware** — body limit (1 MiB), then per-tenant rate limit, then authentication.
+1. **Middleware** — request id, then body limit (1 MiB), then per-tenant rate limit, then
+   authentication. All four are pure ASGI, so a streamed response is not copied between layers.
 
 2. **Resolve** — walk the four manifest layers, pick the canary variant, check the compile pin.
 
