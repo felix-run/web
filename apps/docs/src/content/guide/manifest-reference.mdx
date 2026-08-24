@@ -378,11 +378,28 @@ spec:
 | `min_chars` | int ≥ 0 | `80` |
 | `verify` | bool | `false` |
 
-`verify` adds a second pass that hands the proposed facts back to `model` along with the excerpt
-and keeps only what the excerpt actually supports. It doubles the extraction calls, which is why it
-is off by default — turn it on where stored memory is acted on rather than merely recalled. It
-fails open: if the verification call errors or returns nothing parseable, the unverified set is
-kept, on the grounds that a failed check is not evidence the facts were wrong.
+`verify` adds a second pass that hands the proposed facts back to `model` along with the excerpt and
+keeps only what the excerpt actually supports. It doubles the extraction calls, which is why it is
+off by default — turn it on where stored memory is acted on rather than merely recalled.
+
+The pass can only **remove**. Its verdict selects from the proposals; it never supplies a memory of
+its own, and it cannot alter a kept memory's `kind`, `topic_key` or `importance`. That matters
+because the excerpt it reads is untrusted transcript, and `topic_key` drives supersession — a
+verdict that could set one could delete an unrelated stored fact.
+
+It fails open on anything it cannot read, on the grounds that a broken verifier is not evidence the
+facts were wrong:
+
+| Verdict | Result |
+|---|---|
+| A subset of the proposals | Just that subset is stored |
+| `[]` — a well-formed empty array | Nothing is stored. The one unambiguous way to reject everything |
+| The call errors | The unverified set is kept |
+| Unparseable, or every item unusable | The unverified set is kept |
+| Valid items that match no proposal | The unverified set is kept — the verifier rewrote rather than chose |
+
+Content is matched case- and whitespace-insensitively but not punctuation-insensitively, so a
+verifier that echoes an item back with a trailing full stop counts as having rewritten it.
 
 Extraction runs on `model`, not on the turn's model — it is a small, mechanical job on every
 completed turn, and billing it to a frontier model roughly doubles the cost of having memory at
