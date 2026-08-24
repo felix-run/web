@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { ClockIcon, HistoryIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
+import { ConfirmButton } from '@/components/confirm-button';
 import type { JobRecord, JobRun } from '@/types';
 
 /**
@@ -156,7 +157,9 @@ export function JobsSheet({
               )}
               {jobs.map((j) => (
                 <div key={j.name} className="rounded-md border bg-background px-2.5 py-1.5 text-xs">
-                  <div className="flex items-center gap-2">
+                  {/* wraps so an armed delete confirmation gets its own line rather
+                      than crushing the job name out of the row */}
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono font-medium">{j.name}</span>
                     <Badge variant="secondary" className="py-0 font-mono text-xs">
                       {j.schedule || 'manual'}
@@ -170,16 +173,19 @@ export function JobsSheet({
                     >
                       <HistoryIcon className="size-3" /> Runs
                     </Button>
-                    <Button
+                    <ConfirmButton
                       size="sm"
                       variant="ghost"
                       className="h-6 px-2 text-xs text-muted-foreground hover:text-state-failed"
                       disabled={busy}
-                      onClick={() => remove(j.name)}
-                      title="Delete this job"
+                      destructive
+                      question={`Delete ${j.name}? Its run history goes with it.`}
+                      confirmLabel="Delete job"
+                      onConfirm={() => remove(j.name)}
                     >
                       <Trash2Icon className="size-3" />
-                    </Button>
+                      <span className="sr-only">Delete {j.name}</span>
+                    </ConfirmButton>
                   </div>
                   <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                     {j.enabled === false && <span>disabled</span>}

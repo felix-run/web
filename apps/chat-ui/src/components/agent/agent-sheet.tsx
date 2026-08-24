@@ -4,7 +4,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { BotIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
-import type { AgentCard, ResolvedManifest } from '@/types';
+import { describeError } from '@/lib/errors';
+import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
 
 /**
  * Agent spec panel — "what is this agent". Shows the resolved manifest spec for
@@ -24,18 +25,24 @@ export function AgentSheet({
   const [resolved, setResolved] = useState<ResolvedManifest | null>(null);
   const [card, setCard] = useState<AgentCard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cardError, setCardError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setResolved(null);
+    setCard(null);
     setError(null);
+    setCardError(null);
     let live = true;
     getResolvedManifest(manifest)
       .then((r) => live && setResolved(r))
-      .catch((e) => live && setError(String((e as Error)?.message ?? e)));
+      .catch((e) => live && setError(describeError(e, 'load the agent spec').message));
+    // The card used to be fetched with `.catch(() => {})`, which inverted the
+    // failure: a card that failed to load was silent, while a card that loaded
+    // successfully crashed the app on the next render. It reports both now.
     getAgentCard()
       .then((c) => live && setCard(c))
-      .catch(() => {});
+      .catch((e) => live && setCardError(describeError(e, 'load the discovery card').message));
     return () => {
       live = false;
     };
@@ -172,19 +179,31 @@ export function AgentSheet({
               </>
             )}
 
-            {card && (
+            {card && !card.error && (
               <Section title="A2A discovery card (default agent)">
                 <Row label="name" value={card.name} />
-                <Chips label="protocols" items={card.protocols} />
-                {Object.entries(card.endpoints).map(([k, v]) => (
-                  <Row key={`ep-${k}`} label={k} value={v} />
-                ))}
-                {card.capabilities.length > 0 && (
-                  <Chips label="capabilities" items={card.capabilities.map((c) => c.id)} />
-                )}
-                {card.federation && (
-                  <Row label="federation" value={`bundle v${card.federation.bundleVersion}`} />
-                )}
+                <Row label="version" value={card.version} />
+                <Row label="url" value={card.url} />
+                <Chips label="capabilities" items={capabilityChips(card.capabilities)} />
+                <Chips label="skills" items={skillChips(card.skills)} />
+                {card.transparencyNotice && <Row label="transparency" value="disclosed to peers" />}
+              </Section>
+            )}
+
+            {/*
+              The route answers 200 with `{error, name}` when the default manifest is
+              missing, and 404 when the agent has `spec.a2a.publish` unset. Neither is
+              a fault in this panel, and both are worth saying out loud: an operator
+              looking for the discovery card wants to know it is deliberately absent.
+            */}
+            {card?.error && (
+              <Section title="A2A discovery card (default agent)">
+                <Row label="unavailable" value={card.error} />
+              </Section>
+            )}
+            {cardError && (
+              <Section title="A2A discovery card (default agent)">
+                <Row label="unavailable" value={cardError} />
               </Section>
             )}
           </div>
@@ -224,6 +243,31 @@ interface ManifestLike {
 
 function asArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
+}
+
+/**
+ * Capability chips from the card's `capabilities` object: the two transport flags
+ * the harness always sets, then whatever the manifest declared on top of them.
+ */
+function capabilityChips(caps: AgentCard['capabilities']): string[] {
+  if (!caps) return [];
+  const chips: string[] = [];
+  if (caps.streaming) chips.push('streaming');
+  if (caps.mcp) chips.push('mcp');
+  for (const cap of asArray(caps.declared)) {
+    const id = (cap as { id?: unknown })?.id;
+    if (typeof id === 'string' && id) chips.push(id);
+  }
+  return chips;
+}
+
+function skillChips(skills: AgentCard['skills']): string[] {
+  return asArray(skills)
+    .map((s) => {
+      const skill = s as AgentCardSkill;
+      return skill?.name ?? skill?.id;
+    })
+    .filter((n): n is string => typeof n === 'string' && n.length > 0);
 }
 
 function modelField(

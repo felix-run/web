@@ -65,6 +65,7 @@ import { EvalSheet } from '@/components/eval/eval-sheet';
 import { Inspector, type SkillState } from '@/components/inspector/inspector';
 import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
+import { SheetBoundary } from '@/components/sheet-boundary';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -1349,22 +1350,55 @@ export default function App() {
           </SheetContent>
         </Sheet>
       )}
-      <EvalSheet open={evalOpen} onOpenChange={setEvalOpen} manifest={manifest} />
-      <ManifestsSheet
+      {/*
+        Each sheet is wrapped, not the group: a sheet throws during its own render,
+        so a boundary around all four would catch the first failure and take the
+        other three down with it.
+      */}
+      <SheetBoundary
+        open={evalOpen}
+        onOpenChange={setEvalOpen}
+        title="Eval harness"
+        className="w-full gap-0 p-0 sm:max-w-xl"
+      >
+        <EvalSheet open={evalOpen} onOpenChange={setEvalOpen} manifest={manifest} />
+      </SheetBoundary>
+      <SheetBoundary
         open={manifestsOpen}
-        onOpenChange={(o) => {
-          setManifestsOpen(o);
-          if (!o) void refreshCanary();
-        }}
-        manifest={manifest}
-      />
-      <JobsSheet
+        onOpenChange={setManifestsOpen}
+        title="Manifest lifecycle"
+        className="w-full gap-0 p-0 sm:max-w-xl"
+      >
+        <ManifestsSheet
+          open={manifestsOpen}
+          onOpenChange={(o) => {
+            setManifestsOpen(o);
+            if (!o) void refreshCanary();
+          }}
+          manifest={manifest}
+        />
+      </SheetBoundary>
+      <SheetBoundary
         open={jobsOpen}
         onOpenChange={setJobsOpen}
-        manifest={manifest}
-        manifestOptions={options}
-      />
-      <AgentSheet open={agentOpen} onOpenChange={setAgentOpen} manifest={manifest} />
+        title="Scheduled jobs"
+        className="w-full gap-0 p-0 sm:max-w-lg"
+      >
+        <JobsSheet
+          open={jobsOpen}
+          onOpenChange={setJobsOpen}
+          manifest={manifest}
+          manifestOptions={options}
+        />
+      </SheetBoundary>
+      <SheetBoundary
+        open={agentOpen}
+        onOpenChange={setAgentOpen}
+        title="Agent spec"
+        className="w-full gap-0 p-0 sm:max-w-md"
+      >
+        <AgentSheet open={agentOpen} onOpenChange={setAgentOpen} manifest={manifest} />
+      </SheetBoundary>
     </div>
   );
 }
