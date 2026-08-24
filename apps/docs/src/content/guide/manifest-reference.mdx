@@ -721,6 +721,24 @@ spec:
 | `one_shot` | bool | `false` | The grant is consumed once. Enforced with a conditional update, so two concurrent identical calls cannot both spend it. |
 | `bind_principal` | bool | `false` | The grant is bound to the approving principal; it will not authorize another user's identical call. |
 | `allow_unattended` | bool | `false` | Permit the call with no human present. |
+| `when_args` | string[] | `[]` | Gate only the calls carrying **all** of these arguments, non-empty. Empty gates every call. |
+
+`when_args` exists because a tool can be harmless in one shape and a privileged
+operation in another. `remember` is ordinary capture until it carries a `topic_key`, at
+which point it retires whatever else holds that key — the same outcome `forget` is
+gated for. Gating the whole tool would put an approval in front of every memory write:
+
+```yaml
+spec:
+  approvals:
+    - id: memory-retopic
+      description: Confirm replacing the current value of a remembered topic
+      tools: [remember]
+      when_args: [topic_key]
+```
+
+A call that does not carry every named argument reaches the tool untouched — no
+approval, no `approval_required` event, no added latency.
 
 A gated call creates a pending row keyed by a SHA-256 signature of its arguments, emits
 `approval_required`, and blocks on the decision. Operators answer with
