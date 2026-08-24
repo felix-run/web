@@ -1382,7 +1382,7 @@ export default function App() {
         open={jobsOpen}
         onOpenChange={setJobsOpen}
         title="Scheduled jobs"
-        className="w-full gap-0 p-0 sm:max-w-lg"
+        className="w-full gap-0 p-0 sm:max-w-xl"
       >
         <JobsSheet
           open={jobsOpen}

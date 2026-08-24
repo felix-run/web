@@ -2,12 +2,16 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { ScrollArea } from '@felix/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
 import { ClockIcon, HistoryIcon, PlusIcon, Trash2Icon } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
-import type { JobRecord, JobRun } from '@/types';
+import { ErrorNotice } from '@/components/error-notice';
+import { usePoll } from '@/hooks/usePoll';
+import { relativeTime } from '@/lib/time';
+import type { JobRun } from '@/types';
 
 /**
  * Scheduled-jobs workbench — the `/jobs` registry as a slide-over. A job is a
@@ -29,40 +33,37 @@ export function JobsSheet({
   manifest: string;
   manifestOptions: string[];
 }) {
-  const [jobs, setJobs] = useState<JobRecord[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // `usePoll` rather than a bare interval: this was the one poll in the app that
+  // never moved onto it, so a backgrounded tab with the sheet open kept hitting the
+  // harness every four seconds forever.
+  const {
+    data: jobs = [],
+    error: listError,
+    refresh,
+  } = usePoll(listJobs, { enabled: open, intervalMs: 4000 });
+
+  const [actionError, setActionError] = useState<unknown>(null);
   const [name, setName] = useState('');
   const [schedule, setSchedule] = useState('0 9 * * *');
   const [manifestId, setManifestId] = useState(manifest);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [runs, setRuns] = useState<JobRun[]>([]);
-
-  const refresh = useCallback(async () => {
-    try {
-      setJobs(await listJobs());
-      setError(null);
-    } catch (err) {
-      setError(String((err as Error)?.message ?? err));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    void refresh();
-    const id = setInterval(refresh, 4000);
-    return () => clearInterval(id);
-  }, [open, refresh]);
+  // `null` means "not loaded yet", which is not the same as "no runs". Rendering an
+  // empty array during the fetch told the operator a job had never run while its
+  // history was still in flight — the one moment the answer matters most.
+  const [runs, setRuns] = useState<JobRun[] | null>(null);
+  const [runsError, setRunsError] = useState<unknown>(null);
 
   async function create() {
     if (!name.trim()) return;
     setBusy(true);
+    setActionError(null);
     try {
       await upsertJob({ name: name.trim(), schedule: schedule.trim(), manifest_id: manifestId });
       setName('');
-      await refresh();
+      refresh();
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      setActionError(err);
     } finally {
       setBusy(false);
     }
@@ -74,22 +75,25 @@ export function JobsSheet({
       return;
     }
     setExpanded(jobName);
-    setRuns([]);
+    setRuns(null);
+    setRunsError(null);
     try {
       setRuns(await listJobRuns(jobName));
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      setRunsError(err);
+      setRuns([]);
     }
   }
 
   async function remove(jobName: string) {
     setBusy(true);
+    setActionError(null);
     try {
       await deleteJob(jobName);
       if (expanded === jobName) setExpanded(null);
-      await refresh();
+      refresh();
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      setActionError(err);
     } finally {
       setBusy(false);
     }
@@ -97,7 +101,10 @@ export function JobsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-lg">
+      {/* Two widths across the four sheets, by role: the read-only Agent spec is a
+          reading column at `max-w-md`, and every sheet you *work* in is `max-w-xl`.
+          It was three widths for four sheets with no rule behind them. */}
+      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-xl">
         <SheetHeader className="border-b">
           <SheetTitle className="flex items-center gap-2">
             <ClockIcon className="size-4" /> Scheduled jobs
@@ -109,7 +116,23 @@ export function JobsSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error && <p className="text-xs text-state-failed">⚠ {error}</p>}
+          {listError && (
+            <ErrorNotice
+              error={listError}
+              doing="list scheduled jobs"
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 self-start text-xs"
+                  onClick={refresh}
+                >
+                  Try again
+                </Button>
+              }
+            />
+          )}
+          {actionError != null && <ErrorNotice error={actionError} doing="update this job" />}
 
           {/* Create form */}
           <div className="space-y-1.5 rounded-md border border-dashed p-2.5">
@@ -128,17 +151,24 @@ export function JobsSheet({
                 className="h-8 font-mono text-sm"
                 title="Standard 5-field cron, UTC. Empty disables automatic scheduling."
               />
-              <select
-                value={manifestId}
-                onChange={(e) => setManifestId(e.target.value)}
-                className="h-8 rounded-md border bg-transparent px-1.5 font-mono text-sm outline-none"
-              >
-                {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              {/* The shared primitive, not a bare `<select>`: a native one draws its
+                  option list with the OS, which ignores the app's theme entirely. */}
+              <Select value={manifestId} onValueChange={setManifestId}>
+                <SelectTrigger
+                  size="sm"
+                  className="h-8 w-40 font-mono text-sm"
+                  aria-label="Manifest for this job"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
+                    <SelectItem key={m} value={m} className="font-mono text-sm">
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <Button
               size="sm"
@@ -190,13 +220,17 @@ export function JobsSheet({
                   <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                     {j.enabled === false && <span>disabled</span>}
                     {j.last_status && <span>last: {j.last_status}</span>}
-                    {j.last_run_at && <span>ran {rel(j.last_run_at)}</span>}
-                    {j.next_run_at && <span>next {rel(j.next_run_at)}</span>}
+                    {j.last_run_at && <span>ran {relativeTime(j.last_run_at)}</span>}
+                    {j.next_run_at && <span>next {relativeTime(j.next_run_at)}</span>}
                     {j.last_error && <span className="text-state-failed">{j.last_error}</span>}
                   </div>
                   {expanded === j.name && (
                     <div className="mt-1.5 space-y-1 border-t pt-1.5">
-                      {runs.length === 0 ? (
+                      {runsError != null ? (
+                        <ErrorNotice error={runsError} doing="load this job's run history" />
+                      ) : runs === null ? (
+                        <p className="text-xs text-muted-foreground">Loading runs…</p>
+                      ) : runs.length === 0 ? (
                         <p className="text-xs text-muted-foreground">No runs recorded.</p>
                       ) : (
                         runs.map((r, i) => (
@@ -205,7 +239,7 @@ export function JobsSheet({
                             className="flex items-center gap-2 text-xs text-muted-foreground"
                           >
                             <span className="font-mono">{r.status ?? '—'}</span>
-                            {r.started_at && <span>{rel(r.started_at)}</span>}
+                            {r.started_at && <span>{relativeTime(r.started_at)}</span>}
                             {r.error && <span className="text-state-failed">{r.error}</span>}
                           </div>
                         ))
@@ -220,15 +254,4 @@ export function JobsSheet({
       </SheetContent>
     </Sheet>
   );
-}
-
-/** Relative time like "in 3h" / "2m ago" from a ms timestamp. */
-function rel(ts: number): string {
-  const diff = ts - Date.now();
-  const abs = Math.abs(diff);
-  const m = Math.round(abs / 60000);
-  const h = Math.round(abs / 3600000);
-  const d = Math.round(abs / 86400000);
-  const unit = abs < 3600000 ? `${m}m` : abs < 86400000 ? `${h}h` : `${d}d`;
-  return diff >= 0 ? `in ${unit}` : `${unit} ago`;
 }
