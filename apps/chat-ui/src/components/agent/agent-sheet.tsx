@@ -288,7 +288,7 @@ function Row({ label, value }: { label: string; value: string | number | undefin
     return (
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-muted-foreground">{label}</span>
-        <span className="font-mono text-muted-foreground/50">—</span>
+        <span className="font-mono text-muted-foreground">—</span>
       </div>
     );
   }
@@ -306,7 +306,7 @@ function Chips({ label, items }: { label: string; items: string[] }) {
       <span className="text-muted-foreground">{label}</span>
       <div className="flex flex-wrap justify-end gap-1">
         {items.length === 0 ? (
-          <span className="font-mono text-muted-foreground/50">—</span>
+          <span className="font-mono text-muted-foreground">—</span>
         ) : (
           items.map((it) => (
             <Badge key={it} variant="secondary" className="py-0 font-mono text-xs">

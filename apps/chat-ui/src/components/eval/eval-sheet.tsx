@@ -1,6 +1,7 @@
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
+import { Label } from '@felix/ui/label';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
 import { FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
@@ -37,7 +38,9 @@ export function EvalSheet({
 }) {
   const [datasets, setDatasets] = useState<EvalDataset[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  // Error and verb travel together: one hardcoded phrase meant a failed eval *run*
+  // reported itself as a failure to reach the harness.
+  const [failure, setFailure] = useState<{ err: unknown; doing: string } | null>(null);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
 
@@ -45,10 +48,10 @@ export function EvalSheet({
     try {
       const ds = await listEvalDatasets();
       setDatasets(ds);
-      setError(null);
+      setFailure(null);
       setSelected((cur) => cur ?? ds[0]?.name ?? null);
     } catch (err) {
-      setError(err);
+      setFailure({ err, doing: 'list eval datasets' });
     }
   }, []);
 
@@ -60,13 +63,14 @@ export function EvalSheet({
     const name = newName.trim();
     if (!name) return;
     setCreating(true);
+    setFailure(null);
     try {
       await putEvalDataset(name);
       setNewName('');
       await refreshDatasets();
       setSelected(name);
     } catch (err) {
-      setError(err);
+      setFailure({ err, doing: `create the dataset ${name}` });
     } finally {
       setCreating(false);
     }
@@ -86,7 +90,7 @@ export function EvalSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error != null && <ErrorNotice error={error} doing="reach the eval harness" />}
+          {failure && <ErrorNotice error={failure.err} doing={failure.doing} />}
 
           {/* Dataset picker + create */}
           <div className="flex flex-wrap items-center gap-1.5">
@@ -96,6 +100,7 @@ export function EvalSheet({
                 size="sm"
                 variant={selected === d.name ? 'secondary' : 'ghost'}
                 className="h-7 font-mono text-xs"
+                aria-pressed={selected === d.name}
                 onClick={() => setSelected(d.name)}
               >
                 {d.name}
@@ -109,6 +114,7 @@ export function EvalSheet({
           </div>
           <div className="flex gap-2">
             <Input
+              aria-label="New dataset name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="new-dataset-name"
@@ -130,7 +136,7 @@ export function EvalSheet({
               key={selected}
               dataset={selected}
               manifest={manifest}
-              onError={setError}
+              onError={(err, doing) => setFailure({ err, doing })}
             />
           ) : null}
         </div>
@@ -146,7 +152,7 @@ function DatasetPanel({
 }: {
   dataset: string;
   manifest: string;
-  onError: (err: unknown) => void;
+  onError: (err: unknown, doing: string) => void;
 }) {
   const [items, setItems] = useState<EvalDatasetItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
@@ -158,7 +164,7 @@ function DatasetPanel({
       setItems(its);
       setRuns(rns);
     } catch (err) {
-      onError(err);
+      onError(err, `load the dataset ${dataset}`);
     }
   }, [dataset, onError]);
 
@@ -172,7 +178,7 @@ function DatasetPanel({
       await runEvalDataset(dataset, manifest);
       await refresh();
     } catch (err) {
-      onError(err);
+      onError(err, `run ${dataset} against ${manifest}`);
     } finally {
       setRunning(false);
     }
@@ -240,7 +246,7 @@ function AddItemForm({
 }: {
   dataset: string;
   onAdded: () => void;
-  onError: (err: unknown) => void;
+  onError: (err: unknown, doing: string) => void;
 }) {
   const [input, setInput] = useState('');
   const [criteria, setCriteria] = useState('');
@@ -266,7 +272,7 @@ function AddItemForm({
       setMustInclude('');
       onAdded();
     } catch (err) {
-      onError(err);
+      onError(err, `add an item to ${dataset}`);
     } finally {
       setBusy(false);
     }
@@ -275,23 +281,29 @@ function AddItemForm({
   return (
     <section className="space-y-1.5 rounded-md border border-dashed p-2.5">
       <Heading>Add item</Heading>
+      <Label htmlFor="eval-item-input">User input</Label>
       <textarea
+        id="eval-item-input"
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="User input, e.g. What is 7 × 6?"
+        placeholder="e.g. What is 7 × 6?"
         rows={2}
-        className="w-full resize-none rounded-md border bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="w-full resize-none rounded-md border bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring"
       />
+      <Label htmlFor="eval-item-criteria">Pass criteria, judged by the model</Label>
       <Input
+        id="eval-item-criteria"
         value={criteria}
         onChange={(e) => setCriteria(e.target.value)}
-        placeholder="Pass criteria (judge), e.g. answers 42"
+        placeholder="e.g. answers 42"
         className="h-8 text-sm"
       />
+      <Label htmlFor="eval-item-must-include">Must include, checked literally</Label>
       <Input
+        id="eval-item-must-include"
         value={mustInclude}
         onChange={(e) => setMustInclude(e.target.value)}
-        placeholder="must include (comma-separated), e.g. 42"
+        placeholder="comma-separated, e.g. 42"
         className="h-8 text-sm"
       />
       <Button size="sm" className="h-7 gap-1" disabled={busy || !input.trim()} onClick={add}>

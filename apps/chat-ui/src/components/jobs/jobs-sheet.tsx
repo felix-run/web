@@ -1,6 +1,7 @@
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
+import { Label } from '@felix/ui/label';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
@@ -137,19 +138,28 @@ export function JobsSheet({
           {/* Create form */}
           <div className="space-y-1.5 rounded-md border border-dashed p-2.5">
             <div className="text-xs font-medium text-muted-foreground">New job</div>
+            <Label htmlFor="job-name" className="sr-only">
+              Job name
+            </Label>
             <Input
+              id="job-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="job name, e.g. nightly-digest"
               className="h-8 font-mono text-sm"
+              onKeyDown={(e) => e.key === 'Enter' && create()}
             />
             <div className="flex gap-2">
+              <Label htmlFor="job-schedule" className="sr-only">
+                Schedule, as 5-field cron in UTC. Leave empty to never run automatically.
+              </Label>
               <Input
+                id="job-schedule"
                 value={schedule}
                 onChange={(e) => setSchedule(e.target.value)}
                 placeholder="cron (m h dom mon dow); leave empty to never run"
                 className="h-8 font-mono text-sm"
-                title="Standard 5-field cron, UTC. Empty disables automatic scheduling."
+                onKeyDown={(e) => e.key === 'Enter' && create()}
               />
               {/* The shared primitive, not a bare `<select>`: a native one draws its
                   option list with the OS, which ignores the app's theme entirely. */}
@@ -199,6 +209,8 @@ export function JobsSheet({
                       size="sm"
                       variant="ghost"
                       className="ml-auto h-6 gap-1 px-2 text-xs"
+                      aria-expanded={expanded === j.name}
+                      aria-controls={`job-runs-${j.name}`}
                       onClick={() => toggleRuns(j.name)}
                     >
                       <HistoryIcon className="size-3" /> Runs
@@ -225,7 +237,7 @@ export function JobsSheet({
                     {j.last_error && <span className="text-state-failed">{j.last_error}</span>}
                   </div>
                   {expanded === j.name && (
-                    <div className="mt-1.5 space-y-1 border-t pt-1.5">
+                    <div id={`job-runs-${j.name}`} className="mt-1.5 space-y-1 border-t pt-1.5">
                       {runsError != null ? (
                         <ErrorNotice error={runsError} doing="load this job's run history" />
                       ) : runs === null ? (

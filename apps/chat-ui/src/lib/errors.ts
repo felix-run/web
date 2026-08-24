@@ -56,12 +56,14 @@ export function describeError(err: unknown, doing: string): DescribedError {
       };
     case 404:
       return {
-        message: `The harness has no route for this. It is probably running an older version than this client expects.`,
+        // Named, like the others: "no route for this" leaves the operator guessing
+        // which of several actions on screen just failed.
+        message: `The harness has no route to ${doing}. It is probably running an older version than this client expects.`,
         detail,
       };
     case 409:
       return {
-        message: 'Someone or something already answered this, so it is no longer pending.',
+        message: `Could not ${doing}: something else already changed it, so this is no longer pending.`,
         detail,
       };
     case 429:
