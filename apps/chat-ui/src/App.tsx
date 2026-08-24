@@ -160,7 +160,6 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
-  const [deciding, setDeciding] = useState(false);
   const [uiPrompt, setUiPrompt] = useState<PendingUiRequest | null>(null);
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
@@ -718,21 +717,15 @@ export default function App() {
 
   const pending = pendingQueue[0] ?? null;
 
+  // Deliberately bare: `ApprovalDecision` owns the in-flight guard and both
+  // toasts, so this does the work and lets a failure propagate to it.
   const onDecide = useCallback(
     async (status: 'approved' | 'denied') => {
-      if (!pending || deciding) return;
-      setDeciding(true);
-      try {
-        await decideApproval(pending.approvalId, { status });
-        setPendingQueue((q) => q.slice(1));
-        toast.message(status === 'approved' ? 'Approved. The run continues.' : 'Denied.');
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err));
-      } finally {
-        setDeciding(false);
-      }
+      if (!pending) return;
+      await decideApproval(pending.approvalId, { status });
+      setPendingQueue((q) => q.slice(1));
     },
-    [pending, deciding],
+    [pending],
   );
 
   /**
@@ -1204,8 +1197,7 @@ export default function App() {
               <ApprovalBanner
                 pending={pending}
                 queueLength={pendingQueue.length}
-                deciding={deciding}
-                onDecide={(status) => void onDecide(status)}
+                onDecide={onDecide}
               />
             ) : null}
             {uiPrompt ? (
