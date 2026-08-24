@@ -19,6 +19,9 @@ in `packages/ui` (`@felix/ui`).
 | `packages/test-kit` | Reusable behavioral suites (proxy Worker contract, SSE reader) |
 | `packages/typescript-config` | Shared `tsconfig` bases |
 
+[`PRODUCT.md`](PRODUCT.md) is the brief the UI is designed against; [`ROADMAP.md`](ROADMAP.md) is
+the known, unaddressed work, with the evidence for each item recorded beside it.
+
 ## Commands
 
 ```bash
