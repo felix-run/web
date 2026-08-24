@@ -74,6 +74,28 @@ Omit it and the turn is stateless.
 curl -s "$BASE_URL/health" | jq
 ```
 
+## `GET /chat/stream/{thread_id}`
+
+Reattach to a thread after a dropped stream or a page refresh.
+
+```bash
+curl -N "$BASE_URL/chat/stream/demo" \
+  -H "authorization: Bearer $FELIX_KEY" \
+  -H "last-event-id: 12"
+```
+
+Without `Last-Event-ID` (the header, or a `?last_event_id=` query parameter for clients that cannot
+set headers) the stream opens with a single `snapshot` frame carrying the thread transcript. With
+one, it replays only the session events after that cursor as `session_event` frames. Either way it
+then tails the thread, sending `: keep-alive` comments while idle and closing after
+`FELIX_STREAM_RESUME_IDLE_SECONDS` — reconnect with the last `id:` you saw and nothing is lost.
+
+:::caution
+This recovers the **thread**, not the interrupted run. A disconnect still tears the run down, so
+that a client which hangs up stops incurring model cost. Reconnecting shows you what was persisted,
+not the turn you were watching.
+:::
+
 ## `POST /chat`
 
 Run a turn and wait for the result.
@@ -107,7 +129,7 @@ Response:
   "messages": [ ... ],
   "final": { "role": "assistant", "content": "42" },
   "thread_id": "default:my-thread",
-  "model": "claude-sonnet-4",
+  "model": "claude-sonnet",
   "leaf_id": "evt_..."
 }
 ```
@@ -154,8 +176,19 @@ plus polling when you need a run to survive a process restart.
 
 ### Frame format
 
-Every frame is a bare `data:` line — there is **no SSE `event:` field** — and the stream ends with a
-literal `data: [DONE]`. Each payload is the same envelope:
+Almost every frame is a bare `data:` line, and the stream ends with a literal
+`data: [DONE]`. Two exceptions worth coding for:
+
+- **`id:`** accompanies structural frames (`tool_start`, `tool_end`, `tool_execution_update`,
+  `on_chain_end`, `done`, `aborted`). It is the thread's next session sequence — hand it back as
+  `Last-Event-ID` to [`GET /chat/stream/{thread_id}`](#get-chatstreamthread_id) after a dropped
+  connection. Token-level frames carry no `id:`, which per the SSE spec leaves `lastEventId`
+  unchanged, so a client always holds the last structural cursor.
+- **`event: error`** is used for the one error frame, emitted if the stream fails after the 200 has
+  already been sent. Handle it with `addEventListener("error", …)`; it will not arrive on
+  `onmessage`.
+
+Each payload is the same envelope:
 
 ```json
 { "event": "text_delta", "type": "text_delta", "data": { ... }, "text": "derived" }
@@ -300,7 +333,7 @@ deliberately:
   "parentSessionId": null,
   "createdAt": "…", "updatedAt": "…",
   "phase": "idle",
-  "model": { "id": "claude-sonnet-4" },
+  "model": { "id": "claude-sonnet" },
   "thinkingLevel": "medium",
   "attached": false,
   "locked": false,
