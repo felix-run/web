@@ -15,7 +15,10 @@ export function Conversation({ children, className }: { children: ReactNode; cla
       initial="smooth"
       resize="smooth"
     >
-      <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
+      {/* `min-h-full` gives a `flex-1` child (the empty-state greeting) the whole
+          column to centre in. With turns present the content is taller and this is
+          inert. */}
+      <StickToBottom.Content className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
         {children}
       </StickToBottom.Content>
       <ScrollToBottom />

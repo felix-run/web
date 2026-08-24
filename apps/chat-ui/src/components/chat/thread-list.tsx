@@ -87,7 +87,14 @@ export function ThreadList({
   return (
     <aside
       aria-labelledby="history-heading"
-      className={cn('flex h-full w-60 flex-col border-r border-border/60 bg-card/30', className)}
+      className={cn(
+        // Grows with the viewport rather than staying at 240px: on a wide display the
+        // extra width is worth more as thread title than as empty gutter beside a
+        // reading column. Clamped, and the floor is the old fixed width, so the
+        // drawer thresholds in App.tsx are untouched below ~1333px.
+        'flex h-full w-[clamp(15rem,18vw,20rem)] flex-col border-r border-border/60 bg-card/30',
+        className,
+      )}
     >
       <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
         <h2 id="history-heading" className="text-base font-semibold">

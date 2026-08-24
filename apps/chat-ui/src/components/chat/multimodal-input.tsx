@@ -272,7 +272,14 @@ function MultimodalInputInner({
   );
 
   return (
-    <div className={cn('relative mx-auto w-full max-w-3xl px-4 pb-4', className)}>
+    <div
+      className={
+        // Same horizontal inset as the transcript column (`Conversation` uses px-4 md:px-6):
+        // at md the composer was 8px further out, so the reading column and the thing you
+        // type into did not share a left edge.
+        cn('relative mx-auto w-full max-w-3xl px-4 pb-4 md:px-6', className)
+      }
+    >
       {!isConnected && <ConnectionBanner />}
 
       <div ref={formContainerRef} className="relative">
