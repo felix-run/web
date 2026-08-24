@@ -371,9 +371,14 @@ spec:
 | Field | Type | Default |
 |---|---|---|
 | `enabled` | bool | `false` |
-| `model` | string | `"llama-3-fast"` |
+| `model` | string | `"claude-haiku"` |
 | `max_facts` | int, 1–20 | `5` |
 | `min_chars` | int ≥ 0 | `80` |
+
+Extraction runs on `model`, not on the turn's model — it is a small, mechanical job on every
+completed turn, and billing it to a frontier model roughly doubles the cost of having memory at
+all. If that model cannot be built, extraction falls back to the turn's model rather than dropping
+the fact.
 
 Facts land in `memory_vectors` (pgvector, HNSW) with kinds `fact`, `preference`, `episode`,
 `procedural`. Semantic recall needs the `embeddings` extra.
