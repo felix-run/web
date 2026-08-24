@@ -66,98 +66,100 @@ export function WorkspaceStrip() {
   }, [refresh]);
 
   return (
-    <div className="mx-auto mb-2 w-full max-w-2xl rounded-xl border border-border/50 bg-muted/30 px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="font-medium text-foreground">
-          {mountLabel ? `Folder · ${mountLabel}` : 'Local VFS'}
-        </span>
-        {!mountLabel && reconnectName ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => void onReconnect()}
-          >
-            Reconnect {reconnectName}
-          </Button>
-        ) : null}
-        <span className="text-muted-foreground">
-          Client tools (`local_shell` / `local_open`) run here
-        </span>
-        <div className="ml-auto flex flex-wrap gap-1">
-          {canMount ? (
-            mountLabel ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={() => {
-                  clearMount();
-                  setMountLabel(null);
-                  setReconnectName(null);
-                  void refresh();
-                }}
-              >
-                Unmount
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={() => {
-                  void (async () => {
-                    try {
-                      const name = await pickDirectory();
-                      setReconnectName(null);
-                      setMountLabel(name);
-                      await refresh();
-                    } catch {
-                      // picker cancelled
-                    }
-                  })();
-                }}
-              >
-                Mount folder
-              </Button>
-            )
+    <div className="mx-auto mb-2 w-full max-w-3xl px-4 md:px-6">
+      <div className="rounded-xl border border-border/50 bg-muted/30 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-medium text-foreground">
+            {mountLabel ? `Folder · ${mountLabel}` : 'Local VFS'}
+          </span>
+          {!mountLabel && reconnectName ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => void onReconnect()}
+            >
+              Reconnect {reconnectName}
+            </Button>
           ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => {
-              setOpen((o) => !o);
-              void refresh();
-            }}
-          >
-            {open ? 'Hide files' : 'Files'}
-          </Button>
-          {!mountLabel ? (
+          <span className="text-muted-foreground">
+            Client tools (`local_shell` / `local_open`) run here
+          </span>
+          <div className="ml-auto flex flex-wrap gap-1">
+            {canMount ? (
+              mountLabel ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => {
+                    clearMount();
+                    setMountLabel(null);
+                    setReconnectName(null);
+                    void refresh();
+                  }}
+                >
+                  Unmount
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const name = await pickDirectory();
+                        setReconnectName(null);
+                        setMountLabel(name);
+                        await refresh();
+                      } catch {
+                        // picker cancelled
+                      }
+                    })();
+                  }}
+                >
+                  Mount folder
+                </Button>
+              )
+            ) : null}
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
               onClick={() => {
-                vfs.reset();
+                setOpen((o) => !o);
                 void refresh();
               }}
             >
-              Clear VFS
+              {open ? 'Hide files' : 'Files'}
             </Button>
-          ) : null}
+            {!mountLabel ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => {
+                  vfs.reset();
+                  void refresh();
+                }}
+              >
+                Clear VFS
+              </Button>
+            ) : null}
+          </div>
         </div>
+        {open ? (
+          <pre className="mt-2 max-h-40 overflow-auto rounded-lg border border-border/40 bg-background p-2 font-mono text-xs text-muted-foreground">
+            {files.length ? files.slice(0, 80).join('\n') : '(empty)'}
+          </pre>
+        ) : null}
       </div>
-      {open ? (
-        <pre className="mt-2 max-h-40 overflow-auto rounded-lg border border-border/40 bg-background p-2 font-mono text-xs text-muted-foreground">
-          {files.length ? files.slice(0, 80).join('\n') : '(empty)'}
-        </pre>
-      ) : null}
     </div>
   );
 }

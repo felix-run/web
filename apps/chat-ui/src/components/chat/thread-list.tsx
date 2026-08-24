@@ -163,9 +163,7 @@ export function ThreadList({
           ))}
           {remoteOnly.length > 0 && (
             <div className="pt-2">
-              <p className="px-2 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                Server
-              </p>
+              <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Server</p>
               {remoteOnly.map((t) => (
                 <button
                   key={t.id}

@@ -326,9 +326,7 @@ function VersionsPanel({
 
       {/* Editor */}
       <div className="flex items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          New version
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">New version</span>
         <Button size="sm" variant="outline" className="ml-auto h-7 gap-1" onClick={openEditor}>
           <SaveIcon className="size-3.5" /> Edit current
         </Button>

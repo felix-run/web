@@ -337,9 +337,5 @@ function RunCard({ run }: { run: EvalRun }) {
 }
 
 function Heading({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-      {children}
-    </div>
-  );
+  return <div className="text-xs font-medium text-muted-foreground">{children}</div>;
 }

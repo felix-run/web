@@ -23,15 +23,19 @@ export function ApprovalBanner({
   onDecide: (status: 'approved' | 'denied') => Promise<void>;
 }) {
   return (
-    <ApprovalDecision
-      className="mx-auto mb-3 w-full max-w-2xl"
-      toolName={pending.toolName}
-      args={pending.args}
-      // `before` is only meaningful for a write; anything else has no before/after.
-      before={pending.toolName === 'write_file' ? (pending.before ?? null) : undefined}
-      queueLength={queueLength}
-      runAborted={runAborted}
-      onDecide={onDecide}
-    />
+    // The inset matches the composer and the transcript column so the card's visible
+    // edge lines up with theirs; without it the interrupt sits 25px proud of the thing
+    // it interrupts.
+    <div className="mx-auto mb-3 w-full max-w-3xl px-4 md:px-6">
+      <ApprovalDecision
+        toolName={pending.toolName}
+        args={pending.args}
+        // `before` is only meaningful for a write; anything else has no before/after.
+        before={pending.toolName === 'write_file' ? (pending.before ?? null) : undefined}
+        queueLength={queueLength}
+        runAborted={runAborted}
+        onDecide={onDecide}
+      />
+    </div>
   );
 }

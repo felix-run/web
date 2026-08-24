@@ -237,9 +237,7 @@ function modelField(
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1 rounded-md border bg-card/40 p-2.5">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {title}
-      </div>
+      <div className="text-xs font-medium text-muted-foreground">{title}</div>
       {children}
     </div>
   );
