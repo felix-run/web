@@ -99,7 +99,7 @@ export function EvalSheet({
                 key={d.name}
                 size="sm"
                 variant={selected === d.name ? 'secondary' : 'ghost'}
-                className="h-7 font-mono text-xs"
+                className="h-7 font-mono text-sm"
                 aria-pressed={selected === d.name}
                 onClick={() => setSelected(d.name)}
               >
@@ -107,8 +107,8 @@ export function EvalSheet({
               </Button>
             ))}
             {datasets.length === 0 && (
-              <span className="text-xs text-muted-foreground">
-                No datasets yet — create one below.
+              <span className="text-sm text-muted-foreground">
+                No datasets yet. Create one below.
               </span>
             )}
           </div>
@@ -210,7 +210,7 @@ function DatasetPanel({
             <section className="space-y-1.5">
               <Heading>Items</Heading>
               {items.map((it) => (
-                <div key={it.item_id} className="rounded-md border bg-background p-2 text-xs">
+                <div key={it.item_id} className="rounded-md border bg-background p-2 text-sm">
                   <div className="font-medium">{it.user_input}</div>
                   {it.rubric.criteria && (
                     <div className="mt-1 text-muted-foreground">criteria: {it.rubric.criteria}</div>
@@ -317,7 +317,7 @@ function RunCard({ run }: { run: EvalRun }) {
   const total = run.pass_count + run.fail_count;
   const rate = total ? Math.round((run.pass_count / total) * 100) : 0;
   return (
-    <div className="rounded-md border bg-background p-2.5 text-xs">
+    <div className="rounded-md border bg-background p-2.5 text-sm">
       <div className="flex items-center gap-2">
         <Badge variant={run.fail_count === 0 ? 'default' : 'secondary'} className="py-0">
           {run.pass_count}/{total} pass · {rate}%

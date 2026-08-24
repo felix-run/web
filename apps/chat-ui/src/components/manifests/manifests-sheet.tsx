@@ -16,6 +16,13 @@ import {
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
+import {
+  type KnownVersion,
+  knownVersions,
+  recordFromPointer,
+  recordVersion,
+} from '@/lib/manifest-versions';
+import { relativeTime } from '@/lib/time';
 import type { ManifestSummary } from '@/types';
 
 /**
@@ -54,6 +61,7 @@ export function ManifestsSheet({
   const refresh = useCallback(async () => {
     try {
       const r = await listTenantManifests();
+      for (const row of r) recordFromPointer(row.name, row);
       setRows(r);
       setFailure(null);
       setSelected((cur) => cur ?? r[0]?.name ?? null);
@@ -75,7 +83,16 @@ export function ManifestsSheet({
     setFailure(null);
     try {
       const resolved = await getResolvedManifest(name);
-      await createManifestVersion(name, resolved.manifest, `imported from ${resolved.source}`);
+      const created = await createManifestVersion(
+        name,
+        resolved.manifest,
+        `imported from ${resolved.source}`,
+      );
+      recordVersion(name, {
+        version: created.version,
+        comment: created.comment,
+        via: 'created',
+      });
       await refresh();
       setSelected(name);
     } catch (err) {
@@ -123,7 +140,7 @@ export function ManifestsSheet({
                 key={r.name}
                 size="sm"
                 variant={selected === r.name ? 'secondary' : 'ghost'}
-                className="h-7 gap-1 font-mono text-xs"
+                className="h-7 gap-1 font-mono text-sm"
                 // Selection was carried by the `secondary` fill alone, which is colour
                 // as the only channel and inaudible to a screen reader.
                 aria-pressed={selected === r.name}
@@ -143,7 +160,7 @@ export function ManifestsSheet({
               </Button>
             ))}
             {rows.length === 0 && (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
                 No tenant-managed manifests yet. Import one below to start a version log.
               </span>
             )}
@@ -180,6 +197,54 @@ export function ManifestsSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * Versions this browser has seen, as something to click.
+ *
+ * Labelled honestly: a version created elsewhere will not appear, so this is offered
+ * as a shortcut rather than as the version log. Picking one fills the activate field
+ * instead of acting directly — the confirmation step still stands between a click
+ * here and production traffic moving.
+ */
+function VersionChips({
+  known,
+  activeV,
+  canaryV,
+  onPick,
+}: {
+  known: KnownVersion[];
+  activeV: number | null;
+  canaryV: number | null;
+  onPick: (v: string) => void;
+}) {
+  if (known.length === 0) return null;
+  return (
+    <div className="mb-2">
+      <div className="mb-1 text-xs text-muted-foreground">Seen from this browser</div>
+      <div className="flex flex-wrap gap-1">
+        {known.map((k) => {
+          const isActive = k.version === activeV;
+          const isCanary = k.version === canaryV;
+          return (
+            <Button
+              key={k.version}
+              size="sm"
+              variant={isActive ? 'secondary' : 'ghost'}
+              className="h-6 gap-1 px-2 font-mono text-xs"
+              disabled={isActive}
+              title={k.comment ? `${k.comment} · seen ${relativeTime(k.seenAt)}` : undefined}
+              onClick={() => onPick(String(k.version))}
+            >
+              v{k.version}
+              {isActive && <span className="text-muted-foreground">active</span>}
+              {isCanary && !isActive && <span className="text-muted-foreground">canary</span>}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -245,8 +310,14 @@ function VersionsPanel({
       setEditorError(String((err as Error)?.message ?? 'Editor content is not valid JSON.'));
       return;
     }
+    const note = comment.trim() || 'edited in chat-ui';
     await act(async () => {
-      await createManifestVersion(name, parsed, comment.trim() || 'edited in chat-ui');
+      const created = await createManifestVersion(name, parsed, note);
+      recordVersion(name, {
+        version: created.version,
+        comment: created.comment ?? note,
+        via: 'created',
+      });
       setEditor(null);
     }, `save a new version of ${name}`);
   }
@@ -257,11 +328,35 @@ function VersionsPanel({
   const targetValid =
     targetVersion.trim() !== '' && Number.isInteger(targetN) && targetN > 0 && targetN !== activeV;
 
+  // Versions seen from this browser. Re-read on every render rather than held in
+  // state: the poll writes to it, and the list is a handful of integers.
+  const known = knownVersions(name);
+
+  /**
+   * Why a control is refusing, in a sentence. Both of these used to be silent
+   * disables — type the version already active and the button simply died.
+   */
+  function targetReason(): string | null {
+    if (targetVersion.trim() === '') return null;
+    if (!Number.isInteger(targetN) || targetN <= 0) return 'Version must be a whole number.';
+    if (targetN === activeV) return `v${targetN} is already active.`;
+    return null;
+  }
+  function canaryReason(): string | null {
+    if (canaryVersion.trim() === '') return null;
+    if (!Number.isInteger(canaryN) || canaryN <= 0) return 'Version must be a whole number.';
+    if (canaryN === activeV) return `v${canaryN} is already serving all traffic.`;
+    if (known.length > 0 && !known.some((k) => k.version === canaryN)) {
+      return `This browser has not seen v${canaryN}. Check the number before rolling it out.`;
+    }
+    return null;
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       {/* Active pointer */}
-      <div className="rounded-md border bg-card/40 p-2.5 text-xs">
-        <div className="mb-2 flex items-center gap-2">
+      <div className="rounded-md border bg-card/40 p-2.5 text-sm">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="font-medium">Active</span>
           {activeV != null ? (
             <Badge variant="secondary" className="py-0 font-mono text-xs">
@@ -270,7 +365,22 @@ function VersionsPanel({
           ) : (
             <span className="text-xs text-muted-foreground">no tenant version</span>
           )}
+          {/* Who moved this pointer and when. Both are on the wire and neither was
+              rendered — it is the first thing worth knowing before moving it again. */}
+          {summary.updated_at != null && (
+            <span className="text-xs text-muted-foreground">
+              changed {relativeTime(summary.updated_at)}
+              {summary.updated_by ? ` by ${summary.updated_by}` : ''}
+            </span>
+          )}
         </div>
+
+        <VersionChips
+          known={known}
+          activeV={activeV}
+          canaryV={liveCanaryV}
+          onPick={setTargetVersion}
+        />
         {/* wraps so an armed confirmation gets its own line instead of squeezing the
             version field it is echoing */}
         <div className="flex flex-wrap items-center gap-2">
@@ -280,7 +390,7 @@ function VersionsPanel({
             onChange={(e) => setTargetVersion(e.target.value)}
             inputMode="numeric"
             placeholder="version number"
-            className="h-7 flex-1 font-mono text-xs"
+            className="h-7 flex-1 font-mono text-sm"
           />
           <ConfirmButton
             size="sm"
@@ -298,10 +408,11 @@ function VersionsPanel({
             <RotateCcwIcon className="size-3.5" /> Activate
           </ConfirmButton>
         </div>
+        {targetReason() && <p className="mt-1 text-xs text-muted-foreground">{targetReason()}</p>}
       </div>
 
       {/* Canary control */}
-      <div className="rounded-md border bg-card/40 p-2.5 text-xs">
+      <div className="rounded-md border bg-card/40 p-2.5 text-sm">
         <div className="mb-2 flex items-center gap-2">
           <span className="font-medium">Canary</span>
           {liveCanaryV != null && liveWeight > 0 ? (
@@ -319,7 +430,7 @@ function VersionsPanel({
             onChange={(e) => setCanaryVersion(e.target.value)}
             inputMode="numeric"
             placeholder="version"
-            className="h-7 w-24 font-mono text-xs"
+            className="h-7 w-24 font-mono text-sm"
           />
           {/* This slider decides what share of live traffic moves to the canary, and
               announced as "slider, 25" — no name at all. `aria-valuetext` makes the
@@ -375,7 +486,8 @@ function VersionsPanel({
             Clear canary
           </Button>
         </div>
-        <p className="mt-2 text-xs leading-snug text-muted-foreground">
+        {canaryReason() && <p className="mt-1 text-xs text-muted-foreground">{canaryReason()}</p>}
+        <p className="mt-2 text-sm leading-snug text-muted-foreground">
           Routing is a deterministic hash of tenant, thread and both versions, so a thread stays on
           one side for the whole rollout.
         </p>
@@ -397,7 +509,7 @@ function VersionsPanel({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="what changed, e.g. raised max_tool_calls"
-            className="h-7 text-xs"
+            className="h-7 text-sm"
           />
           {/* This carried `aria-describedby` while having no accessible name to
               describe: a description is not a name. */}
@@ -410,10 +522,10 @@ function VersionsPanel({
             rows={12}
             aria-invalid={editorError != null}
             aria-describedby={editorError != null ? 'manifest-editor-error' : undefined}
-            className="w-full resize-y rounded-md border bg-transparent p-2 font-mono text-xs leading-snug outline-none focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-state-failed"
+            className="w-full resize-y rounded-md border bg-transparent p-2 font-mono text-sm leading-snug outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring aria-invalid:border-state-failed"
           />
           {editorError && (
-            <p id="manifest-editor-error" role="alert" className="text-xs text-state-failed">
+            <p id="manifest-editor-error" role="alert" className="text-sm text-state-failed">
               Not valid JSON: {editorError}
             </p>
           )}
@@ -438,7 +550,7 @@ function VersionsPanel({
 
       {editor == null && (
         <ScrollArea className="min-h-0 flex-1">
-          <p className="pr-3 text-xs text-muted-foreground">
+          <p className="pr-3 text-sm text-muted-foreground">
             Publishing appends a new version and activates it. The harness does not expose a version
             history endpoint, so activate an earlier version by number above.
           </p>

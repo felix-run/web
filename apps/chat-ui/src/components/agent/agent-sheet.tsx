@@ -65,7 +65,10 @@ export function AgentSheet({
         </SheetHeader>
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-4 p-4 text-xs">
+          {/* The spec rows are rows, not captions. This container set `text-xs` so the
+              whole panel — every label, value and description — inherited the 11px
+              caption step and nothing ranked. Section headings and badges stay at xs. */}
+          <div className="space-y-4 p-4 text-sm">
             {error != null && <ErrorNotice error={error} doing="load the agent spec" />}
             {!resolved && !error && <p className="text-muted-foreground">Loading…</p>}
 
