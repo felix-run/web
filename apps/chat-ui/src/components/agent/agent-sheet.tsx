@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { BotIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
-import { describeError } from '@/lib/errors';
+import { ErrorNotice } from '@/components/error-notice';
 import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
 
 /**
@@ -24,8 +24,8 @@ export function AgentSheet({
 }) {
   const [resolved, setResolved] = useState<ResolvedManifest | null>(null);
   const [card, setCard] = useState<AgentCard | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [cardError, setCardError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [cardError, setCardError] = useState<unknown>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -36,13 +36,13 @@ export function AgentSheet({
     let live = true;
     getResolvedManifest(manifest)
       .then((r) => live && setResolved(r))
-      .catch((e) => live && setError(describeError(e, 'load the agent spec').message));
+      .catch((e) => live && setError(e));
     // The card used to be fetched with `.catch(() => {})`, which inverted the
     // failure: a card that failed to load was silent, while a card that loaded
     // successfully crashed the app on the next render. It reports both now.
     getAgentCard()
       .then((c) => live && setCard(c))
-      .catch((e) => live && setCardError(describeError(e, 'load the discovery card').message));
+      .catch((e) => live && setCardError(e));
     return () => {
       live = false;
     };
@@ -66,7 +66,7 @@ export function AgentSheet({
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-4 p-4 text-xs">
-            {error && <p className="text-state-failed">⚠ {error}</p>}
+            {error != null && <ErrorNotice error={error} doing="load the agent spec" />}
             {!resolved && !error && <p className="text-muted-foreground">Loading…</p>}
 
             {resolved && spec && (
@@ -201,11 +201,7 @@ export function AgentSheet({
                 <Row label="unavailable" value={card.error} />
               </Section>
             )}
-            {cardError && (
-              <Section title="A2A discovery card (default agent)">
-                <Row label="unavailable" value={cardError} />
-              </Section>
-            )}
+            {cardError != null && <ErrorNotice error={cardError} doing="load the discovery card" />}
           </div>
         </ScrollArea>
       </SheetContent>

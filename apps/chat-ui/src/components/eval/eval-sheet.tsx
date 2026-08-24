@@ -13,6 +13,7 @@ import {
   putEvalDataset,
   runEvalDataset,
 } from '@/api';
+import { ErrorNotice } from '@/components/error-notice';
 import { cn } from '@/lib/utils';
 import type { EvalDataset, EvalDatasetItem, EvalRun } from '@/types';
 
@@ -36,7 +37,7 @@ export function EvalSheet({
 }) {
   const [datasets, setDatasets] = useState<EvalDataset[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
 
@@ -47,7 +48,7 @@ export function EvalSheet({
       setError(null);
       setSelected((cur) => cur ?? ds[0]?.name ?? null);
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      setError(err);
     }
   }, []);
 
@@ -65,7 +66,7 @@ export function EvalSheet({
       await refreshDatasets();
       setSelected(name);
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      setError(err);
     } finally {
       setCreating(false);
     }
@@ -85,7 +86,7 @@ export function EvalSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error && <p className="text-xs text-state-failed">⚠ {error}</p>}
+          {error != null && <ErrorNotice error={error} doing="reach the eval harness" />}
 
           {/* Dataset picker + create */}
           <div className="flex flex-wrap items-center gap-1.5">
@@ -145,7 +146,7 @@ function DatasetPanel({
 }: {
   dataset: string;
   manifest: string;
-  onError: (msg: string) => void;
+  onError: (err: unknown) => void;
 }) {
   const [items, setItems] = useState<EvalDatasetItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
@@ -157,7 +158,7 @@ function DatasetPanel({
       setItems(its);
       setRuns(rns);
     } catch (err) {
-      onError(String((err as Error)?.message ?? err));
+      onError(err);
     }
   }, [dataset, onError]);
 
@@ -171,7 +172,7 @@ function DatasetPanel({
       await runEvalDataset(dataset, manifest);
       await refresh();
     } catch (err) {
-      onError(String((err as Error)?.message ?? err));
+      onError(err);
     } finally {
       setRunning(false);
     }
@@ -239,7 +240,7 @@ function AddItemForm({
 }: {
   dataset: string;
   onAdded: () => void;
-  onError: (msg: string) => void;
+  onError: (err: unknown) => void;
 }) {
   const [input, setInput] = useState('');
   const [criteria, setCriteria] = useState('');
@@ -265,7 +266,7 @@ function AddItemForm({
       setMustInclude('');
       onAdded();
     } catch (err) {
-      onError(String((err as Error)?.message ?? err));
+      onError(err);
     } finally {
       setBusy(false);
     }

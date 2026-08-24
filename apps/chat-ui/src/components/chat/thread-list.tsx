@@ -4,6 +4,7 @@ import { MessageSquareIcon, PlusIcon, SearchIcon, Trash2Icon } from 'lucide-reac
 import { useEffect, useMemo, useState } from 'react';
 import { searchSessions } from '@/api';
 import type { ThreadMeta } from '@/lib/threads';
+import { relativeTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 /**
@@ -148,7 +149,7 @@ export function ThreadList({
               >
                 <span className="block truncate font-medium">{t.title}</span>
                 <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {t.manifest} · {rel(t.updatedAt)}
+                  {t.manifest} · {relativeTime(t.updatedAt)}
                 </span>
               </button>
               <button
@@ -195,13 +196,4 @@ export function ThreadList({
 function threadSuffix(full: string): string {
   const i = full.indexOf(':');
   return i >= 0 ? full.slice(i + 1) : full;
-}
-
-/** Relative time like "2m ago" / "3h ago" / "5d ago" from a ms timestamp. */
-function rel(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60000) return 'just now';
-  if (diff < 3600000) return `${Math.round(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.round(diff / 3600000)}h ago`;
-  return `${Math.round(diff / 86400000)}d ago`;
 }

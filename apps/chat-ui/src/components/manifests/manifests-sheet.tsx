@@ -14,6 +14,7 @@ import {
   setManifestCanary,
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
+import { ErrorNotice } from '@/components/error-notice';
 import type { ManifestSummary } from '@/types';
 
 /**
@@ -44,7 +45,7 @@ export function ManifestsSheet({
   const [selected, setSelected] = useState<string | null>(null);
   const [importName, setImportName] = useState(manifest);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -53,7 +54,7 @@ export function ManifestsSheet({
       setError(null);
       setSelected((cur) => cur ?? r[0]?.name ?? null);
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      setError(err);
     }
   }, []);
 
@@ -73,7 +74,7 @@ export function ManifestsSheet({
       await refresh();
       setSelected(name);
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      setError(err);
     } finally {
       setBusy(false);
     }
@@ -94,7 +95,22 @@ export function ManifestsSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error && <p className="text-xs text-state-failed">⚠ {error}</p>}
+          {error != null && (
+            <ErrorNotice
+              error={error}
+              doing="reach the manifest registry"
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 self-start text-xs"
+                  onClick={refresh}
+                >
+                  Try again
+                </Button>
+              }
+            />
+          )}
 
           <div className="flex flex-wrap items-center gap-1.5">
             {rows.map((r) => (
@@ -164,7 +180,7 @@ function VersionsPanel({
 }: {
   summary: ManifestSummary;
   onChanged: () => void;
-  onError: (msg: string) => void;
+  onError: (err: unknown) => void;
 }) {
   const name = summary.name;
   const activeV = summary.version;
@@ -178,6 +194,9 @@ function VersionsPanel({
   const [targetVersion, setTargetVersion] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<string | null>(null);
+  // A syntax error in the textarea is a field problem, not a failed request, so it
+  // belongs next to the textarea rather than in the sheet-level error slot.
+  const [editorError, setEditorError] = useState<string | null>(null);
   const [comment, setComment] = useState('');
 
   async function act(fn: () => Promise<unknown>) {
@@ -186,7 +205,7 @@ function VersionsPanel({
       await fn();
       onChanged();
     } catch (err) {
-      onError(String((err as Error)?.message ?? err));
+      onError(err);
     } finally {
       setBusy(false);
     }
@@ -200,7 +219,7 @@ function VersionsPanel({
       setEditor(JSON.stringify(resolved.manifest, null, 2));
       setComment('');
     } catch (err) {
-      onError(String((err as Error)?.message ?? err));
+      onError(err);
     }
   }
 
@@ -209,8 +228,10 @@ function VersionsPanel({
     let parsed: unknown;
     try {
       parsed = JSON.parse(editor);
-    } catch {
-      onError('Editor content is not valid JSON.');
+      setEditorError(null);
+    } catch (err) {
+      // The parser says *where* it gave up, which is the only useful part.
+      setEditorError(String((err as Error)?.message ?? 'Editor content is not valid JSON.'));
       return;
     }
     await act(async () => {
@@ -293,7 +314,7 @@ function VersionsPanel({
             max={100}
             value={weight}
             onChange={(e) => setWeight(Number(e.target.value))}
-            className="flex-1 accent-amber-500"
+            className="h-6 flex-1 accent-primary"
           />
           <span className="w-9 text-right font-mono">{weight}%</span>
         </div>
@@ -358,13 +379,28 @@ function VersionsPanel({
             onChange={(e) => setEditor(e.target.value)}
             spellCheck={false}
             rows={12}
-            className="w-full resize-y rounded-md border bg-transparent p-2 font-mono text-xs leading-snug outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            aria-invalid={editorError != null}
+            aria-describedby={editorError != null ? 'manifest-editor-error' : undefined}
+            className="w-full resize-y rounded-md border bg-transparent p-2 font-mono text-xs leading-snug outline-none focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-state-failed"
           />
+          {editorError && (
+            <p id="manifest-editor-error" role="alert" className="text-xs text-state-failed">
+              Not valid JSON: {editorError}
+            </p>
+          )}
           <div className="flex gap-2">
             <Button size="sm" className="h-7 flex-1" disabled={busy} onClick={saveVersion}>
               Save new version
             </Button>
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditor(null)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7"
+              onClick={() => {
+                setEditor(null);
+                setEditorError(null);
+              }}
+            >
               Cancel
             </Button>
           </div>

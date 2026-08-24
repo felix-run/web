@@ -66,8 +66,12 @@ function SheetContent({
         {...props}
       >
         {children}
+        {/* The icon is 16px, but the control must not be: a bare `size-4` close
+            button measured 16×16, under WCAG 2.5.8's 24×24 floor, on every sheet in
+            the app. The padding is what makes the target, so the icon stays the same
+            size and the hit area grows around it. */}
         {showCloseButton && (
-          <SheetPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <SheetPrimitive.Close className="absolute top-3.5 right-3.5 flex size-6 items-center justify-center rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
