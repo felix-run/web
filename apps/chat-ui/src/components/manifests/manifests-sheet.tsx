@@ -13,6 +13,7 @@ import {
   listTenantManifests,
   setManifestCanary,
 } from '@/api';
+import { ConfirmButton } from '@/components/confirm-button';
 import type { ManifestSummary } from '@/types';
 
 /**
@@ -238,7 +239,9 @@ function VersionsPanel({
             <span className="text-xs text-muted-foreground">no tenant version</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        {/* wraps so an armed confirmation gets its own line instead of squeezing the
+            version field it is echoing */}
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             value={targetVersion}
             onChange={(e) => setTargetVersion(e.target.value)}
@@ -246,20 +249,21 @@ function VersionsPanel({
             placeholder="version number"
             className="h-7 flex-1 font-mono text-xs"
           />
-          <Button
+          <ConfirmButton
             size="sm"
             className="h-7 gap-1"
             disabled={busy || !targetValid}
-            onClick={() =>
+            question={`v${targetN} will serve all traffic for ${name}.`}
+            confirmLabel={`Activate v${targetN}`}
+            onConfirm={() =>
               act(async () => {
                 await activateManifestVersion(name, targetN);
                 setTargetVersion('');
               })
             }
-            title="Flip the active pointer to this version"
           >
             <RotateCcwIcon className="size-3.5" /> Activate
-          </Button>
+          </ConfirmButton>
         </div>
       </div>
 
@@ -293,15 +297,24 @@ function VersionsPanel({
           />
           <span className="w-9 text-right font-mono">{weight}%</span>
         </div>
-        <div className="mt-2 flex gap-2">
-          <Button
+        <div className="mt-2 flex flex-wrap gap-2">
+          <ConfirmButton
             size="sm"
             className="h-7 flex-1"
             disabled={busy || !canaryValid}
-            onClick={() => act(() => setManifestCanary(name, canaryN, weight))}
+            question={`v${canaryN} will take ${weight}% of traffic for ${name}.`}
+            confirmLabel={`Send ${weight}% to v${canaryN}`}
+            onConfirm={() => act(() => setManifestCanary(name, canaryN, weight))}
           >
             Apply canary
-          </Button>
+          </ConfirmButton>
+          {/*
+            Deliberately not confirmed, unlike its two neighbours. Clearing a canary
+            is the rollback: it sends every request back to the version that was
+            already active. It is the control an operator reaches for when a rollout
+            is going wrong, and putting a confirmation step in front of the recovery
+            path buys nothing and costs seconds when they matter most.
+          */}
           <Button
             size="sm"
             variant="outline"

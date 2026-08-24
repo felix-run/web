@@ -307,18 +307,48 @@ export interface JobRun {
 }
 
 // --- A2A discovery card (/.well-known/agent-card.json) ---
-// Built for the harness's *default* manifest
-// — the peer-facing discovery document (endpoints, protocols, capabilities).
+// Built for the harness's *default* manifest by `build_agent_card` — the
+// peer-facing discovery document.
+//
+// This interface previously described a document the harness has never served:
+// of ten declared fields, seven did not exist on the wire and `capabilities` was
+// typed as an array when it arrives as an object. `AgentSheet` trusted the type,
+// called `Object.entries(card.endpoints)` on `undefined`, and took the whole app
+// down every time the sheet was opened. Nothing caught it — TypeScript believes
+// whatever a hand-mirrored type asserts, and `check-api-drift` compares paths and
+// verbs, never payload shapes.
+//
+// So every field here is optional on purpose. The route is served by whichever
+// harness build the operator is running, which is not necessarily the one this
+// repo was last read against, and a field that arrives late should render as a
+// gap rather than as a crash.
 
-export interface AgentCard {
-  name: string;
+export interface AgentCardSkill {
+  id?: string;
+  name?: string;
   description?: string;
   version?: string;
-  protocols: string[];
-  endpoints: Record<string, string>;
-  auth: { schemes: string[]; required_scopes: string[]; allow_anonymous: boolean };
-  capabilities: Array<{ id: string; description?: string; input_schema_ref?: string }>;
-  containers: Array<{ name: string; description?: string; image?: string }>;
-  queues: Array<{ name: string; description?: string }>;
-  federation: { bundleVersion: string; issuer: string } | null;
+}
+
+export interface AgentCardCapabilities {
+  streaming?: boolean;
+  mcp?: boolean;
+  /** Capabilities the manifest declared, beyond the two transport flags. */
+  declared?: Array<{ id?: string; description?: string; inputSchemaRef?: string }>;
+}
+
+export interface AgentCard {
+  name?: string;
+  description?: string;
+  /** Where peers address this agent, e.g. `http://localhost:8080/chat`. */
+  url?: string;
+  version?: string;
+  capabilities?: AgentCardCapabilities;
+  skills?: AgentCardSkill[];
+  transparencyNotice?: boolean;
+  /**
+   * The route answers **200** with `{error, name}` when the default manifest is
+   * missing, rather than a status code, so this is a success path to check for.
+   */
+  error?: string;
 }
