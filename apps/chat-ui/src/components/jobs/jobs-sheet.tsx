@@ -193,10 +193,10 @@ export function JobsSheet({
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-1.5 pr-3">
               {jobs.length === 0 && (
-                <p className="text-xs text-muted-foreground">No jobs yet. Create one above.</p>
+                <p className="text-sm text-muted-foreground">No jobs yet. Create one above.</p>
               )}
               {jobs.map((j) => (
-                <div key={j.name} className="rounded-md border bg-background px-2.5 py-1.5 text-xs">
+                <div key={j.name} className="rounded-md border bg-background px-2.5 py-1.5 text-sm">
                   {/* wraps so an armed delete confirmation gets its own line rather
                       than crushing the job name out of the row */}
                   <div className="flex flex-wrap items-center gap-2">
@@ -204,7 +204,7 @@ export function JobsSheet({
                     <Badge variant="secondary" className="py-0 font-mono text-xs">
                       {j.schedule || 'manual'}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">{j.manifest_id || '—'}</span>
+                    <span className="text-muted-foreground">{j.manifest_id || '—'}</span>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -241,9 +241,9 @@ export function JobsSheet({
                       {runsError != null ? (
                         <ErrorNotice error={runsError} doing="load this job's run history" />
                       ) : runs === null ? (
-                        <p className="text-xs text-muted-foreground">Loading runs…</p>
+                        <p className="text-sm text-muted-foreground">Loading runs…</p>
                       ) : runs.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No runs recorded.</p>
+                        <p className="text-sm text-muted-foreground">No runs recorded.</p>
                       ) : (
                         runs.map((r, i) => (
                           <div
