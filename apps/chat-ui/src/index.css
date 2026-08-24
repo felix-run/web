@@ -108,7 +108,12 @@
   --recording: oklch(0.5 0.2 25);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  /* The focus indicator, which WCAG 1.4.11 holds to 3:1 against everything it sits
+     next to. At the previous 0.705 it reached only 2.62:1 on the page and 2.45:1 on
+     a control's own surface — and the primitives then drew it at 50% alpha, taking it
+     to 1.55:1. Measured on both sides at 0.6: 3.96:1 and 3.70:1. The dark value is
+     already compliant at full alpha, so only this one moves. */
+  --ring: oklch(0.6 0.015 286.067);
   /* A scrollbar thumb is a control, not a hairline, so it is not `--border`: that
      token measured 1.27:1 here, which is invisible. WCAG 1.4.11 asks 3:1 of an
      essential UI component; these clear it on both the base and card surfaces. */

@@ -1,6 +1,7 @@
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
+import { Label } from '@felix/ui/label';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
 import { GitBranchIcon, RotateCcwIcon, SaveIcon } from 'lucide-react';
@@ -45,16 +46,19 @@ export function ManifestsSheet({
   const [selected, setSelected] = useState<string | null>(null);
   const [importName, setImportName] = useState(manifest);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  // The error and the verb that produced it travel together. This slot used to be a
+  // bare error rendered with one hardcoded phrase, so a failed *activation* — the
+  // highest-stakes action here — reported "Could not reach the manifest registry".
+  const [failure, setFailure] = useState<{ err: unknown; doing: string } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const r = await listTenantManifests();
       setRows(r);
-      setError(null);
+      setFailure(null);
       setSelected((cur) => cur ?? r[0]?.name ?? null);
     } catch (err) {
-      setError(err);
+      setFailure({ err, doing: 'list tenant manifests' });
     }
   }, []);
 
@@ -68,13 +72,14 @@ export function ManifestsSheet({
     const name = importName.trim();
     if (!name) return;
     setBusy(true);
+    setFailure(null);
     try {
       const resolved = await getResolvedManifest(name);
       await createManifestVersion(name, resolved.manifest, `imported from ${resolved.source}`);
       await refresh();
       setSelected(name);
     } catch (err) {
-      setError(err);
+      setFailure({ err, doing: `import ${name} as a new version` });
     } finally {
       setBusy(false);
     }
@@ -95,10 +100,10 @@ export function ManifestsSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {error != null && (
+          {failure && (
             <ErrorNotice
-              error={error}
-              doing="reach the manifest registry"
+              error={failure.err}
+              doing={failure.doing}
               action={
                 <Button
                   size="sm"
@@ -119,6 +124,9 @@ export function ManifestsSheet({
                 size="sm"
                 variant={selected === r.name ? 'secondary' : 'ghost'}
                 className="h-7 gap-1 font-mono text-xs"
+                // Selection was carried by the `secondary` fill alone, which is colour
+                // as the only channel and inaudible to a screen reader.
+                aria-pressed={selected === r.name}
                 onClick={() => setSelected(r.name)}
               >
                 {r.name}
@@ -143,6 +151,8 @@ export function ManifestsSheet({
 
           <div className="flex gap-2">
             <Input
+              id="manifest-import-name"
+              aria-label="Manifest name to import"
               value={importName}
               onChange={(e) => setImportName(e.target.value)}
               placeholder="manifest name to import"
@@ -164,7 +174,7 @@ export function ManifestsSheet({
               key={selectedRow.name}
               summary={selectedRow}
               onChanged={refresh}
-              onError={setError}
+              onError={(err, doing) => setFailure({ err, doing })}
             />
           ) : null}
         </div>
@@ -180,7 +190,7 @@ function VersionsPanel({
 }: {
   summary: ManifestSummary;
   onChanged: () => void;
-  onError: (err: unknown) => void;
+  onError: (err: unknown, doing: string) => void;
 }) {
   const name = summary.name;
   const activeV = summary.version;
@@ -199,13 +209,14 @@ function VersionsPanel({
   const [editorError, setEditorError] = useState<string | null>(null);
   const [comment, setComment] = useState('');
 
-  async function act(fn: () => Promise<unknown>) {
+  /** @param doing verb phrase completing "Could not …", e.g. `activate v13 of quick`. */
+  async function act(fn: () => Promise<unknown>, doing: string) {
     setBusy(true);
     try {
       await fn();
       onChanged();
     } catch (err) {
-      onError(err);
+      onError(err, doing);
     } finally {
       setBusy(false);
     }
@@ -219,7 +230,7 @@ function VersionsPanel({
       setEditor(JSON.stringify(resolved.manifest, null, 2));
       setComment('');
     } catch (err) {
-      onError(err);
+      onError(err, `open ${name} for editing`);
     }
   }
 
@@ -237,7 +248,7 @@ function VersionsPanel({
     await act(async () => {
       await createManifestVersion(name, parsed, comment.trim() || 'edited in chat-ui');
       setEditor(null);
-    });
+    }, `save a new version of ${name}`);
   }
 
   const canaryN = Number(canaryVersion);
@@ -264,6 +275,7 @@ function VersionsPanel({
             version field it is echoing */}
         <div className="flex flex-wrap items-center gap-2">
           <Input
+            aria-label={`Version to activate for ${name}`}
             value={targetVersion}
             onChange={(e) => setTargetVersion(e.target.value)}
             inputMode="numeric"
@@ -280,7 +292,7 @@ function VersionsPanel({
               act(async () => {
                 await activateManifestVersion(name, targetN);
                 setTargetVersion('');
-              })
+              }, `activate v${targetN} of ${name}`)
             }
           >
             <RotateCcwIcon className="size-3.5" /> Activate
@@ -302,17 +314,23 @@ function VersionsPanel({
         </div>
         <div className="flex items-center gap-2">
           <Input
+            aria-label={`Canary version for ${name}`}
             value={canaryVersion}
             onChange={(e) => setCanaryVersion(e.target.value)}
             inputMode="numeric"
             placeholder="version"
             className="h-7 w-24 font-mono text-xs"
           />
+          {/* This slider decides what share of live traffic moves to the canary, and
+              announced as "slider, 25" — no name at all. `aria-valuetext` makes the
+              value a percentage rather than a bare number. */}
           <input
             type="range"
             min={0}
             max={100}
             value={weight}
+            aria-label={`Canary traffic weight for ${name}`}
+            aria-valuetext={`${weight} percent`}
             onChange={(e) => setWeight(Number(e.target.value))}
             className="h-6 flex-1 accent-primary"
           />
@@ -325,7 +343,12 @@ function VersionsPanel({
             disabled={busy || !canaryValid}
             question={`v${canaryN} will take ${weight}% of traffic for ${name}.`}
             confirmLabel={`Send ${weight}% to v${canaryN}`}
-            onConfirm={() => act(() => setManifestCanary(name, canaryN, weight))}
+            onConfirm={() =>
+              act(
+                () => setManifestCanary(name, canaryN, weight),
+                `send ${weight}% of traffic to v${canaryN} of ${name}`,
+              )
+            }
           >
             Apply canary
           </ConfirmButton>
@@ -345,7 +368,7 @@ function VersionsPanel({
               act(async () => {
                 await clearManifestCanary(name);
                 setCanaryVersion('');
-              })
+              }, `clear the canary on ${name}`)
             }
             title="Drop the canary version and zero its weight"
           >
@@ -368,13 +391,19 @@ function VersionsPanel({
 
       {editor != null && (
         <div className="space-y-1.5 rounded-md border border-dashed p-2">
+          <Label htmlFor="manifest-version-comment">Change comment</Label>
           <Input
+            id="manifest-version-comment"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="change comment"
+            placeholder="what changed, e.g. raised max_tool_calls"
             className="h-7 text-xs"
           />
+          {/* This carried `aria-describedby` while having no accessible name to
+              describe: a description is not a name. */}
+          <Label htmlFor="manifest-editor">Manifest JSON for {name}</Label>
           <textarea
+            id="manifest-editor"
             value={editor}
             onChange={(e) => setEditor(e.target.value)}
             spellCheck={false}
