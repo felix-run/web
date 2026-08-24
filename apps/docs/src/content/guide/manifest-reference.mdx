@@ -58,28 +58,30 @@ and `browser_tools`; a sub-agent's own leaf manifest declares those instead.
 ```yaml
 spec:
   model:
-    id: claude-sonnet-4
+    id: claude-sonnet
     temperature: 0
     max_tokens: 4096
     thinking_level: medium
-    fallbacks: [claude-haiku-4]
+    fallbacks: [claude-haiku]
 ```
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `id` | string \| null | `null` | Logical route name. Null falls back to `FELIX_DEFAULT_MODEL_ID` (`claude-sonnet-4`). |
+| `id` | string \| null | `null` | Logical route name. Null falls back to `FELIX_DEFAULT_MODEL_ID` (`claude-sonnet`). |
 | `temperature` | float | `0.0` | |
 | `max_tokens` | int \| null | `null` | Provider default when unset. |
 | `region` | string \| null | `null` | |
 | `cache` | bool | `false` | Provider prompt caching. |
 | `thinking_budget` | int \| null, `128`–`64000` | `null` | Extended-thinking token budget. |
 | `thinking_level` | `off` `minimal` `low` `medium` `high` `xhigh` `max` \| null | `null` | When set, **overrides** `thinking_budget` via the level map. |
-| `fallbacks` | string[] | `[]` | Tried in order on a provider error; emits a `model_switch` audit event. |
+| `fallbacks` | string[] | `[]` | Tried in order on a provider error; increments the `felix_model_switch` counter. |
 | `confidence_escalation` | object | disabled | See below. |
 | `price` | map[string, float] | `{}` | USD per 1M tokens, overriding the built-in table for cost attribution. |
 
 Logical ids resolve through `DEFAULT_MODEL_ROUTES`, overridable with `FELIX_MODEL_ROUTES`:
-`claude-sonnet-4`, `claude-haiku-4`, `gpt-4.1`, `gpt-4.1-mini`, `llama-3-pro`, `llama-3-fast`.
+`claude-opus`, `claude-sonnet`, `claude-haiku`, `claude-fable`, `gpt-4.1`, `gpt-4.1-mini`,
+`llama-3-pro`, `llama-3-fast`. The suffixed `claude-sonnet-4` and `claude-haiku-4` are retained as
+legacy aliases onto the current model in the same tier; prefer the unsuffixed ids.
 Providers are `anthropic`, `openai` and `ollama`, plus any registered through
 `register_model_provider`. See [Model client](/internals/model-client/).
 
@@ -374,6 +376,30 @@ spec:
 | `model` | string | `"claude-haiku"` |
 | `max_facts` | int, 1–20 | `5` |
 | `min_chars` | int ≥ 0 | `80` |
+| `verify` | bool | `false` |
+
+`verify` adds a second pass that hands the proposed facts back to `model` along with the excerpt and
+keeps only what the excerpt actually supports. It doubles the extraction calls, which is why it is
+off by default — turn it on where stored memory is acted on rather than merely recalled.
+
+The pass can only **remove**. Its verdict selects from the proposals; it never supplies a memory of
+its own, and it cannot alter a kept memory's `kind`, `topic_key` or `importance`. That matters
+because the excerpt it reads is untrusted transcript, and `topic_key` drives supersession — a
+verdict that could set one could delete an unrelated stored fact.
+
+It fails open on anything it cannot read, on the grounds that a broken verifier is not evidence the
+facts were wrong:
+
+| Verdict | Result |
+|---|---|
+| A subset of the proposals | Just that subset is stored |
+| `[]` — a well-formed empty array | Nothing is stored. The one unambiguous way to reject everything |
+| The call errors | The unverified set is kept |
+| Unparseable, or every item unusable | The unverified set is kept |
+| Valid items that match no proposal | The unverified set is kept — the verifier rewrote rather than chose |
+
+Content is matched case- and whitespace-insensitively but not punctuation-insensitively, so a
+verifier that echoes an item back with a trailing full stop counts as having rewritten it.
 
 Extraction runs on `model`, not on the turn's model — it is a small, mechanical job on every
 completed turn, and billing it to a frontier model roughly doubles the cost of having memory at
@@ -542,9 +568,9 @@ spec:
 | `id` | string | required |
 | `description` | string | `""` |
 | `required_scopes` | string[] | `[]` |
-| `tools` | string[] (glob, e.g. `stripe__*`) | `[]` |
+| `tools` | string[] (glob, e.g. `github__*`) | `[]` |
 
-A denial emits a `policy_decision` audit event with `outcome: denied`.
+A denial emits a `policy_deny` audit event with `status: denied`.
 
 ## `spec.limits`
 
@@ -562,10 +588,18 @@ spec:
 | `max_peer_hops` | int \| null | `null` | **5** |
 | `max_input_tokens` | int \| null | `null` | **1,000,000** |
 | `max_output_tokens` | int \| null | `null` | **100,000** |
+| `max_cost_usd` | float \| null | `null` | **1,000.00** |
 | `precount` | bool | `false` | Count input tokens before the call rather than after. |
 
+`max_cost_usd` is a per-run spend ceiling, accumulated from the model catalog's prices as tokens are
+metered. It fails closed: a model the catalog cannot price is a pricing gap that mis-enforces the
+cap, so supply `spec.model.price` for any model you route to that the built-in table does not
+cover.
+
 `spec.recursion_limit` (int \| null, ceiling **50**) and `spec.max_turns` (ceiling **100**) are
-capped the same way. A breach emits `limit_exceeded` with `outcome: denied`.
+capped the same way. A breach denies the call like any other governance layer: the tool result
+becomes a deny string, `felix_tool_calls{status="denied"}` increments, and the run records a
+`policy_deny` audit row. There is no distinct `limit_exceeded` event type.
 
 ## `spec.guardrails`
 
@@ -596,8 +630,10 @@ compile error rather than a manifest that applies no wrapper while reporting gua
 
 The `pii` provider needs the `pii` extra (Presidio) **plus a spaCy English model**. Without both —
 which is the case on the lean image — it degrades to three regexes (email, US SSN, card-like digit
-runs), announced at `WARNING` with a `felix_control_degraded` counter, not silently. Blocks emit `guardrail_block`; judges emit
-`judge_score` with `pass` / `fail`.
+runs), announced at `WARNING` with a `felix_control_degraded` counter, not silently. Guardrail
+blocks and below-threshold judge scores deny through the same path as every other layer — a
+`policy_deny` audit row and `felix_tool_calls{status="denied"}` — not under event types of their
+own.
 
 ## `spec.content_screening`
 
@@ -748,7 +784,7 @@ metadata:
 spec:
   pattern: react
   model:
-    id: claude-sonnet-4
+    id: claude-sonnet
     temperature: 0
   system_prompt:
     inline: You are a concise, accurate assistant.
