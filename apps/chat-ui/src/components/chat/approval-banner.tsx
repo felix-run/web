@@ -12,10 +12,13 @@ import { ApprovalDecision } from '@/components/approval/approval-decision';
 export function ApprovalBanner({
   pending,
   queueLength,
+  runAborted,
   onDecide,
 }: {
   pending: PendingApproval;
   queueLength: number;
+  /** The run was stopped; the approval outlives it but deciding will not resume it. */
+  runAborted?: boolean;
   /** Performs the decision and advances the queue. Should throw on failure. */
   onDecide: (status: 'approved' | 'denied') => Promise<void>;
 }) {
@@ -27,6 +30,7 @@ export function ApprovalBanner({
       // `before` is only meaningful for a write; anything else has no before/after.
       before={pending.toolName === 'write_file' ? (pending.before ?? null) : undefined}
       queueLength={queueLength}
+      runAborted={runAborted}
       onDecide={onDecide}
     />
   );
