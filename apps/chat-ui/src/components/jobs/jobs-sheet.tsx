@@ -112,9 +112,7 @@ export function JobsSheet({
 
           {/* Create form */}
           <div className="space-y-1.5 rounded-md border border-dashed p-2.5">
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              New job
-            </div>
+            <div className="text-xs font-medium text-muted-foreground">New job</div>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}

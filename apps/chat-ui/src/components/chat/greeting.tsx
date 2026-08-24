@@ -23,9 +23,6 @@ export function Greeting({
     // sideways on the first message.
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 py-4">
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">
-          {manifest}
-        </p>
         <h2 className="text-balance text-2xl font-semibold tracking-tight md:text-[1.75rem]">
           What do you want to work on?
         </h2>

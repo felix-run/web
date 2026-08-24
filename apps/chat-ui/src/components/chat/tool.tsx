@@ -43,9 +43,9 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-2 border-t border-border/50 px-3 py-2.5">
-        <Field label="input" value={tool.input} />
+        <Field label="Input" value={tool.input} />
         {tool.done ? (
-          <Field label="output" value={tool.output} emphasis />
+          <Field label="Output" value={tool.output} emphasis />
         ) : (
           verbose && (
             <p className="text-xs text-muted-foreground italic">Waiting for tool output…</p>
@@ -59,9 +59,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
 function Field({ label, value, emphasis }: { label: string; value: unknown; emphasis?: boolean }) {
   return (
     <div>
-      <div className="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {label}
-      </div>
+      <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
       <pre
         className={cn(
           'max-h-64 overflow-auto rounded-lg bg-background/80 p-2.5 text-xs leading-relaxed',
