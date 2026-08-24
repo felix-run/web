@@ -110,10 +110,14 @@ function MultimodalInputInner({
   );
   const slashOpen = !slashDismissed && isSlashy && filteredCommands.length > 0;
 
-  // Re-enable slash menu after text changes (clears the user's explicit Escape dismissal)
+  // Re-enable the menu once the text changes, which clears an explicit Escape
+  // dismissal. This used to have an empty dependency array, so it ran once on mount
+  // and never again: pressing Escape killed slash commands until reload, because the
+  // only other reset is selecting a command from the menu that is no longer showing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `text` is the trigger, not a value read here.
   useEffect(() => {
     setSlashDismissed(false);
-  }, []);
+  }, [text]);
 
   // Clamp selection when filter shrinks
   useEffect(() => {
@@ -378,6 +382,7 @@ function MultimodalInputInner({
                   variant="outline"
                   size="sm"
                   className="h-8 rounded-full px-3 text-xs"
+                  title="Start the run without streaming it here. Felix keeps working if you close the tab."
                   disabled={!canBackground}
                   onClick={() => {
                     void onBackground({
@@ -387,7 +392,7 @@ function MultimodalInputInner({
                     controller.textInput.clear();
                   }}
                 >
-                  Background
+                  Run in background
                 </Button>
               ) : null}
 
@@ -399,7 +404,7 @@ function MultimodalInputInner({
         </PromptInput>
       </div>
 
-      <KeyboardHint />
+      <KeyboardHint isBusy={isBusy} />
     </div>
   );
 }
@@ -479,21 +484,24 @@ function MicButton({
         title={isListening ? 'Stop voice input' : 'Voice input'}
         className={cn(
           'relative size-8 rounded-full transition-colors',
+          // Red because it is recording, not because anything failed. This briefly used
+          // `--state-failed`, which coupled the microphone to the error colour:
+          // changing how failure looks would have silently restyled it.
           isListening
-            ? 'bg-state-failed/15 text-state-failed hover:bg-state-failed/20'
+            ? 'bg-recording/15 text-recording hover:bg-recording/20'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
       >
         {isListening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
         {isListening && (
           <span
-            className="absolute inset-0 -z-10 animate-pulse rounded-full bg-destructive/20"
+            className="absolute inset-0 -z-10 animate-pulse rounded-full bg-recording/20"
             aria-hidden
           />
         )}
       </Button>
       {isListening && interim && (
-        <span className="max-w-[16ch] truncate text-xs text-state-failed/80 italic sm:max-w-[24ch]">
+        <span className="max-w-[16ch] truncate text-xs text-recording/80 italic sm:max-w-[24ch]">
           {interim}
         </span>
       )}
@@ -561,7 +569,7 @@ function SendOrStop({
         type="button"
         size="icon-sm"
         variant="secondary"
-        className="size-8 rounded-full shadow-sm transition-transform duration-150 hover:scale-105 active:scale-95"
+        className="size-8 rounded-full shadow-sm transition-transform duration-150 active:scale-95"
         onClick={onStop}
         aria-label="Stop generating"
       >
@@ -628,14 +636,21 @@ function DropOverlay() {
   );
 }
 
-function KeyboardHint() {
+/**
+ * What Enter does, which is not always the same thing.
+ *
+ * During a run Enter steers rather than sends, and the placeholder and helper line
+ * both say so. This hint used to keep saying "to send" underneath them, putting
+ * three statements about one key on screen at once, two of which disagreed.
+ */
+function KeyboardHint({ isBusy }: { isBusy: boolean }) {
   return (
     <p className="mt-2 text-center text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1">
         <Kbd>
           <CornerDownLeft className="size-2.5" />
         </Kbd>
-        <span>to send</span>
+        <span>{isBusy ? 'to steer the run' : 'to send'}</span>
       </span>
       {/* Decorative separator: `text-border` is a hairline colour and rendered this at
           1.24:1, effectively invisible. Hidden from assistive tech and given a colour
@@ -671,6 +686,17 @@ function hasFiles(e: DragEvent): boolean {
   return false;
 }
 
+/**
+ * Callback props are deliberately absent from this comparator: they are rebuilt on
+ * most renders and comparing them would defeat the memo entirely.
+ *
+ * That is only safe because the handlers behind them read mutable state through
+ * refs rather than closing over it. The send path uses `threadIdRef.current`, so a
+ * composer holding a previous `onSubmit` still posts to the current thread; checked
+ * by switching between threads that share a manifest, where nothing below changes,
+ * and confirming the request followed the selection. A future callback that closes
+ * over state directly would go stale here with nothing to catch it.
+ */
 export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.status !== next.status) return false;
   if (prev.isConnected !== next.isConnected) return false;

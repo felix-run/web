@@ -68,6 +68,7 @@ import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { describeError } from '@/lib/errors';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
@@ -209,6 +210,7 @@ export default function App() {
   // number: it is a reference panel read *beside* the chat, and a drawer covers the
   // thing it is describing. The drawer is the fallback for widths with no room, not
   // the preferred form.
+  const harnessReachable = useHarnessReachable();
   const inspectorInline = useMediaQuery('(min-width: 1152px)');
   const historyInline = useMediaQuery('(min-width: 1024px)');
 
@@ -1269,7 +1271,7 @@ export default function App() {
             {manifest === DEFAULT_MANIFEST ? <WorkspaceStrip /> : null}
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
-              isConnected
+              isConnected={harnessReachable}
               onSubmit={submit}
               onBackground={(message) => submit(message, 'background')}
               onStop={stopRun}

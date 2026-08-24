@@ -1,3 +1,4 @@
+import { reportReachability } from '@/lib/connection';
 /**
  * Thin client for the Felix surfaces the chat UI uses, all reached same-origin
  * under /api/* (Vite proxy in dev, proxy Worker in prod):
@@ -49,10 +50,24 @@ import type {
  * before the caller's own error handling runs.
  */
 async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  const res = await fetch(input, {
-    ...init,
-    headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders() },
-  });
+  let res: Response;
+  try {
+    res = await fetch(input, {
+      ...init,
+      headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders() },
+    });
+  } catch (err) {
+    // `fetch` rejects only when the request never reached anything: DNS, TLS, a
+    // refused connection, a dropped link. That is the one case that means the
+    // harness is not there. An abort is the caller changing its mind, not a
+    // connectivity fact, so it is left alone.
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      reportReachability(false);
+    }
+    throw err;
+  }
+  // Any reply at all, a 500 included, means something is listening.
+  reportReachability(true);
   if (res.status === 401) handleUnauthorized();
   return res;
 }
