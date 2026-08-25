@@ -15,8 +15,16 @@ How the Python harness is tested. Repo: [felix-run/felix](https://github.com/fel
 |---|---|---|
 | **Unit** | `tests/unit/` | Schema, patterns, governance, stores (often `memory://` DB + `object_store=memory`), auth modes |
 | **Integration** | `tests/integration/` | FastAPI HTTP surfaces (`/health`, `/chat`, `/v1`, …) against a test app |
+| **Conformance** | `tests/conformance/` | One contract run against every backend of a store — session, memory, migrations |
 | **Smoke** | `tests/test_smoke.py` | Coarse import / build / optional live-model checks |
 | **Eval** | CLI + `felix.eval` | Offline datasets; `--mock` scores rubric without a live model |
+
+The conformance suite is the one to know about, because it can pass without proving anything. A
+store's contract is written once and run against each backend — the in-memory arm always runs, but
+the Postgres arm runs **only** when `FELIX_CONFORMANCE_DATABASE_URL` points at a reachable database
+(CI sets it from a service container) and skips otherwise. That skip is a real hole in coverage
+rather than a pass, which matters because the logic under test exists twice: once for `memory://`
+and once in SQL. Run it against Postgres before trusting it.
 
 No Vitest / miniflare. Run via:
 
