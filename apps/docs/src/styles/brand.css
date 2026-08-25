@@ -1,0 +1,16 @@
+/*
+ * Brand treatment. Not generated — `theme.css` is built from `@felix/design`,
+ * this file is hand-written and safe to edit.
+ *
+ * The wordmark is set in caps, but the *text* stays "Felix" in
+ * `astro.config.mjs`. Uppercasing in CSS rather than in the string keeps the
+ * accessible name, the browser tab, OG/social cards and copy-paste as the
+ * proper noun — screen readers can spell out a literal all-caps word letter by
+ * letter, and "FELIX" in a search snippet reads as shouting.
+ */
+.site-title {
+  text-transform: uppercase;
+  /* Caps need air; the default tracking is tuned for mixed case. */
+  letter-spacing: 0.07em;
+  font-weight: 650;
+}

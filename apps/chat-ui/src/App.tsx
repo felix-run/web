@@ -1090,7 +1090,9 @@ export default function App() {
           <HistoryIcon className="size-4" />
         </Button>
         <div className="flex min-w-0 items-center gap-2 px-1.5">
-          <span className="truncate font-semibold tracking-tight">Felix</span>
+          {/* Wordmark: caps via CSS, not in the string, so the accessible name
+              and anything copied out stay the proper noun. */}
+          <span className="truncate font-semibold uppercase tracking-wider">Felix</span>
           {verbose && (
             <Badge variant="secondary" className="hidden font-normal sm:inline-flex">
               Verbose
