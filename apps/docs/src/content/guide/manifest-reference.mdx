@@ -406,8 +406,12 @@ completed turn, and billing it to a frontier model roughly doubles the cost of h
 all. If that model cannot be built, extraction falls back to the turn's model rather than dropping
 the fact.
 
-Facts land in `memory_vectors` (pgvector, HNSW) with kinds `fact`, `preference`, `episode`,
-`procedural`. Semantic recall needs the `embeddings` extra.
+Facts land in `memory_vectors` (pgvector, HNSW) with one of four kinds: `fact`, `event`,
+`instruction`, `task`. The extractor asks the model to classify each fact, and **anything outside
+that set is silently rewritten to `fact`** rather than rejected — so a prompt that invents a kind
+degrades quietly instead of failing. Semantic recall needs the `embeddings` extra.
+
+Procedural memory is a separate subsystem under `spec.procedural_memory`, not a kind in this table.
 
 ## `spec.session`
 
@@ -464,7 +468,7 @@ spec:
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `a2a.publish` | bool | `true` | Opt-**out**. `false` withholds the agent from `/.well-known/agent.json`. The default is `true` because the field was never read before, so every agent was already advertised; a `false` default would have 404'd every existing manifest. |
+| `a2a.publish` | bool | `true` | Opt-**out**. `false` withholds the agent from `/.well-known/agent-card.json`. The default is `true` because the field was never read before, so every agent was already advertised; a `false` default would have 404'd every existing manifest. |
 | `a2a.capabilities[]` | `{id, description, input_schema_ref}` | `[]` | Merged into the agent card, alongside `spec.skills`. |
 | `observability.trace` | bool | `true` | |
 | `observability.metrics[]` | string[] | `[]` | Empty = every counter. Non-empty is an **allowlist**: unlisted counter names are dropped before the series exists, which also bounds the Prometheus cardinality that tenant-supplied manifest ids and remote MCP tool names would otherwise create. |
