@@ -51,6 +51,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm check-tailwind-sources
 
+      # A response field the harness spells differently is `undefined` at runtime
+      # and nothing above sees it: the cast typechecks and the route is right.
+      - name: Payload shapes
+        if: ${{ !cancelled() }}
+        run: pnpm check-payload-shapes
+
       # turbo builds every package with a build script: chat-ui and docs.
       - name: Build
         if: ${{ !cancelled() }}

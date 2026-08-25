@@ -38,6 +38,7 @@ import type {
   MemoryHit,
   MemoryRecord,
   Plan,
+  PlanWire,
   ResolvedManifest,
   Rubric,
   SessionSnapshot,
@@ -748,12 +749,38 @@ export async function respondUiRequest(args: {
   }
 }
 
-/** GET /plans → plan/step progress (populated by the `deep` pattern). */
+/**
+ * GET /plans → plan/step progress (populated by the `deep` pattern).
+ *
+ * The row is metadata plus an opaque `plan` blob, and the title and steps live
+ * inside it; flattening here is what lets the panel read `p.steps` at all. The
+ * response carries the rows twice, as `plans` and as `items` — the same doubled
+ * shape `/approvals` returns — so both names are read rather than betting on one.
+ */
 export async function listPlans(limit = 25): Promise<Plan[]> {
   const res = await apiFetch(`/api/plans?limit=${limit}`);
   if (!res.ok) throw new Error(`plans: ${res.status}`);
-  const body = (await res.json()) as { plans?: Plan[] };
-  return body.plans ?? [];
+  const body = (await res.json()) as { plans?: PlanWire[]; items?: PlanWire[] };
+  return (body.plans ?? body.items ?? []).map(flattenPlan);
+}
+
+/** A wire plan row as the panel consumes it: blob hoisted, steps always an array. */
+export function flattenPlan(row: PlanWire): Plan {
+  const plan = row.plan ?? {};
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    manifest_id: row.manifest_id,
+    title: plan.title || 'Untitled plan',
+    steps: (plan.steps ?? []).map((s, i) => ({
+      id: String(s.id ?? i + 1),
+      title: s.title ?? '',
+      status: s.status ?? 'pending',
+      note: s.note,
+    })),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 }
 
 /**
