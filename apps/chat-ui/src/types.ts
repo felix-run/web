@@ -78,6 +78,54 @@ export interface SessionSummary {
   parentSessionId?: string | null;
 }
 
+// --- Long-term memory (/memory) ---
+//
+// What an agent has stored across sessions. The harness builds this as an
+// operator surface: when a run starts answering from a fact that is stale,
+// wrong, or was extracted from a hostile tool result, someone has to be able to
+// find that fact and remove it without a database console.
+
+/** One row from GET /memory, or GET /memory/as-of/{turn_seq}. */
+export interface MemoryRecord {
+  id: string;
+  kind: string;
+  content: string;
+  manifest_id?: string;
+  topic_key?: string;
+  importance?: number;
+  /** `active`, or `forgotten` once DELETE has been called — the delete is soft. */
+  status?: string;
+  /** Set when a later memory replaced this one. */
+  superseded_by?: string | null;
+  /** Turn sequence this was learned at, and the one that retired it. */
+  origin_seq?: number | null;
+  superseded_seq?: number | null;
+  created_at?: number;
+  last_used_at?: number | null;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * One hit from GET /memory/search — a *different* shape from the list row, not a
+ * subset with extras: no timestamps or status, plus the two fields that only
+ * ranking produces.
+ */
+export interface MemoryHit {
+  id: string;
+  content: string;
+  kind: string;
+  score: number;
+  topic_key?: string;
+  importance?: number;
+  /**
+   * Which retrievers found this, e.g. `["fts"]` or `["fts", "vector"]`.
+   *
+   * The reason a result looks wrong is usually which channel produced it, and
+   * that is invisible everywhere else — so it is rendered rather than dropped.
+   */
+  channels?: string[];
+}
+
 // --- Harness-parity surfaces (Inspector panel) ---
 // Shapes mirror src/api/{audit,approvals,plans}.ts in the orchestrator.
 

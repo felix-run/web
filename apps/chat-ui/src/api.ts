@@ -34,6 +34,8 @@ import type {
   ManifestPointer,
   ManifestSummary,
   ManifestVersionRow,
+  MemoryHit,
+  MemoryRecord,
   Plan,
   ResolvedManifest,
   Rubric,
@@ -581,6 +583,84 @@ export async function exportSession(threadId: string): Promise<string> {
     throw new Error(`sessions/export: ${res.status} ${detail.slice(0, 200)}`);
   }
   return await res.text();
+}
+
+// --- Long-term memory (/memory) ---
+//
+// Reads need the `memory:read` scope and writes `memory:write`, so a 403 here
+// means the key is too narrow rather than that the store is empty — the two look
+// identical without the message `describeError` writes. These routes are also
+// newer than the rest of the surface, so a 404 means the harness predates them.
+
+/** GET /memory → what the agent has stored, newest first. */
+export async function listMemories(
+  opts: { manifestId?: string; kind?: string; limit?: number } = {},
+): Promise<MemoryRecord[]> {
+  const q = new URLSearchParams();
+  if (opts.manifestId) q.set('manifest_id', opts.manifestId);
+  if (opts.kind) q.set('kind', opts.kind);
+  q.set('limit', String(opts.limit ?? 50));
+  const res = await apiFetch(`/api/memory?${q}`);
+  if (!res.ok) throw new Error(`memory: ${res.status}`);
+  const body = (await res.json()) as { items?: MemoryRecord[] };
+  return body.items ?? [];
+}
+
+/**
+ * GET /memory/search → the same hybrid ranking the agent sees.
+ *
+ * The point of exposing this is reproducibility: an operator can ask what the
+ * agent would have recalled, and each hit reports which retriever found it.
+ */
+export async function searchMemories(
+  query: string,
+  opts: { manifestId?: string; kind?: string; limit?: number } = {},
+): Promise<MemoryHit[]> {
+  const q = new URLSearchParams({ q: query });
+  if (opts.manifestId) q.set('manifest_id', opts.manifestId);
+  if (opts.kind) q.set('kind', opts.kind);
+  q.set('limit', String(opts.limit ?? 8));
+  const res = await apiFetch(`/api/memory/search?${q}`);
+  if (!res.ok) throw new Error(`memory/search: ${res.status}`);
+  const body = (await res.json()) as { items?: MemoryHit[] };
+  return body.items ?? [];
+}
+
+/**
+ * GET /memory/as-of/{turn_seq} → what was believed at a past turn, including
+ * facts since superseded.
+ *
+ * Read-only by design on the harness side: rewinding memory would be a
+ * data-loss primitive on a shared multi-tenant table, and session rewind is
+ * deliberately non-destructive.
+ */
+export async function memoriesAsOf(
+  turnSeq: number,
+  opts: { manifestId?: string; kind?: string; limit?: number } = {},
+): Promise<MemoryRecord[]> {
+  const q = new URLSearchParams();
+  if (opts.manifestId) q.set('manifest_id', opts.manifestId);
+  if (opts.kind) q.set('kind', opts.kind);
+  q.set('limit', String(opts.limit ?? 200));
+  const res = await apiFetch(`/api/memory/as-of/${encodeURIComponent(String(turnSeq))}?${q}`);
+  if (!res.ok) throw new Error(`memory/as-of: ${res.status}`);
+  const body = (await res.json()) as { items?: MemoryRecord[] };
+  return body.items ?? [];
+}
+
+/**
+ * DELETE /memory/{id} → stop the agent recalling this.
+ *
+ * A soft delete: the row moves to `status: "forgotten"` and drops out of recall
+ * and the default listing, rather than being erased. Called "forget" throughout
+ * the UI for that reason — promising deletion would overstate what happens.
+ */
+export async function forgetMemory(id: string): Promise<void> {
+  const res = await apiFetch(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`memory/forget: ${res.status} ${detail.slice(0, 200)}`);
+  }
 }
 
 /** GET /chat/sessions/search — full-text hits across the tenant's event log. */
