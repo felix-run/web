@@ -173,9 +173,25 @@ curl -N -X POST "$BASE_URL/chat/stream" \
   -d '{"manifest":"quick","thread_id":"demo","messages":[{"role":"user","content":"Hi"}]}'
 ```
 
-:::caution
-`/chat/stream` **ignores** `spec.execution.mode: durable` and always runs inline. Use `POST /chat`
-plus polling when you need a run to survive a process restart.
+:::note
+A manifest with `spec.execution.mode: durable` streams the **run** rather than the turn. The first
+frame is `run_accepted` and carries the `resume_token`; status changes arrive as `run_status`, and a
+completed run emits `final`.
+
+Disconnecting tears down the *poll*, not the run — the opposite of the transient path, where a
+hung-up client deliberately kills the run so it stops burning tokens. A client that drops mid-run
+reattaches with [`GET /chat/runs/{resume_token}`](#get-chatrunsresume_token) rather than starting
+over.
+
+```
+data: {"event":"run_accepted","data":{"resume_token":"…","expires_at":…}}
+data: {"event":"run_status","data":{"status":"running","resume_token":"…"}}
+data: {"event":"final","data":{"role":"assistant","content":"…"}}
+data: [DONE]
+```
+
+A run that fails or expires says so in an `event: error` frame rather than closing quietly —
+"expired" and "still running" look identical to a client that only sees a stream end.
 :::
 
 ### Frame format
