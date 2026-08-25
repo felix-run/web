@@ -98,8 +98,20 @@ fine and silently does nothing — when the harness gains an event, add the arm 
 owns the REST calls and auth; `src/types.ts` keeps only what is app-specific (`Turn` and the
 management types).
 
-Every frame is a bare `data:` line — the harness sets no SSE `event:` field — in one envelope
-`{event, type, data, text}`, terminated by `data: [DONE]`.
+*Almost* every frame is a bare `data:` line carrying one envelope `{event, type, data, text}`,
+terminated by `data: [DONE]`. Two other SSE fields carry meaning, and a reader that matches whole
+frames against `data:` silently drops both:
+
+- **`event: error`** is the harness's one typed frame — the only way a stream reports a failure that
+  happened after its 200 was sent (`/chat/stream`, the reconnect stream, every durable-run failure).
+  Its payload is `{error: {message, type}}`, not the usual envelope; `readSseStream` normalises it
+  into an `on_error` event, which the harness itself never emits.
+- **`id:`** stamps structural frames with the thread's next session sequence — everything except
+  `text_delta`, `on_chat_model_stream` and `session_progress`. It reaches the app through
+  `StreamHandlers.onCursor`, and is what `GET /chat/stream/{thread_id}` takes as `Last-Event-ID`.
+
+`apps/docs/src/content/guide/rest-api.mdx` documents both in full; it is the reference, not this
+summary.
 
 Flows worth knowing before editing the app:
 

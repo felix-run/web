@@ -82,6 +82,12 @@ export async function listManifests(signal?: AbortSignal): Promise<string[]> {
 
 export interface StreamHandlers {
   onEvent: (event: StreamEvent) => void | Promise<void>;
+  /**
+   * Each `id:` the stream stamps — the thread's next session sequence, carried
+   * by structural frames only. Hand the newest back as `Last-Event-ID` to
+   * `GET /chat/stream/{thread_id}` to reattach after a dropped connection.
+   */
+  onCursor?: (lastEventId: string) => void;
 }
 
 export interface StreamArgs {
@@ -92,10 +98,14 @@ export interface StreamArgs {
 }
 
 /**
- * POST /chat/stream and dispatch each `data: <json>` line. Resolves when the
- * server emits `data: [DONE]`. The SSE framing (one event per `\n\n`) is
- * decoded with a carry buffer so events split across network chunks are not
- * dropped — same discipline the harness uses on its own SSE reads.
+ * POST /chat/stream and dispatch each frame. Resolves when the server emits
+ * `data: [DONE]`. The SSE framing (one event per `\n\n`) is decoded with a carry
+ * buffer so events split across network chunks are not dropped — same discipline
+ * the harness uses on its own SSE reads.
+ *
+ * `readSseStream` also folds the harness's `event: error` frame into an
+ * `on_error` event, so a stream that fails after its 200 arrives here as an
+ * event rather than as silence.
  */
 export async function streamChat(args: StreamArgs, handlers: StreamHandlers): Promise<void> {
   const res = await apiFetch('/api/chat/stream', {
@@ -114,7 +124,7 @@ export async function streamChat(args: StreamArgs, handlers: StreamHandlers): Pr
     throw new Error(`chat/stream: ${res.status} ${detail.slice(0, 200)}`);
   }
 
-  await readSseStream(res, handlers.onEvent);
+  await readSseStream(res, handlers.onEvent, { onCursor: handlers.onCursor });
 }
 
 // --- Inspector REST helpers ---
