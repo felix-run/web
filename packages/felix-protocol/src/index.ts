@@ -5,8 +5,10 @@ export type {
   ImageAttachment,
   PendingUiRequest,
   Role,
+  SessionEvent,
   SessionSnapshot,
   StreamEvent,
   ThinkingLevel,
+  ThreadHistory,
   TokenUsage,
 } from './types';
