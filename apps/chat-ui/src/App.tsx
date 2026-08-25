@@ -466,6 +466,11 @@ export default function App() {
       setError(null);
       setSessionPhase('turn');
 
+      // Set by a `run_accepted` frame, cleared by `final`. Non-null means a
+      // durable run is still executing server-side, so losing the stream is not
+      // the same as losing the run.
+      let resumeToken: string | null = null;
+
       const handleEvent = async (ev: { event: string; data: Record<string, unknown> }) => {
         switch (ev.event) {
           case 'on_chat_model_stream':
@@ -605,6 +610,36 @@ export default function App() {
             }));
             break;
           }
+          // The durable trio. A manifest with `spec.execution.mode: durable`
+          // makes /chat/stream stream the *run's progress* rather than tokens:
+          // no deltas ever arrive, and the answer lands in `final`. Rendered the
+          // same way as the background-run path below, because to the user it is
+          // the same thing — it just got here down a different route.
+          case 'run_accepted': {
+            const data = ev.data as { resume_token?: string };
+            // Held so a dropped connection can rejoin the run instead of
+            // abandoning it: the run itself outlives this stream.
+            if (data.resume_token) resumeToken = data.resume_token;
+            setSessionPhase('durable');
+            patch((t) => ({ ...t, content: t.content || 'Durable run accepted…' }));
+            break;
+          }
+          case 'run_status': {
+            const status = String((ev.data as { status?: string }).status ?? '').trim();
+            if (status) patch((t) => ({ ...t, content: `Background · ${status}…` }));
+            break;
+          }
+          // The durable answer, and the only place it arrives — there are no
+          // deltas to have accumulated, so this replaces rather than defers.
+          case 'final': {
+            const content = String((ev.data as { content?: string }).content ?? '').trim();
+            resumeToken = null;
+            patch((t) => ({ ...t, content: content || t.content }));
+            break;
+          }
+          // Normalised by `readSseStream` from the harness's `event: error`
+          // frame — the one SSE-typed frame, and the only way a stream reports
+          // a failure that happened after its 200 was already sent.
           case 'on_error':
             setError(String((ev.data as { message?: string }).message ?? 'error'));
             break;
@@ -687,17 +722,40 @@ export default function App() {
           return;
         }
 
-        await streamChat(
-          {
-            manifest,
-            messages: messagesToSend,
-            threadId: threadIdRef.current,
+        try {
+          await streamChat(
+            {
+              manifest,
+              messages: messagesToSend,
+              threadId: threadIdRef.current,
+              signal: ctrl.signal,
+            },
+            {
+              onEvent: (ev) => handleEvent(ev as { event: string; data: Record<string, unknown> }),
+            },
+          );
+        } catch (err) {
+          // A durable run survives its stream. If one was accepted and has not
+          // yet reported `final`, rejoin it by polling rather than reporting a
+          // failure for work that is still going.
+          if (!resumeToken || ctrl.signal.aborted) throw err;
+          setSessionPhase('durable');
+          const rejoined = await pollDurableRun(resumeToken, {
             signal: ctrl.signal,
-          },
-          {
-            onEvent: (ev) => handleEvent(ev as { event: string; data: Record<string, unknown> }),
-          },
-        );
+            onTick: (r) => {
+              patch((t) => ({ ...t, content: `Background · ${r.status || 'pending'}…` }));
+            },
+          });
+          if (rejoined.error) {
+            setError(rejoined.error);
+            return;
+          }
+          const content =
+            typeof rejoined.final === 'object' && rejoined.final && 'content' in rejoined.final
+              ? String(rejoined.final.content || '')
+              : '';
+          patch((t) => ({ ...t, content: content || `(${rejoined.status || 'completed'})` }));
+        }
       };
 
       return run()

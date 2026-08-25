@@ -14,8 +14,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 export interface SseAdapter {
-  /** Invoke the app's streamChat, collecting every event it dispatches. */
-  run(collect: (event: unknown) => void | Promise<void>): Promise<void>;
+  /**
+   * Invoke the app's streamChat, collecting every event it dispatches and — if
+   * the caller wires it — every `id:` cursor the stream stamps.
+   */
+  run(
+    collect: (event: unknown) => void | Promise<void>,
+    onCursor?: (lastEventId: string) => void,
+  ): Promise<void>;
 }
 
 /** A Response whose body yields exactly these chunks, in order. */
@@ -51,6 +57,18 @@ export function describeSseReader(label: string, adapter: SseAdapter): void {
       events.push(e);
     });
     return events;
+  };
+
+  const collectCursorsFrom = async (chunks: Array<string | Uint8Array>) => {
+    stubFetch(streamResponse(chunks, { status: 200 }));
+    const cursors: string[] = [];
+    await adapter.run(
+      () => {},
+      (id) => {
+        cursors.push(id);
+      },
+    );
+    return cursors;
   };
 
   describe(`${label} SSE reader`, () => {
@@ -115,13 +133,88 @@ export function describeSseReader(label: string, adapter: SseAdapter): void {
       expect(events).toEqual([{ event: 'survivor', data: {} }]);
     });
 
-    it('ignores lines that are not data frames', async () => {
+    it('ignores frames carrying no data line', async () => {
+      // A comment-only heartbeat and a field-only frame are both undispatchable
+      // per the SSE spec — but note that having *fields* is not the same as
+      // having no data, which is what `event: error` below turns on.
       const events = await collectFrom([
         ': heartbeat\n\n',
         'event: ping\n\n',
         frame({ event: 'real', data: {} }),
       ]);
       expect(events).toEqual([{ event: 'real', data: {} }]);
+    });
+
+    // --- SSE fields other than `data:` ---
+    //
+    // The harness uses two, and a reader that matched whole frames against
+    // `data:` dropped both. `event: error` is the only way a stream reports a
+    // failure that happened after its 200 was sent, so losing it meant a failed
+    // run reached [DONE] and returned cleanly — indistinguishable from a short
+    // reply, with nothing logged and nothing shown.
+
+    it('surfaces the harness error frame as on_error', async () => {
+      const events = await collectFrom([
+        'event: error\ndata: {"error":{"message":"upstream exploded","type":"stream_error"}}\n\n',
+        'data: [DONE]\n\n',
+      ]);
+      expect(events).toEqual([
+        { event: 'on_error', data: { message: 'upstream exploded', type: 'stream_error' } },
+      ]);
+    });
+
+    it('still reports an error frame whose payload is missing fields', async () => {
+      // The failure path is the worst place to lose the reason to a shape change.
+      const events = await collectFrom(['event: error\ndata: {}\n\n']);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        event: 'on_error',
+        data: { message: expect.stringMatching(/\S/), type: 'stream_error' },
+      });
+    });
+
+    it('reassembles an error frame split between its event and data lines', async () => {
+      const whole = 'event: error\ndata: {"error":{"message":"late","type":"run_error"}}\n\n';
+      const at = whole.indexOf('\ndata:') + 3;
+      const events = await collectFrom([whole.slice(0, at), whole.slice(at)]);
+      expect(events).toEqual([{ event: 'on_error', data: { message: 'late', type: 'run_error' } }]);
+    });
+
+    it('reports each id: to onCursor, and leaves it standing for frames without one', async () => {
+      // `id:` is the thread's next session sequence, stamped on structural
+      // frames only. Handed back as Last-Event-ID it reattaches a dropped
+      // connection; a token-rate frame carries none and must not clear it.
+      const cursors = await collectCursorsFrom([
+        'id: 12\ndata: {"event":"tool_start","data":{"name":"read"}}\n\n',
+        frame({ event: 'text_delta', data: { delta: 'hi' } }),
+        'id: 15\ndata: {"event":"done","data":{}}\n\n',
+      ]);
+      expect(cursors).toEqual(['12', '15']);
+    });
+
+    it('does not mistake an id: line for the payload', async () => {
+      const events = await collectFrom([
+        'id: 7\ndata: {"event":"tool_end","data":{"name":"read"}}\n\n',
+      ]);
+      expect(events).toEqual([{ event: 'tool_end', data: { name: 'read' } }]);
+    });
+
+    it('reads a stream that uses CRLF line endings', async () => {
+      const events = await collectFrom([
+        'event: error\r\ndata: {"error":{"message":"crlf","type":"stream_error"}}\r\n\r\n',
+      ]);
+      expect(events).toEqual([
+        { event: 'on_error', data: { message: 'crlf', type: 'stream_error' } },
+      ]);
+    });
+
+    it('does not invent a frame boundary from a CRLF split across chunks', async () => {
+      // The \r ends one read and the \n begins the next. Normalising eagerly
+      // turns that pair into a blank line and cuts the frame in half.
+      const whole = 'data: {"event":"split","data":{"n":1}}\r\n\r\n';
+      const at = whole.indexOf('\r\n\r\n') + 3;
+      const events = await collectFrom([whole.slice(0, at), whole.slice(at)]);
+      expect(events).toEqual([{ event: 'split', data: { n: 1 } }]);
     });
 
     it('drops a trailing frame that never terminates', async () => {

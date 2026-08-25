@@ -49,6 +49,12 @@ export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhi
 export type StreamEvent =
   | { event: 'on_chat_model_stream'; data: { chunk?: { content?: string }; delta?: string } }
   | { event: 'text_delta'; data: { chunk?: { content?: string }; delta?: string } }
+  /**
+   * Legacy spelling of `tool_start` / `tool_end`, renamed in the harness on
+   * 2026-08-22. Kept because the harness is self-hosted and versions
+   * independently: a deployment older than that rename still emits these, and
+   * dropping the arms would silently stop rendering its tool cards.
+   */
   | { event: 'on_tool_start'; data: { name: string; input?: unknown } }
   | { event: 'on_tool_end'; data: { name: string; output?: unknown } }
   | { event: 'tool_start'; data: { name: string; input?: unknown; id?: string } }
@@ -99,10 +105,42 @@ export type StreamEvent =
       data: { phase?: string; reason?: string; [k: string]: unknown };
     }
   | { event: 'on_chain_end'; data: { output?: { usage?: TokenUsage } } }
-  | { event: 'on_error'; data: { message: string } }
+  /**
+   * A stream that failed after its 200 was sent.
+   *
+   * The harness never emits this name. It arrives as `event: error` — the one
+   * SSE-typed frame on the wire, carrying `{error: {message, type}}` — and
+   * `readSseStream` normalises it here so handlers see the same envelope as
+   * everything else. Changing that spelling means changing the reader, not
+   * this arm.
+   */
+  | { event: 'on_error'; data: { message: string; type?: string } }
   | { event: 'done'; data: { final?: ChatMessage; messages?: ChatMessage[] } }
   | { event: 'aborted'; data: { thread_id?: string } }
+  /**
+   * The durable trio. `POST /chat/stream` checks `spec.execution.mode` and, when
+   * it is `durable`, streams the run's *progress* instead of its tokens: no
+   * deltas ever arrive, and the answer comes in `final`.
+   *
+   * A client that models only the transient path renders an empty turn here,
+   * with nothing to distinguish it from a model that said nothing. The other
+   * durable entry point — `POST /chat` returning `202 + resume_token`, then
+   * polling `GET /chat/runs/{token}` — is unaffected and still supported.
+   */
+  | { event: 'run_accepted'; data: DurableRunAccepted }
+  | { event: 'run_status'; data: { status: string; resume_token?: string } }
+  | { event: 'final'; data: ChatMessage | { content?: string } }
   | { event: string; data: Record<string, unknown> };
+
+/** First frame of a durable run: what to come back to if the connection drops. */
+export interface DurableRunAccepted {
+  status?: string;
+  resume_token?: string;
+  fiber_id?: string;
+  thread_id?: string;
+  /** Epoch ms. The run is finished either way once this passes. */
+  expires_at?: number;
+}
 
 /**
  * Authoritative session snapshot from GET /chat/sessions/{id}.
