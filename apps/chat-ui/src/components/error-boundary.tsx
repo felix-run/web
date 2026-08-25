@@ -92,7 +92,7 @@ export function AppErrorFallback({ error }: { error: Error }) {
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Reloading usually clears it. Your conversations are stored locally and are not affected.
         </p>
-        <pre className="mt-3 max-h-40 overflow-auto rounded-lg border border-border/50 bg-muted/40 p-2 font-mono text-xs leading-relaxed text-muted-foreground">
+        <pre className="mt-3 max-h-40 overflow-auto rounded-lg border border-border/50 bg-code-surface p-2 font-mono text-xs leading-relaxed text-muted-foreground">
           {error.message}
         </pre>
         <Button className="mt-4" onClick={() => window.location.reload()}>

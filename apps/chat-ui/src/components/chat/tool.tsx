@@ -62,7 +62,7 @@ function Field({ label, value, emphasis }: { label: string; value: unknown; emph
       <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
       <pre
         className={cn(
-          'max-h-64 overflow-auto rounded-lg bg-background/80 p-2.5 text-xs leading-relaxed',
+          'max-h-64 overflow-auto rounded-lg bg-background p-2.5 text-xs leading-relaxed',
           emphasis ? 'text-foreground' : 'text-muted-foreground',
         )}
       >
