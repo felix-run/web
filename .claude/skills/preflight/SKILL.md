@@ -3,7 +3,7 @@ name: preflight
 description: Run the felix-web verification loop before opening a PR or claiming a change works — type-check, lint, and build across the workspace, plus a reminder of what these checks do and do not cover. Use when asked to verify, check, validate, or make sure a change is sound, and before every commit or PR.
 license: MIT
 compatibility: Requires pnpm 10.x and Node >= 20 in a felix-web checkout
-allowed-tools: Bash(pnpm check-types) Bash(pnpm lint) Bash(pnpm build) Bash(pnpm --filter *) Bash(git status:*) Bash(git diff:*)
+allowed-tools: Bash(pnpm check-types) Bash(pnpm lint) Bash(pnpm build) Bash(pnpm check-tailwind-sources) Bash(pnpm --filter *) Bash(git status:*) Bash(git diff:*)
 metadata:
   repo: felix-web
 ---
@@ -40,6 +40,10 @@ pnpm test           # turbo → vitest
 pnpm build          # turbo → tsc -b && vite build; astro build
 ```
 
+Add `pnpm check-tailwind-sources` when the change touches a stylesheet, a shared package that ships
+classes, or a dependency that renders markup — none of the four above notice a class Tailwind never
+scanned.
+
 Scope to one package when the change is contained — it is much faster:
 
 ```bash
@@ -68,6 +72,10 @@ report that it is unverified, or exercise it manually:
 - **The Workers themselves.** `vite build` does not exercise `worker/index.ts`. Use `wrangler dev`
   in the app directory.
 - **Docs prose.** `astro build` catches broken links and bad frontmatter, not wrong claims.
+- **Whether a class produced any CSS.** Tailwind generates a rule only for a class it scanned, so a
+  utility from an unscanned tree leaves the element styled with nothing — a silent, partial failure
+  that lint, types, and build all pass. `pnpm check-tailwind-sources` covers the trees named in its
+  `GUARDED` table; anything else means looking at the page.
 
 ## Report
 

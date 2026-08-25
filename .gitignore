@@ -30,3 +30,6 @@ apps/docs/.astro/
 
 # Impeccable local working dir (critiques, live-edit config)
 .impeccable/
+
+# Written and removed by scripts/check-tailwind-sources.mjs; only survives a killed run.
+apps/chat-ui/src/.check-tailwind-sources.tmp.css

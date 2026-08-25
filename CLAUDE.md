@@ -33,6 +33,7 @@ pnpm check-types       # turbo → tsc --noEmit
 pnpm test              # turbo → vitest (cowork-client, chat-ui)
 pnpm check-api-drift   # client routes vs the committed harness OpenAPI snapshot
 pnpm check-protocol-parity  # SSE events: every arm handled, every emitted event modelled
+pnpm check-tailwind-sources # every @source-covered tree still reaches the compiled CSS
 pnpm sync:harness [path]    # re-record both contract files from a harness checkout
 pnpm --filter @felix/chat-ui <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
@@ -77,8 +78,20 @@ the deployment, not the contract; on 2026-08-24 the local container was two feat
 snapshot silently omitted `/memory/*` and `GET /chat/stream/{thread_id}`. FastAPI builds the spec
 without a database, so nothing needs to be running.
 
+A third guard covers the stylesheet, which fails in the same silent way for a different reason.
+`pnpm check-tailwind-sources` compiles `apps/chat-ui/src/index.css` twice — once as written, once
+with every `@source` line stripped — and asserts that each guarded tree's canary classes appear in
+the first and not the second. Present in both means the canary proves nothing; absent from both
+means Tailwind is no longer scanning that tree, and every class living only there is being dropped
+from the build. It compiles because that is the only way to ask what Tailwind actually scanned
+rather than what the file says it should have; the two builds are in-memory and take ~250ms total.
+The guarded trees and their canaries are the `GUARDED` table at the top of the script, and an
+`@source` line reaching outside the app root with no entry there fails — a line nothing can notice
+the deletion of is not a guard.
+
 CI (`.github/workflows/ci.yml`) is one `verify` job: `pnpm install --frozen-lockfile`, then lint,
-check-types, API drift, protocol parity, build (chat-ui, docs), tests, then the hook tests —
+check-types, API drift, protocol parity, Tailwind sources, build (chat-ui, docs), tests, then the
+hook tests —
 each step runs even if an earlier one fails, so one red run reports everything. Verification of app behavior still
 means running it against a live harness.
 
