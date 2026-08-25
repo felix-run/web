@@ -12,8 +12,16 @@
  * absorbs every unknown event, and a `switch` over a string union with no
  * exhaustiveness check has no opinion about missing cases.
  *
+ * That is one direction. The other is the one that actually drifts, because the
+ * harness moves independently: an event it *gains* has no arm at all, so there
+ * is nothing for the check above to find. Reading only `types.ts` and `App.tsx`
+ * — both in this repo — it reported full parity on 2026-08-24 while six emitted
+ * events were unmodelled, including the three a durable run sends and the two
+ * the reattach stream speaks. `scripts/harness-events.json` records what the
+ * harness emits, so that direction fails too.
+ *
  * Usage:
- *   node scripts/check-protocol-parity.mjs <types.ts> <App.tsx...>
+ *   node scripts/check-protocol-parity.mjs <types.ts> <App.tsx...> [--harness <events.json>]
  *   node scripts/check-protocol-parity.mjs --update <types.ts> <App.tsx...>
  *   node scripts/check-protocol-parity.mjs --self-test
  *
@@ -58,6 +66,24 @@ export function extractHandled(src) {
   for (const m of src.matchAll(/\bcase\s+'([a-z0-9_]+)'\s*:/gi)) names.add(m[1]);
   for (const m of src.matchAll(/\bevent\.event\s*===\s*'([a-z0-9_]+)'/gi)) names.add(m[1]);
   return [...names];
+}
+
+/**
+ * Every event the harness emits that has no arm in the union.
+ *
+ * `normalised` maps a wire name onto the arm the reader folds it into — `error`
+ * arrives as an SSE `event:`-typed frame carrying `{error: {…}}` rather than the
+ * usual envelope, so the arm to look for is `on_error`, which the harness never
+ * sends under that name. `legacy` names are the reverse case: no longer emitted,
+ * but still arriving from a self-hosted deployment old enough to send them.
+ */
+export function findUnmodelled(arms, harness) {
+  const known = new Set(arms);
+  const normalised = harness.normalised ?? {};
+  const expected = [...(harness.emitted ?? []), ...(harness.legacy ?? [])].map(
+    (name) => normalised[name] ?? name,
+  );
+  return [...new Set(expected)].filter((name) => !known.has(name)).sort();
 }
 
 /** `[{ client, event }]` for every arm no client branch mentions. */
@@ -140,6 +166,19 @@ export interface Unrelated { event: 'not_an_arm' }
   }
   if (arms.includes('not_an_arm')) problems.push('read past the union into another declaration');
 
+  // The direction the type system cannot see.
+  const unmodelled = findUnmodelled(arms, {
+    emitted: ['alpha', 'delta', 'error'],
+    legacy: ['epsilon'],
+    normalised: { error: 'gamma' },
+  });
+  if (!unmodelled.includes('delta')) problems.push('missed an emitted event with no arm');
+  if (!unmodelled.includes('epsilon')) problems.push('missed a legacy event with no arm');
+  if (unmodelled.includes('alpha')) problems.push('false positive on a modelled event');
+  if (unmodelled.includes('error') || unmodelled.includes('gamma')) {
+    problems.push('did not apply the normalised mapping');
+  }
+
   if (problems.length) {
     console.error('✗ self-test failed — the extractors are broken:\n');
     for (const p of problems) console.error(`  ${p}`);
@@ -156,7 +195,17 @@ if (args[0] === '--self-test') {
 }
 
 const update = args[0] === '--update';
-const [typesPath, ...clientPaths] = update ? args.slice(1) : args;
+const positional = update ? args.slice(1) : args;
+
+// `--harness <path>`, defaulting to the recorded vocabulary beside this script.
+let harnessPath = resolve(dirname(fileURLToPath(import.meta.url)), 'harness-events.json');
+const flagAt = positional.indexOf('--harness');
+if (flagAt !== -1) {
+  harnessPath = positional[flagAt + 1];
+  positional.splice(flagAt, 2);
+}
+
+const [typesPath, ...clientPaths] = positional;
 
 if (!typesPath || !clientPaths.length) {
   console.error(
@@ -172,6 +221,25 @@ if (!arms.length) {
   console.error(`✗ found no StreamEvent arms in ${typesPath} — the union moved or was renamed.`);
   exit(1);
 }
+
+/**
+ * Absent vocabulary is a hard failure, not a skip.
+ *
+ * A missing file would otherwise silently disable the only check that can see a
+ * harness-side addition — the exact failure mode this whole script exists to
+ * close, reintroduced one level up.
+ */
+let harness;
+try {
+  harness = JSON.parse(readFileSync(harnessPath, 'utf8'));
+} catch (err) {
+  console.error(`✗ could not read the harness event vocabulary at ${harnessPath}`);
+  console.error(`  ${String(err?.message ?? err)}`);
+  console.error('  Regenerate it with `node scripts/sync-harness-contract.mjs <felix-checkout>`.');
+  exit(1);
+}
+
+const unmodelled = findUnmodelled(arms, harness);
 
 const clients = clientPaths.map((file) => ({
   file: relative(cwd(), file),
@@ -190,9 +258,23 @@ const fresh = gaps.filter((g) => !baseline.has(key(g)));
 const fixed = [...baseline].filter((b) => !gaps.some((g) => key(g) === b));
 
 console.log(
-  `checked ${arms.length} wire events against ${clients.length} client(s)` +
+  `checked ${arms.length} wire events against ${clients.length} client(s), and ` +
+    `${(harness.emitted ?? []).length} emitted by harness ${harness.harnessCommit ?? '(unknown)'}` +
     `${baseline.size ? `, ${baseline.size} grandfathered` : ''}`,
 );
+
+// Reported before the handler gaps: an event with no arm cannot have a handler
+// either, so leading with the missing arm names the actual cause.
+if (unmodelled.length) {
+  console.error(`\n✗ ${unmodelled.length} event(s) the harness emits have no StreamEvent arm:\n`);
+  for (const e of unmodelled) console.error(`  ${e}`);
+  console.error(
+    '\nAdd the arm *and* the handler. The union ends in an open arm, so these\n' +
+      'currently compile, lint, and do nothing — which looks exactly like an event\n' +
+      'that never arrives.',
+  );
+  exit(1);
+}
 
 if (fresh.length) {
   console.error(`\n✗ ${fresh.length} wire event(s) reach a client that ignores them:\n`);
