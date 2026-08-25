@@ -322,7 +322,7 @@ Thinking levels map to token budgets: `off` (none), `minimal` 128, `low` 512, `m
 | `POST` | `/chat/sessions/name` | `{thread_id, name}` — also appends a `session_info` event |
 | `POST` | `/chat/sessions/label` | `{thread_id, event_id, label}` |
 | `POST` | `/chat/sessions/custom` | `{thread_id, content, in_context, metadata, role}` |
-| `GET` | `/chat/history/{thread_id}` | Flat transcript — `{thread_id, messages, events}` |
+| `GET` | `/chat/history/{thread_id}?limit=&before_seq=` | Flat transcript, newest window — `{thread_id, messages, events, oldest_seq, has_more}` |
 | `DELETE` | `/chat/history/{thread_id}` | Reset the session log |
 
 ### The session snapshot
@@ -356,6 +356,28 @@ phase with pending tool calls is reported as `turn`.
 
 Session event kinds: `message`, `tool_call`, `tool_result`, `thinking`, `audit`, `compaction`,
 `model_change`, `thinking_level_change`, `branch_summary`, `custom`, `label`, `session_info`.
+
+### Paging thread history
+
+`GET /chat/history/{thread_id}` returns the **newest** window of a thread, not the oldest, and is
+bounded at 5000 events read whether or not you pass `limit`. A long transcript therefore comes back
+truncated, with `has_more: true`. Page backwards by handing the previous response's `oldest_seq`
+back as `before_seq`.
+
+Two details decide whether paging works:
+
+- **`limit` counts events *read*, not messages returned.** The response filters out non-message
+  kinds after the window is taken, so `limit=50` can legitimately yield fewer than 50 messages.
+  A `limit` below 1 is a `400 limit_must_be_positive`.
+- **`oldest_seq` is the window's lower bound, not the first message's `seq`.** Those differ
+  precisely when the filter dropped the oldest events in the window — so paging from the first
+  message you can see would step over whatever was filtered and lose it.
+
+`messages` and `events` carry the same array under two keys.
+
+Not paginated, deliberately: `GET /chat/sessions/{thread_id}/export` returns the whole branch
+(an export that silently truncates is worse than a slow one), and the session snapshot above
+carries the transcript a reconnecting client rebuilds from.
 
 ## Leases
 

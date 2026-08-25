@@ -53,7 +53,7 @@ export interface Turn {
 
 export type Variant = 'stable' | 'canary';
 
-/** One event from GET /chat/history/{thread_id} (the ConversationDO log). */
+/** One event from GET /chat/history/{thread_id}, or a session snapshot transcript row. */
 export interface SessionEvent {
   id?: string;
   seq: number;
@@ -79,10 +79,30 @@ export interface SessionEvent {
   tool_calls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
 }
 
-/** GET /chat/history/{thread_id} response. */
+/**
+ * GET /chat/history/{thread_id} response.
+ *
+ * The harness returns the *newest* window of the thread, capped at 5000 events read
+ * — not the oldest, and not necessarily all of them. `messages` and `events` are the
+ * same array under two keys; read either.
+ *
+ * `oldest_seq` is the window's lower bound rather than the first message's `seq`,
+ * because the harness filters non-message kinds out of the response: paging from the
+ * first message returned would step over whatever was filtered. Hand it back as
+ * `beforeSeq` to walk further into the past, while `has_more` is true.
+ *
+ * `oldest_seq` and `has_more` are **optional because the harness is self-hosted and
+ * versions independently of this client**: a deployment predating the paging change
+ * omits both, and this response is parsed with a cast rather than validated, so
+ * declaring them required would type them as present while they arrive `undefined`.
+ * Treat a missing `has_more` as "this harness cannot page", not as "no more pages".
+ */
 export interface ThreadHistory {
+  thread_id: string;
+  messages: SessionEvent[];
   events: SessionEvent[];
-  head: number;
+  oldest_seq?: number;
+  has_more?: boolean;
 }
 
 // --- Harness-parity surfaces (Inspector panel) ---

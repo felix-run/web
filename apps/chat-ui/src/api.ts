@@ -772,18 +772,38 @@ export async function getAgentCard(): Promise<AgentCard> {
 // --- Thread history (/chat/history/{thread_id}) ---
 
 /**
- * GET /chat/history/{thread_id} → the server-side checkpointed transcript from
- * the thread's ConversationDO event log. Anonymous callers get this only in
- * local dev (the harness adds a dev fallthrough); behind auth it 401s. We use a
- * bare fetch (not apiFetch) so a 401 doesn't trip the shared-key reset/reload —
- * any non-OK simply means "no server history", and the caller falls back to the
- * localStorage transcript.
+ * GET /chat/history/{thread_id} → the server-side checkpointed transcript.
+ * Anonymous callers get this only in local dev (the harness adds a dev
+ * fallthrough); behind auth it 401s. We use a bare fetch (not apiFetch) so a 401
+ * doesn't trip the shared-key reset/reload — any non-OK simply means "no server
+ * history", and the caller falls back to the localStorage transcript.
+ *
+ * The response is the *newest* window of the thread, bounded at 5000 events read
+ * even when `limit` is omitted, so a long thread can come back truncated with
+ * `has_more: true`. Page backwards by passing the previous response's
+ * `oldest_seq` as `beforeSeq`.
+ *
+ * `limit` counts events *read*, not messages returned — the harness filters
+ * non-message kinds out of the window after applying it, so a request for 50 can
+ * legitimately yield fewer than 50 messages. Values below 1 are a 400.
+ *
+ * Both params are ignored by a harness predating the paging change, which also
+ * omits `oldest_seq` and `has_more` from the response — sending them is safe
+ * (FastAPI drops unknown query params), but do not assume they took effect.
  */
-export async function getThreadHistory(threadId: string): Promise<ThreadHistory | null> {
+export async function getThreadHistory(
+  threadId: string,
+  opts: { limit?: number; beforeSeq?: number } = {},
+): Promise<ThreadHistory | null> {
+  const query = new URLSearchParams();
+  if (opts.limit !== undefined) query.set('limit', String(opts.limit));
+  if (opts.beforeSeq !== undefined) query.set('before_seq', String(opts.beforeSeq));
+  const qs = query.toString();
   try {
-    const res = await fetch(`/api/chat/history/${encodeURIComponent(threadId)}`, {
-      headers: authHeaders(),
-    });
+    const res = await fetch(
+      `/api/chat/history/${encodeURIComponent(threadId)}${qs ? `?${qs}` : ''}`,
+      { headers: authHeaders() },
+    );
     if (!res.ok) return null;
     return (await res.json()) as ThreadHistory;
   } catch {
