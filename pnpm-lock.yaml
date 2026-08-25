@@ -61,7 +61,7 @@ catalogs:
       specifier: ^1.7.1
       version: 1.7.4
     streamdown:
-      specifier: ^1.3.0
+      specifier: 1.6.11
       version: 1.6.11
     tailwind-merge:
       specifier: ^3.0.2

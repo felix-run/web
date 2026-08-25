@@ -221,6 +221,18 @@ set) is silently omitted from the build — the class stays on the element, no C
 the component renders unstyled with no error anywhere. A new shared package that ships classes needs
 its own `@source` line.
 
+**Streamdown's rendered markup is an interface here.** Assistant messages go through it,
+and the app has opinions about two parts of the result, styled two different ways for one
+reason. Lists it *owns*: `components/chat/response.tsx` overrides `ul`/`ol`/`li`, because the
+renderer's `list-style-position: inside` flattens nesting and wraps long lines under their own
+markers, and because a component the type checker sees beats a selector aimed at someone
+else's DOM. The code block's chrome it cannot own — taking over `pre` means giving up Shiki —
+so those rules stay in `index.css` aimed at `[data-streamdown="code-block*"]`, and
+`tests/response.test.tsx` reads those selectors back out of the stylesheet and asserts each
+one still matches something rendered. That is the failure this repo keeps meeting: a rule that
+compiles, matches nothing, and reports nothing. The dependency is pinned **exactly** in the
+catalog for the same reason — a caret took it from 1.3 to 1.6 unannounced.
+
 **A dependency can need one too.** `streamdown` — which renders every assistant message — styles
 itself with Tailwind classes that live in its own `dist`, so `index.css` sources
 `../node_modules/streamdown/dist` as well. The failure is partial and therefore easy to miss: a
