@@ -73,8 +73,16 @@ Every row Felix writes is scoped to a tenant id, taken from the **authenticated 
 from a request field, so a caller cannot address another tenant's data. Under
 `FELIX_AUTH_MODE=none` everything is the anonymous principal in tenant `default`.
 
-Postgres row-level security is available as opt-in defence in depth: run migration `0006_tenant_rls`
-and set `FELIX_DATABASE_RLS=true`, and the tenant id is applied per transaction.
+Postgres row-level security is available as opt-in defence in depth. The policies themselves are
+not optional to install — `0006_tenant_rls` is part of the migration chain, so any database at that
+revision or later has them. `FELIX_DATABASE_RLS` is the runtime half: set it `true` and the tenant
+id is applied per transaction and the policy enforces it; leave it `false` and Felix declares a
+bypass, so the policies are inert and query-layer scoping remains the isolation.
+
+One caveat is worth checking rather than assuming, because it fails silently in the direction that
+matters: the policies are `FORCE`d, and a **superuser or `BYPASSRLS` connection skips them
+entirely** — so RLS can be switched on and enforcing nothing while everything appears to work.
+`felix doctor` reports whether it is actually in effect.
 
 ## Thread
 
