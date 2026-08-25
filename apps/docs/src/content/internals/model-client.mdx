@@ -25,15 +25,24 @@ Optional LiteLLM base (`FELIX_LITELLM_BASE_URL`) can front additional backends. 
 
 Manifests declare `spec.model.id` as a **logical** id. Ops maps it via `FELIX_MODEL_ROUTES` JSON (falls back to baked-in defaults):
 
-```
-claude-sonnet-4  → anthropic / claude-sonnet-4-20250514
-claude-haiku-4   → anthropic / claude-haiku-4-20250414
-gpt-4.1          → openai / gpt-4.1
-llama-3-fast     → ollama / llama3.2
-…
-```
+| Logical id | Provider | Wire model |
+|---|---|---|
+| `claude-opus` | `anthropic` | `claude-opus-5` |
+| `claude-sonnet` | `anthropic` | `claude-sonnet-5` |
+| `claude-haiku` | `anthropic` | `claude-haiku-4-5` |
+| `claude-fable` | `anthropic` | `claude-fable-5` |
+| `gpt-4.1` | `openai` | `gpt-4.1` |
+| `gpt-4.1-mini` | `openai` | `gpt-4.1-mini` |
+| `llama-3-pro` | `ollama` | `llama3.3:70b` |
+| `llama-3-fast` | `ollama` | `llama3.2` |
 
-Empty id → `FELIX_DEFAULT_MODEL_ID`.
+Wire ids are complete as written — the Anthropic routes carry **no date suffix**. Two legacy logical
+ids, `claude-sonnet-4` and `claude-haiku-4`, still resolve so older manifests keep building; both now
+point at the current model in their tier (`claude-sonnet-5` and `claude-haiku-4-5`) rather than the
+snapshot they were named for. Prefer the unsuffixed ids in new manifests.
+
+Empty id → `FELIX_DEFAULT_MODEL_ID` (default `claude-sonnet`). An id that is in neither the baked-in
+table nor `FELIX_MODEL_ROUTES` fails the build.
 
 ## Client surface
 
@@ -47,7 +56,7 @@ count_tokens?(...)           → int   # Anthropic implements; others may omit
 
 ## Anthropic / OpenAI specifics
 
-- **Tools** — local Zod/Pydantic schemas compile to JSON Schema; remote MCP tools pass `raw_input_schema` through verbatim.
+- **Tools** — local Pydantic models compile to JSON Schema; remote MCP tools pass `raw_input_schema` through verbatim.
 - **Prompt caching** — `spec.model.cache` tags ephemeral breakpoints (system / tools / tail) where the provider supports it.
 - **Thinking** — `spec.model.thinking_budget` enables extended thinking; thinking blocks round-trip on continuations.
 - **Usage** — normalized to `{input, output, cache_creation?, cache_read?}` so limit accounting is provider-agnostic.
@@ -61,7 +70,7 @@ Configured on `spec.model`:
 | `fallbacks: [...]` | On provider error (5xx / 429 / network), retry the same call against the next logical id |
 | `confidence_escalation` | After `chat`, if the reply looks low-confidence, re-call `escalate_to` (streaming skips scoring) |
 
-Both are eager-built so unknown ids fail at build time, not mid-request. Emits `model_switch` audit + counters.
+Both are eager-built so unknown ids fail at build time, not mid-request. A switch increments the `felix_model_switch` counter (labels `from`, `to`, `reason` ∈ `provider_error` / `low_confidence`); it does **not** write an audit row.
 
 :::tip
 For local/OSS-only stacks, point routes at Ollama (see bundled `oss-only` / `hybrid-router` manifests) and leave cloud keys unset.

@@ -30,10 +30,16 @@ API, deploy, and internals. The harness itself is a separate repo
 ([felix-run/felix](https://github.com/felix-run/felix), Python).
 
 - Guide pages (`content/guide/`) are for operators and integrators, and must stay **Python-accurate**:
-  Compose/Helm, the `felix` CLI, `:8080`. Never describe the old TypeScript Workers runtime,
-  `apps/api`, Durable Objects, or commerce plugins as current truth.
-- Internals pages (`content/internals/`) describe mechanism. Where a page still reflects the former
-  Workers prototype, mark it with a Starlight `Aside` rather than rewriting wholesale.
+  Compose/Helm, the `felix` CLI, `:8080`. Never describe Cloudflare compute or storage bindings
+  (Durable Objects, D1, R2, Vectorize, Hyperdrive), or commerce plugins, as current truth.
+- Internals pages (`content/internals/`) describe mechanism, and are held to the same standard —
+  a page reflecting the former TypeScript Workers prototype gets corrected, not marked with an
+  `Aside` and left in place.
+- `apps/api`, `apps/worker` and `packages/harness` are the **current** Python layout of
+  felix-run/felix. They are correct references, not leftovers.
+- Names are the thing this tree gets wrong most often. Before writing an identifier, metric name,
+  audit `event_type`, model route or `FELIX_*` variable, grep the harness checkout for it —
+  several of these survived a full runtime rewrite unnoticed because nothing type-checks prose.
 - The live API reference is a Scalar UI served by a running harness (`/docs` over `/openapi.json`),
   linked from the sidebar — not generated in this repo.
 

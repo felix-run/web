@@ -21,40 +21,66 @@ What Felix emits and where to look. Complements [governance](/internals/governan
 **Counters are the alert signal.** Audit rows are the trail after a threshold trips.
 :::
 
-## Useful counters
+## Counters
 
-Names are `orchestrator_*` (stable across the port from the old harness):
+Every counter is created on first use and named `felix_*`. A manifest's
+`spec.observability.metrics` allowlist is applied before the series is created, so a counter left
+out of a non-empty allowlist is never registered at all.
 
-| Counter | Meaning |
-|---|---|
-| `orchestrator_tool_calls` | Per tool dispatch (`transport`, `status`, `manifest_id`) |
-| `orchestrator_tokens` | Per model call (`kind` ∈ input/output/cache_*) |
-| `orchestrator_policy_decisions` | Scope denies |
-| `orchestrator_limit_breaches` | Cap hit (`max_tool_calls`, wall clock, tokens, …) |
-| `orchestrator_guardrail_blocks` / `orchestrator_judge_*` | Filter / judge outcomes |
-| `orchestrator_approval_requests` / `_decisions` | Human gates (`denied_unattended` for background) |
-| `orchestrator_model_switches` | Fallback or confidence escalation |
-| `orchestrator_anomalies` / `_auto_rollbacks` | Error-rate scan vs EWMA; canary weight → 0 |
-| `orchestrator_unhandled_error` | API error boundary — **should be zero** |
+| Counter | Labels | Incremented |
+|---|---|---|
+| `felix_tool_calls` | `transport`, `status` (`ok` / `error` / `denied`), `manifest_id`, `error_code` on the exception path | Once per tool dispatch |
+| `felix_tokens` | `manifest_id`, `model`, `kind` (`input` / `output`) | By the token count of each model call |
+| `felix_policy_deny` | `manifest_id`, `tool`, `policy` | A `spec.policies` rule denied the call |
+| `felix_secret_masking` | `manifest_id`, `tool` | A resolved credential was stripped from tool output |
+| `felix_approval_required` | `manifest_id`, `tool`, `rule` | A call hit an approval gate (`rule: command` for command screening) |
+| `felix_content_screening` | `manifest_id`, `tool`, `action` | Post-call screening acted (`action` is the applied `on_flag`, or `unavailable`) |
+| `felix_control_unavailable` | `control` | A named control could not run and was not treated as a pass |
+| `felix_control_degraded` | `control`, `reason` | A control fell back to a weaker implementation (e.g. PII regex fallback) |
+| `felix_model_switch` | `from`, `to`, `reason` (`provider_error` / `low_confidence`) | A fallback or confidence escalation fired |
+| `felix_model_retry` / `felix_model_retry_skipped` | `provider`, plus `status` / `reason` | Provider call retried, or deliberately not retried (`reason: quota`) |
+| `felix_context_overflow_recovered` | `manifest_id`, `reason` | The loop recovered from a context-window overflow |
+| `felix_run_stop_reason` | `manifest_id`, `reason` | A run ended on anything other than a clean completion |
+| `felix_interrupted_tool_calls` | `manifest_id` | A tool batch was cut short by a steer or abort |
+| `felix_browser_egress_blocked` | `reason` | A browser tool was refused an outbound host |
 
-Governance counters keep the inner tool `transport` (`local` / `mcp` / `a2a` / `container` / `queue` / `sandbox` / `browser`) through `wrap_executor`.
+There is no counter for limit breaches, judge outcomes, anomaly scans or auto-rollbacks. A limit or
+guardrail denial is visible as `felix_tool_calls{status="denied"}` and as a `policy_deny` audit row.
 
 ## Audit events
 
-Every row: `tenant_id`, `ts`, `event_type`, `manifest_id`, `principal_subj`, `status`, `payload_json`. Common types:
+Every row carries `tenant_id`, `ts`, `event_type`, `manifest_id`, `principal_subj`, `status` and
+`payload_json`. The agent loop emits exactly four types:
 
-`tool_call`, `policy_decision`, `limit_exceeded`, `guardrail_block`, `judge_score`, `approval_request` / `approval_decision`, `plan_step`, `job_run`, `manifest_*`, `anomaly_detected`, `auto_rollback`, `model_switch`, `unhandled_error`.
+| `event_type` | Emitted | `status` | Payload |
+|---|---|---|---|
+| `user_input` | Once per caller turn | `ok` | `user_input` (first 2000 chars), `thread_id` |
+| `tool_call` | Per tool invocation that was not denied | `ok`, `error` | `tool`, `tool_call_id`, `thread_id` |
+| `policy_deny` | Per tool invocation a governance wrapper denied | `denied` | `tool`, `tool_call_id`, `thread_id` |
+| `final_response` | Once per completed turn | `ok`, `error` (fatal) | `thread_id`, `chars` |
 
-Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a truncation marker) so a runaway loop cannot flood storage.
+:::note[`policy_deny` is not only policies]
+The name is narrower than the behaviour. The loop emits `policy_deny` whenever the wrapper stack
+returns a deny marker — policies, command or content screening, limits, guardrails, judges, or a
+pending approval all land here. Read `payload.tool` and correlate with the governance counters above
+to tell which layer denied.
+:::
 
-Optional warehouse spill (`FELIX_WAREHOUSE`) copies audit/eval analytics after Postgres write — Postgres stays authoritative.
+Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
+truncation marker) so a runaway loop cannot flood storage.
+
+Optional warehouse spill (`FELIX_WAREHOUSE`) copies audit/eval analytics after Postgres write —
+Postgres stays authoritative.
 
 ## Incident walk
 
-1. `GET /audit?tenant=…&manifest_id=…` — timeline by `event_type` / `status`.
-2. Find failing `tool_call` → `payload.tool` + `transport`.
-3. Confirm with Prometheus rate for that `manifest_id`.
-4. For durable chats, poll `GET /chat/runs/{resume_token}` and inspect fiber/run status.
+1. `GET /audit?event_type=policy_deny` or `?status=error` — the tenant comes from your own
+   principal, so there is no tenant query parameter to set.
+2. Find the failing row → `payload.tool` names the tool; `payload.thread_id` locates the run.
+3. Confirm with Prometheus: `felix_tool_calls` carries the `transport` and `error_code` the audit
+   payload does not, filtered by `manifest_id`.
+4. `GET /audit/metrics` for per-tool call counts, error rates and mean latency over a window.
+5. For durable chats, poll `GET /chat/runs/{resume_token}` and inspect fiber/run status.
 
 ## Local
 

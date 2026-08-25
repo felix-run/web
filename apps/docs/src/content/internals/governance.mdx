@@ -60,7 +60,7 @@ manifest is not the control actually in force.
 
 1. Canonicalize args → SHA-256 call signature (optionally bound to principal).
 2. Lookup / insert `pending` row; return `[approval required] …` to the model.
-3. Operator decides via `POST /approvals/:id/decide`.
+3. Operator decides via `POST /approvals/{id}/decide`.
 4. Retry with same args finds `approved` / `denied` / still `pending`.
 
 Unattended runs (scheduler, eval replay) refuse approval-gated tools unless `allow_unattended: true`. TTL / one-shot options bound standing grants.

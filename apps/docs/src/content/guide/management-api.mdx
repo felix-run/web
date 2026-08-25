@@ -70,23 +70,21 @@ curl -s "$BASE_URL/audit?limit=20&status=denied" \
   -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
-Event types you will see, and what emits them:
+The agent loop emits exactly **four** event types. Filter on these — `event_type` is matched
+literally, so a name that is not in this table returns an empty page rather than an error:
 
-| `event_type` | Emitted by | Typical `status` |
+| `event_type` | Emitted by | `status` |
 |---|---|---|
-| `tool_call` | the agent loop, one per tool invocation | `ok`, `error` |
-| `policy_decision` | the `spec.policies` wrapper | `denied` |
-| `limit_exceeded` | the `spec.limits` wrapper | `denied` |
-| `guardrail_block` | the `spec.guardrails` wrapper | `matched`, `clean` |
-| `judge_score` | guardrail judges and the eval runner | `pass`, `fail` |
-| `command_screened` | the `spec.command_screening` wrapper | `matched` |
-| `content_screened` | the `spec.content_screening` wrapper | `matched` |
-| `approval_request` | first call of a gated tool | `pending` |
-| `approval_consumed` / `approval_expired` | the approvals wrapper | — |
-| `model_switch` | a fallback or confidence escalation fired | — |
-| `memory_captured` | `spec.memory.capture` | — |
-| `plan_step` | the `deep` pattern's plan tools | `pending`, `in_progress`, `completed`, `skipped`, `failed` |
-| `job_scheduled` | the scheduling tools | — |
+| `user_input` | the agent loop, once per caller turn | `ok` |
+| `tool_call` | the agent loop, per tool invocation that was not denied | `ok`, `error` |
+| `policy_deny` | the agent loop, per tool invocation a governance wrapper denied | `denied` |
+| `final_response` | the agent loop, once per completed turn | `ok`, `error` |
+
+`policy_deny` covers **every** governance denial, not only `spec.policies`: command and content
+screening, limits, guardrails, judges and pending approvals all return a deny marker that the loop
+records under this one name. To attribute a denial to a layer, correlate with the Prometheus
+counters — `felix_policy_deny`, `felix_approval_required`, `felix_content_screening` — described in
+[Observability](/internals/observability/).
 
 Secret values are masked out of payloads before they are written.
 
@@ -246,7 +244,7 @@ curl -s -X PUT "$BASE_URL/manifests/support" \
   -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
   -d '{"manifest":{"apiVersion":"felix/v1","kind":"Agent",
        "metadata":{"name":"support"},
-       "spec":{"pattern":"react","model":{"id":"claude-sonnet-4"}}},
+       "spec":{"pattern":"react","model":{"id":"claude-sonnet"}}},
        "comment":"tighten the refund prompt"}'
 ```
 

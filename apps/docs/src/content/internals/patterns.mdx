@@ -34,7 +34,7 @@ Streaming uses an async generator: text deltas yield; the final structured resul
 
 | Pattern | Session ownership |
 |---|---|
-| react / deep / reflect | Opens `${tenant}:${suffix}`; appends as events are produced |
+| react / deep / reflect | Opens `{tenant_id}:{suffix}`; appends as events are produced |
 | router | Forwards `thread_id` to the chosen child |
 | parallel / groupchat / plan_execute | **Parent** owns the transcript; children run without writing the parent session (avoids concurrent append races) |
 
