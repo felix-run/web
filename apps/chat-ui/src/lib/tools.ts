@@ -49,3 +49,52 @@ export function markToolPhase(
   next[i] = { ...next[i], phase };
   return next;
 }
+
+/** One piece of an assistant turn, in the order it happened. */
+export type TurnSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool'; tool: ToolCall; index: number };
+
+/**
+ * Split a turn's prose at the points its tools fired.
+ *
+ * `ToolCall.at` is the length `content` had when the card opened, so every
+ * offset is a real index into this same string and the walk is a plain cursor.
+ * Offsets are clamped and sorted rather than trusted: a snapshot-hydrated turn
+ * carries none at all (they sort to 0, reproducing the old all-cards-first
+ * layout), and the `done` handler can replace `content` wholesale with the
+ * final answer when a run produced no deltas, which strands any offset past the
+ * new end.
+ *
+ * The split is by character, so a tool that fires in the middle of a markdown
+ * construct — mid-list, mid-fence — leaves each side to be parsed on its own
+ * and the construct does not survive the cut. That is the honest rendering:
+ * the model genuinely stopped there. It is also rare, because a call ends the
+ * assistant's text block.
+ */
+export function interleaveTurn(content: string, tools: ToolCall[] | undefined): TurnSegment[] {
+  const cards = tools ?? [];
+  if (cards.length === 0) return content ? [{ kind: 'text', text: content }] : [];
+
+  // Stable by construction: equal offsets keep arrival order, which is the order
+  // concurrent calls were announced in.
+  const ordered = cards
+    .map((tool, index) => ({
+      tool,
+      index,
+      at: Math.min(Math.max(tool.at ?? 0, 0), content.length),
+    }))
+    .sort((a, b) => a.at - b.at);
+
+  const segments: TurnSegment[] = [];
+  let cursor = 0;
+  for (const { tool, index, at } of ordered) {
+    if (at > cursor) {
+      segments.push({ kind: 'text', text: content.slice(cursor, at) });
+      cursor = at;
+    }
+    segments.push({ kind: 'tool', tool, index });
+  }
+  if (cursor < content.length) segments.push({ kind: 'text', text: content.slice(cursor) });
+  return segments;
+}
