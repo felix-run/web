@@ -35,14 +35,7 @@ import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { usePoll } from '@/hooks/usePoll';
 import { describeError } from '@/lib/errors';
 import { cn } from '@/lib/utils';
-import type {
-  AuditEvent,
-  MemoryHit,
-  MemoryRecord,
-  Plan,
-  PlanStepStatus,
-  UsageEvent,
-} from '@/types';
+import type { AuditEvent, MemoryHit, MemoryRecord, Plan, UsageEvent } from '@/types';
 
 export interface SkillState {
   declared: string[];
@@ -885,21 +878,33 @@ function ApprovalsSection({
 
 // --- Plans ---
 
-const STEP_TONE: Record<PlanStepStatus, string> = {
+/**
+ * Keyed loosely, and read through a fallback, because the harness stores whatever
+ * status string the model passed. Only `pending` and `done` are written by the
+ * plan tools themselves; the rest are the vocabulary a model reaches for, styled
+ * where it happens to match and left neutral where it does not.
+ */
+const STEP_TONE: Record<string, string> = {
   pending: 'text-muted-foreground',
   in_progress: 'text-state-running',
+  running: 'text-state-running',
+  done: 'text-state-done',
   completed: 'text-state-done',
   skipped: 'text-muted-foreground line-through',
   failed: 'text-state-failed',
 };
 
-const STEP_MARK: Record<PlanStepStatus, string> = {
+const STEP_MARK: Record<string, string> = {
   pending: '○',
   in_progress: '●',
+  running: '●',
+  done: '✓',
   completed: '✓',
   skipped: '–',
   failed: '!',
 };
+
+const DONE_STATUSES = new Set(['done', 'completed', 'skipped']);
 
 function PlansSection({
   enabled,
@@ -931,7 +936,7 @@ function PlansSection({
       >
         <div className="space-y-3">
           {data?.map((p: Plan) => {
-            const done = p.steps.filter((s) => s.status === 'completed').length;
+            const done = p.steps.filter((s) => DONE_STATUSES.has(s.status)).length;
             const pct = p.steps.length ? (done / p.steps.length) * 100 : 0;
             return (
               <article key={p.id} className="text-xs">
@@ -949,11 +954,16 @@ function PlansSection({
                 </div>
                 <ol className="mt-2 space-y-1">
                   {p.steps.map((s) => (
-                    <li key={s.id} className={cn('flex gap-2 text-xs', STEP_TONE[s.status])}>
+                    <li key={s.id} className={cn('flex gap-2 text-xs', STEP_TONE[s.status] ?? '')}>
                       <span className="w-3 shrink-0 font-mono" aria-hidden>
-                        {STEP_MARK[s.status]}
+                        {STEP_MARK[s.status] ?? '·'}
                       </span>
-                      <span className="flex-1 leading-snug">{s.description}</span>
+                      <span className="flex-1 leading-snug">
+                        {s.title}
+                        {s.note && (
+                          <span className="mt-0.5 block text-muted-foreground">{s.note}</span>
+                        )}
+                      </span>
                       <span className="sr-only">{s.status}</span>
                     </li>
                   ))}

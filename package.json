@@ -14,6 +14,7 @@
     "check-api-drift": "node scripts/check-api-drift.mjs apps/chat-ui/harness-openapi.json apps/chat-ui/src/api.ts",
     "check-protocol-parity": "node scripts/check-protocol-parity.mjs packages/felix-protocol/src/types.ts apps/chat-ui/src/App.tsx",
     "check-tailwind-sources": "node scripts/check-tailwind-sources.mjs",
+    "check-payload-shapes": "node scripts/check-payload-shapes.mjs",
     "sync:harness": "node scripts/sync-harness-contract.mjs",
     "sync:theme": "pnpm --filter @felix/design sync:theme",
     "docs:dev": "pnpm --filter @felix/docs dev",

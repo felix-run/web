@@ -34,7 +34,8 @@ pnpm test              # turbo → vitest (cowork-client, chat-ui)
 pnpm check-api-drift   # client routes vs the committed harness OpenAPI snapshot
 pnpm check-protocol-parity  # SSE events: every arm handled, every emitted event modelled
 pnpm check-tailwind-sources # every @source-covered tree still reaches the compiled CSS
-pnpm sync:harness [path]    # re-record both contract files from a harness checkout
+pnpm check-payload-shapes   # every required client field is one the harness actually sends
+pnpm sync:harness [path]    # re-record all three contract files from a harness checkout
 pnpm --filter @felix/chat-ui <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 ```
@@ -55,7 +56,7 @@ One thing that bites when verifying by hand: `usePoll` skips ticks while the tab
 browser driven by automation reports `visibilityState: 'hidden'`. An inspector panel will sit on
 stale data forever under a driver, which looks like a broken refresh and is not. `.claude/hooks/tests/` covers the hooks.
 
-Two mechanical guards cover the hand-mirrored wire contract.
+Three mechanical guards cover the hand-mirrored wire contract, one per direction it can drift.
 
 `pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts` — including the three
 that deliberately bypass `apiFetch` — and diffs path *and* verb against
@@ -72,13 +73,27 @@ gaps that predate the check are grandfathered in `scripts/protocol-parity-baseli
 one-way ratchet (`--update` banks a fix); an unmodelled event is never grandfathered. Both halves
 compare event *names* only — neither can tell you a handler is wrong, just that one exists.
 
-**Both records are regenerated together, from a harness checkout, by
+`pnpm check-payload-shapes` covers the third direction, the one the other two are blind to: the
+*shape* of a response. Drift compares paths and verbs; parity compares event names; neither reads a
+field. Nor can the OpenAPI snapshot — every harness route returns a bare `dict`, so FastAPI
+documents all 78 JSON responses as `additionalProperties: true` and the only component schemas in
+the spec are the 31 *request* models. The response side of the contract exists solely as dict
+literals in the harness's `felix/<area>/store.py` modules, which `scripts/harness-payloads.json`
+records. A **required** client field that no serializer sends fails; an **optional** one is fine,
+because `?` is the client saying it copes. That distinction is the whole check: `AuditEvent.payload`
+was `undefined` on every row the harness ever returned — the wire spells it `payload_json` — and it
+typechecked, linted, and passed drift while the Activity feed rendered the manifest's name once per
+row. Fields the harness sends that nothing models are advisory. A guarded type naming a serializer
+the record does not carry **fails**, including one the recorder listed as `unreadable` (a dict built
+imperatively has no literal to read) — a guard that silently checks nothing is worse than none.
+
+**All three records are regenerated together, from a harness checkout, by
 `node scripts/sync-harness-contract.mjs [path]`** — never by curling a running harness. That records
 the deployment, not the contract; on 2026-08-24 the local container was two features behind and the
 snapshot silently omitted `/memory/*` and `GET /chat/stream/{thread_id}`. FastAPI builds the spec
 without a database, so nothing needs to be running.
 
-A third guard covers the stylesheet, which fails in the same silent way for a different reason.
+A guard of a different kind covers the stylesheet, which fails in the same silent way for another reason.
 `pnpm check-tailwind-sources` compiles `apps/chat-ui/src/index.css` twice — once as written, once
 with every `@source` line stripped — and asserts that each guarded tree's canary classes appear in
 the first and not the second. Present in both means the canary proves nothing; absent from both

@@ -186,7 +186,13 @@ export interface ApprovalRequest {
   tool_name: string;
   call_signature: string;
   args: Record<string, unknown>;
-  principal_subject: string;
+  /**
+   * The wire spells this `principal_subj`, the same abbreviation an audit row
+   * uses. Declared as `principal_subject` it read `undefined` on every approval
+   * the harness has ever returned — invisible only because nothing rendered it
+   * yet.
+   */
+  principal_subj: string;
   status: 'pending' | 'approved' | 'denied';
   created_at: number;
   decided_at: number | null;
@@ -210,16 +216,57 @@ export interface UsageEvent {
   meta_json: Record<string, unknown>;
 }
 
-export type PlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'skipped' | 'failed';
+/**
+ * `pending` is the harness's own default and `done` is what `plan_update_step`
+ * writes when the model names no status. Every other value here is one the model
+ * may pass through unchecked — the harness stores the string as given — so this
+ * is the set worth styling, not the set that can arrive. `STEP_TONE` falls back.
+ */
+export type PlanStepStatus = 'pending' | 'in_progress' | 'done' | 'skipped' | 'failed';
 
+/**
+ * One step of an agent-authored plan.
+ *
+ * `plan_create` writes `{id, title, status}` and `plan_update_step` may add
+ * `note`. The client asked for `description` and `result`, which no plan tool has
+ * ever written.
+ */
 export interface PlanStep {
   id: string;
-  description: string;
-  status: PlanStepStatus;
-  result: string;
+  title: string;
+  /** One of `PlanStepStatus` in practice; widened because the model supplies it. */
+  status: string;
+  note?: string;
 }
 
-/** One row from GET /plans. */
+/** The blob a plan row carries — written by `plan_create`, opaque to the harness. */
+export interface PlanBody {
+  title?: string;
+  goal?: string;
+  status?: string;
+  steps?: PlanStep[];
+}
+
+/**
+ * One row from GET /plans exactly as it arrives.
+ *
+ * The row is metadata plus an opaque `plan` blob; the title and the steps live
+ * *inside* it. Declared flat, `p.steps` was `undefined` and the Plans section
+ * threw a TypeError on `p.steps.filter` for any row at all — never seen only
+ * because plans exist solely under the deep pattern, so the panel is always
+ * empty. `listPlans` flattens the blob; `Plan` is the result.
+ */
+export interface PlanWire {
+  id: string;
+  tenant_id: string;
+  manifest_id: string;
+  created_at: number;
+  updated_at: number;
+  expires_at?: number | null;
+  plan: PlanBody;
+}
+
+/** A plan row as the app consumes it, with the blob flattened out. */
 export interface Plan {
   id: string;
   tenant_id: string;
