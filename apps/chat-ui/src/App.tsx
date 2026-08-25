@@ -31,18 +31,23 @@ import { toast } from 'sonner';
 import {
   abortChat,
   acquireSessionLease,
+  compactSession,
   continueChat,
   decideApproval,
   deleteThreadHistory,
+  exportSession,
+  forkSession,
   getResolvedManifest,
   getSessionSnapshot,
   getThreadHistory,
   listApprovals,
   listManifests,
+  listSessions,
   listTenantManifests,
   pollDurableRun,
   postToolResult,
   releaseSessionLease,
+  renameSession,
   respondUiRequest,
   rewindChat,
   setThinkingLevel,
@@ -78,6 +83,7 @@ import {
   indexThread,
   listThreads,
   loadTurns,
+  mergeSessions,
   migrateLegacy,
   removeThread,
   saveTurns,
@@ -280,6 +286,24 @@ export default function App() {
   }, []);
 
   // Prefer authoritative snapshot; fall back to history events.
+  /**
+   * Rebuild the sidebar: the harness's thread list merged over the local index.
+   *
+   * Renders the local list first and upgrades it, so the rail is populated
+   * immediately and a slow harness never shows an empty history. A failed fetch
+   * leaves the local list standing rather than emptying it — a sidebar that goes
+   * blank because one request failed reads as data loss.
+   */
+  const refreshThreads = useCallback(async () => {
+    const local = listThreads();
+    setThreads(local);
+    try {
+      setThreads(mergeSessions(local, await listSessions()));
+    } catch {
+      // Local list is already rendered; nothing further to show.
+    }
+  }, []);
+
   const hydrateFromServer = useCallback((id: string) => {
     void (async () => {
       try {
@@ -346,7 +370,7 @@ export default function App() {
   // mount-only bootstrap
   useEffect(() => {
     migrateLegacy(Date.now());
-    setThreads(listThreads());
+    void refreshThreads();
     setTurns(loadTurns(threadId));
     hydrateFromServer(threadId);
   }, []);
@@ -393,6 +417,83 @@ export default function App() {
     [threadId, hydrateFromServer, stopRun],
   );
 
+  /** POST /chat/sessions/name — a durable name, replacing the derived title. */
+  const renameThread = useCallback(
+    (id: string, name: string) => {
+      void renameSession(id, name)
+        .then(() => refreshThreads())
+        .catch((err) => {
+          const described = describeError(err, 'rename this conversation');
+          toast.error(described.message, { description: described.detail });
+        });
+    },
+    [refreshThreads],
+  );
+
+  /**
+   * POST /chat/fork — copy this thread into a new one and switch to it.
+   *
+   * Unlike rewind, the original is untouched: this is for taking a conversation
+   * in a second direction while keeping the first.
+   */
+  const forkThread = useCallback(
+    (id: string) => {
+      const newId = crypto.randomUUID();
+      void forkSession({ threadId: id, newThreadId: newId })
+        .then(async () => {
+          const meta = threads.find((t) => t.id === id);
+          indexThread({
+            id: newId,
+            manifest: meta?.manifest || manifest,
+            title: `${meta?.title ?? 'Conversation'} (copy)`,
+            updatedAt: Date.now(),
+          });
+          await refreshThreads();
+          selectThread(newId);
+          toast.success('Duplicated');
+        })
+        .catch((err) => {
+          const described = describeError(err, 'duplicate this conversation');
+          toast.error(described.message, { description: described.detail });
+        });
+    },
+    [threads, manifest, refreshThreads, selectThread],
+  );
+
+  /**
+   * POST /chat/compact — summarise older context now instead of waiting for the
+   * loop to do it when the window fills.
+   */
+  const compactThread = useCallback(
+    (id: string) => {
+      const target = threads.find((t) => t.id === id);
+      toast.promise(compactSession(id, target?.manifest || manifest), {
+        loading: 'Compacting…',
+        success: 'Context compacted',
+        error: (err) => describeError(err, 'compact this conversation').message,
+      });
+    },
+    [threads, manifest],
+  );
+
+  /** GET /chat/sessions/{id}/export — hand the active branch to the user as a file. */
+  const exportThread = useCallback((id: string) => {
+    void exportSession(id)
+      .then((jsonl) => {
+        const url = URL.createObjectURL(new Blob([jsonl], { type: 'application/x-ndjson' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${id}.jsonl`;
+        a.click();
+        // Revoking synchronously can beat the download starting in some browsers.
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      })
+      .catch((err) => {
+        const described = describeError(err, 'export this conversation');
+        toast.error(described.message, { description: described.detail });
+      });
+  }, []);
+
   const deleteThread = useCallback(
     (id: string) => {
       // Capture enough to put it back before anything is destroyed.
@@ -425,7 +526,7 @@ export default function App() {
             window.clearTimeout(commit);
             if (meta) indexThread(meta);
             if (turns.length) saveTurns(id, turns);
-            setThreads(listThreads());
+            void refreshThreads();
           },
         },
       });
@@ -908,7 +1009,7 @@ export default function App() {
           : (threads.find((t) => t.id === threadId)?.title ?? fallbackTitle),
         updatedAt: Date.now(),
       });
-      setThreads(listThreads());
+      void refreshThreads();
 
       // Steady state: send only the new user message; Felix replays the thread.
       const userMessage: ChatMessage = { role: 'user', content: text };
@@ -1281,6 +1382,10 @@ export default function App() {
             onSelect={selectThread}
             onNew={newThread}
             onDelete={deleteThread}
+            onRename={renameThread}
+            onFork={forkThread}
+            onCompact={compactThread}
+            onExport={exportThread}
           />
         )}
         <main className="flex min-w-0 flex-1 flex-col">
@@ -1381,6 +1486,13 @@ export default function App() {
                 setHistoryOpen(false);
               }}
               onDelete={deleteThread}
+              onRename={renameThread}
+              onFork={(id) => {
+                forkThread(id);
+                setHistoryOpen(false);
+              }}
+              onCompact={compactThread}
+              onExport={exportThread}
               // The drawer supplies its own close button in the top-right corner, which
               // would otherwise land on top of this rail's "New chat" control.
               className="w-full border-r-0 bg-transparent [&>div:first-child]:pr-11"

@@ -4,10 +4,13 @@ import {
   indexThread,
   listThreads,
   loadTurns,
+  mergeSessions,
   migrateLegacy,
   removeThread,
   saveTurns,
   snapshotToEvents,
+  type ThreadMeta,
+  threadSuffix,
   titleFromText,
 } from '../src/lib/threads';
 import type { SessionEvent, SessionSnapshot } from '../src/types';
@@ -183,5 +186,104 @@ describe('snapshotToEvents — trimming to the active branch', () => {
   it('keeps everything when the leaf is not in the transcript', () => {
     // Better a transcript that is too long than one silently emptied.
     expect(snapshotToEvents(snapshot('gone')).map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
+  });
+});
+
+/**
+ * The server/local merge.
+ *
+ * Neither side is a superset: the harness owns which threads exist and what
+ * they are *named*, while localStorage is the only record of which manifest a
+ * thread used and the only copy of a transcript for a thread that never reached
+ * a harness. Getting this wrong is quiet in both directions — a duplicated row
+ * for every thread, or a sidebar that silently drops conversations.
+ */
+describe('threadSuffix', () => {
+  it('strips the tenant prefix the harness scopes ids with', () => {
+    expect(threadSuffix('default:abc-123')).toBe('abc-123');
+  });
+
+  it('leaves a bare id alone', () => {
+    expect(threadSuffix('abc-123')).toBe('abc-123');
+  });
+
+  it('splits on the last colon, since a suffix can never contain one', () => {
+    // The harness rejects a suffix containing ':' outright, so any earlier colon
+    // belongs to the tenant id.
+    expect(threadSuffix('acme:eu:abc-123')).toBe('abc-123');
+  });
+});
+
+describe('mergeSessions', () => {
+  const local = (over: Partial<ThreadMeta> = {}): ThreadMeta => ({
+    id: 't1',
+    title: 'Local title',
+    manifest: 'cowork',
+    updatedAt: 100,
+    ...over,
+  });
+
+  it('keeps the local manifest, which the harness does not track', () => {
+    const out = mergeSessions([local()], [{ id: 't1', name: null, updatedAt: 200 }]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.manifest).toBe('cowork');
+    expect(out[0]?.onServer).toBe(true);
+  });
+
+  it('lets a server name override the locally derived title', () => {
+    const out = mergeSessions([local()], [{ id: 't1', name: 'Quarterly review', updatedAt: 200 }]);
+    expect(out[0]?.title).toBe('Quarterly review');
+    expect(out[0]?.named).toBe(true);
+  });
+
+  it('keeps the derived title when the thread has no server name', () => {
+    const out = mergeSessions([local()], [{ id: 't1', name: null, updatedAt: 200 }]);
+    expect(out[0]?.title).toBe('Local title');
+    expect(out[0]?.named).toBe(false);
+  });
+
+  it('treats a whitespace-only server name as unnamed', () => {
+    const out = mergeSessions([local()], [{ id: 't1', name: '   ', updatedAt: 200 }]);
+    expect(out[0]?.title).toBe('Local title');
+    expect(out[0]?.named).toBe(false);
+  });
+
+  it('surfaces a thread that exists only on the server', () => {
+    const out = mergeSessions([], [{ id: 'remote', name: 'From another device', updatedAt: 5 }]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ id: 'remote', title: 'From another device', onServer: true });
+    // No local record, so no manifest is known until it is opened.
+    expect(out[0]?.manifest).toBe('');
+  });
+
+  // Dropping this row would destroy the only copy of its transcript.
+  it('keeps a local-only thread and marks it as such', () => {
+    const out = mergeSessions([local({ id: 'offline' })], []);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.onServer).toBe(false);
+  });
+
+  it('does not duplicate a thread present on both sides', () => {
+    const out = mergeSessions(
+      [local({ id: 'same' })],
+      [{ id: 'same', name: null, updatedAt: 300 }],
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it('sorts newest first across both sources', () => {
+    const out = mergeSessions(
+      [local({ id: 'old', updatedAt: 1 }), local({ id: 'localnew', updatedAt: 500 })],
+      [{ id: 'mid', name: null, updatedAt: 100 }],
+    );
+    expect(out.map((t) => t.id)).toEqual(['localnew', 'mid', 'old']);
+  });
+
+  it('prefers the server timestamp, which reflects other clients', () => {
+    const out = mergeSessions(
+      [local({ updatedAt: 100 })],
+      [{ id: 't1', name: null, updatedAt: 900 }],
+    );
+    expect(out[0]?.updatedAt).toBe(900);
   });
 });

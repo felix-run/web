@@ -12,7 +12,7 @@
  * new layout so existing sessions don't lose their conversation.
  */
 
-import type { SessionEvent, SessionSnapshot, ToolCall, Turn } from '@/types';
+import type { SessionEvent, SessionSnapshot, SessionSummary, ToolCall, Turn } from '@/types';
 
 /** Map a session snapshot transcript onto SessionEvent rows for eventsToTurns. */
 export function snapshotToEvents(snapshot: SessionSnapshot): SessionEvent[] {
@@ -47,6 +47,62 @@ export interface ThreadMeta {
   title: string;
   manifest: string;
   updatedAt: number;
+  /** True when the harness knows this thread. False means local-only — see `mergeSessions`. */
+  onServer?: boolean;
+  /** Set by the harness when the name came from POST /chat/sessions/name. */
+  named?: boolean;
+}
+
+/**
+ * `default:uuid` → `uuid`.
+ *
+ * The harness scopes every thread id as `{tenant}:{suffix}` and rejects a
+ * suffix containing `:` or `#` outright, so a thread can never be addressed
+ * across tenants. Clients send and store the suffix only. Split on the *last*
+ * colon: the suffix is guaranteed not to contain one, a tenant id is not.
+ */
+export function threadSuffix(full: string): string {
+  const i = full.lastIndexOf(':');
+  return i >= 0 ? full.slice(i + 1) : full;
+}
+
+/**
+ * Fold the harness's thread list into the local index.
+ *
+ * The harness is authoritative for which threads exist and what they are
+ * *named*; the local index is the only record of which manifest a thread used,
+ * and holds a title derived from the first user turn for threads nobody has
+ * named. Neither side is a superset, so this is a merge rather than a swap:
+ *
+ * - **Named on the server** wins over any local title, always. Someone typed it.
+ * - **A thread only on the server** (another browser, another device) appears
+ *   with no manifest — it is unknown until the thread is opened and hydrated.
+ * - **A thread only in localStorage** is kept, not dropped. It may be a
+ *   conversation that never reached the harness, or this harness may simply be
+ *   a different deployment than the one it was created against. Dropping it
+ *   would destroy the only copy of a transcript.
+ */
+export function mergeSessions(local: ThreadMeta[], server: SessionSummary[]): ThreadMeta[] {
+  const byId = new Map<string, ThreadMeta>();
+  for (const t of local) byId.set(t.id, { ...t, onServer: false });
+
+  for (const row of server) {
+    if (!row.id) continue;
+    const existing = byId.get(row.id);
+    const named = Boolean(row.name?.trim());
+    byId.set(row.id, {
+      id: row.id,
+      // A server name is a deliberate act; a local title is a guess from the
+      // first message. The guess never overrides the act.
+      title: named ? (row.name as string) : (existing?.title ?? 'Untitled conversation'),
+      manifest: existing?.manifest ?? '',
+      updatedAt: row.updatedAt ?? existing?.updatedAt ?? 0,
+      onServer: true,
+      named,
+    });
+  }
+
+  return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 const INDEX_KEY = 'felix.threads';
