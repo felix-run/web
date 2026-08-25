@@ -93,7 +93,8 @@ the other diverges silently.
 harness to `FELIX_AUTH_MODE=api_key` and generates a key, so an unauthenticated `vite dev` 401s on
 every `/api/*` call. Put the key in `apps/chat-ui/.dev.vars` as `FELIX_API_KEY=…` — the same
 gitignored file `wrangler dev` reads for the Worker, so local dev has one secrets file rather than
-two. `process.env.FELIX_API_KEY` overrides it for a one-off run. With no key configured the header
+two. `process.env.FELIX_API_KEY` overrides it for a one-off run, and `FELIX_AUTH_API_KEYS` — the
+harness's own spelling, which is what people carry across — is accepted with a notice. With no key configured the header
 is simply omitted, which is correct against a harness running `FELIX_AUTH_MODE=none`.
 
 ### Client ↔ harness protocol (the part that is easy to get wrong)
