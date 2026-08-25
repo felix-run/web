@@ -265,6 +265,43 @@
   color: color-mix(in oklch, var(--muted-foreground) 80%, transparent);
 }
 
+/* Lists in assistant markdown.
+
+   The renderer sets `list-style-position: inside` and no padding, which is three
+   defects wearing one hat, and all three show up in ordinary answers:
+
+     - a wrapped line runs back under its own marker instead of hanging under the
+       text, and long bullets are most of what a model writes;
+     - a nested list gets no indent at all, so a child bullet is indistinguishable
+       from its parent's sibling — that one changes what the answer *says*;
+     - a task item draws a bullet next to its checkbox.
+
+   Markers outside, with padding to sit in, fixes the first two together: the
+   padding is what a wrapped line aligns to, and a nested list nests because it has
+   its own. The third is remark-gfm's own class, and GitHub drops the marker there
+   for the same reason — the checkbox is the marker.
+
+   Reached through `felix-markdown`, a handle the app puts on the markdown root,
+   because these are plain `ul`/`li` elements: there is no `data-streamdown`
+   attribute here to aim at the way there is on a code block. */
+.felix-markdown :is(ul, ol) {
+  list-style-position: outside;
+  padding-left: 1.5rem;
+}
+
+.felix-markdown li > :is(ul, ol) {
+  margin-top: 0.25rem;
+}
+
+.felix-markdown .task-list-item {
+  list-style: none;
+}
+
+.felix-markdown .task-list-item > input[type="checkbox"] {
+  margin-right: 0.5rem;
+  accent-color: var(--primary);
+}
+
 /* Motion in this app is all state feedback (sheet entrances, the tool-metrics bar,
    spinners), never narrative, so the reduced-motion answer is to collapse it to an
    instant state change rather than swap in a different animation.
