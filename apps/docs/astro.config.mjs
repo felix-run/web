@@ -12,7 +12,8 @@ export default defineConfig({
         'Felix — self-hostable managed agents harness: manifests, patterns, sessions, and governance.',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/felix-run/felix' }],
       // Palette from @felix/design (checked-in src/styles/theme.css).
-      customCss: ['./src/styles/theme.css'],
+      // theme.css is generated (see @felix/design); brand.css is hand-written.
+      customCss: ['./src/styles/theme.css', './src/styles/brand.css'],
       // Served from apps/docs/public/. Previously hotlinked from the harness
       // host, which 404s — a docs site should not depend on an API server, and
       // that one now gates static paths behind auth anyway.
