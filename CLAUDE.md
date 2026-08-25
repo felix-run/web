@@ -44,9 +44,14 @@ Local dev needs the Python harness running separately (`make up && make migrate`
 the File System Access mount (`packages/cowork-client`), the SSE reader (one implementation in
 `@felix/protocol`, exercised through chat-ui's `streamChat`), and the proxy Worker — the last two via
 parameterized suites in `@felix/test-kit`, which are the contract those surfaces are held to. React
-coverage reaches the thread store, the theme provider, `usePoll`, the presence signals, and the Gate;
+coverage reaches the thread store (including the server/local session merge), the theme provider,
+`usePoll`, the presence signals, the Gate, and the history rail's per-thread actions;
 **the chat surface itself is untested** — `App.tsx`, the composer, and the inspector panels are still
-verified by running them. `.claude/hooks/tests/` covers the hooks.
+verified by running them.
+
+One thing that bites when verifying by hand: `usePoll` skips ticks while the tab is **hidden**, and a
+browser driven by automation reports `visibilityState: 'hidden'`. An inspector panel will sit on
+stale data forever under a driver, which looks like a broken refresh and is not. `.claude/hooks/tests/` covers the hooks.
 
 Two mechanical guards cover the hand-mirrored wire contract.
 
@@ -140,8 +145,15 @@ Flows worth knowing before editing the app:
   (`/chat/sessions/lease`, released best-effort on unload); a 409 means another tab holds the session.
 - **Sticky interrupts** — `approval_required` and `ui_request` frames render as banners and are
   answered out-of-band (`/approvals/{id}/decide`, `/chat/ui`); the run is waiting on them.
+- **Memory** — `/memory` is what the agent has stored across sessions, surfaced in the inspector so
+  a stale or hostile fact can be found and removed without a database console. Listing, the agent's
+  own hybrid ranking (`/memory/search`, whose hits report *which retriever* found them), and a
+  read-only `as-of/{turn_seq}` view including superseded facts. `DELETE` is **soft** — the row
+  becomes `forgotten` and drops out of recall rather than being erased, which is why the UI says
+  "forget". Reads need the `memory:read` scope, so a 403 here means a narrow key, not an empty store.
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
-  (`/chat/rewind` moves the active leaf), and full-text `/chat/sessions/search`.
+  (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
+  `/chat/sessions/search`.
 
 Each turn sends **only the new user message** — Felix replays thread history server-side.
 

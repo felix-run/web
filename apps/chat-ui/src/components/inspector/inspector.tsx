@@ -5,6 +5,7 @@ import { ScrollArea } from '@felix/ui/scroll-area';
 import { Skeleton } from '@felix/ui/skeleton';
 import {
   ActivityIcon,
+  BrainIcon,
   CheckCircle2Icon,
   ChevronRightIcon,
   CircleAlertIcon,
@@ -18,18 +19,30 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   decideApproval,
+  forgetMemory,
   getToolMetrics,
   listApprovals,
   listAudit,
+  listMemories,
   listPlans,
   listUsage,
+  memoriesAsOf,
+  searchMemories,
 } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
+import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { usePoll } from '@/hooks/usePoll';
 import { describeError } from '@/lib/errors';
 import { cn } from '@/lib/utils';
-import type { AuditEvent, Plan, PlanStepStatus, UsageEvent } from '@/types';
+import type {
+  AuditEvent,
+  MemoryHit,
+  MemoryRecord,
+  Plan,
+  PlanStepStatus,
+  UsageEvent,
+} from '@/types';
 
 export interface SkillState {
   declared: string[];
@@ -85,10 +98,11 @@ const EVENT_TONE: Record<string, string> = {
 const ACTIVITY_VISIBLE = 12;
 const USAGE_VISIBLE = 8;
 
-type SectionId = 'activity' | 'approvals' | 'plans' | 'metrics' | 'usage' | 'skills';
+type SectionId = 'activity' | 'approvals' | 'plans' | 'metrics' | 'usage' | 'memory' | 'skills';
 
 /**
- * Right-hand harness inspector: activity, approvals, plans, tool metrics, usage, skills.
+ * Right-hand harness inspector: activity, approvals, plans, tool metrics, usage,
+ * memory, skills.
  *
  * Stacked disclosure rather than tabs. Six tab destinations did not fit the rail's
  * 22rem, so two of them were reachable only by discovering a horizontal scrollbar;
@@ -123,6 +137,7 @@ export function Inspector({
     plans: false,
     metrics: false,
     usage: false,
+    memory: false,
     skills: false,
   });
 
@@ -189,6 +204,13 @@ export function Inspector({
               enabled={open && expanded.usage}
               open={expanded.usage}
               onToggle={() => toggle('usage')}
+            />
+          </SectionBoundary>
+          <SectionBoundary title="Memory">
+            <MemorySection
+              enabled={open && expanded.memory}
+              open={expanded.memory}
+              onToggle={() => toggle('memory')}
             />
           </SectionBoundary>
           <SectionBoundary title="Skills">
@@ -724,6 +746,193 @@ function MetricsSection({
 }
 
 // --- Usage ---
+
+/**
+ * What the agent has stored across sessions, and how to get rid of it.
+ *
+ * The store is otherwise invisible: when a run starts answering from a fact that
+ * is stale, wrong, or was extracted from a hostile tool result, this is the only
+ * place to find that fact without a database console.
+ *
+ * Three views over the same store, because they answer different questions.
+ * Listing says what is held. Search reproduces the agent's own hybrid ranking —
+ * and reports which retriever produced each hit, since "why did it recall
+ * *that*" is usually answered by the channel rather than the text. "As of"
+ * replays what was believed at a past turn, superseded facts included.
+ *
+ * Forgetting is soft on the harness side: the row moves to `forgotten` and drops
+ * out of recall rather than being erased. The UI says "forget" rather than
+ * "delete" so it does not promise more than that.
+ */
+function MemorySection({
+  enabled,
+  open,
+  onToggle,
+}: {
+  enabled: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const [mode, setMode] = useState<'recent' | 'search' | 'asOf'>('recent');
+  const [query, setQuery] = useState('');
+  const [asOfSeq, setAsOfSeq] = useState('');
+  /** Debounced so a poll is not issued per keystroke. */
+  const [committedQuery, setCommittedQuery] = useState('');
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setCommittedQuery(query.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  const seq = Number.parseInt(asOfSeq, 10);
+  const asOfReady = mode === 'asOf' && Number.isFinite(seq) && seq >= 0;
+  const searchReady = mode === 'search' && committedQuery.length > 0;
+
+  const recent = usePoll(() => listMemories({ limit: 50 }), {
+    enabled: enabled && mode === 'recent',
+  });
+  const found = usePoll(() => searchMemories(committedQuery, { limit: 12 }), {
+    enabled: enabled && searchReady,
+  });
+  const past = usePoll(() => memoriesAsOf(seq, { limit: 100 }), {
+    enabled: enabled && asOfReady,
+  });
+
+  const active = mode === 'search' ? found : mode === 'asOf' ? past : recent;
+  const rows: Array<MemoryRecord | MemoryHit> =
+    mode === 'search' ? (found.data ?? []) : ((active.data as MemoryRecord[] | undefined) ?? []);
+
+  const forget = async (id: string) => {
+    await forgetMemory(id);
+    active.refresh();
+  };
+
+  return (
+    <Section
+      icon={<BrainIcon className="size-3.5" />}
+      title="Memory"
+      meta={mode === 'recent' && recent.data ? String(recent.data.length) : undefined}
+      open={open}
+      onToggle={onToggle}
+    >
+      <div className="mb-2 flex gap-1" role="tablist" aria-label="Memory view">
+        {(
+          [
+            ['recent', 'Recent'],
+            ['search', 'Search'],
+            ['asOf', 'As of'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={mode === id}
+            onClick={() => setMode(id)}
+            className={cn(
+              'rounded px-2 py-1 text-xs transition-colors',
+              mode === id
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:bg-accent/50',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'search' && (
+        <input
+          type="search"
+          aria-label="Search memory"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="What would it recall?"
+          className="mb-2 h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      )}
+      {mode === 'asOf' && (
+        <input
+          type="number"
+          min={0}
+          aria-label="Turn sequence"
+          value={asOfSeq}
+          onChange={(e) => setAsOfSeq(e.target.value)}
+          // The numbers to type are the `origin_seq` values shown on the rows
+          // themselves, which is what makes this usable without a separate lookup.
+          placeholder="Turn sequence, e.g. 12"
+          className="mb-2 h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      )}
+
+      <SectionBody
+        onRetry={active.refresh}
+        doing="read stored memory"
+        loading={active.loading && !active.data}
+        error={active.error}
+        empty={
+          (mode === 'search' && !searchReady) || (mode === 'asOf' && !asOfReady)
+            ? true
+            : rows.length === 0
+        }
+        emptyText={
+          mode === 'search'
+            ? searchReady
+              ? 'Nothing recalled for that.'
+              : 'Type to reproduce what the agent would recall.'
+            : mode === 'asOf'
+              ? asOfReady
+                ? 'Nothing was held at that turn.'
+                : 'Enter a turn sequence to see what was believed then.'
+              : 'Nothing stored yet. Memory accumulates as the agent works.'
+        }
+        status={
+          rows.length ? `${rows.length} ${rows.length === 1 ? 'memory' : 'memories'}` : undefined
+        }
+      >
+        <ul className="space-y-2">
+          {rows.map((m) => {
+            const hit = mode === 'search' ? (m as MemoryHit) : null;
+            const record = mode === 'search' ? null : (m as MemoryRecord);
+            return (
+              <li key={m.id} className="rounded-lg border border-border/60 px-2.5 py-2 text-xs">
+                <p className="leading-snug break-words">{m.content}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-muted-foreground">
+                  <span>{m.kind}</span>
+                  {m.topic_key && <span>· {m.topic_key}</span>}
+                  {typeof m.importance === 'number' && <span>· imp {m.importance.toFixed(2)}</span>}
+                  {hit && <span>· score {hit.score.toFixed(3)}</span>}
+                  {/* Which retriever fired. The usual answer to "why this result". */}
+                  {hit?.channels?.length ? <span>· via {hit.channels.join('+')}</span> : null}
+                  {typeof record?.origin_seq === 'number' && <span>· seq {record.origin_seq}</span>}
+                  {record?.status && record.status !== 'active' && (
+                    <span className="text-state-failed">· {record.status}</span>
+                  )}
+                  {record?.superseded_by && <span>· superseded</span>}
+                </div>
+                {/* Forgetting a superseded row changes nothing the agent can recall. */}
+                {record?.status !== 'forgotten' && (
+                  <div className="mt-1.5">
+                    <ConfirmButton
+                      size="sm"
+                      variant="ghost"
+                      destructive
+                      question={`"${m.content.slice(0, 80)}" will stop being recalled.`}
+                      confirmLabel="Forget it"
+                      onConfirm={() => forget(m.id)}
+                    >
+                      Forget
+                    </ConfirmButton>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </SectionBody>
+    </Section>
+  );
+}
 
 function UsageSection({
   enabled,
