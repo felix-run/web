@@ -84,7 +84,11 @@ export function Gate({ children }: { children: ReactNode }) {
         className="w-full max-w-sm space-y-5 rounded-2xl border border-border/60 bg-card p-6 shadow-[var(--shadow-composer)]"
       >
         <div className="space-y-1.5">
-          <h1 className="text-lg font-semibold tracking-tight">Felix chat</h1>
+          {/* Only the wordmark is set in caps, and via CSS — the heading's text
+              content stays "Felix chat" for the accessible name. */}
+          <h1 className="text-lg font-semibold tracking-tight">
+            <span className="uppercase tracking-wider">Felix</span> chat
+          </h1>
           <p className="text-sm text-muted-foreground">
             {phase === 'checking'
               ? 'Checking your access key…'
