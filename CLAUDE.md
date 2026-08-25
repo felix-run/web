@@ -32,7 +32,8 @@ pnpm format            # biome format --write
 pnpm check-types       # turbo → tsc --noEmit
 pnpm test              # turbo → vitest (cowork-client, chat-ui)
 pnpm check-api-drift   # client routes vs the committed harness OpenAPI snapshot
-pnpm check-protocol-parity  # every SSE event arm has a handler in both apps
+pnpm check-protocol-parity  # SSE events: every arm handled, every emitted event modelled
+pnpm sync:harness [path]    # re-record both contract files from a harness checkout
 pnpm --filter @felix/chat-ui <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 ```
@@ -55,18 +56,26 @@ stale data forever under a driver, which looks like a broken refresh and is not.
 
 Two mechanical guards cover the hand-mirrored wire contract.
 
-`pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts` and diffs path *and*
-verb against `apps/chat-ui/harness-openapi.json`, a committed snapshot of the harness's
-`/openapi.json`. It catches a route the harness renamed or dropped; it cannot catch a call that hits
-a real route for the wrong purpose, and it says nothing about payload shapes. Refresh the snapshot
-when the harness gains routes — instructions are in `scripts/check-api-drift.mjs`.
+`pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts` — including the three
+that deliberately bypass `apiFetch` — and diffs path *and* verb against
+`apps/chat-ui/harness-openapi.json`, a committed record of what the harness serves. It catches a
+route the harness renamed or dropped; it cannot catch a call that hits a real route for the wrong
+purpose, and it says nothing about payload shapes. It also prints, advisory only, the routes the
+harness serves that nothing calls — the direction where a whole unbuilt feature shows up.
 
-`pnpm check-protocol-parity` covers the other half: that every `StreamEvent` arm actually reaches a
-handler. The union ends in an open arm, so an event nobody handles compiles, lints, and does nothing
-— the type system cannot see it. Pre-existing gaps are grandfathered in
-`scripts/protocol-parity-baseline.json` as a one-way ratchet; new gaps fail, and fixing a
-grandfathered one fails until `pnpm check-protocol-parity --update` banks it. It compares event
-*names* only — it cannot tell you a handler is wrong, just that one exists.
+`pnpm check-protocol-parity` covers the events, in **both** directions: every `StreamEvent` arm must
+have a handler, and every event `scripts/harness-events.json` says the harness emits must have an
+arm. The second is the one that drifts, because the harness moves independently and the union's open
+arm swallows anything it gains — an event nobody models compiles, lints, and does nothing. Handler
+gaps that predate the check are grandfathered in `scripts/protocol-parity-baseline.json` as a
+one-way ratchet (`--update` banks a fix); an unmodelled event is never grandfathered. Both halves
+compare event *names* only — neither can tell you a handler is wrong, just that one exists.
+
+**Both records are regenerated together, from a harness checkout, by
+`node scripts/sync-harness-contract.mjs [path]`** — never by curling a running harness. That records
+the deployment, not the contract; on 2026-08-24 the local container was two features behind and the
+snapshot silently omitted `/memory/*` and `GET /chat/stream/{thread_id}`. FastAPI builds the spec
+without a database, so nothing needs to be running.
 
 CI (`.github/workflows/ci.yml`) is one `verify` job: `pnpm install --frozen-lockfile`, then lint,
 check-types, API drift, protocol parity, build (chat-ui, docs), tests, then the hook tests —

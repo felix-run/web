@@ -38,6 +38,17 @@ runtime**. Always add the handler with the type.
 `packages/felix-protocol/src/types.ts` and the branches out of `apps/chat-ui/src/App.tsx`, and
 reports any arm the client ignores. It recognizes both spellings, a `switch` and an if-chain.
 
+**It also checks the direction that actually drifts.** Both files above live in this repo, so an
+event the *harness* gains has no arm at all and nothing to find — the check reported full parity on
+2026-08-24 while six emitted events were unmodelled. `scripts/harness-events.json` records what the
+harness emits (regenerate with `node scripts/sync-harness-contract.mjs <felix-checkout>`), and an
+emitted event with no arm now fails. That half has no baseline: it starts clean and stays clean.
+
+Two entries in that file are maintained by hand, because a sync from source cannot infer them:
+`normalised` maps a wire name onto the arm the reader folds it into (`error` → `on_error`, the one
+SSE `event:`-typed frame), and `legacy` lists names the harness no longer emits but an older
+self-hosted deployment still sends.
+
 Gaps that predate the check are grandfathered in `scripts/protocol-parity-baseline.json`. It is a
 **one-way ratchet**: a new gap fails, and fixing a grandfathered one also fails until you run
 `pnpm check-protocol-parity --update` to bank it. Never hand-edit an entry in to silence a new gap —
