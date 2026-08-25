@@ -87,6 +87,46 @@ t allow feature "unrelated command"              'ls -la && pnpm build'
 t allow feature "read-only git"                  'git status --short'
 t allow feature "-C pointing at another repo"    'git -C ../other status'
 
+echo "cross-repo: the branch that matters is the target repo's, not this one's"
+# The bug this section exists for: `cd <other repo> && git commit` was denied
+# whenever *this* repo sat on the protected branch, regardless of where the
+# other repo was. A docs commit on a feature branch of a sibling checkout was
+# blocked with "Committing on main is not allowed" while on a feature branch.
+t allow main "commit in another repo that is on a feature branch" \
+  "cd $tmp/feature && git commit -m x"
+t deny  feature "commit in another repo that is on the protected branch" \
+  "cd $tmp/protected && git commit -m x"
+t allow main "git -C at a feature-branch repo" \
+  "git -C $tmp/feature commit -m x"
+t deny  feature "git -C at a protected-branch repo" \
+  "git -C $tmp/protected commit -m x"
+# -C is per-invocation, so it overrides an earlier cd rather than inheriting it.
+t deny  feature "-C overrides an earlier cd" \
+  "cd $tmp/feature && git -C $tmp/protected commit -m x"
+t allow main "cd is overridden by -C pointing somewhere safe" \
+  "cd $tmp/protected && git -C $tmp/feature commit -m x"
+# A push with no refspec pushes the current branch, so it follows the target too.
+t allow main "refspec-less push from another repo on a feature branch" \
+  "cd $tmp/feature && git push"
+t deny  feature "refspec-less push from another repo on the protected branch" \
+  "cd $tmp/protected && git push"
+# Quoting and ~ are ordinary in a real command line.
+t allow main "quoted path to a feature-branch repo" \
+  "cd '$tmp/feature' && git commit -m x"
+
+echo "cross-repo: unresolvable paths keep the strict fallback"
+# Over-denying is the safe direction. A path the hook cannot evaluate must not
+# become a way to slip a commit past it.
+t deny  main "cd through an unexpanded variable falls back to this repo" \
+  'cd "$SOME_DIR" && git commit -m x'
+t deny  main "cd - falls back to this repo" \
+  'cd - && git commit -m x'
+t allow feature "unresolvable cd from a feature branch is still allowed" \
+  'cd "$SOME_DIR" && git commit -m x'
+# A directory that is not a repo yields no branch, so nothing is denied.
+t allow main "cd into a non-repo" \
+  "cd $tmp && git commit -m x"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

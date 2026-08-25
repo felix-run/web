@@ -36,17 +36,67 @@ deny() {
   exit 0
 }
 
-branch=""
-get_branch() {
-  [ -n "$branch" ] && return
-  cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || return
-  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+# Which repository a `git` invocation actually targets.
+#
+# This used to always read CLAUDE_PROJECT_DIR, which is wrong the moment a
+# command operates on another checkout: `cd ~/other-repo && git commit` was
+# denied whenever *this* repo happened to be on the protected branch, even
+# though the other one was on a feature branch. That is the false-positive
+# failure mode the header warns about, on an axis it did not consider.
+#
+# Two things move the target, and both are honoured: a `cd` earlier in the same
+# command, and `git -C <dir>` on the invocation itself. When a path cannot be
+# resolved statically — `cd "$SOME_VAR"`, `cd -` — the fallback stays
+# CLAUDE_PROJECT_DIR. That can still over-deny, which is the safe direction for
+# a guard: a false positive is an inconvenience, a false negative is a commit on
+# the protected branch.
+project_dir="${CLAUDE_PROJECT_DIR:-.}"
+cwd="$project_dir"
+
+# Strip one layer of surrounding quotes and expand a leading `~`.
+unquote() {
+  v="$1"
+  case "$v" in
+    \'*\') v="${v#\'}"; v="${v%\'}";;
+    '"'*'"') v="${v#'"'}"; v="${v%'"'}";;
+  esac
+  case "$v" in "~") v="$HOME";; "~/"*) v="$HOME/${v#~/}";; esac
+  printf '%s' "$v"
+}
+
+# Resolve <path> against the tracked cwd; empty if it still contains an
+# unexpanded shell expression.
+resolve_dir() {
+  d=$(unquote "$1")
+  case "$d" in *'$'*|*'`'*|"") printf ''; return;; esac
+  case "$d" in /*) printf '%s' "$d";; *) printf '%s/%s' "$cwd" "$d";; esac
+}
+
+branch_of() { # branch_of <dir>
+  ( cd "$1" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null )
 }
 
 # Split on shell separators, then inspect only real `git` invocations.
 printf '%s\n' "$stripped" | tr ';' '\n' | sed 's/&&/\n/g; s/||/\n/g; s/|/\n/g' | \
 while IFS= read -r seg; do
   seg="${seg#"${seg%%[![:space:]]*}"}"                  # ltrim
+  # A `cd` moves where any later `git` in this command runs.
+  case "$seg" in
+    cd|cd\ *)
+      # shellcheck disable=SC2086
+      set -- $seg
+      shift
+      if [ $# -eq 0 ]; then
+        cwd="$HOME"                                     # bare `cd` is $HOME
+      else
+        case "$1" in
+          -) cwd="$project_dir";;                       # `cd -` is not resolvable
+          *) d=$(resolve_dir "$1"); cwd="${d:-$project_dir}";;
+        esac
+      fi
+      continue;;
+  esac
+
   case "$seg" in
     git\ *|*/git\ *) ;;
     *) continue;;
@@ -56,17 +106,27 @@ while IFS= read -r seg; do
   set -- $seg
   shift                                                 # drop the `git` token
   sub=""
+  gitdir=""                                             # `-C <dir>`, if given
   while [ $# -gt 0 ]; do                                # skip global flags (-C dir, -c k=v)
     case "$1" in
-      -C|-c) shift 2; continue;;
+      -C) gitdir="$2"; shift 2; continue;;
+      -c) shift 2; continue;;
       -*) shift; continue;;
       *) sub="$1"; shift; break;;
     esac
   done
 
+  # `-C` wins over the tracked cwd for this invocation only.
+  if [ -n "$gitdir" ]; then
+    d=$(resolve_dir "$gitdir")
+    target="${d:-$project_dir}"
+  else
+    target="$cwd"
+  fi
+
   case "$sub" in
     commit)
-      get_branch
+      branch=$(branch_of "$target")
       [ "$branch" = "$PROTECTED" ] && deny "Committing on $PROTECTED is not allowed — every change lands via a PR (branch-pr-workflow skill). Create a branch first: git switch -c <type>/<slug>, then commit there and open a PR with gh pr create."
       ;;
     push)
@@ -90,7 +150,7 @@ while IFS= read -r seg; do
         [ "$dest" = "$PROTECTED" ] && deny "Direct pushes to the $PROTECTED branch are not allowed — it moves only by merging PRs on GitHub (branch-pr-workflow skill). Push your feature branch and gh pr create instead."
       done
       if [ "$n" -le 1 ]; then                           # no refspec: pushes the current branch
-        get_branch
+        branch=$(branch_of "$target")
         [ "$branch" = "$PROTECTED" ] && deny "You are on $PROTECTED and this push has no refspec, so it would push $PROTECTED directly — not allowed (branch-pr-workflow skill). Branch first: git switch -c <type>/<slug>."
       fi
       ;;
