@@ -322,7 +322,7 @@ function Section({
 }) {
   return (
     <Collapsible open={open} onOpenChange={onToggle}>
-      <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none">
+      <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
         <ChevronRightIcon
           aria-hidden
           className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90"
@@ -460,9 +460,22 @@ function ActivitySection({
   onToggle: () => void;
 }) {
   const [failuresOnly, setFailuresOnly] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  // Polling stops while a row is open. The feed repaints every 3s and a new event
+  // pushes every row below it down, which moves the pane out from under whoever is
+  // reading it — and the reason to open a row is to read something that has already
+  // finished, so there is nothing to miss by holding still. `usePoll` refetches on
+  // the `enabled` false→true edge, so closing the row brings the list back current
+  // with no extra wiring.
   const { data, error, loading, refresh } = usePoll(() => listAudit({ limit: ACTIVITY_FETCH }), {
-    enabled: enabled && open,
+    enabled: enabled && open && openId === null,
   });
+
+  // Close the drill-down when the list it belongs to changes underneath it. Without
+  // this, filtering or collapsing the section unmounts the open row while `openId`
+  // stays set — nothing looks expanded and the poll never resumes.
+  useEffect(() => setOpenId(null), [failuresOnly, open]);
 
   // Applied to the whole fetched window, before the render cap. Filtering the twelve
   // visible rows instead would drop exactly what the filter exists to find: a failure
@@ -521,61 +534,14 @@ function ActivitySection({
           </Button>
         </div>
         <ol className="divide-y divide-border/40">
-          {rows.map((e) => {
-            const tone = EVENT_TONE[e.event_type];
-            const label = EVENT_LABEL[e.event_type] ?? e.event_type;
-            const subject = subjectOf(e);
-            return (
-              <li key={e.id} className="flex items-start gap-2 py-1.5 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    {/* Every row carries its type now. The exception gets the tonal
-                        badge; the routine majority gets a quiet label, which is what
-                        keeps the exception reading as one. */}
-                    {tone ? (
-                      <Badge
-                        variant="secondary"
-                        title={EVENT_HELP[e.event_type]}
-                        className={cn('shrink-0 px-1 py-0 font-sans text-xs font-medium', tone)}
-                      >
-                        {label}
-                      </Badge>
-                    ) : (
-                      // Suppressed where it would only repeat the subject, which is
-                      // what `EVENT_LABEL` returns for a turn boundary.
-                      label !== subject && (
-                        <span
-                          title={EVENT_HELP[e.event_type]}
-                          className="shrink-0 text-xs text-muted-foreground"
-                        >
-                          {label}
-                        </span>
-                      )
-                    )}
-                    <span className="truncate font-medium">{subject}</span>
-                  </div>
-                  {summary(e) && (
-                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                      {summary(e)}
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-0.5">
-                  <StatusDot status={e.status} />
-                  {e.ts != null && (
-                    <span
-                      // The rounded "3h" is for scanning; the exact stamp is for
-                      // matching a row against a harness log line.
-                      title={new Date(e.ts < 1e12 ? e.ts * 1000 : e.ts).toISOString()}
-                      className="text-xs tabular-nums text-muted-foreground"
-                    >
-                      {relTime(e.ts)}
-                    </span>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+          {rows.map((e) => (
+            <ActivityRow
+              key={e.id}
+              event={e}
+              open={openId === e.id}
+              onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
+            />
+          ))}
         </ol>
         {/* Counts the filtered set, not the fetch: with the filter on, "of the last 60"
             would describe a window the reader is no longer looking at. */}
@@ -585,8 +551,171 @@ function ActivitySection({
           noun={failuresOnly ? `failed events in the last ${ACTIVITY_FETCH}` : 'recent events'}
           windowed={!failuresOnly}
         />
+        {openId !== null && (
+          // A list that has quietly stopped updating looks exactly like a harness that
+          // has stopped working. Say which one it is.
+          <p className="mt-1 text-xs text-muted-foreground">Paused while a row is open.</p>
+        )}
       </SectionBody>
     </Section>
+  );
+}
+
+/**
+ * One event, as a disclosure.
+ *
+ * The row is a real `<button>` rather than a styled `<li>`, which is what makes the
+ * feed keyboard-reachable: before this, tabbing through the inspector skipped every
+ * event and landed on the next section header, so the whole list was mouse-only. It
+ * carries the same chevron-and-rotate grammar as `Section` one level down, because a
+ * second disclosure idiom inside the same panel would be a second thing to learn.
+ *
+ * Expanding is the only way to see a payload. The collapsed row shows a clamped
+ * two-line summary and nothing else, so a long prompt or a denial's context used to
+ * end at the clamp with nowhere to go.
+ */
+function ActivityRow({
+  event: e,
+  open,
+  onToggle,
+}: {
+  event: AuditEvent;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const tone = EVENT_TONE[e.event_type];
+  const label = EVENT_LABEL[e.event_type] ?? e.event_type;
+  const subject = subjectOf(e);
+  const text = summary(e);
+
+  return (
+    <li>
+      <Collapsible open={open} onOpenChange={onToggle}>
+        {/* A visible ring, not just a background wash. `Section` indicates focus with
+            `bg-accent/40` alone, which at this density is hard to locate and does not
+            clear the 3:1 WCAG 1.4.11 asks of a focus indicator; `--ring` was measured
+            for exactly this and is used on both now. */}
+        <CollapsibleTrigger className="group flex w-full items-start gap-2 rounded-sm py-1.5 text-left text-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronRightIcon
+            aria-hidden
+            className="mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              {/* Every row carries its type. The exception gets the tonal badge; the
+                  routine majority gets a quiet label, which is what keeps the
+                  exception reading as one. */}
+              {tone ? (
+                <Badge
+                  variant="secondary"
+                  title={EVENT_HELP[e.event_type]}
+                  className={cn('shrink-0 px-1 py-0 font-sans text-xs font-medium', tone)}
+                >
+                  {label}
+                </Badge>
+              ) : (
+                // Suppressed where it would only repeat the subject, which is what
+                // `EVENT_LABEL` returns for a turn boundary.
+                label !== subject && (
+                  <span
+                    title={EVENT_HELP[e.event_type]}
+                    className="shrink-0 text-xs text-muted-foreground"
+                  >
+                    {label}
+                  </span>
+                )
+              )}
+              <span className="truncate font-medium">{subject}</span>
+            </div>
+            {text && (
+              // The clamp is a scanning aid, so it lifts once this row is the one
+              // being read rather than one of twelve being skimmed.
+              <p
+                className={cn(
+                  'mt-0.5 text-xs text-muted-foreground',
+                  open ? 'whitespace-pre-wrap break-words' : 'line-clamp-2',
+                )}
+              >
+                {text}
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-0.5">
+            <StatusDot status={e.status} />
+            {e.ts != null && (
+              // The rounded "3h" is for scanning; the exact stamp is for matching a
+              // row against a harness log line.
+              <span
+                title={new Date(tsToMs(e.ts)).toISOString()}
+                className="text-xs tabular-nums text-muted-foreground"
+              >
+                {relTime(e.ts)}
+              </span>
+            )}
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <ActivityDetail event={e} />
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  );
+}
+
+/**
+ * Everything the harness recorded about one event.
+ *
+ * `bg-background` rather than `--code-surface`: this pane sits inside the inspector's
+ * own `bg-card/40`, and the house rule is that a pane takes whichever level its
+ * container does not.
+ *
+ * The payload is rendered key by key rather than as pretty-printed JSON. Every value
+ * the agent loop writes is a scalar — `tool`, `tool_call_id`, `thread_id`,
+ * `user_input`, `chars` — so JSON would be punctuation around the same six words.
+ * Anything nested still renders, as compact JSON in the value column.
+ */
+function ActivityDetail({ event: e }: { event: AuditEvent }) {
+  const payload = Object.entries(e.payload ?? {});
+  return (
+    <div className="mt-1 mb-2 ml-5 rounded-md bg-background px-2.5 py-2 text-xs">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <Field label="Event" value={e.event_type} mono />
+        <Field label="Status" value={e.status} mono />
+        {e.ts != null && <Field label="When" value={new Date(tsToMs(e.ts)).toLocaleString()} />}
+        {e.manifest_id && <Field label="Manifest" value={e.manifest_id} mono />}
+        {e.principal_subj && <Field label="Principal" value={e.principal_subj} mono />}
+        <Field label="Event id" value={e.id} mono />
+      </dl>
+      {payload.length > 0 && (
+        <>
+          <p className="mt-2 mb-1 font-medium">Payload</p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            {payload.map(([k, v]) => (
+              <Field
+                key={k}
+                label={k}
+                value={typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}
+                mono
+              />
+            ))}
+          </dl>
+        </>
+      )}
+      {payload.length === 0 && (
+        // Distinguishes "the harness recorded no payload" from "the client dropped it",
+        // which is the exact confusion the `payload_json` rename came out of.
+        <p className="mt-2 text-muted-foreground">No payload recorded for this event.</p>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={cn('min-w-0 break-words', mono && 'font-mono')}>{value}</dd>
+    </>
   );
 }
 
@@ -664,9 +793,13 @@ function summary(e: AuditEvent): string {
   return '';
 }
 
+/** Audit rows have arrived in both units; normalise before doing arithmetic on one. */
+function tsToMs(ts: number): number {
+  return ts < 1e12 ? ts * 1000 : ts;
+}
+
 function relTime(ts: number): string {
-  // Accept seconds or ms.
-  const ms = ts < 1e12 ? ts * 1000 : ts;
+  const ms = tsToMs(ts);
   const diff = Date.now() - ms;
   // A burst of tool calls lands inside one minute, and "now" on every row of it
   // erases the sequence. Seconds keep the rows distinguishable at the only moment
