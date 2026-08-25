@@ -19,6 +19,7 @@ import { reportReachability } from '@/lib/connection';
 
 import { readSseStream } from '@felix/protocol';
 import { authHeaders, handleUnauthorized } from './lib/auth';
+import { threadSuffix } from './lib/threads';
 import type {
   AgentCard,
   ApprovalRequest,
@@ -37,6 +38,7 @@ import type {
   ResolvedManifest,
   Rubric,
   SessionSnapshot,
+  SessionSummary,
   StreamEvent,
   ThinkingLevel,
   ThreadHistory,
@@ -422,6 +424,126 @@ export async function releaseSessionLease(args: {
   } catch {
     // best-effort on tab close / navigate
   }
+}
+
+/**
+ * GET /chat/sessions — every thread the harness holds for this tenant.
+ *
+ * The authoritative thread index. `src/lib/threads.ts` still keeps a
+ * localStorage copy, but as a cache and as the only record of which manifest a
+ * thread used — the harness does not track that.
+ *
+ * Ids arrive tenant-prefixed and are stripped here, so callers only ever see the
+ * suffix they are allowed to send back.
+ */
+export async function listSessions(): Promise<SessionSummary[]> {
+  const res = await apiFetch('/api/chat/sessions');
+  if (!res.ok) throw new Error(`chat/sessions: ${res.status}`);
+  // The route returns the same array under both keys. Read either — a harness
+  // that later drops one of them should not empty the sidebar.
+  const body = (await res.json()) as {
+    sessions?: RawSessionRow[];
+    items?: RawSessionRow[];
+  };
+  const rows = body.sessions ?? body.items ?? [];
+  return rows.map((row) => ({
+    id: threadSuffix(String(row.id ?? '')),
+    name: row.sessionName ?? null,
+    createdAt: row.createdAt ?? undefined,
+    updatedAt: row.updatedAt ?? undefined,
+    parentSessionId: row.parentSessionId ? threadSuffix(row.parentSessionId) : null,
+  }));
+}
+
+interface RawSessionRow {
+  id?: string;
+  sessionName?: string | null;
+  createdAt?: number;
+  updatedAt?: number;
+  parentSessionId?: string | null;
+}
+
+/**
+ * POST /chat/sessions/name — give a thread a durable name.
+ *
+ * Also appends a `session_info` event to the transcript, so the rename is part
+ * of the session log rather than only metadata.
+ */
+export async function renameSession(threadId: string, name: string): Promise<void> {
+  const res = await apiFetch('/api/chat/sessions/name', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ thread_id: threadId, name }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`sessions/name: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+/**
+ * POST /chat/fork — branch a thread into a new one.
+ *
+ * The write half of rewind: rewind moves this thread's leaf, fork copies up to
+ * an event into a *separate* thread and leaves the original where it was. The
+ * new thread records the original as its parent.
+ *
+ * `fromEventId` defaults to the whole thread.
+ */
+export async function forkSession(args: {
+  threadId: string;
+  newThreadId: string;
+  fromEventId?: string;
+}): Promise<{ leaf_id?: string }> {
+  const res = await apiFetch('/api/chat/fork', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      thread_id: args.threadId,
+      new_thread_id: args.newThreadId,
+      ...(args.fromEventId ? { from_event_id: args.fromEventId } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`chat/fork: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as { leaf_id?: string };
+}
+
+/**
+ * POST /chat/compact — summarise the thread's older context now.
+ *
+ * The agent loop does this on its own when the window fills; this is the manual
+ * trigger. It needs a manifest because the compaction strategy and the model
+ * that writes the summary both come from one.
+ */
+export async function compactSession(threadId: string, manifest: string): Promise<void> {
+  const res = await apiFetch('/api/chat/compact', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ thread_id: threadId, manifest }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`chat/compact: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+/**
+ * GET /chat/sessions/{id}/export — the active branch as JSONL.
+ *
+ * Returns the text rather than triggering the download, so the caller decides
+ * what to do with it. Only the active branch: a rewound-away sibling is not
+ * included, which matches what the transcript shows.
+ */
+export async function exportSession(threadId: string): Promise<string> {
+  const res = await apiFetch(`/api/chat/sessions/${encodeURIComponent(threadId)}/export`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`sessions/export: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return await res.text();
 }
 
 /** GET /chat/sessions/search — full-text hits across the tenant's event log. */

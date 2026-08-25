@@ -55,6 +55,29 @@ export interface Turn {
 
 export type Variant = 'stable' | 'canary';
 
+/**
+ * One row from GET /chat/sessions — the tenant's threads, as the harness knows
+ * them.
+ *
+ * `id` here is the *client* thread id: the wire spells it `{tenant}:{id}` and
+ * `threadSuffix` strips the prefix, because a client only ever sends the suffix
+ * back (the harness rejects one containing `:` outright, so a thread can never
+ * be addressed across tenants).
+ *
+ * There is no manifest on this row. Which agent a thread was talked to is
+ * client-side state, so the local index remains its only record.
+ */
+export interface SessionSummary {
+  id: string;
+  /** Server-set name from POST /chat/sessions/name; null until someone sets one. */
+  name: string | null;
+  /** Epoch ms. */
+  createdAt?: number;
+  updatedAt?: number;
+  /** Set on a thread created by POST /chat/fork. */
+  parentSessionId?: string | null;
+}
+
 // --- Harness-parity surfaces (Inspector panel) ---
 // Shapes mirror src/api/{audit,approvals,plans}.ts in the orchestrator.
 

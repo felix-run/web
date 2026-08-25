@@ -125,9 +125,17 @@ Flows worth knowing before editing the app:
 - **Durable runs** — `POST /chat` may return `202 + resume_token`; poll `GET /chat/runs/{token}`
   (`pollDurableRun`) instead of streaming.
 - **Session state is server-authoritative** — `GET /chat/sessions/{id}` returns the snapshot
-  (transcript, phase, thinking level, leaf, lease) used to hydrate a thread. `chat-ui` additionally
-  keeps a `localStorage` mirror (`src/lib/threads.ts`) because `GET /chat/history/{id}` rejects
-  anonymous callers.
+  (transcript, phase, thinking level, leaf, lease) used to hydrate a thread, and `GET /chat/sessions`
+  is the thread index behind the history rail. The `localStorage` copy in `src/lib/threads.ts` is a
+  cache, not the list: `mergeSessions` folds the two, and the split matters because **neither side is
+  a superset**. The harness owns which threads exist and what they are *named*
+  (`POST /chat/sessions/name`); it does not record which manifest a thread used, and a thread that
+  never reached it — or was created against a different deployment — exists only locally, so those
+  rows are kept and marked rather than dropped.
+  - Thread ids on the wire are `{tenant}:{suffix}`; clients send and store the **suffix** only
+    (`threadSuffix`), because the harness rejects a suffix containing `:` outright.
+  - `GET /chat/history/{id}` still rejects anonymous callers, which is why hydration prefers the
+    snapshot route.
 - **Leases** — each tab mints a holder id and takes an exclusive lease
   (`/chat/sessions/lease`, released best-effort on unload); a 409 means another tab holds the session.
 - **Sticky interrupts** — `approval_required` and `ui_request` frames render as banners and are
