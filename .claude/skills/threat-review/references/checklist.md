@@ -16,7 +16,8 @@ Reference for `threat-review`.
       a documented, intentional pass-through mode
 - [ ] Streaming preserved: body passed through, `duplex: 'half'`, `redirect: 'manual'`, no buffering
 - [ ] Response headers not reconstructed in a way that drops or adds sensitive headers
-- [ ] Both Workers changed together — a fix in one and not the other leaves an exposed surface
+- [ ] The dev proxy in `apps/chat-ui/vite.config.ts` changed with it — it is a second copy of the
+      same contract, and a fix in only one leaves dev and production disagreeing
 
 ## Gate and identity — `src/lib/auth.ts`, `components/gate.tsx`
 
@@ -56,7 +57,9 @@ Reference for `threat-review`.
 
 - [ ] `wrangler.jsonc` `vars` contains only `FELIX_ORIGIN`
 - [ ] `.dev.vars` gitignored; only `.dev.vars.example` tracked, with empty values
-- [ ] Both app `wrangler.jsonc` files still gitignored
+- [ ] `apps/chat-ui/wrangler.jsonc` still gitignored (by `apps/chat-ui/.gitignore`); only
+      `wrangler.example.jsonc` tracked. `apps/docs/wrangler.jsonc` is tracked on purpose — it must
+      stay free of account and resource ids
 - [ ] No secret in `index.html`, in a `VITE_`-prefixed env var, or in `dist/`
 - [ ] No source maps published that expose more than intended
 - [ ] Nothing sensitive written to `localStorage` beyond the gate key and UI state

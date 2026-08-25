@@ -28,7 +28,7 @@ Client → Ingress (Caddy / Traefik / nginx / CDN)
 
 The harness library lives in `packages/harness` (`felix`). The CLI is `packages/cli` (`felix migrate|doctor|eval|mint-jwt|…`).
 
-There is **no** Cloudflare Workers / Durable Objects / Hyperdrive / R2-binding / Queues / Workflows compute in this stack. Deploy with Compose or Helm — see [getting started](/guide/getting-started/) and [deploy](/guide/deploy/).
+Felix is plain CPython in containers you run. There is no serverless or edge runtime in the stack, and no vendor-specific compute or storage binding — Postgres, Valkey and an object store sit behind Protocols. Deploy with Compose or Helm — see [getting started](/guide/getting-started/) and [deploy](/guide/deploy/).
 
 ## HTTP surfaces
 
@@ -61,18 +61,25 @@ Self-authenticating mounts (e.g. `/internal`) skip bearer parsing; the router en
 ```
 POST /chat or /v1/chat/completions
   → auth + rate limit
-  → enforceManifestAuth (anonymous / required scopes)
-  → resolveManifest (tenant Postgres → bundled)
-  → buildAgent(manifest, deps)
+  → resolve_tenant_manifest (tenant Postgres → object store → bundled)
+  → prepare_tenant_invoke
+       enforce_inbound_auth (spec.auth.inbound: anonymous / required scopes)
+       ensure_thread_pin (spec.governance.pin_compile → 409 if the pointer moved)
+  → apply_inbound_screening on the caller's turn
+  → build_agent(manifest, deps)
        validate → system prompt + skills
        bind MCP / peers / sandboxes / containers / queues / browser
-       governance wrappers (policies → … → approvals)
+       governance wrappers (secret masking → … → approvals)
        get_pattern(spec.pattern) → Agent
        optional durable wrap (fibers / Temporal)
-  → agent.invoke / streamEvents
+  → agent.invoke / agent.stream_events
        session strategy renders working set
        model chat → tool dispatch → persist session events
 ```
+
+Names are the actual callables: `felix.runtime` owns `resolve_tenant_manifest` and
+`prepare_tenant_invoke`, `felix.manifests.builder` owns `build_agent`, and `invoke` /
+`stream_events` are the two methods on the `Agent` protocol in `felix.patterns.types`.
 
 ## Durability
 
@@ -80,14 +87,19 @@ Default durability backend is **fibers** (Postgres-backed sleep/step/resume; wor
 
 ## Background work
 
-Taskiq worker + scheduler replace the old Worker cron/queue handlers:
+`felix-scheduler` enqueues labeled cron tasks; `felix-worker` consumes them. Run both, or none of
+the following ever fires:
 
-- Audit buffer flush (and optional warehouse spill)
-- Scheduled jobs sweep
-- Memory consolidation / retention
-- Anomaly scan + canary auto-rollback
-- Continuous eval tick
-- Fiber wake / resume
+| Task (`apps/worker`) | Cron | Does |
+|---|---|---|
+| `flush_audit` | `*/1 * * * *` | Drain the audit buffer to Postgres (and the optional warehouse spill) |
+| `flush_usage` | `*/1 * * * *` | Drain buffered token usage |
+| `run_scheduled_jobs` | `* * * * *` | Sweep due `jobs` rows |
+| `fiber_scheduler` | `* * * * *` | Wake and resume due durable fibers |
+| `continuous_eval` | `*/10 * * * *` | Continuous eval tick |
+| `consolidate_memory` | `*/15 * * * *` | Memory consolidation |
+| `anomaly_scan` | `*/30 * * * *` | Error-rate scan and canary auto-rollback |
+| `retention_sweep` | `0 3 * * *` | Prune expired rows and objects |
 
 ## Package map
 

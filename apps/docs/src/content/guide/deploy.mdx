@@ -7,8 +7,8 @@ sidebar:
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
-Felix runs as containers you operate. There is **no Cloudflare Workers runtime** in the
-harness. Cloudflare (or any CDN) may sit in front for DNS/TLS/WAF only.
+Felix runs as containers you operate — CPython behind your own ingress, with no serverless or edge
+runtime anywhere in the harness. A CDN may sit in front for DNS, TLS and WAF only.
 
 | Piece | Local | Production |
 |-------|-------|------------|
@@ -94,15 +94,15 @@ sweep, memory consolidation or fiber resume ever fires.
 
 ## Model routes
 
-`FELIX_DEFAULT_MODEL_ID` (default `claude-sonnet-4`) picks the model a manifest gets when it does not
+`FELIX_DEFAULT_MODEL_ID` (default `claude-sonnet`) picks the model a manifest gets when it does not
 name one. `FELIX_MODEL_ROUTES` is a JSON object that overrides or extends the logical-id table, so
 manifests stay portable across deployments:
 
 ```bash
-FELIX_DEFAULT_MODEL_ID=claude-sonnet-4
+FELIX_DEFAULT_MODEL_ID=claude-sonnet
 FELIX_MODEL_ROUTES='{
-  "claude-sonnet-4": {"provider": "anthropic", "model": "claude-sonnet-4-5"},
-  "house-fast":      {"provider": "ollama",    "model": "llama3.2"}
+  "claude-sonnet": {"provider": "anthropic", "model": "claude-sonnet-5"},
+  "house-fast":    {"provider": "ollama",    "model": "llama3.2"}
 }'
 ```
 

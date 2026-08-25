@@ -21,7 +21,7 @@ Migrations: Alembic via `felix migrate` (or `make migrate`). Local Compose uses 
 
 ## Tenant isolation
 
-Tenant-owned tables lead with `tenant_id` in the primary key. Every store query filters on tenant. Thread ids are `${tenant_id}:${suffix}` — caller suffixes containing `:` or `#` are rejected so the prefix cannot be smuggled.
+Tenant-owned tables lead with `tenant_id` in the primary key. Every store query filters on tenant. Thread ids are `{tenant_id}:{suffix}` — caller suffixes containing `:` or `#` are rejected so the prefix cannot be smuggled.
 
 ## Session events
 
