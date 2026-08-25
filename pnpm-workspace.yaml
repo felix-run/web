@@ -23,7 +23,11 @@ catalog:
   nanoid: ^5.0.9
 
   # Streamed markdown for the assistant transcript
-  streamdown: ^1.3.0
+  # Exact, not a range: this repo styles Streamdown's *markup* — the code block's
+  # `data-streamdown` attributes, remark-gfm's `task-list-item` — so its rendered output
+  # is an interface here, not an implementation detail. A caret quietly took 1.3 to 1.6.
+  # An upgrade should arrive as a PR someone looks at a rendered answer for.
+  streamdown: 1.6.11
 
   # Styling — Tailwind v4 is CSS-first; keep the plugin and core in lockstep
   tailwindcss: ^4.1.13
