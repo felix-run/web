@@ -49,54 +49,93 @@ export interface SkillState {
   active: string[];
 }
 
+/**
+ * The subject line for each event type: what the row is *about*, in the reader's
+ * words rather than the harness's.
+ *
+ * These are the four types `emit_agent_audit` writes. The previous set modelled seven
+ * — `judge_score`, `guardrail_block`, `approval_request`, `approval_decision`,
+ * `plan_step`, `model_switch` — and six of them are not audit events at all: approvals
+ * live on `/approvals`, and the rest were never emitted by any harness build. Only
+ * `tool_call` overlapped. Meanwhile the three types the feed is actually made of were
+ * absent, so every branch keyed on this table missed on every row.
+ */
 const EVENT_LABEL: Record<string, string> = {
-  tool_call: 'Tool',
-  judge_score: 'Judge',
-  guardrail_block: 'Guardrail',
-  approval_request: 'Approval',
-  approval_decision: 'Decision',
-  plan_step: 'Plan',
-  model_switch: 'Model',
+  user_input: 'User message',
+  tool_call: 'Tool call',
+  policy_deny: 'Blocked',
+  final_response: 'Assistant reply',
 };
 
 /**
- * What each event type actually means, for the reader who has not memorised the
- * harness vocabulary. Surfaced as the badge's `title`, so it costs nothing to
- * anyone who already knows and answers the question for anyone who does not.
+ * What each event type means, for the reader who has not memorised the harness
+ * vocabulary. Rendered on every row rather than only the badged ones: the previous
+ * version hung this off the badge's `title`, and the badge rendered for three types,
+ * so four of these strings could never appear on screen.
  */
 const EVENT_HELP: Record<string, string> = {
+  user_input: 'The turn started; this is what the operator sent.',
   tool_call: 'The agent called a tool.',
-  judge_score: 'An automated judge scored the response.',
-  guardrail_block: 'A policy rule stopped a tool call before it ran.',
-  approval_request: 'A gated tool call paused, waiting for a person to decide.',
-  approval_decision: 'Someone approved or denied a gated tool call.',
-  plan_step: 'A step in a multi-step plan changed state.',
-  model_switch: 'The run moved to a different model.',
+  // Deliberately broader than "a policy said no". The harness folds every governance
+  // denial into this one name — screening, limits, guardrails, judges, and a pending
+  // approval — so naming only one of them would send the reader looking in the wrong
+  // place. Which layer denied it is a Prometheus question, not an audit one.
+  policy_deny:
+    'Something refused this tool call before it ran: a policy, a limit, a guardrail, a judge, or an approval nobody has answered.',
+  final_response: 'The turn ended; the agent produced its reply.',
 };
 
 /**
- * Tones for the events worth interrupting a scan for.
+ * Tone for the one event worth interrupting a scan for.
  *
- * Colour here means run state, not event category. The previous version gave each of
- * six event types its own hue, which spent the whole colour budget on telling violet
- * from indigo: neither carries urgency, neither is worth an operator's attention, and
- * six hues in a 22rem panel is noise. What the reader needs is which events are
- * waiting on a person and which resolved. The type is already written on the badge.
+ * Colour here means run state, not event category. An earlier version gave each of six
+ * event types its own hue, which spent the whole colour budget on telling violet from
+ * indigo: neither carries urgency, and six hues in a 22rem panel is noise. That was cut
+ * back to two states, which was right — but every key in the table (`guardrail_block`,
+ * `approval_request`, `approval_decision`) named an event the harness does not emit, so
+ * the reduction shipped as no badge at all. `policy_deny` is what a refusal is really
+ * called, and it is the exception the panel exists to surface.
  *
- * `tool_call` is deliberately absent: it is the overwhelming majority of the feed, so
- * badging it too would put every row at the same volume and the exceptions would stop
- * reading as exceptions. `judge_score`, `plan_step` and `model_switch` are absent for
- * the same reason: they are routine, and their labels say what they are.
+ * `tool_call` stays deliberately absent, and now so do `user_input` and `final_response`:
+ * between them they are nearly the whole feed, and badging the majority would put every
+ * row at the same volume and stop the exception reading as one. A failed `final_response`
+ * still stands out — through its status, which is the channel for that.
  */
 const EVENT_TONE: Record<string, string> = {
-  guardrail_block: 'bg-state-blocked/15 text-state-blocked',
-  approval_request: 'bg-state-blocked/15 text-state-blocked',
-  approval_decision: 'bg-state-done/15 text-state-done',
+  policy_deny: 'bg-state-blocked/15 text-state-blocked',
+};
+
+/**
+ * Harness status → the word the panel shows. The harness writes exactly these three
+ * from `emit_agent_audit`; anything else is passed through untouched rather than
+ * guessed at.
+ *
+ * There is deliberately no running or pending state here. An audit row is written
+ * after the thing it describes has finished, so an in-flight call has no row at all —
+ * which is why the feed is not where "is it working right now" gets answered.
+ */
+const STATUS_LABEL: Record<string, string> = {
+  ok: 'OK',
+  error: 'Failed',
+  denied: 'Denied',
 };
 
 /** Rows rendered per section before the footer starts saying what was left out. */
 const ACTIVITY_VISIBLE = 12;
 const USAGE_VISIBLE = 8;
+
+/**
+ * How many events the window covers. This is a request cap, not a total, and the
+ * footer has to say so: `/audit` returns no count of what it did not send, so the
+ * honest phrasing is "the last 60" rather than a number that looks like a census.
+ * Upstream allows up to 500.
+ */
+const ACTIVITY_FETCH = 60;
+
+/** The statuses that mean the harness did not do the thing. */
+function isFailure(status: string): boolean {
+  return status === 'error' || status === 'failed' || status === 'denied';
+}
 
 type SectionId = 'activity' | 'approvals' | 'plans' | 'metrics' | 'usage' | 'memory' | 'skills';
 
@@ -270,7 +309,13 @@ function Section({
   icon: React.ReactNode;
   title: string;
   meta?: string;
-  metaTone?: 'default' | 'attention';
+  /**
+   * `attention` is amber: something is waiting on a person. `failed` is red:
+   * something already went wrong and nobody is being asked to act. Collapsing the
+   * two would put the panel's two most different states in one colour, which is the
+   * whole thing the state palette exists to keep apart.
+   */
+  metaTone?: 'default' | 'attention' | 'failed';
   open: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -288,9 +333,11 @@ function Section({
           <span
             className={cn(
               'shrink-0 text-xs tabular-nums',
-              metaTone === 'attention'
-                ? 'rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-medium text-state-blocked'
-                : 'text-muted-foreground',
+              metaTone === 'attention' &&
+                'rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-medium text-state-blocked',
+              metaTone === 'failed' &&
+                'rounded-full bg-state-failed/15 px-1.5 py-0.5 font-medium text-state-failed',
+              (!metaTone || metaTone === 'default') && 'text-muted-foreground',
             )}
           >
             {meta}
@@ -377,11 +424,26 @@ function SectionBody({
 }
 
 /** Footer that names what a render cap left out, so the list never lies by omission. */
-function Truncated({ shown, total, noun }: { shown: number; total: number; noun: string }) {
+function Truncated({
+  shown,
+  total,
+  noun,
+  /**
+   * Set when `total` is the size of a fetch window rather than everything there is.
+   * Without it the footer reads "12 of 60" and presents a request parameter as a
+   * census of the harness — the exact lie this footer was added to prevent.
+   */
+  windowed,
+}: {
+  shown: number;
+  total: number;
+  noun: string;
+  windowed?: boolean;
+}) {
   if (total <= shown) return null;
   return (
     <p className="mt-2 text-xs text-muted-foreground">
-      Showing {shown} of {total} {noun}
+      Showing {shown} of {windowed ? `the last ${total}` : total} {noun}
     </p>
   );
 }
@@ -397,16 +459,31 @@ function ActivitySection({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { data, error, loading, refresh } = usePoll(() => listAudit({ limit: 60 }), {
+  const [failuresOnly, setFailuresOnly] = useState(false);
+  const { data, error, loading, refresh } = usePoll(() => listAudit({ limit: ACTIVITY_FETCH }), {
     enabled: enabled && open,
   });
-  const rows = data?.slice(0, ACTIVITY_VISIBLE) ?? [];
+
+  // Applied to the whole fetched window, before the render cap. Filtering the twelve
+  // visible rows instead would drop exactly what the filter exists to find: a failure
+  // thirty events back is one the cap was already hiding.
+  //
+  // Deliberately client-side even though `/audit` accepts `status`. A failure here is
+  // `error` *or* `denied`, the server filter takes one value at a time, and a filter
+  // that disagreed with the "N failed" count in the header would be worse than none.
+  const failed = data?.filter((e) => isFailure(e.status)) ?? [];
+  const visible = failuresOnly ? failed : (data ?? []);
+  const rows = visible.slice(0, ACTIVITY_VISIBLE);
 
   return (
     <Section
       icon={<ActivityIcon className="size-3.5" />}
       title="Activity"
-      meta={data ? String(data.length) : undefined}
+      // A census of the window is a constant once the harness has `ACTIVITY_FETCH`
+      // rows — it read "60" forever and answered nothing. What is worth knowing from a
+      // collapsed header is whether anything in the window went wrong.
+      meta={failed.length > 0 ? `${failed.length} failed` : undefined}
+      metaTone={failed.length > 0 ? 'failed' : 'default'}
       open={open}
       onToggle={onToggle}
     >
@@ -415,27 +492,67 @@ function ActivitySection({
         doing="load recent activity"
         loading={loading && !data}
         error={error}
-        empty={data?.length === 0}
-        emptyText="Tool calls, approvals, and plan steps from chat show up here as they happen."
-        status={data ? `${data.length} recent harness events` : undefined}
+        empty={visible.length === 0}
+        emptyText={
+          failuresOnly
+            ? `Nothing failed or was denied in the last ${ACTIVITY_FETCH} events.`
+            : 'Turns, tool calls, and policy denials from chat show up here as they happen.'
+        }
+        // Derived from the newest event rather than the count, which stops changing
+        // once the window is full — and a live region that never changes never speaks.
+        status={
+          data && data.length > 0
+            ? `${data.length} events. Latest: ${subjectOf(data[0])}, ${STATUS_LABEL[data[0].status] ?? data[0].status}.`
+            : undefined
+        }
       >
+        <div className="mb-1.5 flex justify-end">
+          {/* Outline rather than ghost: at this size a ghost toggle reads as a caption
+              floating above the list, and a control nobody recognises as one is the
+              same as no filter at all. */}
+          <Button
+            size="sm"
+            variant={failuresOnly ? 'secondary' : 'outline'}
+            className="h-6 px-2 text-xs"
+            aria-pressed={failuresOnly}
+            onClick={() => setFailuresOnly((v) => !v)}
+          >
+            Failures only
+          </Button>
+        </div>
         <ol className="divide-y divide-border/40">
           {rows.map((e) => {
             const tone = EVENT_TONE[e.event_type];
+            const label = EVENT_LABEL[e.event_type] ?? e.event_type;
+            const subject = subjectOf(e);
             return (
               <li key={e.id} className="flex items-start gap-2 py-1.5 text-sm">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    {tone && (
+                    {/* Every row carries its type now. The exception gets the tonal
+                        badge; the routine majority gets a quiet label, which is what
+                        keeps the exception reading as one. */}
+                    {tone ? (
                       <Badge
                         variant="secondary"
                         title={EVENT_HELP[e.event_type]}
                         className={cn('shrink-0 px-1 py-0 font-sans text-xs font-medium', tone)}
                       >
-                        {EVENT_LABEL[e.event_type] ?? e.event_type}
+                        {label}
                       </Badge>
+                    ) : (
+                      // Suppressed where it would only repeat the subject, which is
+                      // what `EVENT_LABEL` returns for a turn boundary.
+                      label !== subject && (
+                        <span
+                          title={EVENT_HELP[e.event_type]}
+                          className="shrink-0 text-xs text-muted-foreground"
+                        >
+                          {label}
+                        </span>
+                      )
                     )}
-                    <span className="truncate font-medium">{toolOf(e)}</span>
+                    <span className="truncate font-medium">{subject}</span>
                   </div>
                   {summary(e) && (
                     <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
@@ -446,7 +563,12 @@ function ActivitySection({
                 <div className="flex shrink-0 flex-col items-end gap-0.5">
                   <StatusDot status={e.status} />
                   {e.ts != null && (
-                    <span className="text-xs tabular-nums text-muted-foreground">
+                    <span
+                      // The rounded "3h" is for scanning; the exact stamp is for
+                      // matching a row against a harness log line.
+                      title={new Date(e.ts < 1e12 ? e.ts * 1000 : e.ts).toISOString()}
+                      className="text-xs tabular-nums text-muted-foreground"
+                    >
                       {relTime(e.ts)}
                     </span>
                   )}
@@ -455,19 +577,36 @@ function ActivitySection({
             );
           })}
         </ol>
-        <Truncated shown={rows.length} total={data?.length ?? 0} noun="recent events" />
+        {/* Counts the filtered set, not the fetch: with the filter on, "of the last 60"
+            would describe a window the reader is no longer looking at. */}
+        <Truncated
+          shown={rows.length}
+          total={visible.length}
+          noun={failuresOnly ? `failed events in the last ${ACTIVITY_FETCH}` : 'recent events'}
+          windowed={!failuresOnly}
+        />
       </SectionBody>
     </Section>
   );
 }
 
+/**
+ * Status as a word plus a dot. The dot is decorative — the word carries the state, so
+ * this never encodes anything in colour alone.
+ *
+ * The raw harness string stays in `title` for anyone matching a row against a log line;
+ * what shows is `STATUS_LABEL`. Previously the raw value was rendered directly under a
+ * `capitalize` class, which turned `ok` into the non-word "Ok" and let two rows meaning
+ * the same thing read differently if the harness ever varied its spelling.
+ */
 function StatusDot({ status }: { status: string }) {
   const ok = status === 'ok' || status === 'success' || status === 'completed';
   const bad = status === 'error' || status === 'failed' || status === 'denied';
   return (
     <span
+      title={status}
       className={cn(
-        'inline-flex items-center gap-1 text-xs capitalize',
+        'inline-flex items-center gap-1 text-xs',
         ok && 'text-state-done',
         bad && 'text-state-failed',
         !ok && !bad && 'text-muted-foreground',
@@ -478,37 +617,50 @@ function StatusDot({ status }: { status: string }) {
         className={cn(
           'size-1.5 rounded-full',
           ok && 'bg-state-done',
-          bad && 'bg-destructive',
+          // `--state-failed` is the text-weight red; `--destructive` is tuned to carry
+          // white on a solid fill and was measurably the wrong one for a 6px dot.
+          bad && 'bg-state-failed',
           !ok && !bad && 'bg-muted-foreground/50',
         )}
       />
-      {status}
+      {STATUS_LABEL[status] ?? status}
     </span>
   );
 }
 
 /**
- * The row's subject line. Most audit events are tool calls and carry the tool name;
- * the rest fall back to whatever identifies them. The old last resort was the literal
- * word "event", which told the reader nothing they could not already see, so an event
- * with no tool and no manifest now says what kind of event it is instead.
+ * The row's subject line: the tool for a call or a refusal, the turn boundary
+ * otherwise.
+ *
+ * The manifest id used to be the fallback here, and because `payload` was undefined on
+ * every row it was also the *result* — the whole feed read as the manifest's name
+ * ("quick") repeated down the panel. It is now the last resort it was meant to be,
+ * behind the event's own label.
  */
-function toolOf(e: AuditEvent): string {
+function subjectOf(e: AuditEvent): string {
   const t = e.payload?.tool;
-  if (typeof t === 'string') return t;
+  if (typeof t === 'string' && t) return t;
+  if (EVENT_LABEL[e.event_type]) return EVENT_LABEL[e.event_type];
   if (e.manifest_id) return e.manifest_id;
-  return (EVENT_LABEL[e.event_type] ?? e.event_type).toLowerCase();
+  return e.event_type;
 }
 
+/**
+ * The second line, where the harness recorded something the subject does not already
+ * say. Most rows have none, and that is the honest answer rather than a gap: the agent
+ * loop records a tool call's *name*, not its arguments or its result.
+ *
+ * The previous arms read `output_preview`, `judge`, `score` and `approval_id`, none of
+ * which any harness build writes, off a `payload` that was itself always undefined.
+ */
 function summary(e: AuditEvent): string {
   const p = e.payload ?? {};
-  if (e.event_type === 'judge_score') {
-    return `${p.judge}: score ${p.score}${p.reasoning ? ` — ${String(p.reasoning)}` : ''}`;
+  if (e.event_type === 'user_input' && typeof p.user_input === 'string') {
+    return p.user_input;
   }
-  if (e.event_type === 'approval_request' || e.event_type === 'approval_decision') {
-    return `approval ${String(p.approval_id ?? '').slice(0, 8)}`;
+  if (e.event_type === 'final_response' && typeof p.chars === 'number') {
+    return `${p.chars.toLocaleString()} characters`;
   }
-  if (typeof p.output_preview === 'string') return p.output_preview;
   return '';
 }
 
@@ -516,7 +668,11 @@ function relTime(ts: number): string {
   // Accept seconds or ms.
   const ms = ts < 1e12 ? ts * 1000 : ts;
   const diff = Date.now() - ms;
-  if (diff < 60_000) return 'now';
+  // A burst of tool calls lands inside one minute, and "now" on every row of it
+  // erases the sequence. Seconds keep the rows distinguishable at the only moment
+  // anyone is watching them arrive.
+  if (diff < 5_000) return 'now';
+  if (diff < 60_000) return `${Math.round(diff / 1_000)}s`;
   if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h`;
   return `${Math.round(diff / 86_400_000)}d`;
