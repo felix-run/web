@@ -78,6 +78,7 @@ import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { describeError } from '@/lib/errors';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
+import { reattachThread } from '@/lib/reattach';
 import {
   eventsToTurns,
   indexThread,
@@ -167,6 +168,10 @@ export default function App() {
     onCanary: boolean;
   } | null>(null);
   const [streaming, setStreaming] = useState(false);
+  // The stream dropped and we are rejoining the thread. Distinct from
+  // `streaming` because it is a materially different claim: the original run was
+  // torn down, so this is showing what landed, not a reply still being written.
+  const [reattaching, setReattaching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
   const [uiPrompt, setUiPrompt] = useState<PendingUiRequest | null>(null);
@@ -196,6 +201,12 @@ export default function App() {
   turnsRef.current = turns;
   /** Approval ids already shown or decided, so neither path re-queues one. */
   const seenApprovalsRef = useRef(new Set<string>());
+  /**
+   * Read inside `send`, which is memoised on other things — a ref keeps the
+   * "no steering during a reattach" guard correct without rebuilding it.
+   */
+  const reattachingRef = useRef(reattaching);
+  reattachingRef.current = reattaching;
   useEffect(() => {
     threadIdRef.current = threadId;
   }, [threadId]);
@@ -572,6 +583,11 @@ export default function App() {
       // the same as losing the run.
       let resumeToken: string | null = null;
 
+      // Newest `id:` the stream stamped. Handed to the reattach below so it
+      // replays only what was missed; undefined means a cold reattach, which
+      // rebuilds from a full snapshot instead.
+      let lastEventId: string | undefined;
+
       const handleEvent = async (ev: { event: string; data: Record<string, unknown> }) => {
         switch (ev.event) {
           case 'on_chat_model_stream':
@@ -738,6 +754,14 @@ export default function App() {
             patch((t) => ({ ...t, content: content || t.content }));
             break;
           }
+          // Only `GET /chat/stream/{thread_id}` sends these two, and only
+          // `reattachThread` reads them — it folds them through `eventsToTurns`,
+          // the same path thread hydration uses, rather than patching the turn
+          // in flight. Listed here so the frames are not silently unhandled if
+          // they ever arrive on a stream that is not a reattach.
+          case 'snapshot':
+          case 'session_event':
+            break;
           // Normalised by `readSseStream` from the harness's `event: error`
           // frame — the one SSE-typed frame, and the only way a stream reports
           // a failure that happened after its 200 was already sent.
@@ -833,13 +857,41 @@ export default function App() {
             },
             {
               onEvent: (ev) => handleEvent(ev as { event: string; data: Record<string, unknown> }),
+              onCursor: (id) => {
+                lastEventId = id;
+              },
             },
           );
         } catch (err) {
+          if (ctrl.signal.aborted) throw err;
           // A durable run survives its stream. If one was accepted and has not
           // yet reported `final`, rejoin it by polling rather than reporting a
           // failure for work that is still going.
-          if (!resumeToken || ctrl.signal.aborted) throw err;
+          if (!resumeToken) {
+            // Otherwise the run itself is gone — torn down when we hung up — but
+            // whatever it committed to the session log before that is not, and
+            // work may still be landing there. Rejoin the thread.
+            const threadId = threadIdRef.current;
+            if (!threadId) throw err;
+            setReattaching(true);
+            try {
+              await reattachThread({
+                threadId,
+                lastEventId,
+                signal: ctrl.signal,
+                onTurns: (rebuilt) => {
+                  setTurns(rebuilt);
+                  saveTurns(threadId, rebuilt);
+                },
+                onPhase: (phase) => setSessionPhase(phase),
+                onEvent: (ev) =>
+                  handleEvent(ev as { event: string; data: Record<string, unknown> }),
+              });
+            } finally {
+              setReattaching(false);
+            }
+            return;
+          }
           setSessionPhase('durable');
           const rejoined = await pollDurableRun(resumeToken, {
             signal: ctrl.signal,
@@ -973,6 +1025,14 @@ export default function App() {
 
   const send = useCallback(
     (text: string, attachments?: ImageAttachment[], mode: 'stream' | 'background' = 'stream') => {
+      // A reattach keeps `streaming` true, but there is no run to steer — this
+      // one was torn down when the connection dropped. Queueing a steer here
+      // would report "Steer queued" and then sit unread until some later turn
+      // drained it, which is worse than declining.
+      if (reattachingRef.current) {
+        toast.message('Rejoining this thread — stop it first to send.');
+        return;
+      }
       if (streaming) {
         if (text.trim()) {
           void steerChat({ threadId, text: text.trim() })
@@ -1408,6 +1468,15 @@ export default function App() {
                 />
               );
             })}
+            {reattaching && (
+              <div
+                role="status"
+                className="mx-auto max-w-2xl rounded-lg border border-state-running/30 bg-state-running/10 px-3 py-2 text-sm text-state-running"
+              >
+                Connection dropped. That run was stopped — showing what it finished, and anything
+                still landing on this thread.
+              </div>
+            )}
             {error && (
               <div
                 role="alert"
@@ -1437,6 +1506,7 @@ export default function App() {
             {manifest === DEFAULT_MANIFEST ? <WorkspaceStrip /> : null}
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
+              reattaching={reattaching}
               isConnected={harnessReachable}
               onSubmit={submit}
               onBackground={(message) => submit(message, 'background')}

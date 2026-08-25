@@ -129,6 +129,43 @@ export async function streamChat(args: StreamArgs, handlers: StreamHandlers): Pr
   await readSseStream(res, handlers.onEvent, { onCursor: handlers.onCursor });
 }
 
+/**
+ * GET /chat/stream/{thread_id} — reattach after a dropped connection.
+ *
+ * Pass the newest `id:` seen on the lost stream (via `StreamHandlers.onCursor`)
+ * as `lastEventId` to replay only what was missed; omit it for a cold reattach,
+ * which opens with a `snapshot` of the whole thread instead.
+ *
+ * This does **not** resume the run. A client that hangs up has its run torn
+ * down on purpose, so it stops burning tokens; what comes back is the thread as
+ * it now stands, plus anything that lands afterwards. Because it tails shared
+ * session state rather than one process's output, it works regardless of which
+ * replica served the original turn.
+ *
+ * The harness closes an idle reattach after ~300s rather than holding the
+ * connection open, and expects the caller to return with its cursor — so a
+ * clean end here is not necessarily the end of the thread's activity.
+ */
+export async function resumeStream(
+  args: { threadId: string; lastEventId?: string; signal?: AbortSignal },
+  handlers: StreamHandlers,
+): Promise<void> {
+  const res = await apiFetch(`/api/chat/stream/${encodeURIComponent(args.threadId)}`, {
+    // The harness reads the header, and falls back to a `last_event_id` query
+    // param. The header is the standard spelling, and keeps the cursor out of
+    // request URLs and therefore out of access logs.
+    headers: args.lastEventId ? { 'last-event-id': args.lastEventId } : {},
+    signal: args.signal,
+  });
+
+  if (!res.ok || !res.body) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`chat/stream/${args.threadId}: ${res.status} ${detail.slice(0, 200)}`);
+  }
+
+  await readSseStream(res, handlers.onEvent, { onCursor: handlers.onCursor });
+}
+
 // --- Inspector REST helpers ---
 
 /** GET /audit → newest-first activity feed (tool_call, judge_score, approval_*, plan_step, …). */

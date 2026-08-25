@@ -84,10 +84,18 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
   `localStorage`, the Worker compares it, then **deletes the header** before going upstream.
   A 401 anywhere drops the stored key and re-prompts via `src/lib/auth.ts` → `components/gate.tsx`.
 - `FELIX_API_KEY` (optional) is injected upstream as `Authorization: Bearer …`.
-- In `vite dev` the Worker is not in the loop, so the gate is skipped entirely.
+- In `vite dev` the Worker is not in the loop, so the `CHAT_UI_KEY` gate is skipped entirely.
 
 The dev proxy in `apps/chat-ui/vite.config.ts` is a second copy of this contract — change one and
 the other diverges silently.
+
+**The dev proxy injects `Authorization` too.** `make up` runs `scripts/dev-key.sh`, which sets the
+harness to `FELIX_AUTH_MODE=api_key` and generates a key, so an unauthenticated `vite dev` 401s on
+every `/api/*` call. Put the key in `apps/chat-ui/.dev.vars` as `FELIX_API_KEY=…` — the same
+gitignored file `wrangler dev` reads for the Worker, so local dev has one secrets file rather than
+two. `process.env.FELIX_API_KEY` overrides it for a one-off run, and `FELIX_AUTH_API_KEYS` — the
+harness's own spelling, which is what people carry across — is accepted with a notice. With no key configured the header
+is simply omitted, which is correct against a harness running `FELIX_AUTH_MODE=none`.
 
 ### Client ↔ harness protocol (the part that is easy to get wrong)
 
@@ -122,8 +130,17 @@ Flows worth knowing before editing the app:
   (`@felix/cowork-client` → in-tab VFS or a File System Access mount), then answers with
   `POST /chat/tool_result`. This is a real round trip inside the model loop; failing to post a
   result hangs the run.
-- **Durable runs** — `POST /chat` may return `202 + resume_token`; poll `GET /chat/runs/{token}`
-  (`pollDurableRun`) instead of streaming.
+- **Durable runs** — two entry points, and they behave differently. `POST /chat` may return
+  `202 + resume_token`; poll `GET /chat/runs/{token}` (`pollDurableRun`). `POST /chat/stream` with a
+  `spec.execution.mode: durable` manifest instead streams the run's *progress* —
+  `run_accepted` → `run_status` → `final`, with no deltas at all.
+- **Reattaching** — `POST /chat/stream` stamps `id:` on structural frames; `readSseStream` reports
+  each through `StreamHandlers.onCursor`, and `src/lib/reattach.ts` hands the newest back to
+  `GET /chat/stream/{thread_id}` as `Last-Event-ID` when a stream drops. This rejoins the **thread**,
+  not the run: a client that hangs up has its run torn down on purpose, so the UI must say what
+  landed rather than imply a reply is still being written. A clean end is not the end of the thread
+  — the harness closes an idle reattach at ~300s and expects the client back — so the loop re-checks
+  `phase` and returns while it is still working.
 - **Session state is server-authoritative** — `GET /chat/sessions/{id}` returns the snapshot
   (transcript, phase, thinking level, leaf, lease) used to hydrate a thread, and `GET /chat/sessions`
   is the thread index behind the history rail. The `localStorage` copy in `src/lib/threads.ts` is a
