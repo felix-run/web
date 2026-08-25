@@ -45,6 +45,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm check-protocol-parity
 
+      # A class Tailwind never scanned generates no rule, and nothing else in the
+      # pipeline notices: the build succeeds and the component renders unstyled.
+      - name: Tailwind sources
+        if: ${{ !cancelled() }}
+        run: pnpm check-tailwind-sources
+
       # turbo builds every package with a build script: chat-ui and docs.
       - name: Build
         if: ${{ !cancelled() }}
