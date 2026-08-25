@@ -208,6 +208,16 @@ set) is silently omitted from the build — the class stays on the element, no C
 the component renders unstyled with no error anywhere. A new shared package that ships classes needs
 its own `@source` line.
 
+**A dependency can need one too.** `streamdown` — which renders every assistant message — styles
+itself with Tailwind classes that live in its own `dist`, so `index.css` sources
+`../node_modules/streamdown/dist` as well. The failure is partial and therefore easy to miss: a
+class the app also uses elsewhere works, and one only the library emits does not, which is how
+markdown lists lost their markers and code blocks lost their entire dark theme (the
+`dark:text-(--shiki-dark)!` swap generated no rule, so tokens kept their *light* colours on a
+near-black page). The block's own surface is ours: Shiki tries to pass its dark background as
+`#fff;--shiki-dark-bg:#24292e`, a value React drops whole, so `index.css` defines
+`--shiki-dark-bg` from a `--code-surface` token instead.
+
 The root `tsconfig.json` explicitly **excludes** `apps/chat-ui` and `apps/docs` (JSX / Astro virtual
 modules don't resolve under the workspace options); those apps type-check via their own configs.
 

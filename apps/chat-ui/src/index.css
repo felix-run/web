@@ -7,6 +7,16 @@
    dropped from the build and the component renders unstyled. */
 @source "../../../packages/ui/src";
 
+/* Streamdown renders every assistant message, and it styles itself with Tailwind
+   classes that ship inside its own dist — which Tailwind never scanned, so none of
+   them existed in the built stylesheet. That is invisible for a class the app happens
+   to use elsewhere (`bg-muted/80`) and total for one only Streamdown emits: markdown
+   lists lost their markers, tables their rules, and code blocks their entire dark
+   theme, because the `dark:text-(--shiki-dark)!` swap that carries Shiki's dark
+   palette never generated a rule and every token kept its *light* colour on a
+   near-black page. */
+@source "../node_modules/streamdown/dist";
+
 @custom-variant dark (&:is(.dark *));
 
 /* Type ramp.
@@ -121,6 +131,11 @@
   /* Composer surface shadows (resting / focused) used by the multimodal input. */
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 5%), 0 4px 16px oklch(0 0 0 / 6%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 6%), 0 8px 28px oklch(0 0 0 / 10%);
+  /* The surface under a fenced code block. It is its own token because the block has
+     to sit *off* the page in both themes — one step down from white here, one step up
+     from near-black there — and neither `--muted` nor `--card` does both: the header
+     strip is already `--muted`, so reusing it would flatten the two into one slab. */
+  --code-surface: oklch(0.98 0.001 286.375);
 }
 
 .dark {
@@ -151,6 +166,7 @@
   --scrollbar-thumb: oklch(1 0 0 / 36%);
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 30%), 0 4px 16px oklch(0 0 0 / 35%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 35%), 0 8px 28px oklch(0 0 0 / 45%);
+  --code-surface: oklch(0.205 0.006 285.885);
 }
 
 @layer base {
@@ -191,6 +207,45 @@
     background-color: var(--background);
     color: var(--foreground);
   }
+}
+
+/* Fenced code blocks own their surface, in both themes.
+
+   Shiki highlights against two themes at once and smuggles the second one through
+   inline styles: it hands the renderer `background-color: "#fff;--shiki-dark-bg:#24292e"`,
+   a single value with a `;` in it, betting that the browser will parse it as two
+   declarations. React does not write that string into a `style` attribute — it assigns
+   `element.style.backgroundColor`, the CSSOM rejects the value whole, and both halves
+   are dropped. The result is a block with *no* background at all: on the near-black
+   page that reads as unbounded black, which is the bug this fixes.
+
+   So rather than fight for the declaration, define the variable the dark rule reads.
+   Streamdown paints the body with `dark:bg-(--shiki-dark-bg)!` — pointing that at our
+   own token gives the dark block our surface, and the wrapper's background covers the
+   light one, where nothing paints the body at all. One token, both themes, and no
+   `!important` duel with a utility (an important declaration inside `@layer utilities`
+   outranks an unlayered one regardless of specificity, so that duel is unwinnable).
+
+   The header strip above keeps Streamdown's own `bg-muted/80` tone; what it needed
+   was an edge, which the next rule gives it. */
+[data-streamdown="code-block"] {
+  background-color: var(--code-surface);
+  --shiki-dark-bg: var(--code-surface);
+}
+
+/* The language strip separates itself by tone alone (`bg-muted/80`), which measures
+   1.15:1 against the surface in dark and 1.03:1 in light — a step you can see in one
+   theme and not the other. A hairline gives it an edge that does not depend on tone. */
+[data-streamdown="code-block-header"] {
+  border-bottom: 1px solid var(--border);
+}
+
+/* Line numbers ship at half the muted foreground, which measures 2.00:1 on the light
+   surface — texture, not numbers. 80% reads them at 3.35:1 light and 4.81:1 dark, over
+   the 3:1 WCAG 1.4.11 asks of a non-text cue, and still far below the 13:1 the code
+   beside them carries, so the gutter stays the quieter of the two. */
+[data-streamdown="code-block-body"] code > span::before {
+  color: color-mix(in oklch, var(--muted-foreground) 80%, transparent);
 }
 
 /* Motion in this app is all state feedback (sheet entrances, the tool-metrics bar,
