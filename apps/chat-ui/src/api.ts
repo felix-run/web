@@ -24,6 +24,7 @@ import type {
   AgentCard,
   ApprovalRequest,
   AuditEvent,
+  AuditEventWire,
   ChatMessage,
   EvalDataset,
   EvalDatasetItem,
@@ -170,17 +171,35 @@ export async function resumeStream(
 
 // --- Inspector REST helpers ---
 
-/** GET /audit → newest-first activity feed (tool_call, judge_score, approval_*, plan_step, …). */
+/**
+ * GET /audit → newest-first activity feed (`user_input`, `tool_call`, `policy_deny`,
+ * `final_response`).
+ *
+ * The rename is the point of this function. The harness serialises the payload as
+ * `payload_json`, and the route aliases only the *envelope* — it returns `items` and
+ * `events` side by side so a client reading either works — which made the row shape
+ * look settled when it was not. Reading `e.payload` off the raw row yields `undefined`
+ * for every event the harness has ever written, and because the old type asserted the
+ * field existed, nothing failed: the tool name fell back to the manifest id and the
+ * summary line rendered as an empty string on every row.
+ *
+ * `event_type` and `status` are both server-side filters, so the panel narrows the
+ * query rather than the rendered slice. `limit` is capped at 500 upstream.
+ */
 export async function listAudit(
-  opts: { status?: string; limit?: number } = {},
+  opts: { status?: string; eventType?: string; limit?: number } = {},
 ): Promise<AuditEvent[]> {
   const q = new URLSearchParams();
   if (opts.status) q.set('status', opts.status);
+  if (opts.eventType) q.set('event_type', opts.eventType);
   q.set('limit', String(opts.limit ?? 50));
   const res = await apiFetch(`/api/audit?${q}`);
   if (!res.ok) throw new Error(`audit: ${res.status}`);
-  const body = (await res.json()) as { events?: AuditEvent[] };
-  return body.events ?? [];
+  const body = (await res.json()) as { events?: AuditEventWire[] };
+  return (body.events ?? []).map((e) => ({
+    ...e,
+    payload: e.payload_json ?? e.payload ?? {},
+  }));
 }
 
 /** GET /approvals?status=… → human-in-the-loop queue. */

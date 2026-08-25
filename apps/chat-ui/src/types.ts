@@ -129,16 +129,53 @@ export interface MemoryHit {
 // --- Harness-parity surfaces (Inspector panel) ---
 // Shapes mirror src/api/{audit,approvals,plans}.ts in the orchestrator.
 
-/** One row from GET /audit. */
+/**
+ * The four audit event types the harness actually writes.
+ *
+ * `emit_agent_audit` is the only writer, and it has three call sites: the ReAct
+ * loop brackets a turn with `user_input` / `final_response`, and the tool runner
+ * emits `tool_call`, or `policy_deny` when a wrapper refused the call. Anything
+ * else on this list would be an invention.
+ *
+ * Kept as a value rather than a bare union so the Inspector can iterate it, and
+ * kept narrow on purpose: `event_type` stays `string` on the row below, because
+ * a harness that gains a fifth type must still render rather than crash.
+ */
+export const AUDIT_EVENT_TYPES = [
+  'user_input',
+  'tool_call',
+  'policy_deny',
+  'final_response',
+] as const;
+
+export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
+
+/**
+ * One row from GET /audit, as the app consumes it.
+ *
+ * The wire spells two of these differently — `payload_json` and `principal_subj`
+ * — and `listAudit` renames them on the way in. Before it did, `payload` was
+ * `undefined` on every row the harness has ever returned, so the tool name and
+ * the summary line silently rendered as nothing at all. See `AuditEventWire`.
+ */
 export interface AuditEvent {
   id: string;
   tenant_id: string;
   ts: number;
+  /** One of `AUDIT_EVENT_TYPES` in practice; widened so an unknown type renders. */
   event_type: string;
   manifest_id: string;
-  principal_subject: string;
+  principal_subj: string;
+  /** `ok` | `error` | `denied` in practice — audit rows are written after the fact. */
   status: string;
   payload: Record<string, unknown>;
+}
+
+/** GET /audit exactly as it arrives, before `listAudit` normalises the two names. */
+export interface AuditEventWire extends Omit<AuditEvent, 'payload'> {
+  payload_json?: Record<string, unknown>;
+  /** Tolerated so a harness that ever renames it back does not blank the feed. */
+  payload?: Record<string, unknown>;
 }
 
 /** One row from GET /approvals. */
