@@ -29,6 +29,27 @@ make migrate
 
 Lean hosts: `make up-lite`. MinIO profile: `make up-full` with `FELIX_DOCKER_EXTRAS=aws`.
 
+## Sizing
+
+Each worker process carries **its own** connection pool, so raise the two together or the second
+one becomes the ceiling.
+
+| Setting | Default | Notes |
+|---|---|---|
+| `FELIX_WORKERS` | `1` | Granian/uvicorn worker processes |
+| `FELIX_DB_POOL_SIZE` | `10` | Per worker |
+| `FELIX_DB_MAX_OVERFLOW` | `20` | Per worker, on top of the pool |
+| `FELIX_DB_POOL_TIMEOUT_SECONDS` | `30` | How long a request queues before failing |
+| `FELIX_DB_POOL_PRE_PING` | `true` | Set `false` against a direct Postgres |
+
+The effective ceiling is `WORKERS × (POOL_SIZE + MAX_OVERFLOW)` connections. Past it, requests
+queue for `FELIX_DB_POOL_TIMEOUT_SECONDS` and then fail — so check the ceiling against your
+database's own `max_connections` before raising either number.
+
+`FELIX_DB_POOL_PRE_PING` costs a round trip on every checkout to discover a connection a pooler
+closed server-side. That earns its cost behind PgBouncer, RDS Proxy, or Cloud SQL and wastes it
+against a Postgres you connect to directly.
+
 ## Helm
 
 Chart: `deploy/helm/felix` in [felix-run/felix](https://github.com/felix-run/felix).
