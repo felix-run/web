@@ -66,6 +66,7 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-code-surface: var(--code-surface);
   --color-destructive: var(--destructive);
   --color-state-blocked: var(--state-blocked);
   --color-state-done: var(--state-done);
@@ -131,10 +132,26 @@
   /* Composer surface shadows (resting / focused) used by the multimodal input. */
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 5%), 0 4px 16px oklch(0 0 0 / 6%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 6%), 0 8px 28px oklch(0 0 0 / 10%);
-  /* The surface under a fenced code block. It is its own token because the block has
-     to sit *off* the page in both themes — one step down from white here, one step up
-     from near-black there — and neither `--muted` nor `--card` does both: the header
-     strip is already `--muted`, so reusing it would flatten the two into one slab. */
+  /* The surface under a block of code or tool output. It is its own token because the
+     block has to sit *off* the page in both themes — one step down from white here, one
+     step up from near-black there — and neither `--muted` nor `--card` does both: the
+     header strip is already `--muted`, so reusing it would flatten the two into one slab.
+
+     A pane takes whichever level its container does not, so there are two cases and only
+     two:
+
+       on the page      `bg-code-surface`  — a fenced code block, the crash trace
+       inside a card    `bg-background`    — tool output, the VFS listing, an approval's
+                                             before/after
+
+     The second reads as sunken in dark and as a slight lift in light, because the page is
+     the darkest surface in one theme and the lightest in the other. Separation is the
+     point, not the direction.
+
+     Both are flat colours on purpose. These panes used to carry three different alphas
+     for one job — `/80`, `/60`, and none — which made a pane's colour a function of the
+     tint behind it: the approval panes sat on `bg-state-blocked/5` and came out faintly
+     amber, so a diff was coloured by the state of the banner around it. */
   --code-surface: oklch(0.98 0.001 286.375);
 }
 

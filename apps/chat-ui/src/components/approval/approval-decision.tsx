@@ -204,7 +204,7 @@ function CodePane({
       <div className="mb-1 text-xs text-muted-foreground">{label}</div>
       <pre
         className={cn(
-          'overflow-x-auto rounded-md border border-border/40 bg-background/60 p-2 font-mono text-sm whitespace-pre-wrap break-words',
+          'overflow-x-auto rounded-md border border-border/40 bg-background p-2 font-mono text-sm whitespace-pre-wrap break-words',
           emphasis ? 'text-foreground/90' : 'text-muted-foreground',
           expanded && 'max-h-64 overflow-y-auto',
         )}
