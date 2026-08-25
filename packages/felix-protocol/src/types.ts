@@ -130,6 +130,20 @@ export type StreamEvent =
   | { event: 'run_accepted'; data: DurableRunAccepted }
   | { event: 'run_status'; data: { status: string; resume_token?: string } }
   | { event: 'final'; data: ChatMessage | { content?: string } }
+  /**
+   * The two frames only `GET /chat/stream/{thread_id}` sends.
+   *
+   * A cold reattach (no `Last-Event-ID`) opens with `snapshot` — the thread as
+   * it now stands, the same payload `GET /chat/sessions/{id}` returns. A warm
+   * one replays `session_event` for each entry after the cursor, then both tail
+   * the session log.
+   *
+   * Note what this is not: the original run was torn down when the connection
+   * dropped, deliberately, so a hung-up client stops burning tokens. These
+   * frames rejoin the *thread*, they do not revive the run.
+   */
+  | { event: 'snapshot'; data: SessionSnapshot }
+  | { event: 'session_event'; data: SessionEvent }
   | { event: string; data: Record<string, unknown> };
 
 /** First frame of a durable run: what to come back to if the connection drops. */

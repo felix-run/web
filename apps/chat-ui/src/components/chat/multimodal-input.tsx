@@ -31,6 +31,11 @@ export type ModelOption = { id: string; label: string; description?: string };
 export type MultimodalInputProps = {
   status: Status;
   isConnected: boolean;
+  /**
+   * The stream dropped and the app is rejoining the thread. Looks like
+   * `streaming` from the outside, but there is no run behind it to steer.
+   */
+  reattaching?: boolean;
   onSubmit: (message: PromptInputMessage) => void | Promise<void>;
   onBackground?: (message: PromptInputMessage) => void | Promise<void>;
   onStop?: () => void;
@@ -56,6 +61,7 @@ function PureMultimodalInput(props: MultimodalInputProps) {
 function MultimodalInputInner({
   status,
   isConnected,
+  reattaching,
   onSubmit,
   onBackground,
   onStop,
@@ -180,11 +186,15 @@ function MultimodalInputInner({
 
   const helperText = !isConnected
     ? 'Reconnecting…'
-    : isBusy
-      ? 'Generating. Press Enter to steer.'
-      : files.length >= MAX_FILES
-        ? `Max ${MAX_FILES} attachments`
-        : null;
+    : // A reattach looks busy but has no run behind it to steer, so it must not
+      // offer to. Stop ends the reattach and frees the composer.
+      reattaching
+      ? 'Rejoining this thread. Stop to send a new message.'
+      : isBusy
+        ? 'Generating. Press Enter to steer.'
+        : files.length >= MAX_FILES
+          ? `Max ${MAX_FILES} attachments`
+          : null;
 
   const showCharCount = text.length > MAX_TEXT_LENGTH * 0.9;
 
@@ -700,6 +710,7 @@ function hasFiles(e: DragEvent): boolean {
 export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.status !== next.status) return false;
   if (prev.isConnected !== next.isConnected) return false;
+  if (prev.reattaching !== next.reattaching) return false;
   if (prev.placeholder !== next.placeholder) return false;
   if (prev.modelId !== next.modelId) return false;
   if (prev.models !== next.models) return false;
