@@ -108,6 +108,9 @@
     "/audit/metrics": {
       "get": {}
     },
+    "/artifacts/{manifest_id}/{artifact_id}": {
+      "get": {}
+    },
     "/approvals/": {
       "get": {}
     },
