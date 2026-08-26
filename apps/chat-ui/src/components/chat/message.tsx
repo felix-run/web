@@ -1,6 +1,7 @@
 import { interleaveTurn } from '@/lib/tools';
 import type { Turn } from '@/types';
 import { MessageActions } from './message-actions';
+import { Reasoning } from './reasoning';
 import { Response } from './response';
 import { Tool } from './tool';
 
@@ -75,15 +76,23 @@ export function Message({
 
       {/* Keyed by position: segments are append-only while a turn streams — a card
           opens at the end of the prose so far, so nothing already rendered shifts. */}
-      {interleaveTurn(turn.content, turn.tools).map((segment, i) =>
-        segment.kind === 'tool' ? (
-          <Tool key={`segment-${i}`} tool={segment.tool} verbose={verbose} />
-        ) : (
+      {interleaveTurn(turn.content, turn.tools, turn.reasoning).map((segment, i, arr) => {
+        if (segment.kind === 'tool') {
+          return <Tool key={`segment-${i}`} tool={segment.tool} verbose={verbose} />;
+        }
+        if (segment.kind === 'reasoning') {
+          // Only the final block is still being written, and only while the turn is.
+          const last = i === arr.length - 1;
+          return (
+            <Reasoning key={`segment-${i}`} text={segment.text} streaming={streaming && last} />
+          );
+        }
+        return (
           <div key={`segment-${i}`} className="max-w-none text-base text-foreground">
             <Response>{segment.text}</Response>
           </div>
-        ),
-      )}
+        );
+      })}
 
       {turn.usage && (
         <div

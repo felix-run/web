@@ -56,12 +56,27 @@ export interface ToolCall {
   at?: number;
 }
 
+/**
+ * A stretch of model reasoning, and where in the prose it happened.
+ *
+ * Blocks rather than one string because a turn can think more than once — before
+ * an answer, and again between tool calls — and merging those into a single
+ * block would claim the model reconsidered in one sitting. `at` is the offset
+ * `ToolCall.at` uses, so the two interleave against the same string.
+ */
+export interface ReasoningBlock {
+  text: string;
+  at: number;
+}
+
 /** A turn in the UI transcript. Assistant turns may carry inline tool calls. */
 export interface Turn {
   id: string;
   role: Exclude<Role, 'tool' | 'system'>;
   content: string;
   tools?: ToolCall[];
+  /** Reasoning the model streamed, if the harness is new enough to name it. */
+  reasoning?: ReasoningBlock[];
   /** Image attachments on a user turn (rendered as thumbnails). */
   attachments?: ImageAttachment[];
   /** Set on assistant turns from the terminal `on_chain_end` usage payload. */

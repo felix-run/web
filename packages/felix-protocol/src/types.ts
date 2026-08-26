@@ -50,6 +50,19 @@ export type StreamEvent =
   | { event: 'on_chat_model_stream'; data: { chunk?: { content?: string }; delta?: string } }
   | { event: 'text_delta'; data: { chunk?: { content?: string }; delta?: string } }
   /**
+   * The model's reasoning, as it is produced.
+   *
+   * Same shape as `text_delta` and same rate, but deliberately not the same event:
+   * reasoning rendered as the reply is worse than reasoning not rendered at all.
+   *
+   * It rode inside `session_progress` before the harness gained this name
+   * (`{progress: {type: 'assistant_delta', kind: 'thinking'}}`) and still does, so
+   * a harness older than 2026-08-26 sends only that and this arm simply never
+   * fires. Reading it from the progress frame instead would mean handling both
+   * spellings forever; the deployment catches up.
+   */
+  | { event: 'thinking_delta'; data: { chunk?: { content?: string }; delta?: string } }
+  /**
    * Legacy spelling of `tool_start` / `tool_end`, renamed in the harness on
    * 2026-08-22. Kept because the harness is self-hosted and versions
    * independently: a deployment older than that rename still emits these, and

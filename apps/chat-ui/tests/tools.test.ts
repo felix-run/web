@@ -157,3 +157,72 @@ describe('interleaveTurn', () => {
     expect(interleaveTurn('', [call({ at: 0 })]).map((s) => s.kind)).toEqual(['tool']);
   });
 });
+
+/**
+ * Reasoning is positioned the same way a tool card is, and against the same string,
+ * so the two have to sort into one sequence rather than each into its own band.
+ */
+describe('interleaveTurn — reasoning', () => {
+  it('places a thought where the model stopped to have it', () => {
+    const segments = interleaveTurn('setup answer', [], [{ text: 'hmm', at: 6 }]);
+    expect(segments).toEqual([
+      { kind: 'text', text: 'setup ' },
+      { kind: 'reasoning', text: 'hmm' },
+      { kind: 'text', text: 'answer' },
+    ]);
+  });
+
+  it('puts a thought ahead of a call made at the same point', () => {
+    // Reasoning precedes acting. Both are recorded at the same offset because no
+    // prose separates them, so the tie has to break deliberately.
+    const segments = interleaveTurn(
+      '',
+      [call({ name: 'search', at: 0 })],
+      [{ text: 'plan', at: 0 }],
+    );
+    expect(segments.map((s) => (s.kind === 'tool' ? s.tool.name : s.text))).toEqual([
+      'plan',
+      'search',
+    ]);
+  });
+
+  it('interleaves several thoughts and calls into one sequence', () => {
+    const content = 'first second';
+    const segments = interleaveTurn(
+      content,
+      [call({ name: 'a', at: 5 }), call({ name: 'b', at: 12 })],
+      [
+        { text: 'before a', at: 5 },
+        { text: 'before b', at: 12 },
+      ],
+    );
+    expect(segments.map((s) => s.kind)).toEqual([
+      'text',
+      'reasoning',
+      'tool',
+      'text',
+      'reasoning',
+      'tool',
+    ]);
+  });
+
+  it('renders a turn that only ever thought', () => {
+    expect(interleaveTurn('', undefined, [{ text: 'hmm', at: 0 }])).toEqual([
+      { kind: 'reasoning', text: 'hmm' },
+    ]);
+  });
+
+  it('is unchanged for a turn with no reasoning at all', () => {
+    // The old harness sends none, so this is the shape most turns still have.
+    expect(interleaveTurn('answer', [call({ at: 0 })])).toEqual(
+      interleaveTurn('answer', [call({ at: 0 })], []),
+    );
+  });
+
+  it('clamps a thought recorded past the end', () => {
+    expect(interleaveTurn('short', [], [{ text: 'hmm', at: 999 }])).toEqual([
+      { kind: 'text', text: 'short' },
+      { kind: 'reasoning', text: 'hmm' },
+    ]);
+  });
+});
