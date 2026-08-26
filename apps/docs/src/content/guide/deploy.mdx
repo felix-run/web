@@ -41,6 +41,7 @@ one becomes the ceiling.
 | `FELIX_DB_MAX_OVERFLOW` | `20` | Per worker, on top of the pool |
 | `FELIX_DB_POOL_TIMEOUT_SECONDS` | `30` | How long a request queues before failing |
 | `FELIX_DB_POOL_PRE_PING` | `true` | Set `false` against a direct Postgres |
+| `FELIX_DB_PREPARED_STATEMENTS` | `true` | Set `false` behind a pooler that does not track them — see below |
 
 The effective ceiling is `WORKERS × (POOL_SIZE + MAX_OVERFLOW)` connections. Past it, requests
 queue for `FELIX_DB_POOL_TIMEOUT_SECONDS` and then fail — so check the ceiling against your
@@ -49,6 +50,50 @@ database's own `max_connections` before raising either number.
 `FELIX_DB_POOL_PRE_PING` costs a round trip on every checkout to discover a connection a pooler
 closed server-side. That earns its cost behind PgBouncer, RDS Proxy, or Cloud SQL and wastes it
 against a Postgres you connect to directly.
+
+## Behind a connection pooler
+
+Four workers on the defaults is 120 connections against a stock Postgres `max_connections` of
+100 — and raising `max_connections` trades one wall for another, since every backend costs
+memory. A transaction-mode pooler multiplexes many cheap client connections onto few server ones
+instead.
+
+```bash
+make up-pooled   # adds PgBouncer in transaction mode in front of Postgres
+```
+
+Felix's own pool then becomes a pool of *client* connections to PgBouncer, which are cheap.
+`PGBOUNCER_POOL_SIZE` is the real server-side limit — raise the former freely, size the latter
+against your database.
+
+Run migrations against Postgres directly rather than through the pooler. Nothing breaks under
+transaction pooling; a migration is a one-off admin action with no reason to go through a
+multiplexer sized for request traffic.
+
+### Prepared statements
+
+<Aside type="caution" title="This one fails on the sixth query, not the first">
+psycopg3 automatically prepares a statement after its **fifth** execution. Under transaction
+pooling the sixth lands on a different server connection, where that statement was never
+created, and the query fails. Five identical queries succeed first, so the symptom looks
+unrelated to the change that caused it.
+</Aside>
+
+Either the pooler tracks prepared statements or Felix stops making them — never neither:
+
+| Pooler | Setting |
+|---|---|
+| PgBouncer ≥ 1.21 with `max_prepared_statements > 0` | leave `FELIX_DB_PREPARED_STATEMENTS=true` |
+| PgBouncer with `max_prepared_statements = 0` | set `FELIX_DB_PREPARED_STATEMENTS=false` |
+| **RDS Proxy** | set `FELIX_DB_PREPARED_STATEMENTS=false` |
+| Direct Postgres, or session-mode pooling | leave it `true` |
+
+`make up-pooled` sets `max_prepared_statements` non-zero, so the default is correct there.
+
+RDS Proxy is the case that forces the decision rather than merely allowing it: it *pins* the
+session when it sees a prepared statement, holding a server connection for the life of the
+client one — which defeats the multiplexing you deployed it for. There the setting costs you
+nothing and buys back the pooling.
 
 ## Helm
 
