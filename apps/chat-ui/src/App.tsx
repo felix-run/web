@@ -559,8 +559,15 @@ export default function App() {
       // assistant turn after it. Everything downstream patches whichever turn
       // is currently active, not the one we opened with.
       let activeAssistantId = assistantId;
-      const patch = (fn: (t: Turn) => Turn) =>
-        setTurns((prev) => prev.map((t) => (t.id === activeAssistantId ? fn(t) : t)));
+      const patch = (fn: (t: Turn) => Turn) => {
+        // Read the id *now*, not inside the updater. React runs the updater at
+        // render time, so a lazy read sees whatever `interject` has since
+        // reassigned — and the patch lands on the wrong turn or on no turn at
+        // all. When a steer arrives in the same read as the deltas before it,
+        // that silently dropped everything the assistant had already said.
+        const target = activeAssistantId;
+        setTurns((prev) => prev.map((t) => (t.id === target ? fn(t) : t)));
+      };
 
       const interject = (content: string) => {
         const nextAssistantId = crypto.randomUUID();
