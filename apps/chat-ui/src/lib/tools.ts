@@ -1,4 +1,4 @@
-import type { ToolCall } from '@/types';
+import type { ReasoningBlock, ToolCall } from '@/types';
 
 /**
  * Which card a `tool_end` or `tool_execution_update` belongs to.
@@ -53,13 +53,15 @@ export function markToolPhase(
 /** One piece of an assistant turn, in the order it happened. */
 export type TurnSegment =
   | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string }
   | { kind: 'tool'; tool: ToolCall; index: number };
 
 /**
- * Split a turn's prose at the points its tools fired.
+ * Split a turn's prose at the points its tools fired and it stopped to think.
  *
- * `ToolCall.at` is the length `content` had when the card opened, so every
- * offset is a real index into this same string and the walk is a plain cursor.
+ * `ToolCall.at` and `ReasoningBlock.at` are the length `content` had when each
+ * was opened, so every offset is a real index into this same string and the walk
+ * is a plain cursor.
  * Offsets are clamped and sorted rather than trusted: a snapshot-hydrated turn
  * carries none at all (they sort to 0, reproducing the old all-cards-first
  * layout), and the `done` handler can replace `content` wholesale with the
@@ -72,28 +74,36 @@ export type TurnSegment =
  * the model genuinely stopped there. It is also rare, because a call ends the
  * assistant's text block.
  */
-export function interleaveTurn(content: string, tools: ToolCall[] | undefined): TurnSegment[] {
+export function interleaveTurn(
+  content: string,
+  tools: ToolCall[] | undefined,
+  reasoning?: ReasoningBlock[],
+): TurnSegment[] {
   const cards = tools ?? [];
-  if (cards.length === 0) return content ? [{ kind: 'text', text: content }] : [];
+  const thoughts = reasoning ?? [];
+  if (cards.length === 0 && thoughts.length === 0) {
+    return content ? [{ kind: 'text', text: content }] : [];
+  }
 
-  // Stable by construction: equal offsets keep arrival order, which is the order
-  // concurrent calls were announced in.
-  const ordered = cards
-    .map((tool, index) => ({
-      tool,
-      index,
-      at: Math.min(Math.max(tool.at ?? 0, 0), content.length),
-    }))
-    .sort((a, b) => a.at - b.at);
+  const clamp = (at: number) => Math.min(Math.max(at, 0), content.length);
+  // `rank` breaks a tie at the same offset, and the order is not arbitrary: the
+  // model reasons and *then* acts, so a thought recorded where a call was
+  // announced came first. The sort is stable, so equal offset and equal rank keep
+  // arrival order — for concurrent calls, the order they were announced in.
+  const ordered = [
+    ...thoughts.map((block) => ({ at: clamp(block.at), rank: 0, block, tool: null, index: -1 })),
+    ...cards.map((tool, index) => ({ at: clamp(tool.at ?? 0), rank: 1, block: null, tool, index })),
+  ].sort((a, b) => a.at - b.at || a.rank - b.rank);
 
   const segments: TurnSegment[] = [];
   let cursor = 0;
-  for (const { tool, index, at } of ordered) {
-    if (at > cursor) {
-      segments.push({ kind: 'text', text: content.slice(cursor, at) });
-      cursor = at;
+  for (const entry of ordered) {
+    if (entry.at > cursor) {
+      segments.push({ kind: 'text', text: content.slice(cursor, entry.at) });
+      cursor = entry.at;
     }
-    segments.push({ kind: 'tool', tool, index });
+    if (entry.tool) segments.push({ kind: 'tool', tool: entry.tool, index: entry.index });
+    else if (entry.block) segments.push({ kind: 'reasoning', text: entry.block.text });
   }
   if (cursor < content.length) segments.push({ kind: 'text', text: content.slice(cursor) });
   return segments;

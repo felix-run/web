@@ -597,6 +597,31 @@ export default function App() {
             if (chunk) patch((t) => ({ ...t, content: t.content + chunk }));
             break;
           }
+          // Reasoning, which the harness names separately from the answer. A
+          // deployment older than 2026-08-26 sends it only inside
+          // `session_progress`, where it is ignored, so this arm never fires and
+          // the turn renders exactly as it did before.
+          case 'thinking_delta': {
+            const data = ev.data as { chunk?: { content?: string }; delta?: string };
+            const chunk = data.delta ?? data.chunk?.content ?? '';
+            if (!chunk) break;
+            patch((t) => {
+              const blocks = t.reasoning ?? [];
+              const last = blocks[blocks.length - 1];
+              // Consecutive thinking at the same point in the prose is one
+              // thought. A new block only starts once text or a tool has moved
+              // the offset on, so two stretches either side of a call do not
+              // merge into a single stream of consciousness.
+              if (last && last.at === t.content.length) {
+                return {
+                  ...t,
+                  reasoning: [...blocks.slice(0, -1), { ...last, text: last.text + chunk }],
+                };
+              }
+              return { ...t, reasoning: [...blocks, { text: chunk, at: t.content.length }] };
+            });
+            break;
+          }
           case 'on_tool_start':
           case 'tool_start': {
             if (verboseRef.current) setInspectorOpen(true);

@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { cleanup, render as rtlRender, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render as rtlRender, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Message } from '../src/components/chat/message';
 import type { Turn } from '../src/types';
@@ -24,7 +24,14 @@ afterEach(cleanup);
  * than degrading when no provider is above them. main.tsx mounts one at the root,
  * so this mirrors the tree the component is actually rendered in.
  */
-const render = (ui: React.ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+const render = (ui: React.ReactElement) => {
+  const wrap = (node: React.ReactElement) => <TooltipProvider>{node}</TooltipProvider>;
+  const result = rtlRender(wrap(ui));
+  // Re-wrap on rerender too. Without this a rerender swaps in a bare tree, and the
+  // streaming test below survives only because the actions row happens to render
+  // nothing for an empty turn — green for a reason unrelated to its assertion.
+  return { ...result, rerender: (node: React.ReactElement) => result.rerender(wrap(node)) };
+};
 
 const assistant = (over: Partial<Turn>): Turn => ({
   id: 't1',
@@ -91,5 +98,43 @@ describe('Message interleaving', () => {
     );
     expect(tools.textContent).toContain('read_file');
     expect(tools.textContent).toContain('running');
+  });
+});
+
+describe('Message reasoning', () => {
+  it('shows that thinking happened without showing it as the answer', async () => {
+    const { container } = render(
+      <Message
+        turn={assistant({
+          content: 'the answer',
+          reasoning: [{ text: 'my private notes', at: 0 }],
+        })}
+      />,
+    );
+
+    await waitFor(() => expect(container.textContent).toContain('the answer'));
+    expect(container.textContent).toContain('Thought for a moment');
+    // Collapsed: reasoning read as the reply is worse than reasoning not shown.
+    expect(container.textContent).not.toContain('my private notes');
+  });
+
+  it('opens the reasoning when its trigger is used', async () => {
+    const { container, getByRole } = render(
+      <Message
+        turn={assistant({ content: 'a', reasoning: [{ text: 'my private notes', at: 0 }] })}
+      />,
+    );
+
+    fireEvent.click(getByRole('button', { name: /Thought for a moment/ }));
+    await waitFor(() => expect(container.textContent).toContain('my private notes'));
+  });
+
+  it('says it is still thinking only while the turn is streaming', async () => {
+    const turn = assistant({ content: '', reasoning: [{ text: 'hmm', at: 0 }] });
+    const { container, rerender } = render(<Message turn={turn} streaming />);
+    await waitFor(() => expect(container.textContent).toContain('Thinking'));
+
+    rerender(<Message turn={turn} />);
+    expect(container.textContent).toContain('Thought for a moment');
   });
 });
