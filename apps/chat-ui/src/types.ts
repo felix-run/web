@@ -37,6 +37,23 @@ export interface ToolCall {
   done: boolean;
   /** Latest `tool_execution_update` phase while the call is still running. */
   phase?: string;
+  /**
+   * Where this call happened in the turn's prose: the length of `Turn.content`
+   * at the moment the card was opened.
+   *
+   * A turn is not text-then-tools, it is text and tools alternating — "let me
+   * check" / tool / "found it" / tool / the answer. Holding the two in separate
+   * fields loses that order, and the transcript rendered every card above one
+   * merged paragraph, which reads as though the agent decided everything before
+   * saying anything.
+   *
+   * An offset rather than a single ordered `parts` array because `content`
+   * stays whole: copy, rewind, the `done` handler's final-answer fallback and
+   * every hydration path keep working on the string they already had. Absent
+   * (a turn hydrated from a snapshot, which carries no such marker) sorts to 0,
+   * which is exactly the old behaviour.
+   */
+  at?: number;
 }
 
 /** A turn in the UI transcript. Assistant turns may carry inline tool calls. */

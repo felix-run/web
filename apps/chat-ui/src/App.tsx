@@ -609,6 +609,7 @@ export default function App() {
                   name: String(data.name ?? 'tool'),
                   input: data.input,
                   done: false,
+                  at: t.content.length,
                   ...(data.id ? { callId: data.id } : {}),
                 },
               ],
@@ -655,6 +656,7 @@ export default function App() {
                   name: `approval · ${data.tool_name}`,
                   input: summarizeToolArgs(data.tool_name, args),
                   done: false,
+                  at: t.content.length,
                 },
               ],
             }));
@@ -675,6 +677,7 @@ export default function App() {
                   input: data.args,
                   done: false,
                   callId: data.id,
+                  at: t.content.length,
                 },
               ],
             }));

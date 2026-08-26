@@ -97,6 +97,48 @@ describe('titleFromText', () => {
 });
 
 describe('eventsToTurns — rebuilding a transcript from the server log', () => {
+  /**
+   * A rebuilt turn has to say when its calls happened, not just that they did.
+   * The harness attaches a message's `tool_calls` to the message that decided on
+   * them, so they run *after* its prose — rendering them above it was backwards,
+   * and it was the reload path's version of the bug `interleaveTurn` fixes live.
+   */
+  it("dates a message's own calls to the end of its prose", () => {
+    const [turn] = eventsToTurns([
+      ev({
+        seq: 1,
+        role: 'assistant',
+        content: 'let me check',
+        tool_calls: [{ id: 'a', name: 'read_file', args: {} }],
+      }),
+    ]);
+    expect(turn.tools?.[0]).toMatchObject({ name: 'read_file', at: 'let me check'.length });
+  });
+
+  it('keeps a tool-only step ahead of the prose it is carried into', () => {
+    // No content on the calling step, so its cards stamp 0 and stay above the
+    // answer they were held for, while that answer's own call lands below it.
+    const [turn] = eventsToTurns([
+      ev({
+        seq: 1,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'a', name: 'first', args: {} }],
+      }),
+      ev({ seq: 2, kind: 'tool_result', role: 'tool', tool_call_id: 'a', content: 'done' }),
+      ev({
+        seq: 3,
+        role: 'assistant',
+        content: 'found it',
+        tool_calls: [{ id: 'b', name: 'second', args: {} }],
+      }),
+    ]);
+    expect(turn.tools?.map((t) => [t.name, t.at])).toEqual([
+      ['first', 0],
+      ['second', 'found it'.length],
+    ]);
+  });
+
   it('pairs user and assistant messages in order', () => {
     const turns = eventsToTurns([
       ev({ seq: 1, role: 'user', content: 'question' }),

@@ -1,3 +1,4 @@
+import { interleaveTurn } from '@/lib/tools';
 import type { Turn } from '@/types';
 import { MessageActions } from './message-actions';
 import { Response } from './response';
@@ -6,6 +7,10 @@ import { Tool } from './tool';
 /**
  * One transcript turn. User turns are right-aligned bubbles; assistant turns
  * are full-width prose with optional tool cards (ChatGPT / Claude style).
+ *
+ * The assistant's prose and its tool cards are interleaved, not stacked: see
+ * `interleaveTurn`. A turn is a sequence of saying and doing, and rendering
+ * every card above one merged paragraph claimed an order the agent never had.
  */
 export function Message({
   turn,
@@ -68,18 +73,16 @@ export function Message({
         )}
       </div>
 
-      {turn.tools && turn.tools.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {turn.tools.map((tool, i) => (
-            <Tool key={`${tool.name}-${i}`} tool={tool} verbose={verbose} />
-          ))}
-        </div>
-      )}
-
-      {turn.content && (
-        <div className="max-w-none text-base text-foreground">
-          <Response>{turn.content}</Response>
-        </div>
+      {/* Keyed by position: segments are append-only while a turn streams — a card
+          opens at the end of the prose so far, so nothing already rendered shifts. */}
+      {interleaveTurn(turn.content, turn.tools).map((segment, i) =>
+        segment.kind === 'tool' ? (
+          <Tool key={`segment-${i}`} tool={segment.tool} verbose={verbose} />
+        ) : (
+          <div key={`segment-${i}`} className="max-w-none text-base text-foreground">
+            <Response>{segment.text}</Response>
+          </div>
+        ),
       )}
 
       {turn.usage && (

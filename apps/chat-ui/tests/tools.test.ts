@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { closeTool, findOpenTool, markToolPhase } from '@/lib/tools';
+import { closeTool, findOpenTool, interleaveTurn, markToolPhase } from '@/lib/tools';
 import type { ToolCall } from '@/types';
 
 const call = (over: Partial<ToolCall>): ToolCall => ({ name: 'read_file', done: false, ...over });
@@ -88,5 +88,72 @@ describe('markToolPhase', () => {
     tools = markToolPhase(tools, 'read_file', 'running', 'a');
     tools = markToolPhase(tools, 'read_file', 'complete', 'a');
     expect(tools[0].phase).toBe('complete');
+  });
+});
+
+/**
+ * The transcript used to render every tool card above the turn's prose, whatever
+ * order the two actually arrived in. A turn that said "let me check", called a
+ * tool, said "found it", called another, then answered came out as two stacked
+ * cards over one merged paragraph — the agent reading as though it had decided
+ * everything before saying anything.
+ */
+describe('interleaveTurn', () => {
+  it('puts each card where the prose stopped', () => {
+    const segments = interleaveTurn('let me check found it here it is', [
+      call({ name: 'a', at: 13 }),
+      call({ name: 'b', at: 22 }),
+    ]);
+    expect(segments).toEqual([
+      { kind: 'text', text: 'let me check ' },
+      { kind: 'tool', tool: expect.objectContaining({ name: 'a' }), index: 0 },
+      { kind: 'text', text: 'found it ' },
+      { kind: 'tool', tool: expect.objectContaining({ name: 'b' }), index: 1 },
+      { kind: 'text', text: 'here it is' },
+    ]);
+  });
+
+  it('keeps a card opened before any text ahead of it', () => {
+    const segments = interleaveTurn('the answer', [call({ at: 0 })]);
+    expect(segments.map((s) => s.kind)).toEqual(['tool', 'text']);
+  });
+
+  it('reproduces the old layout for a turn carrying no offsets', () => {
+    // Hydration from a session snapshot has no offsets to record, so every card
+    // sorts to 0 and lands ahead of the prose exactly as it used to.
+    const segments = interleaveTurn('the answer', [call({ name: 'a' }), call({ name: 'b' })]);
+    expect(segments.map((s) => s.kind)).toEqual(['tool', 'tool', 'text']);
+  });
+
+  it('holds arrival order for cards opened at the same point', () => {
+    const segments = interleaveTurn('x', [
+      call({ name: 'first', at: 1 }),
+      call({ name: 'second', at: 1 }),
+    ]);
+    expect(segments.map((s) => (s.kind === 'tool' ? s.tool.name : s.text))).toEqual([
+      'x',
+      'first',
+      'second',
+    ]);
+  });
+
+  it('clamps an offset past the end rather than dropping the card', () => {
+    // `done` replaces empty content with the final answer, stranding any offset
+    // recorded against the text that never arrived.
+    const segments = interleaveTurn('short', [call({ at: 999 })]);
+    expect(segments).toEqual([
+      { kind: 'text', text: 'short' },
+      { kind: 'tool', tool: expect.objectContaining({ at: 999 }), index: 0 },
+    ]);
+  });
+
+  it('emits nothing for an empty turn, and text alone when there are no tools', () => {
+    expect(interleaveTurn('', undefined)).toEqual([]);
+    expect(interleaveTurn('', [])).toEqual([]);
+    expect(interleaveTurn('just prose', [])).toEqual([{ kind: 'text', text: 'just prose' }]);
+  });
+
+  it('emits only cards when a turn produced no prose at all', () => {
+    expect(interleaveTurn('', [call({ at: 0 })]).map((s) => s.kind)).toEqual(['tool']);
   });
 });

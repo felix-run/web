@@ -217,14 +217,22 @@ export function eventsToTurns(events: SessionEvent[]): Turn[] {
       continue;
     }
     if (ev.role === 'assistant') {
+      const content = ev.content ?? '';
       const newTools: ToolCall[] = (ev.tool_calls ?? []).map((tc) => {
-        const t: ToolCall = { name: tc.name, input: tc.args, done: false };
+        // A message carries the calls it *decided on*, so they run after its prose
+        // — "let me check" and then the call, never the other way round. Without
+        // the offset a hydrated turn rendered every card above the text that
+        // preceded it, which is not merely unordered but backwards.
+        //
+        // This also dates the tools carried over from a tool-only step correctly
+        // and for free: that step's content is empty, so its cards are stamped 0
+        // and stay ahead of the prose they were carried into.
+        const t: ToolCall = { name: tc.name, input: tc.args, done: false, at: content.length };
         toolById.set(tc.id, t);
         return t;
       });
       const tools = [...pendingTools, ...newTools];
       pendingTools = [];
-      const content = ev.content ?? '';
       if (!content && tools.length) {
         // Tool-only step — hold the tools and attach to the next answer.
         pendingTools = tools;
