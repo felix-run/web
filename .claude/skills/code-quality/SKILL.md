@@ -32,7 +32,7 @@ pnpm lint            # biome; noExplicitAny and noUnusedVariables are only WARN,
 pnpm check-types     # per-package tsc — strictness differs by tier, see references/dimensions.md
 pnpm test            # vitest: chat-ui, cowork-client
 pnpm check-api-drift # client routes vs the committed harness OpenAPI snapshot
-pnpm check-protocol-parity # every SSE event arm has a handler in App.tsx
+pnpm check-protocol-parity # every SSE event arm has a handler in @felix/client's engine
 pnpm check-tailwind-sources # guarded @source trees still reach the compiled CSS
 pnpm build           # vite prints per-chunk sizes — this is the bundle measurement
 git grep -n 'as any\|as unknown as\|@ts-expect-error\|@ts-ignore'

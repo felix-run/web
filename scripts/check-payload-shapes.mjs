@@ -61,8 +61,10 @@ export const GUARDED = [
     serializer: 'felix/audit/store.py:_event_dict',
   },
   {
+    // Moved with the approvals poll into @felix/client: a gated tool blocks the
+    // run, so both clients need the row shape, not just the inspector.
     type: 'ApprovalRequest',
-    file: 'apps/chat-ui/src/types.ts',
+    file: 'packages/felix-client/src/approvals.ts',
     serializer: 'felix/approvals/store.py:_approval_dict',
   },
   {

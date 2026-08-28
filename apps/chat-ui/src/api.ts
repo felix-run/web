@@ -1,31 +1,35 @@
-import { reportReachability } from '@/lib/connection';
 /**
- * Thin client for the Felix surfaces the chat UI uses, all reached same-origin
- * under /api/* (Vite proxy in dev, proxy Worker in prod):
+ * chat-ui's binding of the Felix HTTP surface, all reached same-origin under
+ * /api/* (Vite proxy in dev, proxy Worker in prod):
  *
  *   GET  /api/v1/models      → manifest list for the switcher
  *   POST /api/chat/stream    → SSE token stream + inline tool events (+ per-turn
  *                              token usage on the terminal on_chain_end frame)
  *   GET  /api/audit          → activity feed (Inspector)
  *   GET  /api/audit/metrics  → tool-call rollups (Inspector → Metrics)
- *   GET  /api/approvals      → pending HITL approvals (Inspector)
+ *   GET  /api/approvals      → pending HITL approvals
  *   POST /api/approvals/:id/decide → approve / deny
  *   GET  /api/plans          → plan/step progress (Inspector)
+ *
+ * The chat half of that list is not implemented here. It lives in
+ * `@felix/client`, which is origin- and credential-agnostic so a terminal
+ * client can drive the same conversation; this module supplies the browser's
+ * half of the arrangement — the `/api` prefix, the shared key, the reachability
+ * signal, the 401 reset — and re-exports the result. What stays below is the
+ * management and inspector surface, which only this app reads.
  *
  * The Inspector endpoints are tenant-scoped; an anonymous dev caller resolves
  * to tenant `default`, so they read back exactly what anonymous chat turns
  * produce. Behind real auth, send an Authorization header (see README).
  */
 
-import { readSseStream } from '@felix/protocol';
+import { createFelixClient } from '@felix/client';
+import { reportReachability } from '@/lib/connection';
 import { authHeaders, handleUnauthorized } from './lib/auth';
-import { threadSuffix } from './lib/threads';
 import type {
   AgentCard,
-  ApprovalRequest,
   AuditEvent,
   AuditEventWire,
-  ChatMessage,
   EvalDataset,
   EvalDatasetItem,
   EvalRun,
@@ -41,19 +45,59 @@ import type {
   PlanWire,
   ResolvedManifest,
   Rubric,
-  SessionSnapshot,
-  SessionSummary,
-  StreamEvent,
-  ThinkingLevel,
-  ThreadHistory,
   ToolMetrics,
   UsageEvent,
 } from './types';
 
 /**
- * `fetch` for `/api/*` with the shared-key header attached. A 401 means the
- * key is missing/wrong/rotated — drop it and re-prompt (handleUnauthorized)
- * before the caller's own error handling runs.
+ * The one client every chat call goes through.
+ *
+ * `/api` rather than the harness origin because a browser cannot reach the
+ * harness at all — no CORS, no static assets — so the proxy Worker forwards it
+ * and swaps `x-chat-key` for the upstream credential. The three callbacks are
+ * this app's own concerns, which is exactly why the package takes them rather
+ * than assuming them.
+ */
+export const felix = createFelixClient({
+  baseUrl: '/api',
+  headers: authHeaders,
+  onReachability: reportReachability,
+  onUnauthorized: handleUnauthorized,
+});
+
+export const listManifests = felix.listManifests.bind(felix);
+export const streamChat = felix.streamChat.bind(felix);
+export const resumeStream = felix.resumeStream.bind(felix);
+export const postToolResult = felix.postToolResult.bind(felix);
+export const startChat = felix.startChat.bind(felix);
+export const getDurableRun = felix.getDurableRun.bind(felix);
+export const pollDurableRun = felix.pollDurableRun.bind(felix);
+export const steerChat = felix.steerChat.bind(felix);
+export const getSessionSnapshot = felix.getSessionSnapshot.bind(felix);
+export const abortChat = felix.abortChat.bind(felix);
+export const continueChat = felix.continueChat.bind(felix);
+export const setThinkingLevel = felix.setThinkingLevel.bind(felix);
+export const acquireSessionLease = felix.acquireSessionLease.bind(felix);
+export const releaseSessionLease = felix.releaseSessionLease.bind(felix);
+export const listSessions = felix.listSessions.bind(felix);
+export const renameSession = felix.renameSession.bind(felix);
+export const forkSession = felix.forkSession.bind(felix);
+export const compactSession = felix.compactSession.bind(felix);
+export const exportSession = felix.exportSession.bind(felix);
+export const searchSessions = felix.searchSessions.bind(felix);
+export const rewindChat = felix.rewindChat.bind(felix);
+export const respondUiRequest = felix.respondUiRequest.bind(felix);
+export const getThreadHistory = felix.getThreadHistory.bind(felix);
+export const deleteThreadHistory = felix.deleteThreadHistory.bind(felix);
+export const listApprovals = felix.listApprovals.bind(felix);
+export const decideApproval = felix.decideApproval.bind(felix);
+
+export type { StreamArgs, StreamHandlers } from '@felix/client';
+
+/**
+ * `fetch` for the management routes below, with the shared-key header attached.
+ * A 401 means the key is missing/wrong/rotated — drop it and re-prompt
+ * (handleUnauthorized) before the caller's own error handling runs.
  */
 async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
   let res: Response;
@@ -76,98 +120,6 @@ async function apiFetch(input: string, init: RequestInit = {}): Promise<Response
   reportReachability(true);
   if (res.status === 401) handleUnauthorized();
   return res;
-}
-
-/** GET /v1/models → manifest names for the dropdown. */
-export async function listManifests(signal?: AbortSignal): Promise<string[]> {
-  const res = await apiFetch('/api/v1/models', { signal });
-  if (!res.ok) throw new Error(`models: ${res.status}`);
-  const body = (await res.json()) as { data?: Array<{ id: string }> };
-  return (body.data ?? []).map((m) => m.id);
-}
-
-export interface StreamHandlers {
-  onEvent: (event: StreamEvent) => void | Promise<void>;
-  /**
-   * Each `id:` the stream stamps — the thread's next session sequence, carried
-   * by structural frames only. Hand the newest back as `Last-Event-ID` to
-   * `GET /chat/stream/{thread_id}` to reattach after a dropped connection.
-   */
-  onCursor?: (lastEventId: string) => void;
-}
-
-export interface StreamArgs {
-  manifest: string;
-  messages: ChatMessage[];
-  threadId?: string;
-  signal?: AbortSignal;
-}
-
-/**
- * POST /chat/stream and dispatch each frame. Resolves when the server emits
- * `data: [DONE]`. The SSE framing (one event per `\n\n`) is decoded with a carry
- * buffer so events split across network chunks are not dropped — same discipline
- * the harness uses on its own SSE reads.
- *
- * `readSseStream` also folds the harness's `event: error` frame into an
- * `on_error` event, so a stream that fails after its 200 arrives here as an
- * event rather than as silence.
- */
-export async function streamChat(args: StreamArgs, handlers: StreamHandlers): Promise<void> {
-  const res = await apiFetch('/api/chat/stream', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      manifest: args.manifest,
-      messages: args.messages,
-      ...(args.threadId ? { thread_id: args.threadId } : {}),
-    }),
-    signal: args.signal,
-  });
-
-  if (!res.ok || !res.body) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`chat/stream: ${res.status} ${detail.slice(0, 200)}`);
-  }
-
-  await readSseStream(res, handlers.onEvent, { onCursor: handlers.onCursor });
-}
-
-/**
- * GET /chat/stream/{thread_id} — reattach after a dropped connection.
- *
- * Pass the newest `id:` seen on the lost stream (via `StreamHandlers.onCursor`)
- * as `lastEventId` to replay only what was missed; omit it for a cold reattach,
- * which opens with a `snapshot` of the whole thread instead.
- *
- * This does **not** resume the run. A client that hangs up has its run torn
- * down on purpose, so it stops burning tokens; what comes back is the thread as
- * it now stands, plus anything that lands afterwards. Because it tails shared
- * session state rather than one process's output, it works regardless of which
- * replica served the original turn.
- *
- * The harness closes an idle reattach after ~300s rather than holding the
- * connection open, and expects the caller to return with its cursor — so a
- * clean end here is not necessarily the end of the thread's activity.
- */
-export async function resumeStream(
-  args: { threadId: string; lastEventId?: string; signal?: AbortSignal },
-  handlers: StreamHandlers,
-): Promise<void> {
-  const res = await apiFetch(`/api/chat/stream/${encodeURIComponent(args.threadId)}`, {
-    // The harness reads the header, and falls back to a `last_event_id` query
-    // param. The header is the standard spelling, and keeps the cursor out of
-    // request URLs and therefore out of access logs.
-    headers: args.lastEventId ? { 'last-event-id': args.lastEventId } : {},
-    signal: args.signal,
-  });
-
-  if (!res.ok || !res.body) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`chat/stream/${args.threadId}: ${res.status} ${detail.slice(0, 200)}`);
-  }
-
-  await readSseStream(res, handlers.onEvent, { onCursor: handlers.onCursor });
 }
 
 // --- Inspector REST helpers ---
@@ -203,34 +155,6 @@ export async function listAudit(
   }));
 }
 
-/** GET /approvals?status=… → human-in-the-loop queue. */
-export async function listApprovals(
-  status: ApprovalRequest['status'] = 'pending',
-): Promise<ApprovalRequest[]> {
-  const res = await apiFetch(`/api/approvals?status=${status}`);
-  if (!res.ok) throw new Error(`approvals: ${res.status}`);
-  const body = (await res.json()) as { requests?: ApprovalRequest[] };
-  return body.requests ?? [];
-}
-
-/** POST /approvals/:id/decide → approve or deny a gated tool call. */
-export async function decideApproval(
-  id: string,
-  decision: {
-    status: 'approved' | 'denied';
-    note?: string;
-    edited_args?: Record<string, unknown>;
-  },
-): Promise<ApprovalRequest> {
-  const res = await apiFetch(`/api/approvals/${encodeURIComponent(id)}/decide`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(decision),
-  });
-  if (!res.ok) throw new Error(`decide: ${res.status}`);
-  return (await res.json()) as ApprovalRequest;
-}
-
 /** GET /usage → paginated token meter events. */
 export async function listUsage(
   opts: { limit?: number; cursor?: string; manifest_id?: string } = {},
@@ -242,367 +166,6 @@ export async function listUsage(
   const res = await apiFetch(`/api/usage?${q}`);
   if (!res.ok) throw new Error(`usage: ${res.status}`);
   return (await res.json()) as { items: UsageEvent[]; next_cursor: string | null };
-}
-
-/** POST /chat/tool_result — complete a client-executed tool pause. */
-export async function postToolResult(args: {
-  threadId: string;
-  toolCallId: string;
-  content: string;
-  error?: boolean;
-}): Promise<void> {
-  const res = await apiFetch('/api/chat/tool_result', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      thread_id: args.threadId,
-      tool_call_id: args.toolCallId,
-      content: args.content,
-      error: args.error ?? false,
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`tool_result: ${res.status} ${detail.slice(0, 200)}`);
-  }
-}
-
-export interface DurableRun {
-  status?: string;
-  resume_token?: string;
-  fiber_id?: string;
-  final?: ChatMessage | { role?: string; content?: string };
-  error?: string;
-}
-
-/** POST /chat — durable manifests return 202 + resume_token. */
-export async function startChat(args: {
-  manifest: string;
-  messages: ChatMessage[];
-  threadId?: string;
-  signal?: AbortSignal;
-}): Promise<{ kind: 'done'; final: ChatMessage } | { kind: 'durable'; resumeToken: string }> {
-  const res = await apiFetch('/api/chat', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      manifest: args.manifest,
-      messages: args.messages,
-      ...(args.threadId ? { thread_id: args.threadId } : {}),
-    }),
-    signal: args.signal,
-  });
-
-  if (res.status === 202) {
-    const body = (await res.json()) as { resume_token?: string };
-    if (!body.resume_token) throw new Error('durable chat missing resume_token');
-    return { kind: 'durable', resumeToken: body.resume_token };
-  }
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`chat: ${res.status} ${detail.slice(0, 200)}`);
-  }
-
-  const body = (await res.json()) as { final?: ChatMessage };
-  return {
-    kind: 'done',
-    final: body.final ?? { role: 'assistant', content: '' },
-  };
-}
-
-export async function getDurableRun(resumeToken: string): Promise<DurableRun> {
-  const res = await apiFetch(`/api/chat/runs/${encodeURIComponent(resumeToken)}`);
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`chat/runs: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return (await res.json()) as DurableRun;
-}
-
-export async function pollDurableRun(
-  resumeToken: string,
-  opts: {
-    signal?: AbortSignal;
-    intervalMs?: number;
-    onTick?: (run: DurableRun) => void;
-  } = {},
-): Promise<DurableRun> {
-  const interval = opts.intervalMs ?? 1500;
-  while (true) {
-    if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    const run = await getDurableRun(resumeToken);
-    opts.onTick?.(run);
-    const status = (run.status || '').toLowerCase();
-    if (
-      status === 'completed' ||
-      status === 'succeeded' ||
-      status === 'failed' ||
-      status === 'error'
-    ) {
-      return run;
-    }
-    if (run.error) return run;
-    await new Promise((r) => setTimeout(r, interval));
-  }
-}
-
-export async function steerChat(args: {
-  threadId: string;
-  text: string;
-  kind?: 'steer' | 'follow_up';
-}): Promise<void> {
-  const res = await apiFetch('/api/chat/steer', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      thread_id: args.threadId,
-      text: args.text,
-      kind: args.kind ?? 'steer',
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`steer: ${res.status} ${detail.slice(0, 200)}`);
-  }
-}
-
-/** GET /chat/sessions/{thread_id} — authoritative snapshot (truth over local cache). */
-export async function getSessionSnapshot(threadId: string): Promise<SessionSnapshot | null> {
-  try {
-    const res = await fetch(`/api/chat/sessions/${encodeURIComponent(threadId)}`, {
-      headers: authHeaders(),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as SessionSnapshot;
-  } catch {
-    return null;
-  }
-}
-
-/** POST /chat/abort — cancel the in-flight server run. */
-export async function abortChat(threadId: string): Promise<void> {
-  const res = await apiFetch('/api/chat/abort', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ thread_id: threadId }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`abort: ${res.status} ${detail.slice(0, 200)}`);
-  }
-}
-
-/** POST /chat/continue — resume after abort/error without a new user message. */
-export async function continueChat(args: {
-  threadId: string;
-  manifest: string;
-  model?: string;
-}): Promise<unknown> {
-  const res = await apiFetch('/api/chat/continue', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      thread_id: args.threadId,
-      manifest: args.manifest,
-      ...(args.model ? { model: args.model } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`continue: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return res.json();
-}
-
-/** POST /chat/thinking — set live thinking level for the thread. */
-export async function setThinkingLevel(args: {
-  threadId: string;
-  thinkingLevel: ThinkingLevel;
-}): Promise<void> {
-  const res = await apiFetch('/api/chat/thinking', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      thread_id: args.threadId,
-      thinking_level: args.thinkingLevel,
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`thinking: ${res.status} ${detail.slice(0, 200)}`);
-  }
-}
-
-/** POST /chat/sessions/lease — exclusive/shared attach for multi-tab. */
-export async function acquireSessionLease(args: {
-  threadId: string;
-  holderId: string;
-  mode?: 'exclusive' | 'shared';
-  ttlSeconds?: number;
-  token?: string;
-}): Promise<{ ok: boolean; token?: string; error?: string }> {
-  const res = await apiFetch('/api/chat/sessions/lease', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      thread_id: args.threadId,
-      holder_id: args.holderId,
-      mode: args.mode ?? 'exclusive',
-      ttl_seconds: args.ttlSeconds ?? 300,
-      ...(args.token ? { token: args.token } : {}),
-    }),
-  });
-  if (res.status === 409) {
-    const body = (await res.json().catch(() => ({}))) as { detail?: string };
-    return { ok: false, error: body.detail || 'lease_held' };
-  }
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`lease: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return (await res.json()) as { ok: boolean; token?: string };
-}
-
-/** POST /chat/sessions/lease/release */
-export async function releaseSessionLease(args: {
-  threadId: string;
-  holderId?: string;
-  token?: string;
-}): Promise<void> {
-  try {
-    await apiFetch('/api/chat/sessions/lease/release', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        thread_id: args.threadId,
-        ...(args.holderId ? { holder_id: args.holderId } : {}),
-        ...(args.token ? { token: args.token } : {}),
-      }),
-    });
-  } catch {
-    // best-effort on tab close / navigate
-  }
-}
-
-/**
- * GET /chat/sessions — every thread the harness holds for this tenant.
- *
- * The authoritative thread index. `src/lib/threads.ts` still keeps a
- * localStorage copy, but as a cache and as the only record of which manifest a
- * thread used — the harness does not track that.
- *
- * Ids arrive tenant-prefixed and are stripped here, so callers only ever see the
- * suffix they are allowed to send back.
- */
-export async function listSessions(): Promise<SessionSummary[]> {
-  const res = await apiFetch('/api/chat/sessions');
-  if (!res.ok) throw new Error(`chat/sessions: ${res.status}`);
-  // The route returns the same array under both keys. Read either — a harness
-  // that later drops one of them should not empty the sidebar.
-  const body = (await res.json()) as {
-    sessions?: RawSessionRow[];
-    items?: RawSessionRow[];
-  };
-  const rows = body.sessions ?? body.items ?? [];
-  return rows.map((row) => ({
-    id: threadSuffix(String(row.id ?? '')),
-    name: row.sessionName ?? null,
-    createdAt: row.createdAt ?? undefined,
-    updatedAt: row.updatedAt ?? undefined,
-    parentSessionId: row.parentSessionId ? threadSuffix(row.parentSessionId) : null,
-  }));
-}
-
-interface RawSessionRow {
-  id?: string;
-  sessionName?: string | null;
-  createdAt?: number;
-  updatedAt?: number;
-  parentSessionId?: string | null;
-}
-
-/**
- * POST /chat/sessions/name — give a thread a durable name.
- *
- * Also appends a `session_info` event to the transcript, so the rename is part
- * of the session log rather than only metadata.
- */
-export async function renameSession(threadId: string, name: string): Promise<void> {
-  const res = await apiFetch('/api/chat/sessions/name', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ thread_id: threadId, name }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`sessions/name: ${res.status} ${detail.slice(0, 200)}`);
-  }
-}
-
-/**
- * POST /chat/fork — branch a thread into a new one.
- *
- * The write half of rewind: rewind moves this thread's leaf, fork copies up to
- * an event into a *separate* thread and leaves the original where it was. The
- * new thread records the original as its parent.
- *
- * `fromEventId` defaults to the whole thread.
- */
-export async function forkSession(args: {
-  threadId: string;
-  newThreadId: string;
-  fromEventId?: string;
-}): Promise<{ leaf_id?: string }> {
-  const res = await apiFetch('/api/chat/fork', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      thread_id: args.threadId,
-      new_thread_id: args.newThreadId,
-      ...(args.fromEventId ? { from_event_id: args.fromEventId } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`chat/fork: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return (await res.json()) as { leaf_id?: string };
-}
-
-/**
- * POST /chat/compact — summarise the thread's older context now.
- *
- * The agent loop does this on its own when the window fills; this is the manual
- * trigger. It needs a manifest because the compaction strategy and the model
- * that writes the summary both come from one.
- */
-export async function compactSession(threadId: string, manifest: string): Promise<void> {
-  const res = await apiFetch('/api/chat/compact', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ thread_id: threadId, manifest }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`chat/compact: ${res.status} ${detail.slice(0, 200)}`);
-  }
-}
-
-/**
- * GET /chat/sessions/{id}/export — the active branch as JSONL.
- *
- * Returns the text rather than triggering the download, so the caller decides
- * what to do with it. Only the active branch: a rewound-away sibling is not
- * included, which matches what the transcript shows.
- */
-export async function exportSession(threadId: string): Promise<string> {
-  const res = await apiFetch(`/api/chat/sessions/${encodeURIComponent(threadId)}/export`);
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`sessions/export: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return await res.text();
 }
 
 // --- Long-term memory (/memory) ---
@@ -680,72 +243,6 @@ export async function forgetMemory(id: string): Promise<void> {
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(`memory/forget: ${res.status} ${detail.slice(0, 200)}`);
-  }
-}
-
-/** GET /chat/sessions/search — full-text hits across the tenant's event log. */
-export async function searchSessions(
-  q: string,
-  limit = 20,
-): Promise<Array<{ thread_id: string; content: string; event_id?: string; rank?: number }>> {
-  const query = q.trim();
-  if (!query) return [];
-  const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const res = await apiFetch(`/api/chat/sessions/search?${params}`);
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`search: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  const body = (await res.json()) as {
-    hits?: Array<{ thread_id: string; content: string; event_id?: string; rank?: number }>;
-  };
-  return body.hits ?? [];
-}
-
-/** POST /chat/rewind — set the active leaf to an earlier event. */
-export async function rewindChat(args: {
-  threadId: string;
-  eventId: string;
-  summarize?: boolean;
-  manifest?: string;
-}): Promise<{ ok: boolean; leaf_id?: string }> {
-  const res = await apiFetch('/api/chat/rewind', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      thread_id: args.threadId,
-      event_id: args.eventId,
-      summarize: args.summarize ?? false,
-      ...(args.manifest ? { manifest: args.manifest } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`rewind: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return (await res.json()) as { ok: boolean; leaf_id?: string };
-}
-
-/** POST /chat/ui — answer a select/confirm/input prompt. */
-export async function respondUiRequest(args: {
-  requestId: string;
-  value?: unknown;
-  cancelled?: boolean;
-  note?: string;
-}): Promise<void> {
-  const res = await apiFetch('/api/chat/ui', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      request_id: args.requestId,
-      value: args.value,
-      cancelled: args.cancelled ?? false,
-      note: args.note ?? '',
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`ui: ${res.status} ${detail.slice(0, 200)}`);
   }
 }
 
@@ -1062,58 +559,4 @@ export async function getAgentCard(): Promise<AgentCard> {
   const res = await apiFetch('/api/.well-known/agent-card.json');
   if (!res.ok) throw new Error(`agent-card: ${res.status}`);
   return (await res.json()) as AgentCard;
-}
-
-// --- Thread history (/chat/history/{thread_id}) ---
-
-/**
- * GET /chat/history/{thread_id} → the server-side checkpointed transcript.
- * Anonymous callers get this only in local dev (the harness adds a dev
- * fallthrough); behind auth it 401s. We use a bare fetch (not apiFetch) so a 401
- * doesn't trip the shared-key reset/reload — any non-OK simply means "no server
- * history", and the caller falls back to the localStorage transcript.
- *
- * The response is the *newest* window of the thread, bounded at 5000 events read
- * even when `limit` is omitted, so a long thread can come back truncated with
- * `has_more: true`. Page backwards by passing the previous response's
- * `oldest_seq` as `beforeSeq`.
- *
- * `limit` counts events *read*, not messages returned — the harness filters
- * non-message kinds out of the window after applying it, so a request for 50 can
- * legitimately yield fewer than 50 messages. Values below 1 are a 400.
- *
- * Both params are ignored by a harness predating the paging change, which also
- * omits `oldest_seq` and `has_more` from the response — sending them is safe
- * (FastAPI drops unknown query params), but do not assume they took effect.
- */
-export async function getThreadHistory(
-  threadId: string,
-  opts: { limit?: number; beforeSeq?: number } = {},
-): Promise<ThreadHistory | null> {
-  const query = new URLSearchParams();
-  if (opts.limit !== undefined) query.set('limit', String(opts.limit));
-  if (opts.beforeSeq !== undefined) query.set('before_seq', String(opts.beforeSeq));
-  const qs = query.toString();
-  try {
-    const res = await fetch(
-      `/api/chat/history/${encodeURIComponent(threadId)}${qs ? `?${qs}` : ''}`,
-      { headers: authHeaders() },
-    );
-    if (!res.ok) return null;
-    return (await res.json()) as ThreadHistory;
-  } catch {
-    return null;
-  }
-}
-
-/** DELETE /chat/history/{thread_id} → erase the server transcript. Best-effort. */
-export async function deleteThreadHistory(threadId: string): Promise<void> {
-  try {
-    await fetch(`/api/chat/history/${encodeURIComponent(threadId)}`, {
-      method: 'DELETE',
-      headers: authHeaders(),
-    });
-  } catch {
-    // best-effort; the local copy is the source of truth in the demo
-  }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { closeTool, findOpenTool, interleaveTurn, markToolPhase } from '@/lib/tools';
-import type { ToolCall } from '@/types';
+import type { ToolCall } from '../src/turns';
+import { closeTool, findOpenTool, interleaveTurn, markToolPhase } from '../src/turns';
 
 const call = (over: Partial<ToolCall>): ToolCall => ({ name: 'read_file', done: false, ...over });
 
@@ -56,7 +56,7 @@ describe('closeTool', () => {
   it('closes the newest open card when there is no id', () => {
     const tools = [call({ done: true, output: 'old' }), call({})];
     const out = closeTool(tools, 'read_file', 'new');
-    expect(out[0].output).toBe('old');
+    expect(out[0]?.output).toBe('old');
     expect(out[1]).toMatchObject({ output: 'new', done: true });
   });
 
@@ -74,8 +74,8 @@ describe('markToolPhase', () => {
   it('marks the card the id names', () => {
     const tools = [call({ callId: 'a' }), call({ callId: 'b' })];
     const out = markToolPhase(tools, 'read_file', 'running', 'b');
-    expect(out[0].phase).toBeUndefined();
-    expect(out[1].phase).toBe('running');
+    expect(out[0]?.phase).toBeUndefined();
+    expect(out[1]?.phase).toBe('running');
   });
 
   it('does not close the card it marks', () => {
@@ -87,7 +87,7 @@ describe('markToolPhase', () => {
     let tools = [call({ callId: 'a' })];
     tools = markToolPhase(tools, 'read_file', 'running', 'a');
     tools = markToolPhase(tools, 'read_file', 'complete', 'a');
-    expect(tools[0].phase).toBe('complete');
+    expect(tools[0]?.phase).toBe('complete');
   });
 });
 

@@ -1,16 +1,24 @@
 /**
  * chat-ui's view of the harness.
  *
- * The wire contract itself lives in `@felix/protocol`. What stays here is
- * either chat-ui's own UI state (`Turn`) or a management surface (audit, eval,
- * jobs, manifests, plans, usage).
+ * The wire contract lives in `@felix/protocol`, and everything the conversation
+ * itself is made of — the transcript, tool cards, approvals, the thread index —
+ * in `@felix/client`, because a terminal client needs exactly those. Both are
+ * re-exported here so components keep importing one module. What is *declared*
+ * below is the management surface (audit, eval, jobs, manifests, plans, usage),
+ * which only this app reads.
  */
 
-/**
- * Approval state is client-side: `before` carries the pre-edit file text for the
- * diff, so the type lives with the client tool executor, not the wire contract.
- */
-export type { PendingApproval } from '@felix/cowork-client';
+export type {
+  ApprovalRequest,
+  PendingApproval,
+  ReasoningBlock,
+  SessionSummary,
+  ThreadMeta,
+  ToolCall,
+  Turn,
+  TurnSegment,
+} from '@felix/client';
 export type {
   ChatMessage,
   DurableRun,
@@ -25,90 +33,7 @@ export type {
   TokenUsage,
 } from '@felix/protocol';
 
-import type { ImageAttachment, Role, TokenUsage } from '@felix/protocol';
-
-/** A finished or in-flight tool call, rendered inline in the transcript. */
-export interface ToolCall {
-  name: string;
-  /** Harness tool-call id, when the frame carried one. */
-  callId?: string;
-  input?: unknown;
-  output?: unknown;
-  done: boolean;
-  /** Latest `tool_execution_update` phase while the call is still running. */
-  phase?: string;
-  /**
-   * Where this call happened in the turn's prose: the length of `Turn.content`
-   * at the moment the card was opened.
-   *
-   * A turn is not text-then-tools, it is text and tools alternating — "let me
-   * check" / tool / "found it" / tool / the answer. Holding the two in separate
-   * fields loses that order, and the transcript rendered every card above one
-   * merged paragraph, which reads as though the agent decided everything before
-   * saying anything.
-   *
-   * An offset rather than a single ordered `parts` array because `content`
-   * stays whole: copy, rewind, the `done` handler's final-answer fallback and
-   * every hydration path keep working on the string they already had. Absent
-   * (a turn hydrated from a snapshot, which carries no such marker) sorts to 0,
-   * which is exactly the old behaviour.
-   */
-  at?: number;
-}
-
-/**
- * A stretch of model reasoning, and where in the prose it happened.
- *
- * Blocks rather than one string because a turn can think more than once — before
- * an answer, and again between tool calls — and merging those into a single
- * block would claim the model reconsidered in one sitting. `at` is the offset
- * `ToolCall.at` uses, so the two interleave against the same string.
- */
-export interface ReasoningBlock {
-  text: string;
-  at: number;
-}
-
-/** A turn in the UI transcript. Assistant turns may carry inline tool calls. */
-export interface Turn {
-  id: string;
-  role: Exclude<Role, 'tool' | 'system'>;
-  content: string;
-  tools?: ToolCall[];
-  /** Reasoning the model streamed, if the harness is new enough to name it. */
-  reasoning?: ReasoningBlock[];
-  /** Image attachments on a user turn (rendered as thumbnails). */
-  attachments?: ImageAttachment[];
-  /** Set on assistant turns from the terminal `on_chain_end` usage payload. */
-  usage?: TokenUsage;
-  /** Server event id when hydrated from a session snapshot (enables rewind). */
-  eventId?: string;
-}
-
 export type Variant = 'stable' | 'canary';
-
-/**
- * One row from GET /chat/sessions — the tenant's threads, as the harness knows
- * them.
- *
- * `id` here is the *client* thread id: the wire spells it `{tenant}:{id}` and
- * `threadSuffix` strips the prefix, because a client only ever sends the suffix
- * back (the harness rejects one containing `:` outright, so a thread can never
- * be addressed across tenants).
- *
- * There is no manifest on this row. Which agent a thread was talked to is
- * client-side state, so the local index remains its only record.
- */
-export interface SessionSummary {
-  id: string;
-  /** Server-set name from POST /chat/sessions/name; null until someone sets one. */
-  name: string | null;
-  /** Epoch ms. */
-  createdAt?: number;
-  updatedAt?: number;
-  /** Set on a thread created by POST /chat/fork. */
-  parentSessionId?: string | null;
-}
 
 // --- Long-term memory (/memory) ---
 //
@@ -208,29 +133,6 @@ export interface AuditEventWire extends Omit<AuditEvent, 'payload'> {
   payload_json?: Record<string, unknown>;
   /** Tolerated so a harness that ever renames it back does not blank the feed. */
   payload?: Record<string, unknown>;
-}
-
-/** One row from GET /approvals. */
-export interface ApprovalRequest {
-  id: string;
-  tenant_id: string;
-  manifest_id: string;
-  tool_name: string;
-  call_signature: string;
-  args: Record<string, unknown>;
-  /**
-   * The wire spells this `principal_subj`, the same abbreviation an audit row
-   * uses. Declared as `principal_subject` it read `undefined` on every approval
-   * the harness has ever returned — invisible only because nothing rendered it
-   * yet.
-   */
-  principal_subj: string;
-  status: 'pending' | 'approved' | 'denied';
-  created_at: number;
-  decided_at: number | null;
-  decided_by: string;
-  decision_note: string;
-  edited_args: Record<string, unknown> | null;
 }
 
 /** One row from GET /usage. */

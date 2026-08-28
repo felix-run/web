@@ -14,9 +14,10 @@
  * distinction matters to the caller, which should say so rather than implying
  * the reply is still being written.
  */
-import { getSessionSnapshot, resumeStream } from '@/api';
-import type { SessionEvent, SessionSnapshot, StreamEvent, Turn } from '@/types';
-import { eventsToTurns, snapshotToEvents } from './threads';
+import type { SessionEvent, SessionSnapshot, StreamEvent } from '@felix/protocol';
+import { eventsToTurns, snapshotToEvents } from './session-log';
+import type { FelixClient } from './transport';
+import type { Turn } from './turns';
 
 /**
  * Phases that mean the thread is still doing something, so a reattach that ends
@@ -29,6 +30,7 @@ const WORKING_PHASES = new Set(['turn', 'compaction', 'retry', 'branch_summary']
 const MAX_ATTEMPTS = 6;
 
 export interface ReattachOptions {
+  client: FelixClient;
   threadId: string;
   /** Newest `id:` from the lost stream. Omit for a cold reattach (full snapshot). */
   lastEventId?: string;
@@ -81,7 +83,7 @@ export async function reattachThread(opts: ReattachOptions): Promise<void> {
     if (opts.signal?.aborted) return;
 
     try {
-      await resumeStream(
+      await opts.client.resumeStream(
         { threadId: opts.threadId, lastEventId: cursor, signal: opts.signal },
         {
           onCursor: (id) => {
@@ -124,7 +126,7 @@ export async function reattachThread(opts: ReattachOptions): Promise<void> {
 
     if (opts.signal?.aborted) return;
 
-    const snap = await getSessionSnapshot(opts.threadId).catch(() => null);
+    const snap = await opts.client.getSessionSnapshot(opts.threadId).catch(() => null);
     const phase = snap?.phase ?? '';
     if (phase) opts.onPhase?.(phase);
     if (!WORKING_PHASES.has(phase)) return;

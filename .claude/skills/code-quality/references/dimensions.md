@@ -30,7 +30,7 @@ sweep looks in the right place instead of grepping the whole tree.
   on an injected implementation, which is what lets the contract be stated independently of its
   caller — see `apps/chat-ui/tests/sse.test.ts`.
 - Covered today: the VFS, the SSE reader, the proxy Worker, and chat-ui's thread store, theme
-  provider, `usePoll`, presence, and Gate. **Uncovered: `App.tsx`, the composer, the inspector
+  provider, `usePoll`, presence, Gate, the engine, and `App.tsx`. **Uncovered: the composer, the inspector
   panels.**
 - Coverage questions to ask of an existing suite: does it assert what a user observes, or which
   setter ran; would its failure name the defect; does it pin an error path as well as a happy path.
@@ -54,7 +54,7 @@ sweep looks in the right place instead of grepping the whole tree.
   do it inside a quality sweep.
 - `StreamEvent` in `packages/felix-protocol/src/types.ts` ends in an open `{ event: string; … }`
   arm. A new frame type compiles with no handler and silently does nothing, so "the types pass" says
-  nothing about SSE completeness. Cross-check the arms against the `switch` in `App.tsx`.
+  nothing about SSE completeness. Cross-check the arms against the `switch` in `@felix/client`.
 - Widening a shared package's surface is a commitment: the `exports` map **and** the `paths` block
   in `apps/chat-ui/tsconfig.json` both have to change. A helper with a single call site does not
   belong in a shared package.

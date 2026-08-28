@@ -1,3 +1,4 @@
+import { relativeTime } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
@@ -11,7 +12,6 @@ import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import { usePoll } from '@/hooks/usePoll';
-import { relativeTime } from '@/lib/time';
 import type { JobRun } from '@/types';
 
 /**

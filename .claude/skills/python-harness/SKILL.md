@@ -54,7 +54,7 @@ The browser clients hand-mirror the harness's wire format. These are load-bearin
 
 When you change any of these, name the felix-web files that must change with it — the shared
 `packages/felix-protocol` (wire types and the SSE reader, one copy for both apps), each app's own
-`src/api.ts`, and the `App.tsx` `switch` in each — and use the `api-contract-change` skill to land
+`src/api.ts`, and the engine `switch` in `@felix/client` — and use the `api-contract-change` skill to land
 the client side. Route changes also want `apps/chat-ui/harness-openapi.json` refreshed, which
 `pnpm check-api-drift` enforces.
 

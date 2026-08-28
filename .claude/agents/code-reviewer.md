@@ -25,7 +25,7 @@ pre-existing code unless the diff makes it newly wrong.
    and production behave differently, and nothing reports it.
 2. **Silently unhandled SSE events.** `StreamEvent` ends in an open `{ event: string; … }` arm, so a
    new frame type type-checks with no handler and does nothing at runtime. A new arm in `types.ts`
-   with no matching `switch` case in `App.tsx` is a bug.
+   with no matching `switch` case in `packages/felix-client/src/engine.ts` is a bug.
 3. **Hung runs.** Frames the model loop waits on — `tool_request`, `approval_required`, `ui_request` —
    must always be answered on every path, including the error and abort paths. A `try` that returns
    early without posting a tool result hangs the conversation with no error shown.

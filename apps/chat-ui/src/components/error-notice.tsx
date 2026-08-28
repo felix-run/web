@@ -1,6 +1,6 @@
+import { describeError } from '@felix/client';
 import { CircleAlertIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { describeError } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 
 /**

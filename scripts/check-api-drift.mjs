@@ -27,13 +27,19 @@ import { readFileSync } from 'node:fs';
 import { argv, exit } from 'node:process';
 
 /**
- * Call spellings in api.ts, mapped to the prefix each prepends.
+ * Call spellings in the client sources, mapped to the prefix each prepends.
  *
- * `fetch` is here because three call sites deliberately bypass `apiFetch` — a
- * 401 from them means "no server history", not "the key is wrong", and going
+ * `fetch` is here because call sites deliberately bypass the wrapper — a 401
+ * from them means "no server history", not "the key is wrong", and going
  * through the wrapper would trip the shared-key reset and reload the page. They
  * were invisible to this check, so the harness could have renamed
  * `/chat/history/{thread_id}` and nothing would have failed.
+ *
+ * `chatFetch` and `rawFetch` are `@felix/client`'s pair of the same two. They
+ * take a **harness-relative** path — the origin is the caller's, which is the
+ * whole point of that package — so unlike `apiFetch` there is no prefix to
+ * strip. Writing those routes as literals rather than building them from
+ * fragments is what keeps them readable here.
  *
  * `apiFetch` and `fetch` take a full `/api/...` path and have that prefix
  * stripped; the rest prepend their own. Matching is case-sensitive, which is
@@ -42,6 +48,8 @@ import { argv, exit } from 'node:process';
 const HELPERS = {
   apiFetch: '',
   fetch: '',
+  chatFetch: '',
+  rawFetch: '',
   manifestFetch: '/manifests',
   evalFetch: '/eval',
   jobsFetch: '/jobs',

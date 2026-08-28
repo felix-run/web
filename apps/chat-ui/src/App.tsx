@@ -1,4 +1,13 @@
-import { summarizeToolArgs } from '@felix/cowork-client';
+import {
+  type ChatEngine,
+  createChatEngine,
+  describeError,
+  eventsToTurns,
+  mergeSessions,
+  snapshotToEvents,
+  type ThreadMeta,
+  titleFromText,
+} from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import {
@@ -26,7 +35,7 @@ import {
   PanelRightIcon,
   PlusIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import {
   abortChat,
@@ -36,24 +45,20 @@ import {
   decideApproval,
   deleteThreadHistory,
   exportSession,
+  felix,
   forkSession,
   getResolvedManifest,
   getSessionSnapshot,
   getThreadHistory,
-  listApprovals,
   listManifests,
   listSessions,
   listTenantManifests,
-  pollDurableRun,
-  postToolResult,
   releaseSessionLease,
   renameSession,
   respondUiRequest,
   rewindChat,
   setThinkingLevel,
-  startChat,
   steerChat,
-  streamChat,
 } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
@@ -76,31 +81,16 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
-import { describeError } from '@/lib/errors';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
-import { reattachThread } from '@/lib/reattach';
 import {
-  eventsToTurns,
   indexThread,
   listThreads,
   loadTurns,
-  mergeSessions,
   migrateLegacy,
   removeThread,
   saveTurns,
-  snapshotToEvents,
-  type ThreadMeta,
-  titleFromText,
 } from '@/lib/threads';
-import { closeTool, markToolPhase } from '@/lib/tools';
-import type {
-  ChatMessage,
-  ImageAttachment,
-  PendingApproval,
-  PendingUiRequest,
-  ThinkingLevel,
-  Turn,
-} from '@/types';
+import type { ChatMessage, ImageAttachment, ThinkingLevel, Turn } from '@/types';
 
 const THREAD_KEY = 'felix.threadId';
 const MANIFEST_KEY = 'felix.manifest';
@@ -153,9 +143,6 @@ export default function App() {
   const [threadId, setThreadId] = useState(
     () => localStorage.getItem(THREAD_KEY) ?? crypto.randomUUID(),
   );
-  const [turns, setTurns] = useState<Turn[]>(() =>
-    loadTurns(localStorage.getItem(THREAD_KEY) ?? ''),
-  );
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
   // Canary rollout state for the selected manifest, from the `/manifests`
   // active pointer. Deliberately *not* "which side served this thread": that
@@ -167,17 +154,8 @@ export default function App() {
     weight: number;
     onCanary: boolean;
   } | null>(null);
-  const [streaming, setStreaming] = useState(false);
-  // The stream dropped and we are rejoining the thread. Distinct from
-  // `streaming` because it is a materially different claim: the original run was
-  // torn down, so this is showing what landed, not a reply still being written.
-  const [reattaching, setReattaching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pendingQueue, setPendingQueue] = useState<PendingApproval[]>([]);
-  const [uiPrompt, setUiPrompt] = useState<PendingUiRequest | null>(null);
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
-  const [sessionPhase, setSessionPhase] = useState<string | null>(null);
   // History open by default only when there are prior threads; inspector off
   // so chat owns the first viewport.
   const [historyOpen, setHistoryOpen] = useState(() =>
@@ -192,15 +170,49 @@ export default function App() {
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { resolved, setTheme } = useTheme();
 
-  const abortRef = useRef<AbortController | null>(null);
   const leaseTokenRef = useRef<string | null>(null);
   const verboseRef = useRef(verbose);
   const threadIdRef = useRef(threadId);
+
+  /**
+   * The conversation itself — every SSE frame, the durable-run and reattach
+   * paths, the approval queue and the UI prompt — lives in `@felix/client`, so
+   * this component renders it rather than implementing it. Created once and
+   * mirrored below; the ports are the three things only a browser can do.
+   */
+  const engineRef = useRef<ChatEngine | null>(null);
+  if (!engineRef.current) {
+    engineRef.current = createChatEngine({
+      client: felix,
+      threadId: () => threadIdRef.current,
+      clientTools: { execute: executeClientTool, readForDiff: readWorkspaceFile },
+      onToolStart: () => {
+        if (verboseRef.current) setInspectorOpen(true);
+      },
+      onSkills: setSkills,
+    });
+    engineRef.current.setTurns(loadTurns(localStorage.getItem(THREAD_KEY) ?? ''));
+  }
+  const engine = engineRef.current;
+  const {
+    turns,
+    error,
+    streaming,
+    // The stream dropped and we are rejoining the thread. Distinct from
+    // `streaming` because it is a materially different claim: the original run
+    // was torn down, so this is showing what landed, not a reply still being
+    // written.
+    reattaching,
+    approvals: pendingQueue,
+    uiPrompt,
+  } = useSyncExternalStore(engine.subscribe, () => engine.state);
+  // `idle` is the engine's resting value and this renders a chip, so the chip
+  // asks for the same thing the old nullable state did: a phase worth showing.
+  const sessionPhase = engine.state.phase === 'idle' ? null : engine.state.phase;
+
   /** Latest turns, for callbacks that must not be rebuilt on every streamed delta. */
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
-  /** Approval ids already shown or decided, so neither path re-queues one. */
-  const seenApprovalsRef = useRef(new Set<string>());
   /**
    * Read inside `send`, which is memoised on other things — a ref keeps the
    * "no steering during a reattach" guard correct without rebuilding it.
@@ -322,20 +334,20 @@ export default function App() {
         if (snap?.transcript?.length) {
           const rebuilt = eventsToTurns(snapshotToEvents(snap));
           if (rebuilt.length && id === threadIdRef.current) {
-            setTurns(rebuilt);
+            engine.setTurns(rebuilt);
             saveTurns(id, rebuilt);
           }
           if (snap.thinkingLevel && THINKING_LEVELS.includes(snap.thinkingLevel as ThinkingLevel)) {
             setThinkingLevelState(snap.thinkingLevel as ThinkingLevel);
           }
-          if (snap.phase) setSessionPhase(snap.phase);
+          if (snap.phase) engine.setPhase(snap.phase);
           return;
         }
         const h = await getThreadHistory(id);
         if (!h || h.events.length === 0) return;
         const rebuilt = eventsToTurns(h.events);
         if (rebuilt.length && id === threadIdRef.current) {
-          setTurns(rebuilt);
+          engine.setTurns(rebuilt);
           saveTurns(id, rebuilt);
         }
       } catch {
@@ -382,7 +394,7 @@ export default function App() {
   useEffect(() => {
     migrateLegacy(Date.now());
     void refreshThreads();
-    setTurns(loadTurns(threadId));
+    engine.setTurns(loadTurns(threadId));
     hydrateFromServer(threadId);
   }, []);
 
@@ -397,35 +409,28 @@ export default function App() {
   const stopRun = useCallback(() => {
     const tid = threadIdRef.current;
     void abortChat(tid).catch(() => {});
-    abortRef.current?.abort();
-    setSessionPhase('aborted');
-  }, []);
+    engine.abort();
+    engine.setPhase('aborted');
+  }, [engine]);
 
   const newThread = useCallback(() => {
     stopRun();
     setThreadId(crypto.randomUUID());
-    setTurns([]);
     setSkills(null);
-    setError(null);
-    setPendingQueue([]);
-    seenApprovalsRef.current.clear();
-    setUiPrompt(null);
-    setSessionPhase(null);
-  }, [stopRun]);
+    engine.reset();
+  }, [engine, stopRun]);
 
   const selectThread = useCallback(
     (id: string) => {
       if (id === threadId) return;
       stopRun();
       setThreadId(id);
-      setTurns(loadTurns(id));
+      engine.reset();
+      engine.setTurns(loadTurns(id));
       setSkills(null);
-      setError(null);
-      setUiPrompt(null);
-      setSessionPhase(null);
       hydrateFromServer(id);
     },
-    [threadId, hydrateFromServer, stopRun],
+    [engine, threadId, hydrateFromServer, stopRun],
   );
 
   /** POST /chat/sessions/name — a durable name, replacing the derived title. */
@@ -545,427 +550,23 @@ export default function App() {
     [threadId, selectThread, newThread],
   );
 
-  // Open one SSE turn: stream model deltas / tool events into the assistant
-  // turn identified by `assistantId`. Shared by `send` (new user message) and
-  // `regenerate` (replays prior history). Returns the streaming promise.
+  /**
+   * Open one turn: stream model deltas and tool events into the assistant turn
+   * identified by `assistantId`. Shared by `send` (a new user message) and
+   * `regenerate` (replays prior history).
+   *
+   * Everything this used to do inline — the frame switch, the durable-run
+   * fallback, the reattach after a dropped stream — is the engine's, and the
+   * engine is not rebuilt when the manifest changes, so the value is read at
+   * call time.
+   */
   const streamInto = useCallback(
     (
       messagesToSend: ChatMessage[],
       assistantId: string,
       mode: 'stream' | 'background' = 'stream',
-    ) => {
-      // A drained steer / follow-up splits the reply: the harness appends the
-      // steer as a user message and keeps going, so the UI opens a fresh
-      // assistant turn after it. Everything downstream patches whichever turn
-      // is currently active, not the one we opened with.
-      let activeAssistantId = assistantId;
-      const patch = (fn: (t: Turn) => Turn) => {
-        // Read the id *now*, not inside the updater. React runs the updater at
-        // render time, so a lazy read sees whatever `interject` has since
-        // reassigned — and the patch lands on the wrong turn or on no turn at
-        // all. When a steer arrives in the same read as the deltas before it,
-        // that silently dropped everything the assistant had already said.
-        const target = activeAssistantId;
-        setTurns((prev) => prev.map((t) => (t.id === target ? fn(t) : t)));
-      };
-
-      const interject = (content: string) => {
-        const nextAssistantId = crypto.randomUUID();
-        setTurns((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'user', content },
-          { id: nextAssistantId, role: 'assistant', content: '', tools: [] },
-        ]);
-        activeAssistantId = nextAssistantId;
-      };
-
-      const ctrl = new AbortController();
-      abortRef.current = ctrl;
-      setStreaming(true);
-      setError(null);
-      setSessionPhase('turn');
-
-      // Set by a `run_accepted` frame, cleared by `final`. Non-null means a
-      // durable run is still executing server-side, so losing the stream is not
-      // the same as losing the run.
-      let resumeToken: string | null = null;
-
-      // Newest `id:` the stream stamped. Handed to the reattach below so it
-      // replays only what was missed; undefined means a cold reattach, which
-      // rebuilds from a full snapshot instead.
-      let lastEventId: string | undefined;
-
-      const handleEvent = async (ev: { event: string; data: Record<string, unknown> }) => {
-        switch (ev.event) {
-          case 'on_chat_model_stream':
-          case 'text_delta': {
-            const data = ev.data as { chunk?: { content?: string }; delta?: string };
-            const chunk = data.delta ?? data.chunk?.content ?? '';
-            if (chunk) patch((t) => ({ ...t, content: t.content + chunk }));
-            break;
-          }
-          // Reasoning, which the harness names separately from the answer. A
-          // deployment older than 2026-08-26 sends it only inside
-          // `session_progress`, where it is ignored, so this arm never fires and
-          // the turn renders exactly as it did before.
-          case 'thinking_delta': {
-            const data = ev.data as { chunk?: { content?: string }; delta?: string };
-            const chunk = data.delta ?? data.chunk?.content ?? '';
-            if (!chunk) break;
-            patch((t) => {
-              const blocks = t.reasoning ?? [];
-              const last = blocks[blocks.length - 1];
-              // Consecutive thinking at the same point in the prose is one
-              // thought. A new block only starts once text or a tool has moved
-              // the offset on, so two stretches either side of a call do not
-              // merge into a single stream of consciousness.
-              if (last && last.at === t.content.length) {
-                return {
-                  ...t,
-                  reasoning: [...blocks.slice(0, -1), { ...last, text: last.text + chunk }],
-                };
-              }
-              return { ...t, reasoning: [...blocks, { text: chunk, at: t.content.length }] };
-            });
-            break;
-          }
-          case 'on_tool_start':
-          case 'tool_start': {
-            if (verboseRef.current) setInspectorOpen(true);
-            const data = ev.data as { name?: string; input?: unknown; id?: string };
-            patch((t) => ({
-              ...t,
-              tools: [
-                ...(t.tools ?? []),
-                {
-                  name: String(data.name ?? 'tool'),
-                  input: data.input,
-                  done: false,
-                  at: t.content.length,
-                  ...(data.id ? { callId: data.id } : {}),
-                },
-              ],
-            }));
-            break;
-          }
-          case 'on_tool_end':
-          case 'tool_end': {
-            const data = ev.data as { name?: string; output?: unknown; id?: string };
-            const name = String(data.name ?? 'tool');
-            patch((t) => ({ ...t, tools: closeTool(t.tools, name, data.output, data.id) }));
-            captureSkills(name, data.output, setSkills);
-            break;
-          }
-          case 'approval_required': {
-            const data = ev.data as {
-              approval_id: string;
-              tool_name: string;
-              args?: Record<string, unknown>;
-              rule_id?: string;
-            };
-            const args = data.args ?? {};
-            let before: string | null = null;
-            if (data.tool_name === 'write_file' && typeof args.path === 'string') {
-              before = await readWorkspaceFile(args.path);
-            }
-            if (seenApprovalsRef.current.has(data.approval_id)) break;
-            seenApprovalsRef.current.add(data.approval_id);
-            setPendingQueue((q) => [
-              ...q,
-              {
-                approvalId: data.approval_id,
-                toolName: data.tool_name,
-                args,
-                ruleId: data.rule_id,
-                before,
-              },
-            ]);
-            patch((t) => ({
-              ...t,
-              tools: [
-                ...(t.tools ?? []),
-                {
-                  name: `approval · ${data.tool_name}`,
-                  input: summarizeToolArgs(data.tool_name, args),
-                  done: false,
-                  at: t.content.length,
-                },
-              ],
-            }));
-            break;
-          }
-          case 'tool_request': {
-            const data = ev.data as {
-              id: string;
-              name: string;
-              args?: Record<string, unknown>;
-            };
-            patch((t) => ({
-              ...t,
-              tools: [
-                ...(t.tools ?? []),
-                {
-                  name: `client · ${data.name}`,
-                  input: data.args,
-                  done: false,
-                  callId: data.id,
-                  at: t.content.length,
-                },
-              ],
-            }));
-            const result = await executeClientTool({
-              id: data.id,
-              name: data.name,
-              args: data.args ?? {},
-            });
-            await postToolResult({
-              threadId: threadIdRef.current,
-              toolCallId: data.id,
-              content: result.content,
-              error: result.error,
-            });
-            patch((t) => ({
-              ...t,
-              tools: closeTool(t.tools, `client · ${data.name}`, result.content, data.id),
-            }));
-            break;
-          }
-          case 'on_chain_end': {
-            const usage = (ev.data as { output?: { usage?: Turn['usage'] } }).output?.usage;
-            if (usage) patch((t) => ({ ...t, usage }));
-            break;
-          }
-          // Progress either side of a tool call. Without it a long-running tool
-          // shows nothing but "running" for its whole duration.
-          case 'tool_execution_update': {
-            const { name, status, id } = ev.data as {
-              name?: string;
-              status?: string;
-              id?: string;
-            };
-            if (!name || !status) break;
-            patch((t) => ({ ...t, tools: markToolPhase(t.tools, name, status, id) }));
-            break;
-          }
-          // Terminal frame for the turn. It is not what ends the read loop —
-          // `readSseStream` returns on the `[DONE]` sentinel — so the useful
-          // part is `final`, which carries the answer when a model produced no
-          // deltas at all, and the chance to settle anything still marked
-          // running before the spinner outlives the run that owned it.
-          case 'done': {
-            const data = ev.data as { final?: { content?: string } };
-            const final = data.final?.content?.trim();
-            patch((t) => ({
-              ...t,
-              content: t.content.trim() ? t.content : (final ?? t.content),
-              tools: (t.tools ?? []).map((tool) => (tool.done ? tool : { ...tool, done: true })),
-            }));
-            break;
-          }
-          // The durable trio. A manifest with `spec.execution.mode: durable`
-          // makes /chat/stream stream the *run's progress* rather than tokens:
-          // no deltas ever arrive, and the answer lands in `final`. Rendered the
-          // same way as the background-run path below, because to the user it is
-          // the same thing — it just got here down a different route.
-          case 'run_accepted': {
-            const data = ev.data as { resume_token?: string };
-            // Held so a dropped connection can rejoin the run instead of
-            // abandoning it: the run itself outlives this stream.
-            if (data.resume_token) resumeToken = data.resume_token;
-            setSessionPhase('durable');
-            patch((t) => ({ ...t, content: t.content || 'Durable run accepted…' }));
-            break;
-          }
-          case 'run_status': {
-            const status = String((ev.data as { status?: string }).status ?? '').trim();
-            if (status) patch((t) => ({ ...t, content: `Background · ${status}…` }));
-            break;
-          }
-          // The durable answer, and the only place it arrives — there are no
-          // deltas to have accumulated, so this replaces rather than defers.
-          case 'final': {
-            const content = String((ev.data as { content?: string }).content ?? '').trim();
-            resumeToken = null;
-            patch((t) => ({ ...t, content: content || t.content }));
-            break;
-          }
-          // Only `GET /chat/stream/{thread_id}` sends these two, and only
-          // `reattachThread` reads them — it folds them through `eventsToTurns`,
-          // the same path thread hydration uses, rather than patching the turn
-          // in flight. Listed here so the frames are not silently unhandled if
-          // they ever arrive on a stream that is not a reattach.
-          case 'snapshot':
-          case 'session_event':
-            break;
-          // Normalised by `readSseStream` from the harness's `event: error`
-          // frame — the one SSE-typed frame, and the only way a stream reports
-          // a failure that happened after its 200 was already sent.
-          case 'on_error':
-            setError(String((ev.data as { message?: string }).message ?? 'error'));
-            break;
-          case 'aborted':
-            setSessionPhase('aborted');
-            break;
-          // The agent drained a queued steer / follow-up. It is a real user
-          // message in the session log, so render it as one rather than
-          // letting the reply silently change direction.
-          case 'steer':
-          case 'follow_up': {
-            const content = (ev.data as { content?: string }).content?.trim();
-            if (content) interject(content);
-            break;
-          }
-          case 'session_progress': {
-            const phase = (ev.data as { phase?: string }).phase;
-            if (phase) setSessionPhase(phase);
-            break;
-          }
-          case 'ui_request': {
-            const data = ev.data as {
-              request_id: string;
-              kind: 'select' | 'confirm' | 'input';
-              prompt: string;
-              options?: Array<string | { id?: string; label?: string; value?: string }>;
-              default?: unknown;
-            };
-            const options = (data.options ?? []).map((opt) => {
-              if (typeof opt === 'string') return { value: opt, label: opt };
-              const value = String(opt.value ?? opt.id ?? opt.label ?? '');
-              return { value, label: String(opt.label ?? value) };
-            });
-            setUiPrompt({
-              requestId: data.request_id,
-              kind: data.kind,
-              prompt: data.prompt,
-              options,
-              defaultValue: data.default,
-            });
-            break;
-          }
-        }
-      };
-
-      const run = async () => {
-        if (mode === 'background') {
-          patch((t) => ({ ...t, content: t.content || 'Queued durable job…' }));
-          const started = await startChat({
-            manifest,
-            messages: messagesToSend,
-            threadId: threadIdRef.current,
-            signal: ctrl.signal,
-          });
-          if (started.kind === 'done') {
-            patch((t) => ({ ...t, content: started.final.content }));
-            return;
-          }
-          const runResult = await pollDurableRun(started.resumeToken, {
-            signal: ctrl.signal,
-            onTick: (r) => {
-              patch((t) => ({
-                ...t,
-                content: `Background · ${r.status || 'pending'}…`,
-              }));
-            },
-          });
-          if (runResult.error) {
-            setError(runResult.error);
-            return;
-          }
-          const content =
-            typeof runResult.final === 'object' && runResult.final && 'content' in runResult.final
-              ? String(runResult.final.content || '')
-              : '';
-          patch((t) => ({
-            ...t,
-            content: content || `(${runResult.status || 'completed'})`,
-          }));
-          return;
-        }
-
-        try {
-          await streamChat(
-            {
-              manifest,
-              messages: messagesToSend,
-              threadId: threadIdRef.current,
-              signal: ctrl.signal,
-            },
-            {
-              onEvent: (ev) => handleEvent(ev as { event: string; data: Record<string, unknown> }),
-              onCursor: (id) => {
-                lastEventId = id;
-              },
-            },
-          );
-        } catch (err) {
-          if (ctrl.signal.aborted) throw err;
-          // A durable run survives its stream. If one was accepted and has not
-          // yet reported `final`, rejoin it by polling rather than reporting a
-          // failure for work that is still going.
-          if (!resumeToken) {
-            // Otherwise the run itself is gone — torn down when we hung up — but
-            // whatever it committed to the session log before that is not, and
-            // work may still be landing there. Rejoin the thread.
-            const threadId = threadIdRef.current;
-            if (!threadId) throw err;
-            setReattaching(true);
-            try {
-              await reattachThread({
-                threadId,
-                lastEventId,
-                signal: ctrl.signal,
-                onTurns: (rebuilt) => {
-                  setTurns(rebuilt);
-                  saveTurns(threadId, rebuilt);
-                },
-                onPhase: (phase) => setSessionPhase(phase),
-                onEvent: (ev) =>
-                  handleEvent(ev as { event: string; data: Record<string, unknown> }),
-              });
-            } finally {
-              setReattaching(false);
-            }
-            return;
-          }
-          setSessionPhase('durable');
-          const rejoined = await pollDurableRun(resumeToken, {
-            signal: ctrl.signal,
-            onTick: (r) => {
-              patch((t) => ({ ...t, content: `Background · ${r.status || 'pending'}…` }));
-            },
-          });
-          if (rejoined.error) {
-            setError(rejoined.error);
-            return;
-          }
-          const content =
-            typeof rejoined.final === 'object' && rejoined.final && 'content' in rejoined.final
-              ? String(rejoined.final.content || '')
-              : '';
-          patch((t) => ({ ...t, content: content || `(${rejoined.status || 'completed'})` }));
-        }
-      };
-
-      return run()
-        .catch((err) => {
-          if (!ctrl.signal.aborted) setError(String((err as Error)?.message ?? err));
-        })
-        .finally(() => {
-          setStreaming(false);
-          abortRef.current = null;
-          setSessionPhase((p) => (p === 'aborted' ? p : 'idle'));
-          // A card still not `done` never reported back — the run was stopped,
-          // or ended with no matching tool_end. The `done` frame settles this
-          // when it arrives; an aborted run has no such frame, and a spinner
-          // that outlives the run that owned it reads as work still going.
-          patch((t) =>
-            (t.tools ?? []).some((tool) => !tool.done)
-              ? { ...t, tools: (t.tools ?? []).map((tool) => ({ ...tool, done: true })) }
-              : t,
-          );
-        });
-    },
-    [manifest],
+    ) => engine.send({ manifest, messages: messagesToSend, assistantId, mode }),
+    [engine, manifest],
   );
 
   const pending = pendingQueue[0] ?? null;
@@ -976,41 +577,19 @@ export default function App() {
     async (status: 'approved' | 'denied') => {
       if (!pending) return;
       await decideApproval(pending.approvalId, { status });
-      setPendingQueue((q) => q.slice(1));
+      engine.shiftApproval();
     },
-    [pending],
+    [engine, pending],
   );
 
   /**
    * Adopt any approval the harness is holding that is not already on screen.
    *
-   * Merging, never replacing: the `approval_required` frame may have queued the
-   * same one already, and a decision in flight must not be resurrected. Ids stay
-   * remembered for the life of the thread, so an approval that has been answered
-   * cannot come back if the server briefly still lists it as pending.
+   * The merge, the dedupe and the `write_file` pre-read are the engine's, so
+   * both delivery paths — the `approval_required` frame and this poll — agree
+   * about what is already queued.
    */
-  const syncApprovals = useCallback(async () => {
-    let items: Awaited<ReturnType<typeof listApprovals>>;
-    try {
-      items = await listApprovals('pending');
-    } catch {
-      return; // endpoint unavailable; the frame path may still deliver
-    }
-    const fresh = items.filter((item) => !seenApprovalsRef.current.has(item.id));
-    if (!fresh.length) return;
-
-    const entries: PendingApproval[] = [];
-    for (const item of fresh) {
-      seenApprovalsRef.current.add(item.id);
-      const args = item.args ?? {};
-      let before: string | null = null;
-      if (item.tool_name === 'write_file' && typeof args.path === 'string') {
-        before = await readWorkspaceFile(args.path);
-      }
-      entries.push({ approvalId: item.id, toolName: item.tool_name, args, before });
-    }
-    setPendingQueue((q) => [...q, ...entries]);
-  }, []);
+  const syncApprovals = useCallback(() => engine.syncApprovals(), [engine]);
 
   // A run may already have been waiting on one before this tab loaded.
   useEffect(() => {
@@ -1078,7 +657,7 @@ export default function App() {
       }
       const hasAttachments = !!attachments && attachments.length > 0;
       if (!text.trim() && !hasAttachments) return;
-      setError(null);
+      engine.setError(null);
       const userTurn: Turn = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -1087,8 +666,8 @@ export default function App() {
       };
       const assistantId = crypto.randomUUID();
       const firstTurn = turns.length === 0;
-      setTurns((prev) => [
-        ...prev,
+      engine.setTurns([
+        ...turns,
         userTurn,
         { id: assistantId, role: 'assistant', content: '', tools: [] },
       ]);
@@ -1111,7 +690,7 @@ export default function App() {
       if (hasAttachments) userMessage.attachments = attachments;
       void streamInto([userMessage], assistantId, mode);
     },
-    [streaming, manifest, threadId, turns, threads, streamInto],
+    [engine, streaming, manifest, threadId, turns, threads, streamInto],
   );
 
   // Re-run the last assistant turn. Felix's session log is append-only, so a
@@ -1122,7 +701,7 @@ export default function App() {
     if (streaming) return;
     const lastAssistant = turns.length - 1;
     if (lastAssistant < 0 || turns[lastAssistant].role !== 'assistant') return;
-    setError(null);
+    engine.setError(null);
 
     const replay = turns.slice(0, lastAssistant);
     const messagesToSend: ChatMessage[] = replay
@@ -1131,28 +710,23 @@ export default function App() {
     if (messagesToSend.length === 0) return;
 
     const assistantId = crypto.randomUUID();
-    setTurns([...replay, { id: assistantId, role: 'assistant', content: '', tools: [] }]);
+    engine.setTurns([...replay, { id: assistantId, role: 'assistant', content: '', tools: [] }]);
 
     // Reset the server log first so the replayed history isn't double-counted,
     // then stream. Best-effort: an anonymous prod caller can't reset history,
     // but the local transcript stays the source of truth either way.
     void deleteThreadHistory(threadId).then(() => streamInto(messagesToSend, assistantId));
-  }, [streaming, turns, threadId, streamInto]);
+  }, [engine, streaming, turns, threadId, streamInto]);
 
   // Clear the current conversation in place (keeps the thread id; best-effort
   // server reset). Distinct from "New thread" which mints a fresh id.
   const clearThread = useCallback(() => {
     stopRun();
-    setTurns([]);
     setSkills(null);
-    setError(null);
-    setPendingQueue([]);
-    seenApprovalsRef.current.clear();
-    setUiPrompt(null);
-    setSessionPhase(null);
+    engine.reset();
     void deleteThreadHistory(threadId);
     saveTurns(threadId, []);
-  }, [threadId, stopRun]);
+  }, [engine, threadId, stopRun]);
 
   const continueRun = useCallback(() => {
     if (streaming) return;
@@ -1160,7 +734,7 @@ export default function App() {
       .then(() => {
         toast.message('Continued');
         hydrateFromServer(threadId);
-        setSessionPhase('idle');
+        engine.setPhase('idle');
       })
       .catch((err) => toast.error(String((err as Error)?.message ?? err)));
   }, [streaming, threadId, manifest, hydrateFromServer]);
@@ -1256,14 +830,14 @@ export default function App() {
       setUiResolving(true);
       try {
         await respondUiRequest({ requestId: uiPrompt.requestId, value });
-        setUiPrompt(null);
+        engine.clearUiPrompt();
       } catch (err) {
         toast.error(String((err as Error)?.message ?? err));
       } finally {
         setUiResolving(false);
       }
     },
-    [uiPrompt],
+    [engine, uiPrompt],
   );
 
   const onUiCancel = useCallback(async () => {
@@ -1275,13 +849,13 @@ export default function App() {
         cancelled: true,
         note: 'cancelled',
       });
-      setUiPrompt(null);
+      engine.clearUiPrompt();
     } catch (err) {
       toast.error(String((err as Error)?.message ?? err));
     } finally {
       setUiResolving(false);
     }
-  }, [uiPrompt]);
+  }, [engine, uiPrompt]);
 
   // Map a composer submission (text + browser File parts, already converted to
   // data URLs by PromptInput) onto our send(). Image parts become attachments.
@@ -1678,17 +1252,4 @@ export default function App() {
       </SheetBoundary>
     </div>
   );
-}
-
-/** Capture a `list_skills` tool result so the Inspector Skills tab can show it. */
-function captureSkills(name: string, output: unknown, set: (s: SkillState) => void) {
-  if (name !== 'list_skills') return;
-  try {
-    const obj = typeof output === 'string' ? JSON.parse(output) : output;
-    if (obj && Array.isArray(obj.declared) && Array.isArray(obj.active)) {
-      set({ declared: obj.declared, active: obj.active });
-    }
-  } catch {
-    // non-JSON list_skills output — ignore
-  }
 }

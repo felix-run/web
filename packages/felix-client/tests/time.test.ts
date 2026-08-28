@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { relativeTime } from '../src/lib/time';
+import { relativeTime } from '../src/time';
 
 /**
  * This replaced two helpers that disagreed. The thread list handled only the past;

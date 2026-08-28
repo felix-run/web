@@ -1,3 +1,4 @@
+import { relativeTime, type ThreadMeta, threadSuffix } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
@@ -20,8 +21,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { searchSessions } from '@/api';
-import { type ThreadMeta, threadSuffix } from '@/lib/threads';
-import { relativeTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 /**

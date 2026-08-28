@@ -20,7 +20,7 @@ that hides missing handlers. Follow this in order.
 | `apps/chat-ui/src/api.ts` | `apiFetch` wrapper + one function per endpoint |
 | `apps/chat-ui/src/types.ts` | chat-ui-only: `Turn`, management surfaces |
 
-Plus the consumer: `apps/chat-ui/src/App.tsx`, where the `switch` over `StreamEvent` lives.
+Plus the consumer: `packages/felix-client/src/engine.ts`, where the `switch` over `StreamEvent` lives — one switch for every client, and the file `check-protocol-parity` reads.
 
 **Do not re-add wire types to the app's `types.ts`.** They were deliberately collapsed into
 `@felix/protocol` after duplicate copies drifted apart from each other and from the harness.
@@ -58,7 +58,7 @@ catalog and the flows each frame belongs to.
    `apiFetch` (never bare `fetch`), check `res.ok`, throw
    `` `${route}: ${res.status} ${detail.slice(0, 200)}` `` on failure.
 
-4. **Handle it** in `App.tsx`. If the frame is one the run **blocks on**, you must answer it on
+4. **Handle it** in `packages/felix-client/src/engine.ts`. If the frame is one the run **blocks on**, you must answer it on
    every path including errors and aborts, or the conversation hangs with no visible error:
    - `tool_request` → execute via `@felix/cowork-client`, then `POST /chat/tool_result`
    - `approval_required` → `POST /approvals/{id}/decide`

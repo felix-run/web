@@ -1,9 +1,10 @@
 /** @vitest-environment happy-dom */
+
+import type { ThreadMeta } from '@felix/client';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadList } from '../src/components/chat/thread-list';
-import type { ThreadMeta } from '../src/lib/threads';
 
 /**
  * The history rail's per-thread actions.
