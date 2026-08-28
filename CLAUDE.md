@@ -56,8 +56,10 @@ matching. `@felix/tui` covers what a terminal adds on its own: config precedence
 splitter, and the workspace executor's containment and settle guarantees — **not** its Ink
 components, which are verified by running it. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
 signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
-(`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`); **the composer and the
-inspector panels are still verified by running them.**
+(`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`). `tests/composer.test.tsx`
+covers what typing *costs*: a burst of keystrokes must not drive React past its update-depth limit,
+which is a real failure mode here and not a theoretical one. **The inspector panels, and the
+composer's slash menu, are still verified by running them.**
 
 One thing that bites when verifying by hand: `usePoll` skips ticks while the tab is **hidden**, and a
 browser driven by automation reports `visibilityState: 'hidden'`. An inspector panel will sit on
@@ -184,6 +186,13 @@ Flows worth knowing before editing the app:
 - **Streaming** — `POST /chat/stream`, SSE decoded with a carry buffer (frames split across network
   chunks). Deltas append to the current turn; `on_tool_start`/`on_tool_end` become inline tool cards;
   the terminal `on_chain_end` carries per-turn `usage`.
+- **Redundant state updates are not free.** The composer cleared a "slash menu dismissed" flag from
+  an effect keyed on the text, so every keystroke set state — usually to the value it already held.
+  React bails out of those but still counts them, so typing fast enough (a paste, a quick typist)
+  reached the nested-update limit: a warning on React 18, a **thrown exception** on 19, and dropped
+  characters either way, with nothing on screen to say the message that reached the model was not
+  the one that was typed. Derive from the text rather than storing a flag an effect has to reset.
+
 - **Client tools** — a `tool_request` frame means the *browser* runs the tool
   (`@felix/cowork-client` → in-tab VFS or a File System Access mount), then answers with
   `POST /chat/tool_result`. This is a real round trip inside the model loop; failing to post a

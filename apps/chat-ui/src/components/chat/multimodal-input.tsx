@@ -106,7 +106,26 @@ function MultimodalInputInner({
 
   // Slash command menu state
   const [slashIndex, setSlashIndex] = useState(0);
-  const [slashDismissed, setSlashDismissed] = useState(false);
+  /**
+   * The text the menu was dismissed at, rather than a "dismissed" flag.
+   *
+   * The flag needed an effect to clear it whenever the text changed, and that
+   * effect called `setState` on every keystroke — usually to the value it
+   * already held. React bails out of the update but still counts it, so typing
+   * an ordinary sentence fast enough (a paste, or a quick typist) walked into
+   * the nested-update limit: a warning on React 18, a thrown exception on 19,
+   * and dropped characters either way. Nothing on screen said so; the corrupted
+   * text simply went to the model.
+   *
+   * Comparing against the text instead makes the same rule derived state, so
+   * there is no effect and no update to count. `null` means never dismissed.
+   *
+   * One behavioural difference, deliberate: editing back to the exact text you
+   * dismissed at leaves the menu closed, where the old flag reopened it. Tying
+   * the dismissal to what was on screen when you pressed Escape is the more
+   * defensible of the two, and it is the only case where they disagree.
+   */
+  const [dismissedAt, setDismissedAt] = useState<string | null>(null);
   const isSlashy = text.startsWith('/') && !text.includes(' ') && !text.includes('\n');
   const slashQuery = isSlashy ? text.slice(1) : '';
   const filteredCommands = useMemo(
@@ -114,16 +133,11 @@ function MultimodalInputInner({
       isSlashy ? slashCommands.filter((c) => c.name.startsWith(slashQuery.toLowerCase())) : [],
     [isSlashy, slashQuery],
   );
-  const slashOpen = !slashDismissed && isSlashy && filteredCommands.length > 0;
-
-  // Re-enable the menu once the text changes, which clears an explicit Escape
-  // dismissal. This used to have an empty dependency array, so it ran once on mount
-  // and never again: pressing Escape killed slash commands until reload, because the
-  // only other reset is selecting a command from the menu that is no longer showing.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `text` is the trigger, not a value read here.
-  useEffect(() => {
-    setSlashDismissed(false);
-  }, [text]);
+  // Dismissed *at this text*, so the next keystroke re-opens the menu on its own.
+  // An earlier version cleared the flag from an effect with an empty dependency
+  // array, which ran once on mount and never again: pressing Escape killed slash
+  // commands until reload.
+  const slashOpen = dismissedAt !== text && isSlashy && filteredCommands.length > 0;
 
   // Clamp selection when filter shrinks
   useEffect(() => {
@@ -208,7 +222,7 @@ function MultimodalInputInner({
       controller.textInput.clear();
       attachments.clear();
       setSlashIndex(0);
-      setSlashDismissed(false);
+      setDismissedAt(null);
       if (enabledSlashCommands && !enabledSlashCommands.has(cmd.name)) {
         toast.info(`/${cmd.name} is not implemented yet`);
         return;
@@ -279,10 +293,10 @@ function MultimodalInputInner({
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        setSlashDismissed(true);
+        setDismissedAt(text);
       }
     },
-    [slashOpen, filteredCommands, slashIndex, handleSlashSelect],
+    [slashOpen, filteredCommands, slashIndex, handleSlashSelect, text],
   );
 
   return (
@@ -302,7 +316,7 @@ function MultimodalInputInner({
             query={slashQuery}
             selectedIndex={slashIndex}
             onSelect={handleSlashSelect}
-            onClose={() => setSlashDismissed(true)}
+            onClose={() => setDismissedAt(text)}
           />
         )}
 
