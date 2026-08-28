@@ -1,0 +1,34 @@
+{
+  "name": "@felix/tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Felix in the terminal — full-screen chat against a running harness.",
+  "bin": {
+    "felix": "./dist/felix.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/main.tsx",
+    "build": "vite build",
+    "lint": "biome check .",
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@felix/client": "workspace:*",
+    "@felix/protocol": "workspace:*",
+    "ink": "^5.2.1",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@felix/typescript-config": "workspace:*",
+    "@types/react": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

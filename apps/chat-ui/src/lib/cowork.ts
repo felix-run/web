@@ -1,8 +1,8 @@
 /**
  * Chat-ui binding of @felix/cowork-client.
  */
+import type { ClientToolRequest } from '@felix/client';
 import {
-  type ClientToolRequest,
   clearMount,
   executeClientTool as exec,
   getMountLabel,

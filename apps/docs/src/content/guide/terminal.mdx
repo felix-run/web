@@ -1,0 +1,139 @@
+---
+title: "Terminal client"
+description: "Drive a running Felix harness from a full-screen terminal UI — streaming, tool cards, approvals, and client-executed tools against the real filesystem."
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+A full-screen terminal client for a harness you are already running. Same conversation as the web
+UI — the same streaming, the same tool cards, the same approvals — driven from the directory you are
+working in.
+
+```
+┌─ threads ──┬─ felix ─────────────────────┐
+│ • refactor │ › explain the proxy worker  │
+│   docs sync│ ⏺ The proxy strips /api …   │
+│            │ ⎿ read_file worker/index.ts │
+├────────────┴─────────────────────────────┤
+│ > _                         esc·stop  ⇥  │
+└──────────────────────────────────────────┘
+```
+
+## Running it
+
+```bash
+pnpm tui:dev                       # from a checkout
+pnpm tui:build && node apps/tui/dist/felix.js
+```
+
+It needs a TTY, and it needs a harness. With neither flag nor environment it talks to
+`http://localhost:8080` with the `quick` manifest.
+
+| Option | Environment | Meaning |
+|---|---|---|
+| `--origin <url>` | `FELIX_ORIGIN` | Where the harness is. Default `http://localhost:8080`. |
+| `--key <key>` | `FELIX_API_KEY` | Bearer token. `FELIX_AUTH_API_KEYS` is accepted too. |
+| `--manifest <name>` | `FELIX_MANIFEST` | Which agent. Default `quick`. |
+| `--thread <id>` | | Resume a thread instead of starting one. |
+| `--yes` | | Do not ask before a client tool writes a file. |
+| `--insecure` | | Allow the key over plaintext `http` to a remote origin. |
+
+Anything left over is sent as the first message: `felix "explain the proxy worker"`.
+
+A config file covers the common case — `~/.config/felix/config.json` (or under `$XDG_CONFIG_HOME`):
+
+```json
+{ "origin": "https://felix.example.com", "apiKey": "sk-felix-…", "manifest": "deep" }
+```
+
+Precedence is narrowest first: a flag beats the environment, and the environment beats the file.
+
+Prefer the environment or the file over `--key`: an argument is visible in `ps` to every user on the
+machine. A key is refused outright over plaintext `http` to anything but loopback, because it would
+otherwise cross the network in the clear — the mirror of the harness's own refusal to run
+`FELIX_AUTH_MODE=none` on a bind reachable off-host. `--insecure` overrides that.
+
+<Aside type="note">
+There is no proxy and no shared key here. The browser client needs both because a page cannot call
+the harness directly — no CORS, no static assets — so a Worker holds the credential and the SPA
+sends `x-chat-key` to reach it. This process has no such restriction: it calls `FELIX_ORIGIN` itself
+and sends `Authorization: Bearer`. With no key configured it sends no header at all, which is
+correct against a harness running `FELIX_AUTH_MODE=none`.
+</Aside>
+
+## Keys
+
+| Key | |
+|---|---|
+| `enter` | Send. **While a run is live this steers it** rather than starting a turn. |
+| `esc` | Stop the run (`POST /chat/abort`). |
+| `tab` | Focus the thread rail; `↑`/`↓` and `enter` to switch. |
+| `ctrl+n` | New thread. |
+| `ctrl+c` | Stop a live run; again to quit. |
+| `y` / `n` | Answer whatever is blocking the run. |
+
+Slash commands: `/new`, `/clear`, `/continue`, `/think <level>`, `/manifest [name]`, `/quit`.
+
+## When the run is waiting
+
+Three frames pause a run until something answers, and all three take the keyboard:
+
+- **`approval_required`** — a gated tool. `y` approves, `n` denies
+  (`POST /approvals/{id}/decide`). These also arrive by polling `GET /approvals`, because the
+  harness does not reliably announce them on the stream.
+- **`ui_request`** — the agent is asking you something. Select, confirm or type
+  (`POST /chat/ui`).
+- **`tool_request`** — the harness handed a tool back for this process to run. See below.
+
+## Client tools run against your working directory
+
+`tool_request` means the **client** executes the tool and posts the result back. The browser answers
+those from an in-tab virtual filesystem; here they run against `process.cwd()`.
+
+Three rules hold:
+
+- **Everything resolves under one root.** The model chooses these paths — sometimes from text that
+  came out of an earlier tool result — so anything that climbs out of the working directory is
+  refused. The check compares *real* paths, and a **broken** symlink is refused outright: it has no
+  real path to check, and a write would follow it wherever it pointed.
+- **Some in-root paths are refused too.** Nothing is written under `.git/`, `.husky/` or
+  `node_modules/`, and no existing executable file is overwritten. Those are the places where
+  "write a file" quietly means "run a command" the next time you use git or enter the directory, and
+  one line of confirmation text is not enough to catch it.
+- **Reads are silent; writes ask.** A write prints the **absolute** path it would touch and waits for
+  `y` — absolute because the relative spelling is the model's, and echoing it back cannot be checked.
+  `--yes` answers yes to everything. The prompt expires on its own, and is cancelled if you stop the
+  run, so a write can never land after the turn that asked for it has gone.
+
+The supported verbs are `pwd`, `ls`, `cat`, `echo`, `mkdir`, `touch`, `tree`, `help`. **This is not a
+shell**: nothing is spawned as a process. `local_open` has no terminal equivalent and is refused.
+
+<Aside type="caution">
+A blocked run costs real time. Every request settles — a refusal, a path outside the root, an unknown
+tool and an unanswered prompt all come back as a **result**, never a hang, because the harness parks
+the model loop until it hears back (`spec.client_tools[].timeout_seconds`, default 120s).
+</Aside>
+
+<Aside type="danger" title="Reads are not confirmed">
+That is the real trade of pointing an agent at a working directory, and it is worth stating plainly:
+a model that has been fed a hostile tool result can read **anything under the root** — `.env`,
+`.npmrc`, a private key that happens to live there — and the contents go to the harness with nothing
+on screen but a tool card. Containment bounds *where* it can read, not *whether*. Start the client in
+a directory whose contents you would be willing to send.
+</Aside>
+
+## What it does not do
+
+The inspector surfaces — memory, the activity feed, plans, usage, manifest versions, evals,
+scheduled jobs — are the web UI's. So are image attachments. This client is the conversation.
+
+Threads are cached under `$XDG_STATE_HOME/felix` (default `~/.local/state/felix`), written `0600`
+inside a `0700` directory — a transcript carries whatever the agent read. The harness
+remains authoritative for which threads exist and what they are named; the local copy is what keeps
+a transcript readable when the harness rejects anonymous history reads, and the only record of which
+manifest a thread used.
+
+Each client takes an exclusive lease on the session it opens, so two clients on one thread is
+reported rather than raced — open the same thread in the web UI and the second one says so.

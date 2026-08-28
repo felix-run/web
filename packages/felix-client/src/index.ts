@@ -14,6 +14,13 @@ export {
   syncApprovals,
 } from './approvals';
 export {
+  type ClientToolOptions,
+  type ClientToolRequest,
+  type ClientToolResult,
+  DEFAULT_CLIENT_TOOL_TIMEOUT_MS,
+  settleClientTool,
+} from './client-tools';
+export {
   type ChatEngine,
   type ClientToolPort,
   createChatEngine,

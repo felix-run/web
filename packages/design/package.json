@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@felix/typescript-config": "workspace:*",
-    "tsx": "^4.21.0",
+    "tsx": "catalog:",
     "typescript": "catalog:"
   }
 }

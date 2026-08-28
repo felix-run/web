@@ -1,5 +1,6 @@
+import { DEFAULT_CLIENT_TOOL_TIMEOUT_MS } from '@felix/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_CLIENT_TOOL_TIMEOUT_MS, executeClientTool } from '../src/client-tools';
+import { executeClientTool } from '../src/client-tools';
 import { getVfs } from '../src/vfs';
 
 const vfs = getVfs('test.client-tools');

@@ -1,4 +1,4 @@
-import type { PendingApproval } from '@felix/cowork-client';
+import type { PendingApproval } from '@felix/client';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 
 /**

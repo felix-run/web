@@ -17,6 +17,8 @@
     "check-payload-shapes": "node scripts/check-payload-shapes.mjs",
     "sync:harness": "node scripts/sync-harness-contract.mjs",
     "sync:theme": "pnpm --filter @felix/design sync:theme",
+    "tui:dev": "pnpm --filter @felix/tui dev",
+    "tui:build": "pnpm --filter @felix/tui build",
     "docs:dev": "pnpm --filter @felix/docs dev",
     "docs:build": "pnpm --filter @felix/docs build",
     "docs:deploy": "pnpm --filter @felix/docs run deploy",

@@ -1,5 +1,4 @@
-import { describeError } from '@felix/client';
-import { summarizeToolArgs } from '@felix/cowork-client';
+import { describeError, summarizeToolArgs } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { useRef, useState } from 'react';
