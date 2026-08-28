@@ -5,6 +5,19 @@ packages:
 # Single source of truth for every dependency used by more than one workspace
 # package. Bump the version here and it moves everywhere at once — see README.md.
 # A dependency used by exactly one package keeps its version in that package.json.
+# A second, named catalog for the terminal client.
+#
+# `apps/tui` renders with Ink, whose current line (7.x) requires React >= 19.2 —
+# and chat-ui is not ready to move: radix-ui, the exactly-pinned streamdown, and
+# testing-library all have to be checked first, and none of that work helps the
+# TUI. The two are separate processes with separate bundles, so they can differ.
+# Named rather than a literal version in the manifest, so the split is declared
+# in the one file that is supposed to say what version anything is on.
+catalogs:
+  react19:
+    react: ^19.2.8
+    '@types/react': ^19.2.0
+
 catalog:
   # React
   react: ^18.3.1

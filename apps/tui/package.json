@@ -20,12 +20,12 @@
   "dependencies": {
     "@felix/client": "workspace:*",
     "@felix/protocol": "workspace:*",
-    "ink": "^5.2.1",
-    "react": "catalog:"
+    "ink": "^7.1.1",
+    "react": "catalog:react19"
   },
   "devDependencies": {
     "@felix/typescript-config": "workspace:*",
-    "@types/react": "catalog:",
+    "@types/react": "catalog:react19",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

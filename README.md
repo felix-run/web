@@ -63,6 +63,20 @@ Every dependency used by **more than one** workspace package is declared once in
 
 Requires pnpm ≥ 9.5; this repo pins 10.33.2 via `packageManager`.
 
+**One named catalog exists**, `react19`, and only `apps/tui` references it:
+
+```jsonc
+// apps/tui/package.json
+"react": "catalog:react19",
+```
+
+Ink — the terminal client's renderer — is on a line that requires React ≥ 19.2, and chat-ui is
+still on 18 until `cmdk` (the last dependency without a React 19 peer range) is bumped. The two are
+separate processes with separate bundles, so they can genuinely differ. A *named* catalog rather
+than a literal version in the manifest, because the point of this file is that it says what version
+everything is on — a deliberate split belongs here, where it can be seen, not buried in one
+package.
+
 ### Add a shadcn component
 
 ```bash

@@ -256,6 +256,11 @@ browser cannot do rather than about the chat:
   renders only its tail.
 - No build step for `dev` (`tsx`); `build` is `vite build --ssr`, which inlines the raw-TS workspace
   packages and externalises ink/react.
+- **It runs a different React from chat-ui, on purpose.** Ink's current line needs React ≥ 19.2, and
+  chat-ui is still on 18 — so `pnpm-workspace.yaml` carries a second, *named* catalog (`react19`)
+  that only `apps/tui` references. Separate processes, separate bundles, nothing shared at runtime.
+  Bump it there, not in a manifest. `apps/tui` also declares `node >= 22`, which is Ink's floor and
+  what CI already runs.
 
 ### Unattended runs
 
