@@ -28,7 +28,7 @@ spec.
   `wrangler.example.jsonc` and `.dev.vars.example` as its deploy config evolves.
 - Test coverage reaches the VFS, the SSE reader, the proxy Workers, and a first slice of React
   (thread store, theme provider, `usePoll`, Gate) under happy-dom. The remaining gap is the **chat
-  surface**: `App.tsx` and the inspector panels, which need a live harness or a lot of mocking.
+  surface**: the composer and the inspector panels, which need a live harness or a lot of mocking.
 - The proxy contract lives in two places — `apps/chat-ui/worker/index.ts` and the `/api` rewrite in
   `vite.config.ts` — with no mechanical check that they agree; parity is discipline alone.
 - "Verified" for app code means type-check + lint + build + a manual run against a live harness.

@@ -1,3 +1,4 @@
+import { describeError } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
@@ -33,7 +34,6 @@ import { ApprovalDecision } from '@/components/approval/approval-decision';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { usePoll } from '@/hooks/usePoll';
-import { describeError } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, MemoryHit, MemoryRecord, Plan, UsageEvent } from '@/types';
 

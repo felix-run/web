@@ -107,6 +107,9 @@ importers:
 
   apps/chat-ui:
     dependencies:
+      '@felix/client':
+        specifier: workspace:*
+        version: link:../../packages/felix-client
       '@felix/cowork-client':
         specifier: workspace:*
         version: link:../../packages/cowork-client
@@ -250,6 +253,22 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+
+  packages/felix-client:
+    dependencies:
+      '@felix/protocol':
+        specifier: workspace:*
+        version: link:../felix-protocol
+    devDependencies:
+      '@felix/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@25.7.0)(happy-dom@20.11.6)(vite@8.1.4(@types/node@25.7.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/felix-protocol:
     devDependencies:

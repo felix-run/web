@@ -1,0 +1,12 @@
+{
+  "extends": "@felix/typescript-config/base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "paths": {
+      "@felix/protocol": ["../felix-protocol/src/index.ts"]
+    }
+  },
+  "include": ["src", "tests"]
+}

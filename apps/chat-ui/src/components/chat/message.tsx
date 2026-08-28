@@ -1,4 +1,4 @@
-import { interleaveTurn } from '@/lib/tools';
+import { interleaveTurn } from '@felix/client';
 import type { Turn } from '@/types';
 import { MessageActions } from './message-actions';
 import { Reasoning } from './reasoning';

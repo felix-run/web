@@ -1,6 +1,6 @@
+import { describeError } from '@felix/client';
 import { describe, expect, it, vi } from 'vitest';
 import { forgetMemory, listMemories, memoriesAsOf, searchMemories } from '../src/api';
-import { describeError } from '../src/lib/errors';
 
 /**
  * The memory client.

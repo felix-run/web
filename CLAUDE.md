@@ -15,6 +15,7 @@ in this repo beyond one thin proxy Worker.
 | `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
 | `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
 | `packages/felix-protocol` (`@felix/protocol`) | The wire contract — SSE reader + shared types |
+| `packages/felix-client` (`@felix/client`) | Headless chat client — transport, transcript model, the one `StreamEvent` switch |
 | `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
 | `packages/test-kit` | Reusable behavioral suites — the proxy Worker contract and the SSE reader |
 | `packages/design` | Neutral palette + theme-CSS builders (docs theme is generated from these) |
@@ -46,11 +47,13 @@ Local dev needs the Python harness running separately (`make up && make migrate`
 **Test coverage is partial, and knowing where it stops matters.** `pnpm test` covers the VFS and
 the File System Access mount (`packages/cowork-client`), the SSE reader (one implementation in
 `@felix/protocol`, exercised through chat-ui's `streamChat`), and the proxy Worker — the last two via
-parameterized suites in `@felix/test-kit`, which are the contract those surfaces are held to. React
-coverage reaches the thread store (including the server/local session merge), the theme provider,
-`usePoll`, the presence signals, the Gate, and the history rail's per-thread actions;
-**the chat surface itself is untested** — `App.tsx`, the composer, and the inspector panels are still
-verified by running them.
+parameterized suites in `@felix/test-kit`, which are the contract those surfaces are held to.
+`@felix/client` covers the run loop at the wire: frames into `applyEvent`, transcript out, including
+the three blocking frames, plus the log-to-transcript rebuild, the reattach loop and the tool-card
+matching. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
+signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
+(`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`); **the composer and the
+inspector panels are still verified by running them.**
 
 One thing that bites when verifying by hand: `usePoll` skips ticks while the tab is **hidden**, and a
 browser driven by automation reports `visibilityState: 'hidden'`. An inspector panel will sit on
@@ -58,16 +61,17 @@ stale data forever under a driver, which looks like a broken refresh and is not.
 
 Three mechanical guards cover the hand-mirrored wire contract, one per direction it can drift.
 
-`pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts` — including the three
-that deliberately bypass `apiFetch` — and diffs path *and* verb against
+`pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts` and
+`packages/felix-client/src/transport.ts` — including the ones that deliberately bypass the
+401-handling wrapper — and diffs path *and* verb against
 `apps/chat-ui/harness-openapi.json`, a committed record of what the harness serves. It catches a
 route the harness renamed or dropped; it cannot catch a call that hits a real route for the wrong
 purpose, and it says nothing about payload shapes. It also prints, advisory only, the routes the
 harness serves that nothing calls — the direction where a whole unbuilt feature shows up.
 
 `pnpm check-protocol-parity` covers the events, in **both** directions: every `StreamEvent` arm must
-have a handler, and every event `scripts/harness-events.json` says the harness emits must have an
-arm. The second is the one that drifts, because the harness moves independently and the union's open
+have a handler in `packages/felix-client/src/engine.ts` — the one switch every client runs — and
+every event `scripts/harness-events.json` says the harness emits must have an arm. The second is the one that drifts, because the harness moves independently and the union's open
 arm swallows anything it gains — an event nobody models compiles, lints, and does nothing. Handler
 gaps that predate the check are grandfathered in `scripts/protocol-parity-baseline.json` as a
 one-way ratchet (`--update` banks a fix); an unmodelled event is never grandfathered. Both halves
@@ -144,9 +148,17 @@ is simply omitted, which is correct against a harness running `FELIX_AUTH_MODE=n
 `packages/felix-protocol` is the hand-mirrored wire contract. Its `StreamEvent` is the authoritative
 list of SSE frames; it ends in an open `{ event: string; ... }` arm, so an unknown event compiles
 fine and silently does nothing — when the harness gains an event, add the arm *and* the handler in
-`App.tsx`, or it is indistinguishable from an event that never arrives. `apps/chat-ui/src/api.ts`
-owns the REST calls and auth; `src/types.ts` keeps only what is app-specific (`Turn` and the
-management types).
+`packages/felix-client/src/engine.ts`, or it is indistinguishable from an event that never arrives.
+
+**The conversation itself is `@felix/client`, not the app.** `createChatEngine` owns the frame
+switch, the transcript, the durable-run and reattach paths, and the approval queue; `App.tsx`
+mirrors its state with `useSyncExternalStore` and renders. `createFelixClient` owns the chat REST
+calls with the origin and credentials injected — `/api` plus `x-chat-key` for a browser that cannot
+reach the harness directly, a real origin plus a bearer token for anything that can. Nothing in the
+package touches storage, the DOM, or notifications. `apps/chat-ui/src/api.ts` supplies the browser's
+half of that arrangement and keeps the management routes (audit, memory, eval, jobs, manifests,
+plans, usage), which only chat-ui reads; `src/types.ts` re-exports both packages and declares those
+management shapes.
 
 *Almost* every frame is a bare `data:` line carrying one envelope `{event, type, data, text}`,
 terminated by `data: [DONE]`. Two other SSE fields carry meaning, and a reader that matches whole

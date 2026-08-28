@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { reattachThread } from '../src/lib/reattach';
+import { reattachThread } from '../src/reattach';
+import { createFelixClient } from '../src/transport';
+
+/** A client pointed at the stubbed global fetch, the way an app builds one. */
+const client = createFelixClient({ baseUrl: '/api' });
 
 /**
  * Rejoining a thread after its stream dropped.
@@ -78,6 +82,7 @@ describe('reattachThread', () => {
 
     const rendered: unknown[][] = [];
     await reattachThread({
+      client,
       threadId: 't1',
       onTurns: (turns) => rendered.push(turns),
       wait: noWait,
@@ -94,7 +99,13 @@ describe('reattachThread', () => {
   it('sends the cursor as Last-Event-ID when one is known', async () => {
     const calls = stubFetch([sse(DONE), new Response(JSON.stringify({ phase: 'idle' }))]);
 
-    await reattachThread({ threadId: 't1', lastEventId: '42', onTurns: () => {}, wait: noWait });
+    await reattachThread({
+      client,
+      threadId: 't1',
+      lastEventId: '42',
+      onTurns: () => {},
+      wait: noWait,
+    });
 
     expect(calls[0]?.url).toContain('/api/chat/stream/t1');
     expect(calls[0]?.headers['last-event-id']).toBe('42');
@@ -103,7 +114,7 @@ describe('reattachThread', () => {
   it('omits Last-Event-ID for a cold reattach', async () => {
     const calls = stubFetch([sse(DONE), new Response(JSON.stringify({ phase: 'idle' }))]);
 
-    await reattachThread({ threadId: 't1', onTurns: () => {}, wait: noWait });
+    await reattachThread({ client, threadId: 't1', onTurns: () => {}, wait: noWait });
 
     expect(calls[0]?.headers['last-event-id']).toBeUndefined();
   });
@@ -118,7 +129,7 @@ describe('reattachThread', () => {
       new Response(JSON.stringify({ phase: 'idle' })), // finished → stop
     ]);
 
-    await reattachThread({ threadId: 't1', onTurns: () => {}, wait: noWait });
+    await reattachThread({ client, threadId: 't1', onTurns: () => {}, wait: noWait });
 
     const streamCalls = calls.filter((c) => c.url.includes('/chat/stream/'));
     expect(streamCalls).toHaveLength(2);
@@ -137,6 +148,7 @@ describe('reattachThread', () => {
 
     const rendered: unknown[][] = [];
     await reattachThread({
+      client,
       threadId: 't1',
       onTurns: (turns) => rendered.push(turns),
       wait: noWait,
@@ -151,7 +163,7 @@ describe('reattachThread', () => {
     stubFetch([new Error('network still down'), new Response(JSON.stringify({ phase: 'idle' }))]);
 
     await expect(
-      reattachThread({ threadId: 't1', onTurns: () => {}, wait: noWait }),
+      reattachThread({ client, threadId: 't1', onTurns: () => {}, wait: noWait }),
     ).resolves.toBeUndefined();
   });
 
@@ -164,7 +176,7 @@ describe('reattachThread', () => {
     );
     vi.stubGlobal('fetch', spy);
 
-    await reattachThread({ threadId: 't1', onTurns: () => {}, wait: noWait });
+    await reattachThread({ client, threadId: 't1', onTurns: () => {}, wait: noWait });
 
     const streamCalls = spy.mock.calls.filter(([u]) => String(u).includes('/chat/stream/'));
     expect(streamCalls.length).toBeGreaterThan(1);
@@ -178,6 +190,7 @@ describe('reattachThread', () => {
     ctrl.abort();
 
     await reattachThread({
+      client,
       threadId: 't1',
       signal: ctrl.signal,
       onTurns: () => {},
@@ -195,6 +208,7 @@ describe('reattachThread', () => {
 
     const seen: Array<{ event: string }> = [];
     await reattachThread({
+      client,
       threadId: 't1',
       onTurns: () => {},
       onEvent: (ev) => {

@@ -1,3 +1,4 @@
+import { relativeTime } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
@@ -22,7 +23,6 @@ import {
   recordFromPointer,
   recordVersion,
 } from '@/lib/manifest-versions';
-import { relativeTime } from '@/lib/time';
 import type { ManifestSummary } from '@/types';
 
 /**

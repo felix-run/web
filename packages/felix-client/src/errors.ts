@@ -1,7 +1,7 @@
 /**
  * Turn a thrown API error into something worth showing a person.
  *
- * `api.ts` throws `` `${route}: ${status}` `` because that is the right thing for a
+ * The transport throws `` `${route}: ${status}` `` because that is the right thing for a
  * log and for the developer reading a stack. It is the wrong thing for a panel: an
  * operator reading "audit: 500" learns neither what failed nor what to do, and
  * anyone watching over their shoulder learns nothing at all. Translation happens

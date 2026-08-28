@@ -1,9 +1,9 @@
+import { describeError } from '@felix/client';
 import { summarizeToolArgs } from '@felix/cowork-client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { describeError } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 
 /** Lines shown before a payload folds. Chosen to clear a typical shell or write call whole. */

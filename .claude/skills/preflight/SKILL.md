@@ -25,7 +25,7 @@ runs lint, check-types, test, build, and the hook batteries in `.claude/hooks/te
 
 So a green `pnpm test` says the wire-level plumbing, path containment, and a first slice of the React
 tree (thread store, theme provider, `usePoll`, Gate) are sound. It says nothing about **the chat
-surface**: `App.tsx`, the composer, and the inspector panels still have to be exercised by hand
+surface**: the composer and the inspector panels still have to be exercised by hand
 against a running harness. Report exactly which commands you ran and what they returned, and never let "tests
 pass" imply coverage that does not exist.
 
