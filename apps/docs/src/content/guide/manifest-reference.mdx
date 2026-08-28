@@ -357,13 +357,28 @@ spec:
 ```yaml
 spec:
   memory:
-    checkpointer: postgres   # default
+    checkpointer: postgres   # default; `none` also built in
     store: pgvector          # default
 ```
 
+<Aside type="caution">
+  `checkpointer: none` keeps no session state, so anything that needs one has
+  nothing to act on. A `session.strategy` other than `full_replay`,
+  `session.compact_after_turn`, and `memory.capture.enabled` are each refused
+  alongside it, rather than being silently dropped.
+</Aside>
+
+<Aside type="note">
+  There is no in-process built-in on purpose. A thread is not manifest-scoped —
+  the session routes address one by id with no manifest in hand — so a manifest
+  choosing a different *backend* would leave the agent reading one log while
+  `/history`, `/continue` and `/compact` read another. `none` is exempt because it
+  is a claim about the agent, not a competing backend.
+</Aside>
+
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `checkpointer` | `postgres` \| `none` (aliases `agentcore`, `sqlite`, `do` accepted but inert) | `postgres` | Where the session log lives. |
+| `checkpointer` | `postgres` \| `none`, or a registered name | `postgres` | Where the session log lives. `none` keeps no session state, so every turn starts from the messages it was given. Add your own with `register_checkpointer`. |
 | `store` | `pgvector` \| `memory` \| `none` (aliases `agentcore`, `vectorize` accepted but inert) | `pgvector` | Durable-fact vector store. |
 | `capture` | object | disabled | Extract durable facts from a turn. |
 | `consolidate` | object | disabled | **Inert today** — do not rely on it. |
@@ -886,5 +901,9 @@ spec:
 ## Fields that parse but do nothing yet
 
 Do not build on these — they validate, but no code path consumes them:
-`spec.memory.consolidate.*`, `spec.anomaly.min_rate`, and the `memory.checkpointer` aliases
-`agentcore` / `do` / `sqlite`.
+`spec.memory.consolidate.*` and `spec.anomaly.min_rate`.
+
+`memory.checkpointer` used to be on this list. It now selects the session store for
+real, and the three names that could never work here — `agentcore`, `do` (Durable
+Objects, which this stack does not run) and `sqlite` — are a validation error rather
+than a silent alias for `postgres`.
