@@ -5,6 +5,22 @@ packages:
 # Single source of truth for every dependency used by more than one workspace
 # package. Bump the version here and it moves everywhere at once — see README.md.
 # A dependency used by exactly one package keeps its version in that package.json.
+# A second, named catalog, for the terminal client alone.
+#
+# Ink — what `apps/tui` renders with — is on a line that requires React >= 19.2,
+# and chat-ui cannot move yet: on React 19 its composer throws "Maximum update
+# depth exceeded" from the controlled onChange and drops characters. That is a
+# pre-existing effect loop (React 18 logs the same thing as a warning), not
+# something the upgrade introduced, but it has to be fixed before the app moves.
+#
+# The two are separate processes with separate bundles, so they can differ in the
+# meantime. Named rather than a literal version in the manifest, so the split is
+# declared in the one file that is supposed to say what version anything is on.
+catalogs:
+  react19:
+    react: ^19.2.8
+    '@types/react': ^19.2.0
+
 catalog:
   # React
   react: ^18.3.1
