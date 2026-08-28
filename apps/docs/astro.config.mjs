@@ -48,6 +48,7 @@ export default defineConfig({
             { label: 'Auth', slug: 'internals/auth' },
             { label: 'Observability', slug: 'internals/observability' },
             { label: 'Testing', slug: 'internals/testing' },
+            { label: 'Plugins', slug: 'internals/plugins' },
           ],
         },
         // Live OpenAPI UI (Scalar) from a running harness — hosted at api.felix.run;

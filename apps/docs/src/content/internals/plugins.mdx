@@ -1,0 +1,126 @@
+---
+title: "Plugins"
+description: "Extend Felix from outside the repo — the felix.plugins entry point, the registry seams, open backend registries, and manifest config for your own package."
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
+
+Felix is built to **not dictate your workflow**. Features other harnesses bake in are meant to be
+added from outside: core stays minimal, and everything below is open by design. Source:
+`felix.plugins` plus the open registries in [felix-run/felix](https://github.com/felix-run/felix).
+
+<Aside type="tip">
+  `examples/felix-plugin-example/` in the repo is a working package that exercises every seam on
+  this page. Start there rather than from scratch.
+</Aside>
+
+## Installing a plugin
+
+Core never imports your package by name. It discovers it through an entry point:
+
+```toml title="pyproject.toml"
+[project.entry-points."felix.plugins"]
+my-plugin = "my_plugin:register"
+```
+
+Install the package alongside Felix and `register(registry)` is called once at startup, in both
+the API and the worker.
+
+```python title="my_plugin/__init__.py"
+def register(registry) -> None:
+    registry.register_plugin(MyPlugin())
+```
+
+<Aside type="caution">
+  A plugin that fails to import is logged and skipped — startup still succeeds. Run
+  `felix doctor` to see which plugins actually loaded; a silently absent feature otherwise looks
+  like a bug in core.
+</Aside>
+
+## What the registry accepts
+
+Core reads these members off your plugin object with `getattr`, so implement only what you need.
+
+| Capability | Hook |
+|---|---|
+| Tools | `plugin.register_tools(register)` |
+| HTTP routes | `plugin.routes(app, tools=…)` |
+| Cron tasks | `plugin.cron_tasks` |
+| Rate-limit keys | `plugin.rate_limit_key(request)` |
+| Body limits | `plugin.body_limit_bytes` |
+| Self-authenticating mounts | `plugin.self_authenticating_mounts` |
+| Auth modes | `registry.register_authenticator(mode, builder)` |
+| Audit / usage sinks | `registry.register_audit_sink(f)` / `register_usage_sink(f)` |
+| Startup hooks | `registry.register_startup_hook(hook)` |
+| Agent-loop hooks | `register_before_turn`, `register_filter_history`, `register_before_compact`, `register_before_tool`, `register_after_tool`, `register_compact_failed` |
+
+## Open registries
+
+These live in core and are called at import time, not on the registry object. Each is selected by
+ordinary configuration, so a registered backend needs no further wiring.
+
+| Register | Selected by |
+|---|---|
+| `felix.patterns.registry.register_pattern` | `spec.pattern` |
+| `felix.patterns.model_registry.register_model_provider` | `FELIX_MODEL_ROUTES` |
+| `felix.storage.register_object_store` | `FELIX_OBJECT_STORE` |
+| `felix.secrets.register_secrets_backend` | `FELIX_SECRETS_BACKEND` |
+| `felix.warehouse.register_warehouse_backend` | `FELIX_WAREHOUSE` |
+| `felix.memory.embedder.register_embedder_backend` | `FELIX_MEMORY_EMBEDDER` |
+| `felix.session.strategies.register_session_strategy` | `spec.session.strategy` |
+
+```python
+from felix.storage import register_object_store
+
+def register(registry) -> None:
+    register_object_store("azure-blob", lambda settings: AzureBlobStore(settings))
+```
+
+Then `FELIX_OBJECT_STORE=azure-blob`. An unknown backend fails at startup with the list of
+registered names, so a typo is caught immediately rather than at first write.
+
+## Configuring your plugin from a manifest
+
+The manifest schema is `extra="forbid"` everywhere except one field, so plugin config has a home
+without loosening validation:
+
+```yaml
+spec:
+  pattern: my-pattern
+  extensions:
+    my-plugin:
+      greeting: "hei"
+```
+
+A registered pattern reads it from the build context:
+
+```python
+config = (ctx.get("extensions") or {}).get("my-plugin") or {}
+```
+
+<Aside type="caution">
+  Governance does not apply to `spec.extensions`. Treat it as trusted operator input, never as
+  model input.
+</Aside>
+
+## Skills need no code
+
+Drop a `SKILL.md` into the directory named by `FELIX_SKILLS_DIR`, or upload one per tenant to the
+object store. Neither requires a package.
+
+## What is deliberately closed
+
+Two things are **not** extension points, on purpose:
+
+- **The governance wrapper stack** in `manifests/builder.py`. Its nine wrappers run in a fixed
+  order and each clones the tool with a new executor, so order defines precedence. A plugin-supplied
+  wrapper would be an unordered hole through it. Use the `before_tool` / `after_tool` hooks, which
+  run at the tool-runner boundary instead.
+- **`spec.guardrails.providers`.** Closed to the built-in set.
+
+<Aside type="note">
+  Tool trust is an allowlist: only in-process (`local`) transports skip content screening. A tool
+  your plugin registers with its own transport is treated as untrusted and screened by default.
+</Aside>
