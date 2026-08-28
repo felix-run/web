@@ -1,17 +1,11 @@
 export {
-  type ClientToolOptions,
-  type ClientToolRequest,
-  type ClientToolResult,
   clearMount,
-  DEFAULT_CLIENT_TOOL_TIMEOUT_MS,
   executeClientTool,
   getMountLabel,
   hasMount,
   mountTree,
   openWorkspaceFile,
-  type PendingApproval,
   pickDirectory,
-  summarizeToolArgs,
   supportsDirectoryPicker,
 } from './client-tools';
 export {

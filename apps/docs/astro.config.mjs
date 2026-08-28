@@ -34,6 +34,7 @@ export default defineConfig({
             { label: 'REST API', slug: 'guide/rest-api' },
             { label: 'Management API', slug: 'guide/management-api' },
             { label: 'Deploy', slug: 'guide/deploy' },
+            { label: 'Terminal client', slug: 'guide/terminal' },
           ],
         },
         {

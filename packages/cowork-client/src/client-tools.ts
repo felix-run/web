@@ -1,4 +1,10 @@
 import {
+  type ClientToolOptions,
+  type ClientToolRequest,
+  type ClientToolResult,
+  settleClientTool,
+} from '@felix/client';
+import {
   clearMount,
   getMountLabel,
   hasMount,
@@ -11,21 +17,6 @@ import {
   supportsDirectoryPicker,
 } from './fs-mount';
 import type { VirtualFs } from './vfs';
-
-export interface ClientToolRequest {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-}
-
-export interface PendingApproval {
-  approvalId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  ruleId?: string;
-  /** Existing file text for write_file diffs (null = new file / unreadable). */
-  before?: string | null;
-}
 
 function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
@@ -121,59 +112,19 @@ export async function openWorkspaceFile(path: string, vfs: VirtualFs): Promise<'
   return mounted ? 'mount' : 'vfs';
 }
 
-/** Wall-clock ceiling for a browser-executed tool. */
-export const DEFAULT_CLIENT_TOOL_TIMEOUT_MS = 30_000;
-
-export interface ClientToolOptions {
-  /** Abandons the in-flight tool, e.g. when the user stops the run. */
-  signal?: AbortSignal;
-  /** Overrides {@link DEFAULT_CLIENT_TOOL_TIMEOUT_MS}. */
-  timeoutMs?: number;
-}
-
-export type ClientToolResult = { content: string; error?: boolean };
-
 /**
  * Run a tool the harness delegated to the browser, and *always settle*.
  *
- * The harness blocks the model loop until it gets a `tool_result`, so the one
- * outcome this must never produce is a promise that neither resolves nor
- * rejects. A directory picker the user ignores, or a mount whose permission was
- * revoked mid-call, would otherwise hang the conversation with nothing shown.
- * Both the timeout and the abort therefore *resolve* with an error result
- * rather than throwing — the caller posts it upstream and the run continues.
- *
- * The race does not cancel the underlying work; nothing here is cancellable.
- * It bounds how long the caller waits, which is the property the run needs.
+ * The settle discipline itself is `@felix/client`'s — it is a property of the
+ * protocol, not of the browser, and a terminal client needs exactly the same
+ * guarantee. What is browser-specific is only what `runClientTool` does.
  */
 export async function executeClientTool(
   req: ClientToolRequest,
   vfs: VirtualFs,
   opts: ClientToolOptions = {},
 ): Promise<ClientToolResult> {
-  const { signal, timeoutMs = DEFAULT_CLIENT_TOOL_TIMEOUT_MS } = opts;
-  if (signal?.aborted) return { content: `error: ${req.name} aborted`, error: true };
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let onAbort: (() => void) | undefined;
-
-  const bail = new Promise<ClientToolResult>((resolve) => {
-    timer = setTimeout(
-      () => resolve({ content: `error: ${req.name} timed out after ${timeoutMs}ms`, error: true }),
-      timeoutMs,
-    );
-    if (signal) {
-      onAbort = () => resolve({ content: `error: ${req.name} aborted`, error: true });
-      signal.addEventListener('abort', onAbort, { once: true });
-    }
-  });
-
-  try {
-    return await Promise.race([runClientTool(req, vfs), bail]);
-  } finally {
-    clearTimeout(timer);
-    if (signal && onAbort) signal.removeEventListener('abort', onAbort);
-  }
+  return settleClientTool(req, () => runClientTool(req, vfs), opts);
 }
 
 async function runClientTool(req: ClientToolRequest, vfs: VirtualFs): Promise<ClientToolResult> {
@@ -207,25 +158,6 @@ async function runClientTool(req: ClientToolRequest, vfs: VirtualFs): Promise<Cl
     };
   } catch (err) {
     return { content: `error: ${err instanceof Error ? err.message : String(err)}`, error: true };
-  }
-}
-
-export function summarizeToolArgs(toolName: string, args: Record<string, unknown>): string {
-  if (toolName === 'write_file') {
-    const path = typeof args.path === 'string' ? args.path : '?';
-    const len = typeof args.content === 'string' ? args.content.length : 0;
-    return `Write ${path} (${len} chars)${args.append ? ' append' : ''}`;
-  }
-  if (toolName === 'local_shell') {
-    return `Shell: ${typeof args.command === 'string' ? args.command : JSON.stringify(args)}`;
-  }
-  if (toolName === 'local_open') {
-    return `Open: ${typeof args.target === 'string' ? args.target : JSON.stringify(args)}`;
-  }
-  try {
-    return JSON.stringify(args, null, 2);
-  } catch {
-    return String(args);
   }
 }
 

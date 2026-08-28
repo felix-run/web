@@ -12,6 +12,7 @@ in this repo beyond one thin proxy Worker.
 | Path | Role |
 |---|---|
 | `apps/chat-ui` (`@felix/chat-ui`) | Full streaming chat + harness inspector (React/Vite → Worker) |
+| `apps/tui` (`@felix/tui`) | Full-screen terminal chat client (Ink → Node) |
 | `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
 | `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
 | `packages/felix-protocol` (`@felix/protocol`) | The wire contract — SSE reader + shared types |
@@ -26,6 +27,7 @@ in this repo beyond one thin proxy Worker.
 ```bash
 pnpm install
 pnpm chat:dev          # Vite :5173 — /api/* proxied to Python Felix on :8080
+pnpm tui:dev           # terminal client, straight to FELIX_ORIGIN (default :8080)
 pnpm docs:dev
 pnpm build             # turbo run build (tsc -b && vite build; astro build)
 pnpm lint              # turbo → biome check
@@ -50,7 +52,9 @@ the File System Access mount (`packages/cowork-client`), the SSE reader (one imp
 parameterized suites in `@felix/test-kit`, which are the contract those surfaces are held to.
 `@felix/client` covers the run loop at the wire: frames into `applyEvent`, transcript out, including
 the three blocking frames, plus the log-to-transcript rebuild, the reattach loop and the tool-card
-matching. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
+matching. `@felix/tui` covers what a terminal adds on its own: config precedence, the markdown
+splitter, and the workspace executor's containment and settle guarantees — **not** its Ink
+components, which are verified by running it. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
 signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
 (`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`); **the composer and the
 inspector panels are still verified by running them.**
@@ -222,6 +226,36 @@ Flows worth knowing before editing the app:
   `/chat/sessions/search`.
 
 Each turn sends **only the new user message** — Felix replays thread history server-side.
+
+### The terminal client
+
+`apps/tui` is the same conversation without a browser, and the differences are all about what a
+browser cannot do rather than about the chat:
+
+- **No proxy, no shared key.** `/api/*` and `x-chat-key` exist because a page cannot reach the
+  harness (no CORS, no static assets). This process calls `FELIX_ORIGIN` directly with
+  `Authorization: Bearer`, resolved by `src/config.ts` — flag, then environment, then
+  `~/.config/felix/config.json`.
+- **Client tools hit the real filesystem** — the one surface here where the *model* drives the
+  user's disk. `src/workspace.ts` answers `tool_request` against `process.cwd()`. Every path goes
+  through `resolveWithin`, which compares **real** paths and refuses a *broken* symlink outright:
+  a dangling link has no real path, so an earlier version walked past it and wrote wherever it
+  pointed. Writes also refuse `.git/`, `.husky/`, `node_modules/` and any existing executable —
+  in-root paths where writing a file means running a command — and otherwise wait on a prompt
+  showing the **absolute** target. `confirm` is a required option, so a caller cannot get a silent
+  writer by omitting it; `--yes` is a confirm that always agrees. Reads are *not* confirmed, which
+  is the stated trade of running against a real cwd.
+- **Every request settles, and nothing outlives its turn.** `settleClientTool` in `@felix/client` is
+  the shared deadline. It resolves what the engine awaits but cannot cancel the work, so the write
+  prompt carries its own shorter deadline and is cancelled on abort — otherwise a `y` pressed after
+  the timeout still writes, long after the model was told the tool failed.
+- **One prompt owns the keyboard.** Ink delivers every keypress to *every* mounted `useInput`, so two
+  banners on screen means one `y` answers both — a local write and a gated harness-side tool. `App`
+  renders exactly one.
+- Threads live in `$XDG_STATE_HOME/felix`. Ink redraws the whole tree per frame, so the transcript
+  renders only its tail.
+- No build step for `dev` (`tsx`); `build` is `vite build --ssr`, which inlines the raw-TS workspace
+  packages and externalises ink/react.
 
 ### Unattended runs
 

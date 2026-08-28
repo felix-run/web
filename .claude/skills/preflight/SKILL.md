@@ -18,15 +18,16 @@ Changed files:
 
 ## What "verified" means here
 
-**Test coverage is partial.** `pnpm test` covers the VFS, the disk mount, the SSE reader, and the
-proxy Worker —
-the last two through parameterized suites in `@felix/test-kit`. CI
-runs lint, check-types, test, build, and the hook batteries in `.claude/hooks/tests/`.
+**Test coverage is partial.** `pnpm test` covers the VFS, the disk mount, the SSE reader, the proxy
+Worker, the run loop in `@felix/client` (frames in, transcript out), and the terminal client's config
+and workspace containment — the SSE reader and Worker through parameterized suites in
+`@felix/test-kit`. CI runs lint, check-types, test, build, and the hook batteries in
+`.claude/hooks/tests/`.
 
 So a green `pnpm test` says the wire-level plumbing, path containment, and a first slice of the React
-tree (thread store, theme provider, `usePoll`, Gate) are sound. It says nothing about **the chat
-surface**: the composer and the inspector panels still have to be exercised by hand
-against a running harness. Report exactly which commands you ran and what they returned, and never let "tests
+tree (thread store, theme provider, `usePoll`, Gate, and `App` end to end) are sound. It says nothing
+about **the surfaces that need a terminal or a viewport**: the composer, the inspector panels, and
+every Ink component in `apps/tui` still have to be exercised by hand against a running harness. Report exactly which commands you ran and what they returned, and never let "tests
 pass" imply coverage that does not exist.
 
 ## The loop

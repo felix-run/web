@@ -1,0 +1,16 @@
+{
+  "extends": "@felix/typescript-config/base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["node"],
+    "paths": {
+      "@felix/client": ["../../packages/felix-client/src/index.ts"],
+      "@felix/client/*": ["../../packages/felix-client/src/*"],
+      "@felix/protocol": ["../../packages/felix-protocol/src/index.ts"]
+    }
+  },
+  "include": ["src", "tests", "vite.config.ts"]
+}

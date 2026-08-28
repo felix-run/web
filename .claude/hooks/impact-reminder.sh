@@ -17,6 +17,8 @@ case "$rel" in
     emit "Wire contract touched. The shared types live in packages/felix-protocol and the chat half of the HTTP surface in packages/felix-client — check whether the change belongs in one of those rather than here. If you added a StreamEvent arm, add the matching case in packages/felix-client/src/engine.ts — the union's catch-all arm means an unhandled frame type-checks and silently does nothing. See the api-contract-change skill." ;;
   packages/felix-client/src/engine.ts)
     emit "The one StreamEvent switch. Every client renders this — chat-ui today, any other surface after it — so a change here is not scoped to one app. A new arm in packages/felix-protocol/src/types.ts needs its case here or the frame silently does nothing; pnpm check-protocol-parity reads THIS file. Frames the run blocks on (tool_request, approval_required, ui_request) must be answered on every path, errors and aborts included." ;;
+  apps/tui/src/workspace.ts)
+    emit "Terminal client tools changed — this is the surface where the MODEL drives the user's REAL filesystem, not a VFS. Re-check resolveWithin against '..', absolute paths, encoded traversal and symlinks (it compares real paths for that reason), and confirm writes still wait on the confirmation prompt. Every path must settle with a RESULT, never a throw or a hang. Consider the threat-review skill." ;;
   packages/felix-client/src/transport.ts)
     emit "Chat routes changed. pnpm check-api-drift reads this file alongside apps/chat-ui/src/api.ts — keep the paths as literals passed to chatFetch/rawFetch (harness-relative, no /api prefix) or the call becomes invisible to the check. Response *shapes* are guarded separately by pnpm check-payload-shapes." ;;
   apps/chat-ui/worker/index.ts)
