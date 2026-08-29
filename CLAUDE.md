@@ -33,7 +33,7 @@ pnpm build             # turbo run build (tsc -b && vite build; astro build)
 pnpm lint              # turbo → biome check
 pnpm format            # biome format --write
 pnpm check-types       # turbo → tsc --noEmit
-pnpm test              # turbo → vitest (cowork-client, chat-ui)
+pnpm test              # turbo → vitest (cowork-client, chat-ui); bun test (tui)
 pnpm check-api-drift   # client routes vs the committed harness OpenAPI snapshot
 pnpm check-protocol-parity  # SSE events: every arm handled, every emitted event modelled
 pnpm check-tailwind-sources # every @source-covered tree still reaches the compiled CSS
@@ -59,9 +59,12 @@ settle guarantees — **not** its rendered components, which are verified by run
 exception is `tests-bun/composer.test.ts`, which renders the real composer against the real renderer
 because what it pins is a keystroke sequence no hand-run reproduces reliably: a paste that submits
 itself halfway through when the terminal does not bracket it, and shift+Enter opening a line rather
-than sending. It runs under **`bun test`** rather than Vitest because rendering needs the native core;
-`apps/tui`'s `test` script is both, and everything else in the package stays pure and stays on
-Vitest. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
+than sending. **`apps/tui` runs its whole suite under `bun test`**, not Vitest: the package is
+Bun-only, so a second runner for the pure half bought nothing but a second test directory. Bun maps a
+`vitest` import onto its own runner, which is why the suites moved across untouched — but they import
+`bun:test` now, because an import naming a runner that does not run them is a lie the next person
+pays for. Two gaps in Bun's shim to know: `vi.advanceTimersByTimeAsync` does not exist (advance
+synchronously, then await the promise), and `toHaveBeenCalledOnce` runs but is not typed. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
 signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
 (`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`). `tests/composer.test.tsx`
 covers what typing *costs*: a burst of keystrokes must not drive React past its update-depth limit,
@@ -332,6 +335,11 @@ browser cannot do rather than about the chat:
   harness serves; a slash command is the only thing that exposes one here, so a verb with no `case`
   in `command()` — rename, fork, compact, export, rewind, search — is a verb this client does not
   have. `/rewind` hydrates first because `Turn.eventId` is only ever set from a snapshot.
+- **Reading a frame back is possible, and not obvious.** `apps/tui/scripts/screen.py` replays an
+  alt-screen capture into a grid, which is how a rendered component gets checked without a person
+  watching (`script` under a pty, then the script). Stripping the escapes and reading the log
+  instead does not work and fails *convincingly*: the renderer draws with absolute cursor moves, so
+  removing them collapses the frame onto one line and unrelated components appear to overlap.
 - Threads live in `$XDG_STATE_HOME/felix`. The transcript is a `scrollbox` with `viewportCulling`, so
   rows off screen take no part in layout — which is why it is no longer capped at a tail the way the
   Ink version had to be.

@@ -15,7 +15,7 @@
     "build": "bun build src/main.tsx --target=bun --outfile dist/felix.js --external @opentui/core --external @opentui/react --external react --banner \"#!/usr/bin/env bun\"",
     "lint": "biome check .",
     "check-types": "tsc --noEmit",
-    "test": "vitest run && bun test tests-bun"
+    "test": "bun test"
   },
   "dependencies": {
     "@felix/client": "workspace:*",
@@ -28,7 +28,6 @@
     "@felix/typescript-config": "workspace:*",
     "@types/bun": "^1.4.0",
     "@types/react": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+    "typescript": "catalog:"
   }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import type { Config } from '../src/config';
 import { explainError } from '../src/errors';
 
