@@ -43,10 +43,11 @@ if (!process.stdout.isTTY) {
 }
 
 /**
- * Before `render`, so the terminal is reporting focus from the first frame.
- * Focus reports arrive on the same stdin Ink reads, and telling one from typed
- * text depends on seeing the raw bytes first — which `attention.ts` explains,
- * and `tests/composer.test.ts` pins.
+ * Created before `render` so its listener is in place first — telling a focus
+ * report from typed text depends on seeing the raw bytes before Ink does, which
+ * `attention.ts` explains and `tests/composer.test.ts` pins. Nothing is written
+ * to the terminal here: `App` asks for reporting once Ink has raw mode on,
+ * because before that the tty echoes the terminal's reply onto the screen.
  */
 const attention = createAttention({
   stdin: process.stdin,

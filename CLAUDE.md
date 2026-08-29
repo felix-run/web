@@ -287,7 +287,10 @@ browser cannot do rather than about the chat:
   `[Ohello[I` after you tab away and back. `isFocusReport` is that filter, and it works because the
   module's own `data` listener sees the raw bytes first: Ink 7 reads stdin in **paused** mode
   (`readable`, then `read()`), and `read()` emits `data` synchronously, so the report is recorded
-  before the same chunk reaches `useInput` as text.
+  before the same chunk reaches `useInput` as text. The reports are *input*, which costs a second
+  time: the request for them is written from an `App` effect (`begin`/`end`), never at construction,
+  because until Ink has raw mode on the tty **echoes** the terminal's reply and a literal `^[[I` is
+  printed into the first frame, where it stays for the session.
 - **A paste is not typing, and not a send.** `usePaste` puts the terminal into bracketed paste mode,
   so the text arrives whole on its own channel — without it Ink hands the chunk to `useInput` with
   the newlines still in it and no `return` flag, which is how a pasted paragraph used to land in the

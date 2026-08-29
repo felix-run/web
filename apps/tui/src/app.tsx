@@ -227,6 +227,16 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
     };
   }, [client, threadId]);
 
+  // Focus reporting is asked for from here rather than at construction, and the
+  // reason is one line of terminal behaviour: the terminal answers on stdin, and
+  // until Ink has raw mode on the tty echoes that answer to the screen — a
+  // literal `^[[I` printed into the first frame. By the time this effect runs
+  // the composer's `useInput` has mounted and raw mode is on.
+  useEffect(() => {
+    attention.begin();
+    return () => attention.end();
+  }, [attention]);
+
   // The window title says what the run is doing whether or not anyone is here;
   // the notification behind it fires only once the terminal reports it lost
   // focus. Same three states as the browser's presence signals.

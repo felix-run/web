@@ -26,6 +26,9 @@ function harness(options: { enabled?: boolean } = {}) {
     now: () => clock,
     ...(options.enabled === undefined ? {} : { enabled: options.enabled }),
   });
+  // Every test but the "before begin" ones starts from a live terminal.
+  if (options.enabled !== false) attention.begin();
+
   return {
     attention,
     written,
@@ -49,7 +52,39 @@ describe('createAttention', () => {
     expect(h.titles()).toHaveLength(1);
   });
 
-  it('gives the terminal back on dispose', () => {
+  /**
+   * The terminal answers a focus request on stdin, and until Ink has raw mode
+   * on the tty echoes that answer to the screen. Asking early prints `^[[I`
+   * into the first frame, where it stays for the session.
+   */
+  it('writes nothing until it is told the terminal is ready', () => {
+    const stdin = new EventEmitter();
+    const written: string[] = [];
+    const attention = createAttention({ stdin, stdout: { write: (c: string) => written.push(c) } });
+    attention.set('working');
+    expect(written).toEqual([]);
+    // Listening, though: a report that arrives early is still worth knowing.
+    expect(stdin.listenerCount('data')).toBe(1);
+  });
+
+  it('asks only once, however many times it is told', () => {
+    const h = harness();
+    const before = h.written.length;
+    h.attention.begin();
+    expect(h.written).toHaveLength(before);
+  });
+
+  it('gives the terminal back on end, while Ink still owns it', () => {
+    const h = harness();
+    h.attention.end();
+    expect(h.written.slice(-2)).toEqual([`${ESC}[?1004l`, `${ESC}[23;2t`]);
+    // The listener outlives the sequences; disposal is what detaches it.
+    expect(h.listeners()).toBe(1);
+    h.attention.dispose();
+    expect(h.listeners()).toBe(0);
+  });
+
+  it('gives it back on dispose too, for a process going down another way', () => {
     const h = harness();
     h.attention.dispose();
     expect(h.written.slice(-2)).toEqual([`${ESC}[?1004l`, `${ESC}[23;2t`]);
@@ -138,6 +173,7 @@ describe('createAttention', () => {
 
   it('is inert when disabled, down to the filter', () => {
     const h = harness({ enabled: false });
+    h.attention.begin();
     h.blur();
     h.attention.set('blocked');
     h.attention.dispose();

@@ -14,11 +14,18 @@
  * treated as "you might be watching", because the failure of the other choice
  * is a bell every time a run ends under your nose.
  *
- * The focus reports come back as input. Enabling DECSET 1004 makes the terminal
- * send `ESC [ I` and `ESC [ O` on the same stdin Ink is reading, and Ink 7 hands
- * those on to `useInput` as the plain text `[I` and `[O` with no key flags set —
- * so without `isFocusReport` they land in the composer as typed characters every
- * time you tab away. That is why this module owns both halves.
+ * The focus reports come back as input, which costs twice.
+ *
+ * They arrive on the same stdin Ink is reading, and Ink 7 hands them to
+ * `useInput` as the plain text `[I` and `[O` with no key flags set — so without
+ * `isFocusReport` they land in the composer as typed characters every time you
+ * tab away. That is why this module owns both halves.
+ *
+ * And they are input, so the tty **echoes** them unless something has turned
+ * that off. Asking for reporting before Ink enables raw mode prints the
+ * terminal's own reply — a literal `^[[I` — into the first frame, where it
+ * stays for the life of the session. `begin` and `end` exist for that: the
+ * sequences are written while Ink owns the terminal, never around it.
  */
 
 const ESC = String.fromCharCode(27);
@@ -61,6 +68,13 @@ const TITLES: Record<Presence, string> = {
 };
 
 export interface Attention {
+  /**
+   * Start asking the terminal about focus. Call once Ink has raw mode on —
+   * before that the tty echoes the answer onto the screen.
+   */
+  begin(): void;
+  /** Stop asking, while Ink still owns the terminal. */
+  end(): void;
   /** Record what the run is doing. Idempotent, so an effect may drive it. */
   set(next: Presence): void;
   /** True when this `useInput` text is a focus report rather than typing. */
@@ -92,6 +106,7 @@ export function createAttention(options: AttentionOptions): Attention {
   /** `unknown` until the terminal says otherwise, and it may never say. */
   let focus: 'unknown' | 'focused' | 'blurred' = 'unknown';
   let reportedAt = 0;
+  let started = false;
   let disposed = false;
 
   const write = (sequence: string) => {
@@ -114,25 +129,35 @@ export function createAttention(options: AttentionOptions): Attention {
     reportedAt = now();
   };
 
-  if (enabled) {
-    // Prepended so this stays the first `data` listener whatever else attaches:
-    // Ink turns these same bytes into text, and by then it is too late to tell
-    // what they were.
-    stdin.prependListener('data', onData);
-    write(TITLE_PUSH);
-    write(FOCUS_ON);
-    write(`${ESC}]2;${TITLES.idle}${BEL}`);
-  }
+  // Listening costs nothing and echoes nothing; only the request does. Prepended
+  // so this stays the first `data` listener whatever else attaches: Ink turns
+  // these same bytes into text, and by then it is too late to tell what they
+  // were.
+  if (enabled) stdin.prependListener('data', onData);
 
   /** OSC 9. Terminals that do not know it consume it; none of them print it. */
   const notify = (body: string) => write(`${ESC}]9;${sanitize(body)}${BEL}`);
 
   return {
+    begin() {
+      if (!enabled || started || disposed) return;
+      started = true;
+      write(TITLE_PUSH);
+      write(FOCUS_ON);
+      write(`${ESC}]2;${TITLES[current]}${BEL}`);
+    },
+    end() {
+      if (!started) return;
+      started = false;
+      write(FOCUS_OFF);
+      write(TITLE_POP);
+    },
     set(next) {
       if (next === current) return;
       const previous = current;
       current = next;
-      write(`${ESC}]2;${TITLES[next]}${BEL}`);
+      // Before `begin`, the terminal is not ours to write to.
+      if (started) write(`${ESC}]2;${TITLES[next]}${BEL}`);
 
       // Only once the terminal has told us it is not being watched.
       if (focus !== 'blurred') return;
@@ -146,11 +171,14 @@ export function createAttention(options: AttentionOptions): Attention {
     },
     dispose() {
       if (disposed) return;
-      if (enabled) {
+      if (started) {
+        // Normally `end` has already run from the component that started it;
+        // this is the path where the process is going down another way.
+        started = false;
         write(FOCUS_OFF);
         write(TITLE_POP);
-        stdin.off('data', onData);
       }
+      if (enabled) stdin.off('data', onData);
       disposed = true;
     },
   };
