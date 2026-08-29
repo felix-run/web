@@ -37,6 +37,36 @@ export { parseArtifactMarker } from '@felix/protocol';
 
 export type Variant = 'stable' | 'canary';
 
+// --- Comparative eval (/eval/runs/compare) ---
+
+/**
+ * One manifest's showing in a comparison: its own run, its pass rate, and how
+ * far it moved the needle against the baseline.
+ *
+ * Like `ArtifactContent`, outside the `check-payload-shapes` guard — this is
+ * assembled in `felix/eval/compare.py`, not in a `store.py` serializer, so there
+ * is no recorded key set to check it against. The nested `run` *is* a recorded
+ * shape (`EvalRun`), and that is the part the panel reads in detail.
+ */
+export interface EvalComparisonEntry {
+  name: string;
+  manifest: string;
+  is_baseline: boolean;
+  pass_rate: number;
+  /** Percentage points against the baseline; 0 for the baseline itself. */
+  lift_pp: number;
+  run?: EvalRun;
+  /** Only present when a `judge_threshold` was given and this run missed it. */
+  below_threshold?: boolean;
+}
+
+export interface EvalComparison {
+  dataset: string;
+  baseline: string;
+  results: EvalComparisonEntry[];
+  judge_threshold: number | null;
+}
+
 // --- Spilled tool outputs (/artifacts) ---
 
 /**

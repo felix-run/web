@@ -26,6 +26,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `manifests:read` / `manifests:write` | read manifests / publish, canary, rollback |
 | `eval:read` / `eval:write` | read datasets and runs / write and run them |
 | `usage:read` | `/usage` |
+| `memory:read` / `memory:write` | read stored memory / write and forget it |
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 
 Three rules make this practical:
@@ -175,6 +176,36 @@ The `deep` pattern records a plan and its step transitions.
 
 `PUT` takes `{plan, manifest_id, expires_at}` where `plan` is the plan document and `expires_at` is
 epoch ms. `limit` is 1–200, default 50.
+
+## Memory
+
+What the agent has stored across sessions, and the one surface that lets an operator see and change
+it without a database console.
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/memory?limit=` | `memory:read` |
+| `GET` | `/memory/search?q=&limit=` | `memory:read` |
+| `GET` | `/memory/as-of/{turn_seq}` | `memory:read` |
+| `POST` | `/memory` | `memory:write` |
+| `DELETE` | `/memory/{memory_id}` | `memory:write` |
+
+`search` runs the agent's own hybrid ranking and reports which retriever found each hit, so it
+answers "why did it recall that". `as-of` is read-only and includes superseded rows: what was
+believed at a past turn, not what is believed now.
+
+`POST` takes `{content, kind, manifest_id, topic_key, importance}` — `content` up to 4000 chars,
+`topic_key` up to 200, `importance` in 0–1.
+
+:::caution
+Writing here is a prompt-injection ingress by design: whatever you store is text the model will read
+back in a later session, quite possibly one nobody is watching. That is what makes it useful — a
+correction, a standing instruction — and it is why it is gated on `memory:write` separately from
+reading.
+:::
+
+`DELETE` is **soft**. The row becomes `forgotten` and drops out of recall rather than being erased,
+which is why the UI calls it "forget".
 
 ## Artifacts
 
@@ -334,6 +365,12 @@ Datasets and scored runs, stored in Postgres.
 | `POST` | `/eval/runs/compare` | `eval:write` |
 | `GET` | `/eval/runs?limit=&dataset=` | `eval:read` |
 | `GET` | `/eval/runs/{run_id}` | `eval:read` |
+
+`POST /eval/runs/compare` answers a different question from a single run. Given
+`{dataset_name, baseline: {name, manifest}, candidates: [{name, manifest}], judge_threshold?}` it
+replays the same items against every manifest and returns each one's `pass_rate` plus its `lift_pp`
+against the baseline — percentage points, positive being better. Every candidate is a full run, so a
+baseline and two candidates is three passes over the dataset.
 
 A dataset is written whole — name, description and its items — in one `PUT`:
 
