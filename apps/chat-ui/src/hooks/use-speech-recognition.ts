@@ -59,6 +59,24 @@ export function useSpeechRecognition({ onFinalTranscript, lang = 'en-US' }: Opti
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
+  /**
+   * The callback, held rather than closed over.
+   *
+   * Its identity changes on every keystroke — the composer builds it from
+   * `controller.textInput`, which the provider rebuilds whenever the text
+   * changes — so listing it as a dependency made `start` a new function per
+   * character typed, and everything memoised on `start` churned with it. That
+   * is the same shape of defect as the composer's own update loop: work
+   * repeated per keystroke for no reason, invisible until something counts it.
+   *
+   * A ref is the right shape regardless of that. A recognition session reads
+   * the callback when an utterance finalises, which has nothing to do with
+   * which render installed it — and reading through the ref means the *latest*
+   * one is always the one that fires, so nothing goes stale.
+   */
+  const onFinalRef = useRef(onFinalTranscript);
+  onFinalRef.current = onFinalTranscript;
+
   const isSupported = getRecognitionCtor() !== null;
 
   const stop = useCallback(() => {
@@ -94,7 +112,7 @@ export function useSpeechRecognition({ onFinalTranscript, lang = 'en-US' }: Opti
         if (r.isFinal) final += r[0].transcript;
         else interimChunk += r[0].transcript;
       }
-      if (final) onFinalTranscript(final);
+      if (final) onFinalRef.current(final);
       setInterim(interimChunk);
     };
 
@@ -118,7 +136,7 @@ export function useSpeechRecognition({ onFinalTranscript, lang = 'en-US' }: Opti
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't start microphone.");
     }
-  }, [lang, onFinalTranscript]);
+  }, [lang]);
 
   // Stop on unmount so we don't leak the mic.
   useEffect(() => () => stop(), [stop]);

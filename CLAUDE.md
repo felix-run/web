@@ -193,6 +193,12 @@ Flows worth knowing before editing the app:
   characters either way, with nothing on screen to say the message that reached the model was not
   the one that was typed. Derive from the text rather than storing a flag an effect has to reset.
 
+  The same churn had a second, quieter cost. `useSpeechRecognition` listed that per-keystroke
+  callback as a dependency, so the live recognition session held whichever copy existed when the mic
+  was clicked — and it reads the textarea's contents. Dictating after typing appended to the text as
+  it stood at mic-click and **discarded everything typed since**. A callback a long-lived listener
+  fires belongs in a ref: it costs nothing per render and cannot go stale.
+
 - **Client tools** — a `tool_request` frame means the *browser* runs the tool
   (`@felix/cowork-client` → in-tab VFS or a File System Access mount), then answers with
   `POST /chat/tool_result`. This is a real round trip inside the model loop; failing to post a
