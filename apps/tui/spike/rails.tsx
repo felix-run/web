@@ -1,12 +1,14 @@
 /**
- * The thread list and the status line — everything on screen that is not the
- * conversation itself.
+ * `apps/tui/src/ui/rails.tsx`, ported to OpenTUI.
  *
- * `railWindow` survives the renderer change untouched: it is pure arithmetic
- * with its own test. A `scrollbox` could window the rail natively, but the rail
- * is *selected* rather than scrolled — the cursor is the thing that has to stay
- * on screen, which is exactly what this function is for and what a scroll
- * offset is not.
+ * `railWindow` is copied unchanged and on purpose: it is pure arithmetic with
+ * its own test, and it survives any renderer. What changed is only the drawing
+ * around it — and the honest note is that on OpenTUI this whole function is
+ * replaceable by a `scrollbox`, which windows natively. Keeping it here is what
+ * makes the two files comparable; deleting it is what the real port would do.
+ *
+ * Ink's `wrap="truncate"` has no direct prop here, so the spike truncates in
+ * JS. That is a real (small) gap, noted rather than hidden.
  */
 
 import type { ThreadMeta } from '@felix/client';
@@ -71,10 +73,6 @@ export function ThreadRail({
     <box
       flexDirection="column"
       width={26}
-      // Sized to its rows, not to the row it sits in. A flex row stretches its
-      // children by default, which drew the rail's border down the whole screen
-      // with twelve empty rows under the last thread.
-      alignSelf="flex-start"
       marginRight={2}
       border
       borderStyle="rounded"
@@ -86,7 +84,9 @@ export function ThreadRail({
         {truncate(filter ? `/${filter} · ${threads.length}/${all}` : 'threads')}
       </text>
       {all === 0 ? <text attributes={DIM}>(none yet)</text> : null}
-      {all > 0 && threads.length === 0 ? <text attributes={DIM}>no match · esc clears</text> : null}
+      {all > 0 && threads.length === 0 ? (
+        <text attributes={DIM}>no match · esc clears</text>
+      ) : null}
       {start > 0 ? <text attributes={DIM}>↑ {start} more</text> : null}
       {threads.slice(start, end).map((thread, i) => {
         const index = start + i;
@@ -104,7 +104,9 @@ export function ThreadRail({
           </text>
         );
       })}
-      {end < threads.length ? <text attributes={DIM}>↓ {threads.length - end} more</text> : null}
+      {end < threads.length ? (
+        <text attributes={DIM}>↓ {threads.length - end} more</text>
+      ) : null}
       {focused && !filter && threads.length > 0 ? (
         <text attributes={DIM}>type to filter</text>
       ) : null}
@@ -120,7 +122,6 @@ export function StatusLine({
   error,
   root,
   hint,
-  width,
 }: {
   manifest: string;
   origin: string;
@@ -130,18 +131,7 @@ export function StatusLine({
   root: string;
   /** What the keys do right now — see `hint` in `app.tsx`. */
   hint?: string;
-  /** Terminal columns, so the two halves can be cut rather than wrapped. */
-  width: number;
 }) {
-  // One row, two columns, and it has to stay one row: a status line that wraps
-  // pushes the composer up the screen every time the path is long. The
-  // renderer's own `truncate` needs a bounded width to cut against, which this
-  // row does not have, so the cut is made here where the width is known.
-  const keys = hint ? `  ${hint}` : '';
-  const state = `${manifest} · ${origin} · ${root}${phase && phase !== 'idle' ? ` · ${phase}` : ''}`;
-  const room = Math.max(8, width - keys.length - 2);
-  const left = state.length > room ? `${state.slice(0, room - 1)}…` : state;
-
   return (
     <box flexDirection="column">
       {error ? <text fg="red">{error}</text> : null}
@@ -150,8 +140,11 @@ export function StatusLine({
           what landed rather than a reply still being written. */}
       {reattaching ? <text fg="yellow">rejoining the thread…</text> : null}
       <box flexDirection="row" justifyContent="space-between">
-        <text attributes={DIM}>{left}</text>
-        {keys ? <text attributes={DIM}>{keys}</text> : null}
+        <text attributes={DIM}>
+          {manifest} · {origin} · {root}
+          {phase && phase !== 'idle' ? ` · ${phase}` : ''}
+        </text>
+        {hint ? <text attributes={DIM}>{`  ${hint}`}</text> : null}
       </box>
     </box>
   );

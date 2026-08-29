@@ -1,5 +1,5 @@
 /**
- * Entry point: resolve where the harness is, then hand over to Ink.
+ * Entry point: resolve where the harness is, then hand over to the renderer.
  *
  * `--help` and a non-TTY stdout are handled before anything renders — a
  * full-screen app piped into a file produces neither output nor an error, and
@@ -11,7 +11,8 @@
  * shell, a CI step — and "needs a TTY" leaves a person to work out what to do
  * about that on their own.
  */
-import { render } from 'ink';
+import { createCliRenderer } from '@opentui/core';
+import { createRoot } from '@opentui/react';
 import { App } from './app.js';
 import { createAttention } from './attention.js';
 import { insecureOrigin, resolveConfig, USAGE } from './config.js';
@@ -43,21 +44,47 @@ if (!process.stdout.isTTY) {
 }
 
 /**
- * Created before `render` so its listener is in place first — telling a focus
- * report from typed text depends on seeing the raw bytes before Ink does, which
- * `attention.ts` explains and `tests/composer.test.ts` pins. Nothing is written
- * to the terminal here: `App` asks for reporting once Ink has raw mode on,
- * because before that the tty echoes the terminal's reply onto the screen.
+ * Nothing is written to the terminal here: `App` asks for focus reporting once
+ * the renderer has raw mode on, because before that the tty echoes the
+ * terminal's reply onto the screen. Reading the reply is the renderer's job now
+ * — this only needs somewhere to write the title and the bell.
  */
 const attention = createAttention({
-  stdin: process.stdin,
   stdout: process.stdout,
   enabled: !process.env.FELIX_NO_NOTIFY,
 });
 
 const epilogue: EpilogueSlot = {};
 
-const { waitUntilExit } = render(
+const renderer = await createCliRenderer({
+  // ctrl+c is ambiguous while a run is live — `App` stops the run on the first
+  // press and leaves on the second, which it cannot do if the renderer exits
+  // first.
+  exitOnCtrlC: false,
+  // The only way a terminal reports shift+Enter, which is how a second line
+  // gets written without handing the whole prompt to `$EDITOR`.
+  useKittyKeyboard: {},
+});
+
+const root = createRoot(renderer);
+
+/**
+ * Leaving, in the one order that works.
+ *
+ * The title and the focus request have to be undone while the terminal is still
+ * ours, and the epilogue has to be written after the screen is given back —
+ * otherwise the alternate screen takes it with it, and the thread id it carries
+ * is the only record of which thread was open.
+ */
+const exit = () => {
+  attention.dispose();
+  root.unmount();
+  renderer.destroy();
+  if (epilogue.text) process.stdout.write(`${epilogue.text}\n`);
+  process.exit(0);
+};
+
+root.render(
   <App
     config={config}
     store={createThreadStore()}
@@ -65,13 +92,7 @@ const { waitUntilExit } = render(
     attention={attention}
     epilogue={epilogue}
     root={process.cwd()}
+    onExit={exit}
     {...(firstMessage ? { firstMessage } : {})}
   />,
 );
-
-await waitUntilExit();
-
-// Ink has restored the terminal; this is the only moment anything written here
-// survives on screen.
-attention.dispose();
-if (epilogue.text) process.stdout.write(`${epilogue.text}\n`);

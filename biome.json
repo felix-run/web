@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/.wrangler", "!**/dist", "!**/node_modules"]
+    "includes": ["**", "!**/.wrangler", "!**/dist", "!**/node_modules", "!apps/tui/spike"]
   },
   "formatter": {
     "enabled": true,

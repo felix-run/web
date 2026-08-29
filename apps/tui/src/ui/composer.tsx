@@ -1,31 +1,37 @@
 /**
- * The input line.
+ * The input line — a real editor now, rather than a string with a cursor drawn
+ * after it.
  *
- * Ink ships no text input, and `ink-text-input` is a dependency for one
- * controlled string — so this is `useInput` with a cursor. What it does own is
- * the distinction the chat surface actually needs: while a run is live, Enter
- * *steers* rather than starting a turn, and the placeholder says so, because
- * typing into a busy agent and having nothing happen is the failure people
- * report as "it froze".
+ * The Ink version hand-rolled everything: no cursor, no selection, no way to
+ * write a second line except handing the whole thing to `$EDITOR`. This is a
+ * `textarea` over an edit buffer that already has word motion, line kills,
+ * selection and undo, so none of that is our code any more.
  *
- * ↑/↓ walk the prompt history. The draft in progress is kept aside on the way
- * in, so stepping back out of history returns what was being typed rather than
- * an empty line.
+ * Two things it still owns, because they are policy rather than editing:
  *
- * ctrl+e hands the line to `$EDITOR`, which is the only way to write a
- * paragraph here: there is no cursor to move and Enter sends. `isFocusReport`
- * is the other half of terminal focus tracking — the reports arrive as ordinary
- * text and would otherwise be typed into the prompt.
+ * **Enter sends.** The renderer's defaults are the opposite of a chat prompt —
+ * `return` inserts a newline and `meta+return` submits. They are a plain array,
+ * so `CHAT_BINDINGS` states what this prompt means instead: Enter sends,
+ * shift+Enter opens a line. Shift+Enter needs the kitty keyboard protocol,
+ * which is the only way a terminal reports that modifier on Enter at all; a
+ * terminal without it keeps Enter-sends and loses only the second line.
  *
- * Pasted text is its own channel. `usePaste` puts the terminal into bracketed
- * paste mode, so a paste arrives whole and its newlines can never be mistaken
- * for Enter — without it Ink hands the chunk to `useInput` as `'one\ntwo\n'`
- * with no `return` flag, and the carriage returns land *in* the message. The
- * `useInput` path is flattened as well, because a terminal that ignores
- * bracketed paste still sends the text raw.
+ * **A paste is not typing, and never a send.** The paste event carries bytes
+ * with the newlines intact, and left alone the buffer strips them and runs the
+ * last word of one line into the first of the next. It is preventable, which is
+ * the hook: intercept, flatten, insert that instead.
+ *
+ * While a run is live, Enter *steers* rather than starting a turn, and the
+ * placeholder says so — typing into a busy agent and having nothing happen is
+ * the failure people report as "it froze".
  */
-import { Box, Text, useInput, usePaste } from 'ink';
-import { useState } from 'react';
+
+import type { KeyEvent, TextareaRenderable } from '@opentui/core';
+import { createTextAttributes } from '@opentui/core';
+import { useKeyboard, usePaste } from '@opentui/react';
+import { useRef, useState } from 'react';
+
+const DIM = createTextAttributes({ dim: true });
 
 /** Any newline, and any run of them, however the source spelled it. */
 const HAS_NEWLINE = /[\r\n]/;
@@ -35,15 +41,39 @@ const TRAILING_SPACE = /\s+$/;
 /**
  * A pasted paragraph becomes one line.
  *
- * This prompt is a line — `$EDITOR` is where a multi-line message is written —
- * so the newlines in a paste are joined with spaces rather than dropped, which
+ * The newlines in a paste are joined with spaces rather than dropped, which
  * would run the last word of one line into the first of the next. The trailing
  * newline almost every copied block carries is not a word boundary, so it goes.
+ *
+ * A paste is not typing: what was copied as prose is sent as prose. Newlines
+ * typed deliberately, with shift+Enter, are kept — that is the difference.
  */
 export function flattenPaste(text: string): string {
   if (!HAS_NEWLINE.test(text)) return text;
   return text.replace(NEWLINES, ' ').replace(TRAILING_SPACE, '');
 }
+
+/**
+ * What Enter means here.
+ *
+ * `linefeed` is bound to `newline` deliberately: a terminal that ignores
+ * bracketed paste delivers a pasted block as raw bytes with LF in them, and
+ * with LF bound to submit that paste sends itself halfway through.
+ */
+const CHAT_BINDINGS = [
+  { name: 'return', action: 'submit' },
+  { name: 'kpenter', action: 'submit' },
+  { name: 'return', shift: true, action: 'newline' },
+  { name: 'linefeed', action: 'newline' },
+] as never;
+
+/** The edit buffer's public surface, which the typings do not name. */
+type Buffer = TextareaRenderable & {
+  plainText: string;
+  cursorOffset: number;
+  setText(text: string): void;
+  insertText(text: string): void;
+};
 
 export interface ComposerProps {
   streaming: boolean;
@@ -53,8 +83,6 @@ export interface ComposerProps {
   history?: string[];
   /** Hand the line to an editor; resolves with the edit, or nothing. */
   onEdit?: (value: string) => Promise<string | undefined>;
-  /** True when this text is the terminal reporting focus, not a keystroke. */
-  isFocusReport?: (input: string) => boolean;
   hint?: string;
 }
 
@@ -64,99 +92,104 @@ export function Composer({
   onSubmit,
   history = [],
   onEdit,
-  isFocusReport,
   hint,
 }: ComposerProps) {
-  const [value, setValue] = useState('');
+  const ref = useRef<Buffer>(null);
   /** The editor owns the terminal while this is true; nothing else may. */
   const [editing, setEditing] = useState(false);
   /** Index into `history`, or null while editing the draft. */
-  const [recalled, setRecalled] = useState<number | null>(null);
-  const [draft, setDraft] = useState('');
+  const recalled = useRef<number | null>(null);
+  const draft = useRef('');
 
-  /**
-   * Leaving a recalled entry is a state change; typing inside the draft is not.
-   * Setting `recalled` to the null it already holds on every keystroke is the
-   * redundant update this repo has already paid for once — React bails out of
-   * those but still counts them toward the nested-update limit.
-   */
-  const edit = (next: (v: string) => string) => {
-    if (recalled !== null) setRecalled(null);
-    setValue(next);
+  const active = !disabled && !editing;
+  const read = () => ref.current?.plainText ?? '';
+  const write = (text: string) => ref.current?.setText(text);
+
+  const submit = () => {
+    const text = read().trim();
+    if (!text) return;
+    write('');
+    recalled.current = null;
+    draft.current = '';
+    onSubmit(text);
   };
 
-  useInput(
-    (input, key) => {
-      if (key.return) {
-        const text = value.trim();
-        if (!text) return;
-        setValue('');
-        setRecalled(null);
-        setDraft('');
-        onSubmit(text);
-        return;
-      }
-      if (key.upArrow) {
-        if (!history.length) return;
-        if (recalled === null) setDraft(value);
-        const next = recalled === null ? history.length - 1 : Math.max(0, recalled - 1);
-        setRecalled(next);
-        setValue(history[next] ?? '');
-        return;
-      }
-      if (key.downArrow) {
-        if (recalled === null) return;
-        // Past the newest entry is the draft again, not a wrap around.
-        if (recalled >= history.length - 1) {
-          setRecalled(null);
-          setValue(draft);
-          return;
-        }
-        setRecalled(recalled + 1);
-        setValue(history[recalled + 1] ?? '');
-        return;
-      }
-      if (key.ctrl && input === 'e') {
-        if (!onEdit) return;
-        setEditing(true);
-        void onEdit(value)
-          .then((next) => {
-            if (next !== undefined) edit(() => next);
-          })
-          .finally(() => setEditing(false));
-        return;
-      }
-      if (key.backspace || key.delete) {
-        edit((v) => v.slice(0, -1));
-        return;
-      }
-      // Ctrl/meta chords belong to the app, not the text.
-      if (key.ctrl || key.meta || key.escape || key.tab) return;
-      if (key.leftArrow || key.rightArrow) return;
-      if (input && !isFocusReport?.(input)) edit((v) => v + flattenPaste(input));
-    },
-    { isActive: !disabled && !editing },
-  );
+  /**
+   * A global handler sees the key before the focused renderable does and can
+   * take it outright, which is the whole reason history and the editor hotkey
+   * can live beside a textarea that would otherwise consume them.
+   *
+   * History is only offered while the draft is a single line. In a one-line
+   * prompt ↑ could only ever mean "the last thing I sent"; here it also means
+   * "up a line", and the cursor has the better claim the moment there is a line
+   * to move to.
+   */
+  useKeyboard((key: KeyEvent) => {
+    if (!active) return;
+    if (key.ctrl && key.name === 'e') {
+      key.preventDefault();
+      if (!onEdit) return;
+      setEditing(true);
+      void onEdit(read())
+        .then((next) => {
+          if (next !== undefined) write(next);
+        })
+        .finally(() => setEditing(false));
+      return;
+    }
+    if (key.name !== 'up' && key.name !== 'down') return;
+    const value = read();
+    if (HAS_NEWLINE.test(value)) return;
+
+    if (key.name === 'up') {
+      if (!history.length) return;
+      key.preventDefault();
+      if (recalled.current === null) draft.current = value;
+      const next =
+        recalled.current === null ? history.length - 1 : Math.max(0, recalled.current - 1);
+      recalled.current = next;
+      write(history[next] ?? '');
+      return;
+    }
+    if (recalled.current === null) return;
+    key.preventDefault();
+    // Past the newest entry is the draft again, not a wrap around.
+    if (recalled.current >= history.length - 1) {
+      recalled.current = null;
+      write(draft.current);
+      return;
+    }
+    recalled.current += 1;
+    write(history[recalled.current] ?? '');
+  });
 
   /**
    * A paste is never a send. The text lands in the prompt and waits for Enter —
    * what reaches the model has to be what was read on screen, and a copied
    * block ending in a newline would otherwise submit itself unseen.
    */
-  usePaste(
-    (text) => {
-      const flat = flattenPaste(text);
-      if (flat) edit((v) => v + flat);
-    },
-    { isActive: !disabled && !editing },
-  );
+  usePaste((event) => {
+    if (!active) return;
+    const raw = new TextDecoder().decode(Uint8Array.from(Array.from(event.bytes)));
+    event.preventDefault();
+    const flat = flattenPaste(raw);
+    if (flat) ref.current?.insertText(flat);
+  });
 
   return (
-    <Box>
-      <Text color={streaming ? 'yellow' : 'green'}>{streaming ? '⇥ ' : '> '}</Text>
-      <Text>{value}</Text>
-      {!disabled ? <Text inverse> </Text> : null}
-      {!value && hint ? <Text dimColor>{hint}</Text> : null}
-    </Box>
+    <box flexDirection="row">
+      <text fg={streaming ? 'yellow' : 'green'}>{streaming ? '⇥ ' : '> '}</text>
+      <textarea
+        ref={ref}
+        focused={active}
+        flexGrow={1}
+        height={3}
+        wrapMode="word"
+        keyBindings={CHAT_BINDINGS}
+        placeholder={hint ?? ''}
+        onSubmit={submit}
+      />
+      {!active ? <text attributes={DIM}> </text> : null}
+    </box>
   );
 }

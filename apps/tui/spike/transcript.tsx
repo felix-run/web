@@ -1,23 +1,40 @@
 /**
- * The conversation, top to bottom.
+ * `apps/tui/src/ui/transcript.tsx`, ported to OpenTUI.
  *
- * The renderer lays out only what is on screen, so unlike the Ink version this
- * does not cap the transcript at a fixed tail — the whole thing lives in a
- * `scrollbox`, which is scrollback the terminal itself never gave us once the
- * alternate screen was in use.
+ * THE trap of this port: Ink's `<Box>` defaults to `flexDirection="row"`,
+ * OpenTUI's `<box>` defaults to **column**. Every Ink box that leaned on the
+ * default — here, the `› ` marker beside the user's text — lays out silently
+ * wrong rather than failing. It is greppable (`<Box>` with no flexDirection)
+ * and it is the single largest source of diff in a mechanical port.
  *
- * One layout rule to keep in mind editing this file: `<box>` defaults to
- * `flexDirection="column"`. Ink's `<Box>` defaulted to `row`, and a box that
- * leans on the wrong default lays out silently wrong rather than failing.
+ * Kept line-for-line against the Ink original wherever the renderer allowed it,
+ * because the point of the spike is to measure the port, not to redesign the
+ * component. Three mappings cover almost all of it:
+ *
+ *   <Box>            → <box>          (same flexbox props, same names)
+ *   <Text>           → <text>         (fg=… instead of color=…)
+ *   <Text dimColor>  → attributes={createTextAttributes({ dim: true })}
+ *
+ * Nested `<Text>` inside `<Text>` is the one real difference: Ink allows it,
+ * OpenTUI splits the roles — `text` is the block, `span` is the run inside it.
+ *
+ * `WINDOW` is deliberately still here, and it is the thing to delete next: it
+ * exists because Ink re-lays-out every turn on every delta. OpenTUI has a
+ * native `scrollbox`, so the real port drops the cap and gains scrollback the
+ * terminal never had. Left in place so this file stays a like-for-like
+ * comparison.
  */
 
 import type { ReasoningBlock, ToolCall, Turn } from '@felix/client';
 import { interleaveTurn } from '@felix/client';
 import { createTextAttributes } from '@opentui/core';
-import { renderText, splitBlocks } from '../markdown.js';
+import { renderText, splitBlocks } from '../src/markdown.js';
 
 const DIM = createTextAttributes({ dim: true });
 const DIM_ITALIC = createTextAttributes({ dim: true, italic: true });
+
+/** Turns kept on screen. Older ones stay in the terminal's scrollback. */
+const WINDOW = 30;
 
 /**
  * Blocks are keyed by position because that is what they are: the whole message
@@ -105,21 +122,13 @@ function AssistantTurn({ turn }: { turn: Turn }) {
 }
 
 export function Transcript({ turns }: { turns: Turn[] }) {
+  const shown = turns.slice(-WINDOW);
   return (
-    // Sticky to the bottom, so a stream stays in view — and only sticky, so
-    // scrolling up to read while the model is still writing is not fought.
-    // `viewportCulling` is what makes the cap unnecessary: rows off screen take
-    // no part in layout, which is the whole reason the Ink version kept only a
-    // tail.
-    <scrollbox
-      flexGrow={1}
-      stickyScroll
-      stickyStart="bottom"
-      scrollY
-      viewportCulling
-      contentOptions={{ flexDirection: 'column' }}
-    >
-      {turns.map((turn) =>
+    <box flexDirection="column">
+      {turns.length > shown.length ? (
+        <text attributes={DIM}>… {turns.length - shown.length} earlier turns</text>
+      ) : null}
+      {shown.map((turn) =>
         turn.role === 'user' ? (
           <box key={turn.id} flexDirection="row" marginBottom={1}>
             <text fg="green">{'› '}</text>
@@ -129,6 +138,6 @@ export function Transcript({ turns }: { turns: Turn[] }) {
           <AssistantTurn key={turn.id} turn={turn} />
         ),
       )}
-    </scrollbox>
+    </box>
   );
 }

@@ -12,7 +12,7 @@ in this repo beyond one thin proxy Worker.
 | Path | Role |
 |---|---|
 | `apps/chat-ui` (`@felix/chat-ui`) | Full streaming chat + harness inspector (React/Vite → Worker) |
-| `apps/tui` (`@felix/tui`) | Full-screen terminal chat client (Ink → Node) |
+| `apps/tui` (`@felix/tui`) | Full-screen terminal chat client (OpenTUI → Bun) |
 | `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
 | `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
 | `packages/felix-protocol` (`@felix/protocol`) | The wire contract — SSE reader + shared types |
@@ -55,13 +55,13 @@ the three blocking frames, plus the log-to-transcript rebuild, the reattach loop
 matching. `@felix/tui` covers what a terminal adds on its own: config precedence, the markdown
 splitter, the prompt-history file's cap and self-healing, the attention signals' focus gate, the
 editor round trip, the thread rail's scroll window, and the workspace executor's containment and
-settle guarantees — **not** its Ink components, which are verified by running it. The **one**
-exception is `tests/composer.test.ts`, which renders the real composer against real Ink because it
-pins — focus reports never reaching the prompt, and a paste arriving as one line that still waits for
-enter — is either invisible while you are looking at another window or a keystroke sequence no
-hand-run reproduces reliably. Two things about Ink 7 that tests there depend on: it reads stdin in
-paused mode, and a chunk carrying both text and Enter arrives as one `useInput` call with
-`key.return` **false**. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
+settle guarantees — **not** its rendered components, which are verified by running it. The **one**
+exception is `tests-bun/composer.test.ts`, which renders the real composer against the real renderer
+because what it pins is a keystroke sequence no hand-run reproduces reliably: a paste that submits
+itself halfway through when the terminal does not bracket it, and shift+Enter opening a line rather
+than sending. It runs under **`bun test`** rather than Vitest because rendering needs the native core;
+`apps/tui`'s `test` script is both, and everything else in the package stays pure and stays on
+Vitest. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
 signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
 (`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`). `tests/composer.test.tsx`
 covers what typing *costs*: a burst of keystrokes must not drive React past its update-depth limit,
@@ -287,11 +287,12 @@ browser cannot do rather than about the chat:
   the shared deadline. It resolves what the engine awaits but cannot cancel the work, so the write
   prompt carries its own shorter deadline and is cancelled on abort — otherwise a `y` pressed after
   the timeout still writes, long after the model was told the tool failed.
-- **One prompt owns the keyboard.** Ink delivers every keypress to *every* mounted `useInput`, so two
-  banners on screen means one `y` answers both — a local write and a gated harness-side tool. `App`
-  renders exactly one. The same rule is why the composer is disabled while the thread rail has focus:
-  otherwise `↑` would recall a prompt *and* move the rail cursor, and `enter` would send a message
-  *and* switch threads. The rail takes plain text as well — it filters itself by title while focused —
+- **One prompt owns the keyboard.** `useKeyboard` is a global subscription, so two banners on screen
+  means one `y` answers both — a local write and a gated harness-side tool. `App` renders exactly
+  one. What a handler *can* do is `preventDefault`: a global handler runs before the focused
+  renderable, so the banner that answers a key also stops it reaching the composer behind it. The
+  same rule is why the composer is disabled while the thread rail has focus: otherwise `↑` would
+  recall a prompt *and* move the rail cursor, and `enter` would send a message *and* switch threads. The rail takes plain text as well — it filters itself by title while focused —
   so it consumes every key it is handed and returns rather than falling through, which is why `esc`
   there clears the filter instead of stopping the run. Stopping stays on `ctrl+c`, handled above it.
   The rail is also **windowed**, not head-sliced: it drew its first twenty threads while the cursor
@@ -300,36 +301,49 @@ browser cannot do rather than about the chat:
 - **Looking away is a state.** `src/attention.ts` puts *working* / *blocked* / *idle* in the window
   title (always) and behind an `OSC 9` notification (only once the terminal has reported losing
   focus) — the terminal's half of chat-ui's `presence.ts`, states and messages matched. Focus comes
-  from `DECSET 1004`, and **the reports arrive as input**: Ink 7 hands `ESC [ I` / `ESC [ O` to
-  `useInput` as the plain text `[I` and `[O` with no key flags, so an unfiltered composer reads
-  `[Ohello[I` after you tab away and back. `isFocusReport` is that filter, and it works because the
-  module's own `data` listener sees the raw bytes first: Ink 7 reads stdin in **paused** mode
-  (`readable`, then `read()`), and `read()` emits `data` synchronously, so the report is recorded
-  before the same chunk reaches `useInput` as text. The reports are *input*, which costs a second
-  time: the request for them is written from an `App` effect (`begin`/`end`), never at construction,
-  because until Ink has raw mode on the tty **echoes** the terminal's reply and a literal `^[[I` is
-  printed into the first frame, where it stays for the session.
-- **A paste is not typing, and not a send.** `usePaste` puts the terminal into bracketed paste mode,
-  so the text arrives whole on its own channel — without it Ink hands the chunk to `useInput` with
-  the newlines still in it and no `return` flag, which is how a pasted paragraph used to land in the
-  message as control characters and never send. `flattenPaste` joins the lines with spaces (both
-  paths: a terminal that ignores bracketed paste still sends the text raw), and enter is still
-  required, because what reaches the model has to be what was read on screen.
-- **`ctrl+e` is the only way to write a paragraph.** The composer is one line with no cursor;
-  `src/editor.ts` runs `$VISUAL`/`$EDITOR` on a temp file inside Ink's `suspendTerminal`, which
-  hands over the terminal and restores it even if the callback throws. An unchanged or emptied file
-  returns nothing rather than sending an empty message.
+  from `DECSET 1004`, and **reading the reports is the renderer's job**: it parses `ESC [ I` /
+  `ESC [ O` itself and emits `focus` / `blur`, which `App` forwards to `attention.setFocus`. Under
+  Ink this module had to sniff raw stdin to keep the reports out of the prompt; that filter is gone.
+  *Asking* for them is still ours, because the renderer only requests reporting when the terminal
+  answers its capability query — and the request is still written from an `App` effect
+  (`begin`/`end`), never at construction, because until the renderer has raw mode on the tty
+  **echoes** the terminal's reply and a literal `^[[I` is printed into the first frame, where it
+  stays for the session.
+- **A paste is not typing, and not a send.** The paste event carries **bytes**, not a string, and it
+  arrives with the newlines intact; left alone the edit buffer strips them and runs the last word of
+  one line into the first of the next. It is preventable, which is the hook: intercept, `flattenPaste`
+  to join the lines with spaces, insert that. Enter is still required, because what reaches the model
+  has to be what was read on screen. The other half is `linefeed` bound to `newline` rather than
+  `submit` — a terminal that ignores bracketed paste delivers a copied paragraph as raw bytes with LF
+  in them, and a prompt that treats a bare linefeed as Enter sends half of it unseen. That is what
+  `tests-bun/composer.test.ts` pins.
+- **Enter is a binding, not a fight.** The renderer's defaults are the opposite of a chat prompt —
+  `return` inserts a newline, `meta+return` submits. `CHAT_BINDINGS` in the composer states what this
+  prompt means instead: Enter sends, **shift+Enter opens a line**. Shift+Enter needs the kitty
+  keyboard protocol (`useKittyKeyboard` in `main.tsx`), which is the only way a terminal reports that
+  modifier on Enter at all; a terminal without it keeps Enter-sends and loses only the second line.
+- **`ctrl+e` opens `$EDITOR`, and no longer has to.** The composer is a `textarea` over an edit buffer
+  with word motion, line kills, selection and undo already on it, so a paragraph can be written in
+  place. `src/editor.ts` still runs `$VISUAL`/`$EDITOR` on a temp file between `renderer.suspend()`
+  and `renderer.resume()` — the `resume` is in a `finally`, because an editor that exits non-zero must
+  not leave a client that has stopped drawing with no way back. An unchanged or emptied file returns
+  nothing rather than sending an empty message.
 - **The commands are the client's whole surface.** `@felix/client` reaches every chat verb the
   harness serves; a slash command is the only thing that exposes one here, so a verb with no `case`
   in `command()` — rename, fork, compact, export, rewind, search — is a verb this client does not
   have. `/rewind` hydrates first because `Turn.eventId` is only ever set from a snapshot.
-- Threads live in `$XDG_STATE_HOME/felix`. Ink redraws the whole tree per frame, so the transcript
-  renders only its tail.
-- No build step for `dev` (`tsx`); `build` is `vite build --ssr`, which inlines the raw-TS workspace
-  packages and externalises ink/react.
-- `apps/tui` declares `node >= 22` — Ink's floor, and what CI already runs. Ink also requires
-  React ≥ 19.2, which is now the whole workspace's version; for one release it was not, and the
-  split lived in a second *named* catalog until chat-ui could follow.
+- Threads live in `$XDG_STATE_HOME/felix`. The transcript is a `scrollbox` with `viewportCulling`, so
+  rows off screen take no part in layout — which is why it is no longer capped at a tail the way the
+  Ink version had to be.
+- **One layout rule that fails silently:** `<box>` defaults to `flexDirection="column"`. Ink's `<Box>`
+  defaulted to `row`, so a box carried over from that era without an explicit direction lays out wrong
+  rather than erroring.
+- No build step for `dev` (`bun run`); `build` is `bun build --target=bun`, which inlines the raw-TS
+  workspace packages and externalises `@opentui/*` and react — the renderer resolves a native binary
+  per platform, so bundling it fails on every platform but the one building.
+- **`apps/tui` runs on Bun, and only Bun.** The renderer reaches a native core over FFI, which Bun has
+  first-class (`bun:ffi`) and Node has only as `node:ffi`, experimental and flag-gated behind
+  `--experimental-ffi` from Node 26. The rest of the repo is unchanged and still Node.
 
 ### Unattended runs
 

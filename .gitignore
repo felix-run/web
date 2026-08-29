@@ -33,3 +33,10 @@ apps/docs/.astro/
 
 # Written and removed by scripts/check-tailwind-sources.mjs; only survives a killed run.
 apps/chat-ui/src/.check-tailwind-sources.tmp.css
+
+# Throwaway OpenTUI spike: its own bun install and captured terminal frames.
+apps/tui/spike/node_modules/
+apps/tui/spike/*.log
+apps/tui/spike/mouse.out
+apps/tui/spike/composer.out
+apps/tui/spike/composer.err
