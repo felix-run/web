@@ -11,6 +11,11 @@
  * ↑/↓ walk the prompt history. The draft in progress is kept aside on the way
  * in, so stepping back out of history returns what was being typed rather than
  * an empty line.
+ *
+ * ctrl+e hands the line to `$EDITOR`, which is the only way to write a
+ * paragraph here: there is no cursor to move and Enter sends. `isFocusReport`
+ * is the other half of terminal focus tracking — the reports arrive as ordinary
+ * text and would otherwise be typed into the prompt.
  */
 import { Box, Text, useInput } from 'ink';
 import { useState } from 'react';
@@ -21,11 +26,25 @@ export interface ComposerProps {
   onSubmit: (text: string) => void;
   /** Previously submitted lines, oldest first. */
   history?: string[];
+  /** Hand the line to an editor; resolves with the edit, or nothing. */
+  onEdit?: (value: string) => Promise<string | undefined>;
+  /** True when this text is the terminal reporting focus, not a keystroke. */
+  isFocusReport?: (input: string) => boolean;
   hint?: string;
 }
 
-export function Composer({ streaming, disabled, onSubmit, history = [], hint }: ComposerProps) {
+export function Composer({
+  streaming,
+  disabled,
+  onSubmit,
+  history = [],
+  onEdit,
+  isFocusReport,
+  hint,
+}: ComposerProps) {
   const [value, setValue] = useState('');
+  /** The editor owns the terminal while this is true; nothing else may. */
+  const [editing, setEditing] = useState(false);
   /** Index into `history`, or null while editing the draft. */
   const [recalled, setRecalled] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
@@ -72,6 +91,16 @@ export function Composer({ streaming, disabled, onSubmit, history = [], hint }: 
         setValue(history[recalled + 1] ?? '');
         return;
       }
+      if (key.ctrl && input === 'e') {
+        if (!onEdit) return;
+        setEditing(true);
+        void onEdit(value)
+          .then((next) => {
+            if (next !== undefined) edit(() => next);
+          })
+          .finally(() => setEditing(false));
+        return;
+      }
       if (key.backspace || key.delete) {
         edit((v) => v.slice(0, -1));
         return;
@@ -79,9 +108,9 @@ export function Composer({ streaming, disabled, onSubmit, history = [], hint }: 
       // Ctrl/meta chords belong to the app, not the text.
       if (key.ctrl || key.meta || key.escape || key.tab) return;
       if (key.leftArrow || key.rightArrow) return;
-      if (input) edit((v) => v + input);
+      if (input && !isFocusReport?.(input)) edit((v) => v + input);
     },
-    { isActive: !disabled },
+    { isActive: !disabled && !editing },
   );
 
   return (

@@ -13,7 +13,9 @@
  */
 import { render } from 'ink';
 import { App } from './app.js';
+import { createAttention } from './attention.js';
 import { insecureOrigin, resolveConfig, USAGE } from './config.js';
+import type { EpilogueSlot } from './epilogue.js';
 import { createPromptHistory } from './history.js';
 import { createThreadStore } from './threads.js';
 
@@ -40,14 +42,35 @@ if (!process.stdout.isTTY) {
   process.exit(1);
 }
 
+/**
+ * Before `render`, so the terminal is reporting focus from the first frame.
+ * Focus reports arrive on the same stdin Ink reads, and telling one from typed
+ * text depends on seeing the raw bytes first — which `attention.ts` explains,
+ * and `tests/composer.test.ts` pins.
+ */
+const attention = createAttention({
+  stdin: process.stdin,
+  stdout: process.stdout,
+  enabled: !process.env.FELIX_NO_NOTIFY,
+});
+
+const epilogue: EpilogueSlot = {};
+
 const { waitUntilExit } = render(
   <App
     config={config}
     store={createThreadStore()}
     history={createPromptHistory()}
+    attention={attention}
+    epilogue={epilogue}
     root={process.cwd()}
     {...(firstMessage ? { firstMessage } : {})}
   />,
 );
 
 await waitUntilExit();
+
+// Ink has restored the terminal; this is the only moment anything written here
+// survives on screen.
+attention.dispose();
+if (epilogue.text) process.stdout.write(`${epilogue.text}\n`);

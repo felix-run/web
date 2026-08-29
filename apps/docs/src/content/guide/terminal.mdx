@@ -83,6 +83,7 @@ correct against a harness running `FELIX_AUTH_MODE=none`.
 | `enter` | Send. **While a run is live this steers it** rather than starting a turn. |
 | `esc` | Stop the run (`POST /chat/abort`). |
 | `↑` / `↓` | Walk back through prompts you have sent; `↓` past the newest returns the line you were typing. |
+| `ctrl+e` | Open the line in `$VISUAL` or `$EDITOR`. Saving brings the text back to the prompt; it is not sent until you press enter. |
 | `tab` | Focus the thread rail; `↑`/`↓` and `enter` to switch. |
 | `ctrl+n` | New thread. |
 | `ctrl+c` | Stop a live run; again to quit. |
@@ -112,6 +113,30 @@ prompt, and `enter` picks a thread rather than sending what is typed.
 `/rewind` needs server event ids, which only arrive with a session snapshot, so it hydrates the
 thread from the harness before it moves anything — a thread streamed entirely in this process has no
 ids to rewind to until it does.
+
+## Writing more than a line
+
+The prompt is one line with no cursor — Ink ships no text input, and a real one is a component this
+client does not need. `ctrl+e` is the way to write a paragraph: it hands the terminal to
+`$VISUAL` or `$EDITOR` on a temp Markdown file seeded with whatever is already typed, and takes it
+back when the editor exits. Quitting without saving, or saving an empty file, leaves the prompt as it
+was — neither should turn into a sent message.
+
+## When you look away
+
+A run keeps going when the window does not have focus, and can block on an approval minutes later. So
+two signals, the same split the web UI makes:
+
+- **The window title** always reflects the run — `(...) Working`, `(!) Approve`, or `Felix`. It costs
+  nothing and it is what you see in a tab strip. The title stack is pushed on start and popped on
+  exit, so your shell's own title survives.
+- **A desktop notification** (`OSC 9`) fires *only* once the terminal has reported that it lost
+  focus. A terminal that never reports focus at all gets the title and nothing else: "we do not know"
+  is treated as "you might be watching", because the alternative is a bell every time a run ends
+  under your nose.
+
+Focus is tracked with `DECSET 1004`, which most modern terminals support and the rest ignore.
+`FELIX_NO_NOTIFY=1` turns the whole thing off — no title, no reporting, no bell.
 
 ## When the run is waiting
 
@@ -175,3 +200,11 @@ manifest a thread used.
 
 Each client takes an exclusive lease on the session it opens, so two clients on one thread is
 reported rather than raced — open the same thread in the web UI and the second one says so.
+
+On exit the screen goes with the client, so the last thing printed — into normal scrollback, after
+Ink has restored the terminal — is the thread you were in and the command that returns to it:
+
+```
+felix: Proxy worker routing
+  rejoin with: felix --thread 0f9c1e7a-…
+```
