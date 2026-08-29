@@ -54,9 +54,9 @@ parameterized suites in `@felix/test-kit`, which are the contract those surfaces
 the three blocking frames, plus the log-to-transcript rebuild, the reattach loop and the tool-card
 matching. `@felix/tui` covers what a terminal adds on its own: config precedence, the markdown
 splitter, the prompt-history file's cap and self-healing, the attention signals' focus gate, the
-editor round trip, and the workspace executor's containment and settle guarantees — **not** its Ink
-components, which are verified by running it. The **one** exception is
-`tests/composer.test.ts`, which renders the real composer against real Ink because the behaviour it
+editor round trip, the thread rail's scroll window, and the workspace executor's containment and
+settle guarantees — **not** its Ink components, which are verified by running it. The **one**
+exception is `tests/composer.test.ts`, which renders the real composer against real Ink because it
 pins — focus reports never reaching the prompt, and a paste arriving as one line that still waits for
 enter — is either invisible while you are looking at another window or a keystroke sequence no
 hand-run reproduces reliably. Two things about Ink 7 that tests there depend on: it reads stdin in
@@ -291,7 +291,12 @@ browser cannot do rather than about the chat:
   banners on screen means one `y` answers both — a local write and a gated harness-side tool. `App`
   renders exactly one. The same rule is why the composer is disabled while the thread rail has focus:
   otherwise `↑` would recall a prompt *and* move the rail cursor, and `enter` would send a message
-  *and* switch threads.
+  *and* switch threads. The rail takes plain text as well — it filters itself by title while focused —
+  so it consumes every key it is handed and returns rather than falling through, which is why `esc`
+  there clears the filter instead of stopping the run. Stopping stays on `ctrl+c`, handled above it.
+  The rail is also **windowed**, not head-sliced: it drew its first twenty threads while the cursor
+  ran the whole list, so past row twenty the selection moved with nothing on screen to show it and
+  `enter` opened a thread that had never been drawn.
 - **Looking away is a state.** `src/attention.ts` puts *working* / *blocked* / *idle* in the window
   title (always) and behind an `OSC 9` notification (only once the terminal has reported losing
   focus) — the terminal's half of chat-ui's `presence.ts`, states and messages matched. Focus comes

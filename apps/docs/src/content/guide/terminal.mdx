@@ -84,13 +84,23 @@ correct against a harness running `FELIX_AUTH_MODE=none`.
 | `esc` | Stop the run (`POST /chat/abort`). |
 | `↑` / `↓` | Walk back through prompts you have sent; `↓` past the newest returns the line you were typing. |
 | `ctrl+e` | Open the line in `$VISUAL` or `$EDITOR`. Saving brings the text back to the prompt; it is not sent until you press enter. |
-| `tab` | Focus the thread rail; `↑`/`↓` and `enter` to switch. |
+| `tab` | Focus the thread rail; `↑`/`↓` and `enter` to switch, `tab` again to leave. |
 | `ctrl+n` | New thread. |
 | `ctrl+c` | Stop a live run; again to quit. |
 | `y` / `n` | Answer whatever is blocking the run. |
 
+What these keys do at any moment is written along the bottom of the screen, beside the manifest and
+origin — the rail's bindings included, which is where it matters most, because the prompt's own hint
+is not drawn while the rail has focus.
+
 The rail takes the keyboard whole while it has focus, so `↑` moves its cursor rather than recalling a
-prompt, and `enter` picks a thread rather than sending what is typed.
+prompt, and `enter` picks a thread rather than sending what is typed. **Typing filters it**, over
+titles, locally and instantly — `esc` clears the filter and a second `esc` leaves the rail. It opens
+on the thread you have open rather than at the top, and scrolls to keep the cursor on screen however
+many threads the harness returns. `esc` does not stop a run while the rail is focused; `ctrl+c`
+still does, from anywhere.
+
+The rail is only drawn on a terminal at least 90 columns wide, and `tab` does nothing below that.
 
 ## Slash commands
 
@@ -108,7 +118,17 @@ prompt, and `enter` picks a thread rather than sending what is typed.
 | `/rewind [n]` | Move the active leaf back `n` turns (default 1). Later turns come off the branch rather than being deleted. |
 | `/search <text>` | Full-text across every thread the harness holds. |
 | `/open <n\|id>` | Open a numbered hit from the last `/search`, or a thread by id. |
+| `/refresh` | Re-read the thread list from the harness. |
 | `/quit` | |
+
+`/search` and the rail's filter answer different questions. `/search` is the harness's full-text
+search over message *bodies* — a round trip, and the way to find a conversation by something said in
+it. The filter is over the titles already on screen, needs nothing from the network, and answers
+"which of these".
+
+The thread list is read at startup and after anything that changes it here. A thread started in
+another client — the web app, a second terminal — exists, but this process has no way to hear about
+it until `/refresh`.
 
 `/rewind` needs server event ids, which only arrive with a session snapshot, so it hydrates the
 thread from the harness before it moves anything — a thread streamed entirely in this process has no

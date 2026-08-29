@@ -23,7 +23,7 @@ import {
 } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Attention } from './attention.js';
 import { authHeaders, type Config } from './config.js';
 import { editorCommand, openEditor } from './editor.js';
@@ -57,7 +57,7 @@ const SEARCH_LIMIT = 5;
 const HELP = [
   '/new /clear /continue /think <level> /manifest [name] /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n]',
-  '/search <text> /open <n|thread-id>',
+  '/search <text> /open <n|thread-id> /refresh',
 ].join('\n');
 
 /** A hit, a title, a path — one line each, because a notice is one line each. */
@@ -85,6 +85,12 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
   const [manifest, setManifest] = useState(config.manifest);
   const [railFocused, setRailFocused] = useState(false);
   const [railCursor, setRailCursor] = useState(0);
+  /**
+   * Narrows the rail as you type, while it has focus. Titles only, and local:
+   * `/search` is the harness's full-text search over message *bodies*, which is
+   * a round trip and a different question. This one answers "which of these".
+   */
+  const [railFilter, setRailFilter] = useState('');
   const [uiResolving, setUiResolving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [quitArmed, setQuitArmed] = useState(false);
@@ -173,6 +179,18 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
   );
   const pending = approvals[0] ?? null;
   const blocked = Boolean(pending || uiPrompt || writePrompt);
+
+  /** What the rail draws and what enter picks — the same list, always. */
+  const visibleThreads = useMemo(() => {
+    const query = railFilter.trim().toLowerCase();
+    if (!query) return threads;
+    return threads.filter((thread) =>
+      `${thread.title ?? ''} ${thread.id}`.toLowerCase().includes(query),
+    );
+  }, [threads, railFilter]);
+
+  /** Below this the rail is not drawn, so there is nothing to give focus to. */
+  const wide = (stdout?.columns ?? 80) >= 90;
 
   // Persist at every change; a terminal can be closed at any moment and the
   // local copy is the only transcript an anonymous caller gets back.
@@ -312,6 +330,12 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
       turns,
     ],
   );
+
+  /** Leaving the rail leaves its filter behind with it. */
+  const closeRail = useCallback(() => {
+    setRailFocused(false);
+    setRailFilter('');
+  }, []);
 
   const newThread = useCallback(() => {
     engine.abort();
@@ -527,6 +551,12 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
           selectThread(id);
           return;
         }
+        case 'refresh':
+          // This process is not the only client writing to the harness — a
+          // thread started in another window exists, and until this runs the
+          // rail has no way to have heard of it.
+          void refreshThreads().then(() => setNotice('threads refreshed'));
+          return;
         case 'quit':
           exit();
           return;
@@ -590,6 +620,48 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
       return;
     }
     if (blocked) return;
+    // The rail takes the keyboard whole while it has focus — the same rule the
+    // composer follows, for the same reason: Ink hands every keypress to every
+    // mounted handler, so a key that means two things does both. Stopping a run
+    // stays reachable throughout, because ctrl+c is handled above this line.
+    if (railFocused) {
+      if (key.tab || (key.escape && !railFilter)) {
+        closeRail();
+        return;
+      }
+      if (key.escape) {
+        setRailFilter('');
+        if (railCursor !== 0) setRailCursor(0);
+        return;
+      }
+      if (key.upArrow) {
+        setRailCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setRailCursor((c) => Math.max(0, Math.min(visibleThreads.length - 1, c + 1)));
+        return;
+      }
+      if (key.return) {
+        const target = visibleThreads[railCursor];
+        if (target) selectThread(target.id);
+        closeRail();
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setRailFilter((f) => f.slice(0, -1));
+        if (railCursor !== 0) setRailCursor(0);
+        return;
+      }
+      // Chords belong to the app; arrows that are not up or down mean nothing
+      // to a one-column list. Everything else is filter text.
+      if (key.ctrl || key.meta || key.leftArrow || key.rightArrow) return;
+      if (input) {
+        setRailFilter((f) => f + input);
+        if (railCursor !== 0) setRailCursor(0);
+      }
+      return;
+    }
     if (key.escape && streaming) {
       engine.abort();
       cancelWrite();
@@ -598,34 +670,41 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
       return;
     }
     if (key.tab) {
-      setRailFocused((f) => !f);
+      if (!wide) return;
+      // Open on the thread that is open, rather than on row zero with the
+      // marker somewhere further down.
+      const index = threads.findIndex((thread) => thread.id === threadIdRef.current);
+      setRailCursor(index >= 0 ? index : 0);
+      setRailFocused(true);
       return;
     }
     if (key.ctrl && input === 'n') {
       newThread();
-      return;
-    }
-    if (!railFocused) return;
-    if (key.upArrow) setRailCursor((c) => Math.max(0, c - 1));
-    if (key.downArrow) setRailCursor((c) => Math.min(threads.length - 1, c + 1));
-    if (key.return) {
-      const target = threads[railCursor];
-      if (target) selectThread(target.id);
-      setRailFocused(false);
     }
   });
 
-  const wide = (stdout?.columns ?? 80) >= 90;
+  /**
+   * What the keys do *now*. The rail case is the one that earns this: while it
+   * has focus the composer is disabled and its own hint is not drawn, which is
+   * exactly the moment the bindings are least guessable.
+   */
+  const hint = railFocused
+    ? '↑↓ select · enter open · type to filter · esc clear · tab back'
+    : streaming
+      ? 'esc stop · tab threads · ctrl+e editor'
+      : 'tab threads · ctrl+n new · ctrl+e editor · /help';
 
   return (
     <Box flexDirection="column" paddingX={1}>
       <Box>
         {wide ? (
           <ThreadRail
-            threads={threads}
+            threads={visibleThreads}
             activeId={threadId}
             cursor={railCursor}
             focused={railFocused}
+            filter={railFilter}
+            total={threads.length}
           />
         ) : null}
         <Box flexDirection="column" flexGrow={1}>
@@ -695,10 +774,10 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
         manifest={manifest}
         origin={config.origin}
         phase={phase}
-        streaming={streaming}
         reattaching={reattaching}
         error={error}
         root={root}
+        hint={hint}
       />
     </Box>
   );
