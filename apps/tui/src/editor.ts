@@ -1,15 +1,16 @@
 /**
  * The editor escape hatch.
  *
- * The composer is one line with no cursor — deliberately, because Ink ships no
- * text input and a real one is a component this client does not need. What it
- * does need is a way to write a paragraph, and the terminal already has one:
- * whatever `$VISUAL` or `$EDITOR` names.
+ * The composer is a real editor now — a cursor, word motion, shift+enter for a
+ * second line — so this is no longer the *only* way to write a paragraph. It is
+ * still the way to write a long one, in the tool you already know, and the
+ * terminal has always had that: whatever `$VISUAL` or `$EDITOR` names.
  *
- * Ink hands the terminal over itself (`suspendTerminal`), so the only work here
- * is the file: write what is in the composer, run the editor on it, read it
- * back. The temp file is removed whether or not the editor succeeded — an
- * abandoned edit is not a reason to leave a prompt lying in /tmp.
+ * The caller hands the terminal over (`renderer.suspend()`, resumed in a
+ * `finally`), so the only work here is the file: write what is in the composer,
+ * run the editor on it, read it back. The temp file is removed whether or not
+ * the editor succeeded — an abandoned edit is not a reason to leave a prompt
+ * lying in /tmp.
  */
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
