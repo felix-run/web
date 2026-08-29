@@ -479,6 +479,19 @@ With the secret unset the route is available **only** when `FELIX_AUTH_MODE=none
 otherwise it returns `503 consumer_shared_secret_required`. Content is screened, so a hostile payload
 gets `422 content_screening_denied`.
 
+`session_id` is the **full, tenant-prefixed** thread id as it appears in the queue envelope
+(`{tenant}:{suffix}`, or `{tenant}:fiber:{id}` for a durable run) — not a bare suffix. It must belong
+to the tenant the consumer's own credential names, or the write is refused with
+`403 thread_not_in_tenant`. Every other route composes a thread id from a client suffix and the
+caller's tenant; this one receives one already built, so it checks ownership instead.
+
+<Aside type="caution">
+  If your consumer credential carries no tenant it resolves to `default`, and it can then only write
+  back to `default:` threads. That combination used to file every tenant's write-backs into `default`
+  silently; it now fails loudly. Give the consumer a credential scoped to the tenant whose work it
+  processes.
+</Aside>
+
 ## Manifest variants
 
 There is **no request header that selects a variant**. When a canary is active, the harness picks a
