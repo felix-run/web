@@ -332,6 +332,11 @@ browser cannot do rather than about the chat:
   harness serves; a slash command is the only thing that exposes one here, so a verb with no `case`
   in `command()` — rename, fork, compact, export, rewind, search — is a verb this client does not
   have. `/rewind` hydrates first because `Turn.eventId` is only ever set from a snapshot.
+- **Reading a frame back is possible, and not obvious.** `apps/tui/scripts/screen.py` replays an
+  alt-screen capture into a grid, which is how a rendered component gets checked without a person
+  watching (`script` under a pty, then the script). Stripping the escapes and reading the log
+  instead does not work and fails *convincingly*: the renderer draws with absolute cursor moves, so
+  removing them collapses the frame onto one line and unrelated components appear to overlap.
 - Threads live in `$XDG_STATE_HOME/felix`. The transcript is a `scrollbox` with `viewportCulling`, so
   rows off screen take no part in layout — which is why it is no longer capped at a tail the way the
   Ink version had to be.
