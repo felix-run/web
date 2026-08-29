@@ -28,6 +28,7 @@ import { reportReachability } from '@/lib/connection';
 import { authHeaders, handleUnauthorized } from './lib/auth';
 import type {
   AgentCard,
+  ArtifactContent,
   AuditEvent,
   AuditEventWire,
   EvalDataset,
@@ -166,6 +167,36 @@ export async function listUsage(
   const res = await apiFetch(`/api/usage?${q}`);
   if (!res.ok) throw new Error(`usage: ${res.status}`);
   return (await res.json()) as { items: UsageEvent[]; next_cursor: string | null };
+}
+
+// --- Spilled tool outputs (/artifacts) ---
+
+/**
+ * GET /artifacts/{manifest_id}/{artifact_id} → the full text behind a marker.
+ *
+ * A manifest with artifact spilling on replaces any oversized tool result with a
+ * preview and a reference. The preview is what the transcript shows, so until
+ * this is called the rest of that output is stored, addressed, and unreachable —
+ * which is the state the harness route was added to end, and which no client
+ * here had left it.
+ *
+ * The tenant is not a parameter. It comes from the caller's own credentials
+ * upstream, which is what stops one tenant naming another's artifact however the
+ * reference is spelled. Reads need the `artifacts:read` scope, so a 403 here is
+ * a narrow key rather than a missing artifact — the same trap `/memory` sets.
+ */
+export async function getArtifact(
+  manifestId: string,
+  artifactId: string,
+): Promise<ArtifactContent> {
+  const res = await apiFetch(
+    `/api/artifacts/${encodeURIComponent(manifestId)}/${encodeURIComponent(artifactId)}`,
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`artifact: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as ArtifactContent;
 }
 
 // --- Long-term memory (/memory) ---

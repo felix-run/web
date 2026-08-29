@@ -26,6 +26,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `manifests:read` / `manifests:write` | read manifests / publish, canary, rollback |
 | `eval:read` / `eval:write` | read datasets and runs / write and run them |
 | `usage:read` | `/usage` |
+| `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 
 Three rules make this practical:
 
@@ -174,6 +175,29 @@ The `deep` pattern records a plan and its step transitions.
 
 `PUT` takes `{plan, manifest_id, expires_at}` where `plan` is the plan document and `expires_at` is
 epoch ms. `limit` is 1–200, default 50.
+
+## Artifacts
+
+A manifest with `artifacts.enabled` spills any tool result longer than its threshold to the object
+store and replaces it in the transcript with a preview and a reference:
+
+```
+…[artifact:5f2c… key=artifacts/acme/quick/5f2c….txt chars=41302 spilled_at=1756000000]
+```
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/artifacts/{manifest_id}/{artifact_id}` | `artifacts:read` |
+
+Returns `{artifact_id, manifest_id, chars, content}`.
+
+**The tenant is in the key and is not a parameter.** It comes from your own credentials, so no
+spelling of a reference reaches another tenant's data — while the manifest, which is needed to locate
+the object, is validated rather than trusted. A reference that is not well-formed is reported as
+`404`, not as malformed: which references are valid is not a caller's business.
+
+The web UI reads these markers off tool output and offers the rest of the result behind a **Show full
+output** control on the tool card, fetched on request rather than on render.
 
 ## Jobs
 

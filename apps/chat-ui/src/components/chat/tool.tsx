@@ -1,9 +1,12 @@
+import { describeError } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { CheckCircle2Icon, ChevronDownIcon, LoaderIcon, WrenchIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { getArtifact } from '@/api';
 import { cn } from '@/lib/utils';
-import type { ToolCall } from '@/types';
+import { type ArtifactRef, parseArtifactMarker, type ToolCall } from '@/types';
 
 /**
  * Collapsible tool-call card driven by SSE `ToolCall.done`.
@@ -57,17 +60,80 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
 }
 
 function Field({ label, value, emphasis }: { label: string; value: unknown; emphasis?: boolean }) {
+  const text = render(value);
+  const spilled = parseArtifactMarker(text);
   return (
     <div>
       <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
+      {spilled ? (
+        <SpilledOutput ref_={spilled} />
+      ) : (
+        <pre
+          className={cn(
+            'max-h-64 overflow-auto rounded-lg bg-background p-2.5 text-xs leading-relaxed',
+            emphasis ? 'text-foreground' : 'text-muted-foreground',
+          )}
+        >
+          {text}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A tool result the harness spilled to the object store.
+ *
+ * What the transcript holds is a preview and a reference; the rest is stored and
+ * reachable only through `/artifacts`. Showing the marker as though it were
+ * output — which is what happened before this — tells the operator that a
+ * result was truncated and nothing about how to see it.
+ *
+ * Fetched on request rather than on render: a long transcript can hold many of
+ * these, and the whole point is that they are big.
+ */
+function SpilledOutput({ ref_ }: { ref_: ArtifactRef }) {
+  const [full, setFull] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    setError(null);
+    getArtifact(ref_.manifestId, ref_.artifactId)
+      .then((artifact) => setFull(artifact.content ?? ''))
+      .catch((err) => setError(describeError(err, 'read this tool output').message))
+      .finally(() => setLoading(false));
+  };
+
+  const shown = full ?? ref_.preview;
+  return (
+    <div className="space-y-1.5">
       <pre
         className={cn(
-          'max-h-64 overflow-auto rounded-lg bg-background p-2.5 text-xs leading-relaxed',
-          emphasis ? 'text-foreground' : 'text-muted-foreground',
+          'overflow-auto rounded-lg bg-background p-2.5 text-xs leading-relaxed text-foreground',
+          full ? 'max-h-96' : 'max-h-64',
         )}
       >
-        {render(value)}
+        {shown}
       </pre>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span>
+          {full
+            ? `${ref_.chars.toLocaleString()} chars`
+            : `${ref_.chars.toLocaleString()} chars, ${ref_.preview.length.toLocaleString()} shown`}
+        </span>
+        {full ? (
+          <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => setFull(null)}>
+            Show preview
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" className="h-6 px-2" disabled={loading} onClick={load}>
+            {loading ? 'Loading…' : 'Show full output'}
+          </Button>
+        )}
+      </div>
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }
