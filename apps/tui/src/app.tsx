@@ -24,7 +24,10 @@ import {
 import type { ThinkingLevel } from '@felix/protocol';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { Attention } from './attention.js';
 import { authHeaders, type Config } from './config.js';
+import { editorCommand, openEditor } from './editor.js';
+import { type EpilogueSlot, formatEpilogue } from './epilogue.js';
 import { explainError } from './errors.js';
 import type { PromptHistory } from './history.js';
 import type { ThreadStore } from './threads.js';
@@ -67,12 +70,14 @@ export interface AppProps {
   config: Config;
   store: ThreadStore;
   history: PromptHistory;
+  attention: Attention;
+  epilogue: EpilogueSlot;
   root: string;
   firstMessage?: string;
 }
 
-export function App({ config, store, history, root, firstMessage }: AppProps) {
-  const { exit } = useApp();
+export function App({ config, store, history, attention, epilogue, root, firstMessage }: AppProps) {
+  const { exit, suspendTerminal } = useApp();
   const { stdout } = useStdout();
 
   const [threadId, setThreadId] = useState(() => config.thread ?? crypto.randomUUID());
@@ -222,6 +227,25 @@ export function App({ config, store, history, root, firstMessage }: AppProps) {
     };
   }, [client, threadId]);
 
+  // The window title says what the run is doing whether or not anyone is here;
+  // the notification behind it fires only once the terminal reports it lost
+  // focus. Same three states as the browser's presence signals.
+  useEffect(() => {
+    attention.set(blocked ? 'blocked' : streaming ? 'working' : 'idle');
+  }, [attention, blocked, streaming]);
+
+  // Left behind when the screen is: this is the only record of which thread was
+  // open, and `--thread` is what takes it back.
+  useEffect(() => {
+    epilogue.text = formatEpilogue({
+      threadId,
+      turns: turns.length,
+      ...(threads.find((t) => t.id === threadId)?.title
+        ? { title: threads.find((t) => t.id === threadId)?.title }
+        : {}),
+    });
+  }, [epilogue, threadId, threads, turns.length]);
+
   // A gated tool blocks the run and the harness does not reliably announce it
   // on the stream. Without this the card sits on 'running' forever.
   useEffect(() => {
@@ -298,6 +322,31 @@ export function App({ config, store, history, root, firstMessage }: AppProps) {
       void hydrate(id);
     },
     [cancelWrite, engine, hydrate, store],
+  );
+
+  /**
+   * Hand the composer's line to `$EDITOR`. Ink's `suspendTerminal` gives the
+   * terminal to the child and restores it afterwards even if this throws, so
+   * the only failure left to report is the editor's own.
+   */
+  const editPrompt = useCallback(
+    async (value: string) => {
+      if (!editorCommand()) {
+        setNotice('set $EDITOR or $VISUAL to write a prompt in an editor');
+        return undefined;
+      }
+      let edited: string | undefined;
+      try {
+        await suspendTerminal(async () => {
+          edited = await openEditor({ value, cwd: root });
+        });
+      } catch (err) {
+        setNotice(`editor: ${err instanceof Error ? err.message : String(err)}`);
+        return undefined;
+      }
+      return edited;
+    },
+    [root, suspendTerminal],
   );
 
   const command = useCallback(
@@ -514,6 +563,8 @@ export function App({ config, store, history, root, firstMessage }: AppProps) {
   }, [firstMessage, submit]);
 
   useInput((input, key) => {
+    // Focus reports reach `useInput` as ordinary text; they are not keys.
+    if (attention.isFocusReport(input)) return;
     if (key.ctrl && input === 'c') {
       if (quitArmed || !streaming) {
         exit();
@@ -626,7 +677,9 @@ export function App({ config, store, history, root, firstMessage }: AppProps) {
         disabled={blocked || railFocused}
         onSubmit={submit}
         history={recent}
-        hint={streaming ? 'steer the run…' : 'ask, or /help'}
+        onEdit={editPrompt}
+        isFocusReport={attention.isFocusReport}
+        hint={streaming ? 'steer the run…' : 'ask, /help, ctrl+e to open $EDITOR'}
       />
       <StatusLine
         manifest={manifest}

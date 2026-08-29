@@ -53,8 +53,12 @@ parameterized suites in `@felix/test-kit`, which are the contract those surfaces
 `@felix/client` covers the run loop at the wire: frames into `applyEvent`, transcript out, including
 the three blocking frames, plus the log-to-transcript rebuild, the reattach loop and the tool-card
 matching. `@felix/tui` covers what a terminal adds on its own: config precedence, the markdown
-splitter, the prompt-history file's cap and self-healing, and the workspace executor's containment
-and settle guarantees — **not** its Ink components, which are verified by running it. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
+splitter, the prompt-history file's cap and self-healing, the attention signals' focus gate, the
+editor round trip, and the workspace executor's containment and settle guarantees — **not** its Ink
+components, which are verified by running it. The **one** exception is
+`tests/composer.test.ts`, which renders the real composer against real Ink because the behaviour it
+pins — focus reports never reaching the prompt — only happens while you are looking at another
+window, and so cannot be caught by running the client. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
 signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
 (`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`). `tests/composer.test.tsx`
 covers what typing *costs*: a burst of keystrokes must not drive React past its update-depth limit,
@@ -272,6 +276,18 @@ browser cannot do rather than about the chat:
   renders exactly one. The same rule is why the composer is disabled while the thread rail has focus:
   otherwise `↑` would recall a prompt *and* move the rail cursor, and `enter` would send a message
   *and* switch threads.
+- **Looking away is a state.** `src/attention.ts` puts *working* / *blocked* / *idle* in the window
+  title (always) and behind an `OSC 9` notification (only once the terminal has reported losing
+  focus) — the terminal's half of chat-ui's `presence.ts`, states and messages matched. Focus comes
+  from `DECSET 1004`, and **the reports arrive as input**: Ink 7 hands `ESC [ I` / `ESC [ O` to
+  `useInput` as the plain text `[I` and `[O` with no key flags, so an unfiltered composer reads
+  `[Ohello[I` after you tab away and back. `isFocusReport` is that filter, and it is only sound
+  because `main.tsx` creates the module *before* `render` — Node runs data listeners in registration
+  order, so a genuine report is always seen before Ink turns the same chunk into text.
+- **`ctrl+e` is the only way to write a paragraph.** The composer is one line with no cursor;
+  `src/editor.ts` runs `$VISUAL`/`$EDITOR` on a temp file inside Ink's `suspendTerminal`, which
+  hands over the terminal and restores it even if the callback throws. An unchanged or emptied file
+  returns nothing rather than sending an empty message.
 - **The commands are the client's whole surface.** `@felix/client` reaches every chat verb the
   harness serves; a slash command is the only thing that exposes one here, so a verb with no `case`
   in `command()` — rename, fork, compact, export, rewind, search — is a verb this client does not
