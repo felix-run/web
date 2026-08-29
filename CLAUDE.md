@@ -57,8 +57,11 @@ splitter, the prompt-history file's cap and self-healing, the attention signals'
 editor round trip, and the workspace executor's containment and settle guarantees — **not** its Ink
 components, which are verified by running it. The **one** exception is
 `tests/composer.test.ts`, which renders the real composer against real Ink because the behaviour it
-pins — focus reports never reaching the prompt — only happens while you are looking at another
-window, and so cannot be caught by running the client. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
+pins — focus reports never reaching the prompt, and a paste arriving as one line that still waits for
+enter — is either invisible while you are looking at another window or a keystroke sequence no
+hand-run reproduces reliably. Two things about Ink 7 that tests there depend on: it reads stdin in
+paused mode, and a chunk carrying both text and Enter arrives as one `useInput` call with
+`key.return` **false**. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
 signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
 (`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`). `tests/composer.test.tsx`
 covers what typing *costs*: a burst of keystrokes must not drive React past its update-depth limit,
@@ -285,6 +288,12 @@ browser cannot do rather than about the chat:
   module's own `data` listener sees the raw bytes first: Ink 7 reads stdin in **paused** mode
   (`readable`, then `read()`), and `read()` emits `data` synchronously, so the report is recorded
   before the same chunk reaches `useInput` as text.
+- **A paste is not typing, and not a send.** `usePaste` puts the terminal into bracketed paste mode,
+  so the text arrives whole on its own channel — without it Ink hands the chunk to `useInput` with
+  the newlines still in it and no `return` flag, which is how a pasted paragraph used to land in the
+  message as control characters and never send. `flattenPaste` joins the lines with spaces (both
+  paths: a terminal that ignores bracketed paste still sends the text raw), and enter is still
+  required, because what reaches the model has to be what was read on screen.
 - **`ctrl+e` is the only way to write a paragraph.** The composer is one line with no cursor;
   `src/editor.ts` runs `$VISUAL`/`$EDITOR` on a temp file inside Ink's `suspendTerminal`, which
   hands over the terminal and restores it even if the callback throws. An unchanged or emptied file
