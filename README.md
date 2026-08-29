@@ -11,9 +11,11 @@ in `packages/ui` (`@felix/ui`).
 | Path | Role |
 |------|------|
 | `apps/chat-ui` | Streaming chat + inspector (Vite → CF Workers) |
+| `apps/tui` | Full-screen terminal client (OpenTUI → Bun) — [README](apps/tui/README.md) |
 | `apps/docs` | Starlight docs site (`@felix/docs`) → CF Workers |
 | `packages/ui` | Shared [shadcn/ui](https://ui.shadcn.com/) components |
 | `packages/felix-protocol` | The harness wire contract — SSE reader + shared types |
+| `packages/felix-client` | Headless chat client — transport, transcript model, the one `StreamEvent` switch |
 | `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
 | `packages/design` | Neutral palette + theme-CSS builders (generates the docs theme) |
 | `packages/test-kit` | Reusable behavioral suites (proxy Worker contract, SSE reader) |
@@ -27,12 +29,13 @@ the known, unaddressed work, with the evidence for each item recorded beside it.
 ```bash
 pnpm install
 pnpm chat:dev          # Vite → proxies /api to Python Felix :8080
+pnpm tui:dev           # terminal client, straight to FELIX_ORIGIN (needs Bun)
 pnpm docs:dev
 pnpm build             # turbo run build
 pnpm lint              # turbo → biome
 pnpm format            # biome format
 pnpm check-types
-pnpm test              # turbo → vitest
+pnpm test              # turbo → vitest, and bun test for apps/tui
 pnpm sync:theme        # regenerate apps/docs theme.css from @felix/design tokens
 ```
 
