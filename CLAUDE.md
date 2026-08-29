@@ -249,8 +249,11 @@ browser cannot do rather than about the chat:
 
 - **No proxy, no shared key.** `/api/*` and `x-chat-key` exist because a page cannot reach the
   harness (no CORS, no static assets). This process calls `FELIX_ORIGIN` directly with
-  `Authorization: Bearer`, resolved by `src/config.ts` — flag, then environment, then
-  `~/.config/felix/config.json`.
+  `Authorization: Bearer`, resolved by `src/config.ts` narrowest first: flag, environment, the
+  checkout's `apps/chat-ui/.dev.vars`, then `~/.config/felix/config.json`. `.dev.vars` is in that
+  list on purpose — it is the repo's *one* local secrets file, and a second client ignoring it made
+  that three. It is found from the module's own path, never by walking up from `cwd`, which would
+  read whatever credentials an unrelated parent directory happened to hold.
 - **Client tools hit the real filesystem** — the one surface here where the *model* drives the
   user's disk. `src/workspace.ts` answers `tool_request` against `process.cwd()`. Every path goes
   through `resolveWithin`, which compares **real** paths and refuses a *broken* symlink outright:

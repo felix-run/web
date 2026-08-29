@@ -7,13 +7,16 @@
  * `Authorization: Bearer`, which is why the shared-key gate has no counterpart
  * in this app.
  *
- * Precedence, narrowest first: a flag beats the environment, and the
- * environment beats the config file. The file exists so the common case is
- * `felix` with no arguments.
+ * Precedence is narrowest first, in the sense of how many runs a source
+ * affects: a flag (this one) beats the environment (this shell), which beats
+ * the checkout's `.dev.vars` (this clone), which beats `~/.config` (this
+ * machine). The point of the last two is that the common case — `pnpm tui:dev`
+ * in a checkout, or `felix` anywhere else — needs no arguments at all.
  */
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export interface Config {
   origin: string;
@@ -34,6 +37,74 @@ export const DEFAULT_MANIFEST = 'quick';
 export function configPath(env: NodeJS.ProcessEnv = process.env): string {
   const base = env.XDG_CONFIG_HOME?.trim() || join(homedir(), '.config');
   return join(base, 'felix', 'config.json');
+}
+
+/**
+ * The harness key a checkout already has.
+ *
+ * `apps/chat-ui/.dev.vars` is this repo's one local secrets file — `wrangler
+ * dev` reads it, and so does the Vite dev proxy, deliberately, so that local
+ * development has one such file rather than two. This client ignoring it made
+ * that three: `pnpm tui:dev` 401'd on every call until the key was exported by
+ * hand, for no reason a person could see.
+ *
+ * Located from **this module**, not from the working directory. The TUI runs
+ * wherever the user happens to be, and walking up from `cwd` looking for a file
+ * full of credentials would read whatever an unrelated parent directory
+ * happened to contain. Walking up from the source means it finds the checkout
+ * it is part of, or nothing.
+ */
+export function devVarsPath(from = fileURLToPath(import.meta.url)): string | null {
+  let dir = dirname(from);
+  // apps/tui/src → apps/tui → apps → <root>, with room for a build layout.
+  for (let up = 0; up < 6; up++) {
+    const candidate = join(dir, 'apps', 'chat-ui', '.dev.vars');
+    try {
+      readFileSync(candidate, 'utf8');
+      return candidate;
+    } catch {
+      // keep climbing
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * `KEY=value` lines, the format wrangler and the dev proxy already agree on.
+ *
+ * Only the three names this client understands are read; everything else in
+ * that file belongs to the harness or the Worker and is none of its business.
+ */
+export function readDevVars(path: string | null = devVarsPath()): Partial<Config> {
+  if (!path) return {};
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    return {};
+  }
+  const values = new Map<string, string>();
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed
+      .slice(eq + 1)
+      .trim()
+      .replace(/^['"]|['"]$/g, '');
+    if (value) values.set(key, value);
+  }
+  // `FELIX_AUTH_API_KEYS` is the harness's own spelling of the same secret, and
+  // what `make up` writes — the dev proxy accepts it for that reason, so this
+  // does too.
+  const apiKey = values.get('FELIX_API_KEY') ?? values.get('FELIX_AUTH_API_KEYS');
+  const origin = values.get('FELIX_ORIGIN');
+  return { ...(apiKey ? { apiKey } : {}), ...(origin ? { origin } : {}) };
 }
 
 /** Missing or unreadable is not an error: the file is a convenience, not a requirement. */
@@ -95,22 +166,36 @@ export function parseArgs(argv: string[]): ParsedArgs {
   return { flags, rest };
 }
 
+/** The file readers, injectable so a test never depends on the machine it runs on. */
+export interface ConfigSources {
+  /** `~/.config/felix/config.json`. */
+  userConfig?: (path: string) => Partial<Config>;
+  /** The checkout's `apps/chat-ui/.dev.vars`, if this is running from one. */
+  devVars?: () => Partial<Config>;
+}
+
 export function resolveConfig(
   argv: string[],
   env: NodeJS.ProcessEnv = process.env,
-  readFile: (path: string) => Partial<Config> = readConfigFile,
+  sources: ConfigSources = {},
 ): { config: Config; firstMessage?: string } {
   const { flags, rest } = parseArgs(argv);
-  const file = readFile(configPath(env));
+  const file = (sources.userConfig ?? readConfigFile)(configPath(env));
+  const dev = (sources.devVars ?? (() => readDevVars()))();
   const str = (name: string) =>
     typeof flags[name] === 'string' ? (flags[name] as string) : undefined;
 
-  const origin = str('origin') ?? env.FELIX_ORIGIN?.trim() ?? file.origin ?? DEFAULT_ORIGIN;
+  const origin =
+    str('origin') ?? env.FELIX_ORIGIN?.trim() ?? dev.origin ?? file.origin ?? DEFAULT_ORIGIN;
   // `FELIX_AUTH_API_KEYS` is the harness's own spelling of the same secret, and
   // it is what people carry across from a compose file. Accepted for the same
   // reason the dev proxy accepts it.
   const apiKey =
-    str('key') ?? env.FELIX_API_KEY?.trim() ?? env.FELIX_AUTH_API_KEYS?.trim() ?? file.apiKey;
+    str('key') ??
+    env.FELIX_API_KEY?.trim() ??
+    env.FELIX_AUTH_API_KEYS?.trim() ??
+    dev.apiKey ??
+    file.apiKey;
 
   return {
     config: {
@@ -167,8 +252,10 @@ usage: felix [options] [message]
   --insecure          allow the key over plaintext http to a remote origin
   --help              this
 
-The key is read from the environment or the config file by preference: an
-argument to --key is visible in ps(1) to every user on this machine.
+The key is read from the environment or a file by preference: an argument to
+--key is visible in ps(1) to every user on this machine.
 
-Config file: ~/.config/felix/config.json — {"origin":…,"apiKey":…,"manifest":…}
+Sources, in order: flag, environment, the checkout's apps/chat-ui/.dev.vars
+(when running from one), then ~/.config/felix/config.json —
+{"origin":…,"apiKey":…,"manifest":…}
 `;
