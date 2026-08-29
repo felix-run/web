@@ -27,7 +27,7 @@ Tenant-owned tables lead with `tenant_id` in the primary key. Every store query 
 
 `PostgresSessionStore` (`felix.session.store`) appends to `session_events` (monotonic `seq`, kind discriminators, message-shaped payload). Patterns never talk SQL directly — they use `Session` + `SessionStrategy`.
 
-Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compacting`. Default checkpointer alias resolves to Postgres (`memory.checkpointer: postgres`).
+Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compacting`, plus any registered with `register_session_strategy`. `memory.checkpointer` chooses where that log lives — `postgres` (default), `none` (no session state), or a registered backend.
 
 ## Relational highlights
 

@@ -48,7 +48,7 @@ Manifests use `apiVersion: felix/v1`, `kind: Agent` (Pydantic v2, `extra=forbid`
 
 | Concern | Resolution |
 |---|---|
-| Checkpointer | `memory.checkpointer` → Postgres session store (default) or `none` |
+| Checkpointer | `memory.checkpointer` → resolved through the checkpointer registry: `postgres` (default), `none`, or a plugin-registered store |
 | Strategy | `session.strategy` → `full_replay` / `windowed:N` / `summarizing:N` / `semantic:N` / `compacting` |
 | Long-term memory | `memory.store` ∈ `{pgvector, memory}` injects remember/recall tools |
 | Artifacts | Large tool outputs spill to the object store; `fetch_artifact` is injected |
