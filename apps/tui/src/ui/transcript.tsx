@@ -1,19 +1,23 @@
 /**
  * The conversation, top to bottom.
  *
- * Ink redraws the whole tree on every frame, so a long transcript is a real
- * cost during a stream — a delta arrives, and every turn above it is laid out
- * again. Only the tail is rendered for that reason; the rest has scrolled out
- * of a terminal's own scrollback anyway, where the user can still reach it.
+ * The renderer lays out only what is on screen, so unlike the Ink version this
+ * does not cap the transcript at a fixed tail — the whole thing lives in a
+ * `scrollbox`, which is scrollback the terminal itself never gave us once the
+ * alternate screen was in use.
+ *
+ * One layout rule to keep in mind editing this file: `<box>` defaults to
+ * `flexDirection="column"`. Ink's `<Box>` defaulted to `row`, and a box that
+ * leans on the wrong default lays out silently wrong rather than failing.
  */
 
 import type { ReasoningBlock, ToolCall, Turn } from '@felix/client';
 import { interleaveTurn } from '@felix/client';
-import { Box, Text } from 'ink';
+import { createTextAttributes } from '@opentui/core';
 import { renderText, splitBlocks } from '../markdown.js';
 
-/** Turns kept on screen. Older ones stay in the terminal's scrollback. */
-const WINDOW = 30;
+const DIM = createTextAttributes({ dim: true });
+const DIM_ITALIC = createTextAttributes({ dim: true, italic: true });
 
 /**
  * Blocks are keyed by position because that is what they are: the whole message
@@ -24,12 +28,12 @@ function Prose({ text }: { text: string }) {
     <>
       {splitBlocks(text).map((block, i) =>
         block.kind === 'code' ? (
-          <Box key={i} flexDirection="column" paddingLeft={2} marginY={1}>
-            {block.lang ? <Text dimColor>{block.lang}</Text> : null}
-            <Text color="cyan">{block.text}</Text>
-          </Box>
+          <box key={i} flexDirection="column" paddingLeft={2} marginTop={1} marginBottom={1}>
+            {block.lang ? <text attributes={DIM}>{block.lang}</text> : null}
+            <text fg="cyan">{block.text}</text>
+          </box>
         ) : (
-          <Text key={i}>{renderText(block.text)}</Text>
+          <text key={i}>{renderText(block.text)}</text>
         ),
       )}
     </>
@@ -45,15 +49,15 @@ function ToolCard({ tool }: { tool: ToolCall }) {
       : '';
   const arg = summarize(tool.input);
   return (
-    <Box>
-      <Text dimColor>
+    <box>
+      <text attributes={DIM}>
         {tool.done ? '⎿ ' : '⠿ '}
         {name}
         {arg ? ` ${arg}` : ''}
         {kind ? ` · ${kind}` : ''}
         {!tool.done && tool.phase ? ` · ${tool.phase}` : ''}
-      </Text>
-    </Box>
+      </text>
+    </box>
   );
 }
 
@@ -77,17 +81,13 @@ const oneLine = (s: string) => {
 };
 
 function Reasoning({ text }: { text: string }) {
-  return (
-    <Text dimColor italic>
-      {oneLine(text)}
-    </Text>
-  );
+  return <text attributes={DIM_ITALIC}>{oneLine(text)}</text>;
 }
 
 function AssistantTurn({ turn }: { turn: Turn }) {
   const segments = interleaveTurn(turn.content, turn.tools, turn.reasoning as ReasoningBlock[]);
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <box flexDirection="column" marginBottom={1}>
       {segments.map((segment, i) => {
         if (segment.kind === 'tool')
           return <ToolCard key={`t${segment.index}`} tool={segment.tool} />;
@@ -95,32 +95,40 @@ function AssistantTurn({ turn }: { turn: Turn }) {
         return <Prose key={`p${i}`} text={segment.text} />;
       })}
       {turn.usage ? (
-        <Text dimColor>
+        <text attributes={DIM}>
           {'  '}
           {turn.usage.input} in / {turn.usage.output} out
-        </Text>
+        </text>
       ) : null}
-    </Box>
+    </box>
   );
 }
 
 export function Transcript({ turns }: { turns: Turn[] }) {
-  const shown = turns.slice(-WINDOW);
   return (
-    <Box flexDirection="column">
-      {turns.length > shown.length ? (
-        <Text dimColor>… {turns.length - shown.length} earlier turns</Text>
-      ) : null}
-      {shown.map((turn) =>
+    // Sticky to the bottom, so a stream stays in view — and only sticky, so
+    // scrolling up to read while the model is still writing is not fought.
+    // `viewportCulling` is what makes the cap unnecessary: rows off screen take
+    // no part in layout, which is the whole reason the Ink version kept only a
+    // tail.
+    <scrollbox
+      flexGrow={1}
+      stickyScroll
+      stickyStart="bottom"
+      scrollY
+      viewportCulling
+      contentOptions={{ flexDirection: 'column' }}
+    >
+      {turns.map((turn) =>
         turn.role === 'user' ? (
-          <Box key={turn.id} marginBottom={1}>
-            <Text color="green">› </Text>
-            <Text>{turn.content}</Text>
-          </Box>
+          <box key={turn.id} flexDirection="row" marginBottom={1}>
+            <text fg="green">{'› '}</text>
+            <text>{turn.content}</text>
+          </box>
         ) : (
           <AssistantTurn key={turn.id} turn={turn} />
         ),
       )}
-    </Box>
+    </scrollbox>
   );
 }

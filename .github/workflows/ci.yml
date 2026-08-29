@@ -20,6 +20,12 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # The terminal client renders through a native core reached over FFI,
+      # which Node has only behind an experimental flag. Its rendering tests run
+      # under Bun; everything else in the repo stays on Node.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
 
       - run: pnpm install --frozen-lockfile
 

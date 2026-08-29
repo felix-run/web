@@ -5,12 +5,13 @@
     "jsx": "react-jsx",
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "types": ["node"],
+    "types": ["node", "bun"],
     "paths": {
       "@felix/client": ["../../packages/felix-client/src/index.ts"],
       "@felix/client/*": ["../../packages/felix-client/src/*"],
       "@felix/protocol": ["../../packages/felix-protocol/src/index.ts"]
-    }
+    },
+    "jsxImportSource": "@opentui/react"
   },
-  "include": ["src", "tests", "vite.config.ts"]
+  "include": ["src", "tests", "tests-bun"]
 }

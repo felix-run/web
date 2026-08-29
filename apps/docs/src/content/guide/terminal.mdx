@@ -25,8 +25,11 @@ working in.
 
 ```bash
 pnpm tui:dev                       # from a checkout
-pnpm tui:build && node apps/tui/dist/felix.js
+pnpm tui:build && bun apps/tui/dist/felix.js
 ```
+
+It needs [Bun](https://bun.sh). The client draws through a native renderer reached over FFI, which
+Bun has built in and Node does not — the rest of this repo is unchanged and still runs on Node.
 
 It needs a TTY, and it needs a harness. "Needs a TTY" usually means the command was run somewhere
 that captures output — a CI step, an editor's task pane, a coding agent's shell — rather than that
@@ -136,15 +139,22 @@ ids to rewind to until it does.
 
 ## Writing more than a line
 
-The prompt is one line with no cursor — Ink ships no text input, and a real one is a component this
-client does not need. `ctrl+e` is the way to write a paragraph: it hands the terminal to
-`$VISUAL` or `$EDITOR` on a temp Markdown file seeded with whatever is already typed, and takes it
-back when the editor exits. Quitting without saving, or saving an empty file, leaves the prompt as it
-was — neither should turn into a sent message.
+**shift+enter opens a second line.** The prompt is a real editor — a cursor, word motion
+(`ctrl+←`/`ctrl+→`), line kills (`ctrl+u`/`ctrl+k`), selection and undo — so a paragraph can be
+written where you are standing. Enter sends.
 
-**Pasted text is joined into that one line**, newlines becoming spaces and the trailing newline most
-copied blocks carry dropped. A paste never sends on its own: it lands in the prompt and waits for
-enter, because what reaches the model should be what you read on screen.
+shift+enter needs a terminal that speaks the kitty keyboard protocol, which is the only way one can
+report that modifier on enter at all. In a terminal without it, enter still sends and you lose only
+the second line — `ctrl+e` is the way through.
+
+`ctrl+e` hands the terminal to `$VISUAL` or `$EDITOR` on a temp Markdown file seeded with whatever is
+already typed, and takes it back when the editor exits. Quitting without saving, or saving an empty
+file, leaves the prompt as it was — neither should turn into a sent message.
+
+**Pasted text is joined into one line**, newlines becoming spaces and the trailing newline most
+copied blocks carry dropped: a paste is prose you copied, not keys you pressed, and the newlines you
+type deliberately are the ones that are kept. A paste never sends on its own either — it lands in the
+prompt and waits for enter, because what reaches the model should be what you read on screen.
 
 ## When you look away
 
@@ -226,7 +236,7 @@ Each client takes an exclusive lease on the session it opens, so two clients on 
 reported rather than raced — open the same thread in the web UI and the second one says so.
 
 On exit the screen goes with the client, so the last thing printed — into normal scrollback, after
-Ink has restored the terminal — is the thread you were in and the command that returns to it:
+the terminal has been restored — is the thread you were in and the command that returns to it:
 
 ```
 felix: Proxy worker routing

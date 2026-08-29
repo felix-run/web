@@ -22,7 +22,8 @@ import {
   titleFromText,
 } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
-import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import type { KeyEvent } from '@opentui/core';
+import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Attention } from './attention.js';
 import { authHeaders, type Config } from './config.js';
@@ -74,11 +75,23 @@ export interface AppProps {
   epilogue: EpilogueSlot;
   root: string;
   firstMessage?: string;
+  /** Tear down and leave. Owned by `main.tsx`, which has to order the exit. */
+  onExit: () => void;
 }
 
-export function App({ config, store, history, attention, epilogue, root, firstMessage }: AppProps) {
-  const { exit, suspendTerminal } = useApp();
-  const { stdout } = useStdout();
+export function App({
+  config,
+  store,
+  history,
+  attention,
+  epilogue,
+  root,
+  firstMessage,
+  onExit,
+}: AppProps) {
+  const renderer = useRenderer();
+  const { width } = useTerminalDimensions();
+  const exit = onExit;
 
   const [threadId, setThreadId] = useState(() => config.thread ?? crypto.randomUUID());
   const [threads, setThreads] = useState<ThreadMeta[]>(() => store.list());
@@ -190,7 +203,7 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
   }, [threads, railFilter]);
 
   /** Below this the rail is not drawn, so there is nothing to give focus to. */
-  const wide = (stdout?.columns ?? 80) >= 90;
+  const wide = width >= 90;
 
   // Persist at every change; a terminal can be closed at any moment and the
   // local copy is the only transcript an anonymous caller gets back.
@@ -247,13 +260,23 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
 
   // Focus reporting is asked for from here rather than at construction, and the
   // reason is one line of terminal behaviour: the terminal answers on stdin, and
-  // until Ink has raw mode on the tty echoes that answer to the screen — a
-  // literal `^[[I` printed into the first frame. By the time this effect runs
-  // the composer's `useInput` has mounted and raw mode is on.
+  // until the renderer has raw mode on the tty echoes that answer to the screen
+  // — a literal `^[[I` printed into the first frame, where it stays.
+  //
+  // Reading the answer is no longer our job. The renderer parses the reports and
+  // emits `focus` / `blur`; this is the whole of what `isFocusReport` used to be.
   useEffect(() => {
     attention.begin();
-    return () => attention.end();
-  }, [attention]);
+    const focused = () => attention.setFocus(true);
+    const blurred = () => attention.setFocus(false);
+    renderer.on('focus', focused);
+    renderer.on('blur', blurred);
+    return () => {
+      renderer.off('focus', focused);
+      renderer.off('blur', blurred);
+      attention.end();
+    };
+  }, [attention, renderer]);
 
   // The window title says what the run is doing whether or not anyone is here;
   // the notification behind it fires only once the terminal reports it lost
@@ -359,9 +382,12 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
   );
 
   /**
-   * Hand the composer's line to `$EDITOR`. Ink's `suspendTerminal` gives the
-   * terminal to the child and restores it afterwards even if this throws, so
-   * the only failure left to report is the editor's own.
+   * Hand the composer's line to `$EDITOR`.
+   *
+   * `suspend` gives the terminal to the child and `resume` takes it back. The
+   * `finally` is the whole point: an editor that exits non-zero, or a spawn that
+   * throws, must not leave the renderer suspended — that is a client that has
+   * stopped drawing with no way back.
    */
   const editPrompt = useCallback(
     async (value: string) => {
@@ -371,16 +397,17 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
       }
       let edited: string | undefined;
       try {
-        await suspendTerminal(async () => {
-          edited = await openEditor({ value, cwd: root });
-        });
+        renderer.suspend();
+        edited = await openEditor({ value, cwd: root });
       } catch (err) {
         setNotice(`editor: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;
+      } finally {
+        renderer.resume();
       }
       return edited;
     },
-    [root, suspendTerminal],
+    [renderer, root],
   );
 
   const command = useCallback(
@@ -602,10 +629,21 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
     submit(firstMessage);
   }, [firstMessage, submit]);
 
-  useInput((input, key) => {
-    // Focus reports reach `useInput` as ordinary text; they are not keys.
-    if (attention.isFocusReport(input)) return;
-    if (key.ctrl && input === 'c') {
+  /**
+   * The keys the app owns, above everything drawn inside it.
+   *
+   * A global handler runs before the focused renderable and may take a key
+   * outright, which is what `preventDefault` is doing here: without it the rail
+   * would filter on the same ↑ that moves its cursor, and the composer would
+   * keep typing while the rail has focus.
+   *
+   * Focus reports are not in this function at all any more — the renderer parses
+   * them and emits `focus` / `blur`, so they can no longer be mistaken for keys.
+   */
+  useKeyboard((key: KeyEvent) => {
+    const name = key.name ?? '';
+    if (key.ctrl && name === 'c') {
+      key.preventDefault();
       if (quitArmed || !streaming) {
         exit();
         return;
@@ -621,56 +659,59 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
     }
     if (blocked) return;
     // The rail takes the keyboard whole while it has focus — the same rule the
-    // composer follows, for the same reason: Ink hands every keypress to every
-    // mounted handler, so a key that means two things does both. Stopping a run
-    // stays reachable throughout, because ctrl+c is handled above this line.
+    // composer follows, for the same reason: a key that means two things does
+    // both unless one handler claims it. Stopping a run stays reachable
+    // throughout, because ctrl+c is handled above this line.
     if (railFocused) {
-      if (key.tab || (key.escape && !railFilter)) {
+      key.preventDefault();
+      if (name === 'tab' || (name === 'escape' && !railFilter)) {
         closeRail();
         return;
       }
-      if (key.escape) {
+      if (name === 'escape') {
         setRailFilter('');
         if (railCursor !== 0) setRailCursor(0);
         return;
       }
-      if (key.upArrow) {
+      if (name === 'up') {
         setRailCursor((c) => Math.max(0, c - 1));
         return;
       }
-      if (key.downArrow) {
+      if (name === 'down') {
         setRailCursor((c) => Math.max(0, Math.min(visibleThreads.length - 1, c + 1)));
         return;
       }
-      if (key.return) {
+      if (name === 'return') {
         const target = visibleThreads[railCursor];
         if (target) selectThread(target.id);
         closeRail();
         return;
       }
-      if (key.backspace || key.delete) {
+      if (name === 'backspace' || name === 'delete') {
         setRailFilter((f) => f.slice(0, -1));
         if (railCursor !== 0) setRailCursor(0);
         return;
       }
       // Chords belong to the app; arrows that are not up or down mean nothing
       // to a one-column list. Everything else is filter text.
-      if (key.ctrl || key.meta || key.leftArrow || key.rightArrow) return;
-      if (input) {
-        setRailFilter((f) => f + input);
+      if (key.ctrl || key.meta || name === 'left' || name === 'right') return;
+      if (name.length === 1) {
+        setRailFilter((f) => f + name);
         if (railCursor !== 0) setRailCursor(0);
       }
       return;
     }
-    if (key.escape && streaming) {
+    if (name === 'escape' && streaming) {
+      key.preventDefault();
       engine.abort();
       cancelWrite();
       void client.abortChat(threadIdRef.current).catch(() => {});
       engine.setPhase('aborted');
       return;
     }
-    if (key.tab) {
+    if (name === 'tab') {
       if (!wide) return;
+      key.preventDefault();
       // Open on the thread that is open, rather than on row zero with the
       // marker somewhere further down.
       const index = threads.findIndex((thread) => thread.id === threadIdRef.current);
@@ -678,7 +719,8 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
       setRailFocused(true);
       return;
     }
-    if (key.ctrl && input === 'n') {
+    if (key.ctrl && name === 'n') {
+      key.preventDefault();
       newThread();
     }
   });
@@ -695,8 +737,8 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
       : 'tab threads · ctrl+n new · ctrl+e editor · /help';
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Box>
+    <box flexDirection="column" paddingLeft={1} paddingRight={1}>
+      <box flexDirection="row" flexGrow={1}>
         {wide ? (
           <ThreadRail
             threads={visibleThreads}
@@ -707,18 +749,17 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
             total={threads.length}
           />
         ) : null}
-        <Box flexDirection="column" flexGrow={1}>
+        <box flexDirection="column" flexGrow={1}>
           <Transcript turns={turns} />
-        </Box>
-      </Box>
+        </box>
+      </box>
 
       {/*
         Exactly one prompt is mounted at a time, and that is a correctness
-        requirement rather than a layout preference: Ink delivers every keypress
-        to *every* mounted `useInput`, so two banners on screen means one `y`
-        answers both. The local write prompt wins because it is the one on a
-        deadline; the harness-side prompts wait, and the run is already waiting
-        on them anyway.
+        requirement rather than a layout preference: `useKeyboard` is a global
+        subscription, so two banners on screen means one `y` answers both. The
+        local write prompt wins because it is the one on a deadline; the
+        harness-side prompts wait, and the run is already waiting on them anyway.
       */}
       {writePrompt ? (
         <WritePrompt summary={writePrompt} onAnswer={answerWrite} />
@@ -753,13 +794,12 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
         />
       ) : null}
 
-      {notice ? <Text color="yellow">{notice}</Text> : null}
+      {notice ? <text fg="yellow">{notice}</text> : null}
 
       {/*
-        The rail takes the keyboard whole while it is focused. Ink delivers
-        every keypress to every mounted `useInput`, so a composer left active
-        would recall history on the same ↑ that moves the rail cursor, and
-        submit whatever is typed on the Enter that picks a thread.
+        The rail takes the keyboard whole while it is focused, so the composer is
+        disabled rather than merely unfocused: an enabled textarea would still
+        take the keys the rail is reading.
       */}
       <Composer
         streaming={streaming}
@@ -767,7 +807,6 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
         onSubmit={submit}
         history={recent}
         onEdit={editPrompt}
-        isFocusReport={attention.isFocusReport}
         hint={streaming ? 'steer the run…' : 'ask, /help, ctrl+e to open $EDITOR'}
       />
       <StatusLine
@@ -779,6 +818,6 @@ export function App({ config, store, history, attention, epilogue, root, firstMe
         root={root}
         hint={hint}
       />
-    </Box>
+    </box>
   );
 }

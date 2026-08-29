@@ -1,13 +1,28 @@
 /**
  * The thread list and the status line — everything on screen that is not the
  * conversation itself.
+ *
+ * `railWindow` survives the renderer change untouched: it is pure arithmetic
+ * with its own test. A `scrollbox` could window the rail natively, but the rail
+ * is *selected* rather than scrolled — the cursor is the thing that has to stay
+ * on screen, which is exactly what this function is for and what a scroll
+ * offset is not.
  */
 
 import type { ThreadMeta } from '@felix/client';
-import { Box, Text } from 'ink';
+import { createTextAttributes } from '@opentui/core';
+
+const DIM = createTextAttributes({ dim: true });
+const BOLD = createTextAttributes({ bold: true });
 
 /** Rows the rail draws at once. */
 const RAIL_ROWS = 20;
+
+/** Inner width of the rail, less its border and padding. */
+const RAIL_TEXT = 22;
+
+const truncate = (s: string, width = RAIL_TEXT) =>
+  s.length > width ? `${s.slice(0, width - 1)}…` : s;
 
 /**
  * The slice of a list to draw so that `cursor` is always inside it.
@@ -53,39 +68,47 @@ export function ThreadRail({
   const { start, end } = railWindow(threads.length, cursor, RAIL_ROWS);
 
   return (
-    <Box
+    <box
       flexDirection="column"
       width={26}
+      // Sized to its rows, not to the row it sits in. A flex row stretches its
+      // children by default, which drew the rail's border down the whole screen
+      // with twelve empty rows under the last thread.
+      alignSelf="flex-start"
       marginRight={2}
-      borderStyle="round"
+      border
+      borderStyle="rounded"
       borderColor={focused ? 'green' : 'gray'}
-      paddingX={1}
+      paddingLeft={1}
+      paddingRight={1}
     >
-      <Text dimColor wrap="truncate">
-        {filter ? `/${filter} · ${threads.length}/${all}` : 'threads'}
-      </Text>
-      {all === 0 ? <Text dimColor>(none yet)</Text> : null}
-      {all > 0 && threads.length === 0 ? <Text dimColor>no match · esc clears</Text> : null}
-      {start > 0 ? <Text dimColor>↑ {start} more</Text> : null}
+      <text attributes={DIM}>
+        {truncate(filter ? `/${filter} · ${threads.length}/${all}` : 'threads')}
+      </text>
+      {all === 0 ? <text attributes={DIM}>(none yet)</text> : null}
+      {all > 0 && threads.length === 0 ? <text attributes={DIM}>no match · esc clears</text> : null}
+      {start > 0 ? <text attributes={DIM}>↑ {start} more</text> : null}
       {threads.slice(start, end).map((thread, i) => {
         const index = start + i;
         const active = thread.id === activeId;
+        const label = `${active ? '• ' : '  '}${thread.title || 'Untitled'}${
+          thread.onServer === false ? ' *' : ''
+        }`;
         return (
-          <Text
+          <text
             key={thread.id}
-            color={focused && index === cursor ? 'green' : undefined}
-            bold={active}
-            wrap="truncate"
+            fg={focused && index === cursor ? 'green' : undefined}
+            attributes={active ? BOLD : undefined}
           >
-            {active ? '• ' : '  '}
-            {thread.title || 'Untitled'}
-            {thread.onServer === false ? ' *' : ''}
-          </Text>
+            {truncate(label)}
+          </text>
         );
       })}
-      {end < threads.length ? <Text dimColor>↓ {threads.length - end} more</Text> : null}
-      {focused && !filter && threads.length > 0 ? <Text dimColor>type to filter</Text> : null}
-    </Box>
+      {end < threads.length ? <text attributes={DIM}>↓ {threads.length - end} more</text> : null}
+      {focused && !filter && threads.length > 0 ? (
+        <text attributes={DIM}>type to filter</text>
+      ) : null}
+    </box>
   );
 }
 
@@ -108,19 +131,19 @@ export function StatusLine({
   hint?: string;
 }) {
   return (
-    <Box flexDirection="column">
-      {error ? <Text color="red">{error}</Text> : null}
+    <box flexDirection="column">
+      {error ? <text fg="red">{error}</text> : null}
       {/* A reattach is a materially different claim from a live run: the
           original was torn down when the connection dropped, so this is showing
           what landed rather than a reply still being written. */}
-      {reattaching ? <Text color="yellow">rejoining the thread…</Text> : null}
-      <Box justifyContent="space-between">
-        <Text dimColor wrap="truncate">
+      {reattaching ? <text fg="yellow">rejoining the thread…</text> : null}
+      <box flexDirection="row" justifyContent="space-between">
+        <text attributes={DIM}>
           {manifest} · {origin} · {root}
           {phase && phase !== 'idle' ? ` · ${phase}` : ''}
-        </Text>
-        {hint ? <Text dimColor wrap="truncate">{`  ${hint}`}</Text> : null}
-      </Box>
-    </Box>
+        </text>
+        {hint ? <text attributes={DIM}>{`  ${hint}`}</text> : null}
+      </box>
+    </box>
   );
 }
