@@ -76,10 +76,108 @@ port needs `apps/tui/**` added to the `overrides` block in `biome.json`, next to
   exists to work around.
 - The JS `truncate` helper added to `rails.tsx` here — `truncate` is a prop.
 
+# Spike 2: the composer
+
+`composer-probe.tsx` re-asks every scenario `tests/composer.test.ts` pins, the
+same way that test asks Ink: bytes into a synthetic stdin, asserting the message
+that would be **sent**, never the frame drawn. One scenario per process, chosen
+by argv, so none can leak state into the next.
+
+```sh
+for s in focus-reports bracketed-paste raw-paste cursor-motion word-motion \
+         burst textarea-raw-paste textarea-enter textarea-submit; do
+  bun run composer-probe.tsx "$s"
+done; cat composer.out
+```
+
+```
+PASS focus-reports      — submitted="hello" focus/blur events=2
+PASS bracketed-paste    — not-sent-on-paste=true sent="explain the proxy worker and the dev copy of it"
+FAIL raw-paste          — not-sent=false held="onetwo" sent=["one","onetwo"]
+PASS cursor-motion      — value="hello Xworld"
+PASS word-motion        — value="alpha beta Zgamma"
+PASS burst              — len=396/396 exact=true
+PASS textarea-raw-paste — not-sent=true held="one\ntwo\n" sent=[]
+PASS textarea-enter     — value="first\nsecond"
+PASS textarea-submit    — submitted=["send me"] value="send me"
+```
+
+## The one failure is the design decision
+
+`raw-paste` fails on `<input>` (single-line): a terminal that ignores bracketed
+paste sends `one\ntwo\n` raw, and the bare LF **submits mid-paste** — the same
+class of bug `flattenPaste` was written for, in a new shape. `<input>` binds
+`linefeed` to submit and strips newlines.
+
+`textarea-raw-paste` is the same bytes against `<textarea>` with the bindings a
+chat prompt actually wants, and it passes. **So: use `textarea`, never
+`input`.** That is the whole finding.
+
+## What deletes, what survives, what changes
+
+**`isFocusReport` deletes, and so does most of `attention.ts`.** The core parses
+`ESC[I` / `ESC[O` itself and emits `focus` / `blur` on the renderer — the probe
+counted 2 events while the text stayed `"hello"`. It also restores terminal
+modes on refocus, which is work `attention.ts` does not currently do at all.
+
+**`flattenPaste` survives, and it still has to.** `PasteEvent` carries no
+`.text` — the payload is `bytes`, and it arrives with the newlines **intact**.
+Left alone, the buffer strips them and runs the words together
+(`"…proxy workerand the dev copy…"`). The event is preventable, which is the
+hook:
+
+```tsx
+usePaste((e) => {
+  const raw = new TextDecoder().decode(Uint8Array.from(Array.from(e.bytes)));
+  e.preventDefault();
+  insert(flattenPaste(raw));
+});
+```
+
+That reproduces the Ink test's assertion exactly, and a paste is still never a
+send.
+
+**The hand-rolled cursor deletes.** `<textarea>` is backed by an edit buffer
+with `deleteWordBackward/Forward`, `deleteToLineEnd/Start`, `gotoLine`,
+selection, and undo/redo already on it. `cursor-motion` and `word-motion` pass
+with no code of ours — `←` and `ctrl+←` just work. This is the Tier-2 keystone,
+free.
+
+**Enter is a binding, not a fight.** The defaults are the opposite of a chat
+prompt — `defaultTextareaKeyBindings` maps `return`→`newline` and
+`meta+return`→`submit`. They are a plain array:
+
+```tsx
+keyBindings={[
+  { name: 'return', action: 'submit' },
+  { name: 'return', shift: true, action: 'newline' },
+  { name: 'linefeed', action: 'newline' },
+]}
+```
+
+`textarea-submit` and `textarea-enter` pass with that — Enter sends,
+**Shift+Enter opens a line**, which the current composer cannot do at all. The
+Tier-1 delivery split (Enter steers / Tab queues / Ctrl+Enter interrupts) is the
+same mechanism. Shift+Enter needs the kitty keyboard protocol
+(`useKittyKeyboard`), because that is the only way a terminal reports the
+modifier on Enter at all.
+
+**The update-depth failure does not return.** 400 characters pushed with no gaps
+came back exact. The nested-update limit this repo has already paid for is a
+React-state-per-keystroke problem, and the edit buffer is not React state.
+
+## A policy question the port has to answer
+
+With a one-line prompt, flattening a raw multi-line paste was obviously right.
+With a real multi-line composer, `textarea-raw-paste` keeps `one\ntwo\n` as two
+lines — which may now be the better answer. The bracketed-paste path should
+still flatten (it is a paste, not typing); the raw path is a decision, not a
+bug.
+
 ## What is still unknown
 
-The composer. It is the whole risk: `tests/composer.test.ts` deliberately pins
-Ink 7 behaviour (stdin read in paused mode; a chunk carrying text *and* Enter
-arriving with `key.return` **false**), and OpenTUI has `input`/`textarea`
-renderables that may make the hand-rolled cursor unnecessary — or may impose
-their own semantics. Nothing here touched it.
+Nothing load-bearing in the composer. What is untested is everything downstream
+of it: the engine wiring, approval and UI prompts fighting over the keyboard
+(Ink's "exactly one prompt is mounted" rule may be replaceable by real focus
+management here), `suspendTerminal` for the `$EDITOR` hand-off, and how the
+build ships as a Bun binary.

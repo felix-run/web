@@ -38,3 +38,5 @@ apps/chat-ui/src/.check-tailwind-sources.tmp.css
 apps/tui/spike/node_modules/
 apps/tui/spike/*.log
 apps/tui/spike/mouse.out
+apps/tui/spike/composer.out
+apps/tui/spike/composer.err
