@@ -31,6 +31,7 @@ import type {
   ArtifactContent,
   AuditEvent,
   AuditEventWire,
+  EvalComparison,
   EvalDataset,
   EvalDatasetItem,
   EvalRun,
@@ -278,6 +279,45 @@ export async function forgetMemory(id: string): Promise<void> {
 }
 
 /**
+ * POST /memory → store a fact directly, without waiting for the agent to learn it.
+ *
+ * The harness calls this a prompt-injection ingress in as many words, and it is
+ * right: whatever lands here is text the model will read back later, from a
+ * store the operator cannot otherwise write to. That is the point — a
+ * correction, a standing instruction, a fact the agent keeps getting wrong —
+ * and it is also why the panel says so above the field rather than presenting
+ * this as a note-taking box.
+ *
+ * `content` is bounded at 4000 chars upstream and `topic_key` at 200; both are
+ * enforced here too, because a 422 for a length the form could have checked is
+ * a worse answer than not sending it.
+ */
+export async function addMemory(input: {
+  content: string;
+  kind?: string;
+  manifestId?: string;
+  topicKey?: string;
+  importance?: number;
+}): Promise<{ id: string; status: string }> {
+  const res = await apiFetch('/api/memory', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      content: input.content,
+      kind: input.kind || 'fact',
+      manifest_id: input.manifestId ?? '',
+      topic_key: input.topicKey ?? '',
+      importance: input.importance ?? 0.5,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`memory/write: ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as { id: string; status: string };
+}
+
+/**
  * GET /plans → plan/step progress (populated by the `deep` pattern).
  *
  * The row is metadata plus an opaque `plan` blob, and the title and steps live
@@ -325,6 +365,25 @@ export async function getToolMetrics(
   const res = await apiFetch(`/api/audit/metrics?${q}`);
   if (!res.ok) throw new Error(`metrics: ${res.status}`);
   return (await res.json()) as ToolMetrics;
+}
+
+/**
+ * DELETE /plans/{plan_id} → drop a plan the agent left behind.
+ *
+ * The list route already carries the whole plan document, so there is nothing
+ * `GET /plans/{id}` could add to this panel and it stays uncalled. `PUT` stays
+ * uncalled too, deliberately: the body is the agent-authored plan blob, and a
+ * hand-edited one is a plan the agent did not write claiming that it did.
+ *
+ * Deleting is different — it is the plans equivalent of forgetting a memory, a
+ * way to clear a stale or wrong plan without a database console.
+ */
+export async function deletePlan(planId: string): Promise<void> {
+  const res = await apiFetch(`/api/plans/${encodeURIComponent(planId)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`plans/delete: ${res.status} ${detail.slice(0, 200)}`);
+  }
 }
 
 // --- Eval harness (/eval) ---
@@ -408,6 +467,36 @@ export async function runEvalDataset(
     body: JSON.stringify({
       candidate_manifest: candidateManifest,
       deterministic_judge: deterministicJudge,
+    }),
+  });
+}
+
+/**
+ * POST /eval/runs/compare → one dataset, a baseline manifest and candidates.
+ *
+ * The difference from `runEvalDataset` is the question being asked. A single run
+ * says whether a manifest passes; this replays the *same* dataset against a
+ * baseline and each candidate and reports the pass-rate lift between them, which
+ * is the shape of "is the new prompt better" — the question anyone editing a
+ * manifest actually has, and the one the panel could not ask.
+ *
+ * Every candidate is a real run, so this costs one full pass per manifest and
+ * takes as long as they all do.
+ */
+export async function compareEvalRuns(input: {
+  dataset: string;
+  baseline: { name?: string; manifest: string };
+  candidates: Array<{ name?: string; manifest: string }>;
+  judgeThreshold?: number;
+}): Promise<EvalComparison> {
+  return evalFetch<EvalComparison>('/runs/compare', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      dataset_name: input.dataset,
+      baseline: input.baseline,
+      candidates: input.candidates,
+      ...(input.judgeThreshold === undefined ? {} : { judge_threshold: input.judgeThreshold }),
     }),
   });
 }

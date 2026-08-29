@@ -246,9 +246,11 @@ Flows worth knowing before editing the app:
 - **Memory** — `/memory` is what the agent has stored across sessions, surfaced in the inspector so
   a stale or hostile fact can be found and removed without a database console. Listing, the agent's
   own hybrid ranking (`/memory/search`, whose hits report *which retriever* found them), and a
-  read-only `as-of/{turn_seq}` view including superseded facts. `DELETE` is **soft** — the row
-  becomes `forgotten` and drops out of recall rather than being erased, which is why the UI says
-  "forget". Reads need the `memory:read` scope, so a 403 here means a narrow key, not an empty store.
+  read-only `as-of/{turn_seq}` view including superseded facts, and an **Add** tab that writes one
+  (`POST /memory`) — an injection ingress by design, which is why the form says so. `DELETE` is
+  **soft** — the row becomes `forgotten` and drops out of recall rather than being erased, which is
+  why the UI says "forget". Reads need the `memory:read` scope, so a 403 here means a narrow key,
+  not an empty store.
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
   (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
   `/chat/sessions/search`.

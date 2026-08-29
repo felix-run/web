@@ -8,6 +8,7 @@ import { FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   addEvalItem,
+  compareEvalRuns,
   listEvalDatasets,
   listEvalItems,
   listEvalRuns,
@@ -16,7 +17,7 @@ import {
 } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
 import { cn } from '@/lib/utils';
-import type { EvalDataset, EvalDatasetItem, EvalRun } from '@/types';
+import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun } from '@/types';
 
 /**
  * Eval workbench — the `/eval` offline-benchmark surface as a slide-over.
@@ -157,6 +158,7 @@ function DatasetPanel({
   const [items, setItems] = useState<EvalDatasetItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
   const [running, setRunning] = useState(false);
+  const [comparing, setComparing] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -192,7 +194,16 @@ function DatasetPanel({
         </span>
         <Button
           size="sm"
-          className="ml-auto h-7 gap-1"
+          variant="ghost"
+          className="ml-auto h-7"
+          disabled={items.length === 0}
+          onClick={() => setComparing((c) => !c)}
+        >
+          {comparing ? 'Hide compare' : 'Compare…'}
+        </Button>
+        <Button
+          size="sm"
+          className="h-7 gap-1"
           disabled={running || items.length === 0}
           onClick={run}
           title={items.length === 0 ? 'Add an item first' : `Replay against ${manifest}`}
@@ -201,6 +212,10 @@ function DatasetPanel({
           {running ? 'Running…' : `Run vs ${manifest}`}
         </Button>
       </div>
+
+      {comparing && (
+        <ComparePanel dataset={dataset} manifest={manifest} onDone={refresh} onError={onError} />
+      )}
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-3 pr-3">
@@ -236,6 +251,131 @@ function DatasetPanel({
         </div>
       </ScrollArea>
     </div>
+  );
+}
+
+/**
+ * Baseline against candidates, on one dataset.
+ *
+ * `Run vs {manifest}` answers "does this pass". The question anyone editing a
+ * manifest actually has is "is the new one better", and that needs the same
+ * items replayed against both — which is what `POST /eval/runs/compare` does and
+ * what nothing here could ask for.
+ *
+ * Every candidate is a full run. Two candidates against a baseline is three
+ * passes over the dataset, billed and timed like three, which is why the button
+ * says how many.
+ */
+function ComparePanel({
+  dataset,
+  manifest,
+  onDone,
+  onError,
+}: {
+  dataset: string;
+  manifest: string;
+  onDone: () => Promise<void> | void;
+  onError: (err: unknown, doing: string) => void;
+}) {
+  const [baseline, setBaseline] = useState(manifest);
+  const [candidates, setCandidates] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<EvalComparison | null>(null);
+
+  const names = candidates
+    .split(/[,\s]+/)
+    .map((n) => n.trim())
+    .filter(Boolean);
+  const ready = baseline.trim().length > 0 && names.length > 0;
+
+  async function compare() {
+    setBusy(true);
+    try {
+      const comparison = await compareEvalRuns({
+        dataset,
+        baseline: { name: 'baseline', manifest: baseline.trim() },
+        candidates: names.map((m) => ({ name: m, manifest: m })),
+      });
+      setResult(comparison);
+      await onDone();
+    } catch (err) {
+      onError(err, `compare ${names.join(', ')} against ${baseline}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-2 rounded-md border bg-background p-2.5 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          Baseline
+          <input
+            aria-label="Baseline manifest"
+            value={baseline}
+            onChange={(e) => setBaseline(e.target.value)}
+            className="h-7 w-32 rounded-md border bg-background px-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+        </label>
+        <label className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+          Candidates
+          <input
+            aria-label="Candidate manifests"
+            value={candidates}
+            onChange={(e) => setCandidates(e.target.value)}
+            placeholder="deep, quick-v2"
+            className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          />
+        </label>
+        <Button size="sm" className="h-7" disabled={!ready || busy} onClick={compare}>
+          {busy ? 'Running…' : `Compare (${names.length + 1} runs)`}
+        </Button>
+      </div>
+
+      {result && (
+        <table className="w-full text-xs">
+          <thead className="text-muted-foreground">
+            <tr>
+              <th className="py-1 text-left font-medium">Manifest</th>
+              <th className="py-1 text-right font-medium">Pass rate</th>
+              <th className="py-1 text-right font-medium">Lift</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.results.map((row) => (
+              <tr key={`${row.name}:${row.manifest}`} className="border-t">
+                <td className="py-1">
+                  {row.manifest}
+                  {row.is_baseline && <span className="ml-1 text-muted-foreground">baseline</span>}
+                  {row.below_threshold && (
+                    <span className="ml-1 text-state-failed">below threshold</span>
+                  )}
+                </td>
+                <td className="py-1 text-right tabular-nums">
+                  {(row.pass_rate * 100).toFixed(0)}%
+                </td>
+                <td
+                  className={cn(
+                    'py-1 text-right tabular-nums',
+                    row.is_baseline
+                      ? 'text-muted-foreground'
+                      : row.lift_pp > 0
+                        ? 'text-state-done'
+                        : row.lift_pp < 0
+                          ? 'text-state-failed'
+                          : 'text-muted-foreground',
+                  )}
+                >
+                  {row.is_baseline
+                    ? '—'
+                    : `${row.lift_pp > 0 ? '+' : ''}${row.lift_pp.toFixed(1)}pp`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 
