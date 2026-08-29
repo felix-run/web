@@ -116,9 +116,22 @@ spec:
 | `inline` | string | `""` | Written in the manifest. |
 | `soul` | bool | `false` | Prepend the tenant's shared "soul" prompt. |
 | `base` | string | `""` | Shared preamble. |
-| `files` | string[] | `[]` | Object-store or workspace keys (`AGENTS.md`, …) loaded after base/inline and appended. |
+| `files` | string[] | `[]` | Keys loaded after base/inline and appended. |
 | `system_md` | string \| null | `null` | Key loaded as a **full replacement** (`SYSTEM.md` semantics). |
 | `append_system_md` | string \| null | `null` | Key appended after the composed prompt. |
+
+<Aside type="caution">
+  All three resolve **only** under `workspace/{tenant}/` — in the object store and,
+  when `FELIX_WORKSPACE_ROOT` is set, on disk. A key naming anything else is rewritten
+  into your own prefix, and one containing `..` is refused. These fields are writable
+  by anyone with `manifests:write`, so they are not a way to reach a shared or another
+  tenant's file.
+
+  A bare `AGENTS.md`, `AGENTS.override.md` or `CLAUDE.md` **object** still works as an
+  operator-placed layer shared across tenants, and is used only when the tenant has no
+  file of its own. The same filename on disk under `FELIX_WORKSPACE_ROOT` is not read:
+  that directory is shared and agents can write to it.
+</Aside>
 
 Parts are joined with `"\n\n---\n\n"` in the order **soul → base → inline**, then file-sourced parts.
 Empty parts are dropped.
