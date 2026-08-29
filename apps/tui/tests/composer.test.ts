@@ -3,7 +3,7 @@ import { render } from 'ink';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { createAttention } from '../src/attention';
-import { Composer } from '../src/ui/composer';
+import { Composer, flattenPaste } from '../src/ui/composer';
 
 /**
  * The one Ink component with a test, and this is why.
@@ -21,6 +21,9 @@ import { Composer } from '../src/ui/composer';
 
 const ESC = String.fromCharCode(27);
 const ENTER = '\r';
+const LF = String.fromCharCode(10);
+/** How a terminal in bracketed paste mode delivers a paste. */
+const paste = (text: string) => `${ESC}[200~${text}${ESC}[201~`;
 
 function mount(options: { filtered: boolean }) {
   const stdin = new PassThrough() as PassThrough & {
@@ -76,20 +79,24 @@ function mount(options: { filtered: boolean }) {
     });
 
   /**
-   * Tab away, type, come back, send — with a tick between each, because that
-   * is how a keyboard arrives. Ink hands a chunk holding both text and Enter to
-   * `useInput` whole (`input: 'hello\r'`, `key.return` false), so writing the
-   * four at once would test something no terminal does.
+   * One chunk, then a tick — a keyboard does not arrive all at once, and Ink
+   * hands a chunk holding both text and Enter to `useInput` whole
+   * (`input: 'hello\r'`, `key.return` false). Writing them together would test
+   * something no terminal does.
    */
-  const exercise = async () => {
-    for (const chunk of [`${ESC}[O`, 'hello', `${ESC}[I`, ENTER]) {
+  const feed = async (...chunks: string[]) => {
+    for (const chunk of chunks) {
       stdin.write(chunk);
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
   };
 
+  /** Tab away, type, come back, send. */
+  const exercise = () => feed(`${ESC}[O`, 'hello', `${ESC}[I`, ENTER);
+
   return {
     ready,
+    feed,
     exercise,
     submitted,
     stop: () => {
@@ -119,6 +126,69 @@ describe('the composer under terminal focus reporting', () => {
       await ui.exercise();
       await vi.waitFor(() => expect(ui.submitted).toHaveLength(1));
       expect(ui.submitted[0]).toBe('[Ohello[I');
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+/**
+ * What a paste does, and what it must not do.
+ *
+ * Ink puts the terminal into bracketed paste mode as soon as anything calls
+ * `usePaste`, so the text arrives whole on its own channel. Before that it came
+ * through `useInput` as one chunk with the newlines still in it and no `return`
+ * flag — so a pasted paragraph landed in the message as typed control
+ * characters and never sent. Both paths are flattened, because a terminal that
+ * ignores bracketed paste still sends the text raw.
+ */
+describe('flattenPaste', () => {
+  it('joins lines with a space rather than running the words together', () => {
+    expect(flattenPaste(`one${LF}two`)).toBe('one two');
+  });
+
+  it('drops the trailing newline a copied block carries', () => {
+    expect(flattenPaste(`one${LF}two${LF}`)).toBe('one two');
+  });
+
+  it('reads a blank line between paragraphs as one space', () => {
+    expect(flattenPaste(`one${LF}${LF}two`)).toBe('one two');
+  });
+
+  it('handles the carriage-return spelling', () => {
+    expect(flattenPaste(`one${ENTER}${LF}two${ENTER}${LF}`)).toBe('one two');
+  });
+
+  it('leaves a line with no newlines exactly as it is, spaces included', () => {
+    expect(flattenPaste('trailing space ')).toBe('trailing space ');
+  });
+});
+
+describe('the composer under a paste', () => {
+  it('sends a pasted paragraph as one line, once Enter is pressed', async () => {
+    const ui = mount({ filtered: true });
+    try {
+      await ui.ready();
+      await ui.feed(paste(`explain the proxy worker${LF}and the dev copy of it${LF}`));
+      // A paste is never a send: what reaches the model is what was read.
+      expect(ui.submitted).toEqual([]);
+      await ui.feed(ENTER);
+      await vi.waitFor(() => expect(ui.submitted).toHaveLength(1));
+      expect(ui.submitted[0]).toBe('explain the proxy worker and the dev copy of it');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('flattens a raw paste too, for a terminal that does not bracket them', async () => {
+    const ui = mount({ filtered: true });
+    try {
+      await ui.ready();
+      await ui.feed(`one${LF}two${LF}`);
+      expect(ui.submitted).toEqual([]);
+      await ui.feed(ENTER);
+      await vi.waitFor(() => expect(ui.submitted).toHaveLength(1));
+      expect(ui.submitted[0]).toBe('one two');
     } finally {
       ui.stop();
     }

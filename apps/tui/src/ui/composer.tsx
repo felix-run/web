@@ -16,9 +16,34 @@
  * paragraph here: there is no cursor to move and Enter sends. `isFocusReport`
  * is the other half of terminal focus tracking — the reports arrive as ordinary
  * text and would otherwise be typed into the prompt.
+ *
+ * Pasted text is its own channel. `usePaste` puts the terminal into bracketed
+ * paste mode, so a paste arrives whole and its newlines can never be mistaken
+ * for Enter — without it Ink hands the chunk to `useInput` as `'one\ntwo\n'`
+ * with no `return` flag, and the carriage returns land *in* the message. The
+ * `useInput` path is flattened as well, because a terminal that ignores
+ * bracketed paste still sends the text raw.
  */
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, usePaste } from 'ink';
 import { useState } from 'react';
+
+/** Any newline, and any run of them, however the source spelled it. */
+const HAS_NEWLINE = /[\r\n]/;
+const NEWLINES = /[\r\n]+/g;
+const TRAILING_SPACE = /\s+$/;
+
+/**
+ * A pasted paragraph becomes one line.
+ *
+ * This prompt is a line — `$EDITOR` is where a multi-line message is written —
+ * so the newlines in a paste are joined with spaces rather than dropped, which
+ * would run the last word of one line into the first of the next. The trailing
+ * newline almost every copied block carries is not a word boundary, so it goes.
+ */
+export function flattenPaste(text: string): string {
+  if (!HAS_NEWLINE.test(text)) return text;
+  return text.replace(NEWLINES, ' ').replace(TRAILING_SPACE, '');
+}
 
 export interface ComposerProps {
   streaming: boolean;
@@ -108,7 +133,20 @@ export function Composer({
       // Ctrl/meta chords belong to the app, not the text.
       if (key.ctrl || key.meta || key.escape || key.tab) return;
       if (key.leftArrow || key.rightArrow) return;
-      if (input && !isFocusReport?.(input)) edit((v) => v + input);
+      if (input && !isFocusReport?.(input)) edit((v) => v + flattenPaste(input));
+    },
+    { isActive: !disabled && !editing },
+  );
+
+  /**
+   * A paste is never a send. The text lands in the prompt and waits for Enter —
+   * what reaches the model has to be what was read on screen, and a copied
+   * block ending in a newline would otherwise submit itself unseen.
+   */
+  usePaste(
+    (text) => {
+      const flat = flattenPaste(text);
+      if (flat) edit((v) => v + flat);
     },
     { isActive: !disabled && !editing },
   );

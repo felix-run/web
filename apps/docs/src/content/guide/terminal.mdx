@@ -122,6 +122,10 @@ client does not need. `ctrl+e` is the way to write a paragraph: it hands the ter
 back when the editor exits. Quitting without saving, or saving an empty file, leaves the prompt as it
 was — neither should turn into a sent message.
 
+**Pasted text is joined into that one line**, newlines becoming spaces and the trailing newline most
+copied blocks carry dropped. A paste never sends on its own: it lands in the prompt and waits for
+enter, because what reaches the model should be what you read on screen.
+
 ## When you look away
 
 A run keeps going when the window does not have focus, and can block on an approval minutes later. So
