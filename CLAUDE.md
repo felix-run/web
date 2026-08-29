@@ -237,6 +237,12 @@ Flows worth knowing before editing the app:
   (`/chat/sessions/lease`, released best-effort on unload); a 409 means another tab holds the session.
 - **Sticky interrupts** — `approval_required` and `ui_request` frames render as banners and are
   answered out-of-band (`/approvals/{id}/decide`, `/chat/ui`); the run is waiting on them.
+- **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
+  with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
+  `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only
+  the end: one quoted mid-text is a tool *talking about* an artifact) and the tool card fetches
+  `GET /artifacts/{manifest_id}/{artifact_id}` on request. The tenant is in the key and is
+  deliberately not a parameter — the harness takes it from the caller's credentials.
 - **Memory** — `/memory` is what the agent has stored across sessions, surfaced in the inspector so
   a stale or hostile fact can be found and removed without a database console. Listing, the agent's
   own hybrid ranking (`/memory/search`, whose hits report *which retriever* found them), and a

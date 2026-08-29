@@ -20,6 +20,7 @@ export type {
   TurnSegment,
 } from '@felix/client';
 export type {
+  ArtifactRef,
   ChatMessage,
   DurableRun,
   ImageAttachment,
@@ -32,8 +33,28 @@ export type {
   ThreadHistory,
   TokenUsage,
 } from '@felix/protocol';
+export { parseArtifactMarker } from '@felix/protocol';
 
 export type Variant = 'stable' | 'canary';
+
+// --- Spilled tool outputs (/artifacts) ---
+
+/**
+ * What `GET /artifacts/{manifest_id}/{artifact_id}` returns.
+ *
+ * Not in the `check-payload-shapes` guard, and the reason is worth stating: the
+ * record it compares against is built from the harness's `store.py` serializers,
+ * and this response is a dict literal in the route itself. A guarded entry
+ * naming a serializer the record does not carry fails on purpose — a guard that
+ * silently checks nothing is worse than none — so this shape is mirrored by hand
+ * and every field is read defensively at the one call site.
+ */
+export interface ArtifactContent {
+  artifact_id: string;
+  manifest_id: string;
+  chars: number;
+  content: string;
+}
 
 // --- Long-term memory (/memory) ---
 //
