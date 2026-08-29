@@ -251,6 +251,11 @@ Flows worth knowing before editing the app:
   **soft** — the row becomes `forgotten` and drops out of recall rather than being erased, which is
   why the UI says "forget". Reads need the `memory:read` scope, so a 403 here means a narrow key,
   not an empty store.
+- **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and
+  the snapshot's `labels` map reads them back. It was a write-only route here for a different reason
+  than the rest: `SessionSnapshot` did not model the field the harness had always sent, so a label
+  could be set and never seen. The chip renders outside the hover-revealed actions row, because
+  finding the labelled turn again by scrolling is the whole point.
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
   (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
   `/chat/sessions/search`.

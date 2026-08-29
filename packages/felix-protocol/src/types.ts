@@ -184,6 +184,15 @@ export interface SessionSnapshot {
   attached?: boolean;
   leafId?: string | null;
   revision?: number;
+  /**
+   * Operator labels, keyed by the event id they were put on.
+   *
+   * The harness has always sent this map and nothing modelled it, which is what
+   * made `POST /chat/sessions/label` a write-only route: a label could be set
+   * and never read back. It is the same event id `rewindChat` takes, so a
+   * labelled turn is one anyone can also return to.
+   */
+  labels?: Record<string, string>;
   transcript?: Array<{
     id?: string;
     seq: number;
