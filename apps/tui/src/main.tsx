@@ -4,6 +4,12 @@
  * `--help` and a non-TTY stdout are handled before anything renders — a
  * full-screen app piped into a file produces neither output nor an error, and
  * saying so is more useful than drawing to nowhere.
+ *
+ * The non-TTY message names the fix rather than only the fact. This fires most
+ * often when nothing is wrong with the terminal at all: the command was run
+ * somewhere that captures output — an editor's task pane, a coding agent's
+ * shell, a CI step — and "needs a TTY" leaves a person to work out what to do
+ * about that on their own.
  */
 import { render } from 'ink';
 import { App } from './app.js';
@@ -24,7 +30,12 @@ if (insecure) {
 }
 
 if (!process.stdout.isTTY) {
-  process.stderr.write('felix: this is a full-screen terminal client and needs a TTY.\n');
+  process.stderr.write(
+    'felix: this is a full-screen client, and output here is being captured rather than\n' +
+      'drawn to a terminal — a pipe, a CI step, or an editor or agent shell that collects\n' +
+      'what a command prints.\n\n' +
+      'Run it in a terminal directly: `pnpm tui:dev` from the repo root.\n',
+  );
   process.exit(1);
 }
 

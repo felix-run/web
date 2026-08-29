@@ -28,7 +28,9 @@ pnpm tui:dev                       # from a checkout
 pnpm tui:build && node apps/tui/dist/felix.js
 ```
 
-It needs a TTY, and it needs a harness. With neither flag nor environment it talks to
+It needs a TTY, and it needs a harness. "Needs a TTY" usually means the command was run somewhere
+that captures output — a CI step, an editor's task pane, a coding agent's shell — rather than that
+anything is wrong with your terminal. Run it in one directly. With neither flag nor environment it talks to
 `http://localhost:8080` with the `quick` manifest.
 
 | Option | Environment | Meaning |
@@ -48,7 +50,18 @@ A config file covers the common case — `~/.config/felix/config.json` (or under
 { "origin": "https://felix.example.com", "apiKey": "sk-felix-…", "manifest": "deep" }
 ```
 
-Precedence is narrowest first: a flag beats the environment, and the environment beats the file.
+**Running from a checkout needs no configuration at all.** `apps/chat-ui/.dev.vars` is this repo's
+one local secrets file — `wrangler dev` reads it, the Vite dev proxy reads it, and so does this
+client — so `pnpm tui:dev` picks up the key `make up` generated. It reads `FELIX_API_KEY`,
+`FELIX_AUTH_API_KEYS` (the harness's own spelling) and `FELIX_ORIGIN`, and ignores everything else
+in the file.
+
+That file is located from the client's **own** source, not from the working directory. The TUI runs
+wherever you happen to be, and walking up from `cwd` looking for a file full of credentials would
+read whatever an unrelated parent directory happened to contain.
+
+Precedence is narrowest first, by how many runs a source affects: a flag (this run), then the
+environment (this shell), then `.dev.vars` (this clone), then `~/.config` (this machine).
 
 Prefer the environment or the file over `--key`: an argument is visible in `ps` to every user on the
 machine. A key is refused outright over plaintext `http` to anything but loopback, because it would
