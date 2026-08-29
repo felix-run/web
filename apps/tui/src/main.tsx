@@ -43,10 +43,10 @@ if (!process.stdout.isTTY) {
 }
 
 /**
- * Before `render`, and that ordering is load-bearing: focus reports arrive on
- * the same stdin Ink reads, and this listener has to see one before Ink hands
- * the same chunk to `useInput` as text. Node calls data listeners in the order
- * they were added.
+ * Before `render`, so the terminal is reporting focus from the first frame.
+ * Focus reports arrive on the same stdin Ink reads, and telling one from typed
+ * text depends on seeing the raw bytes first — which `attention.ts` explains,
+ * and `tests/composer.test.ts` pins.
  */
 const attention = createAttention({
   stdin: process.stdin,

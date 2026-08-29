@@ -281,9 +281,10 @@ browser cannot do rather than about the chat:
   focus) — the terminal's half of chat-ui's `presence.ts`, states and messages matched. Focus comes
   from `DECSET 1004`, and **the reports arrive as input**: Ink 7 hands `ESC [ I` / `ESC [ O` to
   `useInput` as the plain text `[I` and `[O` with no key flags, so an unfiltered composer reads
-  `[Ohello[I` after you tab away and back. `isFocusReport` is that filter, and it is only sound
-  because `main.tsx` creates the module *before* `render` — Node runs data listeners in registration
-  order, so a genuine report is always seen before Ink turns the same chunk into text.
+  `[Ohello[I` after you tab away and back. `isFocusReport` is that filter, and it works because the
+  module's own `data` listener sees the raw bytes first: Ink 7 reads stdin in **paused** mode
+  (`readable`, then `read()`), and `read()` emits `data` synchronously, so the report is recorded
+  before the same chunk reaches `useInput` as text.
 - **`ctrl+e` is the only way to write a paragraph.** The composer is one line with no cursor;
   `src/editor.ts` runs `$VISUAL`/`$EDITOR` on a temp file inside Ink's `suspendTerminal`, which
   hands over the terminal and restores it even if the callback throws. An unchanged or emptied file

@@ -42,10 +42,11 @@ const TITLE_POP = `${ESC}[23;2t`;
  * How long after a real focus report `[I` may still be read as one.
  *
  * `[` and `I` typed quickly enough arrive in a single chunk and are
- * indistinguishable from the report by their text alone. The raw listener here
- * is registered before Ink's — see `main.tsx` — so a genuine report has always
- * been seen by the time `useInput` asks about it, and a burst of typing that
- * happens to spell it has not.
+ * indistinguishable from the report by their text alone. What separates them is
+ * that this listener sees the raw bytes first: Ink 7 reads stdin in paused mode
+ * (`readable`, then `read()`), and `read()` emits `data` synchronously — so a
+ * genuine report has always been recorded by the time the same chunk reaches
+ * `useInput` as text, and a burst of typing that happens to spell one has not.
  */
 const REPORT_WINDOW_MS = 50;
 
@@ -68,7 +69,7 @@ export interface Attention {
 }
 
 export interface AttentionOptions {
-  stdin: NodeJS.EventEmitter;
+  stdin: Pick<NodeJS.EventEmitter, 'prependListener' | 'off'>;
   stdout: { write(chunk: string): unknown };
   /** Off entirely: no title, no reporting, no bell. */
   enabled?: boolean;
@@ -114,7 +115,10 @@ export function createAttention(options: AttentionOptions): Attention {
   };
 
   if (enabled) {
-    stdin.on('data', onData);
+    // Prepended so this stays the first `data` listener whatever else attaches:
+    // Ink turns these same bytes into text, and by then it is too late to tell
+    // what they were.
+    stdin.prependListener('data', onData);
     write(TITLE_PUSH);
     write(FOCUS_ON);
     write(`${ESC}]2;${TITLES.idle}${BEL}`);
