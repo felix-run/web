@@ -14,6 +14,7 @@
 import { render } from 'ink';
 import { App } from './app.js';
 import { insecureOrigin, resolveConfig, USAGE } from './config.js';
+import { createPromptHistory } from './history.js';
 import { createThreadStore } from './threads.js';
 
 const { config, firstMessage } = resolveConfig(process.argv.slice(2));
@@ -43,6 +44,7 @@ const { waitUntilExit } = render(
   <App
     config={config}
     store={createThreadStore()}
+    history={createPromptHistory()}
     root={process.cwd()}
     {...(firstMessage ? { firstMessage } : {})}
   />,

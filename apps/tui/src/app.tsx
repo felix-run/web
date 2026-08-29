@@ -8,6 +8,8 @@
  * runs.
  */
 
+import { existsSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   type ChatEngine,
   createChatEngine,
@@ -16,6 +18,7 @@ import {
   mergeSessions,
   snapshotToEvents,
   type ThreadMeta,
+  threadSuffix,
   titleFromText,
 } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
@@ -23,6 +26,7 @@ import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { authHeaders, type Config } from './config.js';
 import { explainError } from './errors.js';
+import type { PromptHistory } from './history.js';
 import type { ThreadStore } from './threads.js';
 import { Composer } from './ui/composer.js';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
@@ -44,14 +48,30 @@ const WRITE_PROMPT_MS = 25_000;
 
 const THINKING: ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
+/** Search hits shown at once. A notice is a few lines, not a panel. */
+const SEARCH_LIMIT = 5;
+
+const HELP = [
+  '/new /clear /continue /think <level> /manifest [name] /quit',
+  '/rename <name> /fork /compact /export [file] /rewind [n]',
+  '/search <text> /open <n|thread-id>',
+].join('\n');
+
+/** A hit, a title, a path — one line each, because a notice is one line each. */
+const oneLine = (text: string, width = 60) => {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > width ? `${flat.slice(0, width - 1)}\u2026` : flat;
+};
+
 export interface AppProps {
   config: Config;
   store: ThreadStore;
+  history: PromptHistory;
   root: string;
   firstMessage?: string;
 }
 
-export function App({ config, store, root, firstMessage }: AppProps) {
+export function App({ config, store, history, root, firstMessage }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
 
@@ -63,6 +83,10 @@ export function App({ config, store, root, firstMessage }: AppProps) {
   const [uiResolving, setUiResolving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [quitArmed, setQuitArmed] = useState(false);
+  const [recent, setRecent] = useState<string[]>(() => history.entries());
+
+  /** Thread ids from the last `/search`, so `/open 2` means something. */
+  const hitsRef = useRef<string[]>([]);
 
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
@@ -316,24 +340,169 @@ export function App({ config, store, root, firstMessage }: AppProps) {
           setManifest(arg);
           setNotice(`manifest: ${arg}`);
           return;
+        case 'rename': {
+          if (!arg) {
+            setNotice('usage: /rename <name>');
+            return;
+          }
+          const id = threadIdRef.current;
+          void client
+            .renameSession(id, arg)
+            .then(() => {
+              // The harness owns the name; the local index is what draws the
+              // rail when it cannot be reached, so both are told.
+              store.index({ id, manifest, title: arg, updatedAt: Date.now() });
+              setNotice(`renamed: ${arg}`);
+              return refreshThreads();
+            })
+            .catch((err) => engine.setError(explainError(err, 'rename this thread', config)));
+          return;
+        }
+        case 'fork': {
+          // Unlike a rewind, the original is untouched: this is for taking the
+          // conversation a second way while keeping the first.
+          const newId = crypto.randomUUID();
+          const title = threads.find((t) => t.id === threadIdRef.current)?.title ?? 'Conversation';
+          void client
+            .forkSession({ threadId: threadIdRef.current, newThreadId: newId })
+            .then(async () => {
+              store.index({
+                id: newId,
+                manifest,
+                title: `${title} (copy)`,
+                updatedAt: Date.now(),
+              });
+              await refreshThreads();
+              selectThread(newId);
+              setNotice('forked — the original is untouched');
+            })
+            .catch((err) => engine.setError(explainError(err, 'fork this thread', config)));
+          return;
+        }
+        case 'compact':
+          void client
+            .compactSession(threadIdRef.current, manifest)
+            .then(() => setNotice('context compacted'))
+            .catch((err) => engine.setError(explainError(err, 'compact this thread', config)));
+          return;
+        case 'export': {
+          const target = resolve(root, arg || `felix-${threadIdRef.current}.jsonl`);
+          // Refusing beats clobbering: the argument is a path typed once, and
+          // the transcript it would overwrite may be the only copy.
+          if (existsSync(target)) {
+            setNotice(`${target} already exists`);
+            return;
+          }
+          void client
+            .exportSession(threadIdRef.current)
+            .then((jsonl) => {
+              writeFileSync(target, jsonl, { encoding: 'utf8', mode: 0o600 });
+              setNotice(`exported: ${target}`);
+            })
+            .catch((err) => engine.setError(explainError(err, 'export this thread', config)));
+          return;
+        }
+        case 'rewind': {
+          // Server event ids arrive with a snapshot and are never minted
+          // locally, so a thread streamed in this process has none until it is
+          // hydrated. Do that first rather than reporting an empty transcript.
+          const back = Math.max(1, Number.parseInt(arg, 10) || 1);
+          void hydrate(threadIdRef.current)
+            .then(() => {
+              const rebuilt = engine.state.turns;
+              const target = rebuilt[rebuilt.length - 1 - back];
+              if (!target?.eventId) {
+                setNotice(`nothing ${back} turn(s) back to rewind to`);
+                return;
+              }
+              return client
+                .rewindChat({
+                  threadId: threadIdRef.current,
+                  eventId: target.eventId,
+                  summarize: false,
+                  manifest,
+                })
+                .then(() => hydrate(threadIdRef.current))
+                .then(() => setNotice(`rewound — ${back} turn(s) off the active branch`));
+            })
+            .catch((err) => engine.setError(explainError(err, 'rewind this thread', config)));
+          return;
+        }
+        case 'search': {
+          if (!arg) {
+            setNotice('usage: /search <text>');
+            return;
+          }
+          void client
+            .searchSessions(arg, SEARCH_LIMIT)
+            .then((rows) => {
+              // Hits carry the wire id `{tenant}:{suffix}`; a client sends and
+              // stores the suffix, and the harness rejects anything else.
+              const hits = rows.map((row) => ({
+                id: threadSuffix(row.thread_id),
+                snippet: row.content,
+              }));
+              hitsRef.current = hits.map((hit) => hit.id);
+              setNotice(
+                hits.length
+                  ? [
+                      'hits — /open <n> to switch',
+                      ...hits.map(
+                        (hit, i) =>
+                          `${i + 1}) ${threads.find((t) => t.id === hit.id)?.title ?? hit.id} · ${oneLine(hit.snippet)}`,
+                      ),
+                    ].join('\n')
+                  : `nothing matched ${arg}`,
+              );
+            })
+            .catch((err) => engine.setError(explainError(err, 'search your threads', config)));
+          return;
+        }
+        case 'open': {
+          const index = Number.parseInt(arg, 10);
+          const id = Number.isInteger(index) ? hitsRef.current[index - 1] : arg;
+          if (!id) {
+            setNotice('usage: /open <n from the last /search, or a thread id>');
+            return;
+          }
+          selectThread(id);
+          return;
+        }
         case 'quit':
           exit();
           return;
         default:
-          setNotice('commands: /new /clear /continue /think /manifest /quit');
+          setNotice(HELP);
       }
     },
-    [client, config, engine, exit, manifest, newThread],
+    [
+      client,
+      config,
+      engine,
+      exit,
+      hydrate,
+      manifest,
+      newThread,
+      refreshThreads,
+      root,
+      selectThread,
+      store,
+      threads,
+    ],
   );
 
   const submit = useCallback(
     (text: string) => {
       setNotice(null);
       setQuitArmed(false);
+      // Commands are recorded too: `/think high` is as worth recalling as a
+      // paragraph, and a shell does not filter its history either.
+      history.add(text);
+      setRecent(history.entries());
       if (text.startsWith('/')) command(text);
       else send(text);
     },
-    [command, send],
+    [command, history, send],
   );
 
   // The first message from argv, once the engine exists.
@@ -446,10 +615,17 @@ export function App({ config, store, root, firstMessage }: AppProps) {
 
       {notice ? <Text color="yellow">{notice}</Text> : null}
 
+      {/*
+        The rail takes the keyboard whole while it is focused. Ink delivers
+        every keypress to every mounted `useInput`, so a composer left active
+        would recall history on the same ↑ that moves the rail cursor, and
+        submit whatever is typed on the Enter that picks a thread.
+      */}
       <Composer
         streaming={streaming}
-        disabled={blocked}
+        disabled={blocked || railFocused}
         onSubmit={submit}
+        history={recent}
         hint={streaming ? 'steer the run…' : 'ask, or /help'}
       />
       <StatusLine

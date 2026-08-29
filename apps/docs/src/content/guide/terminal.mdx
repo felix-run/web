@@ -82,12 +82,36 @@ correct against a harness running `FELIX_AUTH_MODE=none`.
 |---|---|
 | `enter` | Send. **While a run is live this steers it** rather than starting a turn. |
 | `esc` | Stop the run (`POST /chat/abort`). |
+| `↑` / `↓` | Walk back through prompts you have sent; `↓` past the newest returns the line you were typing. |
 | `tab` | Focus the thread rail; `↑`/`↓` and `enter` to switch. |
 | `ctrl+n` | New thread. |
 | `ctrl+c` | Stop a live run; again to quit. |
 | `y` / `n` | Answer whatever is blocking the run. |
 
-Slash commands: `/new`, `/clear`, `/continue`, `/think <level>`, `/manifest [name]`, `/quit`.
+The rail takes the keyboard whole while it has focus, so `↑` moves its cursor rather than recalling a
+prompt, and `enter` picks a thread rather than sending what is typed.
+
+## Slash commands
+
+| Command | |
+|---|---|
+| `/new` | Start a thread. |
+| `/clear` | Forget this one (`DELETE /chat/history/{id}`). |
+| `/continue` | Let the agent keep going. |
+| `/think <level>` | `off` `minimal` `low` `medium` `high` `xhigh` `max`. |
+| `/manifest [name]` | Switch agent, or list what the harness serves. |
+| `/rename <name>` | A durable name, replacing the title derived from the first message. |
+| `/fork` | Copy this thread into a new one and switch to it. The original is untouched. |
+| `/compact` | Summarise older context now instead of waiting for the window to fill. |
+| `/export [file]` | Write the active branch as JSONL. Defaults to `felix-<thread>.jsonl` in the working directory, and refuses to overwrite an existing file. |
+| `/rewind [n]` | Move the active leaf back `n` turns (default 1). Later turns come off the branch rather than being deleted. |
+| `/search <text>` | Full-text across every thread the harness holds. |
+| `/open <n\|id>` | Open a numbered hit from the last `/search`, or a thread by id. |
+| `/quit` | |
+
+`/rewind` needs server event ids, which only arrive with a session snapshot, so it hydrates the
+thread from the harness before it moves anything — a thread streamed entirely in this process has no
+ids to rewind to until it does.
 
 ## When the run is waiting
 
@@ -143,7 +167,8 @@ The inspector surfaces — memory, the activity feed, plans, usage, manifest ver
 scheduled jobs — are the web UI's. So are image attachments. This client is the conversation.
 
 Threads are cached under `$XDG_STATE_HOME/felix` (default `~/.local/state/felix`), written `0600`
-inside a `0700` directory — a transcript carries whatever the agent read. The harness
+inside a `0700` directory — a transcript carries whatever the agent read, and so does the last
+fifty prompts, kept beside them in `prompt-history.jsonl` for `↑`. The harness
 remains authoritative for which threads exist and what they are named; the local copy is what keeps
 a transcript readable when the harness rejects anonymous history reads, and the only record of which
 manifest a thread used.
