@@ -34,7 +34,7 @@ import type { PromptHistory } from './history.js';
 import type { ThreadStore } from './threads.js';
 import { Composer } from './ui/composer.js';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
-import { StatusLine, ThreadRail } from './ui/rails.js';
+import { railRows, StatusLine, ThreadRail } from './ui/rails.js';
 import { Transcript } from './ui/transcript.js';
 import { createWorkspace } from './workspace.js';
 
@@ -90,7 +90,7 @@ export function App({
   onExit,
 }: AppProps) {
   const renderer = useRenderer();
-  const { width } = useTerminalDimensions();
+  const { width, height } = useTerminalDimensions();
   const exit = onExit;
 
   const [threadId, setThreadId] = useState(() => config.thread ?? crypto.randomUUID());
@@ -737,8 +737,12 @@ export function App({
       : 'tab threads · ctrl+n new · ctrl+e editor · /help';
 
   return (
-    <box flexDirection="column" paddingLeft={1} paddingRight={1}>
-      <box flexDirection="row" flexGrow={1}>
+    // Bounded to the terminal, and clipped rather than allowed to spill. A
+    // column taller than the screen is not scrolled here — it is drawn over
+    // whatever is beneath it, which is how a rail asking for more rows than fit
+    // ended up on top of the composer.
+    <box flexDirection="column" height={height} overflow="hidden" paddingLeft={1} paddingRight={1}>
+      <box flexDirection="row" flexGrow={1} flexShrink={1} minHeight={0}>
         {wide ? (
           <ThreadRail
             threads={visibleThreads}
@@ -747,6 +751,7 @@ export function App({
             focused={railFocused}
             filter={railFilter}
             total={threads.length}
+            rows={railRows(height)}
           />
         ) : null}
         <box flexDirection="column" flexGrow={1}>

@@ -15,8 +15,36 @@ import { createTextAttributes } from '@opentui/core';
 const DIM = createTextAttributes({ dim: true });
 const BOLD = createTextAttributes({ bold: true });
 
-/** Rows the rail draws at once. */
-const RAIL_ROWS = 20;
+/**
+ * The most thread rows the rail will draw, however tall the terminal is.
+ *
+ * The floor matters more than the ceiling: this was a flat 20, and a rail
+ * asking for 20 rows in a 24-row terminal does not shrink or scroll — it is
+ * drawn *over* the composer and the status line, which is a client that looks
+ * broken on the most common terminal size there is. `App` passes what actually
+ * fits; this is only the point past which more rows stop helping.
+ */
+export const RAIL_ROWS_MAX = 20;
+
+/**
+ * Rows the rail's chrome takes whatever the list holds: two borders, the
+ * header, both "N more" markers and the filter hint.
+ */
+const RAIL_CHROME = 6;
+
+/** The composer and the status line, which are drawn below the rail. */
+const BELOW_RAIL = 6;
+
+/**
+ * How many thread rows fit in a terminal this tall.
+ *
+ * Never fewer than three: below that the rail is not a list any more, and at
+ * that point the honest thing is a cramped rail rather than one that has
+ * silently eaten the prompt.
+ */
+export function railRows(height: number): number {
+  return Math.max(3, Math.min(RAIL_ROWS_MAX, height - RAIL_CHROME - BELOW_RAIL));
+}
 
 /** Inner width of the rail, less its border and padding. */
 const RAIL_TEXT = 22;
@@ -53,6 +81,7 @@ export function ThreadRail({
   focused,
   filter = '',
   total,
+  rows = RAIL_ROWS_MAX,
 }: {
   /** Already filtered: what is drawn and what enter picks are the same list. */
   threads: ThreadMeta[];
@@ -63,9 +92,11 @@ export function ThreadRail({
   filter?: string;
   /** Rows before filtering, so "3/40" is sayable. */
   total?: number;
+  /** Thread rows to draw — what the terminal has room for, from `App`. */
+  rows?: number;
 }) {
   const all = total ?? threads.length;
-  const { start, end } = railWindow(threads.length, cursor, RAIL_ROWS);
+  const { start, end } = railWindow(threads.length, cursor, rows);
 
   return (
     <box
