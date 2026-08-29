@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -11,7 +12,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWorkspace, PathEscape, resolveWithin } from '../src/workspace';
 
 /**
@@ -213,7 +213,7 @@ describe('confirmation before a write', () => {
     const confirm = vi.fn(async () => false);
     await createWorkspace({ root, confirm }).execute(call('local_shell', { command }));
 
-    expect(confirm).toHaveBeenCalledOnce();
+    expect(confirm).toHaveBeenCalledTimes(1);
     expect(existsSync(join(root, path))).toBe(false);
   });
 
@@ -237,7 +237,7 @@ describe('confirmation before a write', () => {
     const ws = createWorkspace({ root, confirm: () => new Promise<boolean>(() => {}) });
     const pending = ws.execute(call('local_shell', { command: 'echo hi > never.md' }));
 
-    await vi.advanceTimersByTimeAsync(31_000);
+    vi.advanceTimersByTime(31_000);
 
     await expect(pending).resolves.toMatchObject({ error: true });
     expect(existsSync(join(root, 'never.md'))).toBe(false);
