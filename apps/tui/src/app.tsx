@@ -817,6 +817,7 @@ export function App({
         error={error}
         root={root}
         hint={hint}
+        width={width}
       />
     </box>
   );

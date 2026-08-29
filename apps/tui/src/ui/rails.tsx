@@ -120,6 +120,7 @@ export function StatusLine({
   error,
   root,
   hint,
+  width,
 }: {
   manifest: string;
   origin: string;
@@ -129,7 +130,18 @@ export function StatusLine({
   root: string;
   /** What the keys do right now — see `hint` in `app.tsx`. */
   hint?: string;
+  /** Terminal columns, so the two halves can be cut rather than wrapped. */
+  width: number;
 }) {
+  // One row, two columns, and it has to stay one row: a status line that wraps
+  // pushes the composer up the screen every time the path is long. The
+  // renderer's own `truncate` needs a bounded width to cut against, which this
+  // row does not have, so the cut is made here where the width is known.
+  const keys = hint ? `  ${hint}` : '';
+  const state = `${manifest} · ${origin} · ${root}${phase && phase !== 'idle' ? ` · ${phase}` : ''}`;
+  const room = Math.max(8, width - keys.length - 2);
+  const left = state.length > room ? `${state.slice(0, room - 1)}…` : state;
+
   return (
     <box flexDirection="column">
       {error ? <text fg="red">{error}</text> : null}
@@ -138,11 +150,8 @@ export function StatusLine({
           what landed rather than a reply still being written. */}
       {reattaching ? <text fg="yellow">rejoining the thread…</text> : null}
       <box flexDirection="row" justifyContent="space-between">
-        <text attributes={DIM}>
-          {manifest} · {origin} · {root}
-          {phase && phase !== 'idle' ? ` · ${phase}` : ''}
-        </text>
-        {hint ? <text attributes={DIM}>{`  ${hint}`}</text> : null}
+        <text attributes={DIM}>{left}</text>
+        {keys ? <text attributes={DIM}>{keys}</text> : null}
       </box>
     </box>
   );
