@@ -137,4 +137,39 @@ describe('Gate', () => {
     // Must not throw or try to set state on an unmounted component.
     expect(() => handleUnauthorized()).not.toThrow();
   });
+  // A failed check carries a reason now. Offline and rejected are different
+  // problems with different fixes, and the old boolean probe showed neither.
+  it('explains an unreachable server rather than blaming the key', async () => {
+    setApiKey('some-key');
+    fetchMock.mockRejectedValue(new Error('offline'));
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/could not reach the server/i)).toBeTruthy());
+    expect(screen.queryByText(/rejected/i)).toBeNull();
+  });
+
+  it('names an unconfigured proxy, which no key can fix', async () => {
+    setApiKey('some-key');
+    fetchMock.mockResolvedValue(new Response('{"error":"felix_origin_unset"}', { status: 502 }));
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/FELIX_ORIGIN is unset/i)).toBeTruthy());
+    expect(screen.queryByText(/rejected/i)).toBeNull();
+  });
+
+  it('reports an unexpected status with its code', async () => {
+    setApiKey('some-key');
+    fetchMock.mockResolvedValue(new Response('nope', { status: 503 }));
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/\(503\)/)).toBeTruthy());
+  });
+
+  // `autoFocus` only fires at mount, and the field is already mounted through
+  // the checking phase — so the one moment the user has to type into it was
+  // the one moment it was not focused.
+  it('focuses the field when a stored key fails its check', async () => {
+    setApiKey('stale-key');
+    fetchMock.mockResolvedValue(rejected());
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/rejected/i)).toBeTruthy());
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('Access key'));
+  });
 });
