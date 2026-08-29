@@ -88,6 +88,7 @@ export const compactSession = felix.compactSession.bind(felix);
 export const exportSession = felix.exportSession.bind(felix);
 export const searchSessions = felix.searchSessions.bind(felix);
 export const rewindChat = felix.rewindChat.bind(felix);
+export const setSessionLabel = felix.setSessionLabel.bind(felix);
 export const respondUiRequest = felix.respondUiRequest.bind(felix);
 export const getThreadHistory = felix.getThreadHistory.bind(felix);
 export const deleteThreadHistory = felix.deleteThreadHistory.bind(felix);

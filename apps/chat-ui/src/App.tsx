@@ -57,6 +57,7 @@ import {
   renameSession,
   respondUiRequest,
   rewindChat,
+  setSessionLabel,
   setThinkingLevel,
   steerChat,
 } from '@/api';
@@ -327,10 +328,18 @@ export default function App() {
     }
   }, []);
 
+  /**
+   * Operator labels for this thread, keyed by event id — the snapshot's own map.
+   * Server-owned like the rest of session state, so switching threads clears it
+   * and hydration refills it rather than merging.
+   */
+  const [labels, setLabels] = useState<Record<string, string>>({});
+
   const hydrateFromServer = useCallback((id: string) => {
     void (async () => {
       try {
         const snap = await getSessionSnapshot(id);
+        if (snap && id === threadIdRef.current) setLabels(snap.labels ?? {});
         if (snap?.transcript?.length) {
           const rebuilt = eventsToTurns(snapshotToEvents(snap));
           if (rebuilt.length && id === threadIdRef.current) {
@@ -771,6 +780,32 @@ export default function App() {
    * to exactly where it was. Nothing is deleted by a rewind; the later events stay on
    * the session and simply stop being on the active branch.
    */
+  /**
+   * Name a turn, or clear the name.
+   *
+   * Optimistic, and deliberately so: the map is the operator's own annotation
+   * rather than anything the agent reads, so the cost of showing it a moment
+   * early is nothing, and the cost of waiting is a control that feels broken.
+   * A failure puts the previous value back and says why.
+   */
+  const labelTurn = useCallback(
+    (eventId: string, label: string | null) => {
+      const previous = labels;
+      setLabels((current) => {
+        const next = { ...current };
+        if (label === null) delete next[eventId];
+        else next[eventId] = label;
+        return next;
+      });
+      void setSessionLabel({ threadId, eventId, label }).catch((err) => {
+        setLabels(previous);
+        const described = describeError(err, 'label this message');
+        toast.error(described.message, { description: described.detail });
+      });
+    },
+    [labels, threadId],
+  );
+
   const rewindingRef = useRef(false);
   const rewindTo = useCallback(
     (eventId: string) => {
@@ -1074,6 +1109,10 @@ export default function App() {
                   onRewind={
                     !streaming && t.eventId && !isLast ? () => rewindTo(t.eventId!) : undefined
                   }
+                  {...(t.eventId && labels[t.eventId] !== undefined
+                    ? { label: labels[t.eventId] }
+                    : {})}
+                  {...(t.eventId ? { onLabel: (next) => labelTurn(t.eventId!, next) } : {})}
                 />
               );
             })}

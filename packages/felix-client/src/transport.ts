@@ -516,6 +516,29 @@ export function createFelixClient(opts: FelixClientOptions) {
     },
 
     /** POST /chat/rewind — set the active leaf to an earlier event. */
+    /**
+     * POST /chat/sessions/label → name a turn, or clear the name with `null`.
+     *
+     * The label is stored against the event id in thread meta *and* appended to
+     * the transcript as its own event, so it survives a reload and shows up in
+     * the session's own history. It comes back on the snapshot as `labels`.
+     */
+    async setSessionLabel(args: {
+      threadId: string;
+      eventId: string;
+      label: string | null;
+    }): Promise<void> {
+      const res = await chatFetch('/chat/sessions/label', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          event_id: args.eventId,
+          label: args.label,
+        }),
+      });
+      if (!res.ok) throw new Error(`sessions/label: ${res.status} ${await detailOf(res)}`);
+    },
     async rewindChat(args: {
       threadId: string;
       eventId: string;
