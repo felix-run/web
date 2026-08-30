@@ -1,0 +1,55 @@
+---
+/*
+ * Header nav — the top-level link a site with a marketing homepage would put
+ * in its header. Starlight has no config for header links, and its `Header`
+ * has one slot-bearing component on the right of the bar, so the link is added
+ * by overriding `SocialIcons` (wired in `astro.config.mjs`) rather than by
+ * forking `Header` itself. Forking `Header` would mean owning its grid
+ * template — the one that keeps the site title aligned to the sidebar edge and
+ * the search box to the content column, off `--sl-content-width` — for the sake
+ * of one anchor.
+ *
+ * `<Default />` renders Starlight's own icons after it, so the `social` array
+ * in `astro.config.mjs` stays the place social links are configured and the
+ * divider rule Starlight draws after this group still lands in the right spot.
+ *
+ * The right group is `md:sl-flex`, so this is hidden below 50rem. The sidebar
+ * keeps its own "API reference ↗" entry, which is what small screens get.
+ */
+// Biome parses only an .astro file's frontmatter, never the markup, so every
+// component import here reads as dead to it.
+// biome-ignore lint/correctness/noUnusedImports: rendered as <Default /> below
+import Default from '@astrojs/starlight/components/SocialIcons.astro';
+---
+
+<a class="header-link" href="https://api.felix.run/docs">
+  API reference<span class="header-link-arrow" aria-hidden="true">↗</span>
+</a>
+<Default><slot /></Default>
+
+<style>
+  .header-link {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    padding: 0.5em;
+    margin: -0.5em;
+  }
+
+  .header-link:hover {
+    color: var(--sl-color-white);
+  }
+
+  /* Dimmer than the label: it marks the link as leaving the site, it is not
+     part of the name. Kept out of the accessible name by aria-hidden. */
+  .header-link-arrow {
+    color: var(--sl-color-gray-3);
+    margin-inline-start: 0.25em;
+  }
+
+  .header-link:hover .header-link-arrow {
+    color: inherit;
+  }
+</style>
