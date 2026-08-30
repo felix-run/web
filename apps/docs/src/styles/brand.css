@@ -14,3 +14,17 @@
   letter-spacing: 0.07em;
   font-weight: 650;
 }
+
+/*
+ * Wider main column. Starlight's default `--sl-content-width` is 45rem, tuned
+ * for pure prose; these pages carry wide tables, JSON manifests and REST
+ * examples that were wrapping hard inside it. 58rem is ~29% more.
+ *
+ * Only this one variable needs setting: `TwoColumnContent` sizes the main pane
+ * as a `min()` against the space left by the two sidebars, so the column grows
+ * with the viewport and stops rather than pushing the on-this-page rail off
+ * screen. Below 72rem the layout is single-column and this has no effect.
+ */
+:root {
+  --sl-content-width: 58rem;
+}
