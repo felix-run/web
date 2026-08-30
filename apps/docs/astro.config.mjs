@@ -11,6 +11,11 @@ export default defineConfig({
       description:
         'Felix — self-hostable managed agents harness: manifests, patterns, sessions, and governance.',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/felix-run/felix' }],
+      // Header nav. Starlight has no config for header links, so the "API
+      // reference" link rides an override of the one slot-bearing component in
+      // the header's right group; it renders Starlight's own icons after it.
+      // See the component for why this beats forking `Header`.
+      components: { SocialIcons: './src/components/SocialIcons.astro' },
       // Palette from @felix/design (checked-in src/styles/theme.css).
       // theme.css is generated (see @felix/design); brand.css is hand-written.
       customCss: ['./src/styles/theme.css', './src/styles/brand.css'],
