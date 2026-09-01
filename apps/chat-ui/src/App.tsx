@@ -537,9 +537,18 @@ export default function App() {
       // the length of the toast rather than fired now. Undo cancels it; letting the
       // window elapse commits it. A tab closed mid-window leaves the server
       // transcript behind, which is the safe direction to fail in.
-      let undone = false;
+      //
+      // `committed` is set by the very timer Undo is racing, rather than compared
+      // against a deadline, because the two clocks do not run together: sonner
+      // pauses a toast's dismiss timer while the pointer is over it, and this one
+      // does not pause. Hovering the toast for a moment and then clicking Undo
+      // therefore landed *after* the delete had already gone to the harness. The
+      // thread came back in the rail from the local copy with its server
+      // transcript gone, and nothing on screen said so.
+      let committed = false;
       const commit = window.setTimeout(() => {
-        if (!undone) void deleteThreadHistory(id).catch(() => {});
+        committed = true;
+        void deleteThreadHistory(id).catch(() => {});
       }, DELETE_UNDO_MS);
 
       toast('Conversation deleted', {
@@ -547,7 +556,12 @@ export default function App() {
         action: {
           label: 'Undo',
           onClick: () => {
-            undone = true;
+            if (committed) {
+              toast.error(
+                'Too late to undo. This conversation was already deleted on the harness.',
+              );
+              return;
+            }
             window.clearTimeout(commit);
             if (meta) indexThread(meta);
             if (turns.length) saveTurns(id, turns);

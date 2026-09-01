@@ -68,7 +68,11 @@ synchronously, then await the promise), and `toHaveBeenCalledOnce` runs but is n
 signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
 (`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`). `tests/composer.test.tsx`
 covers what typing *costs*: a burst of keystrokes must not drive React past its update-depth limit,
-which is a real failure mode here and not a theoretical one. **The inspector panels, and the
+which is a real failure mode here and not a theoretical one. It also pins what a *refusal* costs.
+`PromptInput` clears the composer whenever `onSubmit` resolves and keeps the text only when it
+throws, so every guard that returned early destroyed the message it was about to explain. The
+over-limit case only reproduces mid-run: `SendOrStop` swaps the submit button for a `type="button"`
+Stop while streaming, so PromptInput's own Enter guard has no disabled button left to find. **The inspector panels, and the
 composer's slash menu, are still verified by running them.**
 
 One thing that bites when verifying by hand: `usePoll` skips ticks while the tab is **hidden**, and a
