@@ -172,10 +172,20 @@ FELIX_MODEL_ROUTES='{
 }'
 ```
 
-Providers are `anthropic`, `openai` and `ollama`; point `FELIX_OLLAMA_BASE_URL` or
-`FELIX_LITELLM_BASE_URL` at a local gateway to keep traffic in your own network. A manifest referring
-to `house-fast` then works everywhere the route is defined. See
-[Model client](/internals/model-client/).
+Providers are `anthropic`, `openai`, `ollama`, `workers_ai` (Cloudflare Workers AI), `groq`,
+`together`, `deepseek`, `cerebras`, `fireworks`, `openrouter`, `xai`, `mistral` and `google`, plus any
+registered by a plugin. Point `FELIX_OLLAMA_BASE_URL` or `FELIX_LITELLM_BASE_URL` at a local gateway to
+keep traffic in your own network. Everything past the first three is configured through
+`FELIX_MODEL_PROVIDER_OPTIONS`:
+
+```bash
+FELIX_MODEL_PROVIDER_OPTIONS='{"workers_ai":{"api_key":"...","account_id":"...","gateway_id":"default"}}'
+FELIX_MODEL_ROUTES='{"cf-fast":{"provider":"workers_ai","model":"@cf/meta/llama-3.3-70b-instruct-fp8-fast"}}'
+```
+
+Provider names in `FELIX_MODEL_ROUTES` are resolved against the registry at startup, so a typo fails
+immediately rather than on the first request that happens to take that route. A manifest referring to
+`house-fast` works everywhere the route is defined. See [Model client](/internals/model-client/).
 
 ## Chat UI / docs Workers
 
