@@ -222,7 +222,11 @@ spec:
 | `auth` | string | `""` | Literal token or `secret:NAME`. |
 | `transport` | `http` \| `sse` \| `stdio` | `sse` | |
 
-Outbound URLs pass an SSRF guard; internal hostnames are blocked unless allowlisted.
+Outbound URLs pass an SSRF guard. Parsing checks what needs no lookup — scheme, plain `http`
+outside development, internal names and suffixes, and IP literals including the decimal form.
+The address check happens when the connection is made: the harness resolves once, validates
+every returned address, and connects to one it validated, so the address that was checked is
+the address that is used. See [Egress](/internals/governance/#egress).
 
 :::caution[stdio is disabled by default]
 `transport: stdio` spawns a subprocess from manifest-supplied argv — arbitrary code execution as the
@@ -259,7 +263,7 @@ An HTTPS container gateway, one tool per entry.
 | `gateway_url` | string | required | |
 | `image` | string | required | |
 | `container_tool_name` | string | `""` | |
-| `timeout_ms` | int \| null | `null` | |
+| `timeout_ms` | int \| null | `null` | 1–3,600,000 ms. |
 | `auth` | string | `""` | Literal or `secret:NAME`. |
 | `args_schema` | JSON Schema \| null | `null` | |
 | `fatal` | bool | `false` | When true, a failure aborts the tool batch. |
@@ -299,7 +303,7 @@ Container-backed code execution (the `sandbox` extra, Docker).
 | `description` | string | `""` |
 | `binding` | string | required |
 | `sandbox_tool_name` | string | `""` |
-| `timeout_ms` | int \| null | `null` |
+| `timeout_ms` | int \| null | `null` | 1–3,600,000 ms. |
 | `path_prefix` | string | `""` |
 | `args_schema` | JSON Schema \| null | `null` |
 | `fatal` | bool | `false` |
@@ -315,7 +319,7 @@ the default image.
 | `description` | string | `""` |
 | `binding` | string | required |
 | `op` | `content` \| `links` \| `snapshot` \| `screenshot` \| `pdf` \| `json` | `content` |
-| `timeout_ms` | int \| null | `null` |
+| `timeout_ms` | int \| null | `null` | 1–3,600,000 ms. |
 | `path_prefix` | string | `""` |
 | `args_schema` | JSON Schema \| null | `null` |
 | `fatal` | bool | `false` |

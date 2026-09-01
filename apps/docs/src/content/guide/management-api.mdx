@@ -285,6 +285,13 @@ curl -s "$BASE_URL/manifests/support?version=3" -H "authorization: Bearer $FELIX
 `GET /manifests/{name}` returns `{name, version, variant, manifest}`, where `variant` is `stable` or
 `canary`.
 
+:::caution[Not always mounted]
+Under `FELIX_MANIFEST_SOURCE=bundled` the four write routes below — `PUT`, canary, rollback and
+clear-canary — are **not registered at all**. They are absent from `/openapi.json`, and a `PUT`
+returns `405 Allow: GET`. The reads above are unaffected, and `GET /manifests` then lists the
+bundled set with `source: "bundled"`. Under `store` each row carries `source: "store"`.
+:::
+
 ### `PUT /manifests/{name}`
 
 <Badge text="manifests:write" variant="note" />
