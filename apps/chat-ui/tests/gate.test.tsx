@@ -170,6 +170,13 @@ describe('Gate', () => {
     fetchMock.mockResolvedValue(rejected());
     renderGate();
     await waitFor(() => expect(screen.getByText(/rejected/i)).toBeTruthy());
-    expect(document.activeElement).toBe(screen.getByPlaceholderText('Access key'));
+    // Awaited, not asserted straight after the text. The field is focused from an
+    // effect keyed on `checking`, and the error message renders in the same commit
+    // that flips it — so the text can be on screen a tick before effects flush.
+    // Asserting synchronously passed on a warm machine and failed on a cold CI
+    // runner, where `document.activeElement` was still `<body>`.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('Access key')),
+    );
   });
 });
