@@ -47,8 +47,16 @@ The request-path resolver walks four layers and returns the first hit:
 4. **Bundled** — the YAML shipped in the image (`source: bundled`)
 
 So a tenant manifest named `quick` shadows the bundled `quick` for that tenant alone. Active pointers
-are cached for 30 seconds. Eight manifests ship in the box: `quick`, `deep`, `router`, `oss-only`,
-`hybrid-router`, `support`, `cowork` and `governed`.
+are cached for 30 seconds. Nine manifests ship in the box: `quick`, `deep`, `router`, `oss-only`,
+`hybrid-router`, `support`, `cowork`, `governed` and `contributor`.
+
+`FELIX_MANIFEST_SOURCE=bundled` collapses that to one layer: only the manifests baked into the
+image are served, no manifest store is constructed, and the write routes are not registered — so
+the verbs are absent from the app and from `/openapi.json` rather than present and refusing. It is
+the right posture for a deployment that never authors a manifest at runtime. Two things change when
+you flip it: every tenant falls back to the image's file, dropping any per-tenant `auth.inbound`
+tightening, and threads pinned with `governance.pin_compile` see one 409 as the resolved version
+becomes `null`.
 
 Writes go through the [Management API](/guide/management-api/#manifests), which is append-only and
 version-pinned: publishing inserts a new version row and flips a pointer, and rolling back flips the

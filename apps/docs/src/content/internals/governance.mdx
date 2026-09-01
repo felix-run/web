@@ -52,6 +52,44 @@ A control that cannot run has not cleared anything, so unavailability is never t
 Alert on `felix_control_unavailable` and `felix_control_degraded`: both mean a control named in a
 manifest is not the control actually in force.
 
+## Egress
+
+Outbound URLs are checked in two halves, deliberately in different places.
+
+**At parse.** Scheme, plain `http` outside development, internal names and suffixes
+(`.svc`, `.cluster.local`, `.internal`, `metadata.google.internal`), and IP literals —
+including the decimal form `http://2130706433/`, which is `127.0.0.1` to a resolver but not an
+IP literal to `ipaddress`. None of this needs DNS. Resolving here used to run a blocking
+`getaddrinfo` inside a pydantic validator, on the API event loop, once per ref on every
+manifest read *and* write.
+
+**At dial.** The address check. `felix.security.egress` supplies an httpx transport whose
+network backend resolves once, validates every returned address, and connects to one of the
+addresses it validated. That is the difference between enforcement and advice: resolving in a
+guard and letting the client resolve again is two independent lookups, and a name that answers
+them differently — DNS rebinding with a short TTL, or a nameserver that simply drops the
+guard's query while answering the client's — reaches whatever it likes. One blocked answer
+refuses the whole name, so a round-robin containing a private address cannot be reached by
+retrying. A lookup that fails or times out refuses the dial, which is safe precisely because
+this *is* the connection.
+
+TLS is unaffected: certificate verification and SNI run against the hostname the caller asked
+for while the socket goes to the pinned address.
+
+`proxy`, `mounts` and `uds` are refused rather than ignored, since each chooses a destination
+the guard never sees. Supplying a transport also disables httpx's environment proxies, so
+`HTTP_PROXY` and `HTTPS_PROXY` do **not** apply to these calls — worth knowing if your egress
+containment is a proxy allowlist.
+
+### The browser is a partial exception
+
+`spec.browser_tools` hands its URL to Chromium, which resolves for itself. The navigation host
+*is* pinned — the browser launches with `--host-resolver-rules=MAP <host> <validated address>` —
+but cross-host subresources and redirects are checked per request without being pinned, because
+denying them outright breaks any page that loads assets from a CDN. This is the only outbound
+path where the URL comes from the model rather than a manifest, so treat a page's cross-host
+assets as reaching whatever they resolve to at load time.
+
 ## Limits state
 
 `LimitState` lives on `RequestContext` (contextvars): tool-call / peer-hop counters, wall-clock abort, cumulative tokens, audit count. Patterns check token budgets before each model call; the limits wrapper checks wall clock / tool calls / peer hops before each tool invoke. Thread `ctx.signal` through outbound HTTP so wall-clock aborts cancel in-flight work.
