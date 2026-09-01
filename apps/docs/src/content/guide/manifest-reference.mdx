@@ -82,8 +82,11 @@ Logical ids resolve through `DEFAULT_MODEL_ROUTES`, overridable with `FELIX_MODE
 `claude-opus`, `claude-sonnet`, `claude-haiku`, `claude-fable`, `gpt-4.1`, `gpt-4.1-mini`,
 `llama-3-pro`, `llama-3-fast`. The suffixed `claude-sonnet-4` and `claude-haiku-4` are retained as
 legacy aliases onto the current model in the same tier; prefer the unsuffixed ids.
-Providers are `anthropic`, `openai` and `ollama`, plus any registered through
-`register_model_provider`. See [Model client](/internals/model-client/).
+Providers are `anthropic`, `openai`, `ollama`, `workers_ai`, `groq`, `together`, `deepseek`,
+`cerebras`, `fireworks`, `openrouter`, `xai`, `mistral` and `google`, plus any registered through
+`register_model_provider`. Note that `limits.max_cost_usd` is refused at compile when the resolved
+model has no known rates — supply them with `spec.model.price`. See
+[Model client](/internals/model-client/).
 
 `confidence_escalation` retries with a stronger model when the answer looks hedged:
 

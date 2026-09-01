@@ -1,25 +1,90 @@
 ---
 title: "Model Client"
-description: "Provider registry for Anthropic, OpenAI, and Ollama — routes, streaming, fallbacks, and thinking/cache options."
+description: "The model layer: provider descriptors, wire formats, routes, streaming, fallbacks, and thinking/cache options."
 sidebar:
   order: 4
 ---
 
 import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
 
-How Felix talks to LLM providers. Source: `felix.patterns.model` + `model_registry` in [felix-run/felix](https://github.com/felix-run/felix).
+How Felix talks to LLM providers.
+
+The model layer lives in its own workspace package, **`packages/ai` (`felix_ai`)**, which **may not
+import `felix`** — an invariant test walks every import node, so a lazy in-function import is not an
+escape hatch. That boundary is what makes model-agnosticism structural rather than a claim: anything
+the harness injects arrives as a Protocol (`ToolSchema`, `ModelConfig`) or an explicit sink
+(`felix_ai.observability` for counters, `felix_ai.context` for the prompt-cache key).
+
+`felix.patterns.model` keeps only what genuinely needs the harness: resolving `FELIX_MODEL_ROUTES`
+against `Settings`, metering a turn through `record_usage`, and the fallback/escalation composites.
 
 ## Provider registry
 
-Providers register at import time:
+A provider is a **descriptor** — a wire format, an endpoint, and where its credential lives — so
+adding one is a row rather than a module. Providers register at import time:
 
-| Provider | Transport |
-|---|---|
-| `anthropic` | HTTPS Messages API (`ANTHROPIC_API_KEY` / `FELIX_ANTHROPIC_API_KEY`) |
-| `openai` | HTTPS Chat Completions (`OPENAI_API_KEY` / `FELIX_OPENAI_API_KEY`) |
-| `ollama` | Local/OpenAI-compatible at `FELIX_OLLAMA_BASE_URL` (default `http://localhost:11434`) |
+| Provider | Wire format | Configured with |
+|---|---|---|
+| `anthropic` | Anthropic Messages | `FELIX_ANTHROPIC_API_KEY` |
+| `openai` | OpenAI Chat Completions | `FELIX_OPENAI_API_KEY`, optional `FELIX_LITELLM_BASE_URL` |
+| `ollama` | OpenAI Chat Completions | `FELIX_OLLAMA_BASE_URL` (local, and billed as free) |
+| `workers_ai` | OpenAI Chat Completions | `api_key`, `account_id`, optional `gateway_id` |
+| `groq` `together` `deepseek` `cerebras` `fireworks` `openrouter` `xai` `mistral` `google` | OpenAI Chat Completions | `api_key` |
 
-Optional LiteLLM base (`FELIX_LITELLM_BASE_URL`) can front additional backends. Add a provider with `register_model_provider(name, factory)` before the first agent build — no edits to the react loop.
+Everything past the first three is configured through **`FELIX_MODEL_PROVIDER_OPTIONS`** rather than a
+settings field per vendor:
+
+```json
+{"workers_ai": {"api_key": "...", "account_id": "...", "gateway_id": "default"}}
+```
+
+That exists because `Settings` ignores unknown env vars, so `FELIX_MYPROVIDER_API_KEY` never lands
+anywhere — without it a registered third-party provider had no way to be given a key at all. An entry
+also overrides a built-in's named field, which is how you point one at a gateway. Values stored under
+a key/token/secret name join the redaction list, so a provider credential cannot reach tool output.
+
+The descriptor carries the two things that are not uniform. `base_url_default` may hold `{option}`
+placeholders — Cloudflare puts the account id in the URL path — and `header_options` sends a header
+only when its option is set, which is how one provider covers both direct and AI-Gateway-routed calls
+(`cf-aig-gateway-id`) instead of being two providers.
+
+Add a provider with `registry.register_model_provider(name, factory)` from a plugin's `register()`, or
+`register_model_provider` directly, before the first agent build — no edits to the react loop. The
+wire formats and transport are public (`felix_ai.wire`: `OpenAICompletionsClient`,
+`AnthropicMessagesClient`, `post_with_retry`, `map_stop`, `parse_tool_arguments`), because
+re-deriving retry-on-429, SSE parsing and usage accounting is most of the work of writing a provider.
+
+<Aside type="caution" title="Report usage, or the budgets fail open">
+`record_usage` is the only feed for `limits.max_input_tokens`, `max_output_tokens` and
+`max_cost_usd`. A provider that reports nothing leaves the run **uncapped** — it warns and increments
+`felix_model_unmetered`, but nothing stops it. On the OpenAI wire format a streamed response carries
+usage only when the request sets `stream_options.include_usage`; forget it and every streamed run is
+free as far as the budgets are concerned. `tests/conformance/test_model_provider.py` asserts this
+against every wire format.
+</Aside>
+
+<Aside type="note" title="Cloudflare: the line is compute, not vendor">
+`workers_ai` is an outbound HTTPS call to `api.cloudflare.com`, the same shape as any other hosted
+provider — as is R2 through its S3 endpoint. Felix still does not **run on** Workers, Durable Objects
+or Hyperdrive, and does not depend on a binding only reachable from inside them.
+</Aside>
+
+## Pricing, and refusing to guess
+
+`felix_ai.catalog` records one entry per model family — context window, max output, accepted request
+parameters, and rates. **An entry that does not state rates does not have them**: `pricing` is `None`,
+the model contributes zero to spend, and `is_priced()` reports it as unmeterable. None of the hosted
+tier ships with per-token rates, deliberately — Cloudflare bills Workers AI in neurons rather than
+tokens, so a per-token rate for it would be fiction.
+
+A manifest that *declares* `limits.max_cost_usd` on a model with no known rates is **refused at
+compile**, pointing at `spec.model.price`. Only a declared cap is refused; an unset one is filled from
+`ABSOLUTE_LIMITS`, and refusing on that would break every local deployment over a ceiling the author
+never asked for. `ollama` is exempt because a local runtime genuinely costs nothing — that is a
+property of the provider (`bills_per_token`), not of the model's name, since Llama also runs on four
+paid hosted providers and the catalog matches ids by substring.
+
+Costs are keyed on the **wire** model, while reporting keeps the logical route name.
 
 ## Logical routes
 
