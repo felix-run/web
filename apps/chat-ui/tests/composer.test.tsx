@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
@@ -32,6 +32,29 @@ function stubFetch() {
     'fetch',
     vi.fn(async (input: unknown) => {
       const url = String(input);
+      if (url.includes('/chat/sessions')) {
+        return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
+      }
+      if (url.includes('/approvals')) {
+        return new Response(JSON.stringify({ requests: [] }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    }),
+  );
+}
+
+/** As `stubFetch`, but `/chat/stream` never closes, so the run stays in flight. */
+function stubStreamingFetch() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('/chat/stream')) {
+        return new Response(new ReadableStream({ start() {} }), {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }
       if (url.includes('/chat/sessions')) {
         return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
       }
@@ -113,5 +136,111 @@ describe('typing into the composer', () => {
     });
 
     expect(complaints.filter((c) => /Maximum update depth/i.test(c))).toEqual([]);
+  });
+});
+
+/**
+ * What a refusal costs.
+ *
+ * `PromptInput` clears the composer whenever `onSubmit` resolves, and keeps the
+ * text only when it throws. Every guard in `handleSubmit` used to `return`, which
+ * resolves, so the composer was emptied and a toast explained why afterwards. The
+ * text is the only copy of what was typed; a textarea has no undo for that.
+ *
+ * These pin both halves of the fix. A refusal must leave the text alone, and an
+ * accepted send must still clear it: "never clear" passes the first assertion and
+ * breaks the app.
+ *
+ * Each case mounts its own App and reads the textarea out of *that* render's
+ * container. The suite above leaves its trees mounted, so a bare
+ * `document.querySelector('textarea')` returns the first App ever rendered and
+ * every value here accumulates.
+ */
+describe('refusing a submission', () => {
+  afterEach(cleanup);
+
+  async function mount(): Promise<HTMLTextAreaElement> {
+    const { container } = render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <App />
+        </TooltipProvider>
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(container.querySelector('textarea')).toBeTruthy());
+    return container.querySelector('textarea') as HTMLTextAreaElement;
+  }
+
+  it('keeps the text when the command is not one this client knows', async () => {
+    const box = await mount();
+
+    await act(async () => {
+      await userEvent.type(box, '/nosuchcommand', { delay: null });
+    });
+    await act(async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+
+    expect(box.value).toBe('/nosuchcommand');
+  });
+
+  /** Pasted, not typed: 32k keystrokes is not what this measures. */
+  const OVERLONG = 'x'.repeat(32_001);
+
+  it('keeps an over-limit message while idle, where the send button is disabled', async () => {
+    const box = await mount();
+
+    await act(async () => {
+      box.focus();
+      await userEvent.paste(OVERLONG);
+    });
+    await act(async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+
+    expect(box.value).toBe(OVERLONG);
+  });
+
+  /**
+   * The same message, with a run in flight, which is the case that actually lost
+   * text. `SendOrStop` swaps the `type="submit"` Send for a `type="button"` Stop
+   * while streaming, so the `submitButton.disabled` check in PromptInput's Enter
+   * handler finds no button and calls `requestSubmit()` anyway. Idle, that check
+   * catches it; mid-run, nothing did.
+   */
+  it('keeps an over-limit message while a run is in flight', async () => {
+    stubStreamingFetch();
+    const box = await mount();
+
+    await act(async () => {
+      await userEvent.type(box, 'start a run', { delay: null });
+    });
+    await act(async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+    await waitFor(() => expect(box.value).toBe(''));
+
+    await act(async () => {
+      box.focus();
+      await userEvent.paste(OVERLONG);
+    });
+    await act(async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+
+    expect(box.value).toBe(OVERLONG);
+  });
+
+  it('still clears the text when the message is accepted', async () => {
+    const box = await mount();
+
+    await act(async () => {
+      await userEvent.type(box, 'an ordinary message', { delay: null });
+    });
+    await act(async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+
+    await waitFor(() => expect(box.value).toBe(''));
   });
 });

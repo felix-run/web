@@ -24,6 +24,24 @@ const MAX_TEXT_LENGTH = 32_000;
 const MAX_FILES = 4;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
+/**
+ * Refuse a submission without destroying what was typed.
+ *
+ * `PromptInput` clears the composer whenever `onSubmit` *resolves*, and keeps the
+ * text only when it throws ("Don't clear on error - user may want to retry",
+ * `prompt-input.tsx`). Every guard below used to `return` instead, which resolves,
+ * so the message was already gone by the time the toast explaining the refusal
+ * rendered. The worst case was the length limit: the longest thing anyone types
+ * here is the one submission that deletes itself.
+ *
+ * Throwing is the provider's own signal for this, and it swallows the error, so
+ * the toast fired here is the only thing the operator sees.
+ */
+function refuseSubmit(message: string): never {
+  toast.error(message);
+  throw new Error(message);
+}
+
 type Status = 'submitted' | 'streaming' | 'ready' | 'error';
 
 export type ModelOption = { id: string; label: string; description?: string };
@@ -193,22 +211,41 @@ function MultimodalInputInner({
   const isBusy = status === 'streaming' || status === 'submitted';
   const trimmedText = text.trim();
   const tooLong = text.length > MAX_TEXT_LENGTH;
-  const canSubmit = isConnected && (trimmedText.length > 0 || files.length > 0) && !tooLong;
-  // Background only when idle (durable poll path).
-  const canBackground =
-    Boolean(onBackground) && isConnected && !isBusy && trimmedText.length > 0 && !tooLong;
 
-  const helperText = !isConnected
-    ? 'Reconnecting…'
+  /**
+   * Why this composer will not send right now, or `null` when it will.
+   *
+   * One value behind three things that used to be derived separately and could
+   * disagree: whether the send button is enabled, what the hint under the
+   * composer says, and whether Enter does anything.
+   *
+   * The last was the hole. `SendOrStop` swaps in a `type="button"` Stop while a
+   * run is streaming, so the `submitButton.disabled` check in PromptInput's Enter
+   * handler finds no submit button and calls `requestSubmit()` regardless. Every
+   * guard downstream of that ran *after* the provider had taken the text away.
+   */
+  const refusal: string | null = !isConnected
+    ? 'Not connected to the harness. Reconnecting…'
     : // A reattach looks busy but has no run behind it to steer, so it must not
       // offer to. Stop ends the reattach and frees the composer.
       reattaching
-      ? 'Rejoining this thread. Stop to send a new message.'
-      : isBusy
-        ? 'Generating. Press Enter to steer.'
-        : files.length >= MAX_FILES
-          ? `Max ${MAX_FILES} attachments`
-          : null;
+      ? 'Rejoining this thread. Stop it first to send a new message.'
+      : tooLong
+        ? `${(text.length - MAX_TEXT_LENGTH).toLocaleString()} characters over the ${MAX_TEXT_LENGTH.toLocaleString()} limit.`
+        : null;
+
+  const canSubmit = refusal === null && (trimmedText.length > 0 || files.length > 0);
+  // Background only when idle (durable poll path).
+  const canBackground =
+    Boolean(onBackground) && refusal === null && !isBusy && trimmedText.length > 0;
+
+  const helperText =
+    refusal ??
+    (isBusy
+      ? 'Generating. Press Enter to steer.'
+      : files.length >= MAX_FILES
+        ? `Max ${MAX_FILES} attachments`
+        : null);
 
   const showCharCount = text.length > MAX_TEXT_LENGTH * 0.9;
 
@@ -219,15 +256,19 @@ function MultimodalInputInner({
       } catch {
         /* unsupported */
       }
+      // Clearing came first here, so choosing a command this client does not
+      // implement emptied the composer and then said so. The text is the only
+      // copy of what was typed; it survives until something is actually run.
+      if (enabledSlashCommands && !enabledSlashCommands.has(cmd.name)) {
+        toast.info(`/${cmd.name} is not implemented yet`);
+        return false;
+      }
       controller.textInput.clear();
       attachments.clear();
       setSlashIndex(0);
       setDismissedAt(null);
-      if (enabledSlashCommands && !enabledSlashCommands.has(cmd.name)) {
-        toast.info(`/${cmd.name} is not implemented yet`);
-        return;
-      }
       onSlashCommand?.(cmd);
+      return true;
     },
     [controller, attachments, onSlashCommand, enabledSlashCommands],
   );
@@ -240,32 +281,41 @@ function MultimodalInputInner({
         const name = trimmed.slice(1).split(/\s+/)[0]?.toLowerCase() ?? '';
         const cmd = slashCommands.find((c) => c.name === name);
         if (cmd) {
-          handleSlashSelect(cmd);
+          // `handleSlashSelect` toasts its own reason when the command is not
+          // wired up; throw so the provider leaves the text to be edited.
+          if (!handleSlashSelect(cmd)) throw new Error(`/${cmd.name} is not implemented yet`);
           return;
         }
-        toast.error(`Unknown command: /${name}`);
-        controller.textInput.clear();
-        return;
+        refuseSubmit(`Unknown command: /${name}. Your message is still in the composer.`);
       }
 
-      if (!isConnected) {
-        toast.error('Disconnected. Reconnecting…');
-        return;
-      }
+      // These three are backstops. `refusal` above disables the send button and
+      // blocks Enter, so reaching one means a path that bypassed both.
+      if (!isConnected) refuseSubmit('Not connected to the harness. Nothing was sent.');
+      if (reattaching) refuseSubmit('Rejoining this thread. Stop it first to send a new message.');
       // While streaming, submit steers the active run (handled by App.send).
       if (message.text.length > MAX_TEXT_LENGTH) {
-        toast.error(`Message exceeds ${MAX_TEXT_LENGTH.toLocaleString()} characters.`);
-        return;
+        refuseSubmit(
+          `Message is ${(message.text.length - MAX_TEXT_LENGTH).toLocaleString()} characters over the ${MAX_TEXT_LENGTH.toLocaleString()} limit. Nothing was sent.`,
+        );
       }
       if (!message.text.trim() && message.files.length === 0) return;
       await onSubmit(message);
       if (isBusy) controller.textInput.clear();
     },
-    [isConnected, isBusy, onSubmit, controller, handleSlashSelect],
+    [isConnected, reattaching, isBusy, onSubmit, controller, handleSlashSelect],
   );
 
   const handleTextareaKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // Before the menu, because this holds whether or not the menu is open, and
+      // because PromptInput's own Enter guard reads a submit button that is not
+      // rendered during a run. The reason is already on screen in `helperText`,
+      // so refusing silently is not refusing without explanation.
+      if (e.key === 'Enter' && !e.shiftKey && refusal) {
+        e.preventDefault();
+        return;
+      }
       if (!slashOpen) return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -296,7 +346,7 @@ function MultimodalInputInner({
         setDismissedAt(text);
       }
     },
-    [slashOpen, filteredCommands, slashIndex, handleSlashSelect, text],
+    [slashOpen, filteredCommands, slashIndex, handleSlashSelect, text, refusal],
   );
 
   return (
@@ -358,7 +408,7 @@ function MultimodalInputInner({
             className="field-sizing-content max-h-48 min-h-[4.5rem] w-full min-w-0 px-4 pt-3.5 pb-2 text-sm leading-relaxed placeholder:text-muted-foreground"
             placeholder={placeholder}
             aria-label="Message Felix"
-            maxLength={MAX_TEXT_LENGTH + 200 /* slack so the toast can fire */}
+            maxLength={MAX_TEXT_LENGTH + 200 /* slack: going over is visible, not truncated */}
             aria-invalid={tooLong || undefined}
             onKeyDown={handleTextareaKeyDown}
           />
