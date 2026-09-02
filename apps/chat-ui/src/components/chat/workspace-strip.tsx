@@ -38,8 +38,9 @@ export function WorkspaceStrip() {
     void restoreMount().then((result) => {
       if (cancelled) return;
       if (result.status === 'restored') {
+        // No toast. This runs on load without anyone asking for it, and the strip
+        // it updates says `Folder · <name>` a few pixels away.
         setMountLabel(result.name);
-        toast.message(`Reattached ${result.name}`);
       } else if (result.status === 'needs-permission') {
         setReconnectName(result.name);
       }
@@ -62,10 +63,11 @@ export function WorkspaceStrip() {
       toast.message('No folder attached. The chat is using the in-tab workspace.');
       return;
     }
+    // Same here: the strip is the confirmation, and it is what the operator was
+    // looking at when they clicked.
     setReconnectName(null);
     setMountLabel(name);
     await refresh();
-    toast.success(`Reattached ${name}`);
   }, [refresh]);
 
   return (

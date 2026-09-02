@@ -66,7 +66,7 @@ import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { Conversation } from '@/components/chat/conversation';
 import { Greeting } from '@/components/chat/greeting';
 import { Message } from '@/components/chat/message';
-import { MultimodalInput } from '@/components/chat/multimodal-input';
+import { MultimodalInput, REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import { ThreadList } from '@/components/chat/thread-list';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
@@ -473,8 +473,10 @@ export default function App() {
             updatedAt: Date.now(),
           });
           await refreshThreads();
+          // No toast: `selectThread` moves the whole surface to the copy, and the
+          // rail shows it selected and named. Announcing a change of view on top
+          // of performing one is the redundancy this pass is removing.
           selectThread(newId);
-          toast.success(`Duplicated. Opened "${meta?.title ?? 'Conversation'} (copy)".`);
         })
         // A failed fork leaves nothing behind, so retrying is safe; it mints a
         // fresh id rather than reusing the one that failed.
@@ -675,7 +677,7 @@ export default function App() {
       // would report "Steer queued" and then sit unread until some later turn
       // drained it, which is worse than declining.
       if (reattachingRef.current) {
-        toast.message('Rejoining this thread — stop it first to send.');
+        toast.message(REATTACHING_REFUSAL);
         return;
       }
       if (streaming) {
@@ -773,6 +775,15 @@ export default function App() {
       .catch((err) => toastError(err, 'continue this run'));
   }, [streaming, threadId, manifest, hydrateFromServer]);
 
+  /**
+   * Kept, where `chooseThinking` drops its toast.
+   *
+   * This is `/think`, a blind cycle: there is no control under the pointer
+   * showing what was picked. The header badge is the in-place answer everywhere
+   * else, and it cannot be one here, because it is `hidden sm:inline-flex` and
+   * renders nothing at all when the level is `off` — which is one of the values
+   * the cycle lands on.
+   */
   const cycleThinking = useCallback(() => {
     const idx = THINKING_LEVELS.indexOf(thinkingLevel);
     const next = THINKING_LEVELS[(idx + 1) % THINKING_LEVELS.length]!;
@@ -787,11 +798,13 @@ export default function App() {
   const chooseThinking = useCallback(
     (level: ThinkingLevel) => {
       setThinkingLevelState(level);
-      void setThinkingLevel({ threadId, thinkingLevel: level })
-        .then(() => toast.message(`Thinking: ${level}`))
-        .catch((err) =>
-          toastError(err, 'change the thinking level', { retry: () => chooseThinking(level) }),
-        );
+      // No toast: this comes from the menu's radio group, which shows the
+      // selection at the moment of the click, and the header badge carries it
+      // afterwards. `cycleThinking` above keeps its toast for the opposite
+      // reason.
+      void setThinkingLevel({ threadId, thinkingLevel: level }).catch((err) =>
+        toastError(err, 'change the thinking level', { retry: () => chooseThinking(level) }),
+      );
     },
     [threadId],
   );
