@@ -56,7 +56,10 @@ export function WorkspaceStrip() {
   const onReconnect = useCallback(async () => {
     const name = await reconnectMount();
     if (!name) {
-      toast.error('Folder access was not granted');
+      // Not an error: the operator was asked for a folder and said no, or picked
+      // nothing. Reporting a decision back as a failure is how a surface teaches
+      // people to stop reading its red.
+      toast.message('No folder attached. The chat is using the in-tab workspace.');
       return;
     }
     setReconnectName(null);
