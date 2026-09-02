@@ -86,6 +86,18 @@
 /* Neutral (zinc) palette in oklch. Light + dark token sets. */
 :root {
   --radius: 0.625rem;
+  /* The app header's height, and the offset the toast layer clears it by. It is a
+     token because two unrelated files need the same number: the header sets its own
+     height from this, and the `<Toaster>` positions itself below it. They used to
+     agree by coincidence, and did not: the toast landed at y 31-86 across a 48px
+     header, over the wordmark and the history control. */
+  --header-height: 3rem;
+  /* Every portalled primitive in `@felix/ui` (sheet, dropdown, select, tooltip,
+     hover-card) and the composer's slash menu sit at Tailwind's `z-50`. The toast
+     is one step above them, because a toast reporting on a sheet has to be
+     readable over it. Named rather than a second literal, because this is the only
+     value in the app that is *not* 50 and the reason needs somewhere to live. */
+  --z-toast: 60;
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
@@ -329,6 +341,29 @@ html [data-sonner-toaster][data-theme] {
   /* Sonner hardcodes 8px and its own sans stack. The app is on 10px and inherits. */
   --border-radius: var(--radius-lg);
   font-family: inherit;
+}
+
+/* A target you can actually hit, and a layer you can reason about.
+ *
+ * Sonner draws the close button at 20x20 and hangs it off the toast's own corner.
+ * WCAG 2.2 SC 2.5.8 asks 24x24 of a pointer target, and this one is both the
+ * smallest control on the surface and the one furthest from where the eye is.
+ * Only the box grows; the glyph inside is unchanged.
+ *
+ * The z-index is the other half. Sonner ships `999999999`, which is not a layer so
+ * much as a refusal to have one, and it means nothing can ever be drawn above a
+ * toast — including a modal that a toast might be reporting on. Every portalled
+ * primitive in `@felix/ui` (sheet, dropdown, select, tooltip, hover-card) and the
+ * composer's slash menu sit at Tailwind's `z-50`, so `--z-toast` is one step above
+ * that, deliberately, rather than nine digits above everything.
+ */
+html [data-sonner-toaster] {
+  z-index: var(--z-toast);
+}
+
+html [data-sonner-toast] [data-close-button] {
+  width: 24px;
+  height: 24px;
 }
 
 /* The description is the raw string off the wire, and it is the part an operator
