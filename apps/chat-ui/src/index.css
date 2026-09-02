@@ -265,6 +265,88 @@
   color: color-mix(in oklch, var(--muted-foreground) 80%, transparent);
 }
 
+/* Sonner's palette, replaced with this app's.
+ *
+ * The toast layer arrived with its dependency rather than being designed: sonner
+ * carries a complete visual system of its own (a Radix-ish HSL ramp, a hardcoded
+ * font stack, an 8px radius, 400ms transitions) and none of it had any relationship
+ * to the tokens above. Two reds meant "failed", two greens meant "done", and the
+ * app's most attention-grabbing element was the one thing on screen nobody chose.
+ *
+ * `richColors` stays on, because per-type colour is exactly right here: this is a
+ * surface where "healthy / waiting / failed" is the fastest thing an operator reads.
+ * Only the source of the colour changes. Sonner keeps its own selectors and its own
+ * close-button rules, which read the same variables, so this is a swap rather than
+ * a fight with someone else's stylesheet.
+ *
+ * The mapping is the house pattern for state, the one `error-notice`,
+ * `error-boundary`, `ui-prompt-banner` and the inspector already use:
+ * `border-state-X/30 bg-state-X/10 text-state-X`. `--state-*` is documented above as
+ * doubling as text colour and as its own surface tint, so both roles are already
+ * verified and this inherits that.
+ *
+ * Two deliberate departures from that pattern, both because a toast floats and those
+ * notices sit in the page flow with context around them:
+ *
+ * 1. The tint is composited against `--popover` rather than left at 10% alpha. The
+ *    house pattern's translucent wash would put streaming transcript text behind the
+ *    words explaining why something failed.
+ * 2. The border is the state colour at 65%, not 30%. A 10% tint lands within 1.3:1 of
+ *    the page in both themes, so the fill cannot be what marks the edge, and WCAG
+ *    1.4.11 asks 3:1 of an essential component's visual boundary. Measured against
+ *    `--background`, /30 reaches only 2.26:1 (dark) and 1.89:1 (light); /55 still
+ *    fails light at 2.92:1; /65 clears every state in both themes, worst case 3.56:1.
+ *    This is the same trap `--scrollbar-thumb` above was pulled out of `--border` for.
+ *
+ * Prefixed with `html` for specificity, not for style. Sonner injects its stylesheet
+ * into `<head>` at runtime, so its `[data-sonner-toaster][data-theme='light']` block
+ * can land after this file and match it at (0,2,0); the extra element bumps these to
+ * (0,2,1) and settles it without `!important`.
+ */
+html [data-sonner-toaster][data-theme] {
+  --normal-bg: var(--popover);
+  --normal-text: var(--popover-foreground);
+  --normal-border: var(--border);
+  --normal-bg-hover: var(--accent);
+  --normal-border-hover: var(--border);
+
+  --success-bg: color-mix(in oklch, var(--state-done) 10%, var(--popover));
+  --success-border: color-mix(in oklch, var(--state-done) 65%, transparent);
+  --success-text: var(--state-done);
+
+  --info-bg: color-mix(in oklch, var(--state-running) 10%, var(--popover));
+  --info-border: color-mix(in oklch, var(--state-running) 65%, transparent);
+  --info-text: var(--state-running);
+
+  --warning-bg: color-mix(in oklch, var(--state-blocked) 10%, var(--popover));
+  --warning-border: color-mix(in oklch, var(--state-blocked) 65%, transparent);
+  --warning-text: var(--state-blocked);
+
+  --error-bg: color-mix(in oklch, var(--state-failed) 10%, var(--popover));
+  --error-border: color-mix(in oklch, var(--state-failed) 65%, transparent);
+  --error-text: var(--state-failed);
+
+  /* Sonner hardcodes 8px and its own sans stack. The app is on 10px and inherits. */
+  --border-radius: var(--radius-lg);
+  font-family: inherit;
+}
+
+/* The description is the raw string off the wire, and it is the part an operator
+   has to read carefully. Sonner sets it to `inherit`, which paints a whole error
+   detail in the state colour; the surface's own ink is legible where a saturated
+   red at body size is not. */
+html [data-sonner-toast] [data-description] {
+  color: var(--popover-foreground);
+  opacity: 0.85;
+}
+
+/* 400ms is choreography. Everything else here moves on 150-250ms, and a toast that
+   animates for four tenths of a second competes with the streaming text underneath
+   it. Sonner's own `prefers-reduced-motion` block still zeroes this out. */
+html [data-sonner-toast] {
+  transition-duration: 200ms;
+}
+
 /* Motion in this app is all state feedback (sheet entrances, the tool-metrics bar,
    spinners), never narrative, so the reduced-motion answer is to collapse it to an
    instant state change rather than swap in a different animation.
