@@ -21,6 +21,16 @@ import { PaperclipIcon, StopIcon } from './icons';
 import { PreviewAttachment } from './preview-attachment';
 import { type SlashCommand, SlashCommandMenu, slashCommands } from './slash-commands';
 
+/**
+ * Why a reattaching thread will not take a message, said once.
+ *
+ * This sentence existed in three places and three wordings: the composer hint,
+ * the composer's submit guard, and `App.send`'s own guard, which still carried an
+ * em dash the rest of the app's copy does not use. They describe one rule, so
+ * they are one string.
+ */
+export const REATTACHING_REFUSAL = 'Rejoining this thread. Stop it first to send a new message.';
+
 const MAX_TEXT_LENGTH = 32_000;
 const MAX_FILES = 4;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -232,7 +242,7 @@ function MultimodalInputInner({
     : // A reattach looks busy but has no run behind it to steer, so it must not
       // offer to. Stop ends the reattach and frees the composer.
       reattaching
-      ? 'Rejoining this thread. Stop it first to send a new message.'
+      ? REATTACHING_REFUSAL
       : tooLong
         ? `${(text.length - MAX_TEXT_LENGTH).toLocaleString()} characters over the ${MAX_TEXT_LENGTH.toLocaleString()} limit.`
         : null;
@@ -295,7 +305,7 @@ function MultimodalInputInner({
       // These three are backstops. `refusal` above disables the send button and
       // blocks Enter, so reaching one means a path that bypassed both.
       if (!isConnected) refuseSubmit('Not connected to the harness. Nothing was sent.');
-      if (reattaching) refuseSubmit('Rejoining this thread. Stop it first to send a new message.');
+      if (reattaching) refuseSubmit(REATTACHING_REFUSAL);
       // While streaming, submit steers the active run (handled by App.send).
       if (message.text.length > MAX_TEXT_LENGTH) {
         refuseSubmit(
