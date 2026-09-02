@@ -65,7 +65,10 @@ Bun-only, so a second runner for the pure half bought nothing but a second test 
 `bun:test` now, because an import naming a runner that does not run them is a lie the next person
 pays for. Two gaps in Bun's shim to know: `vi.advanceTimersByTimeAsync` does not exist (advance
 synchronously, then await the promise), and `toHaveBeenCalledOnce` runs but is not typed. React coverage reaches the thread store, the theme provider, `usePoll`, the presence
-signals, the Gate, the history rail's per-thread actions, and the chat surface end to end
+signals, the Gate, the history rail's per-thread actions, the error reporter every failed
+call goes through (`tests/error-toast.test.tsx` pins the translated message, the kept raw
+detail, that errors do not dismiss themselves, and that Retry appears only when a caller
+says re-running is safe), and the chat surface end to end
 (`tests/app-stream.test.tsx` drives the real `App` with a stubbed `fetch`). `tests/composer.test.tsx`
 covers what typing *costs*: a burst of keystrokes must not drive React past its update-depth limit,
 which is a real failure mode here and not a theoretical one. It also pins what a *refusal* costs.

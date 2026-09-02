@@ -1,8 +1,9 @@
-import { describeError, summarizeToolArgs } from '@felix/client';
+import { summarizeToolArgs } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { toastError } from '@/lib/error-toast';
 import { cn } from '@/lib/utils';
 
 /** Lines shown before a payload folds. Chosen to clear a typical shell or write call whole. */
@@ -97,11 +98,9 @@ export function ApprovalDecision({
         status === 'approved' ? `Approved ${toolName}. The run continues.` : `Denied ${toolName}.`,
       );
     } catch (err) {
-      const described = describeError(
-        err,
-        `${status === 'approved' ? 'approve' : 'deny'} ${toolName}`,
-      );
-      toast.error(described.message, { description: described.detail });
+      // No retry: a decision that failed with 409 is one the harness already has,
+      // and re-posting the other outcome is not something a button should offer.
+      toastError(err, `${status === 'approved' ? 'approve' : 'deny'} ${toolName}`);
     } finally {
       inFlight.current = false;
       setDeciding(null);

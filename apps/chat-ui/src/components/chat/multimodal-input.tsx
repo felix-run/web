@@ -15,6 +15,7 @@ import {
   useProviderAttachments,
 } from '@/components/ai-elements/prompt-input';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
+import { toastProblem } from '@/lib/error-toast';
 import { cn } from '@/lib/utils';
 import { PaperclipIcon, StopIcon } from './icons';
 import { PreviewAttachment } from './preview-attachment';
@@ -38,7 +39,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
  * the toast fired here is the only thing the operator sees.
  */
 function refuseSubmit(message: string): never {
-  toast.error(message);
+  toastProblem(message);
   throw new Error(message);
 }
 
@@ -113,8 +114,10 @@ function MultimodalInputInner({
   );
   const speech = useSpeechRecognition({ onFinalTranscript: appendTranscript });
   // Surface mic errors as toasts so they're visible from anywhere in the UI.
+  // These come from the browser's speech API, not the harness, so there is no
+  // error object to describe and nothing for a Retry button to re-run.
   useEffect(() => {
-    if (speech.error) toast.error(speech.error);
+    if (speech.error) toastProblem(speech.error);
   }, [speech.error]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -260,7 +263,7 @@ function MultimodalInputInner({
       // implement emptied the composer and then said so. The text is the only
       // copy of what was typed; it survives until something is actually run.
       if (enabledSlashCommands && !enabledSlashCommands.has(cmd.name)) {
-        toast.info(`/${cmd.name} is not implemented yet`);
+        toast.info(`/${cmd.name} is not available in this client yet.`);
         return false;
       }
       controller.textInput.clear();
@@ -395,7 +398,7 @@ function MultimodalInputInner({
               max_file_size: `Max ${(MAX_FILE_SIZE / (1024 * 1024)) | 0}MB per file`,
               accept: 'Only image files are supported right now',
             };
-            toast.error(messages[err.code] ?? err.message);
+            toastProblem(messages[err.code] ?? err.message);
           }}
           onSubmit={(message) => handleSubmit(message)}
         >

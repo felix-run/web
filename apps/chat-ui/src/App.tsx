@@ -1,7 +1,6 @@
 import {
   type ChatEngine,
   createChatEngine,
-  describeError,
   eventsToTurns,
   mergeSessions,
   snapshotToEvents,
@@ -82,6 +81,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
+import { toastError, toastProblem } from '@/lib/error-toast';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import {
   indexThread,
@@ -447,10 +447,9 @@ export default function App() {
     (id: string, name: string) => {
       void renameSession(id, name)
         .then(() => refreshThreads())
-        .catch((err) => {
-          const described = describeError(err, 'rename this conversation');
-          toast.error(described.message, { description: described.detail });
-        });
+        .catch((err) =>
+          toastError(err, 'rename this conversation', { retry: () => renameThread(id, name) }),
+        );
     },
     [refreshThreads],
   );
@@ -475,12 +474,13 @@ export default function App() {
           });
           await refreshThreads();
           selectThread(newId);
-          toast.success('Duplicated');
+          toast.success(`Duplicated. Opened "${meta?.title ?? 'Conversation'} (copy)".`);
         })
-        .catch((err) => {
-          const described = describeError(err, 'duplicate this conversation');
-          toast.error(described.message, { description: described.detail });
-        });
+        // A failed fork leaves nothing behind, so retrying is safe; it mints a
+        // fresh id rather than reusing the one that failed.
+        .catch((err) =>
+          toastError(err, 'duplicate this conversation', { retry: () => forkThread(id) }),
+        );
     },
     [threads, manifest, refreshThreads, selectThread],
   );
@@ -492,11 +492,20 @@ export default function App() {
   const compactThread = useCallback(
     (id: string) => {
       const target = threads.find((t) => t.id === id);
-      toast.promise(compactSession(id, target?.manifest || manifest), {
-        loading: 'Compacting…',
-        success: 'Context compacted',
-        error: (err) => describeError(err, 'compact this conversation').message,
-      });
+      // Driven by hand rather than through `toast.promise`, which takes one
+      // `duration` for all three of its states: the only way to let the failure
+      // persist there is to leave the success on screen forever too. The failure
+      // is the state worth reading, and it is the one that carries a detail
+      // string, so it goes through the same reporter as every other error.
+      const pending = toast.loading('Compacting…');
+      void compactSession(id, target?.manifest || manifest)
+        .then(() => toast.success('Context compacted', { id: pending }))
+        .catch((err) => {
+          toast.dismiss(pending);
+          // No retry: a compact that failed part-way may still have written a
+          // summary, and running it again would summarise the summary.
+          toastError(err, 'compact this conversation');
+        });
     },
     [threads, manifest],
   );
@@ -513,10 +522,9 @@ export default function App() {
         // Revoking synchronously can beat the download starting in some browsers.
         setTimeout(() => URL.revokeObjectURL(url), 10_000);
       })
-      .catch((err) => {
-        const described = describeError(err, 'export this conversation');
-        toast.error(described.message, { description: described.detail });
-      });
+      .catch((err) =>
+        toastError(err, 'export this conversation', { retry: () => exportThread(id) }),
+      );
   }, []);
 
   const deleteThread = useCallback(
@@ -557,7 +565,7 @@ export default function App() {
           label: 'Undo',
           onClick: () => {
             if (committed) {
-              toast.error(
+              toastProblem(
                 'Too late to undo. This conversation was already deleted on the harness.',
               );
               return;
@@ -674,7 +682,9 @@ export default function App() {
         if (text.trim()) {
           void steerChat({ threadId, text: text.trim() })
             .then(() => toast.message('Steer queued'))
-            .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+            // No retry: a steer that failed on the response rather than the
+            // request would queue the same message into the run twice.
+            .catch((err) => toastError(err, 'queue that steer'));
         }
         return;
       }
@@ -759,7 +769,8 @@ export default function App() {
         hydrateFromServer(threadId);
         engine.setPhase('idle');
       })
-      .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+      // No retry: continuing twice starts a second run on the same thread.
+      .catch((err) => toastError(err, 'continue this run'));
   }, [streaming, threadId, manifest, hydrateFromServer]);
 
   const cycleThinking = useCallback(() => {
@@ -768,7 +779,9 @@ export default function App() {
     setThinkingLevelState(next);
     void setThinkingLevel({ threadId, thinkingLevel: next })
       .then(() => toast.message(`Thinking: ${next}`))
-      .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+      .catch((err) =>
+        toastError(err, 'change the thinking level', { retry: () => chooseThinking(next) }),
+      );
   }, [thinkingLevel, threadId]);
 
   const chooseThinking = useCallback(
@@ -776,7 +789,9 @@ export default function App() {
       setThinkingLevelState(level);
       void setThinkingLevel({ threadId, thinkingLevel: level })
         .then(() => toast.message(`Thinking: ${level}`))
-        .catch((err) => toast.error(String((err as Error)?.message ?? err)));
+        .catch((err) =>
+          toastError(err, 'change the thinking level', { retry: () => chooseThinking(level) }),
+        );
     },
     [threadId],
   );
@@ -813,8 +828,7 @@ export default function App() {
       });
       void setSessionLabel({ threadId, eventId, label }).catch((err) => {
         setLabels(previous);
-        const described = describeError(err, 'label this message');
-        toast.error(described.message, { description: described.detail });
+        toastError(err, 'label this message', { retry: () => labelTurn(eventId, label) });
       });
     },
     [labels, threadId],
@@ -852,20 +866,14 @@ export default function App() {
                         manifest,
                       })
                         .then(() => hydrateFromServer(threadId))
-                        .catch((err) => {
-                          const described = describeError(err, 'undo the rewind');
-                          toast.error(described.message, { description: described.detail });
-                        });
+                        .catch((err) => toastError(err, 'undo the rewind'));
                     },
                   },
                 }
               : undefined,
           );
         })
-        .catch((err) => {
-          const described = describeError(err, 'rewind this thread');
-          toast.error(described.message, { description: described.detail });
-        })
+        .catch((err) => toastError(err, 'rewind this thread', { retry: () => rewindTo(eventId) }))
         .finally(() => {
           rewindingRef.current = false;
         });
@@ -881,7 +889,7 @@ export default function App() {
         await respondUiRequest({ requestId: uiPrompt.requestId, value });
         engine.clearUiPrompt();
       } catch (err) {
-        toast.error(String((err as Error)?.message ?? err));
+        toastError(err, 'send that answer');
       } finally {
         setUiResolving(false);
       }
@@ -900,7 +908,7 @@ export default function App() {
       });
       engine.clearUiPrompt();
     } catch (err) {
-      toast.error(String((err as Error)?.message ?? err));
+      toastError(err, 'cancel this request');
     } finally {
       setUiResolving(false);
     }
