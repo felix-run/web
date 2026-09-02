@@ -25,9 +25,9 @@ Wrappers return **deny strings** via `deny_output` (never throw) so the model ca
 | Layer | Manifest | Decision |
 |---|---|---|
 | **Secret masking** | always | Strip harness credentials from tool output before the model / audit sees them |
-| **Policies** | `spec.policies` | Principal must hold all `required_scopes` for matched tools (glob: exact, `prefix*`, `*`) |
+| **Policies** | `spec.policies` | Principal must hold all `required_scopes` for matched tools (glob, case-sensitive) |
 | **Command screening** | `spec.command_screening` | Pre-call rules over every execution-bearing argument — `command`, `cmd`, `code`, `script`, `stdin`, `argv`, `shell_command`, `args` — and, for `sandbox` / `container` transports, every string argument, since there the payload *is* the program |
-| **Content screening** | `spec.content_screening` | Post-call injection classifier on tool results; honours `on_flag` when the screener itself is unavailable |
+| **Content screening** | `spec.content_screening` | Post-call injection classifier on tool results — every untrusted tool, **plus** whatever `tools` names; honours `on_flag` when the screener itself is unavailable |
 | **Limits** | `spec.limits` | Cap tool calls, wall clock, peer hops, input/output tokens (absolute ceilings apply) |
 | **Guardrails** | `spec.guardrails` | PII-style filters on input/output/(final response); redact or block |
 | **LLM judges** | `spec.guardrails.judges` | Score tool (or final) output against criteria; below threshold → deny |
@@ -108,5 +108,47 @@ Unattended runs (scheduler, eval replay) refuse approval-gated tools unless `all
 `fatal=True` on a tool aborts the loop with the error as the final message (no model recovery). Use sparingly — quotas, hard security failures, unusable config.
 
 :::tip
-Tool targeting for policies, approvals, and judges matches by glob so MCP tools named `server__*` stay gated even if the remote renames suffixes.
+Tool targeting for policies, approvals, judges and `content_screening.tools` matches by glob
+(`fnmatch`, case-sensitive) so MCP tools named `server__*` stay gated even if the remote renames
+suffixes. Patterns match in any position — `github__*`, `*__search`, `mcp__*__write`, `*`.
+
+A pattern that matches no bound tool is logged at WARNING and counted as
+`felix_rule_targets_nothing` at compile time. It is not refused: an MCP server whose discovery
+failed binds no tools, and refusing would let a remote outage take the agent down with it. Check
+that counter after adding a rule — a rule targeting nothing is a control that validates and
+enforces nothing.
+
+`spec.policies` and `spec.approvals` are capped at 64 rules each — matching is O(rules × tools)
+and a manifest is compiled per request.
 :::
+
+## Targeting, precedence, and who can hold a scope
+
+`content_screening.tools` is **additive**. Screening covers every untrusted tool — anything
+whose transport is not `local`, plus anything sourced from `mcp:`, `peer:`, `a2a:` or `queue:`
+— and, in addition, whatever `tools` names. Naming a trusted local tool extends screening to
+it; it cannot narrow screening away from anything. There is deliberately no way to turn
+screening off for an untrusted tool, because that is the thing screening exists to prevent.
+For cost, the levers are `content_screening.model` and `on_flag`.
+
+Approvals is the only control that selects *one* rule — policies and judges apply every match,
+so for them more matches only tighten. When several approval rules match a tool, a rule naming
+it **literally** wins over one matching by pattern, and among equals the last declared wins.
+That makes glob targeting non-weakening: a pattern can only gate a tool nothing gated before,
+and never displaces a stricter literal rule.
+
+### Policies need a caller who can hold a scope
+
+`apply_policies` denies when a required scope is absent — "no scopes" must not read as "all
+scopes". Several contexts carry an empty scope set by construction, and in those a policied
+tool always denies:
+
+- durable fibers (principal `fiber`), scheduled jobs (`cron`), and `felix eval`
+- `FELIX_AUTH_MODE=none`, which is what `make dev` sets
+
+`manifests/governed.yaml` policies `calculator` on `tools:calc`, so it denies its own
+calculator under `make dev`. Mint a token carrying the scope rather than removing the policy.
+A manifest in this shape is named at compile with a WARNING and `felix_policy_unsatisfiable`.
+
+Policy scopes are matched literally: the `admin` / `*` bypass and the `x:write` implies
+`x:read` rule that the management API applies do **not** apply here.

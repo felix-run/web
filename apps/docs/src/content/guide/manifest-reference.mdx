@@ -606,8 +606,16 @@ spec:
 |---|---|---|
 | `id` | string | required |
 | `description` | string | `""` |
-| `required_scopes` | string[] | `[]` |
-| `tools` | string[] (glob, e.g. `github__*`) | `[]` |
+| `required_scopes` | string[] | required, non-empty |
+| `tools` | string[] (glob, e.g. `github__*`) | required, non-empty |
+
+Both lists are required. A rule with `tools` and no `required_scopes` permits every caller
+while appearing to govern them, and one with no `tools` gates nothing while still counting
+toward the `soc2` profile — so both are rejected at parse rather than accepted as no-ops.
+
+Globs match in any position and are case-sensitive. A pattern matching no bound tool is logged
+and counted as `felix_rule_targets_nothing` at compile time rather than refused, since an MCP
+server whose discovery failed binds no tools.
 
 A denial emits a `policy_deny` audit event with `status: denied`.
 
