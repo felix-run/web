@@ -977,7 +977,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border/60 px-3">
+      <header className="flex h-[var(--header-height)] shrink-0 items-center gap-1 border-b border-border/60 px-3">
         <Button
           variant={historyOpen ? 'secondary' : 'ghost'}
           size="icon-sm"
