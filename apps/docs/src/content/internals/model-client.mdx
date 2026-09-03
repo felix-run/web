@@ -40,8 +40,15 @@ settings field per vendor:
 
 That exists because `Settings` ignores unknown env vars, so `FELIX_MYPROVIDER_API_KEY` never lands
 anywhere — without it a registered third-party provider had no way to be given a key at all. An entry
-also overrides a built-in's named field, which is how you point one at a gateway. Values stored under
-a key/token/secret name join the redaction list, so a provider credential cannot reach tool output.
+also overrides a built-in's named field, which is how you point one at a gateway.
+
+Every option value joins the redaction list **except** the ones the provider consumes as addressing —
+`base_url`, any `{placeholder}` its endpoint templates, and its header options — so a credential
+cannot reach tool output whatever the option is called. Matching secret-looking *names* was the
+previous rule, and it failed open for exactly the third-party providers this map exists to serve. The
+converse is worth knowing: an unrecognised option is redacted too, so a long non-secret value there
+will be masked out of tool results. Keep credentials out of `base_url` — it is exempt by definition,
+and also reaches server logs through connection errors.
 
 The descriptor carries the two things that are not uniform. `base_url_default` may hold `{option}`
 placeholders — Cloudflare puts the account id in the URL path — and `header_options` sends a header
