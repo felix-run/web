@@ -27,10 +27,18 @@
  * request is still made from inside the render rather than around it: until the
  * terminal is in raw mode it **echoes** the reply, and a literal `^[[I` printed
  * into the first frame stays there for the life of the session.
+ *
+ * **The title and the notification go through the renderer.** They used to be
+ * raw OSC written straight to `process.stdout`, beside a renderer that owns the
+ * terminal and offers both. The difference that matters is that
+ * `triggerNotification` is capability-gated and *reports whether it fired*: the
+ * hand-written OSC 9 was a sequence posted into a terminal that may not speak
+ * it, with no way to tell. What stays hand-written is the title **push and
+ * pop** (`CSI 22;2t` / `23;2t`), which has no renderer equivalent and is what
+ * gives the shell its own title back on exit.
  */
 
 const ESC = String.fromCharCode(27);
-const BEL = String.fromCharCode(7);
 
 /** Terminal focus reporting: DECSET/DECRST 1004. */
 const FOCUS_ON = `${ESC}[?1004h`;
@@ -62,11 +70,32 @@ export interface Attention {
   set(next: Presence): void;
   /** Told by the renderer's `focus` / `blur` events. Never inferred. */
   setFocus(focused: boolean): void;
+  /** Hand over the renderer once it exists. See `AttentionOptions.attach`. */
+  attach(renderer: AttentionRenderer): void;
   dispose(): void;
 }
 
+/**
+ * The renderer's half, narrowed to what this needs — so the module stays
+ * testable without a terminal, which is what `tests/attention.test.ts` relies
+ * on.
+ */
+export interface AttentionRenderer {
+  setTerminalTitle(title: string): void;
+  triggerNotification(message: string, title?: string): boolean;
+}
+
 export interface AttentionOptions {
+  /** For the two sequences the renderer has no equivalent for. */
   stdout: { write(chunk: string): unknown };
+  /**
+   * Attached once the renderer exists. `main.tsx` builds this module before
+   * `createCliRenderer` — it has to, because `App` is handed it — so the title
+   * and the notification are unavailable for that window and simply do not
+   * fire, rather than falling back to raw sequences that would race the
+   * renderer's own setup.
+   */
+  attach?(renderer: AttentionRenderer): void;
   /** Off entirely: no title, no reporting, no bell. */
   enabled?: boolean;
 }
@@ -83,6 +112,7 @@ function sanitize(text: string, limit = 120): string {
 
 export function createAttention(options: AttentionOptions): Attention {
   const { stdout, enabled = true } = options;
+  let renderer: AttentionRenderer | null = null;
   let current: Presence = 'idle';
   /** `unknown` until the terminal says otherwise, and it may never say. */
   let focus: 'unknown' | 'focused' | 'blurred' = 'unknown';
@@ -98,16 +128,35 @@ export function createAttention(options: AttentionOptions): Attention {
     }
   };
 
-  /** OSC 9. Terminals that do not know it consume it; none of them print it. */
-  const notify = (body: string) => write(`${ESC}]9;${sanitize(body)}${BEL}`);
+  /**
+   * Capability-gated, and it tells us whether it fired. A terminal that does
+   * not do notifications simply gets nothing, rather than a sequence posted
+   * into the dark.
+   */
+  const notify = (body: string) => {
+    if (!enabled || disposed) return;
+    renderer?.triggerNotification(sanitize(body), BASE_TITLE);
+  };
+
+  const setTitle = (title: string) => {
+    if (!enabled || disposed) return;
+    renderer?.setTerminalTitle(sanitize(title));
+  };
 
   return {
+    attach(next) {
+      renderer = next;
+      // The title is a level, not an edge: whatever state the run reached
+      // before the renderer existed has to be applied now or the window keeps
+      // the shell's title through the first turn.
+      if (started) setTitle(TITLES[current]);
+    },
     begin() {
       if (!enabled || started || disposed) return;
       started = true;
       write(TITLE_PUSH);
       write(FOCUS_ON);
-      write(`${ESC}]2;${TITLES[current]}${BEL}`);
+      setTitle(TITLES[current]);
     },
     end() {
       if (!started) return;
@@ -120,7 +169,7 @@ export function createAttention(options: AttentionOptions): Attention {
       const previous = current;
       current = next;
       // Before `begin`, the terminal is not ours to write to.
-      if (started) write(`${ESC}]2;${TITLES[next]}${BEL}`);
+      if (started) setTitle(TITLES[next]);
 
       // Only once the terminal has told us it is not being watched.
       if (focus !== 'blurred') return;

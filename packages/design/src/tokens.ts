@@ -71,6 +71,54 @@ export const DARK: ThemePalette = {
   accentContrast: NEUTRAL[900],
 };
 
+/**
+ * The states a run can be in, which the neutral scale cannot express.
+ *
+ * Everything above is monochrome by design, and that is right for surfaces:
+ * a page, a border, a piece of text. It is wrong for *status* — "waiting on
+ * you" and "this failed" have to be told apart at a glance, and greys cannot
+ * do it. So this is the one place hue is allowed, and it stays a closed set of
+ * five rather than a palette anyone can add to.
+ *
+ * The reference values are the oklch pairs in `apps/chat-ui/src/index.css`,
+ * where this ramp was born and is still consumed from — converted here to sRGB
+ * hex because that is what a terminal and a `RGBA.fromHex` can take, and CSS
+ * `oklch()` cannot be handed to either. Aligning chat-ui to read these back is
+ * worth doing and is not this change.
+ *
+ * `failed` and `danger` are deliberately distinct. `danger` is tuned to carry
+ * white on a solid fill (a destructive button); as *text* on its own tint it
+ * only reaches about 4:1, so error copy gets the darker `failed` instead.
+ */
+export interface StatePalette {
+  /** Waiting on a person — an approval, a question. */
+  blocked: string;
+  /** Finished, and finished well. */
+  done: string;
+  /** In flight. */
+  running: string;
+  /** Failed, as text. */
+  failed: string;
+  /** Failed, as a filled control. Carries white. */
+  danger: string;
+}
+
+export const STATE_LIGHT: StatePalette = {
+  blocked: '#973c00',
+  done: '#006045',
+  running: '#00598a',
+  failed: '#a20002',
+  danger: '#e7000b',
+};
+
+export const STATE_DARK: StatePalette = {
+  blocked: '#ffd230',
+  done: '#5ee9b5',
+  running: '#74d4ff',
+  failed: '#ff807f',
+  danger: '#ff6467',
+};
+
 /** Map one palette onto Scalar's CSS variables. */
 function scalarVars(p: ThemePalette): string {
   return `

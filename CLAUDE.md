@@ -341,6 +341,22 @@ browser cannot do rather than about the chat:
   and `renderer.resume()` — the `resume` is in a `finally`, because an editor that exits non-zero must
   not leave a client that has stopped drawing with no way back. An unchanged or emptied file returns
   nothing rather than sending an empty message.
+- **`src/theme.ts` decides when this client may override the terminal's palette**, and the answer
+  is "only when both halves of the question have an answer". `parseColor` resolves the *name*
+  `"magenta"` to the literal `#FF00FF`, so a named colour is absolute true-colour painted over the
+  user's scheme — which is what the sixteen literals it replaced were doing. The design tokens are
+  used only when `capabilities.rgb` is true *and* `themeMode` is known; otherwise every role is an
+  ANSI index via `RGBA.fromIndex`. The five hues live in `@felix/design` (`STATE_LIGHT` /
+  `STATE_DARK`), which had only a neutral scale before — right for surfaces, useless for status.
+  `src/syntax.ts` stays indexed on both paths, deliberately: a fenced block should look like the
+  rest of the terminal's code. A harness approval is `blocked` and the local write prompt is
+  `danger`, because a server asking permission and this process touching your disk are different
+  risks.
+- **`FELIX_DEBUG=1` turns on the renderer's console overlay** (`ctrl+d`), plus `openConsoleOnError`
+  so a render failure opens it rather than freezing the frame. `console.log` in a full-screen app
+  writes over the drawing; this is the only way to print anything here. The binding is only
+  registered when the overlay exists, because a key that silently does nothing is worse than one
+  that is not bound.
 - **A write approval shows a diff, not a character count.** `src/approval.ts` builds the patch;
   `PendingApproval.before` has three states and they mean three different things — `undefined` is
   "not a write, nothing to diff", `null` is "the file does not exist yet", a string is an edit, and

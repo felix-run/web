@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { createElement } from 'react';
 import { Composer, flattenPaste } from '../src/ui/composer';
-import { mount, shows } from './render';
+import { mount, shows, testTheme } from './render';
 
 /**
  * The composer, driven the way a terminal drives it.
@@ -25,6 +25,7 @@ async function composer(props: { history?: string[]; streaming?: boolean } = {})
   const submitted: string[] = [];
   const ui = await mount(
     createElement(Composer, {
+      theme: testTheme,
       streaming: props.streaming ?? false,
       disabled: false,
       onSubmit: (text: string) => submitted.push(text),
@@ -98,7 +99,9 @@ describe('the composer keys', () => {
   });
 
   it('recalls the last prompt on up, while the draft is one line', async () => {
-    const ui = await composer({ history: ['the first thing', 'the last thing'] });
+    const ui = await composer({
+      history: ['the first thing', 'the last thing'],
+    });
     try {
       ui.keys.pressArrow('up');
       await ui.settle();
@@ -143,6 +146,7 @@ describe('what the composer says it will do', () => {
   it('draws the ready marker and the hint', async () => {
     const ui = await mount(
       createElement(Composer, {
+        theme: testTheme,
         streaming: false,
         disabled: false,
         onSubmit: () => {},
@@ -161,6 +165,7 @@ describe('what the composer says it will do', () => {
   it('swaps the marker and the hint while a run is live', async () => {
     const ui = await mount(
       createElement(Composer, {
+        theme: testTheme,
         streaming: true,
         disabled: false,
         onSubmit: () => {},

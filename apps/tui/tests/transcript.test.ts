@@ -3,7 +3,7 @@ import type { Turn } from '@felix/client';
 import { createTextAttributes, type ScrollBoxRenderable } from '@opentui/core';
 import { createElement } from 'react';
 import { Transcript } from '../src/ui/transcript';
-import { hasAttribute, lines, mount, shows, styleOf } from './render';
+import { hasAttribute, lines, mount, shows, styleOf, testTheme } from './render';
 
 /**
  * What the conversation actually looks like.
@@ -23,14 +23,24 @@ import { hasAttribute, lines, mount, shows, styleOf } from './render';
 const DIM = createTextAttributes({ dim: true });
 const BOLD = createTextAttributes({ bold: true });
 
-const user = (content: string): Turn => ({ id: `u-${content}`, role: 'user', content });
+const user = (content: string): Turn => ({
+  id: `u-${content}`,
+  role: 'user',
+  content,
+});
 
 describe('a user turn', () => {
   it('is marked and set apart from the reply', async () => {
-    const ui = await mount(createElement(Transcript, { turns: [user('explain the proxy')] }), {
-      width: 60,
-      height: 8,
-    });
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [user('explain the proxy')],
+      }),
+      {
+        width: 60,
+        height: 8,
+      },
+    );
     try {
       expect(lines(ui.frame())[0]).toBe('› explain the proxy');
     } finally {
@@ -49,7 +59,7 @@ describe('an assistant turn', () => {
   };
 
   it('draws prose, the fence and the list', async () => {
-    const ui = await mount(createElement(Transcript, { turns: [reply] }), {
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [reply] }), {
       width: 60,
       height: 16,
     });
@@ -70,7 +80,7 @@ describe('an assistant turn', () => {
    * only the text would pass against the stripper this replaced.
    */
   it('renders bold as weight and inline code as its own colour', async () => {
-    const ui = await mount(createElement(Transcript, { turns: [reply] }), {
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [reply] }), {
       width: 60,
       height: 16,
     });
@@ -100,7 +110,7 @@ describe('an assistant turn', () => {
    * flat colour.
    */
   it('highlights a fenced block with tree-sitter', async () => {
-    const ui = await mount(createElement(Transcript, { turns: [reply] }), {
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [reply] }), {
       width: 60,
       height: 16,
     });
@@ -122,7 +132,7 @@ describe('an assistant turn', () => {
   });
 
   it('reports the turn cost when the harness sent one', async () => {
-    const ui = await mount(createElement(Transcript, { turns: [reply] }), {
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [reply] }), {
       width: 60,
       height: 16,
     });
@@ -150,10 +160,17 @@ describe('a reply still being written', () => {
   };
 
   it('renders an unterminated fence as code rather than as prose', async () => {
-    const ui = await mount(createElement(Transcript, { turns: [halfway], streaming: true }), {
-      width: 60,
-      height: 14,
-    });
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [halfway],
+        streaming: true,
+      }),
+      {
+        width: 60,
+        height: 14,
+      },
+    );
     try {
       await ui.until(() => styleOf(ui.spans(), 'const')?.text === 'const');
       // The fence markers are concealed, the contents are kept, and `const` is
@@ -174,7 +191,16 @@ describe('a reply still being written', () => {
   it('treats an earlier turn as settled even while a run is streaming', async () => {
     const ui = await mount(
       createElement(Transcript, {
-        turns: [halfway, { id: 'a-next', role: 'assistant', content: 'done', tools: [] } as Turn],
+        theme: testTheme,
+        turns: [
+          halfway,
+          {
+            id: 'a-next',
+            role: 'assistant',
+            content: 'done',
+            tools: [],
+          } as Turn,
+        ],
         streaming: true,
       }),
       { width: 60, height: 14 },
@@ -204,10 +230,13 @@ describe('a tool card', () => {
   });
 
   it('says which tool and, in one line, what it was given', async () => {
-    const ui = await mount(createElement(Transcript, { turns: [withTool(true)] }), {
-      width: 60,
-      height: 8,
-    });
+    const ui = await mount(
+      createElement(Transcript, { theme: testTheme, turns: [withTool(true)] }),
+      {
+        width: 60,
+        height: 8,
+      },
+    );
     try {
       expect(shows(ui.frame(), '⎿ read_file worker/index.ts')).toBe(true);
     } finally {
@@ -217,17 +246,27 @@ describe('a tool card', () => {
 
   /**
    * A run that is still working and a run that has finished must not look the
-   * same. This is the only signal the transcript gives that anything is live.
+   * same. A card frozen on one glyph for thirty seconds and a card whose
+   * process died look identical, which is why the running one turns.
    */
-  it('uses a different glyph while it is still running, and names the phase', async () => {
-    const ui = await mount(createElement(Transcript, { turns: [withTool(false, 'executing')] }), {
-      width: 60,
-      height: 8,
-    });
+  it('turns a spinner while it is still running, and names the phase', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [withTool(false, 'executing')],
+      }),
+      {
+        width: 60,
+        height: 8,
+      },
+    );
     try {
       const frame = ui.frame();
-      expect(shows(frame, '⠿ read_file')).toBe(true);
+      expect(shows(frame, 'read_file')).toBe(true);
       expect(shows(frame, 'executing')).toBe(true);
+      // Not the finished marker, and one of the spinner's frames.
+      expect(frame).not.toContain('⎿');
+      expect(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(frame)).toBe(true);
     } finally {
       ui.stop();
     }
@@ -236,14 +275,23 @@ describe('a tool card', () => {
   it('marks a tool the browser ran, and one waiting on a decision', async () => {
     const ui = await mount(
       createElement(Transcript, {
+        theme: testTheme,
         turns: [
           {
             id: 'a3',
             role: 'assistant',
             content: '',
             tools: [
-              { name: 'client · read_file', input: { path: 'a.ts' }, done: true },
-              { name: 'approval · write_file', input: { path: 'b.ts' }, done: false },
+              {
+                name: 'client · read_file',
+                input: { path: 'a.ts' },
+                done: true,
+              },
+              {
+                name: 'approval · write_file',
+                input: { path: 'b.ts' },
+                done: false,
+              },
             ],
           } as Turn,
         ],
@@ -262,6 +310,7 @@ describe('a tool card', () => {
   it('cuts a long argument to one line rather than wrapping it', async () => {
     const ui = await mount(
       createElement(Transcript, {
+        theme: testTheme,
         turns: [
           {
             id: 'a4',
@@ -298,7 +347,7 @@ describe('scrolling the transcript', () => {
   );
 
   it('starts at the live end of the conversation', async () => {
-    const ui = await mount(createElement(Transcript, { turns: many }), {
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: many }), {
       width: 40,
       height: 10,
     });
@@ -312,10 +361,17 @@ describe('scrolling the transcript', () => {
 
   it('scrolls back to what has gone off the top, and returns', async () => {
     const box: { current: ScrollBoxRenderable | null } = { current: null };
-    const ui = await mount(createElement(Transcript, { turns: many, scrollRef: box }), {
-      width: 40,
-      height: 10,
-    });
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: many,
+        scrollRef: box,
+      }),
+      {
+        width: 40,
+        height: 10,
+      },
+    );
     try {
       expect(box.current).not.toBeNull();
       const bottom = box.current?.scrollTop ?? 0;
@@ -339,6 +395,7 @@ describe('reasoning', () => {
   it('is drawn quietly, and on one line', async () => {
     const ui = await mount(
       createElement(Transcript, {
+        theme: testTheme,
         turns: [
           {
             id: 'a5',

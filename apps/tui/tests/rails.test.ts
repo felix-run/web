@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { ThreadMeta } from '@felix/client';
 import { createElement } from 'react';
 import { RAIL_ROWS_MAX, railRows, railWindow, StatusLine, ThreadRail } from '../src/ui/rails';
-import { lines, mount, shows } from './render';
+import { lines, mount, shows, testTheme } from './render';
 
 /**
  * The rail's arithmetic, and now the rail.
@@ -66,6 +66,7 @@ describe('the rail as drawn', () => {
   it('marks the open thread and the cursor row separately', async () => {
     const ui = await mount(
       createElement(ThreadRail, {
+        theme: testTheme,
         threads: threads(4),
         activeId: 't1',
         cursor: 2,
@@ -93,6 +94,7 @@ describe('the rail as drawn', () => {
   it('draws the cursor row even when it is far down a long list', async () => {
     const ui = await mount(
       createElement(ThreadRail, {
+        theme: testTheme,
         threads: threads(40),
         activeId: 't0',
         cursor: 30,
@@ -116,6 +118,7 @@ describe('the rail as drawn', () => {
   it('says how much the filter narrowed things to, and that nothing matched', async () => {
     const narrowed = await mount(
       createElement(ThreadRail, {
+        theme: testTheme,
         threads: threads(3),
         activeId: 't0',
         cursor: 0,
@@ -134,6 +137,7 @@ describe('the rail as drawn', () => {
 
     const empty = await mount(
       createElement(ThreadRail, {
+        theme: testTheme,
         threads: [],
         activeId: 't0',
         cursor: 0,
@@ -154,6 +158,7 @@ describe('the rail as drawn', () => {
   it('says so when there are no threads at all', async () => {
     const ui = await mount(
       createElement(ThreadRail, {
+        theme: testTheme,
         threads: [],
         activeId: '',
         cursor: 0,
@@ -178,6 +183,7 @@ describe('the rail as drawn', () => {
   it('is only as tall as it needs to be', async () => {
     const ui = await mount(
       createElement(ThreadRail, {
+        theme: testTheme,
         threads: threads(3),
         activeId: 't0',
         cursor: 0,
@@ -213,6 +219,7 @@ describe('the status line', () => {
   it('cuts rather than wraps, however narrow the terminal', async () => {
     const ui = await mount(
       createElement(StatusLine, {
+        theme: testTheme,
         ...base,
         root: '/a/very/long/working/directory/that/will/not/fit/anywhere',
         hint: 'tab threads · ctrl+n new · ctrl+e editor · /help',
@@ -230,7 +237,12 @@ describe('the status line', () => {
 
   it('names the manifest, the origin and the keys', async () => {
     const ui = await mount(
-      createElement(StatusLine, { ...base, hint: 'tab threads', width: 100 }),
+      createElement(StatusLine, {
+        theme: testTheme,
+        ...base,
+        hint: 'tab threads',
+        width: 100,
+      }),
       { width: 100, height: 6 },
     );
     try {
@@ -243,7 +255,7 @@ describe('the status line', () => {
   });
 
   it('shows the phase only while it is something other than idle', async () => {
-    const idle = await mount(createElement(StatusLine, { ...base, width: 100 }), {
+    const idle = await mount(createElement(StatusLine, { theme: testTheme, ...base, width: 100 }), {
       width: 100,
       height: 6,
     });
@@ -253,10 +265,18 @@ describe('the status line', () => {
       idle.stop();
     }
 
-    const busy = await mount(createElement(StatusLine, { ...base, phase: 'turn', width: 100 }), {
-      width: 100,
-      height: 6,
-    });
+    const busy = await mount(
+      createElement(StatusLine, {
+        theme: testTheme,
+        ...base,
+        phase: 'turn',
+        width: 100,
+      }),
+      {
+        width: 100,
+        height: 6,
+      },
+    );
     try {
       expect(shows(busy.frame(), '· turn')).toBe(true);
     } finally {
@@ -272,6 +292,7 @@ describe('the status line', () => {
   it('separates an error and a reattach from the state line', async () => {
     const ui = await mount(
       createElement(StatusLine, {
+        theme: testTheme,
         ...base,
         reattaching: true,
         error: 'the harness refused that',

@@ -13,13 +13,12 @@
 
 import type { ReasoningBlock, ToolCall, Turn } from '@felix/client';
 import { interleaveTurn } from '@felix/client';
-import { createTextAttributes, type ScrollBoxRenderable } from '@opentui/core';
-import type { RefObject } from 'react';
+import type { ScrollBoxRenderable } from '@opentui/core';
+import { useTimeline } from '@opentui/react';
+import { type RefObject, useEffect, useState } from 'react';
 import { syntaxStyle } from '../syntax.js';
 import { oneLine } from '../text.js';
-
-const DIM = createTextAttributes({ dim: true });
-const DIM_ITALIC = createTextAttributes({ dim: true, italic: true });
+import { DIM, DIM_ITALIC, type Theme } from '../theme.js';
 
 /**
  * A run of the reply's prose, rendered as the markdown it is.
@@ -42,6 +41,44 @@ function Prose({ text, streaming }: { text: string; streaming: boolean }) {
   return <markdown content={text} syntaxStyle={syntaxStyle()} streaming={streaming} />;
 }
 
+/**
+ * The frames of the spinner, and how long one revolution takes.
+ *
+ * The only motion in the client. A tool card that has been on `⠿` for thirty
+ * seconds and one whose process died look identical; a turning spinner is the
+ * difference between "still working" and "nothing is happening", and it costs
+ * one timeline shared by every card on screen.
+ */
+const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SPIN_MS = 800;
+
+/**
+ * One timeline, however many cards are running.
+ *
+ * A timeline per card would be a timer per card and, worse, cards drifting out
+ * of phase with each other — which reads as several unrelated things happening
+ * rather than one run working.
+ */
+function useSpinner(active: boolean): string {
+  const timeline = useTimeline({ duration: SPIN_MS, loop: true });
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    if (!active) return;
+    const state = { t: 0 };
+    timeline.add(state, {
+      t: SPINNER.length,
+      duration: SPIN_MS,
+      ease: 'linear',
+      loop: true,
+      onUpdate: () => setFrame(Math.floor(state.t) % SPINNER.length),
+    });
+    return () => timeline.resetItems();
+  }, [active, timeline]);
+
+  return SPINNER[frame] ?? SPINNER[0] ?? '⠋';
+}
+
 function ToolCard({ tool }: { tool: ToolCall }) {
   const name = tool.name.replace(/^(client|approval) · /, '');
   const kind = tool.name.startsWith('approval · ')
@@ -50,10 +87,11 @@ function ToolCard({ tool }: { tool: ToolCall }) {
       ? 'local'
       : '';
   const arg = summarize(tool.input);
+  const spinner = useSpinner(!tool.done);
   return (
     <box>
       <text attributes={DIM}>
-        {tool.done ? '⎿ ' : '⠿ '}
+        {tool.done ? '⎿ ' : `${spinner} `}
         {name}
         {arg ? ` ${arg}` : ''}
         {kind ? ` · ${kind}` : ''}
@@ -111,6 +149,7 @@ export function Transcript({
   turns,
   streaming = false,
   scrollRef,
+  theme,
 }: {
   turns: Turn[];
   streaming?: boolean;
@@ -121,6 +160,7 @@ export function Transcript({
    * type, for two keys that conflict with nothing.
    */
   scrollRef?: RefObject<ScrollBoxRenderable | null>;
+  theme: Theme;
 }) {
   return (
     // Sticky to the bottom, so a stream stays in view — and only sticky, so
@@ -142,7 +182,7 @@ export function Transcript({
       {turns.map((turn) =>
         turn.role === 'user' ? (
           <box key={turn.id} flexDirection="row" marginBottom={1}>
-            <text fg="green">{'› '}</text>
+            <text fg={theme.ready}>{'› '}</text>
             <text>{turn.content}</text>
           </box>
         ) : (

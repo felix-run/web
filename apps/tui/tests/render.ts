@@ -46,6 +46,7 @@
 import type { CapturedFrame } from '@opentui/core';
 import { testRender } from '@opentui/react/test-utils';
 import type { ReactNode } from 'react';
+import { resolveTheme } from '../src/theme';
 
 export interface MountOptions {
   width?: number;
@@ -179,3 +180,12 @@ export function styleOf(
 export function hasAttribute(attributes: number, bit: number): boolean {
   return (attributes & bit) === bit;
 }
+
+/**
+ * A fixed theme for component tests.
+ *
+ * Pinned rather than resolved from the test renderer, so a component's colours
+ * are the same in every test regardless of what capabilities the harness
+ * happens to report — `resolveTheme` itself is tested directly, on both paths.
+ */
+export const testTheme = resolveTheme({ themeMode: 'dark', trueColor: true });

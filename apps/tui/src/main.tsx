@@ -56,6 +56,17 @@ const attention = createAttention({
 
 const epilogue: EpilogueSlot = {};
 
+/**
+ * A client with no devtools.
+ *
+ * `console.log` in a full-screen app writes over the frame, so debugging here
+ * has meant adding a line to the status bar and taking it out again. The
+ * renderer captures `console.*` into an overlay instead — off by default,
+ * because it costs a keybinding and a buffer, and on behind `FELIX_DEBUG` for
+ * whoever is actually debugging.
+ */
+const debugging = Boolean(process.env.FELIX_DEBUG);
+
 const renderer = await createCliRenderer({
   // ctrl+c is ambiguous while a run is live — `App` stops the run on the first
   // press and leaves on the second, which it cannot do if the renderer exits
@@ -64,7 +75,17 @@ const renderer = await createCliRenderer({
   // The only way a terminal reports shift+Enter, which is how a second line
   // gets written without handing the whole prompt to `$EDITOR`.
   useKittyKeyboard: {},
+  consoleMode: debugging ? 'console-overlay' : 'disabled',
+  // A render error with the overlay closed is a frame that stops updating and
+  // says nothing. Opening it is the difference between "the client froze" and
+  // a stack trace.
+  openConsoleOnError: debugging,
+  ...(debugging ? { consoleOptions: { title: 'felix · ctrl+d closes', maxStoredLogs: 500 } } : {}),
 });
+
+// The title and the notification go through the renderer, which does not exist
+// until this line. See `attention.ts`.
+attention.attach(renderer);
 
 const root = createRoot(renderer);
 
