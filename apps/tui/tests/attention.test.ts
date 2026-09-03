@@ -17,12 +17,26 @@ import { createAttention } from '../src/attention';
 
 const ESC = String.fromCharCode(27);
 
-function harness(options: { enabled?: boolean } = {}) {
+function harness(options: { enabled?: boolean; attach?: boolean } = {}) {
   const written: string[] = [];
+  const titles: string[] = [];
+  const notifications: string[] = [];
   const attention = createAttention({
     stdout: { write: (chunk: string) => written.push(chunk) },
     ...(options.enabled === undefined ? {} : { enabled: options.enabled }),
   });
+  // The title and the notification belong to the renderer now; only the two
+  // sequences it has no equivalent for — the title stack push and pop, and the
+  // focus-reporting request — still go to stdout.
+  if (options.attach !== false) {
+    attention.attach({
+      setTerminalTitle: (title: string) => titles.push(title),
+      triggerNotification: (message: string) => {
+        notifications.push(message);
+        return true;
+      },
+    });
+  }
   // Every test but the "before begin" ones starts from a live terminal.
   if (options.enabled !== false) attention.begin();
 
@@ -31,8 +45,8 @@ function harness(options: { enabled?: boolean } = {}) {
     written,
     blur: () => attention.setFocus(false),
     focus: () => attention.setFocus(true),
-    notifications: () => written.filter((chunk) => chunk.startsWith(`${ESC}]9;`)),
-    titles: () => written.filter((chunk) => chunk.startsWith(`${ESC}]2;`)),
+    notifications: () => notifications,
+    titles: () => titles,
   };
 }
 
@@ -51,9 +65,39 @@ describe('createAttention', () => {
    */
   it('writes nothing until it is told the terminal is ready', () => {
     const written: string[] = [];
-    const attention = createAttention({ stdout: { write: (c: string) => written.push(c) } });
+    const titles: string[] = [];
+    const attention = createAttention({
+      stdout: { write: (c: string) => written.push(c) },
+    });
+    attention.attach({
+      setTerminalTitle: (t: string) => titles.push(t),
+      triggerNotification: () => true,
+    });
     attention.set('working');
     expect(written).toEqual([]);
+    expect(titles).toEqual([]);
+  });
+
+  /**
+   * The renderer does not exist when this module is built — `main.tsx` has to
+   * construct it first so `App` can be handed it. Until it arrives there is
+   * nothing to write a title through, and the answer is to write nothing rather
+   * than to fall back to raw sequences that would race the renderer's setup.
+   */
+  it('is quiet until the renderer arrives, then catches the title up', () => {
+    const h = harness({ attach: false });
+    h.attention.set('blocked');
+    expect(h.titles()).toEqual([]);
+
+    const titles: string[] = [];
+    h.attention.attach({
+      setTerminalTitle: (t: string) => titles.push(t),
+      triggerNotification: () => true,
+    });
+    // The title is a level, not an edge: the state reached while it was absent
+    // has to land now, or the window keeps the shell's title through the run.
+    expect(titles).toHaveLength(1);
+    expect(titles[0]).toContain('Approve');
   });
 
   it('asks only once, however many times it is told', () => {
@@ -140,5 +184,7 @@ describe('createAttention', () => {
     h.attention.set('blocked');
     h.attention.dispose();
     expect(h.written).toEqual([]);
+    expect(h.titles()).toEqual([]);
+    expect(h.notifications()).toEqual([]);
   });
 });

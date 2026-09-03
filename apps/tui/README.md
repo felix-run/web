@@ -67,6 +67,11 @@ pass `--insecure`.
 | `ctrl+n` | new thread |
 | `esc` | stop the run |
 | `ctrl+c` | stop the run, then quit on a second press |
+| `ctrl+d` | the debug console, when `FELIX_DEBUG` is set |
+
+Rail rows are clickable, and selecting text copies it. Mouse reporting is on by default, so
+the wheel already scrolled and a drag already selected — the rail being the one visible thing
+you could not click was the anomaly, not the feature.
 
 Slash commands are the client's whole surface. `@felix/client` reaches every chat verb the
 harness serves, and a command is the only thing that exposes one here — so a verb with no
@@ -77,6 +82,35 @@ harness serves, and a command is the only thing that exposes one here — so a v
 /rename <name> /fork /compact /export [file] /rewind [n]
 /search <text> /open <n|thread-id> /refresh
 ```
+
+## Colour
+
+`src/theme.ts` holds what the colours *mean* — waiting, danger, failed, running, ready, faint —
+and the five hues come from `@felix/design`, which owns this repo's palette. It had only a
+neutral scale before this: right for surfaces, useless for status, because "waiting on you" and
+"this failed" cannot be told apart in greys.
+
+**When the palette applies is the interesting part.** A named colour is not a request for the
+terminal's palette: `parseColor` resolves `"magenta"` to the literal `#FF00FF`, so the sixteen
+colour-name literals this replaced were absolute true-colour painting over whatever scheme the
+user had chosen. So the palette is used only when both halves of the question have an answer —
+the terminal reports true-colour support *and* has said whether it is light or dark. Miss either
+and every role falls back to an ANSI **index**, which is a reference into the user's own sixteen.
+
+Two roles that look alike and are not: a harness approval is `blocked`, and the local write
+prompt is `danger`. Different risks — one is a server asking permission, the other is this
+process about to touch your disk with nothing in between.
+
+Code highlighting in `src/syntax.ts` stays on ANSI indices whatever the theme resolves to. A
+fenced block should look like the rest of the terminal's code, and that is the user's palette
+to decide.
+
+## Debugging it
+
+`console.log` in a full-screen app writes over the frame, which is why debugging here has meant
+adding a line to the status bar and taking it out again. `FELIX_DEBUG=1` turns on the renderer's
+console overlay instead: `ctrl+d` toggles it, and a render error opens it by itself — the
+difference between "the client froze" and a stack trace.
 
 ## Reading the reply
 
@@ -160,6 +194,7 @@ worth knowing before you change it:
 | `src/clipboard.ts` | OSC 52, and the four things that can happen when you copy |
 | `src/approval.ts` | The patch a write approval shows, and the cap that keeps y/n reachable |
 | `src/text.ts` | One line, cut to fit — the one truncation helper |
+| `src/theme.ts` | What the colours mean, and when they may override the terminal's |
 | `src/epilogue.ts` | The line printed after the screen is given back |
 | `src/ui/composer.tsx` | The prompt: a `textarea`, the Enter bindings, the paste policy |
 | `src/ui/transcript.tsx` | The conversation: `<markdown>` per turn, in a `scrollbox` |

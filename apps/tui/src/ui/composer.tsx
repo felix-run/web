@@ -27,11 +27,9 @@
  */
 
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
-import { createTextAttributes } from '@opentui/core';
 import { useKeyboard, usePaste } from '@opentui/react';
 import { useRef, useState } from 'react';
-
-const DIM = createTextAttributes({ dim: true });
+import { DIM, type Theme } from '../theme.js';
 
 /** Any newline, and any run of them, however the source spelled it. */
 const HAS_NEWLINE = /[\r\n]/;
@@ -76,6 +74,7 @@ export interface ComposerProps {
   /** Hand the line to an editor; resolves with the edit, or nothing. */
   onEdit?: (value: string) => Promise<string | undefined>;
   hint?: string;
+  theme: Theme;
 }
 
 export function Composer({
@@ -85,6 +84,7 @@ export function Composer({
   history = [],
   onEdit,
   hint,
+  theme,
 }: ComposerProps) {
   const ref = useRef<TextareaRenderable>(null);
   /** The editor owns the terminal while this is true; nothing else may. */
@@ -170,7 +170,7 @@ export function Composer({
 
   return (
     <box flexDirection="row">
-      <text fg={streaming ? 'yellow' : 'green'}>{streaming ? '⇥ ' : '> '}</text>
+      <text fg={streaming ? theme.running : theme.ready}>{streaming ? '⇥ ' : '> '}</text>
       <textarea
         ref={ref}
         focused={active}

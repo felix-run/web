@@ -38,6 +38,7 @@ import { type EpilogueSlot, formatEpilogue } from './epilogue.js';
 import { explainError } from './errors.js';
 import type { PromptHistory } from './history.js';
 import { oneLine } from './text.js';
+import { useTheme } from './theme.js';
 import type { ThreadStore } from './threads.js';
 import { Composer } from './ui/composer.js';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
@@ -94,6 +95,7 @@ export function App({
   onExit,
 }: AppProps) {
   const renderer = useRenderer();
+  const theme = useTheme();
   const { width, height } = useTerminalDimensions();
   const exit = onExit;
 
@@ -375,7 +377,11 @@ export function App({
         updatedAt: Date.now(),
       });
       void engine
-        .send({ manifest, messages: [{ role: 'user', content: text }], assistantId })
+        .send({
+          manifest,
+          messages: [{ role: 'user', content: text }],
+          assistantId,
+        })
         .then(refreshThreads);
     },
     [
@@ -472,7 +478,10 @@ export function App({
             return;
           }
           void client
-            .setThinkingLevel({ threadId: threadIdRef.current, thinkingLevel: level })
+            .setThinkingLevel({
+              threadId: threadIdRef.current,
+              thinkingLevel: level,
+            })
             .then(() => setNotice(`thinking: ${level}`))
             .catch((err) => engine.setError(explainError(err, 'set the thinking level', config)));
           return;
@@ -772,6 +781,14 @@ export function App({
     if (key.ctrl && name === 'n') {
       key.preventDefault();
       newThread();
+      return;
+    }
+    // Only bound when the overlay exists: with `consoleMode: 'disabled'` this
+    // would be a key that silently does nothing, which is worse than a key that
+    // is not bound.
+    if (key.ctrl && name === 'd' && renderer.consoleMode === 'console-overlay') {
+      key.preventDefault();
+      renderer.console.toggle();
     }
   });
 
@@ -802,10 +819,15 @@ export function App({
             filter={railFilter}
             total={threads.length}
             rows={railRows(height)}
+            theme={theme}
+            onPick={(id) => {
+              selectThread(id);
+              closeRail();
+            }}
           />
         ) : null}
         <box flexDirection="column" flexGrow={1}>
-          <Transcript turns={turns} streaming={streaming} scrollRef={scrollRef} />
+          <Transcript turns={turns} streaming={streaming} scrollRef={scrollRef} theme={theme} />
         </box>
       </box>
 
@@ -817,9 +839,10 @@ export function App({
         harness-side prompts wait, and the run is already waiting on them anyway.
       */}
       {writePrompt ? (
-        <WritePrompt summary={writePrompt} onAnswer={answerWrite} />
+        <WritePrompt summary={writePrompt} onAnswer={answerWrite} theme={theme} />
       ) : pending ? (
         <ApprovalPrompt
+          theme={theme}
           pending={pending}
           onDecide={(status) => {
             void client
@@ -830,6 +853,7 @@ export function App({
         />
       ) : uiPrompt ? (
         <UiPrompt
+          theme={theme}
           pending={uiPrompt}
           busy={uiResolving}
           onRespond={(value) => {
@@ -843,13 +867,16 @@ export function App({
               });
           }}
           onCancel={() => {
-            void client.respondUiRequest({ requestId: uiPrompt.requestId, cancelled: true });
+            void client.respondUiRequest({
+              requestId: uiPrompt.requestId,
+              cancelled: true,
+            });
             engine.clearUiPrompt();
           }}
         />
       ) : null}
 
-      {notice ? <text fg="yellow">{notice}</text> : null}
+      {notice ? <text fg={theme.notice}>{notice}</text> : null}
 
       {/*
         The rail takes the keyboard whole while it is focused, so the composer is
@@ -863,6 +890,7 @@ export function App({
         history={recent}
         onEdit={editPrompt}
         hint={streaming ? 'steer the run…' : 'ask, /help, ctrl+e to open $EDITOR'}
+        theme={theme}
       />
       <StatusLine
         manifest={manifest}
@@ -873,6 +901,7 @@ export function App({
         root={root}
         hint={hint}
         width={width}
+        theme={theme}
       />
     </box>
   );

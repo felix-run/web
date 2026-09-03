@@ -9,7 +9,8 @@
     "paths": {
       "@felix/client": ["../../packages/felix-client/src/index.ts"],
       "@felix/client/*": ["../../packages/felix-client/src/*"],
-      "@felix/protocol": ["../../packages/felix-protocol/src/index.ts"]
+      "@felix/protocol": ["../../packages/felix-protocol/src/index.ts"],
+      "@felix/design/*": ["../../packages/design/src/*.ts"]
     },
     "jsxImportSource": "@opentui/react"
   },

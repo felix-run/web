@@ -10,11 +10,8 @@
  */
 
 import type { ThreadMeta } from '@felix/client';
-import { createTextAttributes } from '@opentui/core';
 import { oneLine } from '../text.js';
-
-const DIM = createTextAttributes({ dim: true });
-const BOLD = createTextAttributes({ bold: true });
+import { BOLD, DIM, type Theme } from '../theme.js';
 
 /**
  * The most thread rows the rail will draw, however tall the terminal is.
@@ -80,6 +77,8 @@ export function ThreadRail({
   filter = '',
   total,
   rows = RAIL_ROWS_MAX,
+  theme,
+  onPick,
 }: {
   /** Already filtered: what is drawn and what enter picks are the same list. */
   threads: ThreadMeta[];
@@ -92,6 +91,13 @@ export function ThreadRail({
   total?: number;
   /** Thread rows to draw — what the terminal has room for, from `App`. */
   rows?: number;
+  theme: Theme;
+  /**
+   * Clicking a row opens it. Mouse reporting is on by default, so the wheel
+   * already scrolls and a drag already selects — a rail you can see and cannot
+   * click is the odd one out, not the feature.
+   */
+  onPick?: (id: string) => void;
 }) {
   const all = total ?? threads.length;
   const { start, end } = railWindow(threads.length, cursor, rows);
@@ -107,7 +113,7 @@ export function ThreadRail({
       marginRight={2}
       border
       borderStyle="rounded"
-      borderColor={focused ? 'green' : 'gray'}
+      borderColor={focused ? theme.ready : theme.faint}
       paddingLeft={1}
       paddingRight={1}
     >
@@ -124,10 +130,16 @@ export function ThreadRail({
           thread.onServer === false ? ' *' : ''
         }`;
         return (
+          /* An OpenTUI renderable, not a DOM node: there is no accessibility
+             tree to add a role to. What the rule is really after — the same
+             action reachable from the keyboard — holds, because `tab` focuses
+             the rail and `enter` opens the row under the cursor. */
+          // biome-ignore lint/a11y/noStaticElementInteractions: terminal renderable, keyboard path is tab + enter
           <text
             key={thread.id}
-            fg={focused && index === cursor ? 'green' : undefined}
+            fg={focused && index === cursor ? theme.ready : undefined}
             attributes={active ? BOLD : undefined}
+            onMouseDown={onPick ? () => onPick(thread.id) : undefined}
           >
             {oneLine(label, RAIL_TEXT)}
           </text>
@@ -150,6 +162,7 @@ export function StatusLine({
   root,
   hint,
   width,
+  theme,
 }: {
   manifest: string;
   origin: string;
@@ -161,6 +174,7 @@ export function StatusLine({
   hint?: string;
   /** Terminal columns, so the two halves can be cut rather than wrapped. */
   width: number;
+  theme: Theme;
 }) {
   // One row, two columns, and it has to stay one row: a status line that wraps
   // pushes the composer up the screen every time the path is long. The
@@ -173,11 +187,11 @@ export function StatusLine({
 
   return (
     <box flexDirection="column">
-      {error ? <text fg="red">{error}</text> : null}
+      {error ? <text fg={theme.failed}>{error}</text> : null}
       {/* A reattach is a materially different claim from a live run: the
           original was torn down when the connection dropped, so this is showing
           what landed rather than a reply still being written. */}
-      {reattaching ? <text fg="yellow">rejoining the thread…</text> : null}
+      {reattaching ? <text fg={theme.running}>rejoining the thread…</text> : null}
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={DIM}>{left}</text>
         {keys ? <text attributes={DIM}>{keys}</text> : null}

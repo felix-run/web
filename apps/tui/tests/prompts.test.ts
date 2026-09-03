@@ -3,7 +3,7 @@ import type { PendingApproval } from '@felix/client';
 import type { PendingUiRequest } from '@felix/protocol';
 import { createElement } from 'react';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from '../src/ui/prompts';
-import { lines, mount, shows } from './render';
+import { lines, mount, shows, testTheme } from './render';
 
 /**
  * The three things a run can block on.
@@ -30,7 +30,11 @@ const approval: PendingApproval = {
 describe('the approval banner', () => {
   it('names the tool, the file, and the keys that answer it', async () => {
     const ui = await mount(
-      createElement(ApprovalPrompt, { pending: approval, onDecide: () => {} }),
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: approval,
+        onDecide: () => {},
+      }),
       { width: 74, height: 16 },
     );
     try {
@@ -47,6 +51,7 @@ describe('the approval banner', () => {
     const decisions: string[] = [];
     const ui = await mount(
       createElement(ApprovalPrompt, {
+        theme: testTheme,
         pending: approval,
         onDecide: (status: string) => decisions.push(status),
       }),
@@ -74,7 +79,11 @@ describe('the approval banner', () => {
    */
   it('shows both sides of the change', async () => {
     const ui = await mount(
-      createElement(ApprovalPrompt, { pending: approval, onDecide: () => {} }),
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: approval,
+        onDecide: () => {},
+      }),
       { width: 74, height: 16 },
     );
     try {
@@ -97,7 +106,12 @@ describe('the approval banner', () => {
     const huge = Array.from({ length: 400 }, (_, i) => `line ${i};`).join('\n');
     const ui = await mount(
       createElement(ApprovalPrompt, {
-        pending: { ...approval, before: '', args: { path: 'big.ts', content: huge } },
+        theme: testTheme,
+        pending: {
+          ...approval,
+          before: '',
+          args: { path: 'big.ts', content: huge },
+        },
         onDecide: () => {},
       }),
       { width: 74, height: 30 },
@@ -114,6 +128,7 @@ describe('the approval banner', () => {
   it('falls back to a summary for a tool that is not a write', async () => {
     const ui = await mount(
       createElement(ApprovalPrompt, {
+        theme: testTheme,
         pending: {
           approvalId: 'ap-2',
           toolName: 'run_command',
@@ -145,6 +160,7 @@ describe('the agent question', () => {
   it('draws the question and its options', async () => {
     const ui = await mount(
       createElement(UiPrompt, {
+        theme: testTheme,
         pending: select,
         busy: false,
         onRespond: () => {},
@@ -165,6 +181,7 @@ describe('the agent question', () => {
     const answers: unknown[] = [];
     const ui = await mount(
       createElement(UiPrompt, {
+        theme: testTheme,
         pending: select,
         busy: false,
         onRespond: (v: unknown) => answers.push(v),
@@ -188,6 +205,7 @@ describe('the agent question', () => {
     let cancelled = false;
     const ui = await mount(
       createElement(UiPrompt, {
+        theme: testTheme,
         pending: select,
         busy: false,
         onRespond: () => {},
@@ -210,6 +228,7 @@ describe('the agent question', () => {
     const answers: unknown[] = [];
     const ui = await mount(
       createElement(UiPrompt, {
+        theme: testTheme,
         pending: {
           requestId: 'ui-2',
           kind: 'confirm',
@@ -242,6 +261,7 @@ describe('the agent question', () => {
     const answers: unknown[] = [];
     const ui = await mount(
       createElement(UiPrompt, {
+        theme: testTheme,
         pending: {
           requestId: 'ui-3',
           // `input`, not `text` — the wire spells the free-text kind this way,
@@ -273,6 +293,7 @@ describe('the agent question', () => {
   it('says when it is waiting on the harness', async () => {
     const ui = await mount(
       createElement(UiPrompt, {
+        theme: testTheme,
         pending: select,
         busy: true,
         onRespond: () => {},
@@ -292,6 +313,7 @@ describe('the local write prompt', () => {
   it('shows the absolute target and the two keys, on one row', async () => {
     const ui = await mount(
       createElement(WritePrompt, {
+        theme: testTheme,
         summary: 'write /Users/blake/Projects/felix-web/notes.md',
         onAnswer: () => {},
       }),
@@ -312,6 +334,7 @@ describe('the local write prompt', () => {
     const answers: boolean[] = [];
     const ui = await mount(
       createElement(WritePrompt, {
+        theme: testTheme,
         summary: 'write notes.md',
         onAnswer: (ok: boolean) => answers.push(ok),
       }),

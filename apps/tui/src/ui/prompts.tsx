@@ -21,11 +21,9 @@
 import { type PendingApproval, summarizeToolArgs } from '@felix/client';
 import type { PendingUiRequest } from '@felix/protocol';
 import type { KeyEvent } from '@opentui/core';
-import { createTextAttributes } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { writeDiff } from '../approval.js';
-
-const DIM = createTextAttributes({ dim: true });
+import { DIM, type Theme } from '../theme.js';
 
 /** Options shown at once before the list scrolls inside the banner. */
 const SELECT_ROWS = 8;
@@ -33,9 +31,11 @@ const SELECT_ROWS = 8;
 export function ApprovalPrompt({
   pending,
   onDecide,
+  theme,
 }: {
   pending: PendingApproval;
   onDecide: (status: 'approved' | 'denied') => void;
+  theme: Theme;
 }) {
   useKeyboard((key: KeyEvent) => {
     const name = key.name?.toLowerCase();
@@ -51,11 +51,11 @@ export function ApprovalPrompt({
       flexDirection="column"
       border
       borderStyle="rounded"
-      borderColor="yellow"
+      borderColor={theme.blocked}
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg="yellow">approval · {pending.toolName}</text>
+      <text fg={theme.blocked}>approval · {pending.toolName}</text>
       {diff ? (
         <>
           {/*
@@ -89,11 +89,13 @@ export function UiPrompt({
   busy,
   onRespond,
   onCancel,
+  theme,
 }: {
   pending: PendingUiRequest;
   busy: boolean;
   onRespond: (value: unknown) => void;
   onCancel: () => void;
+  theme: Theme;
 }) {
   const options = pending.options ?? [];
 
@@ -128,11 +130,11 @@ export function UiPrompt({
       flexDirection="column"
       border
       borderStyle="rounded"
-      borderColor="magenta"
+      borderColor={theme.blocked}
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg="magenta">{pending.prompt}</text>
+      <text fg={theme.blocked}>{pending.prompt}</text>
       {pending.kind === 'select' ? (
         <select
           focused={!busy}
@@ -175,9 +177,11 @@ export function UiPrompt({
 export function WritePrompt({
   summary,
   onAnswer,
+  theme,
 }: {
   summary: string;
   onAnswer: (ok: boolean) => void;
+  theme: Theme;
 }) {
   useKeyboard((key: KeyEvent) => {
     const name = key.name?.toLowerCase();
@@ -191,11 +195,11 @@ export function WritePrompt({
       flexDirection="row"
       border
       borderStyle="rounded"
-      borderColor="red"
+      borderColor={theme.danger}
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg="red">{summary}? </text>
+      <text fg={theme.danger}>{summary}? </text>
       <text attributes={DIM}>y allow · n refuse</text>
     </box>
   );

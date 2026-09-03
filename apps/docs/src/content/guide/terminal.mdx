@@ -91,6 +91,7 @@ correct against a harness running `FELIX_AUTH_MODE=none`.
 | `tab` | Focus the thread rail; `↑`/`↓` and `enter` to switch, `tab` again to leave. |
 | `ctrl+n` | New thread. |
 | `ctrl+c` | Stop a live run; again to quit. |
+| `ctrl+d` | Open the debug console, when the client was started with `FELIX_DEBUG=1`. |
 | `y` / `n` | Answer whatever is blocking the run. |
 
 What these keys do at any moment is written along the bottom of the screen, beside the manifest and
@@ -111,10 +112,16 @@ links, and fenced code coloured by tree-sitter. Parsers for JavaScript, TypeScri
 are built in; a fence in any other language renders as plain text inside a code block, because
 fetching a parser would mean this client talking to something other than your harness.
 
-Selecting text with the mouse copies it to your system clipboard, over OSC 52 — which also works
+Clicking a thread in the rail opens it. Selecting text with the mouse copies it to your system clipboard, over OSC 52 — which also works
 across `ssh`, where nothing on the remote machine can reach your clipboard directly. Terminals
 that do not implement it, or have it switched off, are told to you once in the status line
 rather than on every drag.
+
+Colours follow your terminal. The client uses its own palette only when the terminal both
+reports true-colour support and has said whether it is light or dark; otherwise every colour is
+an ANSI index, which is a reference into the sixteen your theme defines rather than a colour
+painted over them. Syntax highlighting inside a code block is always indexed, so a fenced block
+looks like the rest of the code on your machine.
 
 ## Slash commands
 
