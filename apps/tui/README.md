@@ -115,7 +115,7 @@ worth knowing before you change it:
 | `src/ui/transcript.tsx` | The conversation, in a `scrollbox` |
 | `src/ui/rails.tsx` | The thread rail and the status line |
 | `src/ui/prompts.tsx` | Approval, agent question, and local-write banners |
-| `scripts/screen.py` | Replays a captured frame so a render can be read back |
+| `tests/render.ts` | Mounts a component on an in-memory renderer so its frame can be read back |
 
 ## Tests
 
@@ -131,11 +131,30 @@ pays for. Two gaps in Bun's shim to know: `vi.advanceTimersByTimeAsync` does not
 (advance synchronously, then await the promise), and `toHaveBeenCalledOnce` runs but is not
 typed.
 
-What is covered is what a terminal adds on its own — config precedence, the markdown splitter,
-the history file, the attention gate, the editor round trip, the rail's window arithmetic, and
-the workspace executor's containment and settle guarantees. The rendered components are
-verified by running the client, with **one** exception: `tests/composer.test.ts` renders the
-real composer, because what it pins is a keystroke sequence no hand-run reproduces reliably.
+Two halves. The pure one is what a terminal adds on its own — config precedence, the markdown
+splitter, the history file, the attention gate, the editor round trip, the rail's window
+arithmetic, and the workspace executor's containment and settle guarantees.
+
+**The other half renders.** `tests/render.ts` mounts a component on a renderer that writes to
+memory instead of a tty, so `frame()` returns what was drawn and `keys` speaks the byte
+sequences no test should have to spell. Use it for anything whose failure is visual — a rail
+whose cursor walks off the drawn rows, a status line that wraps and pushes the composer up the
+screen, a banner that draws without the keys that answer it.
+
+```ts
+const ui = await mount(<ThreadRail threads={threads} cursor={30} … />, { width: 40, height: 20 });
+expect(ui.frame()).toContain('Thread 30');
+```
+
+Two things it owns so no test repeats them. `settle()` yields to React *before* asking the
+renderer whether it is idle — the renderer goes idle the moment a key is handled, while React
+has not committed yet, and reading the frame in that gap looks exactly like a component that
+ignores its keys. And the kitty keyboard protocol is on by default, because `main.tsx` asks
+for it: without it a lone `escape` is a possible sequence prefix and the parser holds it past
+the end of the test.
+
+`spans()` keeps colour and attributes where `frame()` flattens them, which is the only way to
+assert that a notice is still yellow or a dim line still dim.
 
 ## Notes
 
@@ -147,17 +166,11 @@ real composer, because what it pins is a keystroke sequence no hand-run reproduc
   shrunk. Anything with a fixed row count needs to know how tall the terminal is.
 - **`truncate` is not Ink's `wrap="truncate"`.** It needs a bounded width to cut against;
   setting it on a row that has none collapses that row's measurement.
-- **Reading a frame back is possible, and not obvious.** Capture under a pty, then replay:
-
-  ```bash
-  perl -e 'alarm(8); exec("script", "-q", "/dev/null", "sh", "-c",
-           "stty rows 40 cols 140; bun run src/main.tsx")' </dev/null > /tmp/tui.log 2>&1
-  python3 scripts/screen.py /tmp/tui.log 40 140
-  ```
-
-  Stripping the escapes and reading the log instead does **not** work, and fails in a way that
+- **Do not read a frame by stripping escapes from captured output.** It fails in a way that
   looks like a rendering bug: the renderer draws with absolute cursor moves, so removing them
-  collapses the frame onto one line and unrelated components appear to overlap.
+  collapses the whole frame onto one line and unrelated components appear to overlap. Every
+  apparent corruption found while porting this client was this. Use `tests/render.ts`, which
+  asks the renderer that drew the frame what it drew.
 - **A paste is not typing.** The paste event carries bytes with the newlines intact; left alone
   the edit buffer strips them and runs the last word of one line into the first of the next.
   The event is preventable, which is the hook `flattenPaste` uses.
