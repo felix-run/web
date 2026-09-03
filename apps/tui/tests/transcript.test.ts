@@ -29,6 +29,35 @@ const user = (content: string): Turn => ({
   content,
 });
 
+describe('the greeting', () => {
+  const greeting = createElement('text', null, 'GREETING MARKER');
+
+  it('stands in for the conversation while there is none', async () => {
+    const ui = await mount(createElement(Transcript, { turns: [], greeting, theme: testTheme }), {
+      width: 60,
+      height: 8,
+    });
+    try {
+      expect(shows(ui.frame(), 'GREETING MARKER')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('is gone the moment anything is said', async () => {
+    const ui = await mount(
+      createElement(Transcript, { turns: [user('hello')], greeting, theme: testTheme }),
+      { width: 60, height: 8 },
+    );
+    try {
+      expect(ui.frame()).not.toContain('GREETING MARKER');
+      expect(shows(ui.frame(), '› hello')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
 describe('a user turn', () => {
   it('is marked and set apart from the reply', async () => {
     const ui = await mount(

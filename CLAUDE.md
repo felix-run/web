@@ -353,7 +353,12 @@ browser cannot do rather than about the chat:
   screen eats their rows — the input line vanishes and the marker is squashed into the bottom
   border, giving a box you cannot type in and no sign of why. Each component is correct alone; it
   only appears when they are rendered together against a long transcript.
-- **The status line shortens before it cuts**, because cutting an absolute path takes the useful
+- **An empty thread says one thing, and it is not a key list.** `src/ui/greeting.tsx` — the
+  composer's border and the status line already carry the keys, the manifest, the host and the
+  directory, so restating them would make the first screen the densest. What it says instead is the
+  fact that is nowhere else: the agent is pointed at a real working directory, reads it without
+  asking, and asks before writing — or, under `--yes`, says in the danger colour that it does not.
+- **The status line shortens before it cuts, and serves the state before the keys**, because cutting an absolute path takes the useful
   end and leaves `/Users/blake…`. Scheme stripped, path reduced to its last segment. The directory
   is what the model can write to, so it stays identifiable; the absolute path is shown in full on
   the write prompt, which is where it matters.

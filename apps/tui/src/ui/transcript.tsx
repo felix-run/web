@@ -23,7 +23,7 @@ import {
   type ScrollBoxRenderable,
 } from '@opentui/core';
 import { useTimeline } from '@opentui/react';
-import { type RefObject, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useMemo, useState } from 'react';
 import { syntaxStyle } from '../syntax.js';
 import { oneLine } from '../text.js';
 import { DIM, DIM_ITALIC, type Theme } from '../theme.js';
@@ -229,6 +229,7 @@ export function Transcript({
   streaming = false,
   scrollRef,
   theme,
+  greeting,
 }: {
   turns: Turn[];
   streaming?: boolean;
@@ -240,6 +241,12 @@ export function Transcript({
    */
   scrollRef?: RefObject<ScrollBoxRenderable | null>;
   theme: Theme;
+  /**
+   * Drawn in place of the conversation while there is none. Inside the
+   * scrollbox rather than above it, so it sits where the first message will —
+   * against the composer — instead of at the top of an empty column.
+   */
+  greeting?: ReactNode;
 }) {
   return (
     // Sticky to the bottom, so a stream stays in view — and only sticky, so
@@ -262,6 +269,7 @@ export function Transcript({
       // a client that has lost something rather than one waiting for you.
       contentOptions={{ flexDirection: 'column', justifyContent: 'flex-end' }}
     >
+      {turns.length === 0 ? greeting : null}
       {turns.map((turn) =>
         turn.role === 'user' ? (
           <box key={turn.id} flexDirection="row" marginBottom={1}>
