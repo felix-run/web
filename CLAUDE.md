@@ -386,7 +386,11 @@ browser cannot do rather than about the chat:
   patch is capped: the keys sit *below* the payload on purpose, so an uncapped diff is an approval
   whose `y`/`n` is off the bottom of the screen. The `---`/`+++` preamble is metadata the renderer
   never draws, so the path is named separately or the banner reports a change without saying what
-  it changes.
+  it changes. **The cap falls on a hunk boundary, never on a row count**: every `@@` hunk declares
+  how many lines follow it, so a body cut part-way down contradicts its own header and
+  `DiffRenderable` rejects the patch outright — `Error parsing diff:` plus the raw text, which is
+  what a write to any two-hunk file rendered. A single over-budget hunk gets its header re-derived
+  from the lines kept.
 - **The agent's question prompt uses `<select>` and `<input>`.** It was the last surface here
   holding a `useState` cursor walked by hand on every arrow and a string appended to one character
   at a time — which meant a pasted answer put nothing in the field. `esc` stays on `useKeyboard`

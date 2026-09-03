@@ -212,7 +212,12 @@ worth knowing before you change it:
   string is an edit. The diff is capped at `DIFF_ROWS` because the keys sit *below* the payload
   on purpose — approving a write you have not read is the failure that arrangement is against,
   and an uncapped diff pushes `y`/`n` off the bottom of the terminal, which is an approval you
-  cannot answer.
+  cannot answer. **The cut falls on a hunk boundary**, not on a row count: a unified diff is not a
+  list of lines you can stop part-way down, because every `@@` hunk declares how many lines follow
+  it. A body cut mid-hunk contradicts its own header, and `DiffRenderable` refuses the whole patch
+  — printing `Error parsing diff:` and the raw text — so a write to any file long enough to need
+  two hunks showed diff syntax instead of a diff. When even one hunk exceeds the budget its header
+  is re-stated for the lines actually kept.
 - **Reads are not confirmed.** That is the stated trade of running against a real working
   directory.
 - The write prompt carries its own deadline, shorter than the executor's. `settleClientTool`
