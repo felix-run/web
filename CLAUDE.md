@@ -341,6 +341,19 @@ browser cannot do rather than about the chat:
   and `renderer.resume()` — the `resume` is in a `finally`, because an editor that exits non-zero must
   not leave a client that has stopped drawing with no way back. An unchanged or emptied file returns
   nothing rather than sending an empty message.
+- **A write approval shows a diff, not a character count.** `src/approval.ts` builds the patch;
+  `PendingApproval.before` has three states and they mean three different things — `undefined` is
+  "not a write, nothing to diff", `null` is "the file does not exist yet", a string is an edit, and
+  a `?? ''` that swallowed the first would offer a diff of every tool call against nothing. The
+  patch is capped: the keys sit *below* the payload on purpose, so an uncapped diff is an approval
+  whose `y`/`n` is off the bottom of the screen. The `---`/`+++` preamble is metadata the renderer
+  never draws, so the path is named separately or the banner reports a change without saying what
+  it changes.
+- **The agent's question prompt uses `<select>` and `<input>`.** It was the last surface here
+  holding a `useState` cursor walked by hand on every arrow and a string appended to one character
+  at a time — which meant a pasted answer put nothing in the field. `esc` stays on `useKeyboard`
+  because a global handler runs *before* the focused renderable and can take the key outright,
+  which is the only way to cancel out of an input that would otherwise consume it.
 - **The commands are the client's whole surface.** `@felix/client` reaches every chat verb the
   harness serves; a slash command is the only thing that exposes one here, so a verb with no `case`
   in `command()` — rename, fork, compact, export, rewind, search — is a verb this client does not

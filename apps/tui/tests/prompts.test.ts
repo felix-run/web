@@ -13,10 +13,11 @@ import { lines, mount, shows } from './render';
  * draws without its keys, or answers a key it should not have, hangs the
  * conversation with nothing on screen to explain it.
  *
- * Two of the assertions here pin behaviour that the next change replaces
- * outright — the select kind's hand-drawn cursor and the text kind's
- * character-at-a-time accumulator. They are written as characterization, not as
- * endorsement, and each says so.
+ * Three of these were written the other way round one commit ago, against a
+ * banner that summarised a file write as a character count, a select kind with
+ * a `useState` cursor walked by hand, and an input kind that appended
+ * characters one at a time and dropped a paste on the floor. They are kept and
+ * inverted, because what they assert now is what was missing then.
  */
 
 const approval: PendingApproval = {
@@ -27,14 +28,15 @@ const approval: PendingApproval = {
 };
 
 describe('the approval banner', () => {
-  it('names the tool and the keys that answer it', async () => {
+  it('names the tool, the file, and the keys that answer it', async () => {
     const ui = await mount(
       createElement(ApprovalPrompt, { pending: approval, onDecide: () => {} }),
-      { width: 70, height: 12 },
+      { width: 74, height: 16 },
     );
     try {
       const frame = ui.frame();
       expect(shows(frame, 'approval · write_file')).toBe(true);
+      expect(shows(frame, 'changes apps/tui/src/app.tsx')).toBe(true);
       expect(shows(frame, 'y approve · n deny')).toBe(true);
     } finally {
       ui.stop();
@@ -67,20 +69,62 @@ describe('the approval banner', () => {
 
   /**
    * The evidence a person is given before authorizing a write to their own
-   * disk. Today it is a character count — the file's actual before and after
-   * are both available and neither is shown, which is what the diff view
-   * replaces.
+   * disk. It used to be a character count, with both sides of the change
+   * available and neither on screen.
    */
-  it('summarises the write as a CHARACTER COUNT rather than a diff', async () => {
+  it('shows both sides of the change', async () => {
     const ui = await mount(
       createElement(ApprovalPrompt, { pending: approval, onDecide: () => {} }),
-      { width: 70, height: 12 },
+      { width: 74, height: 16 },
     );
     try {
       const frame = ui.frame();
-      expect(shows(frame, 'replaces 20 chars already in that file')).toBe(true);
-      // Neither side of the change is on screen.
-      expect(frame).not.toContain('export const a = 0;');
+      expect(shows(frame, '- export const a = 0;')).toBe(true);
+      expect(shows(frame, '+ export const a = 1;')).toBe(true);
+      expect(frame).not.toContain('replaces 20 chars');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  /**
+   * The keys sit below the payload on purpose — approving a write you have not
+   * read is the failure this arrangement is against — which makes an unbounded
+   * diff an approval you cannot answer, because the decision is off the bottom
+   * of the screen.
+   */
+  it('caps a large diff so the decision stays reachable', async () => {
+    const huge = Array.from({ length: 400 }, (_, i) => `line ${i};`).join('\n');
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        pending: { ...approval, before: '', args: { path: 'big.ts', content: huge } },
+        onDecide: () => {},
+      }),
+      { width: 74, height: 30 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'more line(s) not shown')).toBe(true);
+      expect(shows(frame, 'y approve · n deny')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('falls back to a summary for a tool that is not a write', async () => {
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        pending: {
+          approvalId: 'ap-2',
+          toolName: 'run_command',
+          args: { command: 'rm -rf build' },
+        },
+        onDecide: () => {},
+      }),
+      { width: 74, height: 12 },
+    );
+    try {
+      expect(shows(ui.frame(), 'rm -rf build')).toBe(true);
     } finally {
       ui.stop();
     }
@@ -111,7 +155,7 @@ describe('the agent question', () => {
     try {
       const frame = ui.frame();
       expect(shows(frame, 'Which worker should I look at?')).toBe(true);
-      expect(shows(frame, '❯ The proxy Worker')).toBe(true);
+      expect(shows(frame, '▶ The proxy Worker')).toBe(true);
     } finally {
       ui.stop();
     }
@@ -131,7 +175,7 @@ describe('the agent question', () => {
     try {
       ui.keys.pressArrow('down');
       await ui.settle();
-      expect(shows(ui.frame(), '❯ The docs Worker')).toBe(true);
+      expect(shows(ui.frame(), '▶ The docs Worker')).toBe(true);
       ui.keys.pressEnter();
       await ui.settle();
       expect(answers).toEqual(['docs']);
@@ -189,12 +233,12 @@ describe('the agent question', () => {
   });
 
   /**
-   * Characterization, not endorsement. The text kind accumulates characters
-   * into a string with no cursor, no word motion, no undo and no paste — the
-   * exact deficiency the composer was rebuilt on a `textarea` to fix, on the
-   * one prompt that never got the same treatment.
+   * The inversion. This prompt read single-character key names and appended
+   * them to a string, so a pasted branch name put nothing in the field at all —
+   * the exact deficiency the composer was rebuilt on a `textarea` to fix, on
+   * the one prompt that never got the same treatment.
    */
-  it('TAKES INPUT ONE CHARACTER AT A TIME, with no cursor and no paste', async () => {
+  it('takes a paste whole, like any other editor', async () => {
     const answers: unknown[] = [];
     const ui = await mount(
       createElement(UiPrompt, {
@@ -213,20 +257,14 @@ describe('the agent question', () => {
       { width: 70, height: 12 },
     );
     try {
-      await ui.keys.typeText('main');
+      await ui.keys.typeText('release/');
+      await ui.keys.pasteBracketedText('2026-09');
       await ui.settle();
-      expect(shows(ui.frame(), '> main')).toBe(true);
-
-      // A paste puts nothing in: the handler only ever reads single-character
-      // key names.
-      await ui.keys.pasteBracketedText('feature/x');
-      await ui.settle();
-      expect(shows(ui.frame(), '> main')).toBe(true);
-      expect(ui.frame()).not.toContain('feature/x');
+      expect(shows(ui.frame(), 'release/2026-09')).toBe(true);
 
       ui.keys.pressEnter();
       await ui.settle();
-      expect(answers).toEqual(['main']);
+      expect(answers).toEqual(['release/2026-09']);
     } finally {
       ui.stop();
     }

@@ -10,6 +10,12 @@
  * hazard Ink's `useInput` had, for the same reason. What is new is that a
  * handler can `preventDefault`, so the banner that answers a key also stops it
  * reaching the composer behind it.
+ *
+ * Two of the three now delegate their input to a renderable rather than reading
+ * keys themselves. The agent's question was the last surface here holding a
+ * `useState` cursor it walked by hand and a string it appended characters to —
+ * which is the deficiency the composer's own header describes being fixed by
+ * moving to a `textarea`, on the one prompt that never got the same treatment.
  */
 
 import { type PendingApproval, summarizeToolArgs } from '@felix/client';
@@ -17,9 +23,12 @@ import type { PendingUiRequest } from '@felix/protocol';
 import type { KeyEvent } from '@opentui/core';
 import { createTextAttributes } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
-import { useState } from 'react';
+import { writeDiff } from '../approval.js';
 
 const DIM = createTextAttributes({ dim: true });
+
+/** Options shown at once before the list scrolls inside the banner. */
+const SELECT_ROWS = 8;
 
 export function ApprovalPrompt({
   pending,
@@ -35,6 +44,7 @@ export function ApprovalPrompt({
     onDecide(name === 'y' ? 'approved' : 'denied');
   });
 
+  const diff = writeDiff(pending);
   const summary = summarizeToolArgs(pending.toolName, pending.args);
   return (
     <box
@@ -46,10 +56,29 @@ export function ApprovalPrompt({
       paddingRight={1}
     >
       <text fg="yellow">approval · {pending.toolName}</text>
-      <text>{summary.split('\n').slice(0, 6).join('\n')}</text>
-      {pending.before != null ? (
-        <text attributes={DIM}>replaces {pending.before.length} chars already in that file</text>
-      ) : null}
+      {diff ? (
+        <>
+          {/*
+            Evidence, then the decision. The keys stay below the payload — an
+            approval you answer before seeing what it does is not one — and the
+            diff is capped so they cannot be pushed off the bottom of the
+            screen, which is an approval you cannot answer at all.
+          */}
+          {/* The patch's own `---`/`+++` header is metadata to the renderer and
+              is never drawn, so the path has to be said here or the banner
+              names a change without naming what it changes. */}
+          <text attributes={DIM}>
+            {diff.isNew ? 'creates ' : 'changes '}
+            {diff.path}
+          </text>
+          <diff diff={diff.patch} view="unified" showLineNumbers height={diff.rows} />
+          {diff.omitted > 0 ? (
+            <text attributes={DIM}>… {diff.omitted} more line(s) not shown</text>
+          ) : null}
+        </>
+      ) : (
+        <text>{summary.split('\n').slice(0, 6).join('\n')}</text>
+      )}
       <text attributes={DIM}>y approve · n deny</text>
     </box>
   );
@@ -66,10 +95,19 @@ export function UiPrompt({
   onRespond: (value: unknown) => void;
   onCancel: () => void;
 }) {
-  const [text, setText] = useState('');
-  const [cursor, setCursor] = useState(0);
   const options = pending.options ?? [];
 
+  /**
+   * Only the keys the *banner* owns: `esc` to cancel, and `y`/`n` for a
+   * confirm, which has no renderable of its own.
+   *
+   * The select and input kinds used to be answered from here too — a `cursor`
+   * in `useState` walked by hand on every arrow, and a string that characters
+   * were appended to one at a time. `esc` stays global because a global handler
+   * runs *before* the focused renderable and can take the key outright, which
+   * is the only way to cancel out of an input that would otherwise treat it as
+   * its own.
+   */
   useKeyboard((key: KeyEvent) => {
     if (busy) return;
     const name = key.name ?? '';
@@ -78,41 +116,11 @@ export function UiPrompt({
       onCancel();
       return;
     }
-    if (pending.kind === 'confirm') {
-      const lower = name.toLowerCase();
-      if (lower !== 'y' && lower !== 'n') return;
-      key.preventDefault();
-      onRespond(lower === 'y');
-      return;
-    }
-    if (pending.kind === 'select') {
-      if (name === 'up') {
-        key.preventDefault();
-        setCursor((c) => Math.max(0, c - 1));
-      }
-      if (name === 'down') {
-        key.preventDefault();
-        setCursor((c) => Math.min(options.length - 1, c + 1));
-      }
-      if (name === 'return') {
-        key.preventDefault();
-        onRespond(options[cursor]?.value ?? '');
-      }
-      return;
-    }
-    if (name === 'return') {
-      key.preventDefault();
-      onRespond(text);
-      return;
-    }
-    if (name === 'backspace' || name === 'delete') {
-      key.preventDefault();
-      setText((t) => t.slice(0, -1));
-      return;
-    }
-    if (key.ctrl || key.meta || name.length !== 1) return;
+    if (pending.kind !== 'confirm') return;
+    const lower = name.toLowerCase();
+    if (lower !== 'y' && lower !== 'n') return;
     key.preventDefault();
-    setText((t) => t + name);
+    onRespond(lower === 'y');
   });
 
   return (
@@ -126,19 +134,31 @@ export function UiPrompt({
     >
       <text fg="magenta">{pending.prompt}</text>
       {pending.kind === 'select' ? (
-        options.map((opt: { value: string; label: string }, i: number) => (
-          <text key={opt.value} fg={i === cursor ? 'magenta' : undefined}>
-            {i === cursor ? '❯ ' : '  '}
-            {opt.label}
-          </text>
-        ))
+        <select
+          focused={!busy}
+          // `SelectOption` names the visible half `name` and keeps `value` for
+          // what gets sent, which is the same split the wire makes.
+          options={options.map((option) => ({
+            name: option.label,
+            description: '',
+            value: option.value,
+          }))}
+          showDescription={false}
+          wrapSelection
+          // Sized to the list so the banner does not reserve rows for options
+          // that do not exist, and capped so a long list scrolls rather than
+          // pushing the composer off the screen.
+          height={Math.max(1, Math.min(options.length, SELECT_ROWS))}
+          showScrollIndicator={options.length > SELECT_ROWS}
+          onSelect={(_index, option) => onRespond(option?.value ?? '')}
+        />
       ) : pending.kind === 'confirm' ? (
         <text attributes={DIM}>y yes · n no · esc cancel</text>
       ) : (
-        <box flexDirection="row">
-          <text>{'> '}</text>
-          <text>{text}</text>
-        </box>
+        // A real editor: a cursor, word motion, undo, and a paste that arrives
+        // whole. The version this replaces read single-character key names, so
+        // pasting a branch name put nothing in the field at all.
+        <input focused={!busy} placeholder="type an answer · enter sends" onSubmit={onRespond} />
       )}
       {busy ? <text attributes={DIM}>sending…</text> : null}
     </box>

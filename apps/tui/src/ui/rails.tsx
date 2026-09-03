@@ -11,6 +11,7 @@
 
 import type { ThreadMeta } from '@felix/client';
 import { createTextAttributes } from '@opentui/core';
+import { oneLine } from '../text.js';
 
 const DIM = createTextAttributes({ dim: true });
 const BOLD = createTextAttributes({ bold: true });
@@ -48,9 +49,6 @@ export function railRows(height: number): number {
 
 /** Inner width of the rail, less its border and padding. */
 const RAIL_TEXT = 22;
-
-const truncate = (s: string, width = RAIL_TEXT) =>
-  s.length > width ? `${s.slice(0, width - 1)}…` : s;
 
 /**
  * The slice of a list to draw so that `cursor` is always inside it.
@@ -114,7 +112,7 @@ export function ThreadRail({
       paddingRight={1}
     >
       <text attributes={DIM}>
-        {truncate(filter ? `/${filter} · ${threads.length}/${all}` : 'threads')}
+        {oneLine(filter ? `/${filter} · ${threads.length}/${all}` : 'threads', RAIL_TEXT)}
       </text>
       {all === 0 ? <text attributes={DIM}>(none yet)</text> : null}
       {all > 0 && threads.length === 0 ? <text attributes={DIM}>no match · esc clears</text> : null}
@@ -131,7 +129,7 @@ export function ThreadRail({
             fg={focused && index === cursor ? 'green' : undefined}
             attributes={active ? BOLD : undefined}
           >
-            {truncate(label)}
+            {oneLine(label, RAIL_TEXT)}
           </text>
         );
       })}

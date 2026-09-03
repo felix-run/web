@@ -194,6 +194,14 @@ Three frames pause a run until something answers, and all three take the keyboar
   (`POST /chat/ui`).
 - **`tool_request`** — the harness handed a tool back for this process to run. See below.
 
+When the harness asks you to approve a file write, the banner shows the change as a diff —
+both sides of it, with line numbers — rather than a count of the characters it would replace.
+A large diff is cut, and says how many lines it cut, because the `y`/`n` keys sit below the
+payload and an uncapped diff would push them off the screen.
+
+An agent question that offers choices is a real list you arrow through; one that wants text is a
+real input with a cursor, word motion and undo, and it takes a paste whole.
+
 ## Client tools run against your working directory
 
 `tool_request` means the **client** executes the tool and posts the result back. The browser answers

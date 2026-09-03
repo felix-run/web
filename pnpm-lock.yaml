@@ -244,6 +244,9 @@ importers:
       '@opentui/react':
         specifier: 0.5.9
         version: 0.5.9(react-devtools-core@7.0.1)(react@19.2.8)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
       react:
         specifier: 'catalog:'
         version: 19.2.8

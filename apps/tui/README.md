@@ -131,6 +131,13 @@ worth knowing before you change it:
 - Everything else waits on a prompt showing the **absolute** target. `confirm` is a *required*
   option, so a caller cannot get a silent writer by omitting it; `--yes` is a confirm that
   always agrees, not an absent one.
+- A **harness-side** write is a different prompt, and it now shows a real diff rather than a
+  character count. `PendingApproval.before` has three states and they are three decisions:
+  `undefined` is "not a write, nothing to diff", `null` is "the file does not exist yet", and a
+  string is an edit. The diff is capped at `DIFF_ROWS` because the keys sit *below* the payload
+  on purpose — approving a write you have not read is the failure that arrangement is against,
+  and an uncapped diff pushes `y`/`n` off the bottom of the terminal, which is an approval you
+  cannot answer.
 - **Reads are not confirmed.** That is the stated trade of running against a real working
   directory.
 - The write prompt carries its own deadline, shorter than the executor's. `settleClientTool`
@@ -151,6 +158,8 @@ worth knowing before you change it:
 | `src/editor.ts` | `$VISUAL` / `$EDITOR` on a temp file, between `suspend()` and `resume()` |
 | `src/syntax.ts` | The one `SyntaxStyle`: markdown's own scopes plus tree-sitter captures |
 | `src/clipboard.ts` | OSC 52, and the four things that can happen when you copy |
+| `src/approval.ts` | The patch a write approval shows, and the cap that keeps y/n reachable |
+| `src/text.ts` | One line, cut to fit — the one truncation helper |
 | `src/epilogue.ts` | The line printed after the screen is given back |
 | `src/ui/composer.tsx` | The prompt: a `textarea`, the Enter bindings, the paste policy |
 | `src/ui/transcript.tsx` | The conversation: `<markdown>` per turn, in a `scrollbox` |
