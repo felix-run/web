@@ -52,8 +52,8 @@ the File System Access mount (`packages/cowork-client`), the SSE reader (one imp
 parameterized suites in `@felix/test-kit`, which are the contract those surfaces are held to.
 `@felix/client` covers the run loop at the wire: frames into `applyEvent`, transcript out, including
 the three blocking frames, plus the log-to-transcript rebuild, the reattach loop and the tool-card
-matching. `@felix/tui` covers what a terminal adds on its own: config precedence, the markdown
-splitter, the prompt-history file's cap and self-healing, the attention signals' focus gate, the
+matching. `@felix/tui` covers what a terminal adds on its own: config precedence,
+the prompt-history file's cap and self-healing, the OSC 52 clipboard's four outcomes, the attention signals' focus gate, the
 editor round trip, the thread rail's scroll window, and the workspace executor's containment and
 settle guarantees — **and, since `tests/render.ts`, its rendered components too.** Every one of them
 mounts on a renderer that writes to memory rather than a tty, so what is asserted is the frame:
@@ -356,6 +356,26 @@ browser cannot do rather than about the chat:
   by stripping escapes from captured output: the renderer draws with absolute cursor moves, so
   removing them collapses the frame onto one line and unrelated components appear to overlap — every
   apparent corruption found while porting this client was that, and not the renderer.
+- **A reply is markdown, and is rendered as such.** `<markdown>` from `@opentui/core` replaced a
+  hand-rolled stripper that deleted `**` and `` ` ``, left tables as pipes and drew every fence in
+  one flat colour. `streaming` is a prop and must be right: set, the trailing block stays unstable
+  and is re-parsed on every delta — the normal state of a reply mid-flight — and only the *tail
+  segment of the turn being written* gets it, because an earlier segment was closed by the tool call
+  after it. `src/syntax.ts` holds the one `SyntaxStyle`, covering both vocabularies that arrive:
+  `markup.*` for the markdown's own syntax (miss one and that piece renders as unstyled text with
+  its markers gone) and tree-sitter captures for fenced code. Only the four bundled parsers
+  (javascript, typescript, markdown, zig) are registered — any other language would be fetched over
+  the network on first use, and this client talks to the harness and nothing else. Its colours are
+  ANSI **indices** via `RGBA.fromIndex`, not names: `parseColor` resolves `"magenta"` to the literal
+  `#FF00FF`, so a named colour silently overrides the user's terminal theme.
+- **`pgup`/`pgdn` scroll the transcript, from anywhere and with no mode.** `ScrollBoxRenderable`
+  already implements every scroll key; it just has to be focused to hear them, and focus would mean
+  a mode you leave before typing. The page keys are the two the composer's textarea does not claim,
+  so `App` drives the box through a ref instead. Sticky re-engages by itself at the bottom.
+- **Selecting text copies it** (`src/clipboard.ts`, OSC 52). In an alt-screen app the terminal's own
+  selection reads rows the renderer owns, so the renderer runs its own — which highlights correctly
+  and otherwise has nowhere to put the result. Copy on mouse-*up*: every intermediate selection would
+  otherwise reach the clipboard and the last to land would win by luck.
 - Threads live in `$XDG_STATE_HOME/felix`. The transcript is a `scrollbox` with `viewportCulling`, so
   rows off screen take no part in layout — which is why it is no longer capped at a tail the way the
   Ink version had to be.

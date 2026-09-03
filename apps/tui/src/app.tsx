@@ -22,10 +22,16 @@ import {
   titleFromText,
 } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
-import type { KeyEvent } from '@opentui/core';
-import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/react';
+import type { KeyEvent, ScrollBoxRenderable } from '@opentui/core';
+import {
+  useKeyboard,
+  useRenderer,
+  useSelectionHandler,
+  useTerminalDimensions,
+} from '@opentui/react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Attention } from './attention.js';
+import { copyText, describeCopy } from './clipboard.js';
 import { authHeaders, type Config } from './config.js';
 import { editorCommand, openEditor } from './editor.js';
 import { type EpilogueSlot, formatEpilogue } from './epilogue.js';
@@ -111,6 +117,17 @@ export function App({
 
   /** Thread ids from the last `/search`, so `/open 2` means something. */
   const hitsRef = useRef<string[]>([]);
+
+  /**
+   * The transcript's scroll box, driven directly rather than by focusing it.
+   *
+   * `ScrollBoxRenderable` already handles every scroll key there is — it just
+   * has to be focused to hear them, and focus here means a mode you must leave
+   * before you can type again. The page keys conflict with nothing (the
+   * composer's textarea claims arrows, home and end, but not these), so they
+   * can simply work, from anywhere, with no mode at all.
+   */
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
@@ -257,6 +274,29 @@ export function App({
       holder = '';
     };
   }, [client, threadId]);
+
+  /**
+   * Selecting text copies it.
+   *
+   * The renderer draws the highlight either way; without this there is nothing
+   * to do with it. Copying happens on mouse-up rather than as the drag moves,
+   * because every intermediate selection would otherwise be written to the
+   * clipboard and the last one to land would win by luck.
+   *
+   * A terminal that does not do OSC 52 is told about once and then left alone —
+   * repeating it on every drag would make selecting text feel like an error.
+   */
+  const copyWarned = useRef(false);
+  useSelectionHandler((selection) => {
+    if (selection.isDragging) return;
+    const result = copyText(renderer, selection.getSelectedText());
+    if (result.status === 'unsupported') {
+      if (copyWarned.current) return;
+      copyWarned.current = true;
+    }
+    const said = describeCopy(result);
+    if (said) setNotice(said);
+  });
 
   // Focus reporting is asked for from here rather than at construction, and the
   // reason is one line of terminal behaviour: the terminal answers on stdin, and
@@ -611,6 +651,9 @@ export function App({
     (text: string) => {
       setNotice(null);
       setQuitArmed(false);
+      // Sending while scrolled up would otherwise put the reply somewhere you
+      // are not looking. Landing at the bottom also re-engages sticky.
+      scrollRef.current?.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER });
       // Commands are recorded too: `/think high` is as worth recalling as a
       // paragraph, and a shell does not filter its history either.
       history.add(text);
@@ -655,6 +698,15 @@ export function App({
       void client.abortChat(threadIdRef.current).catch(() => {});
       setQuitArmed(true);
       setNotice('run stopped — ctrl+c again to quit');
+      return;
+    }
+    // Reading back through the conversation. Half a viewport a press, which is
+    // the scroll box's own `pageup`/`pagedown` step — and paging down to the
+    // bottom re-engages sticky by itself, so returning to a live run needs no
+    // separate key and no mode to leave.
+    if (name === 'pageup' || name === 'pagedown') {
+      key.preventDefault();
+      scrollRef.current?.scrollBy(name === 'pageup' ? -1 / 2 : 1 / 2, 'viewport');
       return;
     }
     if (blocked) return;
@@ -733,8 +785,8 @@ export function App({
   const hint = railFocused
     ? '↑↓ select · enter open · type to filter · esc clear · tab back'
     : streaming
-      ? 'esc stop · tab threads · ctrl+e editor'
-      : 'tab threads · ctrl+n new · ctrl+e editor · /help';
+      ? 'esc stop · pgup/pgdn scroll · tab threads'
+      : 'tab threads · ctrl+n new · pgup/pgdn scroll · /help';
 
   return (
     // Bounded to the terminal, and clipped rather than allowed to spill. A
@@ -755,7 +807,7 @@ export function App({
           />
         ) : null}
         <box flexDirection="column" flexGrow={1}>
-          <Transcript turns={turns} />
+          <Transcript turns={turns} streaming={streaming} scrollRef={scrollRef} />
         </box>
       </box>
 
