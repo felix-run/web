@@ -877,7 +877,11 @@ export function App({
         />
       ) : null}
 
-      {notice ? <text fg={theme.notice}>{notice}</text> : null}
+      {notice ? (
+        <text fg={theme.notice} flexShrink={0}>
+          {notice}
+        </text>
+      ) : null}
 
       {/*
         The rail takes the keyboard whole while it is focused, so the composer is

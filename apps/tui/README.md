@@ -105,10 +105,24 @@ about code look alike at a glance. `renderNode` overrides just that token: `defa
 back the renderable the markdown would have used, and a `Renderable` carries the render context it
 was built with — which is the only way to get one, since nothing in `RenderNodeContext` exposes it.
 
+**Nothing below the transcript may shrink.** The transcript grows to fill, so the composer, the
+notice and the status line each carry `flexShrink={0}`. Without it a conversation longer than the
+screen takes their rows: the input line disappears, the marker is squashed into the bottom border,
+and you are left with a box you cannot type in and nothing on screen to say why. Every component
+is correct on its own — it only shows up when they are rendered together with a long transcript,
+which is what `tests/composer.test.ts` now pins.
+
 There is one empty row inside every code frame, and it is deliberate. The code buffer measures
 itself a line taller than its content. Pinning the box height closes the gap and is **wrong**: the
 buffer wraps, so a long line in a narrow terminal needs more rows than it has lines, and a pinned
 height silently drops the ones past the fold. An empty row is cosmetic; clipped code is not.
+
+**The status line shortens both halves before it cuts.** An absolute path and a full origin spend
+forty columns on two things whose useful part is at the end — and then the cut takes the end,
+leaving `/Users/blake…`, which names no directory at all. The scheme goes, and the path is reduced
+to its last segment: `quick · localhost:8080 · felix-web`. The directory matters because it is what
+the *model* can write to, so it has to stay identifiable; the absolute path is still shown in full
+on the prompt that asks before a write, which is the moment it counts.
 
 ## Colour
 

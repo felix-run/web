@@ -348,6 +348,15 @@ browser cannot do rather than about the chat:
   costing twenty-eight of a hundred cells, drawn only above ninety columns — so the client had two
   shapes depending on the terminal. `position: "absolute"` + `zIndex` means opening it does not
   reflow what is underneath.
+- **Nothing below the transcript may shrink.** The transcript grows to fill, so the composer, the
+  notice and the status line carry `flexShrink={0}`. Without it a conversation longer than the
+  screen eats their rows — the input line vanishes and the marker is squashed into the bottom
+  border, giving a box you cannot type in and no sign of why. Each component is correct alone; it
+  only appears when they are rendered together against a long transcript.
+- **The status line shortens before it cuts**, because cutting an absolute path takes the useful
+  end and leaves `/Users/blake…`. Scheme stripped, path reduced to its last segment. The directory
+  is what the model can write to, so it stays identifiable; the absolute path is shown in full on
+  the write prompt, which is where it matters.
 - **Fenced code is framed through `MarkdownOptions.renderNode`.** `defaultRender()` returns the
   renderable the markdown would have used, and a `Renderable` carries its own render context —
   which is the only way to obtain one, because `RenderNodeContext` exposes none. The empty row

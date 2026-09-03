@@ -172,6 +172,27 @@ export function ThreadPicker({
   );
 }
 
+/**
+ * The origin without the scheme, which is the same on every line of every
+ * terminal and tells nobody anything.
+ */
+function shortOrigin(origin: string): string {
+  return origin.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+/**
+ * The working directory's last segment.
+ *
+ * This is the directory the *model* can write to, so it has to be identifiable
+ * — and the leading path is the half a person recognises least. The absolute
+ * path is still shown in full at the moment it matters, on the prompt that asks
+ * before a write.
+ */
+function basename(path: string): string {
+  const parts = path.replace(/\/+$/, '').split('/');
+  return parts[parts.length - 1] || path;
+}
+
 export function StatusLine({
   manifest,
   origin,
@@ -199,13 +220,23 @@ export function StatusLine({
   // pushes the composer up the screen every time the path is long. The
   // renderer's own `truncate` needs a bounded width to cut against, which this
   // row does not have, so the cut is made here where the width is known.
+  //
+  // Both halves are shortened before the cut rather than after it. A full
+  // origin and an absolute path spend forty columns on two things whose useful
+  // part is at the end, and then the cut takes the end: `/Users/blake…` names
+  // no directory at all. The scheme and the parent directories are the parts a
+  // person already knows.
   const keys = hint ? `  ${hint}` : '';
-  const state = `${manifest} · ${origin} · ${root}${phase && phase !== 'idle' ? ` · ${phase}` : ''}`;
+  const state = `${manifest} · ${shortOrigin(origin)} · ${basename(root)}${
+    phase && phase !== 'idle' ? ` · ${phase}` : ''
+  }`;
   const room = Math.max(8, width - keys.length - 2);
   const left = state.length > room ? `${state.slice(0, room - 1)}…` : state;
 
   return (
-    <box flexDirection="column">
+    // Same reason as the composer: the transcript must not be able to take
+    // these rows.
+    <box flexDirection="column" flexShrink={0}>
       {error ? <text fg={theme.failed}>{error}</text> : null}
       {/* A reattach is a materially different claim from a live run: the
           original was torn down when the connection dropped, so this is showing

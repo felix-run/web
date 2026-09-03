@@ -176,6 +176,11 @@ export function Composer({
     // conversation could have had.
     <box
       flexDirection="row"
+      // Never give ground to the transcript. The transcript grows to fill, and
+      // with a conversation longer than the screen it will take these rows too:
+      // the input line vanishes and the marker is squashed into the bottom
+      // border, leaving a box you cannot type in and no sign of why.
+      flexShrink={0}
       border
       borderStyle="rounded"
       borderColor={active ? theme.ready : theme.faint}

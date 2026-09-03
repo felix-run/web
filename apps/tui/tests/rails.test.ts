@@ -229,7 +229,13 @@ describe('the status line', () => {
     }
   });
 
-  it('names the manifest, the origin and the keys', async () => {
+  /**
+   * Both halves are shortened *before* the cut, not after. An absolute path and
+   * a full origin spend forty columns on two things whose useful part is at the
+   * end — and then the cut takes the end, leaving `/Users/blake…`, which names
+   * no directory at all.
+   */
+  it('names the manifest, the host and the directory, without the parts nobody reads', async () => {
     const ui = await mount(
       createElement(StatusLine, {
         theme: testTheme,
@@ -241,7 +247,11 @@ describe('the status line', () => {
     );
     try {
       const frame = ui.frame();
-      expect(shows(frame, 'quick · http://localhost:8080')).toBe(true);
+      expect(shows(frame, 'quick · localhost:8080 · felix-web')).toBe(true);
+      // The scheme is the same on every line of every terminal.
+      expect(frame).not.toContain('http://');
+      // And the directory is identifiable rather than cut back to its root.
+      expect(frame).not.toContain('/Users');
       expect(shows(frame, 'tab threads')).toBe(true);
     } finally {
       ui.stop();
