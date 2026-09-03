@@ -1,86 +1,50 @@
 import { describe, expect, it } from 'bun:test';
-import { PassThrough } from 'node:stream';
-import { createCliRenderer } from '@opentui/core';
-import { createRoot } from '@opentui/react';
 import { createElement } from 'react';
 import { Composer, flattenPaste } from '../src/ui/composer';
+import { mount, shows } from './render';
 
 /**
- * The one component with a test, and this is why.
+ * The composer, driven the way a terminal drives it.
  *
- * It runs under Bun rather than Vitest because it renders: the renderer reaches
- * its native core through FFI, which Node has only behind an experimental flag.
- * Everything else in this package is pure and stays on Vitest — see
- * `package.json`, where `test` is both.
+ * What is asserted here is mostly the message the composer *sends*, not the
+ * frame it draws — the failure this file exists for is a paste that submits
+ * itself. A terminal that ignores bracketed paste delivers a copied paragraph
+ * as raw bytes with newlines in them, and a prompt that treats a bare linefeed
+ * as Enter sends half of it before anyone has read it. No hand-run reproduces
+ * that reliably, which is why it is pinned.
  *
- * What is asserted is the message the composer *sends*, not the frame it draws.
- * The failure this pins is a paste that submits itself: a terminal that ignores
- * bracketed paste delivers a copied paragraph as raw bytes with newlines in
- * them, and a prompt that treats a bare linefeed as Enter sends half of it
- * before anyone has read it.
+ * The bytes are the mock's problem now. This used to spell out `ESC [ 200 ~`
+ * and `ESC [ 13 ; 2 u` inline and sleep 300ms per mount hoping React had got
+ * there; `mockInput` knows the sequences and `settle()` knows when the frame has
+ * stopped moving.
  */
 
-const ESC = String.fromCharCode(27);
-const ENTER = '\r';
 const LF = '\n';
-/** How a terminal in bracketed paste mode delivers a paste. */
-const paste = (text: string) => `${ESC}[200~${text}${ESC}[201~`;
-/** Shift+Enter, which only a terminal speaking the kitty protocol can say. */
-const SHIFT_ENTER = `${ESC}[13;2u`;
 
-async function mount(props: { history?: string[] } = {}) {
-  const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
-  Object.assign(stdin, { isTTY: true, setRawMode: () => stdin, ref: () => {}, unref: () => {} });
-  const stdout = new PassThrough() as unknown as NodeJS.WriteStream;
-  stdout.resume();
-
+async function composer(props: { history?: string[]; streaming?: boolean } = {}) {
   const submitted: string[] = [];
-  const renderer = await createCliRenderer({
-    stdin,
-    stdout,
-    width: 80,
-    height: 12,
-    exitOnCtrlC: false,
-    useKittyKeyboard: {},
-  });
-  const root = createRoot(renderer);
-  root.render(
+  const ui = await mount(
     createElement(Composer, {
-      streaming: false,
+      streaming: props.streaming ?? false,
       disabled: false,
       onSubmit: (text: string) => submitted.push(text),
       ...(props.history ? { history: props.history } : {}),
     }),
+    { width: 60, height: 6 },
   );
-  // The renderable has to exist and take focus before bytes mean anything.
-  await new Promise((r) => setTimeout(r, 300));
-
-  /** One chunk, then a tick — a keyboard does not arrive all at once. */
-  const feed = async (...chunks: string[]) => {
-    for (const chunk of chunks) {
-      (stdin as unknown as PassThrough).push(chunk);
-      await new Promise((r) => setTimeout(r, 20));
-    }
-  };
-
-  return {
-    feed,
-    submitted,
-    stop: () => {
-      root.unmount();
-      renderer.destroy();
-    },
-  };
+  return { ...ui, submitted };
 }
 
 describe('the composer under a paste', () => {
   it('sends a pasted paragraph as one line, once Enter is pressed', async () => {
-    const ui = await mount();
+    const ui = await composer();
     try {
-      await ui.feed(paste(`explain the proxy worker${LF}and the dev copy of it${LF}`));
+      await ui.keys.pasteBracketedText(`explain the proxy worker${LF}and the dev copy of it${LF}`);
+      await ui.settle();
       // A paste is never a send: what reaches the model is what was read.
       expect(ui.submitted).toEqual([]);
-      await ui.feed(ENTER);
+      ui.keys.pressEnter();
+      await ui.settle();
       expect(ui.submitted).toEqual(['explain the proxy worker and the dev copy of it']);
     } finally {
       ui.stop();
@@ -93,9 +57,10 @@ describe('the composer under a paste', () => {
    * and leaves `two` behind.
    */
   it('does not send itself when the terminal does not bracket the paste', async () => {
-    const ui = await mount();
+    const ui = await composer();
     try {
-      await ui.feed(`one${LF}two${LF}`);
+      await ui.keys.typeText(`one${LF}two${LF}`);
+      await ui.settle();
       expect(ui.submitted).toEqual([]);
     } finally {
       ui.stop();
@@ -105,9 +70,11 @@ describe('the composer under a paste', () => {
 
 describe('the composer keys', () => {
   it('sends on Enter', async () => {
-    const ui = await mount();
+    const ui = await composer();
     try {
-      await ui.feed('hello', ENTER);
+      await ui.keys.typeText('hello');
+      ui.keys.pressEnter();
+      await ui.settle();
       expect(ui.submitted).toEqual(['hello']);
     } finally {
       ui.stop();
@@ -115,11 +82,15 @@ describe('the composer keys', () => {
   });
 
   it('opens a second line on shift+Enter rather than sending', async () => {
-    const ui = await mount();
+    const ui = await composer();
     try {
-      await ui.feed('first', SHIFT_ENTER, 'second');
+      await ui.keys.typeText('first');
+      ui.keys.pressEnter({ shift: true });
+      await ui.keys.typeText('second');
+      await ui.settle();
       expect(ui.submitted).toEqual([]);
-      await ui.feed(ENTER);
+      ui.keys.pressEnter();
+      await ui.settle();
       expect(ui.submitted).toEqual([`first${LF}second`]);
     } finally {
       ui.stop();
@@ -127,9 +98,12 @@ describe('the composer keys', () => {
   });
 
   it('recalls the last prompt on up, while the draft is one line', async () => {
-    const ui = await mount({ history: ['the first thing', 'the last thing'] });
+    const ui = await composer({ history: ['the first thing', 'the last thing'] });
     try {
-      await ui.feed(`${ESC}[A`, ENTER);
+      ui.keys.pressArrow('up');
+      await ui.settle();
+      ui.keys.pressEnter();
+      await ui.settle();
       expect(ui.submitted).toEqual(['the last thing']);
     } finally {
       ui.stop();
@@ -141,10 +115,62 @@ describe('the composer keys', () => {
    * history does — there is somewhere to move to.
    */
   it('leaves up to the cursor once the draft has a second line', async () => {
-    const ui = await mount({ history: ['the last thing'] });
+    const ui = await composer({ history: ['the last thing'] });
     try {
-      await ui.feed('typed', SHIFT_ENTER, 'more', `${ESC}[A`, ENTER);
+      await ui.keys.typeText('typed');
+      ui.keys.pressEnter({ shift: true });
+      await ui.keys.typeText('more');
+      ui.keys.pressArrow('up');
+      await ui.settle();
+      ui.keys.pressEnter();
+      await ui.settle();
       expect(ui.submitted).toEqual([`typed${LF}more`]);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+/**
+ * The frame, now that it can be read.
+ *
+ * The marker and the placeholder are the composer's whole account of what Enter
+ * will do — typing into a busy agent and having nothing happen is the failure
+ * people report as "it froze", and the only thing standing between a user and
+ * that impression is these two characters changing.
+ */
+describe('what the composer says it will do', () => {
+  it('draws the ready marker and the hint', async () => {
+    const ui = await mount(
+      createElement(Composer, {
+        streaming: false,
+        disabled: false,
+        onSubmit: () => {},
+        hint: 'ask, /help, ctrl+e to open $EDITOR',
+      }),
+      { width: 60, height: 6 },
+    );
+    try {
+      expect(ui.frame()).toContain('>');
+      expect(shows(ui.frame(), 'ask, /help, ctrl+e to open $EDITOR')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('swaps the marker and the hint while a run is live', async () => {
+    const ui = await mount(
+      createElement(Composer, {
+        streaming: true,
+        disabled: false,
+        onSubmit: () => {},
+        hint: 'steer the run…',
+      }),
+      { width: 60, height: 6 },
+    );
+    try {
+      expect(ui.frame()).toContain('⇥');
+      expect(shows(ui.frame(), 'steer the run')).toBe(true);
     } finally {
       ui.stop();
     }
@@ -165,7 +191,7 @@ describe('flattenPaste', () => {
   });
 
   it('handles the carriage-return spelling', () => {
-    expect(flattenPaste(`one${ENTER}${LF}two${ENTER}${LF}`)).toBe('one two');
+    expect(flattenPaste('one\r\ntwo\r\n')).toBe('one two');
   });
 
   it('leaves a line with no newlines exactly as it is, spaces included', () => {

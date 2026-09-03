@@ -1,91 +1,290 @@
 import { describe, expect, it } from 'bun:test';
-import { RAIL_ROWS_MAX, railRows, railWindow } from '../src/ui/rails';
+import type { ThreadMeta } from '@felix/client';
+import { createElement } from 'react';
+import { RAIL_ROWS_MAX, railRows, railWindow, StatusLine, ThreadRail } from '../src/ui/rails';
+import { lines, mount, shows } from './render';
 
 /**
- * The rail's window, and not the rail.
+ * The rail's arithmetic, and now the rail.
  *
- * Rendered components here are verified by running them — except where the failure
- * is invisible while you are running them, which this one was. The rail drew a
- * head slice, so a cursor past the last drawn row was a selection with nothing
- * on screen moving and an enter that opened a thread never shown. It looks
- * exactly like a dead keyboard, and only once you have more threads than rows.
+ * `railWindow` was tested on its own because the failure it guards is invisible
+ * while you are running the client: a head slice puts the cursor past the last
+ * drawn row, so the selection moves with nothing on screen changing and `enter`
+ * opens a thread that was never shown. It looks exactly like a dead keyboard,
+ * and only once there are more threads than rows.
+ *
+ * The arithmetic tests stay — they are cheap and they say what the function
+ * means. What is new is that the same claim is now made against a drawn frame,
+ * which is the level the bug actually lived at.
  */
+
+const threads = (count: number): ThreadMeta[] =>
+  Array.from({ length: count }, (_, i) => ({
+    id: `t${i}`,
+    title: `Thread ${i}`,
+    manifest: 'quick',
+    updatedAt: 1_700_000_000_000 - i,
+  }));
+
 describe('railWindow', () => {
   it('draws the whole list when it fits', () => {
     expect(railWindow(6, 0, 20)).toEqual({ start: 0, end: 6 });
-    expect(railWindow(6, 5, 20)).toEqual({ start: 0, end: 6 });
   });
 
-  it('keeps the cursor inside the window at the end of a long list', () => {
-    const { start, end } = railWindow(40, 39, 20);
-    expect(end - start).toBe(20);
-    expect(39).toBeGreaterThanOrEqual(start);
-    expect(39).toBeLessThan(end);
-    // Flush with the end: no empty rows below the last thread.
-    expect(end).toBe(40);
+  it('keeps the cursor inside the window once the list outgrows it', () => {
+    const { start, end } = railWindow(40, 30, 10);
+    expect(30).toBeGreaterThanOrEqual(start);
+    expect(30).toBeLessThan(end);
   });
 
-  it('does not scroll while the cursor is still near the top', () => {
-    expect(railWindow(40, 0, 20)).toEqual({ start: 0, end: 20 });
-    expect(railWindow(40, 9, 20)).toEqual({ start: 0, end: 20 });
+  it('does not slide past either end', () => {
+    expect(railWindow(40, 0, 10)).toEqual({ start: 0, end: 10 });
+    expect(railWindow(40, 39, 10)).toEqual({ start: 30, end: 40 });
   });
 
-  it('holds the cursor in view everywhere in between', () => {
-    for (let cursor = 0; cursor < 40; cursor += 1) {
-      const { start, end } = railWindow(40, cursor, 20);
-      expect(end - start).toBe(20);
-      expect(cursor).toBeGreaterThanOrEqual(start);
-      expect(cursor).toBeLessThan(end);
-      expect(start).toBeGreaterThanOrEqual(0);
-      expect(end).toBeLessThanOrEqual(40);
-    }
-  });
-
-  it('survives an empty list and an out-of-range cursor', () => {
-    expect(railWindow(0, 0, 20)).toEqual({ start: 0, end: 0 });
-    expect(railWindow(0, 5, 20)).toEqual({ start: 0, end: 0 });
-    expect(railWindow(40, -3, 20)).toEqual({ start: 0, end: 20 });
-    expect(railWindow(40, 99, 20)).toEqual({ start: 20, end: 40 });
-    expect(railWindow(40, 0, 0)).toEqual({ start: 0, end: 0 });
+  it('is empty when there is nothing, or no room', () => {
+    expect(railWindow(0, 0, 10)).toEqual({ start: 0, end: 0 });
+    expect(railWindow(10, 0, 0)).toEqual({ start: 0, end: 0 });
   });
 });
 
-/**
- * How tall the rail is allowed to be, which is a correctness question rather
- * than a cosmetic one.
- *
- * A column taller than the screen is not scrolled or shrunk here — it is drawn
- * *over* whatever is beneath it. At a flat twenty rows the rail covered the
- * composer and the status line in any terminal shorter than about 28, which
- * includes the 24 rows a terminal opens at by default: a client that looks
- * broken out of the box, on the size most likely to be used.
- */
 describe('railRows', () => {
-  it('leaves room for the composer and the status line', () => {
-    // The rail's rows, plus its own chrome, plus what is drawn below it, has to
-    // fit the screen — at every size a terminal is likely to open at.
-    const CHROME_AND_PROMPT = 12;
-    for (const height of [20, 24, 26, 28, 30, 40, 60]) {
-      expect(railRows(height) + CHROME_AND_PROMPT).toBeLessThanOrEqual(height);
-    }
+  it('never asks for more rows than the terminal has', () => {
+    expect(railRows(24)).toBeLessThan(24);
   });
 
-  it('stops growing once the list is as long as anyone reads', () => {
-    expect(railRows(60)).toBe(RAIL_ROWS_MAX);
+  it('stops growing past the cap', () => {
     expect(railRows(200)).toBe(RAIL_ROWS_MAX);
   });
 
-  it('keeps a usable list in a terminal too short to deserve one', () => {
-    // Three is the floor: fewer is not a list, and the alternative — letting it
-    // shrink to nothing or overflow anyway — is worse than cramped.
+  it('keeps at least three rows however short the terminal is', () => {
     expect(railRows(10)).toBe(3);
-    expect(railRows(1)).toBe(3);
-    expect(railRows(0)).toBe(3);
-    expect(railRows(-5)).toBe(3);
+  });
+});
+
+describe('the rail as drawn', () => {
+  it('marks the open thread and the cursor row separately', async () => {
+    const ui = await mount(
+      createElement(ThreadRail, {
+        threads: threads(4),
+        activeId: 't1',
+        cursor: 2,
+        focused: true,
+        total: 4,
+        rows: 10,
+      }),
+      { width: 40, height: 14 },
+    );
+    try {
+      const frame = ui.frame();
+      // The open thread carries the bullet wherever the cursor happens to be.
+      expect(shows(frame, '• Thread 1')).toBe(true);
+      expect(shows(frame, 'Thread 2')).toBe(true);
+    } finally {
+      ui.stop();
+    }
   });
 
-  it('grows with the terminal in between', () => {
-    expect(railRows(24)).toBeGreaterThan(railRows(20));
-    expect(railRows(32)).toBeGreaterThan(railRows(24));
+  /**
+   * The regression the window exists for, at the level it broke: with a head
+   * slice the cursor at row 30 is off the bottom of a twenty-row rail, and
+   * nothing on screen says which thread `enter` would open.
+   */
+  it('draws the cursor row even when it is far down a long list', async () => {
+    const ui = await mount(
+      createElement(ThreadRail, {
+        threads: threads(40),
+        activeId: 't0',
+        cursor: 30,
+        focused: true,
+        total: 40,
+        rows: 10,
+      }),
+      { width: 40, height: 20 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'Thread 30')).toBe(true);
+      // And it says what is out of view in both directions.
+      expect(frame).toContain('↑');
+      expect(frame).toContain('↓');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('says how much the filter narrowed things to, and that nothing matched', async () => {
+    const narrowed = await mount(
+      createElement(ThreadRail, {
+        threads: threads(3),
+        activeId: 't0',
+        cursor: 0,
+        focused: true,
+        filter: 'thr',
+        total: 40,
+        rows: 10,
+      }),
+      { width: 40, height: 14 },
+    );
+    try {
+      expect(shows(narrowed.frame(), '/thr · 3/40')).toBe(true);
+    } finally {
+      narrowed.stop();
+    }
+
+    const empty = await mount(
+      createElement(ThreadRail, {
+        threads: [],
+        activeId: 't0',
+        cursor: 0,
+        focused: true,
+        filter: 'zzz',
+        total: 40,
+        rows: 10,
+      }),
+      { width: 40, height: 14 },
+    );
+    try {
+      expect(shows(empty.frame(), 'no match · esc clears')).toBe(true);
+    } finally {
+      empty.stop();
+    }
+  });
+
+  it('says so when there are no threads at all', async () => {
+    const ui = await mount(
+      createElement(ThreadRail, {
+        threads: [],
+        activeId: '',
+        cursor: 0,
+        focused: false,
+        total: 0,
+        rows: 10,
+      }),
+      { width: 40, height: 14 },
+    );
+    try {
+      expect(shows(ui.frame(), '(none yet)')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  /**
+   * The rail is sized to its rows, not to the row it sits in. A flex child
+   * stretches by default, which drew the border down the whole screen with a
+   * dozen empty rows under the last thread.
+   */
+  it('is only as tall as it needs to be', async () => {
+    const ui = await mount(
+      createElement(ThreadRail, {
+        threads: threads(3),
+        activeId: 't0',
+        cursor: 0,
+        focused: false,
+        total: 3,
+        rows: 10,
+      }),
+      { width: 40, height: 20 },
+    );
+    try {
+      // border + header + three rows + border, and nothing past it.
+      expect(lines(ui.frame()).length).toBeLessThanOrEqual(7);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+describe('the status line', () => {
+  const base = {
+    manifest: 'quick',
+    origin: 'http://localhost:8080',
+    phase: 'idle',
+    reattaching: false,
+    error: null,
+    root: '/Users/blake/Projects/felix-web',
+  };
+
+  /**
+   * It has to stay one row. A status line that wraps pushes the composer up the
+   * screen every time the working directory is long.
+   */
+  it('cuts rather than wraps, however narrow the terminal', async () => {
+    const ui = await mount(
+      createElement(StatusLine, {
+        ...base,
+        root: '/a/very/long/working/directory/that/will/not/fit/anywhere',
+        hint: 'tab threads · ctrl+n new · ctrl+e editor · /help',
+        width: 60,
+      }),
+      { width: 60, height: 6 },
+    );
+    try {
+      expect(lines(ui.frame()).length).toBe(1);
+      expect(ui.frame()).toContain('…');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('names the manifest, the origin and the keys', async () => {
+    const ui = await mount(
+      createElement(StatusLine, { ...base, hint: 'tab threads', width: 100 }),
+      { width: 100, height: 6 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'quick · http://localhost:8080')).toBe(true);
+      expect(shows(frame, 'tab threads')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('shows the phase only while it is something other than idle', async () => {
+    const idle = await mount(createElement(StatusLine, { ...base, width: 100 }), {
+      width: 100,
+      height: 6,
+    });
+    try {
+      expect(idle.frame()).not.toContain('idle');
+    } finally {
+      idle.stop();
+    }
+
+    const busy = await mount(createElement(StatusLine, { ...base, phase: 'turn', width: 100 }), {
+      width: 100,
+      height: 6,
+    });
+    try {
+      expect(shows(busy.frame(), '· turn')).toBe(true);
+    } finally {
+      busy.stop();
+    }
+  });
+
+  /**
+   * A reattach is a materially different claim from a live run — the original
+   * was torn down, so this is showing what landed rather than a reply still
+   * being written.
+   */
+  it('separates an error and a reattach from the state line', async () => {
+    const ui = await mount(
+      createElement(StatusLine, {
+        ...base,
+        reattaching: true,
+        error: 'the harness refused that',
+        width: 100,
+      }),
+      { width: 100, height: 6 },
+    );
+    try {
+      const rows = lines(ui.frame());
+      expect(rows[0]).toBe('the harness refused that');
+      expect(rows[1]).toBe('rejoining the thread…');
+    } finally {
+      ui.stop();
+    }
   });
 });

@@ -55,11 +55,14 @@ the three blocking frames, plus the log-to-transcript rebuild, the reattach loop
 matching. `@felix/tui` covers what a terminal adds on its own: config precedence, the markdown
 splitter, the prompt-history file's cap and self-healing, the attention signals' focus gate, the
 editor round trip, the thread rail's scroll window, and the workspace executor's containment and
-settle guarantees — **not** its rendered components, which are verified by running it. The **one**
-exception is `tests-bun/composer.test.ts`, which renders the real composer against the real renderer
-because what it pins is a keystroke sequence no hand-run reproduces reliably: a paste that submits
-itself halfway through when the terminal does not bracket it, and shift+Enter opening a line rather
-than sending. **`apps/tui` runs its whole suite under `bun test`**, not Vitest: the package is
+settle guarantees — **and, since `tests/render.ts`, its rendered components too.** Every one of them
+mounts on a renderer that writes to memory rather than a tty, so what is asserted is the frame:
+`transcript.test.ts` on the tool card's two states and on what the markdown stripper does to
+emphasis, `rails.test.ts` on the rail's window at a cursor thirty rows down and on a status line
+that must never wrap, `prompts.test.ts` on all three blocking banners and the keys that answer
+them, `composer.test.ts` on the keystroke sequence no hand-run reproduces reliably — a paste that
+submits itself halfway through when the terminal does not bracket it, and shift+Enter opening a
+line rather than sending. **`apps/tui` runs its whole suite under `bun test`**, not Vitest: the package is
 Bun-only, so a second runner for the pure half bought nothing but a second test directory. Bun maps a
 `vitest` import onto its own runner, which is why the suites moved across untouched — but they import
 `bun:test` now, because an import naming a runner that does not run them is a lie the next person
@@ -326,7 +329,7 @@ browser cannot do rather than about the chat:
   has to be what was read on screen. The other half is `linefeed` bound to `newline` rather than
   `submit` — a terminal that ignores bracketed paste delivers a copied paragraph as raw bytes with LF
   in them, and a prompt that treats a bare linefeed as Enter sends half of it unseen. That is what
-  `tests-bun/composer.test.ts` pins.
+  `tests/composer.test.ts` pins.
 - **Enter is a binding, not a fight.** The renderer's defaults are the opposite of a chat prompt —
   `return` inserts a newline, `meta+return` submits. `CHAT_BINDINGS` in the composer states what this
   prompt means instead: Enter sends, **shift+Enter opens a line**. Shift+Enter needs the kitty
@@ -342,11 +345,17 @@ browser cannot do rather than about the chat:
   harness serves; a slash command is the only thing that exposes one here, so a verb with no `case`
   in `command()` — rename, fork, compact, export, rewind, search — is a verb this client does not
   have. `/rewind` hydrates first because `Turn.eventId` is only ever set from a snapshot.
-- **Reading a frame back is possible, and not obvious.** `apps/tui/scripts/screen.py` replays an
-  alt-screen capture into a grid, which is how a rendered component gets checked without a person
-  watching (`script` under a pty, then the script). Stripping the escapes and reading the log
-  instead does not work and fails *convincingly*: the renderer draws with absolute cursor moves, so
-  removing them collapses the frame onto one line and unrelated components appear to overlap.
+- **A frame can be read back in process.** `apps/tui/tests/render.ts` mounts a component on a
+  renderer that writes to memory rather than a tty (`testRender` from `@opentui/react/test-utils`);
+  `frame()` returns what was drawn, `spans()` keeps its colour and attributes, and `keys` speaks the
+  byte sequences. Two traps it absorbs: `waitForVisualIdle` answers for the *renderer*, which goes
+  idle the instant a key is handled and before React has committed — so `settle()` yields a task
+  first, and without that every state-driven component reads as one that ignores its keys. And the
+  kitty protocol is on by default, matching `main.tsx`, because a lone `escape` without it is a
+  possible sequence prefix the parser holds past the end of the test. Do **not** try to read a frame
+  by stripping escapes from captured output: the renderer draws with absolute cursor moves, so
+  removing them collapses the frame onto one line and unrelated components appear to overlap — every
+  apparent corruption found while porting this client was that, and not the renderer.
 - Threads live in `$XDG_STATE_HOME/felix`. The transcript is a `scrollbox` with `viewportCulling`, so
   rows off screen take no part in layout — which is why it is no longer capped at a tail the way the
   Ink version had to be.
