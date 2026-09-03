@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { ThreadMeta } from '@felix/client';
 import { createElement } from 'react';
-import { RAIL_ROWS_MAX, railRows, railWindow, StatusLine, ThreadRail } from '../src/ui/rails';
+import { RAIL_ROWS_MAX, railRows, railWindow, StatusLine, ThreadPicker } from '../src/ui/rails';
 import { lines, mount, shows, testTheme } from './render';
 
 /**
@@ -62,15 +62,14 @@ describe('railRows', () => {
   });
 });
 
-describe('the rail as drawn', () => {
+describe('the thread picker as drawn', () => {
   it('marks the open thread and the cursor row separately', async () => {
     const ui = await mount(
-      createElement(ThreadRail, {
+      createElement(ThreadPicker, {
         theme: testTheme,
         threads: threads(4),
         activeId: 't1',
         cursor: 2,
-        focused: true,
         total: 4,
         rows: 10,
       }),
@@ -93,12 +92,11 @@ describe('the rail as drawn', () => {
    */
   it('draws the cursor row even when it is far down a long list', async () => {
     const ui = await mount(
-      createElement(ThreadRail, {
+      createElement(ThreadPicker, {
         theme: testTheme,
         threads: threads(40),
         activeId: 't0',
         cursor: 30,
-        focused: true,
         total: 40,
         rows: 10,
       }),
@@ -117,12 +115,11 @@ describe('the rail as drawn', () => {
 
   it('says how much the filter narrowed things to, and that nothing matched', async () => {
     const narrowed = await mount(
-      createElement(ThreadRail, {
+      createElement(ThreadPicker, {
         theme: testTheme,
         threads: threads(3),
         activeId: 't0',
         cursor: 0,
-        focused: true,
         filter: 'thr',
         total: 40,
         rows: 10,
@@ -136,12 +133,11 @@ describe('the rail as drawn', () => {
     }
 
     const empty = await mount(
-      createElement(ThreadRail, {
+      createElement(ThreadPicker, {
         theme: testTheme,
         threads: [],
         activeId: 't0',
         cursor: 0,
-        focused: true,
         filter: 'zzz',
         total: 40,
         rows: 10,
@@ -157,12 +153,11 @@ describe('the rail as drawn', () => {
 
   it('says so when there are no threads at all', async () => {
     const ui = await mount(
-      createElement(ThreadRail, {
+      createElement(ThreadPicker, {
         theme: testTheme,
         threads: [],
         activeId: '',
         cursor: 0,
-        focused: false,
         total: 0,
         rows: 10,
       }),
@@ -182,12 +177,11 @@ describe('the rail as drawn', () => {
    */
   it('is only as tall as it needs to be', async () => {
     const ui = await mount(
-      createElement(ThreadRail, {
+      createElement(ThreadPicker, {
         theme: testTheme,
         threads: threads(3),
         activeId: 't0',
         cursor: 0,
-        focused: false,
         total: 3,
         rows: 10,
       }),

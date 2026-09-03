@@ -341,6 +341,19 @@ browser cannot do rather than about the chat:
   and `renderer.resume()` — the `resume` is in a `finally`, because an editor that exits non-zero must
   not leave a client that has stopped drawing with no way back. An unchanged or emptied file returns
   nothing rather than sending an empty message.
+- **The conversation grows from the bottom** (`justifyContent: 'flex-end'` on the transcript's
+  content). Without it a short conversation floats at the top and the composer sits at the bottom
+  with fifteen empty rows between them.
+- **The thread picker is an absolutely-positioned overlay, not a column.** It was a permanent rail
+  costing twenty-eight of a hundred cells, drawn only above ninety columns — so the client had two
+  shapes depending on the terminal. `position: "absolute"` + `zIndex` means opening it does not
+  reflow what is underneath.
+- **Fenced code is framed through `MarkdownOptions.renderNode`.** `defaultRender()` returns the
+  renderable the markdown would have used, and a `Renderable` carries its own render context —
+  which is the only way to obtain one, because `RenderNodeContext` exposes none. The empty row
+  inside each frame is deliberate: the code buffer measures a line taller than its content, and
+  pinning the box height to close it **clips wrapped lines**, because a long line needs more rows
+  than it has lines.
 - **`src/theme.ts` decides when this client may override the terminal's palette**, and the answer
   is "only when both halves of the question have an answer". `parseColor` resolves the *name*
   `"magenta"` to the literal `#FF00FF`, so a named colour is absolute true-colour painted over the

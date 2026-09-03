@@ -63,7 +63,7 @@ pass `--insecure`.
 | `shift+enter` | a second line (needs a terminal speaking the kitty keyboard protocol) |
 | `ctrl+e` | hand the draft to `$VISUAL` / `$EDITOR` |
 | `pgup` / `pgdn` | read back through the conversation; paging to the bottom returns to live |
-| `tab` | focus the thread rail; type to filter it, `enter` opens, `esc` clears |
+| `tab` | open the thread picker; type to filter, `enter` opens, `esc` closes |
 | `ctrl+n` | new thread |
 | `esc` | stop the run |
 | `ctrl+c` | stop the run, then quit on a second press |
@@ -82,6 +82,33 @@ harness serves, and a command is the only thing that exposes one here — so a v
 /rename <name> /fork /compact /export [file] /rewind [n]
 /search <text> /open <n|thread-id> /refresh
 ```
+
+## The shape of the screen
+
+Three things worth knowing before moving anything.
+
+**The conversation grows from the bottom.** `justifyContent: 'flex-end'` on the transcript's
+content, so a reply sits against the composer the way every chat client puts it. Without it a
+short conversation floats at the top with the composer at the bottom and a void between — fifteen
+empty rows on a thirty-row terminal, which reads as a client that has lost something rather than
+one waiting for you.
+
+**The thread picker is an overlay, not a column.** It used to be a permanent left-hand rail:
+twenty-eight of a hundred cells, always, for something you reach for occasionally — and only
+drawn above ninety columns, so the client had two different shapes depending on the terminal. It
+is `position: "absolute"` with a `zIndex` now, so opening it does not reflow the conversation
+underneath, and it is the same at every width.
+
+**Fenced code is framed by a `renderNode` hook.** `<markdown>` draws a fence through
+`CodeRenderable` at the same indent and on the same ground as the prose, so code and a paragraph
+about code look alike at a glance. `renderNode` overrides just that token: `defaultRender()` hands
+back the renderable the markdown would have used, and a `Renderable` carries the render context it
+was built with — which is the only way to get one, since nothing in `RenderNodeContext` exposes it.
+
+There is one empty row inside every code frame, and it is deliberate. The code buffer measures
+itself a line taller than its content. Pinning the box height closes the gap and is **wrong**: the
+buffer wraps, so a long line in a narrow terminal needs more rows than it has lines, and a pinned
+height silently drops the ones past the fold. An empty row is cosmetic; clipped code is not.
 
 ## Colour
 
@@ -198,7 +225,7 @@ worth knowing before you change it:
 | `src/epilogue.ts` | The line printed after the screen is given back |
 | `src/ui/composer.tsx` | The prompt: a `textarea`, the Enter bindings, the paste policy |
 | `src/ui/transcript.tsx` | The conversation: `<markdown>` per turn, in a `scrollbox` |
-| `src/ui/rails.tsx` | The thread rail and the status line |
+| `src/ui/rails.tsx` | The thread picker and the status line |
 | `src/ui/prompts.tsx` | Approval, agent question, and local-write banners |
 | `tests/render.ts` | Mounts a component on an in-memory renderer so its frame can be read back |
 

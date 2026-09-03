@@ -42,7 +42,7 @@ import { useTheme } from './theme.js';
 import type { ThreadStore } from './threads.js';
 import { Composer } from './ui/composer.js';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
-import { railRows, StatusLine, ThreadRail } from './ui/rails.js';
+import { railRows, StatusLine, ThreadPicker } from './ui/rails.js';
 import { Transcript } from './ui/transcript.js';
 import { createWorkspace } from './workspace.js';
 
@@ -218,9 +218,6 @@ export function App({
       `${thread.title ?? ''} ${thread.id}`.toLowerCase().includes(query),
     );
   }, [threads, railFilter]);
-
-  /** Below this the rail is not drawn, so there is nothing to give focus to. */
-  const wide = width >= 90;
 
   // Persist at every change; a terminal can be closed at any moment and the
   // local copy is the only transcript an anonymous caller gets back.
@@ -769,7 +766,6 @@ export function App({
       return;
     }
     if (name === 'tab') {
-      if (!wide) return;
       key.preventDefault();
       // Open on the thread that is open, rather than on row zero with the
       // marker somewhere further down.
@@ -798,7 +794,7 @@ export function App({
    * exactly the moment the bindings are least guessable.
    */
   const hint = railFocused
-    ? '↑↓ select · enter open · type to filter · esc clear · tab back'
+    ? '↑↓ move · enter open · type to filter · esc close'
     : streaming
       ? 'esc stop · pgup/pgdn scroll · tab threads'
       : 'tab threads · ctrl+n new · pgup/pgdn scroll · /help';
@@ -809,26 +805,31 @@ export function App({
     // whatever is beneath it, which is how a rail asking for more rows than fit
     // ended up on top of the composer.
     <box flexDirection="column" height={height} overflow="hidden" paddingLeft={1} paddingRight={1}>
-      <box flexDirection="row" flexGrow={1} flexShrink={1} minHeight={0}>
-        {wide ? (
-          <ThreadRail
+      <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
+        <Transcript turns={turns} streaming={streaming} scrollRef={scrollRef} theme={theme} />
+        {/*
+          Absolute, so opening it does not reflow the conversation underneath —
+          and last in the column, so it paints over what came before at the same
+          `zIndex`. It replaced a permanent left-hand column that cost
+          twenty-eight of a hundred cells whether or not anyone was looking at
+          it, and that only existed above ninety columns, so the client had two
+          different shapes depending on the terminal.
+        */}
+        {railFocused ? (
+          <ThreadPicker
             threads={visibleThreads}
             activeId={threadId}
             cursor={railCursor}
-            focused={railFocused}
             filter={railFilter}
             total={threads.length}
             rows={railRows(height)}
             theme={theme}
-            onPick={(id) => {
+            onPick={(id: string) => {
               selectThread(id);
               closeRail();
             }}
           />
         ) : null}
-        <box flexDirection="column" flexGrow={1}>
-          <Transcript turns={turns} streaming={streaming} scrollRef={scrollRef} theme={theme} />
-        </box>
       </box>
 
       {/*

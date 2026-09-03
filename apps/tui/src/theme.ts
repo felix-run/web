@@ -22,7 +22,14 @@
  * because "waiting on you" and "this failed" cannot be told apart in greys.
  */
 
-import { STATE_DARK, STATE_LIGHT, type StatePalette } from '@felix/design/tokens';
+import {
+  DARK,
+  LIGHT,
+  STATE_DARK,
+  STATE_LIGHT,
+  type StatePalette,
+  type ThemePalette,
+} from '@felix/design/tokens';
 import { type CliRenderer, type ColorInput, createTextAttributes, RGBA } from '@opentui/core';
 import { useRenderer } from '@opentui/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -56,6 +63,14 @@ export interface Theme {
   ready: ColorInput;
   /** Present but not in play. */
   faint: ColorInput;
+  /**
+   * The one background this client paints, and only because an overlay has to
+   * be opaque — the conversation would otherwise show through the gaps between
+   * its rows. Everything else inherits the terminal's own background on
+   * purpose: a full-screen app that repaints the ground fights whatever
+   * transparency or image the user has set behind it.
+   */
+  surface: ColorInput;
 }
 
 /**
@@ -73,9 +88,12 @@ const INDEXED: Theme = {
   running: RGBA.fromIndex(4),
   ready: RGBA.fromIndex(2),
   faint: RGBA.fromIndex(8),
+  // The terminal's own background, so an overlay is opaque without introducing
+  // a colour the user did not choose.
+  surface: RGBA.defaultBackground(),
 };
 
-function fromPalette(state: StatePalette): Theme {
+function fromPalette(state: StatePalette, neutral: ThemePalette): Theme {
   return {
     notice: RGBA.fromHex(state.blocked),
     blocked: RGBA.fromHex(state.blocked),
@@ -86,6 +104,9 @@ function fromPalette(state: StatePalette): Theme {
     // No design token: the neutral scale's faint values are tuned against a
     // painted background, and this client paints none.
     faint: RGBA.fromIndex(8),
+    // Offset from the page rather than equal to it, so the picker reads as
+    // floating above the conversation instead of cut into it.
+    surface: RGBA.fromHex(neutral.bgSubtle),
   };
 }
 
@@ -106,7 +127,7 @@ export interface ThemeInputs {
  */
 export function resolveTheme({ themeMode, trueColor }: ThemeInputs): Theme {
   if (!trueColor || themeMode === null) return INDEXED;
-  return fromPalette(themeMode === 'light' ? STATE_LIGHT : STATE_DARK);
+  return themeMode === 'light' ? fromPalette(STATE_LIGHT, LIGHT) : fromPalette(STATE_DARK, DARK);
 }
 
 /** Read the two facts off a live renderer. */
