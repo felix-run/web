@@ -191,15 +191,24 @@ export function WritePrompt({
   });
 
   return (
+    // A column, not a row. The summary ends in an **absolute** path — that is
+    // the whole point of it — and beside a second text in a row, a path longer
+    // than the remaining width wraps *around* the keys: `write
+    // /Users/blake/Projects/felix-web/apps/tui/src/y allow · n` on one line and
+    // `ui/some/deeply/nested/file.tsx?  refuse` on the next. Unreadable, on the
+    // one prompt in this client that authorizes a write to your disk.
     <box
-      flexDirection="row"
+      flexDirection="column"
       border
       borderStyle="rounded"
       borderColor={theme.danger}
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg={theme.danger}>{summary}? </text>
+      <text fg={theme.danger}>{summary}?</text>
+      {/* Their own row, and never a `bottomTitle`: a title too long for the
+          border is dropped silently, and the keys that answer this must not be
+          the thing that disappears on a narrow terminal. */}
       <text attributes={DIM}>y allow · n refuse</text>
     </box>
   );

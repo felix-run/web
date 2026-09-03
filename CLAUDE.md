@@ -353,6 +353,11 @@ browser cannot do rather than about the chat:
   screen eats their rows — the input line vanishes and the marker is squashed into the bottom
   border, giving a box you cannot type in and no sign of why. Each component is correct alone; it
   only appears when they are rendered together against a long transcript.
+- **The local write prompt is a column.** Its summary ends in an absolute path, and beside the
+  keys in a row a long path wrapped *around* them — `write /Users/…/src/y allow · n` then
+  `ui/some/nested/file.tsx?  refuse`. Unreadable, on the one prompt that authorizes a write to the
+  user's disk. The keys stay an explicit row rather than a `bottomTitle`: a title too long for the
+  border is dropped silently, and these must never be what disappears.
 - **An empty thread says one thing, and it is not a key list.** `src/ui/greeting.tsx` — the
   composer's border and the status line already carry the keys, the manifest, the host and the
   directory, so restating them would make the first screen the densest. What it says instead is the
