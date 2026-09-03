@@ -310,7 +310,7 @@ describe('the agent question', () => {
 });
 
 describe('the local write prompt', () => {
-  it('shows the absolute target and the two keys, on one row', async () => {
+  it('shows the absolute target and the two keys', async () => {
     const ui = await mount(
       createElement(WritePrompt, {
         theme: testTheme,
@@ -323,8 +323,40 @@ describe('the local write prompt', () => {
       const frame = ui.frame();
       expect(shows(frame, 'write /Users/blake/Projects/felix-web/notes.md?')).toBe(true);
       expect(shows(frame, 'y allow · n refuse')).toBe(true);
-      // border, the row, border.
-      expect(lines(frame).length).toBe(3);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  /**
+   * The summary ends in an absolute path, which is the entire point of it. Laid
+   * out as a row beside the keys, a path longer than the remaining width wrapped
+   * *around* them — `write /Users/…/apps/tui/src/y allow · n` on one line and
+   * `ui/some/deeply/nested/file.tsx?  refuse` on the next. Unreadable, on the one
+   * prompt in this client that authorizes a write to your disk.
+   */
+  it('keeps a long path contiguous, and the keys on their own row', async () => {
+    const target = '/Users/blake/Projects/felix-web/apps/tui/src/ui/some/deeply/nested/file.tsx';
+    const ui = await mount(
+      createElement(WritePrompt, {
+        theme: testTheme,
+        summary: `write 240 chars to ${target}`,
+        onAnswer: () => {},
+      }),
+      { width: 60, height: 10 },
+    );
+    try {
+      const rows = lines(ui.frame());
+      // The keys are alone on their row — nothing of the path shares it.
+      const keyRow = rows.find((row) => row.includes('y allow'));
+      expect(keyRow).toBeDefined();
+      expect(keyRow).not.toContain('/');
+      // And the path reads back whole once the wrap is undone.
+      const joined = rows
+        .filter((row) => !row.includes('y allow') && !row.startsWith('╭') && !row.startsWith('╰'))
+        .map((row) => row.replace(/^│ ?/, '').replace(/ *│$/, '').trim())
+        .join('');
+      expect(joined).toContain(target);
     } finally {
       ui.stop();
     }

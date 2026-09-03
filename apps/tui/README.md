@@ -231,6 +231,12 @@ worth knowing before you change it:
   — printing `Error parsing diff:` and the raw text — so a write to any file long enough to need
   two hunks showed diff syntax instead of a diff. When even one hunk exceeds the budget its header
   is re-stated for the lines actually kept.
+- The prompt is a **column**, and that is not a layout preference. The summary ends in an absolute
+  path — the point of it — and beside the keys in a row, a path longer than the remaining width
+  wrapped *around* them: `write /Users/…/apps/tui/src/y allow · n` on one line and
+  `ui/some/deeply/nested/file.tsx?  refuse` on the next. The keys also stay a row of their own
+  rather than a `bottomTitle`, because a title too long for the border is dropped silently and the
+  keys that answer this must never be the thing that disappears.
 - **Reads are not confirmed.** That is the stated trade of running against a real working
   directory.
 - The write prompt carries its own deadline, shorter than the executor's. `settleClientTool`
