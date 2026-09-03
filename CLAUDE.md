@@ -348,9 +348,15 @@ browser cannot do rather than about the chat:
 - **A frame can be read back in process.** `apps/tui/tests/render.ts` mounts a component on a
   renderer that writes to memory rather than a tty (`testRender` from `@opentui/react/test-utils`);
   `frame()` returns what was drawn, `spans()` keeps its colour and attributes, and `keys` speaks the
-  byte sequences. Two traps it absorbs: `waitForVisualIdle` answers for the *renderer*, which goes
+  byte sequences. Three traps it absorbs. `waitForVisualIdle` answers for the *renderer*, which goes
   idle the instant a key is handled and before React has committed — so `settle()` yields a task
-  first, and without that every state-driven component reads as one that ignores its keys. And the
+  first, and without that every state-driven component reads as one that ignores its keys. **A
+  renderable that parses on a worker — `<markdown>`, `<code>` — is idle *before its content
+  exists*,** so neither settling nor upstream's `waitForFrame` (which gives up as soon as the
+  scheduler reports nothing scheduled) will wait for it: the first frames of a reply have the prose
+  and list blocks missing entirely. `until(predicate)` polls the condition against a deadline
+  instead. A fixed sleep looks like it works and does not — 400ms passed locally and failed on CI.
+  And the
   kitty protocol is on by default, matching `main.tsx`, because a lone `escape` without it is a
   possible sequence prefix the parser holds past the end of the test. Do **not** try to read a frame
   by stripping escapes from captured output: the renderer draws with absolute cursor moves, so

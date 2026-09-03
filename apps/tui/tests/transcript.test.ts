@@ -23,16 +23,6 @@ import { hasAttribute, lines, mount, shows, styleOf } from './render';
 const DIM = createTextAttributes({ dim: true });
 const BOLD = createTextAttributes({ bold: true });
 
-/**
- * Tree-sitter highlights on a worker, so the first frame of a fenced block is
- * drawn before its colours exist. Nothing in the renderer's idle signal covers
- * that — the frame it settled on is simply the unhighlighted one.
- */
-async function highlighted(ui: { settle(): Promise<void> }) {
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  await ui.settle();
-}
-
 const user = (content: string): Turn => ({ id: `u-${content}`, role: 'user', content });
 
 describe('a user turn', () => {
@@ -64,7 +54,7 @@ describe('an assistant turn', () => {
       height: 16,
     });
     try {
-      await highlighted(ui);
+      await ui.until(() => shows(ui.frame(), '- two'));
       const frame = ui.frame();
       expect(shows(frame, 'const a = 1;')).toBe(true);
       expect(shows(frame, '- one')).toBe(true);
@@ -85,7 +75,7 @@ describe('an assistant turn', () => {
       height: 16,
     });
     try {
-      await highlighted(ui);
+      await ui.until(() => shows(ui.frame(), 'Here is bold and code:'));
       const frame = ui.frame();
       expect(shows(frame, 'Here is bold and code:')).toBe(true);
       expect(frame).not.toContain('**');
@@ -115,7 +105,12 @@ describe('an assistant turn', () => {
       height: 16,
     });
     try {
-      await highlighted(ui);
+      // Highlighting is what is being asserted, so wait for the colour rather
+      // than for the text — the unhighlighted frame has the text already.
+      await ui.until(() => {
+        const span = styleOf(ui.spans(), 'const');
+        return span?.text === 'const';
+      });
       const keyword = styleOf(ui.spans(), 'const');
       const literal = styleOf(ui.spans(), '1');
       expect(keyword?.text).toBe('const');
@@ -160,7 +155,7 @@ describe('a reply still being written', () => {
       height: 14,
     });
     try {
-      await highlighted(ui);
+      await ui.until(() => styleOf(ui.spans(), 'const')?.text === 'const');
       // The fence markers are concealed, the contents are kept, and `const` is
       // still a keyword rather than a word in a paragraph.
       expect(ui.frame()).not.toContain('```');
@@ -185,7 +180,7 @@ describe('a reply still being written', () => {
       { width: 60, height: 14 },
     );
     try {
-      await highlighted(ui);
+      await ui.until(() => shows(ui.frame(), 'done'));
       expect(shows(ui.frame(), 'done')).toBe(true);
     } finally {
       ui.stop();

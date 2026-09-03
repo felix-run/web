@@ -187,12 +187,21 @@ const ui = await mount(<ThreadRail threads={threads} cursor={30} … />, { width
 expect(ui.frame()).toContain('Thread 30');
 ```
 
-Two things it owns so no test repeats them. `settle()` yields to React *before* asking the
-renderer whether it is idle — the renderer goes idle the moment a key is handled, while React
-has not committed yet, and reading the frame in that gap looks exactly like a component that
-ignores its keys. And the kitty keyboard protocol is on by default, because `main.tsx` asks
-for it: without it a lone `escape` is a possible sequence prefix and the parser holds it past
-the end of the test.
+Three things it owns so no test repeats them.
+
+`settle()` yields to React *before* asking the renderer whether it is idle — the renderer goes
+idle the moment a key is handled, while React has not committed yet, and reading the frame in
+that gap looks exactly like a component that ignores its keys.
+
+`until(predicate)` is for content that arrives from a worker. `<markdown>` and `<code>` parse
+and highlight off-thread, so a frame is drawn, the renderer reports idle, and *then* the prose
+and list blocks appear — the first frames of a reply are missing them entirely. Settling does
+not cover that, and neither does upstream's `waitForFrame`, which gives up the moment the
+scheduler says nothing is scheduled. A fixed sleep appears to: 400ms passed here and failed on
+CI. Wait for the thing you are about to assert.
+
+The kitty keyboard protocol is on by default, because `main.tsx` asks for it: without it a lone
+`escape` is a possible sequence prefix and the parser holds it past the end of the test.
 
 `spans()` keeps colour and attributes where `frame()` flattens them, which is the only way to
 assert that a notice is still yellow or a dim line still dim.

@@ -23,6 +23,17 @@
  * encloses. Left on, every test prints a paragraph of React advice that does not
  * apply to it.
  *
+ * **Waiting for a condition is not the same as settling.** `<markdown>` and
+ * `<code>` parse and highlight on a worker, so a frame arrives, the renderer
+ * goes idle, and *then* more of the content appears — the first frames of a
+ * reply have the prose and list blocks missing entirely. Neither
+ * `waitForVisualIdle` nor upstream's `waitForFrame` covers that: both give up
+ * the moment the scheduler reports nothing scheduled, which is exactly the gap.
+ * A fixed sleep does cover it, badly — 400ms was enough on this laptop and not
+ * on CI, where two of these tests failed while a third that waited on different
+ * content passed. `until()` polls the condition itself against a deadline, so
+ * the test says what it is waiting for instead of guessing how long.
+ *
  * **Settling yields to React first.** `waitForVisualIdle` answers for the
  * renderer, and the renderer is idle the instant a key is handled — React has
  * not committed yet, because it schedules that on a task of its own. Waiting on
@@ -63,6 +74,12 @@ export interface Mounted {
   mouse: Awaited<ReturnType<typeof testRender>>['mockMouse'];
   /** Let React commit, then wait until the renderer stops drawing. */
   settle(): Promise<void>;
+  /**
+   * Poll until `check` holds, settling between attempts. For content that
+   * arrives from a worker — a highlighted fence, a parsed markdown block —
+   * where the renderer is idle before the content exists.
+   */
+  until(check: () => boolean, timeoutMs?: number): Promise<void>;
   resize(width: number, height: number): void;
   renderer: Awaited<ReturnType<typeof testRender>>['renderer'];
   /**
@@ -94,6 +111,19 @@ export async function mount(node: ReactNode, options: MountOptions = {}): Promis
       // See the header: the renderer is idle before React has committed.
       await new Promise((resolve) => setTimeout(resolve, 0));
       await setup.waitForVisualIdle();
+    },
+    async until(check, timeoutMs = 5_000) {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        await setup.waitForVisualIdle();
+        if (check()) return;
+        if (Date.now() > deadline) {
+          throw new Error(
+            `until(): condition still false after ${timeoutMs}ms. Last frame:\n${setup.captureCharFrame()}`,
+          );
+        }
+      }
     },
     resize: setup.resize,
     renderer: setup.renderer,
