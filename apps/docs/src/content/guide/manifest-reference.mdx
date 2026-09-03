@@ -327,6 +327,59 @@ the default image.
 | `args_schema` | JSON Schema \| null | `null` |
 | `fatal` | bool | `false` |
 
+## `spec.http_tools`
+
+Read a URL the **model** chooses. This is the inverse of an MCP server or an A2A peer, where
+the manifest fixes the destination — so `path_prefix` is how an author narrows it back down,
+and the caps live here rather than with the caller.
+
+```yaml
+spec:
+  http_tools:
+    - name: fetch_docs
+      description: Read a page from the Felix documentation site.
+      path_prefix: https://docs.felix.run/
+      max_bytes: 60000
+      timeout_ms: 10000
+  content_screening:
+    enabled: true
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `description` | string | `""` |
+| `path_prefix` | string | `""` — an absolute http(s) URL, normalised to end in `/` |
+| `allow_any_host` | bool | `false` |
+| `timeout_ms` | int \| null | `null` (15,000 ms); 1–3,600,000 ms |
+| `max_bytes` | int \| null | `null` (100,000); up to 5,000,000 |
+| `format` | `text` \| `raw` | `text` — renders HTML to readable text |
+| `fatal` | bool | `false` |
+
+An entry must set **either** `path_prefix` or `allow_any_host: true`; a manifest that sets
+neither fails validation. Every other outbound ref names a destination you chose, so leaving
+this one open by default would make unrestricted egress the path of least resistance.
+`allow_any_host` is logged when the agent compiles.
+
+The request is a `GET`. Redirects are followed up to five hops, and each hop is re-checked
+against both the egress guard and `path_prefix` — a redirect cannot leave the prefix.
+`timeout_ms` is a whole-call deadline covering the chain and every read, not a per-read
+timeout. The body is streamed and truncated at `max_bytes`, counted after decompression. A
+response that is not textual is described rather than decoded, and a non-2xx keeps its body,
+because the error message is usually the useful part.
+
+<Aside type="caution" title="Turn on content screening with it">
+A fetched page is attacker-controlled input. The tool's transport is untrusted, so
+[content screening](/internals/governance/) covers its output — but only once you enable it.
+Compiling a manifest that binds a fetch tool without `spec.content_screening.enabled` logs
+`untrusted tool(s) … unscreened`, and pages reach the model unexamined.
+</Aside>
+
+<Aside type="note" title="Not replay-safe">
+A resumed run will not re-issue a fetch. The model names the endpoint, and a `GET` that
+changes something is ordinary on the open web.
+</Aside>
+
 ## `spec.client_tools`
 
 Tools the **browser or CLI client** executes, not the server. This is how the web clients run local
