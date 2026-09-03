@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { Turn } from '@felix/client';
-import { createTextAttributes } from '@opentui/core';
+import { createTextAttributes, type ScrollBoxRenderable } from '@opentui/core';
 import { createElement } from 'react';
 import { Transcript } from '../src/ui/transcript';
 import { hasAttribute, lines, mount, shows, styleOf } from './render';
@@ -8,21 +8,20 @@ import { hasAttribute, lines, mount, shows, styleOf } from './render';
 /**
  * What the conversation actually looks like.
  *
- * This is a characterization test before a rewrite, so a good half of it pins
- * behaviour that is **wrong** and says so. The transcript runs assistant
- * messages through a hand-rolled markdown stripper: `**bold**` arrives as
- * `bold`, an inline `` `span` `` loses its backticks, and a fenced block is
- * drawn as one flat colour with the language on a dim line above it. That is
- * the deliberate trade the module was written to make, and replacing it with
- * the renderer's own markdown is the point of the next change — so the
- * assertions below exist to make that diff legible rather than to defend the
- * current output.
+ * Two of these were written the other way round one commit ago, when assistant
+ * messages went through a hand-rolled stripper that deleted `**` and `` ` ``
+ * and drew every fence in one flat colour. They are kept, inverted, because
+ * what they assert now is precisely what was lost then: emphasis that carries
+ * weight, an inline span that is distinguishable from prose, and a fence whose
+ * keywords and literals are told apart.
  *
- * The parts that are simply correct — the user's marker, the tool card's two
- * states, the usage line, list markers that line up — are pinned as themselves.
+ * Colour is asserted through `spans()` rather than `frame()`, because the whole
+ * failure mode here is text that is *present and unstyled* — a character frame
+ * cannot tell that apart from text that is right.
  */
 
 const DIM = createTextAttributes({ dim: true });
+const BOLD = createTextAttributes({ bold: true });
 
 const user = (content: string): Turn => ({ id: `u-${content}`, role: 'user', content });
 
@@ -55,50 +54,68 @@ describe('an assistant turn', () => {
       height: 16,
     });
     try {
+      await ui.until(() => shows(ui.frame(), '- two'));
       const frame = ui.frame();
       expect(shows(frame, 'const a = 1;')).toBe(true);
-      // Markers become glyphs that line up rather than staying as `-`.
-      expect(shows(frame, '• one')).toBe(true);
-      expect(shows(frame, '• two')).toBe(true);
+      expect(shows(frame, '- one')).toBe(true);
+      expect(shows(frame, '- two')).toBe(true);
     } finally {
       ui.stop();
     }
   });
 
   /**
-   * The finding this whole change is for, stated as a test so the fix shows up
-   * as an inversion rather than as a new file. Today the emphasis markers are
-   * deleted and nothing takes their place: the word is drawn, the weight is not.
+   * The markers are still hidden — `conceal` is on, and nobody wants to read
+   * asterisks — but the word now carries the weight they asked for. Asserting
+   * only the text would pass against the stripper this replaced.
    */
-  it('LOSES bold and inline code — the markers are stripped, not rendered', async () => {
+  it('renders bold as weight and inline code as its own colour', async () => {
     const ui = await mount(createElement(Transcript, { turns: [reply] }), {
       width: 60,
       height: 16,
     });
     try {
+      await ui.until(() => shows(ui.frame(), 'Here is bold and code:'));
       const frame = ui.frame();
       expect(shows(frame, 'Here is bold and code:')).toBe(true);
       expect(frame).not.toContain('**');
-      expect(frame).not.toContain('`');
-      // And the word that asked to be bold is drawn at the same weight as the
-      // rest of the line.
-      const bold = styleOf(ui.spans(), 'Here is bold');
-      expect(bold).not.toBeNull();
-      expect(hasAttribute(bold?.attributes ?? 0, createTextAttributes({ bold: true }))).toBe(false);
+
+      const bold = styleOf(ui.spans(), 'bold');
+      expect(bold?.text).toBe('bold');
+      expect(hasAttribute(bold?.attributes ?? 0, BOLD)).toBe(true);
+
+      // And the inline span is told apart from the prose around it by colour,
+      // which is the only signal left once the backticks are concealed.
+      const code = styleOf(ui.spans(), 'code');
+      expect(code?.text).toBe('code');
+      expect(code?.fg).not.toEqual(styleOf(ui.spans(), 'Here is ')?.fg);
     } finally {
       ui.stop();
     }
   });
 
-  it('labels the fence with its language, dimly', async () => {
+  /**
+   * A fence is parsed, not printed. `const` is a keyword and `1` is a literal,
+   * and they are drawn differently — where every language used to arrive in one
+   * flat colour.
+   */
+  it('highlights a fenced block with tree-sitter', async () => {
     const ui = await mount(createElement(Transcript, { turns: [reply] }), {
       width: 60,
       height: 16,
     });
     try {
-      const label = styleOf(ui.spans(), 'ts');
-      expect(label).not.toBeNull();
-      expect(hasAttribute(label?.attributes ?? 0, DIM)).toBe(true);
+      // Highlighting is what is being asserted, so wait for the colour rather
+      // than for the text — the unhighlighted frame has the text already.
+      await ui.until(() => {
+        const span = styleOf(ui.spans(), 'const');
+        return span?.text === 'const';
+      });
+      const keyword = styleOf(ui.spans(), 'const');
+      const literal = styleOf(ui.spans(), '1');
+      expect(keyword?.text).toBe('const');
+      expect(literal).not.toBeNull();
+      expect(keyword?.fg).not.toEqual(literal?.fg);
     } finally {
       ui.stop();
     }
@@ -111,6 +128,60 @@ describe('an assistant turn', () => {
     });
     try {
       expect(shows(ui.frame(), '120 in / 40 out')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+/**
+ * A reply arrives a character at a time, and the state that matters is the one
+ * halfway through a fence. This is what `tests/markdown.test.ts` used to pin on
+ * the hand-rolled splitter; the renderer's `streaming` flag is what carries it
+ * now, and getting it backwards either hard-parses an unclosed fence or leaves
+ * a finished message permanently provisional.
+ */
+describe('a reply still being written', () => {
+  const halfway: Turn = {
+    id: 'a-live',
+    role: 'assistant',
+    content: 'Let me show you:\n\n```ts\nconst partial = ',
+    tools: [],
+  };
+
+  it('renders an unterminated fence as code rather than as prose', async () => {
+    const ui = await mount(createElement(Transcript, { turns: [halfway], streaming: true }), {
+      width: 60,
+      height: 14,
+    });
+    try {
+      await ui.until(() => styleOf(ui.spans(), 'const')?.text === 'const');
+      // The fence markers are concealed, the contents are kept, and `const` is
+      // still a keyword rather than a word in a paragraph.
+      expect(ui.frame()).not.toContain('```');
+      expect(shows(ui.frame(), 'const partial =')).toBe(true);
+      const keyword = styleOf(ui.spans(), 'const');
+      expect(keyword?.fg).not.toEqual(styleOf(ui.spans(), 'Let me show you')?.fg);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  /**
+   * Only the turn being written is live. A turn with a later one after it was
+   * finished by whatever produced that one.
+   */
+  it('treats an earlier turn as settled even while a run is streaming', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        turns: [halfway, { id: 'a-next', role: 'assistant', content: 'done', tools: [] } as Turn],
+        streaming: true,
+      }),
+      { width: 60, height: 14 },
+    );
+    try {
+      await ui.until(() => shows(ui.frame(), 'done'));
+      expect(shows(ui.frame(), 'done')).toBe(true);
     } finally {
       ui.stop();
     }
@@ -205,6 +276,59 @@ describe('a tool card', () => {
     try {
       expect(ui.frame()).toContain('…');
       expect(lines(ui.frame()).length).toBe(1);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+/**
+ * Reading back through a conversation that has outgrown the screen.
+ *
+ * Before this, the scroll box was there and nothing could reach it: it is
+ * focusable and implements every scroll key already, but the composer holds
+ * focus and no binding handed it anything. Everything above the fold was
+ * unreachable without a mouse — and a mouse is exactly what an ssh session or a
+ * tmux window with reporting off does not have.
+ */
+describe('scrolling the transcript', () => {
+  const many = Array.from(
+    { length: 40 },
+    (_, i) => ({ id: `u${i}`, role: 'user', content: `line ${i}` }) as Turn,
+  );
+
+  it('starts at the live end of the conversation', async () => {
+    const ui = await mount(createElement(Transcript, { turns: many }), {
+      width: 40,
+      height: 10,
+    });
+    try {
+      expect(shows(ui.frame(), 'line 39')).toBe(true);
+      expect(ui.frame()).not.toContain('line 0 ');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('scrolls back to what has gone off the top, and returns', async () => {
+    const box: { current: ScrollBoxRenderable | null } = { current: null };
+    const ui = await mount(createElement(Transcript, { turns: many, scrollRef: box }), {
+      width: 40,
+      height: 10,
+    });
+    try {
+      expect(box.current).not.toBeNull();
+      const bottom = box.current?.scrollTop ?? 0;
+      expect(bottom).toBeGreaterThan(0);
+
+      // Half a viewport a press, which is what `App` binds pgup/pgdn to.
+      box.current?.scrollBy(-1 / 2, 'viewport');
+      await ui.settle();
+      expect(box.current?.scrollTop).toBeLessThan(bottom);
+
+      box.current?.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER });
+      await ui.settle();
+      expect(shows(ui.frame(), 'line 39')).toBe(true);
     } finally {
       ui.stop();
     }

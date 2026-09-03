@@ -62,6 +62,7 @@ pass `--insecure`.
 | `enter` | send — or **steer** the run while one is live |
 | `shift+enter` | a second line (needs a terminal speaking the kitty keyboard protocol) |
 | `ctrl+e` | hand the draft to `$VISUAL` / `$EDITOR` |
+| `pgup` / `pgdn` | read back through the conversation; paging to the bottom returns to live |
 | `tab` | focus the thread rail; type to filter it, `enter` opens, `esc` clears |
 | `ctrl+n` | new thread |
 | `esc` | stop the run |
@@ -76,6 +77,45 @@ harness serves, and a command is the only thing that exposes one here — so a v
 /rename <name> /fork /compact /export [file] /rewind [n]
 /search <text> /open <n|thread-id> /refresh
 ```
+
+## Reading the reply
+
+Assistant messages go through the renderer's own `<markdown>`, so a reply keeps the shape it
+was written in — headings, tables, blockquotes, nested lists, links, and fenced code
+highlighted by tree-sitter. There was a hand-rolled stripper here before it, and what it cost
+was everything markdown is for: `**bold**` arrived as `bold`, a table stayed as pipes, and
+every fence was one flat colour whatever language it held.
+
+Two things about that worth knowing before you change it.
+
+**`streaming` is a prop, and it has to be right.** Set, the trailing block is treated as
+unstable and re-parsed on every delta — which is the normal state of a reply mid-flight, where
+the last thing on screen is half a sentence or a fence that has not closed. Cleared, the parse
+is finalized. Only the tail of the turn being written gets it: an earlier segment was closed by
+the tool call that follows it. Backwards in either direction and you get a finished message
+whose last paragraph stays provisional, or an unclosed fence hard-parsed as prose.
+
+**Only four parsers are bundled** — javascript, typescript, markdown and zig. A parser for any
+other language is fetched over the network on first use, and this client talks to the harness
+and to nothing else, so none are registered. A `python` or `bash` fence renders as unstyled
+text inside a real code block.
+
+Colours in `src/syntax.ts` are ANSI **indices**, not names. `parseColor` resolves the name
+`"magenta"` to the literal `#FF00FF` — absolute true-colour that overrides whatever scheme the
+terminal is themed with. `RGBA.fromIndex(5)` carries the intent instead and is written out as a
+palette reference, so a solarized terminal keeps deciding what magenta looks like.
+
+## Copying out of it
+
+Select with the mouse and it goes to the system clipboard over OSC 52, which is also the only
+thing that works over ssh. The alt screen is why it needs saying: the terminal's own selection
+reads the rows the *terminal* drew, and inside a full-screen app those belong to the renderer,
+so a drag either selects nothing useful or selects what the terminal imagines is underneath.
+The renderer runs its own selection, and `src/clipboard.ts` is what puts the result somewhere.
+
+Not every terminal implements OSC 52 and some require it to be enabled. The status line says
+which of the four things happened, and says "this terminal does not accept clipboard writes"
+exactly once per session rather than on every drag.
 
 ## Writing to your disk
 
@@ -109,10 +149,11 @@ worth knowing before you change it:
 | `src/threads.ts` | The local thread cache in `$XDG_STATE_HOME/felix` |
 | `src/history.ts` | The prompt history file, its cap and its self-healing |
 | `src/editor.ts` | `$VISUAL` / `$EDITOR` on a temp file, between `suspend()` and `resume()` |
-| `src/markdown.ts` | Just enough markdown for eighty columns; renderer-agnostic |
+| `src/syntax.ts` | The one `SyntaxStyle`: markdown's own scopes plus tree-sitter captures |
+| `src/clipboard.ts` | OSC 52, and the four things that can happen when you copy |
 | `src/epilogue.ts` | The line printed after the screen is given back |
 | `src/ui/composer.tsx` | The prompt: a `textarea`, the Enter bindings, the paste policy |
-| `src/ui/transcript.tsx` | The conversation, in a `scrollbox` |
+| `src/ui/transcript.tsx` | The conversation: `<markdown>` per turn, in a `scrollbox` |
 | `src/ui/rails.tsx` | The thread rail and the status line |
 | `src/ui/prompts.tsx` | Approval, agent question, and local-write banners |
 | `tests/render.ts` | Mounts a component on an in-memory renderer so its frame can be read back |
@@ -146,12 +187,21 @@ const ui = await mount(<ThreadRail threads={threads} cursor={30} … />, { width
 expect(ui.frame()).toContain('Thread 30');
 ```
 
-Two things it owns so no test repeats them. `settle()` yields to React *before* asking the
-renderer whether it is idle — the renderer goes idle the moment a key is handled, while React
-has not committed yet, and reading the frame in that gap looks exactly like a component that
-ignores its keys. And the kitty keyboard protocol is on by default, because `main.tsx` asks
-for it: without it a lone `escape` is a possible sequence prefix and the parser holds it past
-the end of the test.
+Three things it owns so no test repeats them.
+
+`settle()` yields to React *before* asking the renderer whether it is idle — the renderer goes
+idle the moment a key is handled, while React has not committed yet, and reading the frame in
+that gap looks exactly like a component that ignores its keys.
+
+`until(predicate)` is for content that arrives from a worker. `<markdown>` and `<code>` parse
+and highlight off-thread, so a frame is drawn, the renderer reports idle, and *then* the prose
+and list blocks appear — the first frames of a reply are missing them entirely. Settling does
+not cover that, and neither does upstream's `waitForFrame`, which gives up the moment the
+scheduler says nothing is scheduled. A fixed sleep appears to: 400ms passed here and failed on
+CI. Wait for the thing you are about to assert.
+
+The kitty keyboard protocol is on by default, because `main.tsx` asks for it: without it a lone
+`escape` is a possible sequence prefix and the parser holds it past the end of the test.
 
 `spans()` keeps colour and attributes where `frame()` flattens them, which is the only way to
 assert that a notice is still yellow or a dim line still dim.
