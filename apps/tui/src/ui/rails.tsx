@@ -193,6 +193,12 @@ function basename(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
+/**
+ * Columns the keys keep even when the state would rather have them. Enough for
+ * `tab threads · ctrl+n new`, which is the pair worth knowing on a first run.
+ */
+const MIN_HINT = 28;
+
 export function StatusLine({
   manifest,
   origin,
@@ -226,12 +232,22 @@ export function StatusLine({
   // part is at the end, and then the cut takes the end: `/Users/blake…` names
   // no directory at all. The scheme and the parent directories are the parts a
   // person already knows.
-  const keys = hint ? `  ${hint}` : '';
   const state = `${manifest} · ${shortOrigin(origin)} · ${basename(root)}${
     phase && phase !== 'idle' ? ` · ${phase}` : ''
   }`;
-  const room = Math.max(8, width - keys.length - 2);
-  const left = state.length > room ? `${state.slice(0, room - 1)}…` : state;
+
+  // The state half is served first, and that ordering is the point. Which
+  // directory the agent is pointed at is not discoverable anywhere else; the
+  // keys are also in `/help` and in the composer's own border. Serving the keys
+  // first is what cut `felix-web` to `fel…` on an eighty-four column terminal.
+  //
+  // The hint is written in falling order of usefulness, so taking its tail is
+  // the right end to lose — `/help` goes before `tab threads` does.
+  const left = oneLine(state, Math.max(8, Math.min(state.length, width - MIN_HINT - 2)));
+  // Four, not two: one column of padding each side, and two so the halves keep
+  // a visible gap when both are full — `space-between` gives none when they add
+  // up to exactly the row.
+  const keys = hint ? oneLine(hint, Math.max(0, width - left.length - 4)) : '';
 
   return (
     // Same reason as the composer: the transcript must not be able to take

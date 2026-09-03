@@ -41,6 +41,7 @@ import { oneLine } from './text.js';
 import { useTheme } from './theme.js';
 import type { ThreadStore } from './threads.js';
 import { Composer } from './ui/composer.js';
+import { Greeting } from './ui/greeting.js';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
 import { railRows, StatusLine, ThreadPicker } from './ui/rails.js';
 import { Transcript } from './ui/transcript.js';
@@ -806,7 +807,20 @@ export function App({
     // ended up on top of the composer.
     <box flexDirection="column" height={height} overflow="hidden" paddingLeft={1} paddingRight={1}>
       <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
-        <Transcript turns={turns} streaming={streaming} scrollRef={scrollRef} theme={theme} />
+        <Transcript
+          turns={turns}
+          streaming={streaming}
+          scrollRef={scrollRef}
+          theme={theme}
+          greeting={
+            <Greeting
+              manifest={manifest}
+              workspace={root.replace(/\/+$/, '').split('/').pop() || root}
+              unattended={config.yes}
+              theme={theme}
+            />
+          }
+        />
         {/*
           Absolute, so opening it does not reflow the conversation underneath —
           and last in the column, so it paints over what came before at the same

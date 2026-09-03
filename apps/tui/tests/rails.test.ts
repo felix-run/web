@@ -258,6 +258,55 @@ describe('the status line', () => {
     }
   });
 
+  /**
+   * Which directory the agent is pointed at is not discoverable anywhere else
+   * on a thread that has messages in it; the keys are also in `/help` and on
+   * the composer's own border. Serving the keys first is what cut `felix-web`
+   * back to `fel…` on an eighty-four column terminal.
+   */
+  it('gives the state its room before the keys, and keeps a gap between them', async () => {
+    const ui = await mount(
+      createElement(StatusLine, {
+        theme: testTheme,
+        ...base,
+        hint: 'tab threads · ctrl+n new · pgup/pgdn scroll · /help',
+        width: 84,
+      }),
+      { width: 84, height: 6 },
+    );
+    try {
+      const row = lines(ui.frame())[0] ?? '';
+      expect(row).toContain('felix-web');
+      // Cut from the keys' tail, which is written in falling usefulness.
+      expect(row).toContain('tab threads');
+      expect(row).toContain('…');
+      // `space-between` gives no gap when the halves add up to exactly the row.
+      expect(row).toMatch(/felix-web {2,}tab/);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  /** However narrow it gets, the pair worth knowing on a first run survives. */
+  it('keeps the opening keys even when the state has to give way', async () => {
+    const ui = await mount(
+      createElement(StatusLine, {
+        theme: testTheme,
+        ...base,
+        hint: 'tab threads · ctrl+n new · pgup/pgdn scroll · /help',
+        width: 44,
+      }),
+      { width: 44, height: 6 },
+    );
+    try {
+      const row = lines(ui.frame())[0] ?? '';
+      expect(row).toContain('tab threads');
+      expect(lines(ui.frame()).length).toBe(1);
+    } finally {
+      ui.stop();
+    }
+  });
+
   it('shows the phase only while it is something other than idle', async () => {
     const idle = await mount(createElement(StatusLine, { theme: testTheme, ...base, width: 100 }), {
       width: 100,
