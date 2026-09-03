@@ -37,6 +37,7 @@ import { editorCommand, openEditor } from './editor.js';
 import { type EpilogueSlot, formatEpilogue } from './epilogue.js';
 import { explainError } from './errors.js';
 import type { PromptHistory } from './history.js';
+import { oneLine } from './text.js';
 import type { ThreadStore } from './threads.js';
 import { Composer } from './ui/composer.js';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
@@ -68,10 +69,7 @@ const HELP = [
 ].join('\n');
 
 /** A hit, a title, a path — one line each, because a notice is one line each. */
-const oneLine = (text: string, width = 60) => {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > width ? `${flat.slice(0, width - 1)}\u2026` : flat;
-};
+const NOTICE_WIDTH = 60;
 
 export interface AppProps {
   config: Config;
@@ -599,7 +597,7 @@ export function App({
                       'hits — /open <n> to switch',
                       ...hits.map(
                         (hit, i) =>
-                          `${i + 1}) ${threads.find((t) => t.id === hit.id)?.title ?? hit.id} · ${oneLine(hit.snippet)}`,
+                          `${i + 1}) ${threads.find((t) => t.id === hit.id)?.title ?? hit.id} · ${oneLine(hit.snippet, NOTICE_WIDTH)}`,
                       ),
                     ].join('\n')
                   : `nothing matched ${arg}`,

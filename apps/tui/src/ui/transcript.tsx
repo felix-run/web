@@ -16,6 +16,7 @@ import { interleaveTurn } from '@felix/client';
 import { createTextAttributes, type ScrollBoxRenderable } from '@opentui/core';
 import type { RefObject } from 'react';
 import { syntaxStyle } from '../syntax.js';
+import { oneLine } from '../text.js';
 
 const DIM = createTextAttributes({ dim: true });
 const DIM_ITALIC = createTextAttributes({ dim: true, italic: true });
@@ -62,27 +63,25 @@ function ToolCard({ tool }: { tool: ToolCall }) {
   );
 }
 
+/** Room for a tool's arguments beside its name, on an eighty-column terminal. */
+const TOOL_ARG_WIDTH = 68;
+
 /** One line of the arguments, because a tool card is a line. */
 function summarize(input: unknown): string {
   if (input == null) return '';
-  if (typeof input === 'string') return oneLine(input);
+  if (typeof input === 'string') return oneLine(input, TOOL_ARG_WIDTH);
   try {
     const obj = input as Record<string, unknown>;
     const first = obj.command ?? obj.path ?? obj.target ?? obj.query;
-    if (typeof first === 'string') return oneLine(first);
-    return oneLine(JSON.stringify(obj));
+    if (typeof first === 'string') return oneLine(first, TOOL_ARG_WIDTH);
+    return oneLine(JSON.stringify(obj), TOOL_ARG_WIDTH);
   } catch {
     return '';
   }
 }
 
-const oneLine = (s: string) => {
-  const flat = s.replace(/\s+/g, ' ').trim();
-  return flat.length > 68 ? `${flat.slice(0, 67)}…` : flat;
-};
-
 function Reasoning({ text }: { text: string }) {
-  return <text attributes={DIM_ITALIC}>{oneLine(text)}</text>;
+  return <text attributes={DIM_ITALIC}>{oneLine(text, TOOL_ARG_WIDTH)}</text>;
 }
 
 function AssistantTurn({ turn, live }: { turn: Turn; live: boolean }) {

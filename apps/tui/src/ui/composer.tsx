@@ -26,7 +26,7 @@
  * the failure people report as "it froze".
  */
 
-import type { KeyEvent, TextareaRenderable } from '@opentui/core';
+import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 import { createTextAttributes } from '@opentui/core';
 import { useKeyboard, usePaste } from '@opentui/react';
 import { useRef, useState } from 'react';
@@ -60,20 +60,12 @@ export function flattenPaste(text: string): string {
  * bracketed paste delivers a pasted block as raw bytes with LF in them, and
  * with LF bound to submit that paste sends itself halfway through.
  */
-const CHAT_BINDINGS = [
+const CHAT_BINDINGS: KeyBinding[] = [
   { name: 'return', action: 'submit' },
   { name: 'kpenter', action: 'submit' },
   { name: 'return', shift: true, action: 'newline' },
   { name: 'linefeed', action: 'newline' },
-] as never;
-
-/** The edit buffer's public surface, which the typings do not name. */
-type Buffer = TextareaRenderable & {
-  plainText: string;
-  cursorOffset: number;
-  setText(text: string): void;
-  insertText(text: string): void;
-};
+];
 
 export interface ComposerProps {
   streaming: boolean;
@@ -94,7 +86,7 @@ export function Composer({
   onEdit,
   hint,
 }: ComposerProps) {
-  const ref = useRef<Buffer>(null);
+  const ref = useRef<TextareaRenderable>(null);
   /** The editor owns the terminal while this is true; nothing else may. */
   const [editing, setEditing] = useState(false);
   /** Index into `history`, or null while editing the draft. */

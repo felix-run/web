@@ -22,6 +22,7 @@
     "@felix/protocol": "workspace:*",
     "@opentui/core": "0.5.9",
     "@opentui/react": "0.5.9",
+    "diff": "^9.0.0",
     "react": "catalog:"
   },
   "devDependencies": {
