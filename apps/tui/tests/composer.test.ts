@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { createElement } from 'react';
 import { Composer, flattenPaste } from '../src/ui/composer';
-import { mount, shows, testTheme } from './render';
+import { lines, mount, shows, testTheme } from './render';
 
 /**
  * The composer, driven the way a terminal drives it.
@@ -176,6 +176,50 @@ describe('what the composer says it will do', () => {
     try {
       expect(ui.frame()).toContain('⇥');
       expect(shows(ui.frame(), 'steer the run')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+/**
+ * The composer must survive a conversation longer than the screen.
+ *
+ * The transcript grows to fill, and with nothing stopping it, it takes the
+ * composer's rows too: the input line disappears and the marker is squashed
+ * into the bottom border, leaving a box you cannot type in and nothing on
+ * screen to say why. Found by rendering a six-turn conversation and looking at
+ * it, which is the only way this shows up — every component is correct on its
+ * own.
+ */
+describe('the composer under pressure', () => {
+  it('keeps its input row when the transcript wants the space', async () => {
+    const tall = createElement(
+      'box',
+      { flexDirection: 'column', height: 8 },
+      // A greedy sibling, which is what the transcript is.
+      createElement(
+        'box',
+        { flexGrow: 1, flexShrink: 1, minHeight: 0, flexDirection: 'column' },
+        ...Array.from({ length: 30 }, (_, i) => createElement('text', { key: i }, `row ${i}`)),
+      ),
+      createElement(Composer, {
+        theme: testTheme,
+        streaming: false,
+        disabled: false,
+        onSubmit: () => {},
+        hint: 'ask',
+      }),
+    );
+    const ui = await mount(tall, { width: 44, height: 8 });
+    try {
+      const rows = lines(ui.frame());
+      // Top border, at least one input row, bottom border with the hint on it.
+      const top = rows.findIndex((r) => r.startsWith('╭'));
+      const bottom = rows.findIndex((r) => r.startsWith('╰'));
+      expect(top).toBeGreaterThan(-1);
+      expect(bottom).toBeGreaterThan(top + 1);
+      expect(rows[top + 1]).toContain('>');
     } finally {
       ui.stop();
     }

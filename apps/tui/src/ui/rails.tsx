@@ -44,8 +44,15 @@ export function railRows(height: number): number {
   return Math.max(3, Math.min(RAIL_ROWS_MAX, height - RAIL_CHROME - BELOW_RAIL));
 }
 
-/** Inner width of the rail, less its border and padding. */
-const RAIL_TEXT = 22;
+/**
+ * The picker's width, and the text that fits inside it.
+ *
+ * Wider than the old rail because it no longer competes with the conversation
+ * for the same row — it is drawn over it — so a thread title can be read rather
+ * than guessed at from its first twenty characters.
+ */
+const PICKER_WIDTH = 46;
+const PICKER_TEXT = PICKER_WIDTH - 4;
 
 /**
  * The slice of a list to draw so that `cursor` is always inside it.
@@ -69,11 +76,23 @@ export function railWindow(
   return { start: Math.max(0, end - rows), end };
 }
 
-export function ThreadRail({
+/**
+ * The thread picker, over the conversation rather than beside it.
+ *
+ * This was a permanent left-hand column: twenty-eight of a hundred columns,
+ * always, for something you reach for occasionally — and only drawn at all
+ * above ninety columns, so the client had two different shapes depending on the
+ * terminal. An overlay costs nothing until it is open, is the same at every
+ * width, and gives the conversation the whole screen the rest of the time.
+ *
+ * It is `position: "absolute"` with a `zIndex`, which takes it out of the
+ * column flow entirely — a sibling of the transcript rather than a row in it,
+ * so opening it does not reflow the conversation underneath.
+ */
+export function ThreadPicker({
   threads,
   activeId,
   cursor,
-  focused,
   filter = '',
   total,
   rows = RAIL_ROWS_MAX,
@@ -84,19 +103,13 @@ export function ThreadRail({
   threads: ThreadMeta[];
   activeId: string;
   cursor: number;
-  focused: boolean;
-  /** The live filter text, so a rail narrowed to nothing explains itself. */
+  /** The live filter text, so a picker narrowed to nothing explains itself. */
   filter?: string;
   /** Rows before filtering, so "3/40" is sayable. */
   total?: number;
   /** Thread rows to draw — what the terminal has room for, from `App`. */
   rows?: number;
   theme: Theme;
-  /**
-   * Clicking a row opens it. Mouse reporting is on by default, so the wheel
-   * already scrolls and a drag already selects — a rail you can see and cannot
-   * click is the odd one out, not the feature.
-   */
   onPick?: (id: string) => void;
 }) {
   const all = total ?? threads.length;
@@ -104,53 +117,80 @@ export function ThreadRail({
 
   return (
     <box
+      position="absolute"
+      left={2}
+      top={1}
+      width={PICKER_WIDTH}
+      zIndex={10}
       flexDirection="column"
-      width={26}
-      // Sized to its rows, not to the row it sits in. A flex row stretches its
-      // children by default, which drew the rail's border down the whole screen
-      // with twelve empty rows under the last thread.
-      alignSelf="flex-start"
-      marginRight={2}
       border
       borderStyle="rounded"
-      borderColor={focused ? theme.ready : theme.faint}
+      borderColor={theme.ready}
+      // The count goes in the frame, where a header row used to be, and the
+      // keys go in the bottom edge. Both were rows of the list before.
+      title={filter ? `/${filter} · ${threads.length}/${all}` : ` threads · ${all} `}
+      bottomTitle=" ↑↓ move · enter open · type to filter · esc close "
       paddingLeft={1}
       paddingRight={1}
+      // Opaque, or the conversation shows through the gaps between rows.
+      backgroundColor={theme.surface}
     >
-      <text attributes={DIM}>
-        {oneLine(filter ? `/${filter} · ${threads.length}/${all}` : 'threads', RAIL_TEXT)}
-      </text>
       {all === 0 ? <text attributes={DIM}>(none yet)</text> : null}
-      {all > 0 && threads.length === 0 ? <text attributes={DIM}>no match · esc clears</text> : null}
+      {all > 0 && threads.length === 0 ? (
+        <text attributes={DIM}>no match · esc clears the filter</text>
+      ) : null}
       {start > 0 ? <text attributes={DIM}>↑ {start} more</text> : null}
       {threads.slice(start, end).map((thread, i) => {
         const index = start + i;
         const active = thread.id === activeId;
+        const selected = index === cursor;
         const label = `${active ? '• ' : '  '}${thread.title || 'Untitled'}${
           thread.onServer === false ? ' *' : ''
         }`;
         return (
           /* An OpenTUI renderable, not a DOM node: there is no accessibility
              tree to add a role to. What the rule is really after — the same
-             action reachable from the keyboard — holds, because `tab` focuses
-             the rail and `enter` opens the row under the cursor. */
+             action reachable from the keyboard — holds, because the picker is
+             opened by `tab` and answered with the arrows and `enter`. */
           // biome-ignore lint/a11y/noStaticElementInteractions: terminal renderable, keyboard path is tab + enter
           <text
             key={thread.id}
-            fg={focused && index === cursor ? theme.ready : undefined}
+            fg={selected ? theme.ready : undefined}
             attributes={active ? BOLD : undefined}
             onMouseDown={onPick ? () => onPick(thread.id) : undefined}
           >
-            {oneLine(label, RAIL_TEXT)}
+            {/* The marker is added *after* truncation: `oneLine` trims, which
+                would eat the two spaces that keep unselected rows aligned under
+                the selected one. */}
+            {selected ? '▶ ' : '  '}
+            {oneLine(label, PICKER_TEXT - 2)}
           </text>
         );
       })}
       {end < threads.length ? <text attributes={DIM}>↓ {threads.length - end} more</text> : null}
-      {focused && !filter && threads.length > 0 ? (
-        <text attributes={DIM}>type to filter</text>
-      ) : null}
     </box>
   );
+}
+
+/**
+ * The origin without the scheme, which is the same on every line of every
+ * terminal and tells nobody anything.
+ */
+function shortOrigin(origin: string): string {
+  return origin.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+/**
+ * The working directory's last segment.
+ *
+ * This is the directory the *model* can write to, so it has to be identifiable
+ * — and the leading path is the half a person recognises least. The absolute
+ * path is still shown in full at the moment it matters, on the prompt that asks
+ * before a write.
+ */
+function basename(path: string): string {
+  const parts = path.replace(/\/+$/, '').split('/');
+  return parts[parts.length - 1] || path;
 }
 
 export function StatusLine({
@@ -180,13 +220,23 @@ export function StatusLine({
   // pushes the composer up the screen every time the path is long. The
   // renderer's own `truncate` needs a bounded width to cut against, which this
   // row does not have, so the cut is made here where the width is known.
+  //
+  // Both halves are shortened before the cut rather than after it. A full
+  // origin and an absolute path spend forty columns on two things whose useful
+  // part is at the end, and then the cut takes the end: `/Users/blake…` names
+  // no directory at all. The scheme and the parent directories are the parts a
+  // person already knows.
   const keys = hint ? `  ${hint}` : '';
-  const state = `${manifest} · ${origin} · ${root}${phase && phase !== 'idle' ? ` · ${phase}` : ''}`;
+  const state = `${manifest} · ${shortOrigin(origin)} · ${basename(root)}${
+    phase && phase !== 'idle' ? ` · ${phase}` : ''
+  }`;
   const room = Math.max(8, width - keys.length - 2);
   const left = state.length > room ? `${state.slice(0, room - 1)}…` : state;
 
   return (
-    <box flexDirection="column">
+    // Same reason as the composer: the transcript must not be able to take
+    // these rows.
+    <box flexDirection="column" flexShrink={0}>
       {error ? <text fg={theme.failed}>{error}</text> : null}
       {/* A reattach is a materially different claim from a live run: the
           original was torn down when the connection dropped, so this is showing

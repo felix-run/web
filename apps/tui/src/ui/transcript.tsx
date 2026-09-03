@@ -13,12 +13,79 @@
 
 import type { ReasoningBlock, ToolCall, Turn } from '@felix/client';
 import { interleaveTurn } from '@felix/client';
-import type { ScrollBoxRenderable } from '@opentui/core';
+import {
+  BoxRenderable,
+  type CodeRenderable,
+  type ColorInput,
+  type MarkdownOptions,
+  type Renderable,
+  type RenderContext,
+  type ScrollBoxRenderable,
+} from '@opentui/core';
 import { useTimeline } from '@opentui/react';
-import { type RefObject, useEffect, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useState } from 'react';
 import { syntaxStyle } from '../syntax.js';
 import { oneLine } from '../text.js';
 import { DIM, DIM_ITALIC, type Theme } from '../theme.js';
+
+/**
+ * Fenced code, in a frame with its language on it.
+ *
+ * `<markdown>` renders a fence through `CodeRenderable`, which highlights it
+ * but draws it at the same indent and on the same ground as the prose around
+ * it — so a block of code and a paragraph about code look alike at a glance,
+ * which is the one distinction a reply most needs to make.
+ *
+ * `renderNode` is the documented hook for overriding a single token type.
+ * `defaultRender()` gives back the renderable the markdown would have used, and
+ * a `Renderable` carries the render context it was built with, which is the
+ * only way to construct the box that wraps it — nothing else in
+ * `RenderNodeContext` exposes one.
+ */
+function frameCodeBlocks(borderColor: ColorInput): MarkdownOptions['renderNode'] {
+  return (token, context) => {
+    if (token.type !== 'code') return undefined;
+    const inner = context.defaultRender();
+    if (!inner) return null;
+
+    const ctx = (inner as unknown as { ctx?: RenderContext })?.ctx;
+    // Without a context there is nothing to build a box with, and an
+    // unframed block is much better than a thrown render.
+    if (!ctx) return inner;
+
+    // The renderer keeps the fence's trailing newline, which shows up as a
+    // blank row inside the frame — invisible without a border, obvious with one.
+    // The fence's trailing newline is the renderer's, not the author's, and
+    // shows up as an extra row that a border makes obvious.
+    //
+    // A row still remains after this, because the code buffer measures itself
+    // one line taller than its content. Pinning the box height would close it
+    // and is **wrong**: the buffer wraps, so a long line in a narrow terminal
+    // needs more rows than it has lines, and a pinned height silently drops the
+    // ones past the fold. An empty row is a cosmetic cost; clipped code is not.
+    const code = inner as CodeRenderable;
+    if (typeof code.content === 'string') {
+      code.content = code.content.replace(/\n+$/, '');
+    }
+
+    const language = typeof token.lang === 'string' ? token.lang.trim().split(/\s+/)[0] : '';
+    const box = new BoxRenderable(ctx, {
+      border: true,
+      borderStyle: 'rounded',
+      borderColor,
+      ...(language ? { title: ` ${language} `, titleAlignment: 'left' as const } : {}),
+      flexDirection: 'column',
+      width: '100%',
+      height: 'auto',
+      paddingLeft: 1,
+      paddingRight: 1,
+      marginTop: 1,
+      marginBottom: 1,
+    });
+    box.add(inner as Renderable);
+    return box;
+  };
+}
 
 /**
  * A run of the reply's prose, rendered as the markdown it is.
@@ -36,9 +103,19 @@ import { DIM, DIM_ITALIC, type Theme } from '../theme.js';
  * round either leaves a finished message's last paragraph permanently
  * provisional, or hard-parses a fence that has not been closed yet.
  */
-function Prose({ text, streaming }: { text: string; streaming: boolean }) {
+function Prose({ text, streaming, theme }: { text: string; streaming: boolean; theme: Theme }) {
+  // Rebuilt only when the border colour does, because `renderNode` changing
+  // identity makes the markdown renderable rebuild every block it owns.
+  const renderNode = useMemo(() => frameCodeBlocks(theme.faint), [theme.faint]);
   if (!text) return null;
-  return <markdown content={text} syntaxStyle={syntaxStyle()} streaming={streaming} />;
+  return (
+    <markdown
+      content={text}
+      syntaxStyle={syntaxStyle()}
+      streaming={streaming}
+      renderNode={renderNode}
+    />
+  );
 }
 
 /**
@@ -122,7 +199,7 @@ function Reasoning({ text }: { text: string }) {
   return <text attributes={DIM_ITALIC}>{oneLine(text, TOOL_ARG_WIDTH)}</text>;
 }
 
-function AssistantTurn({ turn, live }: { turn: Turn; live: boolean }) {
+function AssistantTurn({ turn, live, theme }: { turn: Turn; live: boolean; theme: Theme }) {
   const segments = interleaveTurn(turn.content, turn.tools, turn.reasoning as ReasoningBlock[]);
   // Only the tail of a live turn is still being written. An earlier segment was
   // closed by the tool call that follows it and is as final as any past turn.
@@ -133,7 +210,9 @@ function AssistantTurn({ turn, live }: { turn: Turn; live: boolean }) {
         if (segment.kind === 'tool')
           return <ToolCard key={`t${segment.index}`} tool={segment.tool} />;
         if (segment.kind === 'reasoning') return <Reasoning key={`r${i}`} text={segment.text} />;
-        return <Prose key={`p${i}`} text={segment.text} streaming={live && i === tail} />;
+        return (
+          <Prose key={`p${i}`} text={segment.text} streaming={live && i === tail} theme={theme} />
+        );
       })}
       {turn.usage ? (
         <text attributes={DIM}>
@@ -177,7 +256,11 @@ export function Transcript({
       stickyStart="bottom"
       scrollY
       viewportCulling
-      contentOptions={{ flexDirection: 'column' }}
+      // Grown from the bottom, not the top. A conversation shorter than the
+      // screen used to float at the top with a void between it and the
+      // composer — fifteen empty rows on a thirty-row terminal, which reads as
+      // a client that has lost something rather than one waiting for you.
+      contentOptions={{ flexDirection: 'column', justifyContent: 'flex-end' }}
     >
       {turns.map((turn) =>
         turn.role === 'user' ? (
@@ -190,6 +273,7 @@ export function Transcript({
             key={turn.id}
             turn={turn}
             live={streaming && turn.id === turns[turns.length - 1]?.id}
+            theme={theme}
           />
         ),
       )}

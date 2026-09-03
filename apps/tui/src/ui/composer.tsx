@@ -29,7 +29,7 @@
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 import { useKeyboard, usePaste } from '@opentui/react';
 import { useRef, useState } from 'react';
-import { DIM, type Theme } from '../theme.js';
+import type { Theme } from '../theme.js';
 
 /** Any newline, and any run of them, however the source spelled it. */
 const HAS_NEWLINE = /[\r\n]/;
@@ -169,19 +169,36 @@ export function Composer({
   });
 
   return (
-    <box flexDirection="row">
+    // Framed, because an unframed prompt does not read as somewhere you type —
+    // it reads as the last line of the transcript. The border also gives the
+    // hint somewhere to live that is not a row of its own: `bottomTitle` costs
+    // nothing vertically, where the old inline hint cost a line the
+    // conversation could have had.
+    <box
+      flexDirection="row"
+      // Never give ground to the transcript. The transcript grows to fill, and
+      // with a conversation longer than the screen it will take these rows too:
+      // the input line vanishes and the marker is squashed into the bottom
+      // border, leaving a box you cannot type in and no sign of why.
+      flexShrink={0}
+      border
+      borderStyle="rounded"
+      borderColor={active ? theme.ready : theme.faint}
+      bottomTitle={hint ?? ''}
+      bottomTitleAlignment="left"
+      paddingLeft={1}
+      paddingRight={1}
+    >
       <text fg={streaming ? theme.running : theme.ready}>{streaming ? '⇥ ' : '> '}</text>
       <textarea
         ref={ref}
         focused={active}
         flexGrow={1}
-        height={3}
+        height={2}
         wrapMode="word"
         keyBindings={CHAT_BINDINGS}
-        placeholder={hint ?? ''}
         onSubmit={submit}
       />
-      {!active ? <text attributes={DIM}> </text> : null}
     </box>
   );
 }

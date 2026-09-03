@@ -88,7 +88,7 @@ correct against a harness running `FELIX_AUTH_MODE=none`.
 | `↑` / `↓` | Walk back through prompts you have sent; `↓` past the newest returns the line you were typing. |
 | `ctrl+e` | Open the line in `$VISUAL` or `$EDITOR`. Saving brings the text back to the prompt; it is not sent until you press enter. |
 | `pgup` / `pgdn` | Read back through the conversation. Paging down to the bottom returns to the live end, so there is no mode to leave. |
-| `tab` | Focus the thread rail; `↑`/`↓` and `enter` to switch, `tab` again to leave. |
+| `tab` | Open the thread picker; `↑`/`↓` and `enter` to switch, `esc` to close. |
 | `ctrl+n` | New thread. |
 | `ctrl+c` | Stop a live run; again to quit. |
 | `ctrl+d` | Open the debug console, when the client was started with `FELIX_DEBUG=1`. |
@@ -98,21 +98,22 @@ What these keys do at any moment is written along the bottom of the screen, besi
 origin — the rail's bindings included, which is where it matters most, because the prompt's own hint
 is not drawn while the rail has focus.
 
-The rail takes the keyboard whole while it has focus, so `↑` moves its cursor rather than recalling a
+The picker opens over the conversation rather than beside it, so it costs nothing when closed and
+is the same on a narrow terminal as on a wide one. It takes the keyboard whole while it is open, so `↑` moves its cursor rather than recalling a
 prompt, and `enter` picks a thread rather than sending what is typed. **Typing filters it**, over
 titles, locally and instantly — `esc` clears the filter and a second `esc` leaves the rail. It opens
 on the thread you have open rather than at the top, and scrolls to keep the cursor on screen however
 many threads the harness returns. `esc` does not stop a run while the rail is focused; `ctrl+c`
 still does, from anywhere.
 
-The rail is only drawn on a terminal at least 90 columns wide, and `tab` does nothing below that.
+It works at any terminal width.
 
 Replies are rendered as the markdown they are — headings, tables, blockquotes, nested lists,
 links, and fenced code coloured by tree-sitter. Parsers for JavaScript, TypeScript and Markdown
 are built in; a fence in any other language renders as plain text inside a code block, because
 fetching a parser would mean this client talking to something other than your harness.
 
-Clicking a thread in the rail opens it. Selecting text with the mouse copies it to your system clipboard, over OSC 52 — which also works
+Clicking a thread in the picker opens it. Selecting text with the mouse copies it to your system clipboard, over OSC 52 — which also works
 across `ssh`, where nothing on the remote machine can reach your clipboard directly. Terminals
 that do not implement it, or have it switched off, are told to you once in the status line
 rather than on every drag.

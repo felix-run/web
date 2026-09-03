@@ -66,3 +66,82 @@ describe('writeDiff', () => {
     expect(diff?.rows).toBeGreaterThan(0);
   });
 });
+
+/**
+ * A unified diff cannot be truncated by counting rows.
+ *
+ * Every `@@` hunk declares how many lines follow it, so a body cut part-way
+ * down contradicts its own header — and `DiffRenderable` does not shrug that
+ * off. It refuses the patch and prints `Error parsing diff: Added line count
+ * did not match` followed by the raw text, which is what a write approval on
+ * any file long enough to need two hunks was showing.
+ *
+ * The invariant below is the one that matters, and it is checked at *every*
+ * budget rather than at a chosen one: whatever the cap, the patch that comes
+ * out must still describe itself correctly.
+ */
+describe('the patch stays a patch at any size', () => {
+  const before = Array.from({ length: 60 }, (_, i) => `const line${i} = ${i};`).join('\n');
+  const after = before
+    .replace('const line3 = 3;', 'const line3 = 999;')
+    .replace('const line40 = 40;', 'const line40 = 40; // touched')
+    .concat('\nconst appended = true;\n');
+  const edit = write({ before, args: { path: 'big.ts', content: after } });
+
+  /** Re-derive each hunk's counts from its body and compare with its header. */
+  const headersAgree = (patch: string): boolean => {
+    const rows = patch.split('\n').slice(4);
+    let header: RegExpExecArray | null = null;
+    let oldSeen = 0;
+    let newSeen = 0;
+    const check = () => !header || (Number(header[2]) === oldSeen && Number(header[4]) === newSeen);
+
+    for (const row of rows) {
+      if (row.startsWith('@@')) {
+        if (!check()) return false;
+        header = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@/.exec(row);
+        oldSeen = 0;
+        newSeen = 0;
+        continue;
+      }
+      if (!header || row.length === 0) continue;
+      if (row.startsWith('-')) oldSeen++;
+      else if (row.startsWith('+')) newSeen++;
+      else if (!row.startsWith('\\')) {
+        oldSeen++;
+        newSeen++;
+      }
+    }
+    return check();
+  };
+
+  it('produces a self-consistent patch at every budget from 1 to 40', () => {
+    for (let rows = 1; rows <= 40; rows++) {
+      const diff = writeDiff(edit, rows);
+      expect(diff).not.toBeNull();
+      if (!headersAgree(diff?.patch ?? '')) {
+        throw new Error(`hunk headers disagree with the body at rows=${rows}:\n${diff?.patch}`);
+      }
+    }
+  });
+
+  it('never exceeds the budget it was given', () => {
+    for (let rows = 1; rows <= 40; rows++) {
+      expect(writeDiff(edit, rows)?.rows).toBeLessThanOrEqual(rows);
+    }
+  });
+
+  /** A budget too small for even one hunk still has to show *something*. */
+  it('shows part of the first hunk rather than an empty frame', () => {
+    const diff = writeDiff(edit, 4);
+    expect(diff?.patch).toContain('@@');
+    expect(diff?.omitted).toBeGreaterThan(0);
+  });
+
+  it('reports everything it dropped, across all hunks', () => {
+    const small = writeDiff(edit, 8);
+    const large = writeDiff(edit, 200);
+    expect(large?.omitted).toBe(0);
+    expect(small?.omitted).toBeGreaterThan(0);
+  });
+});

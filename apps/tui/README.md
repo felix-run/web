@@ -63,7 +63,7 @@ pass `--insecure`.
 | `shift+enter` | a second line (needs a terminal speaking the kitty keyboard protocol) |
 | `ctrl+e` | hand the draft to `$VISUAL` / `$EDITOR` |
 | `pgup` / `pgdn` | read back through the conversation; paging to the bottom returns to live |
-| `tab` | focus the thread rail; type to filter it, `enter` opens, `esc` clears |
+| `tab` | open the thread picker; type to filter, `enter` opens, `esc` closes |
 | `ctrl+n` | new thread |
 | `esc` | stop the run |
 | `ctrl+c` | stop the run, then quit on a second press |
@@ -82,6 +82,47 @@ harness serves, and a command is the only thing that exposes one here — so a v
 /rename <name> /fork /compact /export [file] /rewind [n]
 /search <text> /open <n|thread-id> /refresh
 ```
+
+## The shape of the screen
+
+Three things worth knowing before moving anything.
+
+**The conversation grows from the bottom.** `justifyContent: 'flex-end'` on the transcript's
+content, so a reply sits against the composer the way every chat client puts it. Without it a
+short conversation floats at the top with the composer at the bottom and a void between — fifteen
+empty rows on a thirty-row terminal, which reads as a client that has lost something rather than
+one waiting for you.
+
+**The thread picker is an overlay, not a column.** It used to be a permanent left-hand rail:
+twenty-eight of a hundred cells, always, for something you reach for occasionally — and only
+drawn above ninety columns, so the client had two different shapes depending on the terminal. It
+is `position: "absolute"` with a `zIndex` now, so opening it does not reflow the conversation
+underneath, and it is the same at every width.
+
+**Fenced code is framed by a `renderNode` hook.** `<markdown>` draws a fence through
+`CodeRenderable` at the same indent and on the same ground as the prose, so code and a paragraph
+about code look alike at a glance. `renderNode` overrides just that token: `defaultRender()` hands
+back the renderable the markdown would have used, and a `Renderable` carries the render context it
+was built with — which is the only way to get one, since nothing in `RenderNodeContext` exposes it.
+
+**Nothing below the transcript may shrink.** The transcript grows to fill, so the composer, the
+notice and the status line each carry `flexShrink={0}`. Without it a conversation longer than the
+screen takes their rows: the input line disappears, the marker is squashed into the bottom border,
+and you are left with a box you cannot type in and nothing on screen to say why. Every component
+is correct on its own — it only shows up when they are rendered together with a long transcript,
+which is what `tests/composer.test.ts` now pins.
+
+There is one empty row inside every code frame, and it is deliberate. The code buffer measures
+itself a line taller than its content. Pinning the box height closes the gap and is **wrong**: the
+buffer wraps, so a long line in a narrow terminal needs more rows than it has lines, and a pinned
+height silently drops the ones past the fold. An empty row is cosmetic; clipped code is not.
+
+**The status line shortens both halves before it cuts.** An absolute path and a full origin spend
+forty columns on two things whose useful part is at the end — and then the cut takes the end,
+leaving `/Users/blake…`, which names no directory at all. The scheme goes, and the path is reduced
+to its last segment: `quick · localhost:8080 · felix-web`. The directory matters because it is what
+the *model* can write to, so it has to stay identifiable; the absolute path is still shown in full
+on the prompt that asks before a write, which is the moment it counts.
 
 ## Colour
 
@@ -171,7 +212,12 @@ worth knowing before you change it:
   string is an edit. The diff is capped at `DIFF_ROWS` because the keys sit *below* the payload
   on purpose — approving a write you have not read is the failure that arrangement is against,
   and an uncapped diff pushes `y`/`n` off the bottom of the terminal, which is an approval you
-  cannot answer.
+  cannot answer. **The cut falls on a hunk boundary**, not on a row count: a unified diff is not a
+  list of lines you can stop part-way down, because every `@@` hunk declares how many lines follow
+  it. A body cut mid-hunk contradicts its own header, and `DiffRenderable` refuses the whole patch
+  — printing `Error parsing diff:` and the raw text — so a write to any file long enough to need
+  two hunks showed diff syntax instead of a diff. When even one hunk exceeds the budget its header
+  is re-stated for the lines actually kept.
 - **Reads are not confirmed.** That is the stated trade of running against a real working
   directory.
 - The write prompt carries its own deadline, shorter than the executor's. `settleClientTool`
@@ -198,7 +244,7 @@ worth knowing before you change it:
 | `src/epilogue.ts` | The line printed after the screen is given back |
 | `src/ui/composer.tsx` | The prompt: a `textarea`, the Enter bindings, the paste policy |
 | `src/ui/transcript.tsx` | The conversation: `<markdown>` per turn, in a `scrollbox` |
-| `src/ui/rails.tsx` | The thread rail and the status line |
+| `src/ui/rails.tsx` | The thread picker and the status line |
 | `src/ui/prompts.tsx` | Approval, agent question, and local-write banners |
 | `tests/render.ts` | Mounts a component on an in-memory renderer so its frame can be read back |
 

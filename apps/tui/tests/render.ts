@@ -134,14 +134,20 @@ export async function mount(node: ReactNode, options: MountOptions = {}): Promis
 }
 
 /**
- * The frame as trimmed lines with the blank tail removed.
+ * The frame as its drawn rows, with the blank margins removed at both ends.
  *
  * `captureCharFrame` pads every row to the full width, so a raw comparison is
- * against trailing spaces rather than against what is on screen.
+ * against trailing spaces rather than against what is on screen. Blank rows at
+ * *either* end are removed for the same reason they are at the tail: they are a
+ * property of where the content was placed, not of the content. The transcript
+ * grows from the bottom, so a short conversation has its empty rows above it —
+ * which used to be below it, and would otherwise mean every test that counts
+ * rows depends on the alignment.
  */
 export function lines(frame: string): string[] {
   const rows = frame.split('\n').map((row) => row.replace(/\s+$/, ''));
   while (rows.length && rows[rows.length - 1] === '') rows.pop();
+  while (rows.length && rows[0] === '') rows.shift();
   return rows;
 }
 
