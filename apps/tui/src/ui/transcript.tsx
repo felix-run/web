@@ -24,6 +24,7 @@ import {
 } from '@opentui/core';
 import { useTimeline } from '@opentui/react';
 import { type ReactNode, type RefObject, useEffect, useMemo, useState } from 'react';
+import { handlesByTool, type Spill, sizeLabel } from '../artifacts.js';
 import { syntaxStyle } from '../syntax.js';
 import { oneLine } from '../text.js';
 import { DIM, DIM_ITALIC, type Theme } from '../theme.js';
@@ -156,7 +157,16 @@ function useSpinner(active: boolean): string {
   return SPINNER[frame] ?? SPINNER[0] ?? '⠋';
 }
 
-function ToolCard({ tool }: { tool: ToolCall }) {
+/**
+ * What a tool call did, in at most two dim lines.
+ *
+ * The second line is the *result*, which this client did not draw at all until
+ * now — every tool ran and returned into silence, so a spilled-output marker was
+ * not a raw marker on screen, it was invisible. One line, because the card is a
+ * trace of the run rather than a transcript of it: the full body is a keystroke
+ * away when it is worth reading.
+ */
+function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
   const name = tool.name.replace(/^(client|approval) · /, '');
   const kind = tool.name.startsWith('approval · ')
     ? 'awaiting approval'
@@ -165,6 +175,10 @@ function ToolCard({ tool }: { tool: ToolCall }) {
       : '';
   const arg = summarize(tool.input);
   const spinner = useSpinner(!tool.done);
+  // A spill's preview is the part the harness kept inline; everything else is
+  // the output as it stands.
+  const body = spill ? spill.ref.preview : typeof tool.output === 'string' ? tool.output : '';
+  const result = oneLine(body, RESULT_WIDTH);
   return (
     <box>
       <text attributes={DIM}>
@@ -174,12 +188,25 @@ function ToolCard({ tool }: { tool: ToolCall }) {
         {kind ? ` · ${kind}` : ''}
         {!tool.done && tool.phase ? ` · ${tool.phase}` : ''}
       </text>
+      {tool.done && (result || spill) ? (
+        <text attributes={DIM}>
+          {'  '}
+          {result || '(no output)'}
+          {spill ? ` · ${sizeLabel(spill.ref.chars)} more [a${spill.handle}]` : ''}
+        </text>
+      ) : null}
     </box>
   );
 }
 
 /** Room for a tool's arguments beside its name, on an eighty-column terminal. */
 const TOOL_ARG_WIDTH = 68;
+
+/**
+ * The result line is indented two columns under the call, so it is a little
+ * narrower than the argument line above it.
+ */
+const RESULT_WIDTH = 66;
 
 /** One line of the arguments, because a tool card is a line. */
 function summarize(input: unknown): string {
@@ -199,7 +226,18 @@ function Reasoning({ text }: { text: string }) {
   return <text attributes={DIM_ITALIC}>{oneLine(text, TOOL_ARG_WIDTH)}</text>;
 }
 
-function AssistantTurn({ turn, live, theme }: { turn: Turn; live: boolean; theme: Theme }) {
+function AssistantTurn({
+  turn,
+  live,
+  theme,
+  handles,
+}: {
+  turn: Turn;
+  live: boolean;
+  theme: Theme;
+  /** Handle numbers are assigned across the whole transcript, not per turn. */
+  handles: Map<ToolCall, Spill>;
+}) {
   const segments = interleaveTurn(turn.content, turn.tools, turn.reasoning as ReasoningBlock[]);
   // Only the tail of a live turn is still being written. An earlier segment was
   // closed by the tool call that follows it and is as final as any past turn.
@@ -208,7 +246,13 @@ function AssistantTurn({ turn, live, theme }: { turn: Turn; live: boolean; theme
     <box flexDirection="column" marginBottom={1}>
       {segments.map((segment, i) => {
         if (segment.kind === 'tool')
-          return <ToolCard key={`t${segment.index}`} tool={segment.tool} />;
+          return (
+            <ToolCard
+              key={`t${segment.index}`}
+              tool={segment.tool}
+              {...(handles.get(segment.tool) ? { spill: handles.get(segment.tool) } : {})}
+            />
+          );
         if (segment.kind === 'reasoning') return <Reasoning key={`r${i}`} text={segment.text} />;
         return (
           <Prose key={`p${i}`} text={segment.text} streaming={live && i === tail} theme={theme} />
@@ -248,6 +292,10 @@ export function Transcript({
    */
   greeting?: ReactNode;
 }) {
+  // Assigned across the whole transcript so `/artifact 2` means the same thing
+  // to the command as it does to the card that drew `[a2]`.
+  const handles = useMemo(() => handlesByTool(turns), [turns]);
+
   return (
     // Sticky to the bottom, so a stream stays in view — and only sticky, so
     // scrolling up to read while the model is still writing is not fought. The
@@ -282,6 +330,7 @@ export function Transcript({
             turn={turn}
             live={streaming && turn.id === turns[turns.length - 1]?.id}
             theme={theme}
+            handles={handles}
           />
         ),
       )}

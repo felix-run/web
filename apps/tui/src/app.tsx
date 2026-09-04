@@ -31,6 +31,7 @@ import {
   useTerminalDimensions,
 } from '@opentui/react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { spills } from './artifacts.js';
 import type { Attention } from './attention.js';
 import { copyText, describeCopy } from './clipboard.js';
 import { runCommand } from './commands.js';
@@ -42,6 +43,7 @@ import type { PromptHistory } from './history.js';
 import { inspectorRows, SECTIONS, type SectionKey } from './inspector.js';
 import { type Overlay, route } from './keys.js';
 import { useLease } from './lease.js';
+import { page, pagerCommand } from './pager.js';
 import { usePanel } from './panel.js';
 import { useTheme } from './theme.js';
 import type { ThreadStore } from './threads.js';
@@ -49,7 +51,7 @@ import { Composer } from './ui/composer.js';
 import { Greeting } from './ui/greeting.js';
 import { Inspector } from './ui/inspector.js';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
-import { railRows, StatusLine, ThreadPicker } from './ui/rails.js';
+import { type Connection, railRows, StatusLine, ThreadPicker } from './ui/rails.js';
 import { Transcript } from './ui/transcript.js';
 import { createWorkspace } from './workspace.js';
 import { useWriteGate } from './write-gate.js';
@@ -95,6 +97,16 @@ export function App({
   const [searching, setSearching] = useState(false);
   const [memoryQuery, setMemoryQuery] = useState('');
   const [refreshTick, setRefreshTick] = useState(0);
+  /**
+   * What the client believes about the harness, from the transport's own
+   * callbacks rather than from whichever call happened to fail.
+   *
+   * Latched on transition. `onReachability(true)` fires on *every* successful
+   * request, and `onUnauthorized` fires on every 401 — with the approvals poll
+   * running every 2.5s during a run, a rotated key is a 401 storm. Setting state
+   * unconditionally would re-render the status line per round trip.
+   */
+  const [connection, setConnection] = useState<Connection>('ok');
   const [skills, setSkills] = useState<{ declared: string[]; active: string[] } | null>(null);
   const panelRef = useRef<ScrollBoxRenderable | null>(null);
   const [railCursor, setRailCursor] = useState(0);
@@ -143,6 +155,16 @@ export function App({
     const client = createFelixClient({
       baseUrl: config.origin,
       headers: () => authHeaders(config),
+      // A stopped harness is the most common local failure — it is a process on
+      // the same machine — and until these were wired it surfaced only as an
+      // error string on whichever call fired, while the status line went on
+      // naming an origin that was not there.
+      onReachability: (reachable) =>
+        setConnection((was) => (reachable ? (was === 'unreachable' ? 'ok' : was) : 'unreachable')),
+      // There is no re-prompt here: this process holds a bearer token from argv,
+      // the environment or a file, and has nowhere to put a new one. `errors.ts`
+      // already writes what to do about that.
+      onUnauthorized: () => setConnection('rejected'),
     });
     clientRef.current = client;
     engineRef.current = createChatEngine({
@@ -438,6 +460,32 @@ export function App({
     [client, config, editPrompt, engine],
   );
 
+  /**
+   * Hand a body to the pager, outside the alt screen.
+   *
+   * Same shape as `editPrompt`: resolve the command *before* suspending, and
+   * resume in a `finally`, because a pager that exits non-zero must not leave a
+   * client that has stopped drawing with no way back.
+   */
+  const showBody = useCallback(
+    (body: string, name: string) => {
+      if (!pagerCommand()) {
+        setNotice('set $PAGER to read a spilled output in place');
+        return;
+      }
+      try {
+        renderer.suspend();
+        const { path } = page(body, name);
+        setNotice(`artifact written to ${path}`);
+      } catch (err) {
+        setNotice(`pager: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        renderer.resume();
+      }
+    },
+    [renderer],
+  );
+
   const command = useCallback(
     (line: string) =>
       runCommand(
@@ -458,6 +506,8 @@ export function App({
           hydrate,
           newThread,
           exit,
+          spills: () => spills(turns),
+          show: showBody,
           fs: { exists: existsSync, write: writeFileSync },
         },
         line,
@@ -473,8 +523,10 @@ export function App({
       refreshThreads,
       root,
       selectThread,
+      showBody,
       store,
       threads,
+      turns,
     ],
   );
 
@@ -782,6 +834,7 @@ export function App({
       <StatusLine
         manifest={manifest}
         origin={config.origin}
+        connection={connection}
         phase={phase}
         reattaching={reattaching}
         error={error}
