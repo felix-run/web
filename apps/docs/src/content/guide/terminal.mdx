@@ -142,6 +142,7 @@ looks like the rest of the code on your machine.
 | `/rewind [n]` | Move the active leaf back `n` turns (default 1). Later turns come off the branch rather than being deleted. |
 | `/search <text>` | Full-text across every thread the harness holds. |
 | `/open <n\|id>` | Open a numbered hit from the last `/search`, or a thread by id. |
+| `/artifact <n> [file]` | Read a spilled tool output — `n` is the handle on the card. With a path, writes it there instead of paging it; refuses to overwrite. |
 | `/refresh` | Re-read the thread list from the harness. |
 | `/quit` | |
 
@@ -185,6 +186,25 @@ a question keeps the keyboard until it is answered, and `ctrl+c` still stops the
 
 Nothing here writes. Memory can be read and searched but not added or forgotten, which is the web
 UI's job — adding a memory is an injection ingress and the form there says so.
+
+## Output too large to inline
+
+A manifest with `artifacts.enabled` replaces any oversized tool result with a preview plus a
+reference, and keeps the rest in the object store. The card shows the preview and how much more
+there is:
+
+```
+⎿ read_file path=big.log
+  2026-09-01T04:12:88Z starting run… · 48k more [a1]
+```
+
+`/artifact 1` fetches the whole thing and opens it in `$PAGER` (falling back to `$VISUAL`/`$EDITOR`,
+then `less`), which is why it is not drawn in the transcript: tens of thousands of characters is a
+second transcript, and you already have a pager. `/artifact 1 out.log` writes it to a file instead,
+refusing to overwrite one that exists — the same rule `/export` follows.
+
+The reference is only read from the **end** of a tool's output. A tool that mentions an artifact
+mid-sentence is talking about one rather than returning one, and does not get a handle.
 
 ## Writing more than a line
 
@@ -308,6 +328,12 @@ manifest a thread used.
 
 Each client takes an exclusive lease on the session it opens, so two clients on one thread is
 reported rather than raced — open the same thread in the web UI and the second one says so.
+
+The status line says what the client believes about the harness. Where the host normally sits it
+reads `unreachable` when a request never arrived anywhere — usually the harness is not running, since
+it is a process on the same machine — or `key rejected` after a 401. There is no re-prompt: this
+process holds a bearer token from a flag, the environment or a config file, and has nowhere to put a
+new one, so it names the problem and leaves the fix to you.
 
 On exit the screen goes with the client, so the last thing printed — into normal scrollback, after
 the terminal has been restored — is the thread you were in and the command that returns to it:

@@ -199,9 +199,13 @@ function basename(path: string): string {
  */
 const MIN_HINT = 28;
 
+/** What the client currently believes about the harness. */
+export type Connection = 'ok' | 'unreachable' | 'rejected';
+
 export function StatusLine({
   manifest,
   origin,
+  connection = 'ok',
   phase,
   reattaching,
   error,
@@ -212,6 +216,14 @@ export function StatusLine({
 }: {
   manifest: string;
   origin: string;
+  /**
+   * Replaces the origin rather than joining it. Both words are *shorter* than
+   * the host they stand in for, so the state half does not grow — and an
+   * appended segment would compete with `basename(root)` for the columns the
+   * cut takes from the end, which is the one thing in this row nothing else
+   * reports.
+   */
+  connection?: Connection;
   phase: string;
   reattaching: boolean;
   error: string | null;
@@ -232,7 +244,13 @@ export function StatusLine({
   // part is at the end, and then the cut takes the end: `/Users/blake…` names
   // no directory at all. The scheme and the parent directories are the parts a
   // person already knows.
-  const state = `${manifest} · ${shortOrigin(origin)} · ${basename(root)}${
+  const where =
+    connection === 'unreachable'
+      ? 'unreachable'
+      : connection === 'rejected'
+        ? 'key rejected'
+        : shortOrigin(origin);
+  const state = `${manifest} · ${where} · ${basename(root)}${
     phase && phase !== 'idle' ? ` · ${phase}` : ''
   }`;
 
@@ -259,7 +277,9 @@ export function StatusLine({
           what landed rather than a reply still being written. */}
       {reattaching ? <text fg={theme.running}>rejoining the thread…</text> : null}
       <box flexDirection="row" justifyContent="space-between">
-        <text attributes={DIM}>{left}</text>
+        <text attributes={DIM} fg={connection === 'ok' ? undefined : theme.failed}>
+          {left}
+        </text>
         {keys ? <text attributes={DIM}>{keys}</text> : null}
       </box>
     </box>

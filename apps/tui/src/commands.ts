@@ -23,6 +23,7 @@ import { resolve } from 'node:path';
 import type { ChatEngine, FelixClient, ThreadMeta } from '@felix/client';
 import { threadSuffix } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
+import type { Spill } from './artifacts.js';
 import type { Config } from './config.js';
 import { explainError } from './errors.js';
 import { oneLine } from './text.js';
@@ -36,7 +37,7 @@ const SEARCH_LIMIT = 5;
 export const HELP = [
   '/new /clear /continue /think <level> /manifest [name] /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n]',
-  '/search <text> /open <n|thread-id> /refresh',
+  '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
   'shift+tab inspects the harness — activity, plans, tools, usage, memory, skills',
 ].join('\n');
 
@@ -63,6 +64,13 @@ export interface CommandContext {
   hydrate(id: string): Promise<void>;
   newThread(): void;
   exit(): void;
+  /** Spilled tool outputs in this thread, oldest first — `/artifact <n>`. */
+  spills(): Spill[];
+  /**
+   * Show a large body outside the alt screen. Suspends the renderer, so it is
+   * the app's to own rather than something a command can do for itself.
+   */
+  show(body: string, name: string): void;
   /** The disk, as a seam — see the header. */
   fs: {
     exists(path: string): boolean;

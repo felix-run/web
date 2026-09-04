@@ -362,3 +362,71 @@ describe('the status line', () => {
     }
   });
 });
+
+describe('the status line reports the connection', () => {
+  /**
+   * The most common local failure is the harness not running — it is a process
+   * on the same machine. Until the transport's callbacks were wired, that
+   * surfaced as an error string on whichever call happened to fire, while this
+   * row went on naming an origin that was not there.
+   */
+  const base = {
+    manifest: 'quick',
+    origin: 'http://localhost:8080',
+    phase: 'idle',
+    reattaching: false,
+    error: null,
+    root: '/Users/blake/Projects/felix-web',
+    hint: 'tab threads · ctrl+n new',
+    width: 80,
+  };
+
+  it('replaces the origin rather than crowding the row', async () => {
+    const ui = await mount(
+      createElement(StatusLine, { theme: testTheme, ...base, connection: 'unreachable' as const }),
+      { width: 80, height: 4 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(frame).toContain('unreachable');
+      // The host is gone, not sitting beside it: an appended segment would
+      // compete with the directory for the columns the cut takes from the end,
+      // and the directory is the one thing in this row nothing else reports.
+      expect(frame).not.toContain('localhost');
+      expect(frame).toContain('felix-web');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('says the key was rejected, which is a different fact from being down', async () => {
+    const ui = await mount(
+      createElement(StatusLine, { theme: testTheme, ...base, connection: 'rejected' as const }),
+      { width: 80, height: 4 },
+    );
+    try {
+      expect(ui.frame()).toContain('key rejected');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('still stays one row, and still leaves the keys their columns', async () => {
+    const ui = await mount(
+      createElement(StatusLine, {
+        theme: testTheme,
+        ...base,
+        connection: 'unreachable' as const,
+        root: '/Users/blake/Projects/some/deeply/nested/felix-web',
+        hint: 'tab threads · shift+tab inspect · ctrl+n new · /help',
+      }),
+      { width: 80, height: 4 },
+    );
+    try {
+      expect(lines(ui.frame()).length).toBe(1);
+      expect(ui.frame()).toContain('tab threads');
+    } finally {
+      ui.stop();
+    }
+  });
+});

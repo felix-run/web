@@ -408,6 +408,23 @@ browser cannot do rather than about the chat:
   are hardcoded true-colour literals that must all be overridden or they paint over the user's
   palette. `TAB_WIDTH` is 10 because seven tabs have 72 columns to share at eighty: the default of 20
   shows three, and 11 shows six with nothing on screen to say a seventh exists.
+- **A tool card draws its result, and a spilled one carries a handle.** Until it did, `ToolCard`
+  rendered the *call* and never the output, so a `[artifact:…]` marker was not a raw marker on
+  screen — it was nothing on screen, and every tool ran and returned into silence. The card now
+  carries one truncated result line, and a spilled output gets `· 48k more [a1]`; `/artifact 1`
+  fetches it into `$PAGER` between `renderer.suspend()` and `resume()`, the same dance `ctrl+e`
+  does, with `resume` in a `finally` for the same reason. Handles are numbered across the whole
+  transcript in `src/artifacts.ts`, because the card and the command have to agree what `1` means.
+  `parseArtifactMarker` matches only at the **end** of an output — one quoted mid-text is a tool
+  talking *about* an artifact — and the id it validates is 32 hex characters, so a shorter one
+  parses as absent rather than as a reference.
+- **The status line says what the client believes about the harness**, in the columns the origin
+  would have used: `unreachable` (a request that never arrived — usually the harness is not running)
+  or `key rejected` (a 401). It **replaces** the host rather than joining it, because both words are
+  shorter and an appended segment would compete with `basename(root)` for the columns the cut takes
+  from the end. Both are latched on transition: `onReachability(true)` fires on every successful
+  request and `onUnauthorized` on every 401, and the approvals poll runs every 2.5s during a run.
+  There is no re-prompt — this process holds a bearer token and has nowhere to put a new one.
 - **`ctrl+i` is not available for anything.** It *is* `0x09`, which *is* `tab`, on any terminal not
   speaking the kitty protocol — so binding it collides with the thread picker on exactly the
   terminals least able to tell them apart. `shift+tab` is `ESC [ Z` everywhere and parses as `tab`
