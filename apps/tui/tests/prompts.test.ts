@@ -146,6 +146,124 @@ describe('the approval banner', () => {
   });
 });
 
+/**
+ * Two facts a bare `y approve · n deny` leaves out, and both change the answer.
+ *
+ * The harness waits `ttl_seconds` — five minutes when the rule sets none — and
+ * then denies on your behalf with the note `timeout`. And approving is not
+ * allowing one call: it issues a grant that authorizes every byte-identical
+ * call to that tool until the same deadline passes.
+ */
+describe('the approval deadline', () => {
+  const withDeadline = (ms: number): PendingApproval => ({
+    ...approval,
+    ruleId: 'fs-write',
+    reason: 'writes outside the allowlist',
+    expiresAt: Date.now() + ms,
+  });
+
+  it('names the rule that gated the call, and why', async () => {
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: withDeadline(252_000),
+        onDecide: () => {},
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'approval · write_file · fs-write')).toBe(true);
+      expect(shows(frame, 'writes outside the allowlist')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('says when the harness will answer for you, and what yes also grants', async () => {
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: withDeadline(252_000),
+        onDecide: () => {},
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'y approve · n deny · auto-denied in 4:12')).toBe(true);
+      expect(shows(frame, 'approving also allows this exact call until then')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  /**
+   * The frame carries no deadline; the `/approvals` poll fills it in a beat
+   * later. Drawing "expired" in that gap would be a lie told at the start of
+   * every gated call.
+   */
+  it('claims no deadline until the poll has supplied one', async () => {
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: { ...approval, expiresAt: null },
+        onDecide: () => {},
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'y approve · n deny')).toBe(true);
+      expect(frame).not.toContain('auto-denied');
+      expect(frame).not.toContain('stopped waiting');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('says so once the harness has stopped waiting, and drops the keys', async () => {
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: withDeadline(-1_000),
+        onDecide: () => {},
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'the harness stopped waiting — it denied this itself')).toBe(true);
+      expect(frame).not.toContain('y approve');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  /** Answering a lapsed approval would report success for a decision the
+      harness already made without you. */
+  it('ignores y and n after the deadline', async () => {
+    const decisions: string[] = [];
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: withDeadline(-1_000),
+        onDecide: (status: string) => decisions.push(status),
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      await ui.keys.typeText('y');
+      await ui.settle();
+      await ui.keys.typeText('n');
+      await ui.settle();
+      expect(decisions).toEqual([]);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
 describe('the agent question', () => {
   const select: PendingUiRequest = {
     requestId: 'ui-1',

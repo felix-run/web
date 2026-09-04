@@ -243,6 +243,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           tool_name: string;
           args?: Record<string, unknown>;
           rule_id?: string;
+          reason?: string;
         };
         const args = data.args ?? {};
         let before: string | null = null;
@@ -259,6 +260,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
               toolName: data.tool_name,
               args,
               ruleId: data.rule_id,
+              reason: data.reason,
+              // Deliberately absent: the frame carries no deadline. The
+              // `/approvals` poll fills it in a beat later, which is why a
+              // watched client keeps polling too.
               before,
             },
           ],
@@ -570,12 +575,23 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     send,
     applyEvent,
     async syncApprovals() {
-      const fresh = await syncApprovals({
+      const { added, deadlines } = await syncApprovals({
         listPending: () => ports.client.listApprovals('pending'),
         seen: seenApprovals,
         readForDiff: ports.clientTools?.readForDiff?.bind(ports.clientTools),
       });
-      if (fresh.length) set({ approvals: [...state.approvals, ...fresh] });
+      // An approval that arrived as a frame has no deadline — the frame carries
+      // none — so the poll backfills it. Without this the banner for a *watched*
+      // run is the one that never learns when the harness gives up.
+      let patched = false;
+      const known = state.approvals.map((pending) => {
+        if (pending.expiresAt != null) return pending;
+        const deadline = deadlines.get(pending.approvalId);
+        if (deadline === undefined) return pending;
+        patched = true;
+        return { ...pending, expiresAt: deadline };
+      });
+      if (added.length || patched) set({ approvals: [...known, ...added] });
     },
     shiftApproval() {
       set({ approvals: state.approvals.slice(1) });

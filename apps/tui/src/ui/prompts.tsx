@@ -18,15 +18,51 @@
  * moving to a `textarea`, on the one prompt that never got the same treatment.
  */
 
-import { type PendingApproval, summarizeToolArgs } from '@felix/client';
+import {
+  formatCountdown,
+  msUntilDecision,
+  type PendingApproval,
+  summarizeToolArgs,
+} from '@felix/client';
 import type { PendingUiRequest } from '@felix/protocol';
 import type { KeyEvent } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
+import { useEffect, useState } from 'react';
 import { writeDiff } from '../approval.js';
 import { DIM, type Theme } from '../theme.js';
 
 /** Options shown at once before the list scrolls inside the banner. */
 const SELECT_ROWS = 8;
+
+/**
+ * How often the countdown redraws.
+ *
+ * A second, and only while an approval is on screen. The deadline is minutes
+ * long, so this is a handful of frames over the life of a prompt — and it stops
+ * the moment the banner unmounts, which is the point of keying the effect on
+ * the approval rather than mounting a timer once.
+ */
+const TICK_MS = 1_000;
+
+/**
+ * Milliseconds left, re-read every second while this approval stands.
+ *
+ * `null` until the poll fills in the deadline: an approval that arrived as a
+ * frame does not carry one, and drawing "expired" in that gap would be a lie
+ * told during the first two seconds of every gated call.
+ */
+function useTimeLeft(pending: PendingApproval): number | null {
+  const [left, setLeft] = useState(() => msUntilDecision(pending));
+
+  useEffect(() => {
+    setLeft(msUntilDecision(pending));
+    if (pending.expiresAt == null) return;
+    const timer = setInterval(() => setLeft(msUntilDecision(pending)), TICK_MS);
+    return () => clearInterval(timer);
+  }, [pending]);
+
+  return left;
+}
 
 export function ApprovalPrompt({
   pending,
@@ -41,9 +77,15 @@ export function ApprovalPrompt({
     const name = key.name?.toLowerCase();
     if (name !== 'y' && name !== 'n') return;
     key.preventDefault();
+    // Past the deadline the harness has already denied this. Sending a decision
+    // would be answering a question nobody is still asking, and `y` would read
+    // as though it had worked.
+    if (lapsed) return;
     onDecide(name === 'y' ? 'approved' : 'denied');
   });
 
+  const left = useTimeLeft(pending);
+  const lapsed = left === 0;
   const diff = writeDiff(pending);
   const summary = summarizeToolArgs(pending.toolName, pending.args);
   return (
@@ -55,7 +97,11 @@ export function ApprovalPrompt({
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg={theme.blocked}>approval · {pending.toolName}</text>
+      <text fg={theme.blocked}>
+        approval · {pending.toolName}
+        {pending.ruleId ? ` · ${pending.ruleId}` : ''}
+      </text>
+      {pending.reason ? <text attributes={DIM}>{pending.reason}</text> : null}
       {diff ? (
         <>
           {/*
@@ -79,7 +125,36 @@ export function ApprovalPrompt({
       ) : (
         <text>{summary.split('\n').slice(0, 6).join('\n')}</text>
       )}
-      <text attributes={DIM}>y approve · n deny</text>
+      {/*
+        Two facts a bare `y approve · n deny` leaves out, and both change the
+        decision.
+
+        Silence is a denial: the harness waits `ttl_seconds` — five minutes when
+        the rule sets none — and then answers `denied` with the note `timeout`
+        on your behalf. A banner that keeps offering the keys after that is
+        asking about a decision already made.
+
+        And yes is not "allow this once": approving issues a grant that
+        authorizes every byte-identical call to the same tool until the same
+        deadline passes.
+      */}
+      {lapsed ? (
+        <text fg={theme.failed}>the harness stopped waiting — it denied this itself</text>
+      ) : (
+        <>
+          {/* The deadline rides with the keys, because it is the fact that
+              changes what pressing them does. The grant window gets its own
+              row: together they wrapped, and a wrapped warning reads as
+              filler. */}
+          <text attributes={DIM}>
+            y approve · n deny
+            {left === null ? '' : ` · auto-denied in ${formatCountdown(left)}`}
+          </text>
+          {left === null ? null : (
+            <text attributes={DIM}>approving also allows this exact call until then</text>
+          )}
+        </>
+      )}
     </box>
   );
 }

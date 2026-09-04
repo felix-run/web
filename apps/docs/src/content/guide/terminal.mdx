@@ -207,6 +207,12 @@ both sides of it, with line numbers — rather than a count of the characters it
 A large diff is cut, and says how many lines it cut, because the `y`/`n` keys sit below the
 payload and an uncapped diff would push them off the screen.
 
+The banner also names the rule that gated the call and counts down: the harness waits a few
+minutes for you and then denies on your behalf, so once that passes the prompt says so and stops
+accepting an answer rather than pretending the decision is still yours. And because approving
+authorises every identical call to that tool until the same moment — not just the one in front of
+you — it says that too.
+
 An agent question that offers choices is a real list you arrow through; one that wants text is a
 real input with a cursor, word motion and undo, and it takes a paste whole.
 
