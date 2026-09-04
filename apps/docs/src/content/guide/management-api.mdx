@@ -27,6 +27,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `eval:read` / `eval:write` | read datasets and runs / write and run them |
 | `usage:read` | `/usage` |
 | `memory:read` / `memory:write` | read stored memory / write and forget it |
+| `documents:read` / `documents:write` | search and list the corpus / ingest and delete |
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 
 Three rules make this practical:
@@ -206,6 +207,41 @@ reading.
 
 `DELETE` is **soft**. The row becomes `forgotten` and drops out of recall rather than being erased,
 which is why the UI calls it "forget".
+
+## Documents
+
+An operator-owned corpus, separate from Memory: Memory holds facts the *agent* wrote, this holds
+text *you* ingested. Different lifecycle, different trust, different write path.
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/documents?limit=` | `documents:read` |
+| `GET` | `/documents/search?q=&limit=` | `documents:read` |
+| `POST` | `/documents` | `documents:write` |
+| `DELETE` | `/documents/{doc_id}` | `documents:write` |
+
+`POST` takes `{title, source, text, metadata, max_chars, overlap_chars}`. Ingest chunks the text,
+embeds it when an embedder is configured, and stores the chunks. It is **idempotent on
+`(source, title)`** — re-ingesting the same pair replaces the document rather than duplicating it,
+so re-syncing a corpus on a schedule is safe. Replacement is delete-then-insert in one transaction,
+so a document that got shorter does not keep its old tail.
+
+`search` is hybrid — a full-text channel and a vector channel fused with the same ranking Memory
+uses — and every hit reports the `channels` that surfaced it. `["lexical"]` alone means the vector
+channel did not run, which is usually `FELIX_MEMORY_EMBEDDER=none`, the default. That is the
+difference between "the corpus disagreed with you" and "half the retrieval stack is switched off".
+
+Documents reuse `FELIX_MEMORY_EMBEDDER` rather than taking a second setting: one embedder per
+deployment, one vector dimension. With none configured the corpus is still fully searchable by
+full text.
+
+:::note
+Limits worth knowing before a bulk import. `text` is capped below the 1 MiB request body limit; one
+document may split into at most 2,000 chunks; and `FELIX_DOCUMENTS_MAX_PER_TENANT` (default 5,000)
+caps the corpus. Exceeding the chunk ceiling is a `400` naming the limit; exceeding the corpus
+ceiling is a `409`. `title` and `source` reject newlines — they are single-line values that reach
+logs and rendered results.
+:::
 
 ## Artifacts
 
