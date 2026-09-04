@@ -11,7 +11,7 @@
     "lint": "turbo run lint",
     "format": "biome format --write .",
     "check-types": "turbo run check-types",
-    "check-api-drift": "node scripts/check-api-drift.mjs apps/chat-ui/harness-openapi.json apps/chat-ui/src/api.ts packages/felix-client/src/transport.ts",
+    "check-api-drift": "node scripts/check-api-drift.mjs apps/chat-ui/harness-openapi.json apps/chat-ui/src/api.ts packages/felix-client/src/transport.ts packages/felix-client/src/management/*.ts",
     "check-protocol-parity": "node scripts/check-protocol-parity.mjs packages/felix-protocol/src/types.ts packages/felix-client/src/engine.ts",
     "check-tailwind-sources": "node scripts/check-tailwind-sources.mjs",
     "check-payload-shapes": "node scripts/check-payload-shapes.mjs",

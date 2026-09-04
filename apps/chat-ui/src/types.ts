@@ -3,10 +3,11 @@
  *
  * The wire contract lives in `@felix/protocol`, and everything the conversation
  * itself is made of — the transcript, tool cards, approvals, the thread index —
- * in `@felix/client`, because a terminal client needs exactly those. Both are
- * re-exported here so components keep importing one module. What is *declared*
- * below is the management surface (audit, eval, jobs, manifests, plans, usage),
- * which only this app reads.
+ * in `@felix/client`, because a terminal client needs exactly those — and, since
+ * the inspector reads moved across, the audit, usage, memory, plan and artifact
+ * row shapes too. All of it is re-exported here so components keep importing one
+ * module. What is *declared* below is only the operator write surface (eval,
+ * jobs, manifests) and the A2A card, which nothing outside this app reads.
  */
 
 export type {
@@ -18,6 +19,23 @@ export type {
   ToolCall,
   Turn,
   TurnSegment,
+} from '@felix/client';
+export {
+  type ArtifactContent,
+  AUDIT_EVENT_TYPES,
+  type AuditEvent,
+  type AuditEventType,
+  type AuditEventWire,
+  type MemoryHit,
+  type MemoryRecord,
+  type Plan,
+  type PlanBody,
+  type PlanStep,
+  type PlanStepStatus,
+  type PlanWire,
+  type ToolMetrics,
+  type ToolMetricsRow,
+  type UsageEvent,
 } from '@felix/client';
 export type {
   ArtifactRef,
@@ -69,23 +87,6 @@ export interface EvalComparison {
 
 // --- Spilled tool outputs (/artifacts) ---
 
-/**
- * What `GET /artifacts/{manifest_id}/{artifact_id}` returns.
- *
- * Not in the `check-payload-shapes` guard, and the reason is worth stating: the
- * record it compares against is built from the harness's `store.py` serializers,
- * and this response is a dict literal in the route itself. A guarded entry
- * naming a serializer the record does not carry fails on purpose — a guard that
- * silently checks nothing is worse than none — so this shape is mirrored by hand
- * and every field is read defensively at the one call site.
- */
-export interface ArtifactContent {
-  artifact_id: string;
-  manifest_id: string;
-  chars: number;
-  content: string;
-}
-
 // --- Long-term memory (/memory) ---
 //
 // What an agent has stored across sessions. The harness builds this as an
@@ -93,195 +94,8 @@ export interface ArtifactContent {
 // wrong, or was extracted from a hostile tool result, someone has to be able to
 // find that fact and remove it without a database console.
 
-/** One row from GET /memory, or GET /memory/as-of/{turn_seq}. */
-export interface MemoryRecord {
-  id: string;
-  kind: string;
-  content: string;
-  manifest_id?: string;
-  topic_key?: string;
-  importance?: number;
-  /** `active`, or `forgotten` once DELETE has been called — the delete is soft. */
-  status?: string;
-  /** Set when a later memory replaced this one. */
-  superseded_by?: string | null;
-  /** Turn sequence this was learned at, and the one that retired it. */
-  origin_seq?: number | null;
-  superseded_seq?: number | null;
-  created_at?: number;
-  last_used_at?: number | null;
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * One hit from GET /memory/search — a *different* shape from the list row, not a
- * subset with extras: no timestamps or status, plus the two fields that only
- * ranking produces.
- */
-export interface MemoryHit {
-  id: string;
-  content: string;
-  kind: string;
-  score: number;
-  topic_key?: string;
-  importance?: number;
-  /**
-   * Which retrievers found this, e.g. `["fts"]` or `["fts", "vector"]`.
-   *
-   * The reason a result looks wrong is usually which channel produced it, and
-   * that is invisible everywhere else — so it is rendered rather than dropped.
-   */
-  channels?: string[];
-}
-
 // --- Harness-parity surfaces (Inspector panel) ---
 // Shapes mirror src/api/{audit,approvals,plans}.ts in the orchestrator.
-
-/**
- * The four audit event types the harness actually writes.
- *
- * `emit_agent_audit` is the only writer, and it has three call sites: the ReAct
- * loop brackets a turn with `user_input` / `final_response`, and the tool runner
- * emits `tool_call`, or `policy_deny` when a wrapper refused the call. Anything
- * else on this list would be an invention.
- *
- * Kept as a value rather than a bare union so the Inspector can iterate it, and
- * kept narrow on purpose: `event_type` stays `string` on the row below, because
- * a harness that gains a fifth type must still render rather than crash.
- */
-export const AUDIT_EVENT_TYPES = [
-  'user_input',
-  'tool_call',
-  'policy_deny',
-  'final_response',
-] as const;
-
-export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
-
-/**
- * One row from GET /audit, as the app consumes it.
- *
- * The wire spells two of these differently — `payload_json` and `principal_subj`
- * — and `listAudit` renames them on the way in. Before it did, `payload` was
- * `undefined` on every row the harness has ever returned, so the tool name and
- * the summary line silently rendered as nothing at all. See `AuditEventWire`.
- */
-export interface AuditEvent {
-  id: string;
-  tenant_id: string;
-  ts: number;
-  /** One of `AUDIT_EVENT_TYPES` in practice; widened so an unknown type renders. */
-  event_type: string;
-  manifest_id: string;
-  principal_subj: string;
-  /** `ok` | `error` | `denied` in practice — audit rows are written after the fact. */
-  status: string;
-  payload: Record<string, unknown>;
-}
-
-/** GET /audit exactly as it arrives, before `listAudit` normalises the two names. */
-export interface AuditEventWire extends Omit<AuditEvent, 'payload'> {
-  payload_json?: Record<string, unknown>;
-  /** Tolerated so a harness that ever renames it back does not blank the feed. */
-  payload?: Record<string, unknown>;
-}
-
-/** One row from GET /usage. */
-export interface UsageEvent {
-  id: string;
-  tenant_id: string;
-  ts: number;
-  manifest_id: string;
-  model_id: string;
-  kind: string;
-  tokens_input: number;
-  tokens_output: number;
-  cache_creation: number;
-  cache_read: number;
-  meta_json: Record<string, unknown>;
-}
-
-/**
- * `pending` is the harness's own default and `done` is what `plan_update_step`
- * writes when the model names no status. Every other value here is one the model
- * may pass through unchecked — the harness stores the string as given — so this
- * is the set worth styling, not the set that can arrive. `STEP_TONE` falls back.
- */
-export type PlanStepStatus = 'pending' | 'in_progress' | 'done' | 'skipped' | 'failed';
-
-/**
- * One step of an agent-authored plan.
- *
- * `plan_create` writes `{id, title, status}` and `plan_update_step` may add
- * `note`. The client asked for `description` and `result`, which no plan tool has
- * ever written.
- */
-export interface PlanStep {
-  id: string;
-  title: string;
-  /** One of `PlanStepStatus` in practice; widened because the model supplies it. */
-  status: string;
-  note?: string;
-}
-
-/** The blob a plan row carries — written by `plan_create`, opaque to the harness. */
-export interface PlanBody {
-  title?: string;
-  goal?: string;
-  status?: string;
-  steps?: PlanStep[];
-}
-
-/**
- * One row from GET /plans exactly as it arrives.
- *
- * The row is metadata plus an opaque `plan` blob; the title and the steps live
- * *inside* it. Declared flat, `p.steps` was `undefined` and the Plans section
- * threw a TypeError on `p.steps.filter` for any row at all — never seen only
- * because plans exist solely under the deep pattern, so the panel is always
- * empty. `listPlans` flattens the blob; `Plan` is the result.
- */
-export interface PlanWire {
-  id: string;
-  tenant_id: string;
-  manifest_id: string;
-  created_at: number;
-  updated_at: number;
-  expires_at?: number | null;
-  plan: PlanBody;
-}
-
-/** A plan row as the app consumes it, with the blob flattened out. */
-export interface Plan {
-  id: string;
-  tenant_id: string;
-  manifest_id: string;
-  title: string;
-  steps: PlanStep[];
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * One per-tool rollup row from GET /audit/metrics.
- *
- * The harness aggregates `tool_call` audit events by tool name and returns them already
- * summed and sorted by `calls` descending, so the client does no folding of its own.
- * `avg_latency_ms` is a true mean (harness-side `latency_ms_sum / calls`), not a
- * max across buckets.
- */
-export interface ToolMetricsRow {
-  tool: string;
-  calls: number;
-  errors: number;
-  avg_latency_ms: number;
-}
-
-/** GET /audit/metrics response. `window_since` is the epoch-ms floor the rollup covers. */
-export interface ToolMetrics {
-  tools: ToolMetricsRow[];
-  window_since: number;
-}
 
 // --- Eval harness (/eval) ---
 // Shapes mirror src/eval/types.ts. The UI authors a simplified rubric

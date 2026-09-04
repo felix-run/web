@@ -17,8 +17,11 @@ that hides missing handlers. Follow this in order.
 |---|---|
 | `packages/felix-protocol/src/types.ts` | **The wire types and the `StreamEvent` union** |
 | `packages/felix-protocol/src/stream.ts` | The SSE reader |
-| `apps/chat-ui/src/api.ts` | `apiFetch` wrapper + one function per endpoint |
-| `apps/chat-ui/src/types.ts` | chat-ui-only: `Turn`, management surfaces |
+| `packages/felix-client/src/http.ts` | The credentialed `chatFetch`/`rawFetch` both halves share |
+| `packages/felix-client/src/transport.ts` | The chat verbs |
+| `packages/felix-client/src/management/*.ts` | The read-only operator reads — audit, usage, memory, plans, artifacts — types beside their fetcher |
+| `apps/chat-ui/src/api.ts` | `apiFetch` + the browser-only **write** surface: eval, manifests, jobs, agent card |
+| `apps/chat-ui/src/types.ts` | chat-ui-only: `Turn`, and the write-surface shapes |
 
 Plus the consumer: `packages/felix-client/src/engine.ts`, where the `switch` over `StreamEvent` lives — one switch for every client, and the file `check-protocol-parity` reads.
 
@@ -54,9 +57,20 @@ catalog and the flows each frame belongs to.
    fields optional only if the harness may genuinely omit them — model what you captured in step 1,
    not what is convenient.
 
-3. **Add the client function** in `api.ts` if it is a REST call. Match the house style: go through
-   `apiFetch` (never bare `fetch`), check `res.ok`, throw
-   `` `${route}: ${res.status} ${detail.slice(0, 200)}` `` on failure.
+3. **Add the client function**, if it is a REST call, in the file that matches who needs it. A route
+   any client would want goes in `packages/felix-client/` — a chat verb in `transport.ts`, an
+   operator read in `management/`, with its row type declared beside it. A browser-only write stays
+   in `apps/chat-ui/src/api.ts`. Match the house style: go through the area's wrapper (`chatFetch`
+   in the package, `apiFetch` in chat-ui — never bare `fetch`), check `res.ok`, throw
+   `` `${route}: ${res.status} ${detail.slice(0, 200)}` `` on failure. That spelling is load-bearing:
+   `describeError` reads the status back out of it with `/:\s*(\d{3})\b/`.
+
+   Two things will bite if you add a **new file** of routes rather than a function to an existing
+   one. `check-api-drift` takes an **explicit file list** in `package.json` and does no discovery, so
+   an unregistered file is silently not walked — the check stays green while covering less. And it
+   matches the helper *name* immediately followed by a string literal, so destructure `chatFetch`
+   under its own name and pass route literals; a renamed helper or a path built from fragments drops
+   out of the check with no error.
 
 4. **Handle it** in `packages/felix-client/src/engine.ts`. If the frame is one the run **blocks on**, you must answer it on
    every path including errors and aborts, or the conversation hangs with no visible error:

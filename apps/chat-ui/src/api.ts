@@ -1,26 +1,27 @@
 /**
  * chat-ui's binding of the Felix HTTP surface, all reached same-origin under
- * /api/* (Vite proxy in dev, proxy Worker in prod):
+ * /api/* (Vite proxy in dev, proxy Worker in prod).
  *
- *   GET  /api/v1/models      → manifest list for the switcher
- *   POST /api/chat/stream    → SSE token stream + inline tool events (+ per-turn
- *                              token usage on the terminal on_chain_end frame)
- *   GET  /api/audit          → activity feed (Inspector)
- *   GET  /api/audit/metrics  → tool-call rollups (Inspector → Metrics)
- *   GET  /api/approvals      → pending HITL approvals
- *   POST /api/approvals/:id/decide → approve / deny
- *   GET  /api/plans          → plan/step progress (Inspector)
+ * Most of that surface is no longer implemented here. The chat verbs and the
+ * read-only inspector reads — audit, usage, memory, plans, artifacts — both live
+ * in `@felix/client`, which is origin- and credential-agnostic so a terminal
+ * client can ask the same questions; this module supplies the browser's half of
+ * the arrangement (the `/api` prefix, the shared key, the reachability signal,
+ * the 401 reset) and re-exports the result under the names the components
+ * already import.
  *
- * The chat half of that list is not implemented here. It lives in
- * `@felix/client`, which is origin- and credential-agnostic so a terminal
- * client can drive the same conversation; this module supplies the browser's
- * half of the arrangement — the `/api` prefix, the shared key, the reachability
- * signal, the 401 reset — and re-exports the result. What stays below is the
- * management and inspector surface, which only this app reads.
+ * What is still *declared* below is the operator write surface — eval datasets,
+ * manifest versions and canaries, scheduled jobs, the A2A discovery card. It
+ * stays for two reasons: nothing outside this app calls it, and each area is
+ * reached through its own `evalFetch`/`manifestFetch`/`jobsFetch` helper whose
+ * definition `scripts/check-api-drift.mjs` skips with a regex spelled for the
+ * `/api` prefix. Moved as-is, those helpers would be extracted as the phantom
+ * paths `/eval{}`, `/manifests{}` and `/jobs{}` and fail the drift check against
+ * routes that are perfectly fine.
  *
- * The Inspector endpoints are tenant-scoped; an anonymous dev caller resolves
- * to tenant `default`, so they read back exactly what anonymous chat turns
- * produce. Behind real auth, send an Authorization header (see README).
+ * These endpoints are tenant-scoped; an anonymous dev caller resolves to tenant
+ * `default`, so they read back exactly what anonymous chat turns produce. Behind
+ * real auth, send an Authorization header (see README).
  */
 
 import { createFelixClient } from '@felix/client';
@@ -28,9 +29,6 @@ import { reportReachability } from '@/lib/connection';
 import { authHeaders, handleUnauthorized } from './lib/auth';
 import type {
   AgentCard,
-  ArtifactContent,
-  AuditEvent,
-  AuditEventWire,
   EvalComparison,
   EvalDataset,
   EvalDatasetItem,
@@ -41,14 +39,8 @@ import type {
   ManifestPointer,
   ManifestSummary,
   ManifestVersionRow,
-  MemoryHit,
-  MemoryRecord,
-  Plan,
-  PlanWire,
   ResolvedManifest,
   Rubric,
-  ToolMetrics,
-  UsageEvent,
 } from './types';
 
 /**
@@ -95,7 +87,22 @@ export const deleteThreadHistory = felix.deleteThreadHistory.bind(felix);
 export const listApprovals = felix.listApprovals.bind(felix);
 export const decideApproval = felix.decideApproval.bind(felix);
 
+// The management half moved into @felix/client so a terminal client can ask the
+// same questions. Bound here so every `@/api` import site is unchanged.
+export const listAudit = felix.listAudit.bind(felix);
+export const getToolMetrics = felix.getToolMetrics.bind(felix);
+export const listUsage = felix.listUsage.bind(felix);
+export const listMemories = felix.listMemories.bind(felix);
+export const searchMemories = felix.searchMemories.bind(felix);
+export const memoriesAsOf = felix.memoriesAsOf.bind(felix);
+export const forgetMemory = felix.forgetMemory.bind(felix);
+export const addMemory = felix.addMemory.bind(felix);
+export const listPlans = felix.listPlans.bind(felix);
+export const deletePlan = felix.deletePlan.bind(felix);
+export const getArtifact = felix.getArtifact.bind(felix);
+
 export type { StreamArgs, StreamHandlers } from '@felix/client';
+export { flattenPlan } from '@felix/client';
 
 /**
  * `fetch` for the management routes below, with the shared-key header attached.
@@ -123,268 +130,6 @@ async function apiFetch(input: string, init: RequestInit = {}): Promise<Response
   reportReachability(true);
   if (res.status === 401) handleUnauthorized();
   return res;
-}
-
-// --- Inspector REST helpers ---
-
-/**
- * GET /audit → newest-first activity feed (`user_input`, `tool_call`, `policy_deny`,
- * `final_response`).
- *
- * The rename is the point of this function. The harness serialises the payload as
- * `payload_json`, and the route aliases only the *envelope* — it returns `items` and
- * `events` side by side so a client reading either works — which made the row shape
- * look settled when it was not. Reading `e.payload` off the raw row yields `undefined`
- * for every event the harness has ever written, and because the old type asserted the
- * field existed, nothing failed: the tool name fell back to the manifest id and the
- * summary line rendered as an empty string on every row.
- *
- * `event_type` and `status` are both server-side filters, so the panel narrows the
- * query rather than the rendered slice. `limit` is capped at 500 upstream.
- */
-export async function listAudit(
-  opts: { status?: string; eventType?: string; limit?: number } = {},
-): Promise<AuditEvent[]> {
-  const q = new URLSearchParams();
-  if (opts.status) q.set('status', opts.status);
-  if (opts.eventType) q.set('event_type', opts.eventType);
-  q.set('limit', String(opts.limit ?? 50));
-  const res = await apiFetch(`/api/audit?${q}`);
-  if (!res.ok) throw new Error(`audit: ${res.status}`);
-  const body = (await res.json()) as { events?: AuditEventWire[] };
-  return (body.events ?? []).map((e) => ({
-    ...e,
-    payload: e.payload_json ?? e.payload ?? {},
-  }));
-}
-
-/** GET /usage → paginated token meter events. */
-export async function listUsage(
-  opts: { limit?: number; cursor?: string; manifest_id?: string } = {},
-): Promise<{ items: UsageEvent[]; next_cursor: string | null }> {
-  const q = new URLSearchParams();
-  q.set('limit', String(opts.limit ?? 50));
-  if (opts.cursor) q.set('cursor', opts.cursor);
-  if (opts.manifest_id) q.set('manifest_id', opts.manifest_id);
-  const res = await apiFetch(`/api/usage?${q}`);
-  if (!res.ok) throw new Error(`usage: ${res.status}`);
-  return (await res.json()) as { items: UsageEvent[]; next_cursor: string | null };
-}
-
-// --- Spilled tool outputs (/artifacts) ---
-
-/**
- * GET /artifacts/{manifest_id}/{artifact_id} → the full text behind a marker.
- *
- * A manifest with artifact spilling on replaces any oversized tool result with a
- * preview and a reference. The preview is what the transcript shows, so until
- * this is called the rest of that output is stored, addressed, and unreachable —
- * which is the state the harness route was added to end, and which no client
- * here had left it.
- *
- * The tenant is not a parameter. It comes from the caller's own credentials
- * upstream, which is what stops one tenant naming another's artifact however the
- * reference is spelled. Reads need the `artifacts:read` scope, so a 403 here is
- * a narrow key rather than a missing artifact — the same trap `/memory` sets.
- */
-export async function getArtifact(
-  manifestId: string,
-  artifactId: string,
-): Promise<ArtifactContent> {
-  const res = await apiFetch(
-    `/api/artifacts/${encodeURIComponent(manifestId)}/${encodeURIComponent(artifactId)}`,
-  );
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`artifact: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return (await res.json()) as ArtifactContent;
-}
-
-// --- Long-term memory (/memory) ---
-//
-// Reads need the `memory:read` scope and writes `memory:write`, so a 403 here
-// means the key is too narrow rather than that the store is empty — the two look
-// identical without the message `describeError` writes. These routes are also
-// newer than the rest of the surface, so a 404 means the harness predates them.
-
-/** GET /memory → what the agent has stored, newest first. */
-export async function listMemories(
-  opts: { manifestId?: string; kind?: string; limit?: number } = {},
-): Promise<MemoryRecord[]> {
-  const q = new URLSearchParams();
-  if (opts.manifestId) q.set('manifest_id', opts.manifestId);
-  if (opts.kind) q.set('kind', opts.kind);
-  q.set('limit', String(opts.limit ?? 50));
-  const res = await apiFetch(`/api/memory?${q}`);
-  if (!res.ok) throw new Error(`memory: ${res.status}`);
-  const body = (await res.json()) as { items?: MemoryRecord[] };
-  return body.items ?? [];
-}
-
-/**
- * GET /memory/search → the same hybrid ranking the agent sees.
- *
- * The point of exposing this is reproducibility: an operator can ask what the
- * agent would have recalled, and each hit reports which retriever found it.
- */
-export async function searchMemories(
-  query: string,
-  opts: { manifestId?: string; kind?: string; limit?: number } = {},
-): Promise<MemoryHit[]> {
-  const q = new URLSearchParams({ q: query });
-  if (opts.manifestId) q.set('manifest_id', opts.manifestId);
-  if (opts.kind) q.set('kind', opts.kind);
-  q.set('limit', String(opts.limit ?? 8));
-  const res = await apiFetch(`/api/memory/search?${q}`);
-  if (!res.ok) throw new Error(`memory/search: ${res.status}`);
-  const body = (await res.json()) as { items?: MemoryHit[] };
-  return body.items ?? [];
-}
-
-/**
- * GET /memory/as-of/{turn_seq} → what was believed at a past turn, including
- * facts since superseded.
- *
- * Read-only by design on the harness side: rewinding memory would be a
- * data-loss primitive on a shared multi-tenant table, and session rewind is
- * deliberately non-destructive.
- */
-export async function memoriesAsOf(
-  turnSeq: number,
-  opts: { manifestId?: string; kind?: string; limit?: number } = {},
-): Promise<MemoryRecord[]> {
-  const q = new URLSearchParams();
-  if (opts.manifestId) q.set('manifest_id', opts.manifestId);
-  if (opts.kind) q.set('kind', opts.kind);
-  q.set('limit', String(opts.limit ?? 200));
-  const res = await apiFetch(`/api/memory/as-of/${encodeURIComponent(String(turnSeq))}?${q}`);
-  if (!res.ok) throw new Error(`memory/as-of: ${res.status}`);
-  const body = (await res.json()) as { items?: MemoryRecord[] };
-  return body.items ?? [];
-}
-
-/**
- * DELETE /memory/{id} → stop the agent recalling this.
- *
- * A soft delete: the row moves to `status: "forgotten"` and drops out of recall
- * and the default listing, rather than being erased. Called "forget" throughout
- * the UI for that reason — promising deletion would overstate what happens.
- */
-export async function forgetMemory(id: string): Promise<void> {
-  const res = await apiFetch(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`memory/forget: ${res.status} ${detail.slice(0, 200)}`);
-  }
-}
-
-/**
- * POST /memory → store a fact directly, without waiting for the agent to learn it.
- *
- * The harness calls this a prompt-injection ingress in as many words, and it is
- * right: whatever lands here is text the model will read back later, from a
- * store the operator cannot otherwise write to. That is the point — a
- * correction, a standing instruction, a fact the agent keeps getting wrong —
- * and it is also why the panel says so above the field rather than presenting
- * this as a note-taking box.
- *
- * `content` is bounded at 4000 chars upstream and `topic_key` at 200; both are
- * enforced here too, because a 422 for a length the form could have checked is
- * a worse answer than not sending it.
- */
-export async function addMemory(input: {
-  content: string;
-  kind?: string;
-  manifestId?: string;
-  topicKey?: string;
-  importance?: number;
-}): Promise<{ id: string; status: string }> {
-  const res = await apiFetch('/api/memory', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      content: input.content,
-      kind: input.kind || 'fact',
-      manifest_id: input.manifestId ?? '',
-      topic_key: input.topicKey ?? '',
-      importance: input.importance ?? 0.5,
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`memory/write: ${res.status} ${detail.slice(0, 200)}`);
-  }
-  return (await res.json()) as { id: string; status: string };
-}
-
-/**
- * GET /plans → plan/step progress (populated by the `deep` pattern).
- *
- * The row is metadata plus an opaque `plan` blob, and the title and steps live
- * inside it; flattening here is what lets the panel read `p.steps` at all. The
- * response carries the rows twice, as `plans` and as `items` — the same doubled
- * shape `/approvals` returns — so both names are read rather than betting on one.
- */
-export async function listPlans(limit = 25): Promise<Plan[]> {
-  const res = await apiFetch(`/api/plans?limit=${limit}`);
-  if (!res.ok) throw new Error(`plans: ${res.status}`);
-  const body = (await res.json()) as { plans?: PlanWire[]; items?: PlanWire[] };
-  return (body.plans ?? body.items ?? []).map(flattenPlan);
-}
-
-/** A wire plan row as the panel consumes it: blob hoisted, steps always an array. */
-export function flattenPlan(row: PlanWire): Plan {
-  const plan = row.plan ?? {};
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    manifest_id: row.manifest_id,
-    title: plan.title || 'Untitled plan',
-    steps: (plan.steps ?? []).map((s, i) => ({
-      id: String(s.id ?? i + 1),
-      title: s.title ?? '',
-      status: s.status ?? 'pending',
-      note: s.note,
-    })),
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-}
-
-/**
- * GET /audit/metrics → tool-call rollups for a window. Aggregates `tool_call`
- * audit rows by `(tool, transport, status, error_code)`; defaults to the last
- * hour server-side. We pass an explicit `since` so the panel window is stable.
- */
-export async function getToolMetrics(
-  opts: { sinceMs?: number; limit?: number } = {},
-): Promise<ToolMetrics> {
-  const q = new URLSearchParams();
-  if (opts.sinceMs) q.set('since', String(Date.now() - opts.sinceMs));
-  q.set('limit', String(opts.limit ?? 200));
-  const res = await apiFetch(`/api/audit/metrics?${q}`);
-  if (!res.ok) throw new Error(`metrics: ${res.status}`);
-  return (await res.json()) as ToolMetrics;
-}
-
-/**
- * DELETE /plans/{plan_id} → drop a plan the agent left behind.
- *
- * The list route already carries the whole plan document, so there is nothing
- * `GET /plans/{id}` could add to this panel and it stays uncalled. `PUT` stays
- * uncalled too, deliberately: the body is the agent-authored plan blob, and a
- * hand-edited one is a plan the agent did not write claiming that it did.
- *
- * Deleting is different — it is the plans equivalent of forgetting a memory, a
- * way to clear a stale or wrong plan without a database console.
- */
-export async function deletePlan(planId: string): Promise<void> {
-  const res = await apiFetch(`/api/plans/${encodeURIComponent(planId)}`, { method: 'DELETE' });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`plans/delete: ${res.status} ${detail.slice(0, 200)}`);
-  }
 }
 
 // --- Eval harness (/eval) ---

@@ -24,27 +24,10 @@ import {
   type ThreadHistory,
 } from '@felix/protocol';
 import type { ApprovalRequest } from './approvals';
+import { createHttp, type FelixClientOptions } from './http';
+import { createManagementClient } from './management';
 import type { SessionSummary } from './session-log';
 import { threadSuffix } from './session-log';
-
-export interface FelixClientOptions {
-  /**
-   * Everything is appended to this: `/api` for a browser going through the
-   * proxy Worker, `http://localhost:8080` for a direct caller. No trailing slash.
-   */
-  baseUrl: string;
-  /** Credentials, read per request so a rotated key takes effect without a rebuild. */
-  headers?: () => Record<string, string>;
-  /**
-   * Whether the harness answered at all — any reply, a 500 included, means
-   * something is listening. Only a transport-level rejection is `false`.
-   */
-  onReachability?: (reachable: boolean) => void;
-  /** A 401: the key is missing, wrong, or rotated. */
-  onUnauthorized?: () => void;
-  /** Injectable for tests and for a runtime whose fetch is not global. */
-  fetch?: typeof globalThis.fetch;
-}
 
 export interface StreamHandlers {
   onEvent: (event: StreamEvent) => void | Promise<void>;
@@ -71,54 +54,23 @@ interface RawSessionRow {
   parentSessionId?: string | null;
 }
 
+export type { FelixClientOptions };
+
 export type FelixClient = ReturnType<typeof createFelixClient>;
 
 export function createFelixClient(opts: FelixClientOptions) {
-  const doFetch = opts.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
-  const base = opts.baseUrl.replace(/\/+$/, '');
-  const auth = () => opts.headers?.() ?? {};
-
-  /**
-   * A harness call with credentials attached. A 401 means the key is missing,
-   * wrong or rotated — report it before the caller's own error handling runs.
-   */
-  const chatFetch = async (path: string, init: RequestInit = {}): Promise<Response> => {
-    let res: Response;
-    try {
-      res = await doFetch(base + path, {
-        ...init,
-        headers: { ...(init.headers as Record<string, string> | undefined), ...auth() },
-      });
-    } catch (err) {
-      // `fetch` rejects only when the request never reached anything: DNS, TLS, a
-      // refused connection, a dropped link. That is the one case that means the
-      // harness is not there. An abort is the caller changing its mind, not a
-      // connectivity fact, so it is left alone.
-      if (!(err instanceof DOMException && err.name === 'AbortError')) {
-        opts.onReachability?.(false);
-      }
-      throw err;
-    }
-    // Any reply at all, a 500 included, means something is listening.
-    opts.onReachability?.(true);
-    if (res.status === 401) opts.onUnauthorized?.();
-    return res;
-  };
-
-  /**
-   * The same call without the 401 handling, for the three routes where a 401
-   * means "no server history for you", not "your key is wrong" — running those
-   * through `chatFetch` would drop a working key and re-prompt.
-   */
-  const rawFetch = async (path: string, init: RequestInit = {}): Promise<Response> =>
-    doFetch(base + path, {
-      ...init,
-      headers: { ...(init.headers as Record<string, string> | undefined), ...auth() },
-    });
-
-  const detailOf = async (res: Response) => (await res.text().catch(() => '')).slice(0, 200);
+  // One wrapper for both halves of the surface. Destructured under their own
+  // names because `scripts/check-api-drift.mjs` matches the helper *name* at the
+  // call site — renaming them here would take all 28 routes out of the check.
+  const http = createHttp(opts);
+  const { baseUrl: base, chatFetch, rawFetch, detailOf } = http;
 
   return {
+    // The management half — audit, usage, memory, plans, artifacts. Spread
+    // first; there are no name collisions with the chat verbs below, and
+    // `pollDurableRun`'s `this.getDurableRun` still resolves to this literal.
+    ...createManagementClient(http),
+
     /** The origin every call above is made against, for a client that reports it. */
     baseUrl: base,
 
