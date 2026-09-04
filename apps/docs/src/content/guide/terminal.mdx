@@ -89,6 +89,7 @@ correct against a harness running `FELIX_AUTH_MODE=none`.
 | `ctrl+e` | Open the line in `$VISUAL` or `$EDITOR`. Saving brings the text back to the prompt; it is not sent until you press enter. |
 | `pgup` / `pgdn` | Read back through the conversation. Paging down to the bottom returns to the live end, so there is no mode to leave. |
 | `tab` | Open the thread picker; `↑`/`↓` and `enter` to switch, `esc` to close. |
+| `shift+tab` | Open the inspector — what the harness recorded, planned, spent and remembers. |
 | `ctrl+n` | New thread. |
 | `ctrl+c` | Stop a live run; again to quit. |
 | `ctrl+d` | Open the debug console, when the client was started with `FELIX_DEBUG=1`. |
@@ -156,6 +157,34 @@ it until `/refresh`.
 `/rewind` needs server event ids, which only arrive with a session snapshot, so it hydrates the
 thread from the harness before it moves anything — a thread streamed entirely in this process has no
 ids to rewind to until it does.
+
+## Inspecting the harness
+
+`shift+tab` opens a read-only view of what the harness has been doing. `←`/`→` move between
+sections, `↑`/`↓` and `pgup`/`pgdn` scroll, `r` re-reads now, and `esc` closes.
+
+| Section | |
+|---|---|
+| `Activity` | What the harness recorded — `user_input`, `tool_call`, `policy_deny`, `final_response` — newest first. |
+| `Waiting` | Gated tool calls waiting on a person. The same queue the banner draws from, so it is populated whether or not you are watching. |
+| `Plans` | Plans the agent wrote for itself, with how many steps are done. |
+| `Tools` | Per-tool calls, errors and mean latency over the harness's window. |
+| `Usage` | Tokens in and out, newest first. |
+| `Memory` | Facts kept across sessions. `/` searches them, and the `via` column names which retriever found each hit — the reason a result looks wrong is usually which channel produced it. |
+| `Skills` | Declared and active, as the agent last listed them. Empty until the agent calls `list_skills` during a run, and it says so rather than showing an empty list. |
+
+Only the section you are looking at is polled, so the client makes one request every three seconds
+while the overlay is open and none while it is closed. Unlike the web app it does **not** stop
+polling when the terminal loses focus: focus reporting is something plenty of terminals never answer,
+and a panel showing numbers from ten minutes ago with nothing saying so is worse than one extra
+request.
+
+`shift+tab` and `tab` swap between the inspector and the thread list rather than stacking — one
+overlay owns the keyboard at a time. Neither opens while the agent is waiting on you: an approval or
+a question keeps the keyboard until it is answered, and `ctrl+c` still stops the run from anywhere.
+
+Nothing here writes. Memory can be read and searched but not added or forgotten, which is the web
+UI's job — adding a memory is an injection ingress and the form there says so.
 
 ## Writing more than a line
 
@@ -262,8 +291,13 @@ a directory whose contents you would be willing to send.
 
 ## What it does not do
 
-The inspector surfaces — memory, the activity feed, plans, usage, manifest versions, evals,
-scheduled jobs — are the web UI's. So are image attachments. This client is the conversation.
+Image attachments are the web UI's, and so is every surface that *writes* to the harness's
+configuration: manifest versions and canaries, eval datasets, scheduled jobs. Those are operator
+tools with a form each, and a form is what a browser is for.
+
+Reading is a different question, and it is answered here now — see **Inspecting the harness** above.
+The split is deliberate rather than a staging post: this is the client with a real working directory,
+so "why did it do that" gets asked here first.
 
 Threads are cached under `$XDG_STATE_HOME/felix` (default `~/.local/state/felix`), written `0600`
 inside a `0700` directory — a transcript carries whatever the agent read, and so does the last

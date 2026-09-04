@@ -298,3 +298,99 @@ describe('exactly one prompt owns the keyboard', () => {
     h.restore();
   });
 });
+
+describe('the inspector', () => {
+  async function app(routes: Record<string, unknown> = {}) {
+    const h = harness({ '/chat/sessions': { sessions: [] }, ...routes });
+    const { store, history, attention } = doubles();
+    const ui = await mount(
+      createElement(App, {
+        config: config(),
+        store,
+        history,
+        attention,
+        epilogue: {},
+        root: process.cwd(),
+        onExit: () => {},
+      }) as ReactElement,
+      { width: 100, height: 40 },
+    );
+    await ui.settle();
+    return { ui, h };
+  }
+
+  it('opens on shift+tab and closes on escape', async () => {
+    const { ui, h } = await app();
+    await ui.keys.pressTab({ shift: true });
+    await ui.until(() => shows(ui.frame(), 'Activity'));
+    expect(shows(ui.frame(), 'Memory')).toBe(true);
+    await ui.keys.pressEscape();
+    await ui.settle();
+    expect(shows(ui.frame(), 'Activity')).toBe(false);
+    ui.stop();
+    h.restore();
+  });
+
+  it('plain tab still opens the thread rail, not the inspector', async () => {
+    // shift+Tab is ESC[Z and parses as `tab` with the shift flag, so a branch
+    // that only checks the name opens the rail on both.
+    const { ui, h } = await app();
+    await ui.keys.pressTab();
+    await ui.settle();
+    expect(shows(ui.frame(), 'enter open')).toBe(true);
+    expect(shows(ui.frame(), 'Activity')).toBe(false);
+    ui.stop();
+    h.restore();
+  });
+
+  it('reads the section it is showing, and only that one', async () => {
+    const { ui, h } = await app({
+      '/audit': { events: [{ id: 'e1', ts: Date.now(), event_type: 'tool_call', status: 'ok' }] },
+    });
+    await ui.keys.pressTab({ shift: true });
+    await ui.until(() => shows(ui.frame(), 'tool_call'));
+    // Activity is open; nothing else should have been fetched for the panel.
+    expect(h.to('/audit').length).toBeGreaterThan(0);
+    expect(h.to('/usage')).toHaveLength(0);
+    expect(h.to('/plans')).toHaveLength(0);
+    expect(h.to('/memory')).toHaveLength(0);
+    ui.stop();
+    h.restore();
+  });
+
+  it('will not open while a run is waiting on a person', async () => {
+    // The rule the whole precedence chain exists for, end to end this time.
+    const { ui, h } = await app({
+      '/approvals': {
+        requests: [
+          {
+            id: 'ap-1',
+            tenant_id: 't',
+            manifest_id: 'quick',
+            tool_name: 'write_file',
+            call_signature: 'sig',
+            args: { path: `${process.cwd()}/notes.md`, content: 'hello' },
+            principal_subj: '',
+            status: 'pending',
+            created_at: Date.now(),
+            decided_at: null,
+            decided_by: '',
+            decision_note: '',
+            edited_args: null,
+            rule_id: 'fs-write',
+            ttl_seconds: null,
+            expires_at: null,
+            consumed_at: null,
+          },
+        ],
+      },
+    });
+    await ui.until(() => shows(ui.frame(), 'notes.md'));
+    await ui.keys.pressTab({ shift: true });
+    await ui.settle();
+    expect(shows(ui.frame(), 'Activity')).toBe(false);
+    expect(shows(ui.frame(), 'notes.md')).toBe(true);
+    ui.stop();
+    h.restore();
+  });
+});

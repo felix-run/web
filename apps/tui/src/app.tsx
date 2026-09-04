@@ -39,12 +39,15 @@ import { editorCommand, openEditor } from './editor.js';
 import { type EpilogueSlot, formatEpilogue } from './epilogue.js';
 import { explainError } from './errors.js';
 import type { PromptHistory } from './history.js';
-import { route } from './keys.js';
+import { inspectorRows, SECTIONS, type SectionKey } from './inspector.js';
+import { type Overlay, route } from './keys.js';
 import { useLease } from './lease.js';
+import { usePanel } from './panel.js';
 import { useTheme } from './theme.js';
 import type { ThreadStore } from './threads.js';
 import { Composer } from './ui/composer.js';
 import { Greeting } from './ui/greeting.js';
+import { Inspector } from './ui/inspector.js';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
 import { railRows, StatusLine, ThreadPicker } from './ui/rails.js';
 import { Transcript } from './ui/transcript.js';
@@ -84,7 +87,16 @@ export function App({
   const [threadId, setThreadId] = useState(() => config.thread ?? crypto.randomUUID());
   const [threads, setThreads] = useState<ThreadMeta[]>(() => store.list());
   const [manifest, setManifest] = useState(config.manifest);
-  const [railFocused, setRailFocused] = useState(false);
+  // One value rather than a flag each: the two overlays are mutually exclusive,
+  // because both consume every key they are handed and both are opaque boxes at
+  // the same zIndex.
+  const [overlay, setOverlay] = useState<Overlay>('none');
+  const [sectionKey, setSectionKey] = useState<SectionKey>('activity');
+  const [searching, setSearching] = useState(false);
+  const [memoryQuery, setMemoryQuery] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [skills, setSkills] = useState<{ declared: string[]; active: string[] } | null>(null);
+  const panelRef = useRef<ScrollBoxRenderable | null>(null);
   const [railCursor, setRailCursor] = useState(0);
   /**
    * Narrows the rail as you type, while it has focus. Titles only, and local:
@@ -136,6 +148,9 @@ export function App({
     engineRef.current = createChatEngine({
       client,
       threadId: () => threadIdRef.current,
+      // The engine parses a `list_skills` result and hands it over; without this
+      // port that capture goes nowhere, which is why the panel could not exist.
+      onSkills: setSkills,
       clientTools: createWorkspace({
         root,
         // `--yes` is a confirm that always agrees, not an absent one: a
@@ -319,7 +334,7 @@ export function App({
 
   /** Leaving the rail leaves its filter behind with it. */
   const closeRail = useCallback(() => {
-    setRailFocused(false);
+    setOverlay('none');
     setRailFilter('');
   }, []);
 
@@ -504,8 +519,9 @@ export function App({
       blocked,
       streaming,
       quitArmed,
-      railFocused,
+      overlay,
       railFilter,
+      searching,
       consoleAvailable: renderer.consoleMode === 'console-overlay',
     });
     if (!action) return;
@@ -562,12 +578,39 @@ export function App({
         void client.abortChat(threadIdRef.current).catch(() => {});
         engine.setPhase('aborted');
         return;
+      case 'open-inspector':
+        setOverlay('inspector');
+        setRailFilter('');
+        return;
+      case 'close-inspector':
+        setOverlay('none');
+        setSearching(false);
+        return;
+      case 'section': {
+        const at = SECTIONS.findIndex((sec) => sec.key === sectionKey);
+        const next = (at + action.by + SECTIONS.length) % SECTIONS.length;
+        setSectionKey(SECTIONS[next]?.key ?? 'activity');
+        setSearching(false);
+        return;
+      }
+      case 'panel':
+        panelRef.current?.scrollBy(action.by, 'absolute');
+        return;
+      case 'refresh-section':
+        setRefreshTick((n) => n + 1);
+        return;
+      case 'search-open':
+        if (sectionKey === 'memory') setSearching(true);
+        return;
+      case 'search-close':
+        setSearching(false);
+        return;
       case 'open-rail': {
         // Open on the thread that is open, rather than on row zero with the
         // marker somewhere further down.
         const index = threads.findIndex((thread) => thread.id === threadIdRef.current);
         setRailCursor(index >= 0 ? index : 0);
-        setRailFocused(true);
+        setOverlay('threads');
         return;
       }
       case 'new-thread':
@@ -586,11 +629,30 @@ export function App({
    * has focus the composer is disabled and its own hint is not drawn, which is
    * exactly the moment the bindings are least guessable.
    */
-  const hint = railFocused
-    ? '↑↓ move · enter open · type to filter · esc close'
-    : streaming
-      ? 'esc stop · pgup/pgdn scroll · tab threads'
-      : 'tab threads · ctrl+n new · pgup/pgdn scroll · /help';
+  const section = SECTIONS.find((sec) => sec.key === sectionKey) ?? SECTIONS[0];
+  const panel = usePanel({
+    client,
+    section: sectionKey,
+    open: overlay === 'inspector',
+    query: memoryQuery,
+    tick: refreshTick,
+    approvals,
+    skills,
+    theme,
+  });
+
+  const railFocused = overlay === 'threads';
+  // Written in falling order of usefulness, because `StatusLine` takes the tail
+  // when it has to cut. `shift+tab` goes after `tab` for that reason: it is the
+  // one that can afford to be lost on a narrow terminal, and it is in `/help`.
+  const hint =
+    overlay === 'inspector'
+      ? '←→ section · ↑↓ scroll · r refresh · esc close'
+      : railFocused
+        ? '↑↓ move · enter open · type to filter · esc close'
+        : streaming
+          ? 'esc stop · pgup/pgdn scroll · tab threads'
+          : 'tab threads · shift+tab inspect · ctrl+n new · /help';
 
   return (
     // Bounded to the terminal, and clipped rather than allowed to spill. A
@@ -621,7 +683,20 @@ export function App({
           it, and that only existed above ninety columns, so the client had two
           different shapes depending on the terminal.
         */}
-        {railFocused ? (
+        {overlay === 'inspector' && section ? (
+          <Inspector
+            section={section}
+            panel={panel}
+            width={width}
+            rows={inspectorRows(height)}
+            theme={theme}
+            panelRef={panelRef}
+            searching={searching}
+            query={memoryQuery}
+            onQuery={setMemoryQuery}
+          />
+        ) : null}
+        {overlay === 'threads' ? (
           <ThreadPicker
             threads={visibleThreads}
             activeId={threadId}
@@ -697,7 +772,7 @@ export function App({
       */}
       <Composer
         streaming={streaming}
-        disabled={blocked || railFocused}
+        disabled={blocked || overlay !== 'none'}
         onSubmit={submit}
         history={recent}
         onEdit={editPrompt}
