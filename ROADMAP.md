@@ -128,6 +128,87 @@ The dataset picker (`eval-sheet.tsx`) and the manifest picker (`manifests-sheet.
 height cap. Twenty datasets pushes the working panel off-screen. Not reproduced — the local harness
 has one of each — so this is read from the code, not measured.
 
+### chat-ui defines colours the design package now owns
+
+`packages/design/src/tokens.ts:106,114` exports `STATE_LIGHT` / `STATE_DARK` — the blocked / done /
+running / failed / danger ramp — and `apps/tui/src/theme.ts` reads them. `apps/chat-ui/src/index.css`
+still declares its own values for the same five states, twice, at `:122-128` and `:187-190`.
+
+The tokens were promoted out of that stylesheet for the terminal client's benefit, and the
+stylesheet was left as it was, so the package's own docstring — "the single source of truth for the
+palette" — is true in one direction only. Two definitions of one ramp is the shape that drifts.
+
+Note the formats differ on purpose: chat-ui's are `oklch()` because CSS wants them and the design
+package's are sRGB hex because neither a terminal nor `RGBA.fromHex` takes `oklch()`. Aligning them
+means deciding which is canonical and generating the other, not deleting one.
+
+**Size:** small, but it is a decision before it is an edit.
+
+### Three harness routes nothing calls
+
+`pnpm check-api-drift` prints sixteen; thirteen are machine-facing (`/health`, `/metrics`, `/mcp`,
+`/a2a`, `/v1/chat/completions`, and so on) and belong there. Three are not:
+
+- `PUT /plans/{}` — editing a plan. chat-ui reads plans and cannot change one.
+- `POST /eval/runs` — starting an eval. The inspector shows runs and cannot start one.
+- `POST /chat/sessions/custom` — no client touches it at all.
+
+CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up", and this
+is what it is currently showing. Each is a feature to scope rather than a bug to fix.
+
+### `MemoryRecord` models six fields fewer than the harness sends
+
+`pnpm check-payload-shapes` reports `tenant_id`, `updated_at`, `thread_id`, `embedding_dim`,
+`embedding_model` and `embedding_json` as unmodelled. Advisory, and mostly correct — a row carries
+more than one panel needs. But `embedding_model` and `embedding_dim` are the two that answer "why
+did recall miss this", which is the question the memory inspector exists for, and `updated_at`
+distinguishes a fact that was rewritten from one that was not.
+
+The equivalent advisory on `ApprovalRequest` turned out to be hiding a real gap (#127), so this one
+is worth reading rather than assuming benign.
+
+---
+
+## Terminal client
+
+### The keyboard is one switch, and five subscriptions that must not overlap
+
+`apps/tui/src/app.tsx:691-790` is a single `useKeyboard` handler carrying ctrl+c's two-stage
+stop-then-quit, the page keys, the whole thread-picker mode including filter-as-you-type, escape,
+tab, ctrl+n and ctrl+d — with mode flags (`railFocused`, `blocked`, `quitArmed`) and manual
+`preventDefault` deciding which arm runs. There are five `useKeyboard` calls in the app (one in
+`app.tsx`, one in `composer.tsx`, three in `prompts.tsx`), and because the subscription is global,
+their mutual exclusion is enforced by *prose*: "App renders exactly one".
+
+`@opentui/keymap` is built for exactly this — layers with priorities and `enabled` predicates,
+resolved against the same key. It prepends onto `renderer.keyInput`, so adoption is incremental and
+`useKeyboard` keeps working for anything not yet moved. It would also make `/help` generable from
+the same table that binds the keys, and would retire the invariant that currently lives only in a
+comment.
+
+Two things it does **not** solve, which the audit's original note got wrong: it has no focus-traversal
+API (tab order stays hand-rolled), and it cannot express the picker's catch-all "every printable
+character is filter text" — that needs an intercept or a `useKeyboard` behind the layer.
+
+It pins `@opentui/core` to an exact version, so it lands with a version bump or not at all.
+
+**Size:** medium. Best done as: bump, provider, App-level layer, picker layer, the three banners,
+then the help panel — leaving the composer's `CHAT_BINDINGS` alone.
+
+### Every code frame carries one empty row, and the obvious fix is wrong
+
+`apps/tui/src/ui/transcript.tsx:61-65` documents it: `CodeRenderable` measures itself one line
+taller than its content, which is invisible unframed and an obvious gap inside a border.
+
+Pinning the box height *does* close it and is a regression — the buffer wraps, so a long line in a
+narrow terminal needs more rows than it has lines, and a pinned height silently drops everything
+past the fold. A two-line block rendered as one. That was tried, measured, and reverted.
+
+Recorded so the next person does not re-attempt it. A real fix needs the wrapped line count, which
+is not known until after layout, or a change upstream.
+
+**Size:** small if upstream fixes the measurement; otherwise not worth it.
+
 ---
 
 ## Unverified
@@ -140,6 +221,21 @@ blocked a 4K check in an earlier pass.
 
 Needs a real device, a browser whose device-emulation the tooling can drive, or a test that asserts
 on the classes rather than the rendering.
+
+**No approval has been driven end to end against a real gated tool.** Everything the approval
+banners do — the deadline, the countdown, the lapsed state, the rule and reason, the diff — was
+built and checked against `PendingApproval` objects constructed in tests, plus the harness source
+read directly. The client has been run against the live harness on `:8080` repeatedly, but never
+with a manifest whose rules actually gate a call, so no `approval_required` frame and no
+`/approvals` row has been observed in flight.
+
+Three things are therefore claimed rather than seen: that the frame's `reason` is populated in
+practice (it is optional on the wire), that the poll's backfill lands within a tick or two of the
+frame, and that a decision posted with `edited_args` is accepted by the deployed route — the
+committed OpenAPI snapshot documents no request model for `/approvals/{id}/decide`, so the field
+names are taken from the harness's own SDK rather than from a schema.
+
+Needs a manifest with an approval rule and one gated call.
 
 ---
 
