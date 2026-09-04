@@ -15,7 +15,11 @@ import {
   createChatEngine,
   createFelixClient,
   eventsToTurns,
+  formatArgsForEditing,
   mergeSessions,
+  msUntilDecision,
+  type PendingApproval,
+  parseEditedArgs,
   snapshotToEvents,
   type ThreadMeta,
   threadSuffix,
@@ -452,6 +456,56 @@ export function App({
     [renderer, root],
   );
 
+  /**
+   * Approve a gated call with different arguments — the harness's third answer.
+   *
+   * A write to the wrong path could previously only be denied, which throws
+   * away a correct intention over a wrong detail and makes the model guess
+   * again. The harness has always taken `edited_args`; nothing offered it.
+   *
+   * `$EDITOR` rather than a form, because the arguments are arbitrary JSON and
+   * this client already knows how to hand the terminal over and take it back.
+   * That does mean the deadline runs while the editor is open and the countdown
+   * is off screen — so the deadline is re-checked on the way back rather than
+   * assumed to have held.
+   */
+  const editApproval = useCallback(
+    async (approval: PendingApproval) => {
+      const edited = await editPrompt(formatArgsForEditing(approval.args));
+      // Abandoned, or no editor configured — `editPrompt` has already said why.
+      if (edited === undefined) return;
+
+      const parsed = parseEditedArgs(edited, approval.args);
+      if (parsed.status === 'invalid') {
+        // Deliberately not a decision: a malformed edit must not become an
+        // approval of the original call.
+        setNotice(`those arguments were not usable — ${parsed.error}. Nothing was decided.`);
+        return;
+      }
+      if (msUntilDecision(approval) === 0) {
+        setNotice('the harness stopped waiting while the editor was open — it denied this itself');
+        engine.shiftApproval();
+        return;
+      }
+
+      void client
+        .decideApproval(approval.approvalId, {
+          status: 'approved',
+          // An unmodified edit approves plainly. Sending `edited_args` equal to
+          // the originals would install a substitution nobody asked for.
+          ...(parsed.status === 'edited' ? { edited_args: parsed.args } : {}),
+        })
+        .catch((err) => engine.setError(explainError(err, 'record that decision', config)));
+      setNotice(
+        parsed.status === 'edited'
+          ? 'approved with your arguments — the same call is rewritten this way until the grant expires'
+          : 'approved unchanged',
+      );
+      engine.shiftApproval();
+    },
+    [client, config, editPrompt, engine],
+  );
+
   const command = useCallback(
     (line: string) => {
       const [name, ...rest] = line.slice(1).split(/\s+/);
@@ -865,6 +919,7 @@ export function App({
               .catch((err) => engine.setError(explainError(err, 'record that decision', config)));
             engine.shiftApproval();
           }}
+          onEdit={() => void editApproval(pending)}
         />
       ) : uiPrompt ? (
         <UiPrompt

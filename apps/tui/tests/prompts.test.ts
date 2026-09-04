@@ -240,6 +240,89 @@ describe('the approval deadline', () => {
     }
   });
 
+  /**
+   * The harness's third answer, which no client offered: approve the call with
+   * different arguments. A write to the wrong path could only be denied, which
+   * throws away a correct intention over a wrong detail.
+   */
+  it('offers the edit key only when a handler can service it', async () => {
+    const editable = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: withDeadline(252_000),
+        onDecide: () => {},
+        onEdit: () => {},
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      expect(shows(editable.frame(), 'y approve · n deny · e edit args')).toBe(true);
+    } finally {
+      editable.stop();
+    }
+
+    const plain = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: withDeadline(252_000),
+        onDecide: () => {},
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      expect(plain.frame()).not.toContain('e edit args');
+    } finally {
+      plain.stop();
+    }
+  });
+
+  it('opens the editor on e, without deciding anything itself', async () => {
+    const decisions: string[] = [];
+    let edits = 0;
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: withDeadline(252_000),
+        onDecide: (status: string) => decisions.push(status),
+        onEdit: () => {
+          edits += 1;
+        },
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      await ui.keys.typeText('e');
+      await ui.settle();
+      expect(edits).toBe(1);
+      // The decision belongs to whatever comes back from the editor.
+      expect(decisions).toEqual([]);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('will not open the editor once the harness has stopped waiting', async () => {
+    let edits = 0;
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: withDeadline(-1_000),
+        onDecide: () => {},
+        onEdit: () => {
+          edits += 1;
+        },
+      }),
+      { width: 78, height: 16 },
+    );
+    try {
+      await ui.keys.typeText('e');
+      await ui.settle();
+      expect(edits).toBe(0);
+    } finally {
+      ui.stop();
+    }
+  });
+
   /** Answering a lapsed approval would report success for a decision the
       harness already made without you. */
   it('ignores y and n after the deadline', async () => {

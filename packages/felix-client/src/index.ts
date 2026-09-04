@@ -10,10 +10,13 @@ export {
   type ApprovalRequest,
   type ApprovalSync,
   type ApprovalSyncOptions,
+  type ArgEdit,
   DEFAULT_APPROVAL_TTL_MS,
+  formatArgsForEditing,
   formatCountdown,
   msUntilDecision,
   type PendingApproval,
+  parseEditedArgs,
   summarizeToolArgs,
   syncApprovals,
 } from './approvals';

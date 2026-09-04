@@ -68,6 +68,7 @@ pass `--insecure`.
 | `esc` | stop the run |
 | `ctrl+c` | stop the run, then quit on a second press |
 | `ctrl+d` | the debug console, when `FELIX_DEBUG` is set |
+| `y` / `n` / `e` | answer an approval — or `e` to approve it with different arguments |
 
 Rail rows are clickable, and selecting text copies it. Mouse reporting is on by default, so
 the wheel already scrolled and a drag already selected — the rail being the one visible thing
@@ -242,6 +243,12 @@ worth knowing before you change it:
   Past that the banner says so and stops taking `y`/`n`, because sending one would report success
   for a decision already made. It also says what `y` actually grants — every byte-identical call to
   that tool until the same deadline — which is not what "approve" reads as.
+- `e` on a harness approval opens `$EDITOR` on the arguments and approves the *edited* call — the
+  harness's third answer, which nothing offered before. A write to the wrong path could only be
+  denied, throwing away a correct intention over a wrong detail. Two things it is careful about: an
+  edit that is not a JSON object is refused rather than becoming an approval of the original, and
+  the deadline is re-checked on the way back, because it kept running while the editor had the
+  terminal and the countdown was off screen.
 - **Reads are not confirmed.** That is the stated trade of running against a real working
   directory.
 - The write prompt carries its own deadline, shorter than the executor's. `settleClientTool`

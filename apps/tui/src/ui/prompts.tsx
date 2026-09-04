@@ -67,25 +67,37 @@ function useTimeLeft(pending: PendingApproval): number | null {
 export function ApprovalPrompt({
   pending,
   onDecide,
+  onEdit,
   theme,
 }: {
   pending: PendingApproval;
   onDecide: (status: 'approved' | 'denied') => void;
+  /**
+   * Approve a *modified* call — the harness's third answer, which no client has
+   * offered. `App` supplies it, because editing means handing the terminal to
+   * `$EDITOR` and only `App` owns the renderer.
+   */
+  onEdit?: () => void;
   theme: Theme;
 }) {
+  const left = useTimeLeft(pending);
+  const lapsed = left === 0;
+
   useKeyboard((key: KeyEvent) => {
     const name = key.name?.toLowerCase();
-    if (name !== 'y' && name !== 'n') return;
+    if (name !== 'y' && name !== 'n' && name !== 'e') return;
     key.preventDefault();
     // Past the deadline the harness has already denied this. Sending a decision
     // would be answering a question nobody is still asking, and `y` would read
     // as though it had worked.
     if (lapsed) return;
+    if (name === 'e') {
+      onEdit?.();
+      return;
+    }
     onDecide(name === 'y' ? 'approved' : 'denied');
   });
 
-  const left = useTimeLeft(pending);
-  const lapsed = left === 0;
   const diff = writeDiff(pending);
   const summary = summarizeToolArgs(pending.toolName, pending.args);
   return (
@@ -148,6 +160,7 @@ export function ApprovalPrompt({
               filler. */}
           <text attributes={DIM}>
             y approve · n deny
+            {onEdit ? ' · e edit args' : ''}
             {left === null ? '' : ` · auto-denied in ${formatCountdown(left)}`}
           </text>
           {left === null ? null : (

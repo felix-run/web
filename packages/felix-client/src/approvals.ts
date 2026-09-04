@@ -223,3 +223,58 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
   }
   return { added: entries, deadlines };
 }
+
+/**
+ * Approving a *modified* call — the third answer between yes and no.
+ *
+ * The harness has accepted it all along (`edited_args` on the decision, applied
+ * in `manifests/builder.py`) and no client offered it, so a write to the wrong
+ * path could only be denied: throwing away a correct intention over a wrong
+ * detail, and making the model guess again.
+ *
+ * **An edit is not a correction to the call in front of you.** The grant is
+ * matched on a hash of the *original* arguments, and the reuse path applies
+ * `edited_args` too — so an edited approval is a substitution standing for
+ * every identical call until the grant expires. Anything that renders this owes
+ * the operator that sentence.
+ */
+export type ArgEdit =
+  | { status: 'unchanged' }
+  | { status: 'edited'; args: Record<string, unknown> }
+  | { status: 'invalid'; error: string };
+
+/** The arguments as something a person can edit. */
+export function formatArgsForEditing(args: Record<string, unknown>): string {
+  return `${JSON.stringify(args, null, 2)}\n`;
+}
+
+/**
+ * Read edited arguments back, or say why they cannot be used.
+ *
+ * Refuses anything that is not a JSON **object**. The harness spreads the value
+ * over the call's arguments, so a bare array or string would pass a naive parse
+ * and arrive as a tool call with no arguments at all — a silent success that
+ * runs the wrong thing.
+ *
+ * `unchanged` is its own answer rather than an edit equal to the original,
+ * because approving with `edited_args` installs a substitution, and installing
+ * one for an unmodified call is a surprise nobody asked for.
+ */
+export function parseEditedArgs(text: string, original: Record<string, unknown>): ArgEdit {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { status: 'invalid', error: err instanceof Error ? err.message : 'not valid JSON' };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { status: 'invalid', error: 'arguments must be a JSON object' };
+  }
+  const args = parsed as Record<string, unknown>;
+  // Key order is not a change, so both sides go through the same serializer
+  // with sorted keys rather than being compared as written.
+  const same =
+    JSON.stringify(args, Object.keys(args).sort()) ===
+    JSON.stringify(original, Object.keys(original).sort());
+  return same ? { status: 'unchanged' } : { status: 'edited', args };
+}
