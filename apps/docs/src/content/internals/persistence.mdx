@@ -41,6 +41,7 @@ Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compact
 | `fibers` | Durable sleep/step/resume state |
 | `eval_*` | Datasets, items, runs |
 | `memory_vectors` | pgvector HNSW; kinds `fact` / `preference` / `episode` / `procedural` |
+| `document_chunks` | Operator-ingested corpus; generated `content_tsv` (GIN) + **nullable** pgvector HNSW, so a deployment with no embedder still gets full-text retrieval |
 
 ## Object store
 
