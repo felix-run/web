@@ -117,7 +117,20 @@ itself a line taller than its content. Pinning the box height closes the gap and
 buffer wraps, so a long line in a narrow terminal needs more rows than it has lines, and a pinned
 height silently drops the ones past the fold. An empty row is cosmetic; clipped code is not.
 
-**The status line shortens both halves before it cuts.** An absolute path and a full origin spend
+**An empty thread says one thing, and it is not a key list.** The composer already carries its
+hint on its border and the status line already names the manifest, the host and the directory —
+repeating them would make the first screen the densest one. So `src/ui/greeting.tsx` says the fact
+that is nowhere else: the agent is pointed at a real working directory, reads it without asking,
+and asks before it writes. Under `--yes` it says that it does not ask, in the danger colour,
+because that is a materially different arrangement and the screen before you type is where it
+belongs.
+
+**The status line shortens both halves before it cuts, and serves the state first.** Which
+directory the agent can reach is not discoverable anywhere else once a thread has messages in it;
+the keys are also in `/help` and on the composer's border. Serving the keys first is what cut
+`felix-web` back to `fel…` on an eighty-four column terminal. The hint is written in falling order
+of usefulness, so taking its tail loses `/help` before it loses `tab threads`, and `MIN_HINT`
+keeps that opening pair however narrow the terminal gets. An absolute path and a full origin spend
 forty columns on two things whose useful part is at the end — and then the cut takes the end,
 leaving `/Users/blake…`, which names no directory at all. The scheme goes, and the path is reduced
 to its last segment: `quick · localhost:8080 · felix-web`. The directory matters because it is what
@@ -218,6 +231,12 @@ worth knowing before you change it:
   — printing `Error parsing diff:` and the raw text — so a write to any file long enough to need
   two hunks showed diff syntax instead of a diff. When even one hunk exceeds the budget its header
   is re-stated for the lines actually kept.
+- The prompt is a **column**, and that is not a layout preference. The summary ends in an absolute
+  path — the point of it — and beside the keys in a row, a path longer than the remaining width
+  wrapped *around* them: `write /Users/…/apps/tui/src/y allow · n` on one line and
+  `ui/some/deeply/nested/file.tsx?  refuse` on the next. The keys also stay a row of their own
+  rather than a `bottomTitle`, because a title too long for the border is dropped silently and the
+  keys that answer this must never be the thing that disappears.
 - **Reads are not confirmed.** That is the stated trade of running against a real working
   directory.
 - The write prompt carries its own deadline, shorter than the executor's. `settleClientTool`
@@ -245,6 +264,7 @@ worth knowing before you change it:
 | `src/ui/composer.tsx` | The prompt: a `textarea`, the Enter bindings, the paste policy |
 | `src/ui/transcript.tsx` | The conversation: `<markdown>` per turn, in a `scrollbox` |
 | `src/ui/rails.tsx` | The thread picker and the status line |
+| `src/ui/greeting.tsx` | What a thread with nothing in it says |
 | `src/ui/prompts.tsx` | Approval, agent question, and local-write banners |
 | `tests/render.ts` | Mounts a component on an in-memory renderer so its frame can be read back |
 
