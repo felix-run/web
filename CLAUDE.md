@@ -263,6 +263,15 @@ Flows worth knowing before editing the app:
   engine backfills them onto approvals that arrived by frame and are therefore already `seen`. That
   is a second reason the poll earns its place in a *watched* client, beyond finding approvals no
   frame announced.
+  **There is a third answer besides yes and no.** `edited_args` on the decision approves a
+  *modified* call and the harness has always taken it — the TUI opens `$EDITOR` on the arguments
+  (`e`), chat-ui swaps its arguments pane for a textarea. `parseEditedArgs` refuses anything that is
+  not a JSON **object**, because the harness spreads the value over the call's arguments and an
+  array or a string would arrive as a tool call with *no arguments at all* — a silent success that
+  runs the wrong thing. An unmodified edit approves plainly rather than sending the originals back:
+  `edited_args` installs a substitution that the **reuse path also applies**
+  (`manifests/builder.py`), so an edited approval stands for every identical call until the grant
+  expires rather than correcting the one in front of you.
 - **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
   with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
   `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only

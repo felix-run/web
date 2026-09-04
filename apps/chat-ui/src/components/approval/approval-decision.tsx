@@ -1,4 +1,10 @@
-import { formatCountdown, msUntilDecision, summarizeToolArgs } from '@felix/client';
+import {
+  formatArgsForEditing,
+  formatCountdown,
+  msUntilDecision,
+  parseEditedArgs,
+  summarizeToolArgs,
+} from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { useEffect, useRef, useState } from 'react';
@@ -55,7 +61,7 @@ export interface ApprovalDecisionProps {
    * Perform the decision. Should throw on failure; this component owns the
    * in-flight guard and both toasts so every caller gets the same behaviour.
    */
-  onDecide: (status: 'approved' | 'denied') => Promise<void>;
+  onDecide: (status: 'approved' | 'denied', editedArgs?: Record<string, unknown>) => Promise<void>;
   className?: string;
 }
 
@@ -111,12 +117,28 @@ export function ApprovalDecision({
   }, [expiresAt]);
   const lapsed = left === 0;
 
+  /**
+   * Approving a *modified* call — the harness's third answer, which nothing
+   * offered. A write to the wrong path could only be denied, which throws away
+   * a correct intention over a wrong detail and makes the model guess again.
+   */
+  const [draft, setDraft] = useState<string | null>(null);
+  const editing = draft !== null;
+  const edit = editing ? parseEditedArgs(draft, args) : null;
+
   async function decide(status: 'approved' | 'denied') {
     if (inFlight.current) return;
+    // An edit that does not parse must never become an approval of the
+    // *original* call: the harness spreads `edited_args` over the arguments, so
+    // a non-object would arrive as a call with none at all.
+    if (status === 'approved' && edit?.status === 'invalid') return;
     inFlight.current = true;
     setDeciding(status);
     try {
-      await onDecide(status);
+      await onDecide(
+        status,
+        status === 'approved' && edit?.status === 'edited' ? edit.args : undefined,
+      );
       toast.success(
         status === 'approved' ? `Approved ${toolName}. The run continues.` : `Denied ${toolName}.`,
       );
@@ -165,9 +187,34 @@ export function ApprovalDecision({
         </div>
       ) : (
         <div className="mt-2.5">
-          <CodePane label="Arguments" emphasis>
-            {safeStringify(args)}
-          </CodePane>
+          {editing ? (
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                Arguments — approving runs these instead
+              </span>
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                spellCheck={false}
+                rows={Math.min(18, draft.split('\n').length + 1)}
+                className="w-full rounded-md border bg-code-surface p-2 font-mono text-xs leading-snug outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+          ) : (
+            <CodePane label="Arguments" emphasis>
+              {safeStringify(args)}
+            </CodePane>
+          )}
+          {edit?.status === 'invalid' && (
+            <p className="mt-1 text-xs text-state-failed">
+              Not usable — {edit.error}. Nothing will be sent.
+            </p>
+          )}
+          {edit?.status === 'edited' && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              The same call is rewritten this way until the grant expires, not just this once.
+            </p>
+          )}
         </div>
       )}
 
@@ -175,10 +222,14 @@ export function ApprovalDecision({
         <Button
           size="sm"
           className="h-8 flex-1"
-          disabled={deciding !== null || lapsed}
+          disabled={deciding !== null || lapsed || edit?.status === 'invalid'}
           onClick={() => void decide('approved')}
         >
-          {deciding === 'approved' ? 'Approving…' : `Approve ${toolName}`}
+          {deciding === 'approved'
+            ? 'Approving…'
+            : edit?.status === 'edited'
+              ? `Approve ${toolName} with edits`
+              : `Approve ${toolName}`}
         </Button>
         <Button
           size="sm"
@@ -189,6 +240,20 @@ export function ApprovalDecision({
         >
           {deciding === 'denied' ? 'Denying…' : 'Deny'}
         </Button>
+        {/* Not offered for a write: that has a before/after pane rather than an
+            arguments blob, and editing a whole file body in a textarea inside a
+            banner is not the affordance anyone wants. */}
+        {!isWrite && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            disabled={deciding !== null || lapsed}
+            onClick={() => setDraft(editing ? null : formatArgsForEditing(args))}
+          >
+            {editing ? 'Cancel edit' : 'Edit arguments'}
+          </Button>
+        )}
       </div>
 
       <p className="mt-2 text-xs leading-snug text-muted-foreground">

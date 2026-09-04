@@ -20,7 +20,7 @@ export function ApprovalBanner({
   /** The run was stopped; the approval outlives it but deciding will not resume it. */
   runAborted?: boolean;
   /** Performs the decision and advances the queue. Should throw on failure. */
-  onDecide: (status: 'approved' | 'denied') => Promise<void>;
+  onDecide: (status: 'approved' | 'denied', editedArgs?: Record<string, unknown>) => Promise<void>;
 }) {
   return (
     // The inset matches the composer and the transcript column so the card's visible

@@ -607,9 +607,16 @@ export default function App() {
   // Deliberately bare: `ApprovalDecision` owns the in-flight guard and both
   // toasts, so this does the work and lets a failure propagate to it.
   const onDecide = useCallback(
-    async (status: 'approved' | 'denied') => {
+    async (status: 'approved' | 'denied', editedArgs?: Record<string, unknown>) => {
       if (!pending) return;
-      await decideApproval(pending.approvalId, { status });
+      await decideApproval(pending.approvalId, {
+        status,
+        // Only when the operator actually changed something: `edited_args`
+        // installs a substitution that stands for every identical call until
+        // the grant expires, so sending the originals back would quietly create
+        // one nobody asked for.
+        ...(editedArgs ? { edited_args: editedArgs } : {}),
+      });
       engine.shiftApproval();
     },
     [engine, pending],

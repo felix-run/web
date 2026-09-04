@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   type ApprovalRequest,
   DEFAULT_APPROVAL_TTL_MS,
+  formatArgsForEditing,
   formatCountdown,
   msUntilDecision,
+  parseEditedArgs,
   syncApprovals,
 } from '../src/approvals';
 
@@ -145,5 +147,65 @@ describe('formatCountdown', () => {
   it('rolls 59.999 seconds over to a minute', () => {
     expect(formatCountdown(59_999)).toBe('1:00');
     expect(formatCountdown(59_000)).toBe('59s');
+  });
+});
+
+/**
+ * Approving a modified call — the harness's third answer, which no client
+ * offered. A write to the wrong path could only be denied, which throws away a
+ * correct intention over a wrong detail.
+ *
+ * The refusals below are the point of the function. The harness spreads
+ * `edited_args` over the call, so a value that is not an object arrives as a
+ * tool call with **no arguments at all** — a silent success that runs the wrong
+ * thing, from an edit that looked accepted.
+ */
+describe('parseEditedArgs', () => {
+  const original = { path: 'a.ts', content: 'x' };
+
+  it('takes an edited object', () => {
+    const edit = parseEditedArgs('{"path":"b.ts","content":"x"}', original);
+    expect(edit).toEqual({ status: 'edited', args: { path: 'b.ts', content: 'x' } });
+  });
+
+  /**
+   * Reported separately rather than as an edit equal to the original: approving
+   * with `edited_args` installs a substitution, and installing one for a call
+   * nobody modified is a surprise.
+   */
+  it('reports an untouched payload as unchanged', () => {
+    expect(parseEditedArgs(JSON.stringify(original), original)).toEqual({ status: 'unchanged' });
+  });
+
+  it('does not mistake reformatting or key order for an edit', () => {
+    expect(parseEditedArgs('{\n  "content": "x",\n  "path": "a.ts"\n}\n', original)).toEqual({
+      status: 'unchanged',
+    });
+  });
+
+  it('refuses malformed JSON rather than guessing', () => {
+    const edit = parseEditedArgs('{"path": ', original);
+    expect(edit.status).toBe('invalid');
+  });
+
+  /** The three shapes that parse cleanly and would run the wrong call. */
+  it.each([
+    ['an array', '["a.ts"]'],
+    ['a string', '"a.ts"'],
+    ['null', 'null'],
+  ])('refuses %s, which would arrive as a call with no arguments', (_label, text) => {
+    const edit = parseEditedArgs(text, original);
+    expect(edit.status).toBe('invalid');
+    if (edit.status === 'invalid') expect(edit.error).toContain('JSON object');
+  });
+
+  it('round-trips through the editing format', () => {
+    expect(parseEditedArgs(formatArgsForEditing(original), original)).toEqual({
+      status: 'unchanged',
+    });
+  });
+
+  it('accepts an emptied object, which is a real thing to want', () => {
+    expect(parseEditedArgs('{}', original)).toEqual({ status: 'edited', args: {} });
   });
 });

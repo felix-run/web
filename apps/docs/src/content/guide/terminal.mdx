@@ -93,6 +93,7 @@ correct against a harness running `FELIX_AUTH_MODE=none`.
 | `ctrl+c` | Stop a live run; again to quit. |
 | `ctrl+d` | Open the debug console, when the client was started with `FELIX_DEBUG=1`. |
 | `y` / `n` | Answer whatever is blocking the run. |
+| `e` | Approve a gated call with *different* arguments — opens them in your editor. |
 
 What these keys do at any moment is written along the bottom of the screen, beside the manifest and
 origin — the rail's bindings included, which is where it matters most, because the prompt's own hint
@@ -212,6 +213,12 @@ minutes for you and then denies on your behalf, so once that passes the prompt s
 accepting an answer rather than pretending the decision is still yours. And because approving
 authorises every identical call to that tool until the same moment — not just the one in front of
 you — it says that too.
+
+There is a third answer besides yes and no: `e` opens the call's arguments in your editor, and
+approving then runs the version you saved. Useful when the intention is right and a detail is
+wrong — the path is off by a directory, a command has the wrong flag — where denying would throw
+the whole thing away and make the agent guess again. Note that it is a substitution rather than a
+one-off correction: the same call is rewritten your way until the approval expires.
 
 An agent question that offers choices is a real list you arrow through; one that wants text is a
 real input with a cursor, word motion and undo, and it takes a paste whole.
