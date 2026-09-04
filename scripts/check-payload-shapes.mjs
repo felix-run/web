@@ -56,8 +56,11 @@ const DEFAULT_RECORD = 'scripts/harness-payloads.json';
  */
 export const GUARDED = [
   {
+    // Moved with the inspector reads into @felix/client, the same way
+    // ApprovalRequest was: a terminal client needs the row shape too. AuditEvent
+    // rides along in that file because `extends` resolves only within one source.
     type: 'AuditEventWire',
-    file: 'apps/chat-ui/src/types.ts',
+    file: 'packages/felix-client/src/management/audit.ts',
     serializer: 'felix/audit/store.py:_event_dict',
   },
   {
@@ -69,17 +72,17 @@ export const GUARDED = [
   },
   {
     type: 'UsageEvent',
-    file: 'apps/chat-ui/src/types.ts',
+    file: 'packages/felix-client/src/management/usage.ts',
     serializer: 'felix/usage/store.py:_event_dict',
   },
   {
     type: 'MemoryRecord',
-    file: 'apps/chat-ui/src/types.ts',
+    file: 'packages/felix-client/src/management/memory.ts',
     serializer: 'felix/memory/store.py:_row_dict',
   },
   {
     type: 'PlanWire',
-    file: 'apps/chat-ui/src/types.ts',
+    file: 'packages/felix-client/src/management/plans.ts',
     serializer: 'felix/plans/store.py:_plan_dict',
   },
 ];

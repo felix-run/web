@@ -16,7 +16,7 @@ in this repo beyond one thin proxy Worker.
 | `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
 | `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
 | `packages/felix-protocol` (`@felix/protocol`) | The wire contract — SSE reader + shared types |
-| `packages/felix-client` (`@felix/client`) | Headless chat client — transport, transcript model, the one `StreamEvent` switch |
+| `packages/felix-client` (`@felix/client`) | Headless chat client — transport, transcript model, the one `StreamEvent` switch, plus the read-only management reads |
 | `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
 | `packages/test-kit` | Reusable behavioral suites — the proxy Worker contract and the SSE reader |
 | `packages/design` | Neutral palette + theme-CSS builders (docs theme is generated from these) |
@@ -87,12 +87,16 @@ stale data forever under a driver, which looks like a broken refresh and is not.
 
 Three mechanical guards cover the hand-mirrored wire contract, one per direction it can drift.
 
-`pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts` and
-`packages/felix-client/src/transport.ts` — including the ones that deliberately bypass the
+`pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts`,
+`packages/felix-client/src/transport.ts` and `packages/felix-client/src/management/*.ts` —
+including the ones that deliberately bypass the
 401-handling wrapper — and diffs path *and* verb against
-`apps/chat-ui/harness-openapi.json`, a committed record of what the harness serves. It catches a
-route the harness renamed or dropped; it cannot catch a call that hits a real route for the wrong
-purpose, and it says nothing about payload shapes. It also prints, advisory only, the routes the
+`apps/chat-ui/harness-openapi.json`, a committed record of what the harness serves. **That file
+list is explicit and the script does no discovery**, so a new module of routes that is not added to
+the `check-api-drift` script in `package.json` is simply not walked — the check keeps printing
+`✓ no drift` while covering fewer calls than it did. Compare the call-site count, not just the exit
+code. It catches a route the harness renamed or dropped; it cannot catch a call that hits a real
+route for the wrong purpose, and it says nothing about payload shapes. It also prints, advisory only, the routes the
 harness serves that nothing calls — the direction where a whole unbuilt feature shows up.
 
 `pnpm check-protocol-parity` covers the events, in **both** directions: every `StreamEvent` arm must
@@ -181,10 +185,18 @@ switch, the transcript, the durable-run and reattach paths, and the approval que
 mirrors its state with `useSyncExternalStore` and renders. `createFelixClient` owns the chat REST
 calls with the origin and credentials injected — `/api` plus `x-chat-key` for a browser that cannot
 reach the harness directly, a real origin plus a bearer token for anything that can. Nothing in the
-package touches storage, the DOM, or notifications. `apps/chat-ui/src/api.ts` supplies the browser's
-half of that arrangement and keeps the management routes (audit, memory, eval, jobs, manifests,
-plans, usage), which only chat-ui reads; `src/types.ts` re-exports both packages and declares those
-management shapes.
+package touches storage, the DOM, or notifications. `src/management/` holds the **read-only** half
+of the harness's operator surface — audit, usage, memory, plans, artifacts — composed onto the same
+client so a terminal can ask why a run did what it did; those routes were browser-only by accident
+rather than by design.
+
+`apps/chat-ui/src/api.ts` supplies the browser's half of the arrangement and keeps the **write**
+surface (eval datasets, manifest versions and canaries, scheduled jobs, the A2A card). That split is
+not only taste: each of those areas goes through its own `evalFetch`/`manifestFetch`/`jobsFetch`
+helper, and `check-api-drift` skips those helper *definitions* with a regex spelled for chat-ui's
+`/api` prefix — rewritten harness-relative they are extracted as the phantom paths `/eval{}`,
+`/manifests{}` and `/jobs{}` and fail against routes that are fine. `src/types.ts` re-exports both
+packages and declares what is left.
 
 *Almost* every frame is a bare `data:` line carrying one envelope `{event, type, data, text}`,
 terminated by `data: [DONE]`. Two other SSE fields carry meaning, and a reader that matches whole

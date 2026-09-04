@@ -36,6 +36,27 @@ export {
   type SendArgs,
 } from './engine';
 export { type DescribedError, describeError } from './errors';
+export { createHttp, type FelixHttp } from './http';
+export { createManagementClient } from './management';
+export type { ArtifactContent } from './management/artifacts';
+export {
+  AUDIT_EVENT_TYPES,
+  type AuditEvent,
+  type AuditEventType,
+  type AuditEventWire,
+  type ToolMetrics,
+  type ToolMetricsRow,
+} from './management/audit';
+export type { MemoryHit, MemoryRecord } from './management/memory';
+export {
+  flattenPlan,
+  type Plan,
+  type PlanBody,
+  type PlanStep,
+  type PlanStepStatus,
+  type PlanWire,
+} from './management/plans';
+export type { UsageEvent } from './management/usage';
 export { type ReattachOptions, reattachThread } from './reattach';
 export {
   eventsToTurns,
