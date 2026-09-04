@@ -117,7 +117,7 @@ export function JobsSheet({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {listError && (
+          {listError ? (
             <ErrorNotice
               error={listError}
               doing="list scheduled jobs"
@@ -132,7 +132,7 @@ export function JobsSheet({
                 </Button>
               }
             />
-          )}
+          ) : null}
           {actionError != null && <ErrorNotice error={actionError} doing="update this job" />}
 
           {/* Create form */}

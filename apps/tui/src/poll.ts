@@ -19,7 +19,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface Poll<T> {
   data: T | undefined;
-  error: string | null;
+  /**
+   * Whatever was caught, **unstringified**. `describeError` identifies an
+   * unreachable harness by the `TypeError` that `fetch` rejects with, and
+   * `String(err)` throws that signal away — leaving a locale-adjacent regex to
+   * stand in for it. This hook copied that mistake from chat-ui's; both are
+   * fixed.
+   */
+  error: unknown;
   loading: boolean;
   refresh(): void;
 }
@@ -29,7 +36,7 @@ export function usePoll<T>(
   { enabled = true, intervalMs = 3000 }: { enabled?: boolean; intervalMs?: number } = {},
 ): Poll<T> {
   const [data, setData] = useState<T>();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
 
   // A long-lived interval holds whichever copy of the fetcher existed when it
@@ -54,7 +61,7 @@ export function usePoll<T>(
       if (mine !== seq.current) return;
       // The last good data stays. An error and an empty result are different
       // states and must not be shown as the same one.
-      setError(String((err as Error)?.message ?? err));
+      setError(err);
     } finally {
       if (mine === seq.current) setLoading(false);
     }

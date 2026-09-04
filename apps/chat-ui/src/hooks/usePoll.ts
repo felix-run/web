@@ -17,9 +17,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export function usePoll<T>(
   fetcher: () => Promise<T>,
   { enabled = true, intervalMs = 3000 }: { enabled?: boolean; intervalMs?: number } = {},
-): { data: T | undefined; error: string | null; loading: boolean; refresh: () => void } {
+): { data: T | undefined; error: unknown; loading: boolean; refresh: () => void } {
   const [data, setData] = useState<T>();
-  const [error, setError] = useState<string | null>(null);
+  // The error is kept **raw**, not stringified. `describeError` identifies an
+  // unreachable harness by the `TypeError` that `fetch` rejects with, and
+  // `String(err)` throws that signal away — leaving only a locale-adjacent regex
+  // over "failed to fetch" to stand in for it. `ErrorNotice` says the same thing
+  // in its own docblock; this hook was the caller that could not honour it.
+  const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
@@ -30,7 +35,7 @@ export function usePoll<T>(
       setData(await fetcherRef.current());
       setError(null);
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      setError(err);
     } finally {
       setLoading(false);
     }

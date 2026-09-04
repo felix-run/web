@@ -98,19 +98,6 @@ before adding a fifth sheet.
 
 ## Cross-cutting
 
-### `usePoll` stringifies errors before anything can read them
-
-`usePoll.ts:33` does `setError(String((err as Error)?.message ?? err))`. `ErrorNotice` and
-`describeError` both want the raw error: an unreachable harness is identified by the `TypeError`
-that `fetch` rejects with, and stringifying first throws that away. It currently survives on a
-regex fallback matching "failed to fetch", which is fragile and locale-adjacent.
-
-`error-notice.tsx` documents this hazard in its own docblock, and `jobs-sheet.tsx` then feeds it a
-stringified error anyway — the one caller that cannot avoid it.
-
-**Size:** small, but it ripples: the hook's public `error` type changes, and the inspector and its
-tests consume it.
-
 ### The button size ramp exists and nothing uses it
 
 `packages/ui/src/button.tsx:23` defines `size="xs"` (`h-6`). Repo-wide usage: **zero**. Meanwhile
@@ -144,22 +131,33 @@ means deciding which is canonical and generating the other, not deleting one.
 
 **Size:** small, but it is a decision before it is an edit.
 
-### Three harness routes nothing calls
+### Seven harness routes nothing calls
 
-`pnpm check-api-drift` prints sixteen; thirteen are machine-facing (`/health`, `/metrics`, `/mcp`,
-`/a2a`, `/v1/chat/completions`, and so on) and belong there. Three are not:
+`pnpm check-api-drift` prints twenty, up from sixteen when this was written — a contract re-sync on
+2026-09-03 (#130) found the records were pinned to a harness fifty commits old. Thirteen of the
+twenty are machine-facing (`/health`, `/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on)
+and belong there. Seven are not:
 
+- **`/documents` — a whole area, and the largest unbuilt thing on this list.** `GET` and `POST
+  /documents`, `GET /documents/search`, `DELETE /documents/{doc_id}`: list, add, search, forget, the
+  same four verbs `/memory` has and which both clients already have a shape for. Nothing calls any
+  of it.
 - `PUT /plans/{}` — editing a plan. chat-ui reads plans and cannot change one.
 - `POST /eval/runs` — starting an eval. The inspector shows runs and cannot start one.
 - `POST /chat/sessions/custom` — no client touches it at all.
 
-CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up", and this
-is what it is currently showing. Each is a feature to scope rather than a bug to fix.
+CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up", and
+`/documents` is precisely that. Each is a feature to scope rather than a bug to fix.
+
+**Note for whoever builds `/documents` in the terminal:** the inspector's tab strip is full. Seven
+tabs at `TAB_WIDTH = 10` use 70 of the 72 columns available at eighty. An eighth needs the strip
+rethought, not a smaller number.
 
 ### `MemoryRecord` models six fields fewer than the harness sends
 
 `pnpm check-payload-shapes` reports `tenant_id`, `updated_at`, `thread_id`, `embedding_dim`,
-`embedding_model` and `embedding_json` as unmodelled. Advisory, and mostly correct — a row carries
+`embedding_model` and `embedding_json` as unmodelled. The type moved in #132 and now lives at
+`packages/felix-client/src/management/memory.ts`, so a terminal client reads the same rows. Advisory, and mostly correct — a row carries
 more than one panel needs. But `embedding_model` and `embedding_dim` are the two that answer "why
 did recall miss this", which is the question the memory inspector exists for, and `updated_at`
 distinguishes a fact that was rewritten from one that was not.
@@ -171,29 +169,31 @@ is worth reading rather than assuming benign.
 
 ## Terminal client
 
-### The keyboard is one switch, and five subscriptions that must not overlap
+### The keyboard is layers in all but name
 
-`apps/tui/src/app.tsx:691-790` is a single `useKeyboard` handler carrying ctrl+c's two-stage
-stop-then-quit, the page keys, the whole thread-picker mode including filter-as-you-type, escape,
-tab, ctrl+n and ctrl+d — with mode flags (`railFocused`, `blocked`, `quitArmed`) and manual
-`preventDefault` deciding which arm runs. There are five `useKeyboard` calls in the app (one in
-`app.tsx`, one in `composer.tsx`, three in `prompts.tsx`), and because the subscription is global,
-their mutual exclusion is enforced by *prose*: "App renders exactly one".
+**Half of this shipped in #133 and #134.** The switch is out of `app.tsx` and into
+`apps/tui/src/keys.ts` as a pure `route(key, state) -> Action | null`, with 29 tests that run in
+milliseconds rather than by mounting the app. Writing it down settled the thing the original note
+got wrong about its own mechanism: **`preventDefault()` does not stop another global handler** — it
+gates only the *focused* renderable — and because React runs child effects first, the three banners
+in `prompts.tsx` subscribe *before* `App` does. So mutual exclusion was never enforced by
+`preventDefault`; it is the `blocked` early return, and that is now a test rather than a sentence.
 
-`@opentui/keymap` is built for exactly this — layers with priorities and `enabled` predicates,
-resolved against the same key. It prepends onto `renderer.keyInput`, so adoption is incremental and
-`useKeyboard` keeps working for anything not yet moved. It would also make `/help` generable from
-the same table that binds the keys, and would retire the invariant that currently lives only in a
-comment.
+What remains is the adoption itself. There are still five `useKeyboard` calls (one in `app.tsx`, one
+in `composer.tsx`, three in `prompts.tsx`), and `@opentui/keymap` would replace the hand-rolled
+precedence with layers carrying priorities and `enabled` predicates. The remaining prize is
+`/help`: it is a hand-maintained string in `commands.ts` beside the `COMMANDS` switch, so an
+undocumented command is still possible, and a keymap table would generate it.
 
-Two things it does **not** solve, which the audit's original note got wrong: it has no focus-traversal
-API (tab order stays hand-rolled), and it cannot express the picker's catch-all "every printable
-character is filter text" — that needs an intercept or a `useKeyboard` behind the layer.
+Two things it does **not** solve, which the original note got right: no focus-traversal API (tab
+order stays hand-rolled), and it cannot express the picker's catch-all "every printable character is
+filter text" — that needs an intercept or a `useKeyboard` behind the layer.
 
 It pins `@opentui/core` to an exact version, so it lands with a version bump or not at all.
 
-**Size:** medium. Best done as: bump, provider, App-level layer, picker layer, the three banners,
-then the help panel — leaving the composer's `CHAT_BINDINGS` alone.
+**Size:** medium, and smaller than it was — the risky half (deciding and pinning the precedence
+chain) is done. Provider, App layer, picker layer, the three banners, then generate the help panel.
+Leave the composer's `CHAT_BINDINGS` alone.
 
 ### Every code frame carries one empty row, and the obvious fix is wrong
 

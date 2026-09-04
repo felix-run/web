@@ -14,6 +14,8 @@
 
 import type { FelixClient, PendingApproval } from '@felix/client';
 import { useMemo } from 'react';
+import type { Config } from './config.js';
+import { explainError } from './errors.js';
 import type { SectionKey } from './inspector.js';
 import { POLL_MS } from './inspector.js';
 import { usePoll } from './poll.js';
@@ -30,6 +32,24 @@ import {
   usageRows,
 } from './ui/inspector.js';
 
+/** Completes "Could not …" — the verb phrase `describeError` writes around. */
+function describeSection(section: SectionKey): string {
+  switch (section) {
+    case 'activity':
+      return 'read the activity feed';
+    case 'plans':
+      return 'read the plans';
+    case 'tools':
+      return 'read the tool metrics';
+    case 'usage':
+      return 'read the token usage';
+    case 'memory':
+      return 'read what the agent remembers';
+    default:
+      return 'read that';
+  }
+}
+
 /** Rows shown at once. The panel scrolls; the request should still be bounded. */
 const LIMIT = 50;
 
@@ -43,8 +63,9 @@ export function usePanel(opts: {
   approvals: PendingApproval[];
   skills: { declared: string[]; active: string[] } | null;
   theme: Theme;
+  config: Config;
 }): PanelState {
-  const { client, section, open, query, tick, approvals, skills, theme } = opts;
+  const { client, section, open, query, tick, approvals, skills, theme, config } = opts;
 
   // Only the visible section is enabled, so only one request is in flight.
   const on = (key: SectionKey) => open && section === key;
@@ -75,8 +96,8 @@ export function usePanel(opts: {
 
   return useMemo(() => {
     const empty = EMPTY[section] ?? '';
-    const of = <T>(p: { data: T | undefined; error: string | null; loading: boolean }) => ({
-      error: p.error,
+    const of = <T>(p: { data: T | undefined; error: unknown; loading: boolean }) => ({
+      error: p.error ? explainError(p.error, describeSection(section), config) : null,
       loading: p.loading,
     });
 
@@ -112,5 +133,5 @@ export function usePanel(opts: {
     }
     // `tick` is a dependency rather than a caller: bumping it re-derives, and
     // the refresh itself is the poll hooks' own `refresh`.
-  }, [section, activity, plans, tools, usage, memory, approvals, skills, theme, tick]);
+  }, [section, activity, plans, tools, usage, memory, approvals, skills, theme, config, tick]);
 }
