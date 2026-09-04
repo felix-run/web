@@ -29,6 +29,75 @@ make migrate
 
 Lean hosts: `make up-lite`. MinIO profile: `make up-full` with `FELIX_DOCKER_EXTRAS=aws`.
 
+### Overlays
+
+Each is a Compose overlay on the base stack, composable with the others. Run from the repo root —
+the Makefile passes `--project-directory .`.
+
+| Target | Adds |
+|---|---|
+| `make up-lite` | Tighter `mem_limit`; no host ports for DB/cache |
+| `make up-pooled` | PgBouncer in transaction mode |
+| `make up-replicas` | Two API replicas behind one nginx origin |
+| `make up-observability` | OTel Collector, Prometheus, Grafana, Jaeger, Loki, Postgres/Valkey exporters |
+| `make up-temporal` | Temporal server, UI on :8233, and `felix-temporal-worker` |
+| `make up-memoturn` | Memoturn LLM observability, on the existing Postgres/Valkey/MinIO |
+
+### Observability stack
+
+```bash
+make up-observability   # Grafana :3000 · Prometheus :9090 · Jaeger :16686
+```
+
+Budget roughly 1.7 GiB of additional `mem_limit`, so this does not belong on the same host as
+`make up-lite`. It also rebuilds the image with the `otel` extra — the lean default omits it, and
+without it OTLP export logs one warning at startup and ships nothing while every other signal keeps
+working.
+
+`/metrics` is authenticated (its labels carry tenant-supplied manifest ids and remote MCP tool
+names), and Prometheus has no env expansion in scrape configs — so `scripts/metrics-token.sh`, which
+`make up-observability` runs for you, mints a **second** API key with an empty `scopes` array beside
+your operator key and writes the bare token to a gitignored file. `/metrics` has no scope gate, so
+that key reads metrics and is refused everywhere else.
+
+See [observability](/internals/observability/) for the metric catalog and span schema.
+
+### Temporal
+
+```bash
+make up-temporal        # Temporal UI :8233
+```
+
+Swaps durable execution from the Postgres fiber sweeper to Temporal. `auto-setup` creates its two
+databases inside the existing Postgres rather than standing up a second one, which keeps the overlay
+within reach of a small VM — and is a development convenience, not a production shape.
+
+`FELIX_DURABILITY=temporal` is set for **api, worker and the temporal-worker together**: they must
+agree, or a durable chat is enqueued for one driver and executed by the other. The image gets the
+`temporal` extra there too, because the backend raises without `temporalio` rather than degrading —
+correct, since a durable chat that quietly ran transiently would be worse.
+
+<Aside type="caution" title="Temporal Cloud is not reachable">
+`Client.connect` takes no TLS or API-key options, so this is a self-hosted Temporal path only.
+</Aside>
+
+### Memoturn
+
+```bash
+make up-memoturn        # console :3002
+```
+
+Felix needs no SDK and no extra dependency: Memoturn ingests OTLP natively and maps spans carrying
+`gen_ai.*` attributes to generations, which is what the harness already emits — so the integration is
+an endpoint plus a Basic auth header (`FELIX_OTEL_PROTOCOL=http`, `FELIX_OTEL_HEADERS`).
+
+It borrows Felix's Postgres (its own database), Valkey (its own index) and MinIO (its own bucket)
+rather than the Postgres + Valkey + MinIO + Caddy + Doris its own compose stands up.
+
+A process has one OTLP destination. To send to Jaeger **and** Memoturn, run the observability
+overlay too, leave `FELIX_OTEL_ENDPOINT` pointing at the collector, and add an `otlphttp` exporter
+there — fanning out is the collector's job.
+
 ## Sizing
 
 Each worker process carries **its own** connection pool, so raise the two together or the second
@@ -111,6 +180,17 @@ helm upgrade --install felix ./deploy/helm/felix \
 A **pre-install/pre-upgrade Job** runs `felix migrate head` (`migrate.enabled=true`).
 The chart runs **api**, **worker**, and **scheduler**. For `FELIX_OBJECT_STORE=fs`,
 enable `persistence.enabled=true`.
+
+Set `serviceMonitor.enabled=true` for a Prometheus Operator scrape of `/metrics`. It reads a bearer
+token from a Secret you create — use a Felix API key with an empty `scopes` array, the same
+least-privilege shape `scripts/metrics-token.sh` mints for Compose:
+
+```bash
+kubectl create secret generic felix-metrics-scrape --from-literal=token="$UNSCOPED_API_KEY"
+helm upgrade --install felix ./deploy/helm/felix \
+  --set serviceMonitor.enabled=true \
+  --set serviceMonitor.bearerTokenSecret.name=felix-metrics-scrape
+```
 
 Cloud notes: `deploy/aws/README.md`, `deploy/gcp/README.md`.
 

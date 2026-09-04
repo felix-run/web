@@ -13,9 +13,21 @@ What Felix emits and where to look. Complements [governance](/internals/governan
 
 | Path | Sink |
 |---|---|
-| **Counters / histograms** | Prometheus (`record_counter` / `record_histogram`); scrape `/metrics` |
+| **Counters / histograms** | Prometheus (`record_counter` / `record_histogram`); scrape `/metrics` on the API, and `FELIX_METRICS_PORT` on the worker |
 | **Spans** | In-process + optional OTLP when `FELIX_OTEL_ENABLED=true` (`uv sync --extra otel`) |
+| **Logs** | Optional OTLP with `FELIX_OTEL_LOGS=true`, stamped with the trace that produced them |
 | **Audit events** | Buffered → Postgres `audit_events` (worker flush); query via `GET /audit` |
+
+:::caution[`/metrics` is authenticated, and not by accident]
+Label values include tenant-supplied manifest ids and remote MCP tool names, so an anonymous
+scrape would disclose every tenant's manifests and tools. It is not in the public-path set and it
+is not rate-limit exempt. A scraper needs a credential — give it an API key with an empty `scopes`
+array: `/metrics` has no scope gate, so an unscoped key reads metrics and is refused everywhere else.
+
+The worker's `FELIX_METRICS_PORT` endpoint carries the **same** label values with **no**
+authentication, because the worker has no auth middleware. Keep it on an internal network; never
+publish it.
+:::
 
 :::tip
 **Counters are the alert signal.** Audit rows are the trail after a threshold trips.
@@ -43,9 +55,95 @@ out of a non-empty allowlist is never registered at all.
 | `felix_run_stop_reason` | `manifest_id`, `reason` | A run ended on anything other than a clean completion |
 | `felix_interrupted_tool_calls` | `manifest_id` | A tool batch was cut short by a steer or abort |
 | `felix_browser_egress_blocked` | `reason` | A browser tool was refused an outbound host |
+| `felix_egress_blocked` | `reason` | An outbound request was refused by SSRF / egress policy |
+| `felix_model_timeout` | `provider` | `FELIX_MODEL_TIMEOUT_SECONDS` elapsed on a provider call |
+| `felix_model_unmetered` | `manifest_id`, `model` | A turn reported no usage — see the warning below |
+| `felix_policy_unsatisfiable` | `manifest_id` | A policy can never pass |
+| `felix_rule_targets_nothing` | `manifest_id`, `rule`, `kind` | A rule matches no tool |
+| `felix_untrusted_tools_unscreened` | `manifest_id` | Untrusted tool output reached the model without content screening |
+| `felix_worker_task` | `task`, `status` | Once per periodic worker sweep |
+| `felix_buffer_dropped` | `buffer` | Audit or usage rows dropped because a buffer hit its cap |
+
+### Histograms
+
+| Histogram | Labels | Observes |
+|---|---|---|
+| `felix_model_call_seconds` | `model`, `status` | One provider call. A fallback chain contributes one observation per attempt |
+| `felix_tool_call_seconds` | `transport`, `manifest_id` | One tool dispatch |
+| `felix_worker_task_seconds` | `task` | One periodic sweep |
+
+`felix_tool_call_seconds` is labelled like `felix_tool_calls` and deliberately **not** by tool name:
+MCP tool names arrive from a remote server and are unbounded label values.
+
+:::danger[Two counters mean a control is not working]
+`felix_model_unmetered` — the turn counted against no budget, so `limits.max_cost_usd` and the token
+limits failed *open* for it. Usually a streamed response missing `stream_options.include_usage`.
+
+`felix_buffer_dropped` — audit or usage rows are gone from Postgres and the warehouse both. Silent
+data loss; nothing else reports it.
+
+Watch `felix_control_unavailable` and `felix_untrusted_tools_unscreened` for the same reason.
+:::
 
 There is no counter for limit breaches, judge outcomes, anomaly scans or auto-rollbacks. A limit or
 guardrail denial is visible as `felix_tool_calls{status="denied"}` and as a `policy_deny` audit row.
+
+:::note[A zero on a governance panel is ambiguous]
+`spec.observability.metrics` is applied before the series is created, so a tenant that sets a
+non-empty allowlist suppresses every counter it does not name — including the governance-gap
+counters an operator is told to watch. Zero can mean "nothing happened" or "this tenant opted out
+of telling you".
+:::
+
+## Spans
+
+Span attributes follow the OpenTelemetry **GenAI semantic conventions** where one exists, so any
+OTLP backend renders a model call as a generation with token usage attached rather than as an
+anonymous timing bar.
+
+| Span | When | Key attributes |
+|---|---|---|
+| HTTP request | Per request, via `opentelemetry-instrumentation-fastapi` — the trace root | Standard HTTP semconv |
+| `manifest` | One per compile | `manifest_name`, `manifest_version` |
+| `chat {model}` | One per **provider call** | `gen_ai.operation.name`, `gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_*_input_tokens`, `felix.cost_usd`, `felix.model.route`, `felix.manifest.id` |
+| `tool {name}` | One per tool call | `gen_ai.tool.name`, `gen_ai.operation.name=execute_tool`, `felix.tool.transport`, `status` |
+| `worker {task}` | One per periodic sweep | `felix.worker.task` |
+
+A fallback chain that tries two providers emits **two** `chat` spans: the span wraps the leaf
+client, not the composite, so a retry is visible rather than collapsed into one bar.
+
+`felix.usage.unmetered=true` on a `chat` span is the span-level twin of `felix_model_unmetered`.
+
+### Sessions and identity
+
+`session.id` and `gen_ai.conversation.id` carry `{tenant}:{thread_id}` whenever the request has a
+thread — namespaced so threads cannot collide across tenants. This is what makes a multi-turn
+conversation one session in a backend instead of N unrelated traces.
+
+`FELIX_OTEL_CAPTURE_IDENTITY` (default `true`) additionally emits `user.id` / `gen_ai.user.id` from
+the auth principal and `felix.tenant.id`. Set it `false` when principal subjects are personal
+identifiers you would rather not export. The anonymous principal is never recorded — it is a
+default, not a person.
+
+### Prompts and completions are not captured
+
+`FELIX_OTEL_CAPTURE_CONTENT=true` opts in, writing `gen_ai.input.messages` and
+`gen_ai.output.messages` (truncated at 32k characters). It defaults to off because a tracing
+backend is an egress destination, and span attributes do not pass through the governance content
+screening that guards tool output.
+
+:::caution[Know what the redaction covers]
+Captured content passes through `redact_json` — the same masking the audit path uses. That replaces
+values Felix *knows* are secrets (those hydrated from the secrets backend) by substring match. It is
+**not** pattern detection, so a credential a user types into a chat is exported verbatim.
+:::
+
+### Probe endpoints are not traced
+
+`/health`, `/live`, `/ready` and `/metrics` are excluded, as are the ASGI `http send` / `http receive`
+child spans. Docker healthchecks and a Prometheus scrape run every 10–15s forever: left in, they
+accounted for 73% of traces and 59% of observations in a real export, against under 1% for agent
+activity. The request span still measures the whole request.
 
 ## Audit events
 
@@ -79,9 +177,29 @@ Postgres stays authoritative.
 2. Find the failing row → `payload.tool` names the tool; `payload.thread_id` locates the run.
 3. Confirm with Prometheus: `felix_tool_calls` carries the `transport` and `error_code` the audit
    payload does not, filtered by `manifest_id`.
-4. `GET /audit/metrics` for per-tool call counts, error rates and mean latency over a window.
+4. `GET /audit/metrics` for per-tool call counts and error rates over a window. Its
+   `avg_latency_ms` currently always reads `0` — it looks for `payload.latency_ms`, which the
+   `tool_call` payload does not write. Use `felix_tool_call_seconds` for latency.
 5. For durable chats, poll `GET /chat/runs/{resume_token}` and inspect fiber/run status.
+
+## Known limitations
+
+- **No multiprocess metrics.** `prometheus_client` runs in single-process mode, so a multi-worker
+  Granian reports per-worker fragments of every counter. Run one worker per replica, or aggregate
+  across a replica label.
+- **A reused metric name degrades silently.** Registering a name under a second label set raises,
+  and the sample is written as a `logger.info` line instead — the series simply never appears in
+  `/metrics`.
+- **Head sampling only.** `FELIX_OTEL_SAMPLE_RATIO` is parent-respecting, so a sampled request keeps
+  all of its child spans.
 
 ## Local
 
-`make up` / `make dev` → hit `/metrics` and `/audit`. Enable OTLP against a local collector when debugging cross-service latency. Deploy guidance: [deploy](/guide/deploy/).
+`make up-observability` brings up an OTel Collector, Prometheus, Grafana, Jaeger, Loki and
+Postgres/Valkey exporters against the stack, with datasources and one dashboard provisioned —
+including a governance row for the counters above. It also builds the image with the `otel` extra;
+without it, OTLP export logs one warning at startup and exports nothing while everything else looks
+healthy.
+
+`make up` / `make dev` → hit `/metrics` (with a credential) and `/audit`. Deploy guidance:
+[deploy](/guide/deploy/).
