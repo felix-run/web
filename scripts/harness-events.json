@@ -1,12 +1,15 @@
 {
   "$comment": "Every SSE event the harness can emit, recorded from a checkout by scripts/sync-harness-contract.mjs. check-protocol-parity fails when one of these has no StreamEvent arm — the direction the type system cannot see, because the union ends in an open arm. Do not hand-edit: re-run the sync.",
-  "harnessCommit": "bcce61a",
+  "harnessCommit": "9c6bb7d",
   "harnessVersion": "0.2.2",
   "normalised": {
     "error": "on_error"
   },
   "$legacyComment": "Renamed to tool_start/tool_end in the harness on 2026-08-22. The harness is self-hosted and versions independently, so a deployment older than that still emits these and the arms must stay. Maintained by hand — the sync cannot infer what a past version sent.",
-  "legacy": ["on_tool_start", "on_tool_end"],
+  "legacy": [
+    "on_tool_start",
+    "on_tool_end"
+  ],
   "emitted": [
     "aborted",
     "approval_required",
