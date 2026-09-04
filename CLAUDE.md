@@ -55,14 +55,29 @@ the three blocking frames, plus the log-to-transcript rebuild, the reattach loop
 matching. `@felix/tui` covers what a terminal adds on its own: config precedence,
 the prompt-history file's cap and self-healing, the OSC 52 clipboard's four outcomes, the attention signals' focus gate, the
 editor round trip, the thread rail's scroll window, and the workspace executor's containment and
-settle guarantees — **and, since `tests/render.ts`, its rendered components too.** Every one of them
+settle guarantees — **and, since `tests/render.ts`, its rendered components too, plus `app.tsx`
+itself.** Every one of them
 mounts on a renderer that writes to memory rather than a tty, so what is asserted is the frame:
 `transcript.test.ts` on the tool card's two states and on what the markdown stripper does to
 emphasis, `rails.test.ts` on the rail's window at a cursor thirty rows down and on a status line
 that must never wrap, `prompts.test.ts` on all three blocking banners and the keys that answer
 them, `composer.test.ts` on the keystroke sequence no hand-run reproduces reliably — a paste that
 submits itself halfway through when the terminal does not bracket it, and shift+Enter opening a
-line rather than sending. **`apps/tui` runs its whole suite under `bun test`**, not Vitest: the package is
+line rather than sending.
+
+The app's own three are worth knowing about separately, because they cover the rules that are
+easiest to break from outside the file that holds them. `app.test.ts` mounts the real `App` over a
+stubbed `globalThis.fetch` — the one seam, since everything else `App` needs is injected — and the
+double records requests rather than only answering them, so `/think high` is pinned to the field
+name the harness reads and not to a notice that says the right thing while sending nothing.
+`keys.test.ts` drives `route()` from `src/keys.ts`, which is the precedence chain as a pure
+function: **`preventDefault()` does not stop another global handler** — it gates only the focused
+renderable — and a child's `useKeyboard` runs before its parent's, so what actually keeps the app
+off the keyboard while a run waits on a person is the `blocked` early return. Anyone adding an
+overlay will walk past that guard; these fail when they do. `write-gate.test.ts` covers the prompt
+between the model and the disk: that it always settles, that a second request refuses the first
+rather than orphaning its resolver, and that its own deadline fires before the executor's so a `y`
+pressed too late cannot still write. **`apps/tui` runs its whole suite under `bun test`**, not Vitest: the package is
 Bun-only, so a second runner for the pure half bought nothing but a second test directory. Bun maps a
 `vitest` import onto its own runner, which is why the suites moved across untouched — but they import
 `bun:test` now, because an import naming a runner that does not run them is a lie the next person
