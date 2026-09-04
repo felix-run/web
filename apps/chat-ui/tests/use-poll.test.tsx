@@ -1,4 +1,6 @@
 /** @vitest-environment happy-dom */
+
+import { describeError } from '@felix/client';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePoll } from '../src/hooks/usePoll';
@@ -18,7 +20,7 @@ function Probe<T>(props: { fetcher: () => Promise<T>; enabled?: boolean; interva
   return (
     <div>
       <span data-testid="data">{JSON.stringify(data ?? null)}</span>
-      <span data-testid="error">{error ?? ''}</span>
+      <span data-testid="error">{error ? String((error as Error).message ?? error) : ''}</span>
       <span data-testid="loading">{String(loading)}</span>
     </div>
   );
@@ -145,5 +147,55 @@ describe('usePoll', () => {
     });
     await flush();
     expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('the error it reports', () => {
+  /**
+   * The hook stringified whatever it caught, which read as harmless and was not:
+   * `describeError` identifies an unreachable harness by the `TypeError` that
+   * `fetch` rejects with, so `String(err)` left only a locale-adjacent regex over
+   * "failed to fetch" standing in for the signal. `ErrorNotice` documents the
+   * rule in its own docblock; this hook was the one caller that broke it.
+   */
+  it('hands back the error itself, so an offline harness is recognised as one', async () => {
+    const boom = new TypeError('Load failed');
+    const fetcher = vi.fn().mockRejectedValue(boom);
+    let seen: unknown;
+    function Peek() {
+      seen = usePoll(fetcher, { intervalMs: 1000 }).error;
+      return null;
+    }
+    await act(async () => {
+      render(<Peek />);
+    });
+    await flush();
+
+    expect(seen).toBe(boom);
+    // Which is the whole point: the same object still identifies as offline.
+    expect(describeError(seen, 'read the activity feed').message).toMatch(/harness/i);
+  });
+
+  it('clears on the next success', async () => {
+    const fetcher = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockResolvedValue('ok');
+    let seen: unknown = 'unset';
+    function Peek() {
+      seen = usePoll(fetcher, { intervalMs: 1000 }).error;
+      return null;
+    }
+    await act(async () => {
+      render(<Peek />);
+    });
+    await flush();
+    expect(seen).toBeInstanceOf(TypeError);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    await flush();
+    expect(seen).toBeNull();
   });
 });

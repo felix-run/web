@@ -362,7 +362,8 @@ function SectionBody({
   children,
 }: {
   loading: boolean;
-  error: string | null;
+  /** Whatever was caught, unstringified — see `usePoll` and `ErrorNotice`. */
+  error: unknown;
   /** Verb phrase completing "Could not …", used to write the failure message. */
   doing: string;
   empty?: boolean;

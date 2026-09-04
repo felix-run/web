@@ -691,6 +691,7 @@ export function App({
     approvals,
     skills,
     theme,
+    config,
   });
 
   const railFocused = overlay === 'threads';
