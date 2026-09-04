@@ -8,7 +8,11 @@
  */
 export {
   type ApprovalRequest,
+  type ApprovalSync,
   type ApprovalSyncOptions,
+  DEFAULT_APPROVAL_TTL_MS,
+  formatCountdown,
+  msUntilDecision,
   type PendingApproval,
   summarizeToolArgs,
   syncApprovals,

@@ -237,6 +237,11 @@ worth knowing before you change it:
   `ui/some/deeply/nested/file.tsx?  refuse` on the next. The keys also stay a row of their own
   rather than a `bottomTitle`, because a title too long for the border is dropped silently and the
   keys that answer this must never be the thing that disappears.
+- A **harness-side** approval also carries a deadline, and both clients now show it. Silence is a
+  denial: the harness waits the rule's `ttl_seconds`, or five minutes, then answers `denied` itself.
+  Past that the banner says so and stops taking `y`/`n`, because sending one would report success
+  for a decision already made. It also says what `y` actually grants — every byte-identical call to
+  that tool until the same deadline — which is not what "approve" reads as.
 - **Reads are not confirmed.** That is the stated trade of running against a real working
   directory.
 - The write prompt carries its own deadline, shorter than the executor's. `settleClientTool`

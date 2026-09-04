@@ -250,6 +250,19 @@ Flows worth knowing before editing the app:
   (`/chat/sessions/lease`, released best-effort on unload); a 409 means another tab holds the session.
 - **Sticky interrupts** — `approval_required` and `ui_request` frames render as banners and are
   answered out-of-band (`/approvals/{id}/decide`, `/chat/ui`); the run is waiting on them.
+  **Not answering an approval is answering it.** The harness calls `wait_for_decision` with the
+  rule's `ttl_seconds` — or five minutes when the rule sets none — and on timeout returns `denied`
+  with the note `timeout`: the tool is refused and the run moves on. A banner still offering its
+  keys past that point is asking about a decision already made, so both clients show the deadline,
+  stop accepting an answer once it lapses, and say who made the decision. The same number is also
+  the *grant's* lifetime — approving authorizes every byte-identical call to that tool, matched on
+  a hash of the arguments, until it expires — which is why the prompt says so rather than implying
+  `y` allows one call.
+  The deadline arrives only on the `/approvals` row; the **frame carries none**. So `syncApprovals`
+  returns deadlines for *every* pending approval rather than only the ones it is adding, and the
+  engine backfills them onto approvals that arrived by frame and are therefore already `seen`. That
+  is a second reason the poll earns its place in a *watched* client, beyond finding approvals no
+  frame announced.
 - **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
   with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
   `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only

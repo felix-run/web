@@ -32,6 +32,10 @@ export function ApprovalBanner({
         args={pending.args}
         // `before` is only meaningful for a write; anything else has no before/after.
         before={pending.toolName === 'write_file' ? (pending.before ?? null) : undefined}
+        // The rule that gated the call, in the slot already built for a quiet
+        // subtitle beside the tool name.
+        context={pending.ruleId}
+        expiresAt={pending.expiresAt}
         queueLength={queueLength}
         runAborted={runAborted}
         onDecide={onDecide}

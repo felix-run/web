@@ -1,7 +1,7 @@
-import { summarizeToolArgs } from '@felix/client';
+import { formatCountdown, msUntilDecision, summarizeToolArgs } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { toastError } from '@/lib/error-toast';
 import { cn } from '@/lib/utils';
@@ -41,6 +41,17 @@ export interface ApprovalDecisionProps {
    */
   runAborted?: boolean;
   /**
+   * Epoch ms after which the harness answers for you.
+   *
+   * **Not answering is answering.** `wait_for_decision` is called with the
+   * rule's `ttl_seconds` — five minutes when it sets none — and on timeout
+   * returns `denied` with the note `timeout`: the tool is refused and the run
+   * moves on. Buttons still offered past that point ask about a decision
+   * already made. Omitted while unknown, which is the state an approval
+   * announced by frame is in until the `/approvals` poll fills it in.
+   */
+  expiresAt?: number | null;
+  /**
    * Perform the decision. Should throw on failure; this component owns the
    * in-flight guard and both toasts so every caller gets the same behaviour.
    */
@@ -75,6 +86,7 @@ export function ApprovalDecision({
   args,
   before,
   context,
+  expiresAt,
   queueLength,
   runAborted,
   onDecide,
@@ -87,6 +99,17 @@ export function ApprovalDecision({
 
   const isWrite = before !== undefined;
   const summary = oneLine(summarizeToolArgs(toolName, args));
+
+  // Re-read every second while the card is up, and only then. The deadline is
+  // minutes long, so this is a handful of renders per approval.
+  const [left, setLeft] = useState(() => msUntilDecision({ expiresAt }));
+  useEffect(() => {
+    setLeft(msUntilDecision({ expiresAt }));
+    if (expiresAt == null) return;
+    const timer = setInterval(() => setLeft(msUntilDecision({ expiresAt })), 1_000);
+    return () => clearInterval(timer);
+  }, [expiresAt]);
+  const lapsed = left === 0;
 
   async function decide(status: 'approved' | 'denied') {
     if (inFlight.current) return;
@@ -152,7 +175,7 @@ export function ApprovalDecision({
         <Button
           size="sm"
           className="h-8 flex-1"
-          disabled={deciding !== null}
+          disabled={deciding !== null || lapsed}
           onClick={() => void decide('approved')}
         >
           {deciding === 'approved' ? 'Approving…' : `Approve ${toolName}`}
@@ -161,7 +184,7 @@ export function ApprovalDecision({
           size="sm"
           variant="outline"
           className="h-8 flex-1"
-          disabled={deciding !== null}
+          disabled={deciding !== null || lapsed}
           onClick={() => void decide('denied')}
         >
           {deciding === 'denied' ? 'Denying…' : 'Deny'}
@@ -169,9 +192,24 @@ export function ApprovalDecision({
       </div>
 
       <p className="mt-2 text-xs leading-snug text-muted-foreground">
-        {runAborted
-          ? 'This run was stopped, so deciding will not restart it. Answering still closes out the request.'
-          : 'Deciding resumes the paused run, no need to re-send.'}
+        {lapsed ? (
+          <span className="text-state-failed">
+            The harness stopped waiting and denied this itself.
+          </span>
+        ) : runAborted ? (
+          'This run was stopped, so deciding will not restart it. Answering still closes out the request.'
+        ) : (
+          <>
+            Deciding resumes the paused run, no need to re-send.
+            {left !== null && (
+              <>
+                {' '}
+                Denied automatically in {formatCountdown(left)}; approving also allows this exact
+                call until then.
+              </>
+            )}
+          </>
+        )}
       </p>
     </div>
   );

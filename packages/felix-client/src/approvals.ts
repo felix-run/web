@@ -37,16 +37,93 @@ export interface ApprovalRequest {
   decided_by: string;
   decision_note: string;
   edited_args: Record<string, unknown> | null;
+  /**
+   * The rule that gated the call. Not optional: the wire always sends the key,
+   * and an empty string is the harness saying it has no rule to name.
+   */
+  rule_id: string;
+  /**
+   * How long the harness waits for a decision — and, if the answer is yes, how
+   * long the resulting grant stays reusable. One number, both jobs. `null`
+   * means the harness's own default of five minutes.
+   */
+  ttl_seconds: number | null;
+  /** Epoch ms. `null` when the rule set no TTL. */
+  expires_at: number | null;
+  /** Epoch ms a one-shot grant was spent, or `null`. */
+  consumed_at: number | null;
 }
 
-/** Approval state a client holds while the decision is outstanding. */
+/**
+ * Approval state a client holds while the decision is outstanding.
+ *
+ * **Not answering is an answer.** The harness calls `wait_for_decision` with
+ * the rule's `ttl_seconds`, or five minutes when it has none, and on timeout
+ * returns `denied` with the note `timeout`: the tool is refused and the run
+ * moves on. A banner still offering `y`/`n` after that is asking about a
+ * decision already made without the operator.
+ *
+ * **And approving is not approving one call.** It issues a grant that
+ * authorizes every byte-identical call to that tool — matched on a hash of the
+ * arguments, scoped to the manifest — until the same deadline passes. A prompt
+ * that says only `y approve · n deny` states neither half of that.
+ */
 export interface PendingApproval {
   approvalId: string;
   toolName: string;
   args: Record<string, unknown>;
+  /** The rule that gated this, when the harness named one. */
   ruleId?: string;
+  /** Why it fired. Frame-only — the `/approvals` row carries no reason. */
+  reason?: string;
+  /**
+   * Epoch ms after which the harness stops waiting and denies.
+   *
+   * Absent on an approval known only from its frame: the frame carries no
+   * deadline, and the `/approvals` poll is what fills it in. That is a second
+   * reason the poll earns its place in a *watched* client, beyond finding the
+   * approvals no frame announced.
+   */
+  expiresAt?: number | null;
   /** Existing file text for write_file diffs (null = new file / unreadable). */
   before?: string | null;
+}
+
+/**
+ * What the harness waits when a rule sets no `ttl_seconds`.
+ *
+ * Derived rather than copied from the row, because `expires_at` is null in
+ * exactly that case and the harness still stops waiting — after its own
+ * default. Reporting "no deadline" there would repeat the row instead of
+ * describing the behaviour.
+ */
+export const DEFAULT_APPROVAL_TTL_MS = 300_000;
+
+/**
+ * Milliseconds left to decide, or `null` when no deadline is known.
+ *
+ * Never negative — a lapsed approval reads as zero, so callers ask
+ * `=== 0` for "expired" rather than testing a sign.
+ */
+export function msUntilDecision(
+  pending: Pick<PendingApproval, 'expiresAt'>,
+  now = Date.now(),
+): number | null {
+  if (pending.expiresAt == null) return null;
+  return Math.max(0, pending.expiresAt - now);
+}
+
+/**
+ * A deadline as a person reads one: `4:12`, and `38s` under the minute.
+ *
+ * Seconds throughout would be a three-digit number for most of a five-minute
+ * window; minutes alone would sit on `1m` while the thing actually expired.
+ */
+export function formatCountdown(ms: number): string {
+  const total = Math.ceil(ms / 1000);
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  return `${minutes}:${String(total % 60).padStart(2, '0')}`;
 }
 
 /**
@@ -94,15 +171,38 @@ export interface ApprovalSyncOptions {
  * Returns only the newly adopted entries — an empty array is the common case,
  * and means the caller has nothing to re-render.
  */
-export async function syncApprovals(opts: ApprovalSyncOptions): Promise<PendingApproval[]> {
+/**
+ * What one poll learned.
+ *
+ * Two things, not one, because a frame and a row carry different halves. The
+ * frame announces an approval and says why it fired; only the row knows when
+ * the harness stops waiting. So the poll reports deadlines for **every**
+ * pending approval, not just the ones it is adding — otherwise an approval that
+ * arrived by frame is `seen`, skipped, and never learns its own.
+ */
+export interface ApprovalSync {
+  /** Approvals no client had yet. */
+  added: PendingApproval[];
+  /** Deadline by approval id, epoch ms, for everything still pending. */
+  deadlines: Map<string, number>;
+}
+
+/** When the harness gives up on this row, whether or not its rule set a TTL. */
+function deadlineOf(item: ApprovalRequest): number {
+  return item.expires_at ?? item.created_at + DEFAULT_APPROVAL_TTL_MS;
+}
+
+export async function syncApprovals(opts: ApprovalSyncOptions): Promise<ApprovalSync> {
   let items: ApprovalRequest[];
   try {
     items = await opts.listPending();
   } catch {
-    return []; // endpoint unavailable; the frame path may still deliver
+    // Endpoint unavailable; the frame path may still deliver.
+    return { added: [], deadlines: new Map() };
   }
+  const deadlines = new Map(items.map((item) => [item.id, deadlineOf(item)]));
   const fresh = items.filter((item) => !opts.seen.has(item.id));
-  if (!fresh.length) return [];
+  if (!fresh.length) return { added: [], deadlines };
 
   const entries: PendingApproval[] = [];
   for (const item of fresh) {
@@ -112,7 +212,14 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<PendingA
     if (item.tool_name === 'write_file' && typeof args.path === 'string' && opts.readForDiff) {
       before = await opts.readForDiff(args.path);
     }
-    entries.push({ approvalId: item.id, toolName: item.tool_name, args, before });
+    entries.push({
+      approvalId: item.id,
+      toolName: item.tool_name,
+      args,
+      before,
+      ...(item.rule_id ? { ruleId: item.rule_id } : {}),
+      expiresAt: deadlineOf(item),
+    });
   }
-  return entries;
+  return { added: entries, deadlines };
 }
