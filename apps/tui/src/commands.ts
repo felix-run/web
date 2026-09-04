@@ -37,6 +37,7 @@ export const HELP = [
   '/new /clear /continue /think <level> /manifest [name] /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n]',
   '/search <text> /open <n|thread-id> /refresh',
+  'shift+tab inspects the harness — activity, plans, tools, usage, memory, skills',
 ].join('\n');
 
 /** A hit, a title, a path — one line each, because a notice is one line each. */

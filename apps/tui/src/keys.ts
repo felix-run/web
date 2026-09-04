@@ -22,16 +22,28 @@
 
 import type { KeyEvent } from '@opentui/core';
 
+/**
+ * Which overlay owns the keyboard, as one value rather than a flag each.
+ *
+ * They are mutually exclusive on purpose. Both consume every key they are
+ * handed and return, so two open at once is a precedence matrix with no correct
+ * answer — and both are opaque boxes at the same `zIndex`, so it would also be a
+ * drawing accident.
+ */
+export type Overlay = 'none' | 'threads' | 'inspector';
+
 export interface KeyState {
   /** A prompt the run is waiting on: write gate, approval, or agent question. */
   blocked: boolean;
   streaming: boolean;
   /** ctrl+c was pressed once during a live run. */
   quitArmed: boolean;
-  railFocused: boolean;
+  overlay: Overlay;
   railFilter: string;
   /** Whether ctrl+d has an overlay to toggle. */
   consoleAvailable: boolean;
+  /** The inspector's memory search field has the keyboard. */
+  searching: boolean;
 }
 
 export type Action =
@@ -50,6 +62,15 @@ export type Action =
   | { kind: 'open-rail' }
   | { kind: 'new-thread' }
   | { kind: 'toggle-console' }
+  | { kind: 'open-inspector' }
+  | { kind: 'close-inspector' }
+  /** Move between inspector sections. */
+  | { kind: 'section'; by: -1 | 1 }
+  /** Scroll the inspector's panel rather than the transcript. */
+  | { kind: 'panel'; by: -1 | 1 }
+  | { kind: 'refresh-section' }
+  | { kind: 'search-open' }
+  | { kind: 'search-close' }
   /** Claimed, and deliberately does nothing — the rail swallows what it cannot use. */
   | { kind: 'consume' };
 
@@ -83,7 +104,33 @@ export function route(key: KeyEvent, state: KeyState): Action | null {
   // The rail takes the keyboard whole while it has focus — the same rule the
   // composer follows, for the same reason: a key that means two things does
   // both unless one handler claims it.
-  if (state.railFocused) {
+  // The inspector sits directly under the blocking prompts and above the rail.
+  // It has no `useKeyboard` of its own: a handler registered inside it would
+  // subscribe *before* this one and see keys while a banner is up.
+  if (state.overlay === 'inspector') {
+    // The search field is a mode, and the only one here. It earns that because
+    // there is no other way to get typed text into a panel — and `escape` is
+    // taken outright below, so the input never sees the key that leaves it.
+    if (state.searching) {
+      return name === 'escape' ? { kind: 'search-close' } : null;
+    }
+    if (name === 'escape') return { kind: 'close-inspector' };
+    // `tab` hands the keyboard to the other overlay rather than closing onto
+    // nothing, which is the pair to shift+tab opening this one.
+    if (name === 'tab' && !key.shift) return { kind: 'open-rail' };
+    if (name === 'tab' && key.shift) return { kind: 'close-inspector' };
+    if (name === 'left' || name === 'h') return { kind: 'section', by: -1 };
+    if (name === 'right' || name === 'l') return { kind: 'section', by: 1 };
+    if (name === 'up') return { kind: 'panel', by: -1 };
+    if (name === 'down') return { kind: 'panel', by: 1 };
+    if (name === 'r') return { kind: 'refresh-section' };
+    if (name === '/') return { kind: 'search-open' };
+    return { kind: 'consume' };
+  }
+
+  if (state.overlay === 'threads') {
+    // shift+tab swaps to the inspector; plain tab closes.
+    if (name === 'tab' && key.shift) return { kind: 'open-inspector' };
     if (name === 'tab' || (name === 'escape' && !state.railFilter)) return { kind: 'close-rail' };
     if (name === 'escape') return { kind: 'clear-filter' };
     if (name === 'up') return { kind: 'rail-move', by: -1 };
@@ -100,6 +147,11 @@ export function route(key: KeyEvent, state: KeyState): Action | null {
   }
 
   if (name === 'escape' && state.streaming) return { kind: 'abort' };
+  // shift+Tab is `ESC [ Z` on every terminal and is parsed as `tab` with the
+  // shift flag — so the plain-tab branch below has to say so, or it opens the
+  // rail on both. `ctrl+i` is not an option for the inspector: it *is* 0x09,
+  // which is `tab`, on any terminal not speaking the kitty protocol.
+  if (name === 'tab' && key.shift) return { kind: 'open-inspector' };
   if (name === 'tab') return { kind: 'open-rail' };
   if (key.ctrl && name === 'n') return { kind: 'new-thread' };
   // Only bound when the overlay exists: with `consoleMode: 'disabled'` this

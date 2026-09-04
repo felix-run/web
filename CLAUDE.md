@@ -393,6 +393,25 @@ browser cannot do rather than about the chat:
 - **The conversation grows from the bottom** (`justifyContent: 'flex-end'` on the transcript's
   content). Without it a short conversation floats at the top and the composer sits at the bottom
   with fifteen empty rows between them.
+- **The inspector is the harness's read-only operator surface, on `shift+tab`.** Seven sections over
+  a `<tab-select>` strip, one `<scrollbox>` panel, and **only the visible section polls** — with tabs
+  rather than chat-ui's disclosure stack, exactly one is on screen, so the terminal costs one request
+  where the browser costs one per expanded panel. It does *not* gate on terminal focus the way
+  chat-ui gates on `visibilityState`: focus reporting is tri-state here because plenty of terminals
+  never answer, so gating would silently freeze the panel on those. The approvals section reads the
+  engine's existing queue rather than adding a second poll — that one runs unwatched by design.
+  Three things about the widgets. `TextTableRenderable` is **not** a JSX intrinsic at 0.5.10 despite
+  what the docs say, so `src/ui/table.tsx` registers it with `extend()` — and that registration lives
+  in the module exporting the only wrapper that renders it, because tests mount components without
+  `main.tsx` and a bare side-effect import is the one a tidy-up deletes. `<tab-select>` takes **no**
+  `selectedIndex` prop (unlike `<select>`), so the strip is driven through a ref, and its defaults
+  are hardcoded true-colour literals that must all be overridden or they paint over the user's
+  palette. `TAB_WIDTH` is 10 because seven tabs have 72 columns to share at eighty: the default of 20
+  shows three, and 11 shows six with nothing on screen to say a seventh exists.
+- **`ctrl+i` is not available for anything.** It *is* `0x09`, which *is* `tab`, on any terminal not
+  speaking the kitty protocol — so binding it collides with the thread picker on exactly the
+  terminals least able to tell them apart. `shift+tab` is `ESC [ Z` everywhere and parses as `tab`
+  with the shift flag, which also means a branch matching only the *name* fires on both.
 - **The thread picker is an absolutely-positioned overlay, not a column.** It was a permanent rail
   costing twenty-eight of a hundred cells, drawn only above ninety columns — so the client had two
   shapes depending on the terminal. `position: "absolute"` + `zIndex` means opening it does not

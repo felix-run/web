@@ -19,9 +19,10 @@ const state = (over: Partial<KeyState> = {}): KeyState => ({
   blocked: false,
   streaming: false,
   quitArmed: false,
-  railFocused: false,
+  overlay: 'none',
   railFilter: '',
   consoleAvailable: false,
+  searching: false,
   ...over,
 });
 
@@ -65,7 +66,7 @@ describe('ctrl+c is stop, then quit', () => {
 });
 
 describe('the rail takes the keyboard whole', () => {
-  const rail = (over: Partial<KeyState> = {}) => state({ railFocused: true, ...over });
+  const rail = (over: Partial<KeyState> = {}) => state({ overlay: 'threads', ...over });
 
   it('closes on tab, and on escape with no filter', () => {
     expect(route(key('tab'), rail())).toEqual({ kind: 'close-rail' });
@@ -122,5 +123,55 @@ describe('normal mode', () => {
     expect(route(key('a'), state())).toBeNull();
     expect(route(key('return'), state())).toBeNull();
     expect(route(key('up'), state())).toBeNull();
+  });
+});
+
+describe('the inspector sits under the prompts and above the rail', () => {
+  const open = (over: Partial<KeyState> = {}) => state({ overlay: 'inspector', ...over });
+
+  it('opens on shift+tab, and plain tab still opens the rail', () => {
+    // `ctrl+i` is not an option: it *is* 0x09, which is `tab`, on any terminal
+    // not speaking the kitty protocol — so it would collide with the rail on
+    // exactly the terminals least able to tell them apart.
+    expect(route(key('tab', { shift: true }), state())).toEqual({ kind: 'open-inspector' });
+    expect(route(key('tab'), state())).toEqual({ kind: 'open-rail' });
+  });
+
+  it('cannot be opened while a run waits on a person', () => {
+    // The regression this whole file exists for.
+    expect(route(key('tab', { shift: true }), state({ blocked: true }))).toBeNull();
+  });
+
+  it('closes on escape without stopping a live run', () => {
+    expect(route(key('escape'), open({ streaming: true }))).toEqual({ kind: 'close-inspector' });
+  });
+
+  it('swaps with the rail rather than closing onto nothing', () => {
+    expect(route(key('tab'), open())).toEqual({ kind: 'open-rail' });
+    expect(route(key('tab', { shift: true }), state({ overlay: 'threads' }))).toEqual({
+      kind: 'open-inspector',
+    });
+  });
+
+  it('moves sections with the arrows, and scrolls the panel', () => {
+    expect(route(key('left'), open())).toEqual({ kind: 'section', by: -1 });
+    expect(route(key('right'), open())).toEqual({ kind: 'section', by: 1 });
+    expect(route(key('up'), open())).toEqual({ kind: 'panel', by: -1 });
+    expect(route(key('pageup'), open())).toEqual({ kind: 'scroll', by: -0.5 });
+  });
+
+  it('consumes what it does not use, so nothing reaches the composer', () => {
+    expect(route(key('z'), open())).toEqual({ kind: 'consume' });
+  });
+
+  it('hands every key but escape to the search field while it is open', () => {
+    // Otherwise `r` would refresh the section instead of typing an r.
+    expect(route(key('r'), open({ searching: true }))).toBeNull();
+    expect(route(key('l'), open({ searching: true }))).toBeNull();
+    expect(route(key('escape'), open({ searching: true }))).toEqual({ kind: 'search-close' });
+  });
+
+  it('still lets ctrl+c stop the run from inside', () => {
+    expect(route(key('c', { ctrl: true }), open({ streaming: true }))).toEqual({ kind: 'stop' });
   });
 });
