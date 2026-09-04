@@ -20,21 +20,26 @@ The chat-ui sheets — jobs, eval, manifests, agent spec — were critiqued twic
 scoring 18/40 then 24/40. Four PRs closed the correctness, consistency, accessibility and
 recognition findings: #48, #49, #51, #52. What follows is what those passes found and did not fix.
 
+Four more closed in #139: the wire-key labels, the explanation on a disabled button that could never
+fire, the badge that drew a failing run quieter than a passing one, and the canary that reported
+itself absent while offering to clear itself.
+
 ---
 
 ## Sheets
 
-### Labels name the API field, not the thing
+### Explanations that only a mouse can reach
 
-`agent-sheet.tsx` prints wire keys verbatim: `max_tokens`, `checkpointer`, `full_replay`,
-`a2a peers`, `mcp servers`. PRODUCT.md asks for the opposite — labels that name the thing. This is
-the single largest remaining gap for the second audience the brief names, a viewer meeting the
-product cold.
+Two `title` attributes still carry information a keyboard or touch user cannot get at:
+`manifests-sheet.tsx:153` (`Canary vN at W%`) and `eval-sheet.tsx:480`, which is the worse of the
+two — it holds the judge's `reasoning`, the actual output of an eval, on hover over a line that is
+also cut at 80 characters with no way to expand.
 
-Same file, related: the Connectivity section renders six rows that on a typical manifest are all
-`—`, at the same visual weight as Governance. A panel of absences.
+The third instance shipped: the run button's `title` explained why it was disabled, on an element
+that being disabled could never fire the event to show it. That one is inline now, and
+`tests/eval-sheet.test.tsx` pins it.
 
-**Size:** small. A label map, and a decision about whether empty Connectivity rows earn their space.
+**Size:** small for the canary badge; the eval one is part of the run-card redesign below.
 
 ### The eval run card throws away its own instrumentation
 
@@ -50,36 +55,6 @@ Worse, the judge's `reasoning` — the actual output of an eval — is reachable
 
 **Size:** medium. The data is already in hand; this is a card redesign, and `Collapsible` already
 exists in `@felix/ui`.
-
-### Three explanations are hover-only, and one can never be read
-
-`title` attributes carrying real information: 2 in `eval-sheet.tsx`, 3 in
-`manifests-sheet.tsx`. They are invisible to touch and to keyboard.
-
-One is worse than invisible. `eval-sheet.tsx:193-198` sets
-`disabled={running || items.length === 0}` and `title={items.length === 0 ? 'Add an item first' : …}`
-— so the explanatory half of that tooltip only exists in the state where the element is disabled,
-and **disabled elements do not fire mouse events**. The one message that tells you how to proceed
-is the one nobody can see.
-
-**Size:** small. Inline the reason, as the manifest sheet now does for its refusals.
-
-### A failing eval run is the quieter thing
-
-`eval-sheet.tsx:322` renders the run badge as
-`variant={run.fail_count === 0 ? 'default' : 'secondary'}` — `default` is the primary fill,
-`secondary` is muted grey. A clean run shouts and a failing run whispers, which is backwards. The
-score rows eighteen lines below get it right, using `text-state-done` / `text-state-failed`.
-
-**Size:** trivial, but decide it against the state palette rather than swapping the two variants.
-
-### Two readings of one canary state, sixty lines apart
-
-`manifests-sheet.tsx:418` shows "none in flight" when `liveCanaryV != null && liveWeight > 0` is
-false. `manifests-sheet.tsx:477` keeps **Clear canary enabled** whenever `liveCanaryV != null`. So a
-canary pinned at 0% reports itself as absent while offering a button to clear it.
-
-**Size:** trivial. Pick one definition of "in flight" and use it in both places.
 
 ### Four workbenches behind one unlabelled ellipsis
 

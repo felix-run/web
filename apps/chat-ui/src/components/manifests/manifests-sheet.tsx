@@ -415,12 +415,24 @@ function VersionsPanel({
       <div className="rounded-md border bg-card/40 p-2.5 text-sm">
         <div className="mb-2 flex items-center gap-2">
           <span className="font-medium">Canary</span>
-          {liveCanaryV != null && liveWeight > 0 ? (
+          {/*
+            Three states, not two. Reading "in flight" as `version && weight > 0`
+            here while the Clear button reads it as `version != null` meant a
+            canary pinned at 0% reported itself absent *and* offered a button to
+            clear it. Naming the middle state fixes the contradiction without
+            having to pick which of the two readings was right — both were, about
+            different things: one about traffic, one about what is set.
+          */}
+          {liveCanaryV == null ? (
+            <span className="text-xs text-muted-foreground">none set</span>
+          ) : liveWeight > 0 ? (
             <Badge className="py-0 text-xs">
               v{liveCanaryV} @ {liveWeight}%
             </Badge>
           ) : (
-            <span className="text-xs text-muted-foreground">none in flight</span>
+            <Badge variant="secondary" className="py-0 text-xs">
+              v{liveCanaryV} · no traffic
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">

@@ -206,12 +206,23 @@ function DatasetPanel({
           className="h-7 gap-1"
           disabled={running || items.length === 0}
           onClick={run}
-          title={items.length === 0 ? 'Add an item first' : `Replay against ${manifest}`}
+          title={items.length === 0 ? undefined : `Replay against ${manifest}`}
         >
           <PlayIcon className="size-3.5" />
           {running ? 'Running…' : `Run vs ${manifest}`}
         </Button>
       </div>
+      {/*
+        Inline, not a `title`. The reason this button is unavailable used to live
+        in a tooltip on the button itself — and a `title` fires on hover, which
+        disabled elements do not emit. So the one message that said how to
+        proceed existed only in the state where nothing could read it.
+      */}
+      {items.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          Add an item before running: a dataset with nothing in it has nothing to score.
+        </p>
+      )}
 
       {comparing && (
         <ComparePanel dataset={dataset} manifest={manifest} onDone={refresh} onError={onError} />
@@ -459,7 +470,16 @@ function RunCard({ run }: { run: EvalRun }) {
   return (
     <div className="rounded-md border bg-background p-2.5 text-sm">
       <div className="flex items-center gap-2">
-        <Badge variant={run.fail_count === 0 ? 'default' : 'secondary'} className="py-0">
+        {/*
+          Read against the state palette rather than by swapping two variants.
+          `default` is the primary fill and `secondary` is muted grey, so a clean
+          run shouted and a failing one whispered — backwards, and inconsistent
+          with the score rows below, which already use the state colours.
+        */}
+        <Badge
+          variant={run.fail_count === 0 ? 'secondary' : 'destructive'}
+          className={cn('py-0', run.fail_count === 0 && 'text-state-done')}
+        >
           {run.pass_count}/{total} pass · {rate}%
         </Badge>
         <span className="font-mono text-xs text-muted-foreground">{run.candidate_manifest}</span>

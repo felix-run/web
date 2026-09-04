@@ -86,28 +86,34 @@ export function AgentSheet({
                 {meta?.description && <p className="text-muted-foreground">{meta.description}</p>}
 
                 <Section title="Loop">
-                  <Row label="pattern" value={spec.pattern} />
-                  <Row label="execution" value={spec.execution?.mode ?? 'transient'} />
-                  <Row label="session" value={spec.session?.strategy ?? 'full_replay'} />
+                  <Row label="Pattern" value={spec.pattern} />
+                  <Row label="Runs" value={runsAs(spec.execution?.mode)} />
+                  <Row label="History" value={historyAs(spec.session?.strategy)} />
                 </Section>
 
                 <Section title="Model">
-                  <Row label="id" value={modelField(spec.model, 'id')} />
-                  <Row label="temperature" value={modelField(spec.model, 'temperature')} />
-                  <Row label="max_tokens" value={modelField(spec.model, 'max_tokens')} />
+                  <Row label="Model" value={modelField(spec.model, 'id')} />
+                  <Row label="Temperature" value={modelField(spec.model, 'temperature')} />
+                  <Row label="Reply limit" value={modelField(spec.model, 'max_tokens')} />
                   {asArray(spec.model?.fallbacks).length > 0 && (
-                    <Chips label="fallbacks" items={asArray(spec.model?.fallbacks).map(String)} />
+                    <Chips
+                      label="Falls back to"
+                      items={asArray(spec.model?.fallbacks).map(String)}
+                    />
                   )}
-                  {spec.model?.cache ? <Row label="cache" value="on" /> : null}
+                  {spec.model?.cache ? <Row label="Prompt cache" value="on" /> : null}
                   {spec.model?.thinking_budget ? (
-                    <Row label="thinking" value={`${String(spec.model.thinking_budget)} tok`} />
+                    <Row
+                      label="Thinking budget"
+                      value={`${String(spec.model.thinking_budget)} tok`}
+                    />
                   ) : null}
                 </Section>
 
                 <Section title="Tools & skills">
-                  <Chips label="tools" items={asArray(spec.tools).map(String)} />
+                  <Chips label="Tools" items={asArray(spec.tools).map(String)} />
                   <Chips
-                    label="skills"
+                    label="Skills"
                     items={asArray(spec.skills).map(
                       (s) => (s as { name?: string })?.name ?? String(s),
                     )}
@@ -115,8 +121,8 @@ export function AgentSheet({
                 </Section>
 
                 <Section title="Memory">
-                  <Row label="checkpointer" value={spec.memory?.checkpointer ?? 'none'} />
-                  <Row label="store" value={spec.memory?.store ?? 'none'} />
+                  <Row label="Conversation state" value={spec.memory?.checkpointer ?? 'none'} />
+                  <Row label="Long-term store" value={spec.memory?.store ?? 'none'} />
                 </Section>
 
                 {(asArray(spec.guardrails?.judges).length > 0 ||
@@ -149,7 +155,7 @@ export function AgentSheet({
                     {asArray(spec.policies).map((p, i) => {
                       const pol = p as { id?: string };
                       // static read-only manifest list, never reordered
-                      return <Row key={`pol-${i}`} label="policy" value={pol.id ?? String(i)} />;
+                      return <Row key={`pol-${i}`} label="Policy" value={pol.id ?? String(i)} />;
                     })}
                     {spec.limits &&
                       Object.entries(spec.limits).map(([k, v]) => (
@@ -158,18 +164,32 @@ export function AgentSheet({
                   </Section>
                 )}
 
-                <Section title="Connectivity">
-                  <Row label="mcp servers" value={asArray(spec.mcp_servers).length || '—'} />
-                  <Row label="a2a peers" value={asArray(spec.a2a?.peers).length || '—'} />
-                  <Row label="containers" value={asArray(spec.containers).length || '—'} />
-                  <Row label="queues" value={asArray(spec.queues).length || '—'} />
-                  <Row label="sandboxes" value={asArray(spec.sandboxes).length || '—'} />
-                  <Row label="browser tools" value={asArray(spec.browser_tools).length || '—'} />
-                </Section>
+                {/*
+                  Only the connections that exist, and nothing at all when none
+                  do. On a typical manifest every one of these six was `—`, which
+                  spent a bordered panel — at the same visual weight as
+                  Governance — saying "no". An absence is worth a row when the
+                  reader is choosing between present and absent; here they are
+                  all absent, and the useful statement is the one line below.
+                */}
+                {connections(spec).length > 0 ? (
+                  <Section title="Connectivity">
+                    {connections(spec).map(([label, count]) => (
+                      <Row key={label} label={label} value={count} />
+                    ))}
+                  </Section>
+                ) : (
+                  <Section title="Connectivity">
+                    <span className="text-muted-foreground">
+                      Nothing outside the harness — no MCP servers, peers, containers, queues,
+                      sandboxes or browser tools.
+                    </span>
+                  </Section>
+                )}
 
                 <Section title="Inbound auth">
                   <Row
-                    label="anonymous"
+                    label="Anonymous callers"
                     value={spec.auth?.inbound?.allow_anonymous ? 'allowed' : 'denied'}
                   />
                   {asArray(spec.auth?.inbound?.required_scopes).length > 0 && (
@@ -188,7 +208,7 @@ export function AgentSheet({
                 <Row label="version" value={card.version} />
                 <Row label="url" value={card.url} />
                 <Chips label="capabilities" items={capabilityChips(card.capabilities)} />
-                <Chips label="skills" items={skillChips(card.skills)} />
+                <Chips label="Skills" items={skillChips(card.skills)} />
                 {card.transparencyNotice && <Row label="transparency" value="disclosed to peers" />}
               </Section>
             )}
@@ -275,6 +295,60 @@ function modelField(
 ): string | number | undefined {
   const v = model?.[key];
   return typeof v === 'string' || typeof v === 'number' ? v : undefined;
+}
+
+/**
+ * Values are wire spellings too.
+ *
+ * PRODUCT.md asks that labels say what the thing is rather than what the API
+ * field is called, and `full_replay` in the value column fails that as squarely
+ * as `max_tokens` did in the label column. Unknown strategies fall through
+ * unchanged: a harness that gains one should render it, not hide it.
+ */
+/** The connections this manifest actually has, so absences do not fill a panel. */
+function connections(spec: {
+  mcp_servers?: unknown[];
+  a2a?: { peers?: unknown[] };
+  containers?: unknown[];
+  queues?: unknown[];
+  sandboxes?: unknown[];
+  browser_tools?: unknown[];
+}): Array<[string, number]> {
+  const all: Array<[string, unknown]> = [
+    ['MCP servers', spec.mcp_servers],
+    ['A2A peers', spec.a2a?.peers],
+    ['Containers', spec.containers],
+    ['Queues', spec.queues],
+    ['Sandboxes', spec.sandboxes],
+    ['Browser tools', spec.browser_tools],
+  ];
+  return all
+    .map(([label, v]) => [label, asArray(v).length] as [string, number])
+    .filter(([, n]) => n > 0);
+}
+
+function historyAs(strategy: string | undefined): string {
+  switch (strategy ?? 'full_replay') {
+    case 'full_replay':
+      return 'every turn replayed';
+    case 'summarize':
+      return 'older turns summarised';
+    case 'window':
+      return 'recent turns only';
+    default:
+      return strategy ?? 'full_replay';
+  }
+}
+
+function runsAs(mode: string | undefined): string {
+  switch (mode ?? 'transient') {
+    case 'transient':
+      return 'in the request';
+    case 'durable':
+      return 'in the background';
+    default:
+      return mode ?? 'transient';
+  }
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
