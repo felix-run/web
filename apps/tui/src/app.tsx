@@ -9,7 +9,6 @@
  */
 
 import { existsSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import {
   type ChatEngine,
   createChatEngine,
@@ -22,10 +21,8 @@ import {
   parseEditedArgs,
   snapshotToEvents,
   type ThreadMeta,
-  threadSuffix,
   titleFromText,
 } from '@felix/client';
-import type { ThinkingLevel } from '@felix/protocol';
 import type { KeyEvent, ScrollBoxRenderable } from '@opentui/core';
 import {
   useKeyboard,
@@ -36,12 +33,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Attention } from './attention.js';
 import { copyText, describeCopy } from './clipboard.js';
+import { runCommand } from './commands.js';
 import { authHeaders, type Config } from './config.js';
 import { editorCommand, openEditor } from './editor.js';
 import { type EpilogueSlot, formatEpilogue } from './epilogue.js';
 import { explainError } from './errors.js';
 import type { PromptHistory } from './history.js';
-import { oneLine } from './text.js';
+import { route } from './keys.js';
+import { useLease } from './lease.js';
 import { useTheme } from './theme.js';
 import type { ThreadStore } from './threads.js';
 import { Composer } from './ui/composer.js';
@@ -50,32 +49,10 @@ import { ApprovalPrompt, UiPrompt, WritePrompt } from './ui/prompts.js';
 import { railRows, StatusLine, ThreadPicker } from './ui/rails.js';
 import { Transcript } from './ui/transcript.js';
 import { createWorkspace } from './workspace.js';
+import { useWriteGate } from './write-gate.js';
 
 /** Matches chat-ui: often enough to catch a gated tool, cheap enough to leave on. */
 const APPROVAL_POLL_MS = 2500;
-
-/**
- * How long a write prompt may stand.
- *
- * Under `DEFAULT_CLIENT_TOOL_TIMEOUT_MS` (30s) on purpose: the executor's
- * deadline resolves the engine's promise but cannot stop the write, so this has
- * to be the one that fires first.
- */
-const WRITE_PROMPT_MS = 25_000;
-
-const THINKING: ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-
-/** Search hits shown at once. A notice is a few lines, not a panel. */
-const SEARCH_LIMIT = 5;
-
-const HELP = [
-  '/new /clear /continue /think <level> /manifest [name] /quit',
-  '/rename <name> /fork /compact /export [file] /rewind [n]',
-  '/search <text> /open <n|thread-id> /refresh',
-].join('\n');
-
-/** A hit, a title, a path — one line each, because a notice is one line each. */
-const NOTICE_WIDTH = 60;
 
 export interface AppProps {
   config: Config;
@@ -136,53 +113,15 @@ export function App({
 
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
-  const leaseTokenRef = useRef<string | null>(null);
 
-  /**
-   * A client tool wants to write. The executor awaits this promise, so the
-   * prompt *is* the run.
-   *
-   * It must therefore never outlive the call that raised it. The tool's own
-   * deadline resolves the promise the engine is waiting on but cannot cancel the
-   * work — so a prompt left on screen would still write, minutes after the model
-   * was told the tool timed out and moved on. This one answers itself first, and
-   * is cancelled outright whenever the run is stopped.
-   */
-  const [writePrompt, setWritePrompt] = useState<string | null>(null);
-  const writeResolver = useRef<((ok: boolean) => void) | null>(null);
-  const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const answerWrite = useCallback((ok: boolean) => {
-    if (writeTimer.current) clearTimeout(writeTimer.current);
-    writeTimer.current = null;
-    writeResolver.current?.(ok);
-    writeResolver.current = null;
-    setWritePrompt(null);
-  }, []);
-
-  const confirmWrite = useCallback(
-    (summary: string) =>
-      new Promise<boolean>((resolve) => {
-        // A second request while one is pending refuses the first rather than
-        // orphaning its resolver.
-        writeResolver.current?.(false);
-        if (writeTimer.current) clearTimeout(writeTimer.current);
-        writeResolver.current = resolve;
-        setWritePrompt(summary);
-        writeTimer.current = setTimeout(() => {
-          writeResolver.current = null;
-          writeTimer.current = null;
-          setWritePrompt(null);
-          resolve(false);
-        }, WRITE_PROMPT_MS);
-      }),
-    [],
-  );
-
-  /** Stopping the run takes the prompt with it — and refuses the write. */
-  const cancelWrite = useCallback(() => {
-    if (writeResolver.current) answerWrite(false);
-  }, [answerWrite]);
+  // The prompt that authorizes a write, with its own deadline. See write-gate.ts.
+  const writeGate = useWriteGate();
+  const {
+    prompt: writePrompt,
+    answer: answerWrite,
+    confirm: confirmWrite,
+    cancel: cancelWrite,
+  } = writeGate;
 
   const engineRef = useRef<ChatEngine | null>(null);
   const clientRef = useRef<ReturnType<typeof createFelixClient> | null>(null);
@@ -253,29 +192,7 @@ export function App({
     void refreshThreads();
   }, [refreshThreads]);
 
-  // Another client driving the same session is a real possibility here — that is
-  // the point of running two. Take the lease, and say so rather than fighting.
-  useEffect(() => {
-    let holder = `tui-${process.pid}`;
-    let cancelled = false;
-    void (async () => {
-      const lease = await client
-        .acquireSessionLease({ threadId, holderId: holder, mode: 'exclusive' })
-        .catch(() => ({ ok: false, error: 'lease unavailable' }));
-      if (cancelled) return;
-      if (!lease.ok) setNotice('another client holds this thread — following read-only');
-      else leaseTokenRef.current = 'token' in lease ? (lease.token ?? null) : null;
-    })();
-    return () => {
-      cancelled = true;
-      void client.releaseSessionLease({
-        threadId,
-        holderId: holder,
-        ...(leaseTokenRef.current ? { token: leaseTokenRef.current } : {}),
-      });
-      holder = '';
-    };
-  }, [client, threadId]);
+  useLease(client, threadId, setNotice);
 
   /**
    * Selecting text copies it.
@@ -507,189 +424,29 @@ export function App({
   );
 
   const command = useCallback(
-    (line: string) => {
-      const [name, ...rest] = line.slice(1).split(/\s+/);
-      const arg = rest.join(' ').trim();
-      switch (name) {
-        case 'new':
-          newThread();
-          return;
-        case 'clear':
-          engine.reset();
-          void client.deleteThreadHistory(threadIdRef.current);
-          return;
-        case 'continue':
-          void client
-            .continueChat({ threadId: threadIdRef.current, manifest })
-            .catch((err) => engine.setError(explainError(err, 'continue the run', config)));
-          return;
-        case 'think': {
-          const level = THINKING.find((l) => l === arg);
-          if (!level) {
-            setNotice(`thinking levels: ${THINKING.join(' ')}`);
-            return;
-          }
-          void client
-            .setThinkingLevel({
-              threadId: threadIdRef.current,
-              thinkingLevel: level,
-            })
-            .then(() => setNotice(`thinking: ${level}`))
-            .catch((err) => engine.setError(explainError(err, 'set the thinking level', config)));
-          return;
-        }
-        case 'manifest':
-          if (!arg) {
-            void client
-              .listManifests()
-              .then((names) => setNotice(`manifests: ${names.join(' ')}`))
-              .catch(() => setNotice('could not list manifests'));
-            return;
-          }
-          setManifest(arg);
-          setNotice(`manifest: ${arg}`);
-          return;
-        case 'rename': {
-          if (!arg) {
-            setNotice('usage: /rename <name>');
-            return;
-          }
-          const id = threadIdRef.current;
-          void client
-            .renameSession(id, arg)
-            .then(() => {
-              // The harness owns the name; the local index is what draws the
-              // rail when it cannot be reached, so both are told.
-              store.index({ id, manifest, title: arg, updatedAt: Date.now() });
-              setNotice(`renamed: ${arg}`);
-              return refreshThreads();
-            })
-            .catch((err) => engine.setError(explainError(err, 'rename this thread', config)));
-          return;
-        }
-        case 'fork': {
-          // Unlike a rewind, the original is untouched: this is for taking the
-          // conversation a second way while keeping the first.
-          const newId = crypto.randomUUID();
-          const title = threads.find((t) => t.id === threadIdRef.current)?.title ?? 'Conversation';
-          void client
-            .forkSession({ threadId: threadIdRef.current, newThreadId: newId })
-            .then(async () => {
-              store.index({
-                id: newId,
-                manifest,
-                title: `${title} (copy)`,
-                updatedAt: Date.now(),
-              });
-              await refreshThreads();
-              selectThread(newId);
-              setNotice('forked — the original is untouched');
-            })
-            .catch((err) => engine.setError(explainError(err, 'fork this thread', config)));
-          return;
-        }
-        case 'compact':
-          void client
-            .compactSession(threadIdRef.current, manifest)
-            .then(() => setNotice('context compacted'))
-            .catch((err) => engine.setError(explainError(err, 'compact this thread', config)));
-          return;
-        case 'export': {
-          const target = resolve(root, arg || `felix-${threadIdRef.current}.jsonl`);
-          // Refusing beats clobbering: the argument is a path typed once, and
-          // the transcript it would overwrite may be the only copy.
-          if (existsSync(target)) {
-            setNotice(`${target} already exists`);
-            return;
-          }
-          void client
-            .exportSession(threadIdRef.current)
-            .then((jsonl) => {
-              writeFileSync(target, jsonl, { encoding: 'utf8', mode: 0o600 });
-              setNotice(`exported: ${target}`);
-            })
-            .catch((err) => engine.setError(explainError(err, 'export this thread', config)));
-          return;
-        }
-        case 'rewind': {
-          // Server event ids arrive with a snapshot and are never minted
-          // locally, so a thread streamed in this process has none until it is
-          // hydrated. Do that first rather than reporting an empty transcript.
-          const back = Math.max(1, Number.parseInt(arg, 10) || 1);
-          void hydrate(threadIdRef.current)
-            .then(() => {
-              const rebuilt = engine.state.turns;
-              const target = rebuilt[rebuilt.length - 1 - back];
-              if (!target?.eventId) {
-                setNotice(`nothing ${back} turn(s) back to rewind to`);
-                return;
-              }
-              return client
-                .rewindChat({
-                  threadId: threadIdRef.current,
-                  eventId: target.eventId,
-                  summarize: false,
-                  manifest,
-                })
-                .then(() => hydrate(threadIdRef.current))
-                .then(() => setNotice(`rewound — ${back} turn(s) off the active branch`));
-            })
-            .catch((err) => engine.setError(explainError(err, 'rewind this thread', config)));
-          return;
-        }
-        case 'search': {
-          if (!arg) {
-            setNotice('usage: /search <text>');
-            return;
-          }
-          void client
-            .searchSessions(arg, SEARCH_LIMIT)
-            .then((rows) => {
-              // Hits carry the wire id `{tenant}:{suffix}`; a client sends and
-              // stores the suffix, and the harness rejects anything else.
-              const hits = rows.map((row) => ({
-                id: threadSuffix(row.thread_id),
-                snippet: row.content,
-              }));
-              hitsRef.current = hits.map((hit) => hit.id);
-              setNotice(
-                hits.length
-                  ? [
-                      'hits — /open <n> to switch',
-                      ...hits.map(
-                        (hit, i) =>
-                          `${i + 1}) ${threads.find((t) => t.id === hit.id)?.title ?? hit.id} · ${oneLine(hit.snippet, NOTICE_WIDTH)}`,
-                      ),
-                    ].join('\n')
-                  : `nothing matched ${arg}`,
-              );
-            })
-            .catch((err) => engine.setError(explainError(err, 'search your threads', config)));
-          return;
-        }
-        case 'open': {
-          const index = Number.parseInt(arg, 10);
-          const id = Number.isInteger(index) ? hitsRef.current[index - 1] : arg;
-          if (!id) {
-            setNotice('usage: /open <n from the last /search, or a thread id>');
-            return;
-          }
-          selectThread(id);
-          return;
-        }
-        case 'refresh':
-          // This process is not the only client writing to the harness — a
-          // thread started in another window exists, and until this runs the
-          // rail has no way to have heard of it.
-          void refreshThreads().then(() => setNotice('threads refreshed'));
-          return;
-        case 'quit':
-          exit();
-          return;
-        default:
-          setNotice(HELP);
-      }
-    },
+    (line: string) =>
+      runCommand(
+        {
+          client,
+          engine,
+          store,
+          config,
+          root,
+          manifest,
+          setManifest,
+          setNotice,
+          threadId: () => threadIdRef.current,
+          threads: () => threads,
+          hits: hitsRef,
+          selectThread,
+          refreshThreads,
+          hydrate,
+          newThread,
+          exit,
+          fs: { exists: existsSync, write: writeFileSync },
+        },
+        line,
+      ),
     [
       client,
       config,
@@ -743,103 +500,84 @@ export function App({
    * them and emits `focus` / `blur`, so they can no longer be mistaken for keys.
    */
   useKeyboard((key: KeyEvent) => {
-    const name = key.name ?? '';
-    if (key.ctrl && name === 'c') {
-      key.preventDefault();
-      if (quitArmed || !streaming) {
+    const action = route(key, {
+      blocked,
+      streaming,
+      quitArmed,
+      railFocused,
+      railFilter,
+      consoleAvailable: renderer.consoleMode === 'console-overlay',
+    });
+    if (!action) return;
+    // A non-null action is also the claim: without this the rail would filter on
+    // the same arrow that moves its cursor, and the composer would keep typing
+    // while the rail has focus.
+    key.preventDefault();
+
+    switch (action.kind) {
+      case 'quit':
         exit();
         return;
-      }
-      // A run is live and ctrl+c is ambiguous — stop it, and take a second
-      // press as "no, really".
-      engine.abort();
-      cancelWrite();
-      void client.abortChat(threadIdRef.current).catch(() => {});
-      setQuitArmed(true);
-      setNotice('run stopped — ctrl+c again to quit');
-      return;
-    }
-    // Reading back through the conversation. Half a viewport a press, which is
-    // the scroll box's own `pageup`/`pagedown` step — and paging down to the
-    // bottom re-engages sticky by itself, so returning to a live run needs no
-    // separate key and no mode to leave.
-    if (name === 'pageup' || name === 'pagedown') {
-      key.preventDefault();
-      scrollRef.current?.scrollBy(name === 'pageup' ? -1 / 2 : 1 / 2, 'viewport');
-      return;
-    }
-    if (blocked) return;
-    // The rail takes the keyboard whole while it has focus — the same rule the
-    // composer follows, for the same reason: a key that means two things does
-    // both unless one handler claims it. Stopping a run stays reachable
-    // throughout, because ctrl+c is handled above this line.
-    if (railFocused) {
-      key.preventDefault();
-      if (name === 'tab' || (name === 'escape' && !railFilter)) {
+      case 'stop':
+        engine.abort();
+        cancelWrite();
+        void client.abortChat(threadIdRef.current).catch(() => {});
+        setQuitArmed(true);
+        setNotice('run stopped — ctrl+c again to quit');
+        return;
+      case 'scroll':
+        scrollRef.current?.scrollBy(action.by, 'viewport');
+        return;
+      case 'close-rail':
         closeRail();
         return;
-      }
-      if (name === 'escape') {
+      case 'clear-filter':
         setRailFilter('');
         if (railCursor !== 0) setRailCursor(0);
         return;
-      }
-      if (name === 'up') {
-        setRailCursor((c) => Math.max(0, c - 1));
+      case 'rail-move':
+        setRailCursor((c) =>
+          action.by < 0
+            ? Math.max(0, c - 1)
+            : Math.max(0, Math.min(visibleThreads.length - 1, c + 1)),
+        );
         return;
-      }
-      if (name === 'down') {
-        setRailCursor((c) => Math.max(0, Math.min(visibleThreads.length - 1, c + 1)));
-        return;
-      }
-      if (name === 'return') {
+      case 'rail-open-selected': {
         const target = visibleThreads[railCursor];
         if (target) selectThread(target.id);
         closeRail();
         return;
       }
-      if (name === 'backspace' || name === 'delete') {
+      case 'filter-backspace':
         setRailFilter((f) => f.slice(0, -1));
         if (railCursor !== 0) setRailCursor(0);
         return;
-      }
-      // Chords belong to the app; arrows that are not up or down mean nothing
-      // to a one-column list. Everything else is filter text.
-      if (key.ctrl || key.meta || name === 'left' || name === 'right') return;
-      if (name.length === 1) {
-        setRailFilter((f) => f + name);
+      case 'filter-append':
+        setRailFilter((f) => f + action.char);
         if (railCursor !== 0) setRailCursor(0);
+        return;
+      case 'abort':
+        engine.abort();
+        cancelWrite();
+        void client.abortChat(threadIdRef.current).catch(() => {});
+        engine.setPhase('aborted');
+        return;
+      case 'open-rail': {
+        // Open on the thread that is open, rather than on row zero with the
+        // marker somewhere further down.
+        const index = threads.findIndex((thread) => thread.id === threadIdRef.current);
+        setRailCursor(index >= 0 ? index : 0);
+        setRailFocused(true);
+        return;
       }
-      return;
-    }
-    if (name === 'escape' && streaming) {
-      key.preventDefault();
-      engine.abort();
-      cancelWrite();
-      void client.abortChat(threadIdRef.current).catch(() => {});
-      engine.setPhase('aborted');
-      return;
-    }
-    if (name === 'tab') {
-      key.preventDefault();
-      // Open on the thread that is open, rather than on row zero with the
-      // marker somewhere further down.
-      const index = threads.findIndex((thread) => thread.id === threadIdRef.current);
-      setRailCursor(index >= 0 ? index : 0);
-      setRailFocused(true);
-      return;
-    }
-    if (key.ctrl && name === 'n') {
-      key.preventDefault();
-      newThread();
-      return;
-    }
-    // Only bound when the overlay exists: with `consoleMode: 'disabled'` this
-    // would be a key that silently does nothing, which is worse than a key that
-    // is not bound.
-    if (key.ctrl && name === 'd' && renderer.consoleMode === 'console-overlay') {
-      key.preventDefault();
-      renderer.console.toggle();
+      case 'new-thread':
+        newThread();
+        return;
+      case 'toggle-console':
+        renderer.console.toggle();
+        return;
+      case 'consume':
+        return;
     }
   });
 
