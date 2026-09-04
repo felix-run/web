@@ -205,6 +205,20 @@
     "/memory/{memory_id}": {
       "delete": {}
     },
+    "/documents/": {
+      "get": {},
+      "post": {}
+    },
+    "/documents": {
+      "get": {},
+      "post": {}
+    },
+    "/documents/search": {
+      "get": {}
+    },
+    "/documents/{doc_id}": {
+      "delete": {}
+    },
     "/a2a/": {
       "post": {}
     },
