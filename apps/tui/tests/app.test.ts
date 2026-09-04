@@ -115,7 +115,9 @@ async function run(
 describe('slash commands', () => {
   it('refuses a thinking level the harness does not have, and sends nothing', async () => {
     const { ui, h, frame } = await run('/think sideways');
-    expect(shows(frame(), 'thinking levels')).toBe(true);
+    // `until`, not a bare read: the renderer goes idle before React commits, so
+    // one settle is enough on a fast machine and was not enough on CI.
+    await ui.until(() => shows(frame(), 'thinking levels'));
     expect(h.to('/chat/thinking')).toHaveLength(0);
     ui.stop();
     h.restore();
@@ -123,6 +125,7 @@ describe('slash commands', () => {
 
   it('sends a valid thinking level as the harness spells it', async () => {
     const { ui, h } = await run('/think high');
+    await ui.until(() => h.to('/chat/thinking').length > 0);
     const [call] = h.to('/chat/thinking');
     expect(call?.method).toBe('POST');
     expect((call?.body as { thinking_level?: string })?.thinking_level).toBe('high');
@@ -133,7 +136,7 @@ describe('slash commands', () => {
   it('shows help for a command that does not exist', async () => {
     const { ui, h, frame } = await run('/nope');
     // The help text is the list of real commands, so any one of them proves it.
-    expect(shows(frame(), '/rewind')).toBe(true);
+    await ui.until(() => shows(frame(), '/rewind'));
     ui.stop();
     h.restore();
   });
@@ -203,11 +206,9 @@ describe('the keyboard', () => {
     );
     await ui.settle();
     await ui.keys.pressTab();
-    await ui.settle();
-    expect(shows(ui.frame(), 'enter open')).toBe(true);
+    await ui.until(() => shows(ui.frame(), 'enter open'));
     await ui.keys.pressTab();
-    await ui.settle();
-    expect(shows(ui.frame(), 'enter open')).toBe(false);
+    await ui.until(() => !shows(ui.frame(), 'enter open'));
     ui.stop();
     h.restore();
   });
@@ -290,7 +291,7 @@ describe('exactly one prompt owns the keyboard', () => {
   it('answers the approval with y, and posts the decision', async () => {
     const { ui, h } = await blocked();
     await ui.keys.typeText('y');
-    await ui.settle();
+    await ui.until(() => h.to('/approvals/ap-1/decide').length > 0);
     const [decide] = h.to('/approvals/ap-1/decide');
     expect(decide?.method).toBe('POST');
     expect((decide?.body as { status?: string })?.status).toBe('approved');
@@ -325,8 +326,7 @@ describe('the inspector', () => {
     await ui.until(() => shows(ui.frame(), 'Activity'));
     expect(shows(ui.frame(), 'Memory')).toBe(true);
     await ui.keys.pressEscape();
-    await ui.settle();
-    expect(shows(ui.frame(), 'Activity')).toBe(false);
+    await ui.until(() => !shows(ui.frame(), 'Activity'));
     ui.stop();
     h.restore();
   });
@@ -336,8 +336,7 @@ describe('the inspector', () => {
     // that only checks the name opens the rail on both.
     const { ui, h } = await app();
     await ui.keys.pressTab();
-    await ui.settle();
-    expect(shows(ui.frame(), 'enter open')).toBe(true);
+    await ui.until(() => shows(ui.frame(), 'enter open'));
     expect(shows(ui.frame(), 'Activity')).toBe(false);
     ui.stop();
     h.restore();

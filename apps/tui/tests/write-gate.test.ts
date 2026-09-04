@@ -13,7 +13,17 @@ import { mount } from './render';
  * long after the model was told the tool failed and moved on.
  */
 
-/** Mount the hook and hand the live gate back to the test. */
+/**
+ * Mount the hook and hand the live gate back to the test.
+ *
+ * `prompt()` polls rather than reading once, and that is not defensiveness. The
+ * renderer goes idle the instant a call is handled, *before* React has
+ * committed — `render.ts` says so in its header — so `settle()` yields one
+ * macrotask and asks again. One is enough on this laptop and was not enough on
+ * CI: this file went green locally eight runs out of eight and failed the first
+ * assertion in Actions. `until` polls the condition against a deadline, so the
+ * test says what it is waiting for instead of guessing how long React needs.
+ */
 async function gate(timeoutMs?: number) {
   let current: WriteGate | undefined;
   const Probe = () => {
@@ -22,11 +32,13 @@ async function gate(timeoutMs?: number) {
   };
   const ui = await mount(createElement(Probe) as ReactElement, { width: 40, height: 4 });
   await ui.settle();
+  const get = () => current as WriteGate;
   return {
     ui,
-    get: () => current as WriteGate,
-    async flush() {
-      await ui.settle();
+    get,
+    /** Wait until the prompt on screen is `want`, or fail saying what it was. */
+    async prompt(want: string | null) {
+      await ui.until(() => get().prompt === want);
     },
   };
 }
@@ -35,23 +47,20 @@ describe('the write gate', () => {
   it('resolves true when the write is allowed', async () => {
     const g = await gate();
     const asked = g.get().confirm('write /tmp/a.txt');
-    await g.flush();
-    expect(g.get().prompt).toBe('write /tmp/a.txt');
+    await g.prompt('write /tmp/a.txt');
     g.get().answer(true);
     expect(await asked).toBe(true);
-    await g.flush();
-    expect(g.get().prompt).toBe(null);
+    await g.prompt(null);
     g.ui.stop();
   });
 
   it('resolves false when it is refused, and clears the prompt', async () => {
     const g = await gate();
     const asked = g.get().confirm('write /tmp/a.txt');
-    await g.flush();
+    await g.prompt('write /tmp/a.txt');
     g.get().answer(false);
     expect(await asked).toBe(false);
-    await g.flush();
-    expect(g.get().prompt).toBe(null);
+    await g.prompt(null);
     g.ui.stop();
   });
 
@@ -61,21 +70,19 @@ describe('the write gate', () => {
     const g = await gate(20);
     const asked = g.get().confirm('write /tmp/a.txt');
     expect(await asked).toBe(false);
-    await g.flush();
-    expect(g.get().prompt).toBe(null);
+    await g.prompt(null);
     g.ui.stop();
   });
 
   it('a second request refuses the first rather than orphaning its resolver', async () => {
     const g = await gate();
     const first = g.get().confirm('write /tmp/a.txt');
-    await g.flush();
+    await g.prompt('write /tmp/a.txt');
     const second = g.get().confirm('write /tmp/b.txt');
-    await g.flush();
     // The first must settle — the run is blocked on it — and it must settle as
     // a refusal, because nobody answered it.
     expect(await first).toBe(false);
-    expect(g.get().prompt).toBe('write /tmp/b.txt');
+    await g.prompt('write /tmp/b.txt');
     g.get().answer(true);
     expect(await second).toBe(true);
     g.ui.stop();
@@ -85,27 +92,25 @@ describe('the write gate', () => {
     const g = await gate();
     // Stopping a run with nothing pending must not throw or settle anything.
     g.get().cancel();
-    await g.flush();
+    await g.prompt(null);
     const asked = g.get().confirm('write /tmp/a.txt');
-    await g.flush();
+    await g.prompt('write /tmp/a.txt');
     g.get().cancel();
     expect(await asked).toBe(false);
-    await g.flush();
-    expect(g.get().prompt).toBe(null);
+    await g.prompt(null);
     g.ui.stop();
   });
 
   it('does not answer twice when the deadline lands after a key', async () => {
     const g = await gate(20);
     const asked = g.get().confirm('write /tmp/a.txt');
-    await g.flush();
+    await g.prompt('write /tmp/a.txt');
     g.get().answer(true);
     expect(await asked).toBe(true);
     // Let the timer's moment pass. A second settle would be a resolved promise
     // being resolved again — harmless to await, fatal to the prompt state.
     await new Promise((r) => setTimeout(r, 40));
-    await g.flush();
-    expect(g.get().prompt).toBe(null);
+    await g.prompt(null);
     g.ui.stop();
   });
 });

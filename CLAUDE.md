@@ -506,6 +506,13 @@ browser cannot do rather than about the chat:
   scheduler reports nothing scheduled) will wait for it: the first frames of a reply have the prose
   and list blocks missing entirely. `until(predicate)` polls the condition against a deadline
   instead. A fixed sleep looks like it works and does not — 400ms passed locally and failed on CI.
+  **The same rule covers ordinary state, for the same reason:** `settle` gives React exactly one
+  macrotask, which is enough on an idle laptop and is not a guarantee — `tests/write-gate.test.ts`
+  went green here eight runs out of eight and failed its first assertion in Actions. So `settle` is
+  for letting things happen and `until` is for asserting that they did; anything read after a key, a
+  paste, a callback or a fetch belongs in `until`, including a check that something has *gone*
+  (`until(() => !shows(f, 'x'))`). A bare read is right only for the frame `mount` already waited
+  for, and for asserting that nothing happened at all.
   And the
   kitty protocol is on by default, matching `main.tsx`, because a lone `escape` without it is a
   possible sequence prefix the parser holds past the end of the test. Do **not** try to read a frame

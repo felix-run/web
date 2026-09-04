@@ -46,7 +46,9 @@ describe('the section strip', () => {
     // usable width, so renaming a section means redoing that arithmetic.
     expect(SECTIONS.length * TAB_WIDTH).toBeLessThanOrEqual(72);
     const ui = await draw();
-    await ui.settle();
+    // The strip is the last thing to settle; wait for the far end of it rather
+    // than for the renderer, which reports idle before React has committed.
+    await ui.until(() => shows(ui.frame(), SECTIONS[SECTIONS.length - 1]!.name));
     const frame = ui.frame();
     for (const section of SECTIONS) {
       expect(shows(frame, section.name)).toBe(true);
@@ -63,8 +65,7 @@ describe('the section strip', () => {
 
   it('puts the section description in the border, where there is room', async () => {
     const ui = await draw();
-    await ui.settle();
-    expect(shows(ui.frame(), 'what the harness recorded')).toBe(true);
+    await ui.until(() => shows(ui.frame(), 'what the harness recorded'));
     ui.stop();
   });
 });
@@ -72,8 +73,7 @@ describe('the section strip', () => {
 describe('a panel says which of the four things it is', () => {
   it('shows the empty line when there is nothing, and no error', async () => {
     const ui = await draw();
-    await ui.settle();
-    expect(shows(ui.frame(), 'nothing recorded on this tenant yet')).toBe(true);
+    await ui.until(() => shows(ui.frame(), 'nothing recorded on this tenant yet'));
     ui.stop();
   });
 
@@ -81,16 +81,14 @@ describe('a panel says which of the four things it is', () => {
     // A failed read rendered as an empty list claims the harness is idle, which
     // is a different and wrong statement.
     const ui = await draw({ panel: panel({ error: 'audit: 403' }) });
-    await ui.settle();
-    expect(shows(ui.frame(), 'audit: 403')).toBe(true);
+    await ui.until(() => shows(ui.frame(), 'audit: 403'));
     expect(shows(ui.frame(), 'nothing recorded on this tenant yet')).toBe(false);
     ui.stop();
   });
 
   it('says it is reading rather than saying there is nothing', async () => {
     const ui = await draw({ panel: panel({ loading: true }) });
-    await ui.settle();
-    expect(shows(ui.frame(), 'reading…')).toBe(true);
+    await ui.until(() => shows(ui.frame(), 'reading…'));
     ui.stop();
   });
 });

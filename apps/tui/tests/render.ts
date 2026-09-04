@@ -41,6 +41,18 @@
  * exactly like a component that ignores its keys: the probe that found this saw
  * `count=0` after pressing the key that increments it, and `count=1` one tick
  * later. So `settle` yields the macrotask queue before it asks.
+ *
+ * **But one yield is a guess, so assert with `until`, not with `settle`.** The
+ * single macrotask `settle` gives React is enough on an idle laptop and is not
+ * a guarantee: `tests/write-gate.test.ts` passed here eight runs out of eight
+ * and failed its first assertion in CI, on a slower and busier machine. The
+ * rule that follows is simple — **`settle` is for letting things happen;
+ * `until` is for asserting that they did.** Anything read *after* a key, a
+ * paste, a callback or a fetch belongs in `until(() => …)`, including a check
+ * that something has gone away (`until(() => !shows(frame, 'x'))`). Reserve a
+ * bare read for the frame `mount` already waited for, and for asserting that
+ * nothing happened at all — there being no commit to wait for is the point of
+ * that test.
  */
 
 import type { CapturedFrame } from '@opentui/core';
