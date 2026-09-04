@@ -16,7 +16,16 @@ the harness injects arrives as a Protocol (`ToolSchema`, `ModelConfig`) or an ex
 (`felix_ai.observability` for counters, `felix_ai.context` for the prompt-cache key).
 
 `felix.patterns.model` keeps only what genuinely needs the harness: resolving `FELIX_MODEL_ROUTES`
-against `Settings`, metering a turn through `record_usage`, and the fallback/escalation composites.
+against `Settings`, metering a turn through `record_usage`, and the tracing wrappers that give each
+provider call a span. Fallback and escalation live in `felix.patterns.model_composites` — deciding
+what to do when an answer is unavailable or not good enough is a policy, not routing.
+
+<Aside type="caution" title="Escalation bills two turns">
+`confidence_escalation` calls the primary, judges the answer, and calls the stronger model — two
+billed turns for one reply. The composite folds the discarded turn's usage into the result it
+returns, because a caller can only meter what it is handed; without that,
+`limits.max_cost_usd` under-counts an escalating run by whatever the first turn cost.
+</Aside>
 
 ## Provider registry
 
