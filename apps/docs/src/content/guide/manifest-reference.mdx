@@ -327,6 +327,57 @@ the default image.
 | `args_schema` | JSON Schema \| null | `null` |
 | `fatal` | bool | `false` |
 
+## `spec.search_tools`
+
+Search the web through the backend an **operator** configured. The model supplies a query,
+not a destination — the inverse of [`spec.http_tools`](#spechttp_tools) below, and the reason
+this ref has no confinement field: the only address it reaches is
+`FELIX_SEARCH_URL`.
+
+```yaml
+spec:
+  search_tools:
+    - name: search
+      description: Search the web for sources.
+      max_results: 8
+  content_screening:
+    enabled: true
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `description` | string | `""` |
+| `max_results` | int \| null | `null` (5); 1–20 |
+| `fatal` | bool | `false` |
+
+Configure the backend with `FELIX_SEARCH_BACKEND` (default `none`) and `FELIX_SEARCH_URL`.
+**SearXNG** ships built in because it is self-hostable and needs no account; anything else —
+Brave, Tavily, an internal index — is a plugin registering through
+`felix.search.register_search_backend`, and the setting is validated against that registry at
+startup. `FELIX_SEARCH_API_KEY` is optional and resolves through your secrets backend like any
+other credential.
+
+Results render as numbered `title / url / snippet` blocks, because the next thing an agent
+does with a result is fetch its URL. A search **is** replay-safe, unlike a fetch: the endpoint
+is yours and a query has no side effect.
+
+<Aside type="caution" title="Turn on content screening with it">
+A title and snippet are written by whoever ranked for the query, so results are untrusted
+input — the transport is `search`, and [content screening](/internals/governance/) covers it
+once enabled. Compiling a manifest that binds a search tool without
+`spec.content_screening.enabled` logs `untrusted tool(s) … unscreened`.
+
+Screening covers what comes **back**. It does not inspect the URL a model then hands to a
+fetch tool, so pairing search with an unconfined `http_tools` entry is an egress path that
+screening does not close — which is why the bundled `deep` manifest requires authentication.
+</Aside>
+
+<Aside type="note" title="Declaring one without a backend">
+The tool still binds, and every call reports that `FELIX_SEARCH_BACKEND` is unset — rather
+than the field silently doing nothing. The compile logs a warning too.
+</Aside>
+
 ## `spec.http_tools`
 
 Read a URL the **model** chooses. This is the inverse of an MCP server or an A2A peer, where
