@@ -148,13 +148,14 @@ export function ManifestsSheet({
               >
                 {r.name}
                 {r.canary_version != null && (r.canary_weight ?? 0) > 0 && (
-                  <span
-                    role="img"
-                    title={`Canary v${r.canary_version} at ${r.canary_weight}%`}
-                    aria-label="has a canary rollout"
-                    className="text-xs text-foreground"
-                  >
-                    ◆
+                  // The numbers, not a diamond that only a mouse could decode.
+                  // The version and the weight were in a `title` — invisible to
+                  // touch and to a keyboard — while the `aria-label` said only
+                  // "has a canary rollout", so the two facts that decide whether
+                  // to care reached nobody who was not hovering. They are short
+                  // enough to render, and `v3 · 10%` is the whole message.
+                  <span className="font-mono text-xs text-foreground">
+                    v{r.canary_version} · {r.canary_weight}%
                   </span>
                 )}
               </Button>

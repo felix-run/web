@@ -1,10 +1,11 @@
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
-import { FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
+import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   addEvalItem,
@@ -464,12 +465,66 @@ function AddItemForm({
   );
 }
 
+/**
+ * A run's own instrumentation, which it was collecting and throwing away.
+ *
+ * `EvalRun` carries `started_at` and `finished_at`; every `ItemScore` carries
+ * `duration_ms`, `tokens_input`, `tokens_output` and `tool_call_count`. None of
+ * it was rendered, so two runs of the same dataset stacked with nothing to tell
+ * them apart and nothing to answer "what did it cost" — one of the three
+ * questions PRODUCT.md says this surface has to answer at a glance.
+ *
+ * The per-item numbers are optional on the wire, so a run where the harness
+ * reported none shows the timing it always has and no token line at all, rather
+ * than a row of zeroes that reads as a free run.
+ */
+function runTotals(run: EvalRun): {
+  wallMs: number | null;
+  tokensIn: number;
+  tokensOut: number;
+  toolCalls: number;
+  metered: boolean;
+} {
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let toolCalls = 0;
+  let metered = false;
+  for (const s of run.scores) {
+    if (s.tokens_input != null || s.tokens_output != null) metered = true;
+    tokensIn += s.tokens_input ?? 0;
+    tokensOut += s.tokens_output ?? 0;
+    toolCalls += s.tool_call_count ?? 0;
+  }
+  return {
+    // Both ends required, or the subtraction yields `NaN` and renders as one.
+    wallMs:
+      run.finished_at == null || !Number.isFinite(run.started_at)
+        ? null
+        : run.finished_at - run.started_at,
+    tokensIn,
+    tokensOut,
+    toolCalls,
+    metered,
+  };
+}
+
+/** Milliseconds at a scale a person reads, not a number they convert. */
+function duration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  return `${m}m ${Math.round((ms % 60_000) / 1000)}s`;
+}
+
 function RunCard({ run }: { run: EvalRun }) {
   const total = run.pass_count + run.fail_count;
   const rate = total ? Math.round((run.pass_count / total) * 100) : 0;
+  const t = runTotals(run);
+  const at = new Date(run.started_at);
+  const startedAt = Number.isFinite(at.getTime()) ? at : null;
   return (
     <div className="rounded-md border bg-background p-2.5 text-sm">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {/*
           Read against the state palette rather than by swapping two variants.
           `default` is the primary fill and `secondary` is muted grey, so a clean
@@ -485,27 +540,109 @@ function RunCard({ run }: { run: EvalRun }) {
         <span className="font-mono text-xs text-muted-foreground">{run.candidate_manifest}</span>
         <span className="ml-auto text-xs text-muted-foreground">{run.status}</span>
       </div>
+      {/*
+        The ordering cue. Two runs of the same dataset against the same manifest
+        are otherwise identical on screen, which is the state this list is
+        normally in — you run it, change something, run it again.
+      */}
+      <p className="mt-1 font-mono text-xs text-muted-foreground">
+        {/*
+          Guarded, because `new Date(undefined).toISOString()` throws a
+          `RangeError` rather than returning anything — and thrown from a render
+          it takes the whole sheet down, not just the line it could not draw.
+          `started_at` is required on the wire and a run without one is still a
+          run worth listing.
+        */}
+        {startedAt ? (
+          <time dateTime={startedAt.toISOString()}>{startedAt.toLocaleString()}</time>
+        ) : (
+          'start time unreported'
+        )}
+        {t.wallMs == null ? ' · still running' : ` · ${duration(t.wallMs)}`}
+        {t.metered
+          ? ` · ${t.tokensIn.toLocaleString()} in / ${t.tokensOut.toLocaleString()} out`
+          : ''}
+        {t.toolCalls > 0 ? ` · ${t.toolCalls} tool ${t.toolCalls === 1 ? 'call' : 'calls'}` : ''}
+      </p>
       {run.scores.length > 0 && (
         <ul className="mt-1.5 space-y-1">
           {run.scores.map((s) => (
-            <li key={s.item_id} className="flex items-start gap-2">
-              <span
-                className={cn(
-                  'mt-0.5 font-mono text-xs uppercase',
-                  s.verdict === 'pass' ? 'text-state-done' : 'text-state-failed',
-                )}
-              >
-                {s.verdict}
-              </span>
-              <span className="flex-1 text-muted-foreground" title={s.reasoning}>
-                {s.response.slice(0, 80) || s.reasoning.slice(0, 80)}
-              </span>
-              <span className="font-mono text-xs text-muted-foreground">{s.score.toFixed(2)}</span>
-            </li>
+            <ScoreRow key={s.item_id} score={s} />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * One item's verdict, and the judge's reasoning behind it.
+ *
+ * The reasoning **is** the output of an eval — it is the thing that says why a
+ * case failed — and it was reachable only as a `title` on hover, over a response
+ * already cut at 80 characters with no ellipsis and no way to expand. Invisible
+ * to touch, invisible to a keyboard, and truncated for everyone.
+ *
+ * So it expands. Collapsed by default because a run of twenty items is a list to
+ * scan first; the trigger is the row itself rather than a separate control,
+ * since the row is what someone is already looking at when they want more.
+ */
+function ScoreRow({ score }: { score: EvalRun['scores'][number] }) {
+  const [open, setOpen] = useState(false);
+  const summary = score.response || score.reasoning;
+  return (
+    <li>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="group flex w-full items-start gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronRightIcon
+            aria-hidden
+            className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90"
+          />
+          <span
+            className={cn(
+              'mt-0.5 font-mono text-xs uppercase',
+              score.verdict === 'pass' ? 'text-state-done' : 'text-state-failed',
+            )}
+          >
+            {score.verdict}
+          </span>
+          {/*
+            Truncated by CSS rather than by `slice`, so the ellipsis is real and
+            the full string is still in the DOM for find-in-page and for a screen
+            reader — neither of which a cut string leaves anything to work with.
+          */}
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{summary}</span>
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">
+            {score.score.toFixed(2)}
+          </span>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="ml-5 space-y-1.5 pt-1 pb-1.5">
+          {score.response && (
+            <div>
+              <Heading>Response</Heading>
+              <p className="mt-0.5 text-xs break-words whitespace-pre-wrap">{score.response}</p>
+            </div>
+          )}
+          {score.reasoning && (
+            <div>
+              <Heading>Why the judge said {score.verdict}</Heading>
+              <p className="mt-0.5 text-xs break-words whitespace-pre-wrap text-muted-foreground">
+                {score.reasoning}
+              </p>
+            </div>
+          )}
+          {(score.duration_ms != null || score.tool_call_count != null) && (
+            <p className="font-mono text-xs text-muted-foreground">
+              {score.duration_ms != null ? duration(score.duration_ms) : ''}
+              {score.duration_ms != null && score.tool_call_count != null ? ' · ' : ''}
+              {score.tool_call_count != null
+                ? `${score.tool_call_count} tool ${score.tool_call_count === 1 ? 'call' : 'calls'}`
+                : ''}
+            </p>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
   );
 }
 
