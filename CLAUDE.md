@@ -287,11 +287,24 @@ Flows worth knowing before editing the app:
   `y` allows one call.
   The deadline arrives only on the `/approvals` row; the **frame carries none**. So `syncApprovals`
   returns deadlines for *every* pending approval rather than only the ones it is adding, and the
-  engine backfills them onto approvals that arrived by frame and are therefore already `seen`. That
-  is a second reason the poll earns its place in a *watched* client, beyond finding approvals no
-  frame announced.
+  engine backfills them onto approvals that arrived by frame and are therefore already `seen`.
+  **On the streaming path the poll is not a second channel — it is the only one.** Measured
+  2026-09-11: the harness queues `approval_required` when the call blocks and drains that queue only
+  after the tool batch returns (`patterns/react.py:946`, after `:940`), so the frame reaches a live
+  stream in the same flush as `tool_end`, *after* the decision. A stream blocked on a gated call for
+  75 seconds carried none at all. So the ordering is always poll-first and the late frame is
+  discarded by `seenApprovals`; until the poll lands, a watched client's only signal is a tool card
+  stuck at `running`. The backfill still earns its keep for the durable path, where there is no
+  stream to carry a frame at all.
+  The rule path also sends **no `reason`** — `manifests/builder.py` has two emission sites and only
+  the content-screening one passes it, and the `/approvals` row carries none either, so a banner has
+  `rule_id` and nothing else to name why it fired. ROADMAP.md records both.
   **There is a third answer besides yes and no.** `edited_args` on the decision approves a
-  *modified* call and the harness has always taken it — the TUI opens `$EDITOR` on the arguments
+  *modified* call and the harness takes it — verified end to end on 2026-09-11, with the client's
+  exact payload: the model asked to write `notes.txt`, the decision substituted a different path and
+  body, and the tool ran with the substituted arguments while the original path was never created.
+  `DecideRequest` is `extra: "forbid"` and allows exactly `decision`/`status`, `note` and
+  `edited_args`, which is the set `decideApproval` sends — a fourth field would be a 422 — the TUI opens `$EDITOR` on the arguments
   (`e`), chat-ui swaps its arguments pane for a textarea. `parseEditedArgs` refuses anything that is
   not a JSON **object**, because the harness spreads the value over the call's arguments and an
   array or a string would arrive as a tool call with *no arguments at all* — a silent success that

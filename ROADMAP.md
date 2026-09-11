@@ -128,6 +128,47 @@ CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature 
 tabs at `TAB_WIDTH = 10` use 70 of the 72 columns available at eighty. An eighth needs the strip
 rethought, not a smaller number.
 
+### `approval_required` arrives too late to be a banner
+
+Measured 2026-09-11 against the live harness on `:8080` (`felix-run/felix` at `073594e`), with a
+non-durable manifest gating `write_file` on a `ttl_seconds: 600` rule.
+
+**A watched streaming client is never told an approval is pending.** Over a 75-second
+`POST /chat/stream` that sat blocked on a gated call the whole time, the frame inventory was five
+`session_progress`, four `text_delta`, one `tool_start`, one `tool_execution_update` — and zero
+`approval_required`. The `/approvals` row existed and was `pending` throughout. On a second run the
+frame did arrive: in the same drain as `tool_end`, *after* the decision was posted.
+
+The cause is one line. `patterns/react.py:946` drains the side-event queue after
+`self._tools.run_batch(...)` returns on `:940` — and `run_batch` is what blocks in
+`wait_for_decision`. So the frame is queued at block time, sits there for the whole waiting window,
+and is flushed only once the answer it was asking for has already been given. There is exactly one
+drain site in the loop.
+
+Two things follow for this repo, and neither is a bug in it:
+
+- **The `/approvals` poll is not a supplement to the frame — on the streaming path it is the only
+  channel.** `approvals.ts` already says it "finds the ones no frame announced", and both clients
+  poll, so both work. What is wrong is the reasoning recorded in CLAUDE.md: the engine's backfill of
+  deadlines "onto approvals that arrived by frame and are therefore already `seen`" describes an
+  ordering that does not occur here. The poll adds the approval first, and the late frame is then
+  discarded by `seenApprovals`.
+- **While the decision is outstanding, a streaming client's only signal is a tool card stuck at
+  `running`.** That is what the operator sees, and it is indistinguishable from a slow tool.
+
+- **The frame carries no `reason` for a rule gate.** Measured keys: `approval_id`, `args`,
+  `rule_id`, `thread_id`, `tool_call_id`, `tool_name`. `manifests/builder.py` has two emission
+  sites and only the content-screening one (`_await_approval`) passes `reason`; the rule path
+  (`apply_approvals`) omits it. The `/approvals` row carries no `reason` either, and neither carries
+  the rule's `description` from the manifest — so `Confirm writes to the workspace`, written in
+  `cowork.yaml`, reaches no client by any route. A banner has `rule_id` and nothing else to name why
+  it fired. `PendingApproval.reason` is correctly optional, so nothing breaks; the field is simply
+  dead for the common case.
+
+**Size:** the fix is in the harness, not here — drain the queue while the batch is in flight rather
+than after it, and pass the rule's `description` at the rule site. What belongs here is deciding
+whether a tool card blocked on an approval should say so from the poll alone.
+
 ### `MemoryRecord` models six fields fewer than the harness sends
 
 `pnpm check-payload-shapes` reports `tenant_id`, `updated_at`, `thread_id`, `embedding_dim`,
@@ -197,20 +238,17 @@ blocked a 4K check in an earlier pass.
 Needs a real device, a browser whose device-emulation the tooling can drive, or a test that asserts
 on the classes rather than the rendering.
 
-**No approval has been driven end to end against a real gated tool.** Everything the approval
-banners do — the deadline, the countdown, the lapsed state, the rule and reason, the diff — was
-built and checked against `PendingApproval` objects constructed in tests, plus the harness source
-read directly. The client has been run against the live harness on `:8080` repeatedly, but never
-with a manifest whose rules actually gate a call, so no `approval_required` frame and no
-`/approvals` row has been observed in flight.
+**The content-screening approval path has not been seen.** The gate driven on 2026-09-11 was a
+manifest rule (`spec.approvals`), which is one of two emission sites. The other —
+`_await_approval` in `manifests/builder.py`, reached when content screening flags a call — is the
+site that does send `reason`, and it has still never been observed in flight. Everything recorded
+under [`approval_required` arrives too late to be a banner](#approval_required-arrives-too-late-to-be-a-banner)
+is about the rule path only.
 
-Three things are therefore claimed rather than seen: that the frame's `reason` is populated in
-practice (it is optional on the wire), that the poll's backfill lands within a tick or two of the
-frame, and that a decision posted with `edited_args` is accepted by the deployed route — the
-committed OpenAPI snapshot documents no request model for `/approvals/{id}/decide`, so the field
-names are taken from the harness's own SDK rather than from a schema.
-
-Needs a manifest with an approval rule and one gated call.
+**The unattended path's timing is still unmeasured.** A durable run's approval was decided
+out-of-band here by `curl`, not by a client's poll, so how long `POST /chat` → `202` takes to
+surface an approval through `syncApprovals` — the case the poll was built for — is still a
+reasoned number rather than a measured one.
 
 ---
 
