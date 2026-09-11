@@ -75,13 +75,14 @@ export interface PendingApproval {
   /** The rule that gated this, when the harness named one. */
   ruleId?: string;
   /**
-   * Why it fired. Frame-only — the `/approvals` row carries no reason, and in
-   * practice neither does the frame for a *rule* gate: `manifests/builder.py`
-   * has two emission sites and only the content-screening one
-   * (`_await_approval`) passes `reason`. Measured against a live gate on
-   * 2026-09-11, `spec.approvals` rules send `rule_id` and no reason at all, and
-   * the rule's own `description` never leaves the harness. Optional for that
-   * reason, and usually absent.
+   * Why it fired, in the operator's words — a rule gate sends its
+   * `description`, a content-screening gate sends the finding.
+   *
+   * **Frame-only**, and optional for two reasons: the `/approvals` row carries
+   * no reason at all, so an approval the poll found has none to show; and a
+   * harness older than `felix-run/felix#210` sent none from the rule site
+   * either, where `description` reached no client by any route. Render `ruleId`
+   * when it is absent.
    */
   reason?: string;
   /**
