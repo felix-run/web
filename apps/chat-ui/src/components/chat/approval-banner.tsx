@@ -1,4 +1,4 @@
-import type { PendingApproval } from '@felix/client';
+import { approvalRuleLabel, type PendingApproval } from '@felix/client';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 
 /**
@@ -34,7 +34,10 @@ export function ApprovalBanner({
         before={pending.toolName === 'write_file' ? (pending.before ?? null) : undefined}
         // The rule that gated the call, in the slot already built for a quiet
         // subtitle beside the tool name.
-        context={pending.ruleId}
+        // A screening gate's id is `command:<reason>`, so the id is trimmed to the
+        // half that says where the gate came from and `reason` says the rest;
+        // without that the card printed the same sentence twice.
+        context={approvalRuleLabel(pending.ruleId, pending.reason)}
         // Frame-only, so this is present for an approval a frame announced and
         // absent for one the poll found; the rule id in `context` carries it then.
         reason={pending.reason}

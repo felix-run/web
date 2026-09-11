@@ -19,6 +19,7 @@
  */
 
 import {
+  approvalRuleLabel,
   formatCountdown,
   msUntilDecision,
   type PendingApproval,
@@ -99,6 +100,9 @@ export function ApprovalPrompt({
   });
 
   const diff = writeDiff(pending);
+  // A screening gate's id is `command:<reason>` and the reason is on the next
+  // line, so the id is trimmed to the half that says where the gate came from.
+  const ruleLabel = approvalRuleLabel(pending.ruleId, pending.reason);
   const summary = summarizeToolArgs(pending.toolName, pending.args);
   return (
     <box
@@ -111,7 +115,7 @@ export function ApprovalPrompt({
     >
       <text fg={theme.blocked}>
         approval · {pending.toolName}
-        {pending.ruleId ? ` · ${pending.ruleId}` : ''}
+        {ruleLabel ? ` · ${ruleLabel}` : ''}
       </text>
       {pending.reason ? <text attributes={DIM}>{pending.reason}</text> : null}
       {diff ? (

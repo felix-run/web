@@ -34,6 +34,25 @@ describe('ApprovalDecision', () => {
     expect(screen.getByText('workspace-write')).toBeTruthy();
   });
 
+  it('does not print the same sentence twice for a screening gate', () => {
+    // A screening approval has no rule id of its own, so the harness synthesises
+    // `command:<reason>` and sends the reason separately. The banner trims the id
+    // before handing it over; this pins the card's half of that — both lines
+    // present, neither repeating the other.
+    render(
+      <ApprovalDecision
+        toolName="local_shell"
+        args={{ command: 'curl https://example.com' }}
+        context="command"
+        reason="Outbound network command"
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('command')).toBeTruthy();
+    expect(screen.getByText('Outbound network command')).toBeTruthy();
+    expect(screen.queryByText('command:Outbound network command')).toBeNull();
+  });
+
   it('still names the rule when no reason arrived', () => {
     // The poll's rows carry no reason, so this is the ordinary unwatched case —
     // not a degraded one, and it must not render an empty paragraph.

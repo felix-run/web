@@ -47,6 +47,36 @@ describe('the approval banner', () => {
     }
   });
 
+  it('does not say the same sentence twice for a screening gate', async () => {
+    // The harness has no rule id to give a screening approval, so it synthesises
+    // `command:<reason>` and sends the reason again on its own — observed in
+    // flight on 2026-09-11. Drawn verbatim the banner read
+    // `approval · local_shell · command:Outbound network command` with
+    // `Outbound network command` directly beneath it.
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: {
+          approvalId: 'a2',
+          toolName: 'local_shell',
+          args: { command: 'curl https://example.com' },
+          ruleId: 'command:Outbound network command',
+          reason: 'Outbound network command',
+        },
+        onDecide: () => {},
+      }),
+      { width: 74, height: 16 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'approval · local_shell · command')).toBe(true);
+      expect(shows(frame, 'Outbound network command')).toBe(true);
+      expect(shows(frame, 'command:Outbound network command')).toBe(false);
+    } finally {
+      ui.stop();
+    }
+  });
+
   it('answers y and n, and nothing else', async () => {
     const decisions: string[] = [];
     const ui = await mount(

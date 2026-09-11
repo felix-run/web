@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type ApprovalRequest,
+  approvalRuleLabel,
   DEFAULT_APPROVAL_TTL_MS,
   formatArgsForEditing,
   formatCountdown,
@@ -207,5 +208,42 @@ describe('parseEditedArgs', () => {
 
   it('accepts an emptied object, which is a real thing to want', () => {
     expect(parseEditedArgs('{}', original)).toEqual({ status: 'edited', args: {} });
+  });
+});
+
+describe('approvalRuleLabel', () => {
+  /**
+   * The two gates name themselves differently, and only one of them says
+   * anything new in the id.
+   *
+   * A manifest rule has an id of its own and a separate `description`. A
+   * screening rule has no id, so the harness builds `command:<reason>` and then
+   * sends the same sentence again as the reason — observed in flight on
+   * 2026-09-11 as `command:Outbound network command` over `Outbound network
+   * command`, one above the other on the same card.
+   */
+  it('leaves a manifest rule id alone', () => {
+    expect(approvalRuleLabel('workspace-write', 'Confirm writes to the workspace')).toBe(
+      'workspace-write',
+    );
+  });
+
+  it('trims a screening id down to where the gate came from', () => {
+    expect(approvalRuleLabel('command:Outbound network command', 'Outbound network command')).toBe(
+      'command',
+    );
+  });
+
+  it('keeps an id whose colon is not the reason', () => {
+    // Only an id that literally ends in `:<reason>` is a duplicate. A rule free
+    // to be named anything may legitimately carry one.
+    expect(approvalRuleLabel('ops:db-write', 'Confirm writes to the workspace')).toBe(
+      'ops:db-write',
+    );
+  });
+
+  it('has nothing to say without an id', () => {
+    expect(approvalRuleLabel(undefined, 'why')).toBeUndefined();
+    expect(approvalRuleLabel('workspace-write')).toBe('workspace-write');
   });
 });

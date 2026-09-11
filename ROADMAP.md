@@ -199,19 +199,15 @@ blocked a 4K check in an earlier pass.
 Needs a real device, a browser whose device-emulation the tooling can drive, or a test that asserts
 on the classes rather than the rendering.
 
-**The content-screening approval path has not been seen.** The gates driven on 2026-09-11 were
-manifest rules (`spec.approvals`), which is one of two emission sites. The other —
-`_await_approval` in `manifests/builder.py`, reached when content screening flags a call — has
-still never been observed in flight. It carries a `reason` of a different kind: the screening
-finding rather than an operator's rule description, and a `rule_id` of `command:<reason>` rather
-than a rule's own id.
-
-**The unattended path's timing is still unmeasured, and it is the path that still depends on the
-poll.** Side events are an in-process queue keyed by thread id, so a durable run — agent in the
-worker, stream served by the API — cannot be reached by one at all; `felix-run/felix#210` fixed the
-streaming path and does not change that. A durable run's approval was decided out-of-band here by
-`curl`, not by a client's poll, so how long `POST /chat` → `202` takes to surface an approval
-through `syncApprovals` is still a reasoned number rather than a measured one.
+**Both approval unknowns were closed on 2026-09-11** and are recorded here only so the next person
+does not re-measure them. The screening gate (`apply_command_screening` → `_await_approval`, a
+`decision: require_approval` command rule) fires ~1s after `tool_start` like the rule gate does, and
+names itself differently: `rule_id` is the synthetic `command:<reason>` and `reason` repeats it
+verbatim, which is why `approvalRuleLabel` exists. A durable run surfaced its approval **9.1s** after
+`POST /chat` returned `202` — nearly all of it the worker reaching the gated call, since the row is
+visible the moment it is written and a client polling every 2.5s adds at most that. The durable path
+has no frame at all: side events are an in-process queue keyed by thread id, and the agent is in the
+worker while the stream is served by the API.
 
 ---
 
