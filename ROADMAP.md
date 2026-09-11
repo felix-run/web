@@ -28,33 +28,8 @@ itself absent while offering to clear itself.
 
 ## Sheets
 
-### Explanations that only a mouse can reach
-
-Two `title` attributes still carry information a keyboard or touch user cannot get at:
-`manifests-sheet.tsx:153` (`Canary vN at W%`) and `eval-sheet.tsx:480`, which is the worse of the
-two — it holds the judge's `reasoning`, the actual output of an eval, on hover over a line that is
-also cut at 80 characters with no way to expand.
-
-The third instance shipped: the run button's `title` explained why it was disabled, on an element
-that being disabled could never fire the event to show it. That one is inline now, and
-`tests/eval-sheet.test.tsx` pins it.
-
-**Size:** small for the canary badge; the eval one is part of the run-card redesign below.
-
-### The eval run card throws away its own instrumentation
-
-`EvalRun` carries `started_at` and `finished_at`; `ItemScore` carries `duration_ms`,
-`tokens_input`, `tokens_output`, `tool_call_count` (`types.ts`). The run card renders **none** of
-them — measured: zero references in `eval-sheet.tsx`. Runs stack with no timestamp and no ordering
-cue, so two runs of the same dataset are indistinguishable. PRODUCT.md names "what did it cost" as
-one of three questions the surface must answer at a glance.
-
-Worse, the judge's `reasoning` — the actual output of an eval — is reachable only through a hover
-`title` (`eval-sheet.tsx:340`), and `response` is cut at 80 characters
-(`eval-sheet.tsx:341`) with no ellipsis and no way to expand.
-
-**Size:** medium. The data is already in hand; this is a card redesign, and `Collapsible` already
-exists in `@felix/ui`.
+*The critiques' correctness, consistency and recognition findings are closed. What is left is the
+one entry that was never a defect.*
 
 ### Four workbenches behind one unlabelled ellipsis
 

@@ -62,3 +62,13 @@ describe('the canary reports the state it is actually in', () => {
     expect(clearButton().disabled).toBe(false);
   });
 });
+
+describe('the canary marker says which version and how much', () => {
+  it('puts the numbers on screen, not in a title only a mouse can fire', async () => {
+    // It was a `◆` whose `title` carried `Canary vN at W%` and whose aria-label
+    // said only "has a canary rollout" — so the two facts that decide whether to
+    // care reached neither a keyboard nor a screen reader.
+    await sheet({ canary_version: 5, canary_weight: 10 });
+    await waitFor(() => expect(screen.getByText(/v5 · 10%/)).toBeTruthy());
+  });
+});
