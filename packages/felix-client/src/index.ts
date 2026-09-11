@@ -11,6 +11,7 @@ export {
   type ApprovalSync,
   type ApprovalSyncOptions,
   type ArgEdit,
+  approvalRuleLabel,
   DEFAULT_APPROVAL_TTL_MS,
   formatArgsForEditing,
   formatCountdown,

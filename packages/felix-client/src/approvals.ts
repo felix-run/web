@@ -136,6 +136,27 @@ export function formatCountdown(ms: number): string {
 }
 
 /**
+ * What to show in the slot that names the rule.
+ *
+ * A manifest rule has an id of its own (`workspace-write`) and a `description`
+ * that reaches the client separately as `reason`. A **screening** approval has
+ * neither: the harness synthesises `command:<reason>` as the id and sends the
+ * same text again as the reason, so a card rendering both printed it twice —
+ * `local_shell · command:Outbound network command` above `Outbound network
+ * command`. Observed in flight on 2026-09-11, once `reason` started arriving.
+ *
+ * Collapses only when the id literally ends in `:<reason>`, so a rule that
+ * happens to carry a colon is left alone.
+ */
+export function approvalRuleLabel(ruleId?: string, reason?: string): string | undefined {
+  if (!ruleId) return undefined;
+  if (reason && ruleId.endsWith(`:${reason}`)) {
+    return ruleId.slice(0, ruleId.length - reason.length - 1);
+  }
+  return ruleId;
+}
+
+/**
  * A one-line description of what a gated call would do.
  *
  * The known client tools get a sentence; anything else falls back to pretty
