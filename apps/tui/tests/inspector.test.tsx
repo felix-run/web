@@ -128,6 +128,54 @@ describe('the table', () => {
   });
 });
 
+describe('the usage rows', () => {
+  it('leaves cost blank on a metered but unpriced turn', async () => {
+    // A model with no entry in the pricing catalog records zero spend while its
+    // tokens still count against the caps — `limits.max_cost_usd` fails open for
+    // it. Drawing `$0.00000` would report that configuration gap as a free turn.
+    const { usageRows } = await import('../src/ui/inspector');
+    const { rows } = usageRows([
+      { ts: Date.now(), model_id: 'claude', tokens_input: 900, tokens_output: 40 },
+      {
+        ts: Date.now(),
+        model_id: 'claude',
+        tokens_input: 900,
+        tokens_output: 40,
+        cost_usd: 0.0031,
+      },
+    ]);
+    expect(rows[0]?.[4]?.text.trim()).toBe('');
+    expect(rows[1]?.[4]?.text.trim()).toBe('$0.00310');
+  });
+
+  it('does not round a real cost away', async () => {
+    // Two decimals draws `$0.00` for every ordinary turn and a total that never
+    // moves, which is the failure this resolution exists to avoid.
+    const { usd } = await import('../src/format');
+    expect(usd(0.000_04)).toBe('$0.00004');
+    expect(usd(0.42)).toBe('$0.4200');
+    expect(usd(12.5)).toBe('$12.50');
+  });
+});
+
+describe('the memory rows', () => {
+  it('says why a row cannot be reached by the vector channel', async () => {
+    // Listing has no `channels` — nothing ranked, so nothing reports a retriever.
+    // The question there is why a row was *not* found, and a null embedding dim
+    // is the answer: no embedder ran, so it is lexical-only.
+    const { memoryRows } = await import('../src/ui/inspector');
+    const { rows } = memoryRows([
+      { kind: 'fact', content: 'a', embedding_dim: null },
+      { kind: 'fact', content: 'b', embedding_dim: 1536, embedding_model: 'text-embed-3' },
+      { kind: 'fact', content: 'c', channels: ['fts', 'vector'] },
+    ]);
+    expect(rows[0]?.[2]?.text).toBe('lexical');
+    expect(rows[1]?.[2]?.text).toBe('text-embed-3');
+    // A hit still reports its retrievers — that column keeps its first meaning.
+    expect(rows[2]?.[2]?.text).toBe('fts+vector');
+  });
+});
+
 describe('the corpus rows', () => {
   it('keeps its columns still whether it is listing or searching', async () => {
     // The section's `/` filter swaps a document listing for a chunk search, and

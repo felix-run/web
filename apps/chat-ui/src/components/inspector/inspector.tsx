@@ -1278,6 +1278,26 @@ function MemorySection({
                       <span className="text-state-failed">· {record.status}</span>
                     )}
                     {record?.superseded_by && <span>· superseded</span>}
+                    {/*
+                      How the row was embedded — the pair that answers "why did
+                      recall miss this". Shown only in recent/as-of, where the
+                      question is about the row rather than about a ranking that
+                      already found it. `null` dim means no embedder ran, so the
+                      row is lexical-only; a dim that disagrees with the rest of
+                      the store means it was written under a different embedder
+                      and has quietly stopped matching.
+                    */}
+                    {record && record.embedding_dim == null && (
+                      <span title="No embedder ran for this row; it is reachable by full text only.">
+                        · lexical only
+                      </span>
+                    )}
+                    {record?.embedding_model ? (
+                      <span>
+                        · {record.embedding_model}
+                        {record.embedding_dim ? `/${record.embedding_dim}` : ''}
+                      </span>
+                    ) : null}
                   </div>
                   {/* Forgetting a superseded row changes nothing the agent can recall. */}
                   {record?.status !== 'forgotten' && (
@@ -1740,7 +1760,28 @@ function UsageSection({
             <dt className="text-xs text-muted-foreground">Output</dt>
             <dd className="mt-0.5 tabular-nums font-mono text-sm">{totals.out.toLocaleString()}</dd>
           </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">
+              {/*
+                Not "Cost" when any row was unpriced: the number is a floor, and
+                labelling a floor as the total is the misreading worth designing
+                against here.
+              */}
+              {totals.unpriced > 0 ? 'Cost (floor)' : 'Cost'}
+            </dt>
+            <dd className="mt-0.5 tabular-nums font-mono text-sm">
+              {totals.unpriced > 0 ? '≥ ' : ''}
+              {usd(totals.cost)}
+            </dd>
+          </div>
         </dl>
+        {totals.unpriced > 0 && (
+          <p className="mb-2.5 text-xs text-state-failed">
+            {totals.unpriced} {totals.unpriced === 1 ? 'turn is' : 'turns are'} metered but unpriced
+            — the model has no entry in the pricing catalog, so its spend counts as zero and{' '}
+            <code className="font-mono">limits.max_cost_usd</code> fails open for it.
+          </p>
+        )}
         <ol className="divide-y divide-border/40">
           {rows.map((e) => (
             <li key={e.id} className="flex items-start gap-2 py-1.5 text-xs">
@@ -1757,7 +1798,19 @@ function UsageSection({
                   {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
                   {(e.tokens_output ?? 0).toLocaleString()} out
                   {(e.cache_read ?? 0) > 0 ? ` · ${e.cache_read.toLocaleString()} cache` : ''}
+                  {e.cost_usd ? ` · ${usd(e.cost_usd)}` : ''}
                 </p>
+                {/*
+                  Only when it disagrees with the reported id. `model_id` is the
+                  logical route the operator configured; this is what the row was
+                  actually priced by, and the two differing on a custom route is
+                  the case worth being able to see.
+                */}
+                {e.wire_model_id && e.wire_model_id !== e.model_id ? (
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    priced as {e.wire_model_id}
+                  </p>
+                ) : null}
               </div>
               {e.ts != null && (
                 <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
@@ -1773,14 +1826,47 @@ function UsageSection({
   );
 }
 
-function summarizeUsage(items: UsageEvent[]): { in: number; out: number } {
+/**
+ * Tokens and spend over the rows in hand.
+ *
+ * `unpriced` is the load-bearing part. A model with no entry in the pricing
+ * catalog is metered but costs `0` — the tokens count against the token caps
+ * while the spend they represent is recorded as nothing, and the harness counts
+ * that as `felix_model_unpriced`. Summing the column without saying how many
+ * rows were unpriced reports an underestimate as a total, which is the one
+ * number an operator would act on.
+ */
+export function summarizeUsage(items: UsageEvent[]): {
+  in: number;
+  out: number;
+  cost: number;
+  unpriced: number;
+} {
   let inn = 0;
   let out = 0;
+  let cost = 0;
+  let unpriced = 0;
   for (const e of items) {
     inn += e.tokens_input ?? 0;
     out += e.tokens_output ?? 0;
+    cost += e.cost_usd ?? 0;
+    // Tokens but no cost. A row with neither is not a gap, it is an empty turn.
+    if (!e.cost_usd && (e.tokens_input || e.tokens_output)) unpriced += 1;
   }
-  return { in: inn, out };
+  return { in: inn, out, cost, unpriced };
+}
+
+/**
+ * Dollars at a resolution that does not round a real cost to nothing.
+ *
+ * A single cheap turn is fractions of a cent, so the usual two decimals shows
+ * `$0.00` for every row and a running total that never moves.
+ */
+export function usd(n: number): string {
+  if (n === 0) return '$0';
+  if (n < 0.01) return `$${n.toFixed(5)}`;
+  if (n < 1) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 /** 12_400 → "12.4k". Header metas have to fit beside a title in a 22rem rail. */

@@ -121,17 +121,20 @@ belong there. Four are not:
 CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up". What is
 left is smaller than what came off it: three single routes and one aggregate.
 
-### `MemoryRecord` models six fields fewer than the harness sends
+### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 
-`pnpm check-payload-shapes` reports `tenant_id`, `updated_at`, `thread_id`, `embedding_dim`,
-`embedding_model` and `embedding_json` as unmodelled. The type moved in #132 and now lives at
-`packages/felix-client/src/management/memory.ts`, so a terminal client reads the same rows. Advisory, and mostly correct — a row carries
-more than one panel needs. But `embedding_model` and `embedding_dim` are the two that answer "why
-did recall miss this", which is the question the memory inspector exists for, and `updated_at`
-distinguishes a fact that was rewritten from one that was not.
+`pnpm check-payload-shapes` reports it as a field the harness sends that nothing models. That is
+expected rather than an omission, and it is recorded here so the advisory line does not read as work
+nobody got to: the column is documented in the harness as **deprecated and never populated**,
+superseded by the pgvector `embedding` column, and slated for removal once its backfill has run
+everywhere. Modelling it would be modelling a `null` with a deletion date.
 
-The equivalent advisory on `ApprovalRequest` turned out to be hiding a real gap (#127), so this one
-is worth reading rather than assuming benign.
+The other five — `updated_at`, `thread_id`, `tenant_id`, `embedding_dim`, `embedding_model` — were
+modelled on 2026-09-11, and the embedding pair is rendered: a memory row says `lexical only` when no
+embedder ran for it, which is the answer to "why did recall miss this". `UsageEvent` gained
+`wire_model_id` and `cost_usd` in the same pass.
+
+**Size:** nothing to do until the harness drops the column, at which point this entry goes too.
 
 ---
 
