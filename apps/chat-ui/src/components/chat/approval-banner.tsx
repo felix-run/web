@@ -35,6 +35,9 @@ export function ApprovalBanner({
         // The rule that gated the call, in the slot already built for a quiet
         // subtitle beside the tool name.
         context={pending.ruleId}
+        // Frame-only, so this is present for an approval a frame announced and
+        // absent for one the poll found; the rule id in `context` carries it then.
+        reason={pending.reason}
         expiresAt={pending.expiresAt}
         queueLength={queueLength}
         runAborted={runAborted}

@@ -188,6 +188,9 @@
     "/usage": {
       "get": {}
     },
+    "/usage/summary": {
+      "get": {}
+    },
     "/memory/": {
       "get": {},
       "post": {}

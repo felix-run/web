@@ -37,6 +37,14 @@ export interface ApprovalDecisionProps {
   before?: string | null;
   /** Manifest that asked, shown quietly beside the tool name. */
   context?: string;
+  /**
+   * Why the gate fired, in the operator's own words — a rule's `description`, or
+   * a content-screening finding. Frame-only, so an approval the `/approvals`
+   * poll found has none and the card falls back to naming the rule in
+   * `context`. Absent entirely against a harness older than
+   * `felix-run/felix#210`, which sent no reason from the rule site.
+   */
+  reason?: string;
   /** How many approvals are waiting in total, when more than one. */
   queueLength?: number;
   /**
@@ -90,6 +98,7 @@ export interface ApprovalDecisionProps {
 export function ApprovalDecision({
   toolName,
   args,
+  reason,
   before,
   context,
   expiresAt,
@@ -167,6 +176,10 @@ export function ApprovalDecision({
           </span>
         ) : null}
       </div>
+
+      {/* Above the summary on purpose: why it is being asked outranks what the call
+          is, and the summary can be long enough to push a trailing line out of view. */}
+      {reason && <p className="mt-1.5 text-sm text-muted-foreground">{reason}</p>}
 
       {summary && <p className="mt-1.5 text-sm">{summary}</p>}
 
