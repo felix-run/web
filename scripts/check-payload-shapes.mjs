@@ -85,6 +85,23 @@ export const GUARDED = [
     file: 'packages/felix-client/src/management/plans.ts',
     serializer: 'felix/plans/store.py:_plan_dict',
   },
+  {
+    // `/documents` was the one area no guard could see: the store returned
+    // dataclasses and each route built the wire dict inline, so there was no
+    // literal to record. `felix-run/felix#213` moved the shape into the store,
+    // which is what these two entries were waiting on — one naming a serializer
+    // the record does not carry fails, and correctly so.
+    type: 'DocumentRecord',
+    file: 'packages/felix-client/src/management/documents.ts',
+    serializer: 'felix/documents/store.py:_document_dict',
+  },
+  {
+    // A hit is a chunk, not a document, and its key set is genuinely different —
+    // not the listing row plus extras. Guarded separately for that reason.
+    type: 'DocumentHit',
+    file: 'packages/felix-client/src/management/documents.ts',
+    serializer: 'felix/documents/store.py:_hit_dict',
+  },
 ];
 
 /**

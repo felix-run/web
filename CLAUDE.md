@@ -135,6 +135,9 @@ typechecked, linted, and passed drift while the Activity feed rendered the manif
 row. Fields the harness sends that nothing models are advisory. A guarded type naming a serializer
 the record does not carry **fails**, including one the recorder listed as `unreadable` (a dict built
 imperatively has no literal to read) — a guard that silently checks nothing is worse than none.
+That rule is also why a new area is guarded harness-first: `/documents` returned dataclasses and
+built its wire dict inline in each route, so nothing could be recorded and nothing could be guarded
+until the shape moved into the store (`felix-run/felix#213`).
 
 All three are **excluded from Biome** in `biome.json`. `pnpm format` reformats JSON, and these are
 generated files whose own `$comment` says not to hand-edit them — so formatting them produced a diff
