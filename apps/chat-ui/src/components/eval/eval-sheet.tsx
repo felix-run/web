@@ -5,6 +5,7 @@ import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
+import { Textarea } from '@felix/ui/textarea';
 import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -95,13 +96,19 @@ export function EvalSheet({
           {failure && <ErrorNotice error={failure.err} doing={failure.doing} />}
 
           {/* Dataset picker + create */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/*
+            Capped and scrollable. It wrapped without a height, so twenty of
+            these pushed the panel they select *for* off the bottom of the sheet
+            — the control growing until the thing it controls is unreachable.
+            Read from the code rather than measured: the local harness has one.
+          */}
+          <div className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto">
             {datasets.map((d) => (
               <Button
                 key={d.name}
                 size="sm"
                 variant={selected === d.name ? 'secondary' : 'ghost'}
-                className="h-7 font-mono text-sm"
+                className="font-mono text-sm"
                 aria-pressed={selected === d.name}
                 onClick={() => setSelected(d.name)}
               >
@@ -125,7 +132,7 @@ export function EvalSheet({
             />
             <Button
               size="sm"
-              className="h-8 gap-1"
+              className="gap-1"
               disabled={creating || !newName.trim()}
               onClick={create}
             >
@@ -196,7 +203,7 @@ function DatasetPanel({
         <Button
           size="sm"
           variant="ghost"
-          className="ml-auto h-7"
+          className="ml-auto"
           disabled={items.length === 0}
           onClick={() => setComparing((c) => !c)}
         >
@@ -204,7 +211,7 @@ function DatasetPanel({
         </Button>
         <Button
           size="sm"
-          className="h-7 gap-1"
+          className="gap-1"
           disabled={running || items.length === 0}
           onClick={run}
           title={items.length === 0 ? undefined : `Replay against ${manifest}`}
@@ -320,26 +327,38 @@ function ComparePanel({
   return (
     <section className="space-y-2 rounded-md border bg-background p-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {/*
+          `htmlFor`/`id` rather than wrapping, now that the control is a
+          component: a label that contains its input satisfies the rule by
+          structure, and the linter can only see that structure when the input is
+          a DOM element it recognises.
+        */}
+        <label
+          htmlFor="eval-compare-baseline"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground"
+        >
           Baseline
-          <input
-            aria-label="Baseline manifest"
+          <Input
+            id="eval-compare-baseline"
             value={baseline}
             onChange={(e) => setBaseline(e.target.value)}
-            className="h-7 w-32 rounded-md border bg-background px-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 w-32 px-2 text-xs"
           />
         </label>
-        <label className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+        <label
+          htmlFor="eval-compare-candidates"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground"
+        >
           Candidates
-          <input
-            aria-label="Candidate manifests"
+          <Input
+            id="eval-compare-candidates"
             value={candidates}
             onChange={(e) => setCandidates(e.target.value)}
             placeholder="deep, quick-v2"
-            className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 min-w-0 flex-1 px-2 text-xs"
           />
         </label>
-        <Button size="sm" className="h-7" disabled={!ready || busy} onClick={compare}>
+        <Button size="sm" disabled={!ready || busy} onClick={compare}>
           {busy ? 'Running…' : `Compare (${names.length + 1} runs)`}
         </Button>
       </div>
@@ -434,13 +453,13 @@ function AddItemForm({
     <section className="space-y-1.5 rounded-md border border-dashed p-2.5">
       <Heading>Add item</Heading>
       <Label htmlFor="eval-item-input">User input</Label>
-      <textarea
+      <Textarea
         id="eval-item-input"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         placeholder="e.g. What is 7 × 6?"
         rows={2}
-        className="w-full resize-none rounded-md border bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring"
+        className="min-h-0 resize-none bg-transparent px-2 py-1.5 shadow-none"
       />
       <Label htmlFor="eval-item-criteria">Pass criteria, judged by the model</Label>
       <Input
@@ -458,7 +477,7 @@ function AddItemForm({
         placeholder="comma-separated, e.g. 42"
         className="h-8 text-sm"
       />
-      <Button size="sm" className="h-7 gap-1" disabled={busy || !input.trim()} onClick={add}>
+      <Button size="sm" className="gap-1" disabled={busy || !input.trim()} onClick={add}>
         <PlusIcon className="size-3.5" /> Add
       </Button>
     </section>

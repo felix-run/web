@@ -125,7 +125,7 @@ export function JobsSheet({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 self-start text-xs"
+                  className="self-start text-xs"
                   onClick={refresh}
                 >
                   Try again
@@ -180,12 +180,7 @@ export function JobsSheet({
                 </SelectContent>
               </Select>
             </div>
-            <Button
-              size="sm"
-              className="h-7 gap-1"
-              disabled={busy || !name.trim()}
-              onClick={create}
-            >
+            <Button size="sm" className="gap-1" disabled={busy || !name.trim()} onClick={create}>
               <PlusIcon className="size-3.5" /> Create
             </Button>
           </div>
@@ -206,9 +201,9 @@ export function JobsSheet({
                     </Badge>
                     <span className="text-muted-foreground">{j.manifest_id || '—'}</span>
                     <Button
-                      size="sm"
+                      size="xs"
                       variant="ghost"
-                      className="ml-auto h-6 gap-1 px-2 text-xs"
+                      className="ml-auto"
                       aria-expanded={expanded === j.name}
                       aria-controls={`job-runs-${j.name}`}
                       onClick={() => toggleRuns(j.name)}
@@ -216,9 +211,9 @@ export function JobsSheet({
                       <HistoryIcon className="size-3" /> Runs
                     </Button>
                     <ConfirmButton
-                      size="sm"
+                      size="xs"
                       variant="ghost"
-                      className="h-6 px-2 text-xs text-muted-foreground hover:text-state-failed"
+                      className="text-muted-foreground hover:text-state-failed"
                       disabled={busy}
                       destructive
                       question={`Delete ${j.name}? Its run history goes with it.`}

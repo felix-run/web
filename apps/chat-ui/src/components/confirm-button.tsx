@@ -42,7 +42,14 @@ export function ConfirmButton({
   disabled?: boolean;
   /** Colours the confirm step as a loss rather than a change. */
   destructive?: boolean;
-  size?: 'sm' | 'default';
+  /**
+   * Narrower than `Button`'s own ramp on purpose — the confirm step swaps in a
+   * second label ("Delete it"), so a size with no room for it produces a control
+   * that is wider armed than at rest and shifts the row under the cursor. `xs`
+   * is in because the sheets' densest rows need it and its `px-2` still fits a
+   * two-word confirmation; `icon*` is out because there is nowhere to put one.
+   */
+  size?: 'xs' | 'sm' | 'default';
   variant?: 'default' | 'outline' | 'ghost';
   className?: string;
 }) {
