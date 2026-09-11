@@ -48,23 +48,6 @@ before adding a fifth sheet.
 
 ## Cross-cutting
 
-### The button size ramp exists and nothing uses it
-
-`packages/ui/src/button.tsx:23` defines `size="xs"` (`h-6`). Repo-wide usage: **zero**. Meanwhile
-the sheets carry ad-hoc `h-6` / `h-7` / `h-8` overrides, and `h-7` is not a step in the primitive's
-ramp at all.
-
-Same shape: `packages/ui/src/textarea.tsx` exists and is imported **zero** times, while two sheets
-hand-roll a raw `<textarea>` with their own focus styling.
-
-**Size:** small, mechanical, and it removes a class of drift rather than an instance.
-
-### Unbounded pickers
-
-The dataset picker (`eval-sheet.tsx`) and the manifest picker (`manifests-sheet.tsx`) wrap without a
-height cap. Twenty datasets pushes the working panel off-screen. Not reproduced — the local harness
-has one of each — so this is read from the code, not measured.
-
 ### chat-ui defines colours the design package now owns
 
 `packages/design/src/tokens.ts:106,114` exports `STATE_LIGHT` / `STATE_DARK` — the blocked / done /

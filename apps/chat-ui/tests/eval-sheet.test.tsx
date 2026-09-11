@@ -200,3 +200,37 @@ describe('a run says what it cost', () => {
     await waitFor(() => expect(screen.getByText(response)).toBeTruthy());
   });
 });
+
+/**
+ * The picker is a control, and a control that grows without limit eventually
+ * hides the thing it controls.
+ *
+ * Both pickers wrapped with no height, so twenty datasets pushed the panel they
+ * select *for* off the bottom of the sheet. Asserted on the classes rather than
+ * on a rendered height, because happy-dom lays nothing out — which is the same
+ * technique the roadmap names for the narrow-viewport check it cannot run.
+ */
+describe('the dataset picker cannot push the panel off the sheet', () => {
+  it('caps its height and scrolls instead of growing', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ name: `set-${i}`, description: '' }));
+    vi.doMock('../src/api', () => ({
+      listEvalDatasets: vi.fn().mockResolvedValue(many),
+      getEvalDataset: vi.fn().mockResolvedValue({ ...many[0], items: [] }),
+      listEvalItems: vi.fn().mockResolvedValue([]),
+      listEvalRuns: vi.fn().mockResolvedValue([]),
+      putEvalDataset: vi.fn(),
+      addEvalItem: vi.fn(),
+      runEvalDataset: vi.fn(),
+      getEvalRun: vi.fn(),
+      compareEvalRuns: vi.fn(),
+      listTenantManifests: vi.fn().mockResolvedValue([]),
+    }));
+    const { EvalSheet } = await import('../src/components/eval/eval-sheet');
+    render(<EvalSheet open onOpenChange={() => {}} manifest="quick" />);
+
+    const first = await waitFor(() => screen.getByRole('button', { name: 'set-0' }));
+    const picker = first.parentElement;
+    expect(picker?.className).toMatch(/\bmax-h-\d+\b/);
+    expect(picker?.className).toMatch(/\boverflow-y-auto\b/);
+  });
+});

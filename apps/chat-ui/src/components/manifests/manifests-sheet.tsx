@@ -5,6 +5,7 @@ import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
+import { Textarea } from '@felix/ui/textarea';
 import { GitBranchIcon, RotateCcwIcon, SaveIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -125,7 +126,7 @@ export function ManifestsSheet({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 self-start text-xs"
+                  className="self-start text-xs"
                   onClick={refresh}
                 >
                   Try again
@@ -134,13 +135,19 @@ export function ManifestsSheet({
             />
           )}
 
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/*
+            Capped and scrollable. It wrapped without a height, so twenty of
+            these pushed the panel they select *for* off the bottom of the sheet
+            — the control growing until the thing it controls is unreachable.
+            Read from the code rather than measured: the local harness has one.
+          */}
+          <div className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto">
             {rows.map((r) => (
               <Button
                 key={r.name}
                 size="sm"
                 variant={selected === r.name ? 'secondary' : 'ghost'}
-                className="h-7 gap-1 font-mono text-sm"
+                className="gap-1 font-mono text-sm"
                 // Selection was carried by the `secondary` fill alone, which is colour
                 // as the only channel and inaudible to a screen reader.
                 aria-pressed={selected === r.name}
@@ -179,7 +186,7 @@ export function ManifestsSheet({
             />
             <Button
               size="sm"
-              className="h-8 whitespace-nowrap"
+              className="whitespace-nowrap"
               disabled={busy || !importName.trim()}
               onClick={importManifest}
             >
@@ -233,7 +240,7 @@ function VersionChips({
               key={k.version}
               size="sm"
               variant={isActive ? 'secondary' : 'ghost'}
-              className="h-6 gap-1 px-2 font-mono text-xs"
+              className="gap-1 font-mono text-xs"
               disabled={isActive}
               title={k.comment ? `${k.comment} · seen ${relativeTime(k.seenAt)}` : undefined}
               onClick={() => onPick(String(k.version))}
@@ -391,11 +398,11 @@ function VersionsPanel({
             onChange={(e) => setTargetVersion(e.target.value)}
             inputMode="numeric"
             placeholder="version number"
-            className="h-7 flex-1 font-mono text-sm"
+            className="flex-1 font-mono text-sm"
           />
           <ConfirmButton
             size="sm"
-            className="h-7 gap-1"
+            className="gap-1"
             disabled={busy || !targetValid}
             question={`v${targetN} will serve all traffic for ${name}.`}
             confirmLabel={`Activate v${targetN}`}
@@ -463,7 +470,7 @@ function VersionsPanel({
         <div className="mt-2 flex flex-wrap gap-2">
           <ConfirmButton
             size="sm"
-            className="h-7 flex-1"
+            className="flex-1"
             disabled={busy || !canaryValid}
             question={`v${canaryN} will take ${weight}% of traffic for ${name}.`}
             confirmLabel={`Send ${weight}% to v${canaryN}`}
@@ -486,7 +493,6 @@ function VersionsPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-7"
             disabled={busy || liveCanaryV == null}
             onClick={() =>
               act(async () => {
@@ -509,7 +515,7 @@ function VersionsPanel({
       {/* Editor */}
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">New version</span>
-        <Button size="sm" variant="outline" className="ml-auto h-7 gap-1" onClick={openEditor}>
+        <Button size="sm" variant="outline" className="ml-auto gap-1" onClick={openEditor}>
           <SaveIcon className="size-3.5" /> Edit current
         </Button>
       </div>
@@ -527,7 +533,7 @@ function VersionsPanel({
           {/* This carried `aria-describedby` while having no accessible name to
               describe: a description is not a name. */}
           <Label htmlFor="manifest-editor">Manifest JSON for {name}</Label>
-          <textarea
+          <Textarea
             id="manifest-editor"
             value={editor}
             onChange={(e) => setEditor(e.target.value)}
@@ -535,7 +541,7 @@ function VersionsPanel({
             rows={12}
             aria-invalid={editorError != null}
             aria-describedby={editorError != null ? 'manifest-editor-error' : undefined}
-            className="w-full resize-y rounded-md border bg-transparent p-2 font-mono text-sm leading-snug outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring aria-invalid:border-state-failed"
+            className="resize-y bg-transparent p-2 font-mono text-sm leading-snug shadow-none aria-invalid:border-state-failed"
           />
           {editorError && (
             <p id="manifest-editor-error" role="alert" className="text-sm text-state-failed">
@@ -543,13 +549,12 @@ function VersionsPanel({
             </p>
           )}
           <div className="flex gap-2">
-            <Button size="sm" className="h-7 flex-1" disabled={busy} onClick={saveVersion}>
+            <Button size="sm" className="flex-1" disabled={busy} onClick={saveVersion}>
               Save new version
             </Button>
             <Button
               size="sm"
               variant="ghost"
-              className="h-7"
               onClick={() => {
                 setEditor(null);
                 setEditorError(null);
