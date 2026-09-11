@@ -161,10 +161,20 @@ The guarded trees and their canaries are the `GUARDED` table at the top of the s
 `@source` line reaching outside the app root with no entry there fails — a line nothing can notice
 the deletion of is not a guard.
 
+A fifth guard covers the one duplication that is *correct* and still drifts. The run-state ramp —
+`blocked` / `done` / `running` / `failed` — is authored as `oklch()` in `apps/chat-ui/src/index.css`,
+where the lightness is tuned for contrast and the comments say why, and frozen as sRGB hex in
+`packages/design/src/tokens.ts` because neither a terminal nor `RGBA.fromHex` takes `oklch()`.
+`pnpm check-state-palette` converts the first to the second and asserts they match, so a change to
+one without the other fails rather than showing as the two clients painting a state differently.
+It **checks rather than generates**, which is the opposite call from `sync:theme`: there the tokens
+are the authored form, here the stylesheet is, and generating the authored form out of the derived
+one would discard the reasoning and make the tokens look like a source of truth they are not.
+
 CI (`.github/workflows/ci.yml`) is one `verify` job: `pnpm install --frozen-lockfile`, then lint,
-check-types, API drift, protocol parity, Tailwind sources, build (chat-ui, docs), tests, then the
-hook tests —
-each step runs even if an earlier one fails, so one red run reports everything. Verification of app behavior still
+check-types, API drift, protocol parity, Tailwind sources, state palette, payload shapes, build
+(chat-ui, docs), tests, then the hook tests — each step runs even if an earlier one fails, so one
+red run reports everything. Verification of app behavior still
 means running it against a live harness.
 
 ## Architecture

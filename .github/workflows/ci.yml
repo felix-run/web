@@ -57,6 +57,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm check-tailwind-sources
 
+      # The run-state ramp is authored as oklch in chat-ui's stylesheet and frozen
+      # as hex in @felix/design for the terminal. Both compile either way, so a
+      # change to one shows up only as the two clients painting a state
+      # differently — in two places nobody diffs side by side.
+      - name: State palette
+        if: ${{ !cancelled() }}
+        run: pnpm check-state-palette
+
       # A response field the harness spells differently is `undefined` at runtime
       # and nothing above sees it: the cast typechecks and the route is right.
       - name: Payload shapes
