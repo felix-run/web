@@ -170,8 +170,8 @@ sections, `↑`/`↓` and `pgup`/`pgdn` scroll, `r` re-reads now, and `esc` clos
 | `Waiting` | Gated tool calls waiting on a person. The same queue the banner draws from, so it is populated whether or not you are watching. |
 | `Plans` | Plans the agent wrote for itself, with how many steps are done. |
 | `Tools` | Per-tool calls, errors and mean latency over the harness's window. |
-| `Usage` | Tokens in and out, newest first. |
-| `Memory` | Facts kept across sessions. `/` searches them, and the `via` column names which retriever found each hit — the reason a result looks wrong is usually which channel produced it. |
+| `Usage` | Tokens in and out, newest first, with what each turn cost. A blank cost is a turn that is **metered but unpriced** — the model has no entry in the pricing catalog, so its tokens count against the caps while its spend records as zero and `limits.max_cost_usd` fails open for it. Blank rather than `$0`, because a configuration gap is not a free turn. |
+| `Memory` | Facts kept across sessions. `/` searches them, and the `via` column names which retriever found each hit — the reason a result looks wrong is usually which channel produced it. Listing instead of searching, that column answers the opposite question: `lexical` means no embedder ran for the row, so the vector channel cannot reach it at all. |
 | `Corpus` | Documents the agent retrieves from. `/` searches them, and searching swaps the listing for the matching *chunks* — the passage is what was retrieved, so the passage is what you read. The `via` column carries the chunk count when listing and the retriever when searching. |
 | `Skills` | Declared and active, as the agent last listed them. Empty until the agent calls `list_skills` during a run, and it says so rather than showing an empty list. |
 

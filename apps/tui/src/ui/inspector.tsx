@@ -16,7 +16,7 @@
 import type { PendingApproval } from '@felix/client';
 import type { ColorInput, ScrollBoxRenderable, TabSelectRenderable } from '@opentui/core';
 import { type RefObject, useEffect, useRef } from 'react';
-import { compact, num, relTime } from '../format.js';
+import { compact, num, relTime, usd } from '../format.js';
 import { SECTIONS, type Section, TAB_WIDTH } from '../inspector.js';
 import { oneLine } from '../text.js';
 import { DIM, type Theme } from '../theme.js';
@@ -160,7 +160,7 @@ function PanelBody({ panel, theme }: { panel: PanelState; theme: Theme }) {
   return <Table head={panel.head} rows={panel.rows} theme={theme} />;
 }
 
-// --- The seven sections, each turning one read into rows ---------------------
+// --- The eight sections, each turning one read into rows ---------------------
 
 export const EMPTY: Record<string, string> = {
   activity: 'nothing recorded on this tenant yet',
@@ -236,31 +236,61 @@ export function toolRows(
   };
 }
 
+/**
+ * The token meter, with what it cost.
+ *
+ * `cost` is blank rather than `$0` when the row is metered but **unpriced** — a
+ * model with no entry in the pricing catalog records zero spend while its tokens
+ * still count against the caps, so `limits.max_cost_usd` fails open for it.
+ * Drawing `$0.00000` there would report a configuration gap as a free turn, and
+ * a blank is the one rendering that does not claim a number nobody has.
+ */
 export function usageRows(
-  events: Array<{ ts: number; model_id: string; tokens_input: number; tokens_output: number }>,
+  events: Array<{
+    ts: number;
+    model_id: string;
+    tokens_input: number;
+    tokens_output: number;
+    cost_usd?: number;
+  }>,
 ): { head: string[]; rows: Row[] } {
   return {
-    head: ['when', 'model', 'in', 'out'],
+    head: ['when', 'model', 'in', 'out', 'cost'],
     rows: events.map((u) => [
       { text: relTime(u.ts) },
-      { text: oneLine(u.model_id, 28) },
+      { text: oneLine(u.model_id, 22) },
       { text: num(compact(u.tokens_input), 6) },
       { text: num(compact(u.tokens_output), 6) },
+      { text: num(u.cost_usd ? usd(u.cost_usd) : '', 8) },
     ]),
   };
 }
 
 export function memoryRows(
-  items: Array<{ kind: string; content: string; channels?: string[]; created_at?: number }>,
+  items: Array<{
+    kind: string;
+    content: string;
+    channels?: string[];
+    created_at?: number;
+    embedding_dim?: number | null;
+    embedding_model?: string;
+  }>,
 ): { head: string[]; rows: Row[] } {
   return {
     // `channels` is which retriever found a hit, and it is the reason a result
     // looks wrong — invisible everywhere else, so it is rendered rather than dropped.
+    // When listing rather than searching there are no channels, and the question
+    // becomes why a row was *not* found: `lexical` there means no embedder ran for
+    // it, so the vector channel cannot reach it at all.
     head: ['kind', 'remembered', 'via'],
     rows: items.map((m) => [
       { text: oneLine(m.kind, 12) },
       { text: oneLine(m.content, 48) },
-      { text: (m.channels ?? []).join('+') || relTime(m.created_at) },
+      {
+        text:
+          (m.channels ?? []).join('+') ||
+          (m.embedding_dim == null ? 'lexical' : m.embedding_model || `dim ${m.embedding_dim}`),
+      },
     ]),
   };
 }

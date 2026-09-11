@@ -17,6 +17,8 @@ import type { FelixHttp } from '../http';
 
 /** One row from GET /memory, or GET /memory/as-of/{turn_seq}. */
 export interface MemoryRecord {
+  /** Constant for any one caller — the harness takes it from the credentials. */
+  tenant_id?: string;
   id: string;
   kind: string;
   content: string;
@@ -31,8 +33,32 @@ export interface MemoryRecord {
   origin_seq?: number | null;
   superseded_seq?: number | null;
   created_at?: number;
+  /**
+   * When the row was last *rewritten*, which is not when it was last *read*.
+   * `0` on a row that has never been amended — the column defaults to it rather
+   * than to `created_at`, so it is not a second copy of the creation time.
+   */
+  updated_at?: number;
   last_used_at?: number | null;
+  /** The thread the fact was learned in, or `''` when it was written directly. */
+  thread_id?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * How the row was embedded, and the pair that answers "why did recall miss
+   * this".
+   *
+   * `embedding_dim` is `null` and `embedding_model` is `''` when no embedder ran
+   * — the harness's default — which means the row is reachable by the lexical
+   * channel and invisible to the vector one. A store whose rows were written
+   * under two different embedders is the other case worth seeing: the dimensions
+   * disagree and the older rows silently stop matching.
+   */
+  embedding_dim?: number | null;
+  embedding_model?: string;
+  // `embedding_json` is deliberately absent. The harness sends the key, but the
+  // column is documented as deprecated and never populated — superseded by the
+  // pgvector `embedding` column and slated for removal once its backfill has run
+  // everywhere. Modelling it would be modelling a `null` with a deletion date.
 }
 
 /**

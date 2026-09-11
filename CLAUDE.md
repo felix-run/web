@@ -336,6 +336,14 @@ Flows worth knowing before editing the app:
   **soft** — the row becomes `forgotten` and drops out of recall rather than being erased, which is
   why the UI says "forget". Reads need the `memory:read` scope, so a 403 here means a narrow key,
   not an empty store.
+- **Usage** — `/usage` is the token meter, and two of its fields are easy to misread. `model_id` is
+  the logical route the operator configured; `wire_model_id` is the provider's own id and is what the
+  row was **priced** by, so the two disagreeing on a custom route is the thing worth seeing. And
+  `cost_usd: 0` **does not mean free** — a model with no entry in the pricing catalog is metered but
+  unpriced, its tokens counting against the caps while its spend records as zero and
+  `limits.max_cost_usd` failing open for it. Anything summing that column is summing an
+  underestimate, so chat-ui labels the total `Cost (floor)` and says how many turns were unpriced,
+  and the terminal leaves the cell blank rather than drawing `$0`.
 - **Documents** — `/documents` is the corpus the agent *retrieves* from, where `/memory` is what it
   *learned*; the operator question is the same one, so the panels are the same shape deliberately.
   Two differences change what a UI may say. A search hit is a **chunk**, not a document, so the

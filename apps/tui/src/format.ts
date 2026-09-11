@@ -38,3 +38,17 @@ export function compact(n: number | null | undefined): string {
 export function num(value: string | number, width: number): string {
   return String(value).padStart(width);
 }
+
+/**
+ * Dollars at a resolution that does not round a real cost to nothing.
+ *
+ * One cheap turn is fractions of a cent, so the usual two decimals draws `$0.00`
+ * on every row and a column that never moves. The caller decides whether a zero
+ * is worth drawing at all: a metered but *unpriced* row also costs zero, and
+ * `$0` there would report a configuration gap as a free turn.
+ */
+export function usd(n: number): string {
+  if (n < 0.01) return `$${n.toFixed(5)}`;
+  if (n < 1) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
+}
