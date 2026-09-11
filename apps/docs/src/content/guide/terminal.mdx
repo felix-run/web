@@ -89,7 +89,7 @@ correct against a harness running `FELIX_AUTH_MODE=none`.
 | `ctrl+e` | Open the line in `$VISUAL` or `$EDITOR`. Saving brings the text back to the prompt; it is not sent until you press enter. |
 | `pgup` / `pgdn` | Read back through the conversation. Paging down to the bottom returns to the live end, so there is no mode to leave. |
 | `tab` | Open the thread picker; `↑`/`↓` and `enter` to switch, `esc` to close. |
-| `shift+tab` | Open the inspector — what the harness recorded, planned, spent and remembers. |
+| `shift+tab` | Open the inspector — what the harness recorded, planned, spent, remembers and can retrieve. |
 | `ctrl+n` | New thread. |
 | `ctrl+c` | Stop a live run; again to quit. |
 | `ctrl+d` | Open the debug console, when the client was started with `FELIX_DEBUG=1`. |
@@ -166,12 +166,13 @@ sections, `↑`/`↓` and `pgup`/`pgdn` scroll, `r` re-reads now, and `esc` clos
 
 | Section | |
 |---|---|
-| `Activity` | What the harness recorded — `user_input`, `tool_call`, `policy_deny`, `final_response` — newest first. |
+| `Audit` | What the harness recorded — `user_input`, `tool_call`, `policy_deny`, `final_response` — newest first. The web app calls this Activity; the tab strip has seven columns per tab at eighty, so this client takes the shorter word. |
 | `Waiting` | Gated tool calls waiting on a person. The same queue the banner draws from, so it is populated whether or not you are watching. |
 | `Plans` | Plans the agent wrote for itself, with how many steps are done. |
 | `Tools` | Per-tool calls, errors and mean latency over the harness's window. |
 | `Usage` | Tokens in and out, newest first. |
 | `Memory` | Facts kept across sessions. `/` searches them, and the `via` column names which retriever found each hit — the reason a result looks wrong is usually which channel produced it. |
+| `Corpus` | Documents the agent retrieves from. `/` searches them, and searching swaps the listing for the matching *chunks* — the passage is what was retrieved, so the passage is what you read. The `via` column carries the chunk count when listing and the retriever when searching. |
 | `Skills` | Declared and active, as the agent last listed them. Empty until the agent calls `list_skills` during a run, and it says so rather than showing an empty list. |
 
 Only the section you are looking at is polled, so the client makes one request every three seconds
@@ -184,8 +185,9 @@ request.
 overlay owns the keyboard at a time. Neither opens while the agent is waiting on you: an approval or
 a question keeps the keyboard until it is answered, and `ctrl+c` still stops the run from anywhere.
 
-Nothing here writes. Memory can be read and searched but not added or forgotten, which is the web
-UI's job — adding a memory is an injection ingress and the form there says so.
+Nothing here writes. Memory and the corpus can be read and searched but not added to or removed,
+which is the web UI's job — both write paths put text in front of the model that it reads back
+later, and the forms there say so.
 
 ## Output too large to inline
 

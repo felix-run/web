@@ -40,10 +40,11 @@ const draw = (over: Record<string, unknown> = {}) =>
   );
 
 describe('the section strip', () => {
-  it('shows all seven sections at eighty columns, with no scroll arrows', async () => {
-    // The renderable's default tabWidth is 20, which fits three of seven and
-    // hides the rest behind `‹ ›`. Seven times TAB_WIDTH has to stay inside the
-    // usable width, so renaming a section means redoing that arithmetic.
+  it('shows all eight sections at eighty columns, with no scroll arrows', async () => {
+    // The renderable's default tabWidth is 20, which fits three and hides the
+    // rest behind `‹ ›`. The section count times TAB_WIDTH has to stay inside
+    // the usable width, so adding or renaming a section means redoing that
+    // arithmetic — eight at 9 is exactly 72, with nothing left over.
     expect(SECTIONS.length * TAB_WIDTH).toBeLessThanOrEqual(72);
     const ui = await draw();
     // The strip is the last thing to settle; wait for the far end of it rather
@@ -124,6 +125,40 @@ describe('the table', () => {
     expect(num(7, 5)).toBe('    7');
     expect(num(120450, 5)).toBe('120450');
     expect(num(7, 5).length).toBe(num(12345, 5).length);
+  });
+});
+
+describe('the corpus rows', () => {
+  it('keeps its columns still whether it is listing or searching', async () => {
+    // The section's `/` filter swaps a document listing for a chunk search, and
+    // a table whose columns move when you type is unreadable. One builder, one
+    // header, and the middle column carries whichever text that shape has.
+    const { documentRows } = await import('../src/ui/inspector');
+    const listed = documentRows([{ title: 'Runbook', source: 'wiki', chunks: 4 }]);
+    const found = documentRows([
+      {
+        title: 'Runbook',
+        source: 'wiki',
+        content: 'restart the worker',
+        chunk_index: 2,
+        channels: ['lexical'],
+      },
+    ]);
+    expect(listed.head).toEqual(found.head);
+    expect(listed.rows[0]?.[1]?.text).toBe('wiki');
+    expect(found.rows[0]?.[1]?.text).toBe('restart the worker');
+  });
+
+  it('says where a row came from, in one column for both shapes', async () => {
+    const { documentRows } = await import('../src/ui/inspector');
+    // A document: how many chunks it became. Singular is not "1 chunks".
+    expect(documentRows([{ title: 'A', chunks: 1 }]).rows[0]?.[2]?.text).toBe('1 chunk');
+    expect(documentRows([{ title: 'A', chunks: 4 }]).rows[0]?.[2]?.text).toBe('4 chunks');
+    // A hit: the retriever. `lexical` alone means the vector channel never ran.
+    expect(
+      documentRows([{ title: 'A', content: 'x', chunk_index: 0, channels: ['lexical'] }])
+        .rows[0]?.[2]?.text,
+    ).toBe('lexical');
   });
 });
 

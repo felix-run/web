@@ -169,6 +169,7 @@ export const EMPTY: Record<string, string> = {
   tools: 'no tool calls in the window',
   usage: 'no tokens billed yet',
   memory: 'nothing remembered yet',
+  documents: 'no documents yet — the corpus is what the agent retrieves from',
   skills: 'no skills reported yet — the agent lists them when it uses them',
 };
 
@@ -260,6 +261,47 @@ export function memoryRows(
       { text: oneLine(m.kind, 12) },
       { text: oneLine(m.content, 48) },
       { text: (m.channels ?? []).join('+') || relTime(m.created_at) },
+    ]),
+  };
+}
+
+/**
+ * The corpus, listing or searching.
+ *
+ * Both shapes go through one builder because the section's `/` filter swaps
+ * between them, and a table whose columns move when you type is unreadable. A
+ * *document* has no chunk of its own to show, so the middle column carries its
+ * source; a *hit* is one chunk, so it carries the chunk's text. The third
+ * column is the same question in both: where this came from — the chunk count
+ * for a document, the retriever for a hit.
+ *
+ * `channels` matters for the same reason it does in memory: `lexical` alone
+ * means the vector retriever never ran, not that it ran and disagreed.
+ */
+export function documentRows(
+  items: Array<{
+    title: string;
+    source?: string;
+    chunks?: number;
+    content?: string;
+    chunk_index?: number;
+    channels?: string[];
+  }>,
+): { head: string[]; rows: Row[] } {
+  return {
+    head: ['title', 'text', 'via'],
+    rows: items.map((d) => [
+      { text: oneLine(d.title, 24) },
+      { text: oneLine(d.content ?? d.source ?? '', 40) },
+      {
+        text: d.channels?.length
+          ? d.channels.join('+')
+          : typeof d.chunk_index === 'number'
+            ? `chunk ${d.chunk_index}`
+            : typeof d.chunks === 'number'
+              ? `${d.chunks} chunk${d.chunks === 1 ? '' : 's'}`
+              : '',
+      },
     ]),
   };
 }

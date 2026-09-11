@@ -12,7 +12,7 @@
  * exists to serve, and it must not become conditional on an overlay being open.
  */
 
-import type { FelixClient, PendingApproval } from '@felix/client';
+import type { DocumentHit, DocumentRecord, FelixClient, PendingApproval } from '@felix/client';
 import { useMemo } from 'react';
 import type { Config } from './config.js';
 import { explainError } from './errors.js';
@@ -23,6 +23,7 @@ import type { Theme } from './theme.js';
 import {
   activityRows,
   approvalRows,
+  documentRows,
   EMPTY,
   memoryRows,
   type PanelState,
@@ -45,6 +46,8 @@ function describeSection(section: SectionKey): string {
       return 'read the token usage';
     case 'memory':
       return 'read what the agent remembers';
+    case 'documents':
+      return 'read the document corpus';
     default:
       return 'read that';
   }
@@ -94,6 +97,19 @@ export function usePanel(opts: {
     { enabled: on('memory'), intervalMs: POLL_MS },
   );
 
+  // Same shape as memory: the section's own filter searches when it has text and
+  // lists when it does not, so `/` means one thing across both.
+  // Explicitly a union: unlike `MemoryHit`, a `DocumentHit` is not assignable to
+  // the list row — it has no `chunks`, because a chunk is not a document — so
+  // inference would otherwise pin this to whichever branch it read first.
+  const documents = usePoll<Array<DocumentRecord | DocumentHit>>(
+    () =>
+      query.trim()
+        ? client.searchDocuments(query.trim(), { limit: LIMIT })
+        : client.listDocuments({ limit: LIMIT }),
+    { enabled: on('documents'), intervalMs: POLL_MS },
+  );
+
   return useMemo(() => {
     const empty = EMPTY[section] ?? '';
     const of = <T>(p: { data: T | undefined; error: unknown; loading: boolean }) => ({
@@ -126,6 +142,10 @@ export function usePanel(opts: {
         const { head, rows } = memoryRows(memory.data ?? []);
         return { ...of(memory), head, rows, empty };
       }
+      case 'documents': {
+        const { head, rows } = documentRows(documents.data ?? []);
+        return { ...of(documents), head, rows, empty };
+      }
       case 'skills': {
         const { head, rows } = skillRows(skills);
         return { error: null, loading: false, head, rows, empty };
@@ -133,5 +153,18 @@ export function usePanel(opts: {
     }
     // `tick` is a dependency rather than a caller: bumping it re-derives, and
     // the refresh itself is the poll hooks' own `refresh`.
-  }, [section, activity, plans, tools, usage, memory, approvals, skills, theme, config, tick]);
+  }, [
+    section,
+    activity,
+    plans,
+    tools,
+    usage,
+    memory,
+    documents,
+    approvals,
+    skills,
+    theme,
+    config,
+    tick,
+  ]);
 }

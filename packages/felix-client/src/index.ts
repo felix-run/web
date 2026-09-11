@@ -48,6 +48,11 @@ export {
   type ToolMetrics,
   type ToolMetricsRow,
 } from './management/audit';
+export {
+  DOCUMENT_LIMITS,
+  type DocumentHit,
+  type DocumentRecord,
+} from './management/documents';
 export type { MemoryHit, MemoryRecord } from './management/memory';
 export {
   flattenPlan,

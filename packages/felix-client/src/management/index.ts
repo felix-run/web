@@ -1,6 +1,7 @@
 /**
  * The harness's management surface — what it *did*, what it *spent*, what it
- * *remembers*, what it *planned*, and the tool outputs too large to inline.
+ * *remembers*, what it can *retrieve*, what it *planned*, and the tool outputs
+ * too large to inline.
  *
  * This half lived only in `apps/chat-ui/src/api.ts` until now, which made it
  * browser-only by accident rather than by design: a terminal client could drive
@@ -20,6 +21,7 @@
 import type { FelixHttp } from '../http';
 import { createArtifactsClient } from './artifacts';
 import { createAuditClient } from './audit';
+import { createDocumentsClient } from './documents';
 import { createMemoryClient } from './memory';
 import { createPlansClient } from './plans';
 import { createUsageClient } from './usage';
@@ -29,6 +31,7 @@ export function createManagementClient(http: FelixHttp) {
     ...createAuditClient(http),
     ...createUsageClient(http),
     ...createMemoryClient(http),
+    ...createDocumentsClient(http),
     ...createPlansClient(http),
     ...createArtifactsClient(http),
   };
