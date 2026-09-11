@@ -42,6 +42,7 @@ describe('the management surface against a real origin', () => {
     await c.listPlans(3);
     await c.getToolMetrics();
     await c.listMemories();
+    await c.listDocuments();
 
     expect(s.calls.every((call) => !call.url.includes('/api/'))).toBe(true);
     expect(s.calls.map((call) => call.url)).toEqual([
@@ -50,6 +51,7 @@ describe('the management surface against a real origin', () => {
       'http://localhost:8080/plans?limit=3',
       'http://localhost:8080/audit/metrics?limit=200',
       'http://localhost:8080/memory?limit=50',
+      'http://localhost:8080/documents?limit=100',
     ]);
   });
 
@@ -87,5 +89,70 @@ describe('the management surface against a real origin', () => {
     // `describeError` matches /:\s*(\d{3})\b/, so the spelling is load-bearing:
     // a 403 here means a key without `memory:read`, not an empty store.
     await expect(client(s.fetch).listMemories()).rejects.toThrow(/memory: 403/);
+  });
+
+  describe('the document corpus', () => {
+    it('searches chunks, not documents, and keeps the channels', async () => {
+      // A hit is a passage. The channel is the operator's answer to "why did it
+      // return this", and `lexical` alone means the vector retriever never ran —
+      // no embedder configured — rather than that it ran and disagreed.
+      const s = stub({
+        items: [
+          {
+            doc_id: 'd1',
+            chunk_id: 'd1:2',
+            chunk_index: 2,
+            title: 'Runbook',
+            source: 'wiki',
+            content: 'restart the worker',
+            score: 0.4,
+            channels: ['lexical'],
+          },
+        ],
+      });
+      const [hit] = await client(s.fetch).searchDocuments('restart', { limit: 3 });
+      expect(s.calls[0]?.url).toBe('http://localhost:8080/documents/search?q=restart&limit=3');
+      expect(hit?.chunk_index).toBe(2);
+      expect(hit?.channels).toEqual(['lexical']);
+    });
+
+    it('omits the chunking knobs rather than restating the harness defaults', async () => {
+      // Sending `max_chars` unasked pins this client to a number the chunker is
+      // free to retune, and the route already has its own default.
+      const bodies: string[] = [];
+      const fetch = (async (_i: string | URL | Request, opts: RequestInit = {}) => {
+        bodies.push(String(opts.body));
+        return new Response('{"doc_id":"d1","chunks":3}', {
+          headers: { 'content-type': 'application/json' },
+        });
+      }) as unknown as typeof globalThis.fetch;
+
+      await client(fetch).addDocument({ title: 'Runbook', text: 'restart the worker' });
+      const sent = JSON.parse(bodies[0] ?? '{}');
+      expect(sent).toEqual({
+        title: 'Runbook',
+        source: '',
+        text: 'restart the worker',
+        metadata: {},
+      });
+      expect('max_chars' in sent).toBe(false);
+
+      await client(fetch).addDocument({ title: 'T', text: 'x', maxChars: 900 });
+      expect(JSON.parse(bodies[1] ?? '{}').max_chars).toBe(900);
+    });
+
+    it('reports how many chunks a delete actually removed', async () => {
+      // The only confirmation that what went was the size the listing claimed.
+      const s = stub({ doc_id: 'd1', removed_chunks: 7 });
+      const out = await client(s.fetch).deleteDocument('d1');
+      expect(s.calls[0]).toEqual({ url: 'http://localhost:8080/documents/d1', method: 'DELETE' });
+      expect(out.removed_chunks).toBe(7);
+    });
+
+    it('throws a message describeError can read a status out of', async () => {
+      // 403 here is a key without `documents:read`, not an empty corpus.
+      const s = stub({}, { status: 403 });
+      await expect(client(s.fetch).listDocuments()).rejects.toThrow(/documents: 403/);
+    });
   });
 });

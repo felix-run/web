@@ -7,7 +7,15 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/.wrangler", "!**/dist", "!**/node_modules"]
+    "includes": [
+      "**",
+      "!**/.wrangler",
+      "!**/dist",
+      "!**/node_modules",
+      "!apps/chat-ui/harness-openapi.json",
+      "!scripts/harness-events.json",
+      "!scripts/harness-payloads.json"
+    ]
   },
   "formatter": {
     "enabled": true,

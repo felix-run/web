@@ -323,10 +323,12 @@ describe('the inspector', () => {
   it('opens on shift+tab and closes on escape', async () => {
     const { ui, h } = await app();
     await ui.keys.pressTab({ shift: true });
-    await ui.until(() => shows(ui.frame(), 'Activity'));
-    expect(shows(ui.frame(), 'Memory')).toBe(true);
+    // `Audit`, not chat-ui's `Activity`: the strip's tabs are 7 characters at
+    // eighty columns and this client takes the shorter honest word.
+    await ui.until(() => shows(ui.frame(), 'Audit'));
+    expect(shows(ui.frame(), 'Corpus')).toBe(true);
     await ui.keys.pressEscape();
-    await ui.until(() => !shows(ui.frame(), 'Activity'));
+    await ui.until(() => !shows(ui.frame(), 'Audit'));
     ui.stop();
     h.restore();
   });

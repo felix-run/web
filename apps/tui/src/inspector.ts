@@ -12,22 +12,27 @@
 /**
  * Columns per tab in the section strip.
  *
- * Seven sections × 10 = 70, inside the 72 columns the overlay actually has at
- * an eighty-column terminal: 80 less the two-cell offset, the border and a
- * column of padding each side. The renderable's default is 20, which shows
- * **three** of the seven behind `‹ ›` arrows, and 11 shows six — the seventh
- * disappears with nothing on screen to say it has.
+ * The overlay has 72 columns at an eighty-column terminal: 80 less the two-cell
+ * offset, the border and a column of padding each side. **Eight** sections × 9 =
+ * 72 — exactly the budget, which is why this is 9 and not the 10 that fitted
+ * seven. The renderable's default is 20, which shows three behind `‹ ›` arrows;
+ * 11 showed six and the seventh disappeared with nothing on screen to say so.
  *
- * Names truncate to `tabWidth - 2` = 8, which is why the approvals section is
- * called `Waiting` here: `Approvals` does not fit, and a silently clipped tab
- * is worse than an honest shorter word. Renaming a section means redoing this
- * arithmetic, which `tests/inspector.test.tsx` pins at eighty columns.
+ * Names truncate to `tabWidth - 2`, so **7 characters** is the ceiling now. That
+ * is why `Approvals` is `Waiting` here and why the audit feed is `Audit` rather
+ * than chat-ui's `Activity` — a silently clipped tab is worse than an honest
+ * shorter word, and this client has already made that trade once.
+ *
+ * A ninth section does not fit at eighty columns by shrinking this further: 8 is
+ * already the ceiling for names anyone can read. It needs a second row, or a
+ * section that has stopped earning its place. `tests/inspector.test.tsx` pins
+ * the whole strip at eighty columns, so the arithmetic fails loudly.
  */
-export const TAB_WIDTH = 10;
+export const TAB_WIDTH = 9;
 
 export interface Section {
   key: SectionKey;
-  /** At most 9 characters — see `TAB_WIDTH`. */
+  /** At most 7 characters — see `TAB_WIDTH`. */
   name: string;
   /** Drawn in the overlay's bottom border, where there is room for a sentence. */
   description: string;
@@ -40,6 +45,7 @@ export type SectionKey =
   | 'tools'
   | 'usage'
   | 'memory'
+  | 'documents'
   | 'skills';
 
 /**
@@ -47,12 +53,17 @@ export type SectionKey =
  * `setOptions` runs, so this must never be rebuilt per render.
  */
 export const SECTIONS: readonly Section[] = Object.freeze([
-  { key: 'activity', name: 'Activity', description: 'what the harness recorded, newest first' },
+  { key: 'activity', name: 'Audit', description: 'what the harness recorded, newest first' },
   { key: 'approvals', name: 'Waiting', description: 'gated tool calls waiting on a person' },
   { key: 'plans', name: 'Plans', description: 'plans the agent wrote for itself' },
   { key: 'tools', name: 'Tools', description: 'per-tool calls, errors and mean latency' },
   { key: 'usage', name: 'Usage', description: 'tokens in and out, newest first' },
   { key: 'memory', name: 'Memory', description: 'facts kept across sessions — / to search' },
+  {
+    key: 'documents',
+    name: 'Corpus',
+    description: 'documents the agent retrieves from — / to search',
+  },
   {
     key: 'skills',
     name: 'Skills',

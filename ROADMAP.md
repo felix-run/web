@@ -106,29 +106,40 @@ means deciding which is canonical and generating the other, not deleting one.
 
 **Size:** small, but it is a decision before it is an edit.
 
-### Eight harness routes nothing calls
+### Four harness routes nothing calls
 
-`pnpm check-api-drift` prints twenty-one, up from sixteen when this was written — a contract re-sync
-on 2026-09-03 (#130) found the records were pinned to a harness fifty commits old, and a second on
-2026-09-11 brought them to `c9bb10f`. Thirteen of the twenty-one are machine-facing (`/health`,
-`/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on) and belong there. Eight are not:
+`pnpm check-api-drift` prints seventeen, down from twenty-one once `/documents` was built. Thirteen
+are machine-facing (`/health`, `/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on) and
+belong there. Four are not:
 
-- **`/documents` — a whole area, and the largest unbuilt thing on this list.** `GET` and `POST
-  /documents`, `GET /documents/search`, `DELETE /documents/{doc_id}`: list, add, search, forget, the
-  same four verbs `/memory` has and which both clients already have a shape for. Nothing calls any
-  of it.
+- `GET /usage/summary` — the inspector's usage panel reads `/usage` and aggregates in the client,
+  which is the shape this route exists to replace.
 - `PUT /plans/{}` — editing a plan. chat-ui reads plans and cannot change one.
 - `POST /eval/runs` — starting an eval. The inspector shows runs and cannot start one.
 - `POST /chat/sessions/custom` — no client touches it at all.
-- `GET /usage/summary` — new at the 2026-09-11 re-sync. The inspector's usage panel reads `/usage`
-  and aggregates in the client, which is the shape this route exists to replace.
 
-CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up", and
-`/documents` is precisely that. Each is a feature to scope rather than a bug to fix.
+CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up". What is
+left is smaller than what came off it: three single routes and one aggregate.
 
-**Note for whoever builds `/documents` in the terminal:** the inspector's tab strip is full. Seven
-tabs at `TAB_WIDTH = 10` use 70 of the 72 columns available at eighty. An eighth needs the strip
-rethought, not a smaller number.
+### `/documents` is the one area no payload guard can see
+
+`check-payload-shapes` reads response shapes out of the harness's `_<row>_dict(...)` serializers —
+the recorder matches `def _…dict(` in any Python file under `apps/` or `packages/`. The documents
+routes have none: `felix/documents/store.py` returns the dataclasses `DocumentSummary` and
+`DocumentHit`, and `routes/documents.py` builds the wire dict inline in a comprehension at each
+return. So there is no literal to record, and `DocumentRecord` / `DocumentHit` in
+`packages/felix-client/src/management/documents.ts` are hand-mirrored with nothing checking them.
+
+A `GUARDED` entry cannot be added first: one naming a serializer the record does not carry **fails**
+by design, which is the correct behaviour and is why this is a roadmap item rather than a two-line
+patch. The order is harness-first — give `felix/documents/store.py` a `_document_dict` and a
+`_hit_dict`, have the routes call them, re-run `node scripts/sync-harness-contract.mjs`, then add the
+two entries here. That also puts the corpus's wire shape in one place instead of two comprehensions.
+
+This is exactly the hole `AuditEvent.payload` fell through: typechecked, linted, passed drift, and
+rendered `undefined` on every row.
+
+**Size:** small, and mostly in the other repo.
 
 ### `MemoryRecord` models six fields fewer than the harness sends
 

@@ -136,6 +136,11 @@ row. Fields the harness sends that nothing models are advisory. A guarded type n
 the record does not carry **fails**, including one the recorder listed as `unreadable` (a dict built
 imperatively has no literal to read) — a guard that silently checks nothing is worse than none.
 
+All three are **excluded from Biome** in `biome.json`. `pnpm format` reformats JSON, and these are
+generated files whose own `$comment` says not to hand-edit them — so formatting them produced a diff
+the next sync silently reverted, twice in one session before anyone noticed. A reformatted record is
+one nobody re-reads.
+
 **All three records are regenerated together, from a harness checkout, by
 `node scripts/sync-harness-contract.mjs [path]`** — never by curling a running harness. That records
 the deployment, not the contract; on 2026-08-24 the local container was two features behind and the
@@ -328,6 +333,16 @@ Flows worth knowing before editing the app:
   **soft** — the row becomes `forgotten` and drops out of recall rather than being erased, which is
   why the UI says "forget". Reads need the `memory:read` scope, so a 403 here means a narrow key,
   not an empty store.
+- **Documents** — `/documents` is the corpus the agent *retrieves* from, where `/memory` is what it
+  *learned*; the operator question is the same one, so the panels are the same shape deliberately.
+  Two differences change what a UI may say. A search hit is a **chunk**, not a document, so the
+  passage is what gets rendered — the title alone would hide the thing actually retrieved. And
+  `DELETE` is **hard**, unlike memory's soft forget: it removes every chunk and answers with how
+  many, which is why the button says "Delete" and the confirmation names the count. Ingest is
+  idempotent on `(source, title)`, so re-adding replaces — and a typo'd title is a second document
+  rather than a correction, which the Add form says where the decision is made. A hit's `channels`
+  reading `lexical` alone means the vector retriever never *ran* (no embedder configured), not that
+  it ran and disagreed.
 - **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and
   the snapshot's `labels` map reads them back. It was a write-only route here for a different reason
   than the rest: `SessionSnapshot` did not model the field the harness had always sent, so a label
@@ -408,7 +423,7 @@ browser cannot do rather than about the chat:
 - **The conversation grows from the bottom** (`justifyContent: 'flex-end'` on the transcript's
   content). Without it a short conversation floats at the top and the composer sits at the bottom
   with fifteen empty rows between them.
-- **The inspector is the harness's read-only operator surface, on `shift+tab`.** Seven sections over
+- **The inspector is the harness's read-only operator surface, on `shift+tab`.** Eight sections over
   a `<tab-select>` strip, one `<scrollbox>` panel, and **only the visible section polls** — with tabs
   rather than chat-ui's disclosure stack, exactly one is on screen, so the terminal costs one request
   where the browser costs one per expanded panel. It does *not* gate on terminal focus the way
@@ -421,8 +436,12 @@ browser cannot do rather than about the chat:
   `main.tsx` and a bare side-effect import is the one a tidy-up deletes. `<tab-select>` takes **no**
   `selectedIndex` prop (unlike `<select>`), so the strip is driven through a ref, and its defaults
   are hardcoded true-colour literals that must all be overridden or they paint over the user's
-  palette. `TAB_WIDTH` is 10 because seven tabs have 72 columns to share at eighty: the default of 20
-  shows three, and 11 shows six with nothing on screen to say a seventh exists.
+  palette. `TAB_WIDTH` is 9 because **eight** tabs have 72 columns to share at eighty —
+  exactly the budget, with nothing left over; the default of 20 shows three, and 11 showed six with
+  nothing on screen to say a seventh existed. Names truncate to `TAB_WIDTH - 2`, so 7 characters is
+  the ceiling, which is why approvals is `Waiting` and the audit feed is `Audit` rather than
+  chat-ui's `Activity`. A ninth section does not fit by shrinking this again: it needs a second row,
+  or a section that has stopped earning its place.
 - **A tool card draws its result, and a spilled one carries a handle.** Until it did, `ToolCard`
   rendered the *call* and never the output, so a `[artifact:…]` marker was not a raw marker on
   screen — it was nothing on screen, and every tool ran and returned into silence. The card now
