@@ -121,26 +121,6 @@ belong there. Four are not:
 CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up". What is
 left is smaller than what came off it: three single routes and one aggregate.
 
-### `/documents` is the one area no payload guard can see
-
-`check-payload-shapes` reads response shapes out of the harness's `_<row>_dict(...)` serializers —
-the recorder matches `def _…dict(` in any Python file under `apps/` or `packages/`. The documents
-routes have none: `felix/documents/store.py` returns the dataclasses `DocumentSummary` and
-`DocumentHit`, and `routes/documents.py` builds the wire dict inline in a comprehension at each
-return. So there is no literal to record, and `DocumentRecord` / `DocumentHit` in
-`packages/felix-client/src/management/documents.ts` are hand-mirrored with nothing checking them.
-
-A `GUARDED` entry cannot be added first: one naming a serializer the record does not carry **fails**
-by design, which is the correct behaviour and is why this is a roadmap item rather than a two-line
-patch. The order is harness-first — give `felix/documents/store.py` a `_document_dict` and a
-`_hit_dict`, have the routes call them, re-run `node scripts/sync-harness-contract.mjs`, then add the
-two entries here. That also puts the corpus's wire shape in one place instead of two comprehensions.
-
-This is exactly the hole `AuditEvent.payload` fell through: typechecked, linted, passed drift, and
-rendered `undefined` on every row.
-
-**Size:** small, and mostly in the other repo.
-
 ### `MemoryRecord` models six fields fewer than the harness sends
 
 `pnpm check-payload-shapes` reports `tenant_id`, `updated_at`, `thread_id`, `embedding_dim`,
