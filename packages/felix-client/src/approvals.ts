@@ -74,7 +74,15 @@ export interface PendingApproval {
   args: Record<string, unknown>;
   /** The rule that gated this, when the harness named one. */
   ruleId?: string;
-  /** Why it fired. Frame-only — the `/approvals` row carries no reason. */
+  /**
+   * Why it fired. Frame-only — the `/approvals` row carries no reason, and in
+   * practice neither does the frame for a *rule* gate: `manifests/builder.py`
+   * has two emission sites and only the content-screening one
+   * (`_await_approval`) passes `reason`. Measured against a live gate on
+   * 2026-09-11, `spec.approvals` rules send `rule_id` and no reason at all, and
+   * the rule's own `description` never leaves the harness. Optional for that
+   * reason, and usually absent.
+   */
   reason?: string;
   /**
    * Epoch ms after which the harness stops waiting and denies.
