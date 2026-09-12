@@ -142,7 +142,10 @@ until the shape moved into the store (`felix-run/felix#213`).
 All three are **excluded from Biome** in `biome.json`. `pnpm format` reformats JSON, and these are
 generated files whose own `$comment` says not to hand-edit them — so formatting them produced a diff
 the next sync silently reverted, twice in one session before anyone noticed. A reformatted record is
-one nobody re-reads.
+one nobody re-reads. `.impeccable/design.json` is excluded for the same reason and was invisible
+until it wasn't: Biome runs with `vcs.useIgnoreFile`, so that file only came into scope on the day
+`.impeccable/` stopped being ignored. Anything generated that leaves the ignore file needs the
+exclusion in the same commit.
 
 **All three records are regenerated together, from a harness checkout, by
 `node scripts/sync-harness-contract.mjs [path]`** — never by curling a running harness. That records
