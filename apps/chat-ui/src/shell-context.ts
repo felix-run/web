@@ -2,7 +2,7 @@ import type { ChatEngine, ThreadMeta } from '@felix/client';
 import { createContext, type Dispatch, type SetStateAction, useContext } from 'react';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
-import type { SkillState } from '@/components/inspector/inspector';
+import type { SkillState } from '@/components/inspector/primitives';
 import type { ImageAttachment } from '@/types';
 
 /**
@@ -69,6 +69,11 @@ export interface ShellValue {
   manifest: string;
   setManifest: Dispatch<SetStateAction<string>>;
   manifestOptions: string[];
+  /**
+   * Re-read the canary rollout badge. `/harness/manifests` can change the thing
+   * the header reports, so leaving that panel is what refreshes it.
+   */
+  refreshCanary: () => void;
   verbose: boolean;
   harnessReachable: boolean;
   historyOpen: boolean;

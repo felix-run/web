@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
 import { describe, expect, it } from 'vitest';
-import { summarizeUsage, usd } from '../src/components/inspector/inspector';
+import { summarizeUsage, usd } from '../src/components/harness/ledger';
 
 /**
  * What a usage total is allowed to claim.

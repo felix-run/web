@@ -33,7 +33,7 @@ async function sheet(over: Record<string, unknown> = {}) {
     clearManifestCanary: vi.fn(),
   }));
   const { ManifestsSheet } = await import('../src/components/manifests/manifests-sheet');
-  render(<ManifestsSheet open onOpenChange={() => {}} manifest="quick" />);
+  render(<ManifestsSheet manifest="quick" />);
   await waitFor(() => expect(screen.getByText('Canary')).toBeTruthy());
 }
 

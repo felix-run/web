@@ -34,7 +34,7 @@ async function sheet(over: { items?: unknown[]; runs?: unknown[] } = {}) {
     listTenantManifests: vi.fn().mockResolvedValue([]),
   }));
   const { EvalSheet } = await import('../src/components/eval/eval-sheet');
-  render(<EvalSheet open onOpenChange={() => {}} manifest="quick" />);
+  render(<EvalSheet manifest="quick" />);
 }
 
 describe('an empty dataset says how to proceed', () => {
@@ -226,7 +226,7 @@ describe('the dataset picker cannot push the panel off the sheet', () => {
       listTenantManifests: vi.fn().mockResolvedValue([]),
     }));
     const { EvalSheet } = await import('../src/components/eval/eval-sheet');
-    render(<EvalSheet open onOpenChange={() => {}} manifest="quick" />);
+    render(<EvalSheet manifest="quick" />);
 
     const first = await waitFor(() => screen.getByRole('button', { name: 'set-0' }));
     const picker = first.parentElement;
