@@ -1,4 +1,5 @@
-import { Streamdown, type StreamdownProps } from 'streamdown';
+import remarkBreaks from 'remark-breaks';
+import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from 'streamdown';
 import { cn } from '@/lib/utils';
 
 /**
@@ -25,6 +26,26 @@ import { cn } from '@/lib/utils';
  * `ul`/`ol`/`li` and inherits everything else — the code block in particular, whose
  * chrome has to stay in CSS because owning `pre` would mean giving up Shiki.
  */
+
+/**
+ * A single newline inside a paragraph is a *soft* break in CommonMark: it renders as a
+ * space, and three lines become one. That is right for prose hard-wrapped at 80 columns
+ * and wrong for everything a model actually sends a bare newline in — a haiku, an
+ * address, a list of names, an ASCII table outside a fence — all of which arrived as one
+ * run-on line. The newline survived into the DOM, so it looked like a CSS problem and is
+ * not: HTML collapses it, and only a `<br>` stops it.
+ *
+ * The cost is the inverse case, prose the model hard-wrapped itself, which now breaks
+ * where it was wrapped. That is the trade every chat renderer makes, and it is the right
+ * way round: a model that emits a bare newline usually means it.
+ *
+ * Unlike `components` above, `remarkPlugins` does **not** merge: the prop defaults to the
+ * renderer's own four — gfm, math, and two CJK plugins — and passing a list replaces all
+ * of them, so a one-plugin array here would quietly cost tables, strikethrough and task
+ * lists. `defaultRemarkPlugins` exists for this, keyed by name rather than an array,
+ * hence `Object.values`. `tests/response.test.tsx` holds the two that would go silently.
+ */
+const remarkPlugins = [...Object.values(defaultRemarkPlugins), remarkBreaks];
 
 type Components = NonNullable<StreamdownProps['components']>;
 
@@ -58,7 +79,11 @@ const components: Components = {
 
 export function Response({ children, className }: { children: string; className?: string }) {
   return (
-    <Streamdown className={cn('max-w-none break-words', className)} components={components}>
+    <Streamdown
+      className={cn('max-w-none break-words', className)}
+      components={components}
+      remarkPlugins={remarkPlugins}
+    >
       {children}
     </Streamdown>
   );
