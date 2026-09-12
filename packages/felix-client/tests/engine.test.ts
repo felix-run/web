@@ -38,7 +38,10 @@ function stubFetch(handler: (url: string) => Response) {
 }
 
 /** An engine on a thread called `t1`, with ids that do not move between runs. */
-function engineOn(frames: unknown[], ports: Parameters<typeof createChatEngine>[0] | null = null) {
+function engineOn(
+  frames: unknown[],
+  ports: Partial<Parameters<typeof createChatEngine>[0]> | null = null,
+) {
   stubFetch((url) => (url.includes('/chat/stream') ? sse(frames) : new Response('{}')));
   let n = 0;
   const engine = createChatEngine({
@@ -197,7 +200,7 @@ describe('approvals', () => {
     const readForDiff = vi.fn(async () => 'the old text');
     const engine = engineOn([frame, frame], {
       clientTools: { execute: async () => ({ content: '' }), readForDiff },
-    } as never);
+    });
     await run(engine);
 
     expect(engine.state.approvals).toHaveLength(1);
@@ -241,6 +244,86 @@ describe('a durable run', () => {
     await run(engine);
 
     expect(engine.state.turns.at(-1)?.content).toBe('the durable answer');
+  });
+
+  /**
+   * The transcript a durable run leaves is the answer and nothing else — no
+   * deltas, no tool frames — so the tool calls that produced it exist only in
+   * the harness's own transcript. A client that draws tool cards has to be told
+   * to re-read the session, or it shows an answer that arrived from nowhere.
+   */
+  it('reports that its transcript is incomplete', async () => {
+    let settled = 0;
+    const engine = engineOn(
+      [
+        { event: 'run_accepted', data: { resume_token: 'fib_1' } },
+        { event: 'final', data: { content: 'the durable answer' } },
+      ],
+      { onDurableComplete: () => void settled++ },
+    );
+    await run(engine);
+
+    expect(settled).toBe(1);
+  });
+
+  /**
+   * The case that actually happens, and the one this was all built for.
+   *
+   * The API hands the run to the worker and its stream simply **stops** — no
+   * `final`, and nothing thrown, so the drop path never runs either. Before the
+   * `resumeToken` check the turn sat on "Background · running…" for the life of
+   * the tab while the run finished behind it, and the answer, the tool cards and
+   * everything derived from them never arrived.
+   */
+  it('polls a run whose stream ended cleanly without ever sending final', async () => {
+    let settled = 0;
+    stubFetch((url) =>
+      url.includes('/chat/runs/')
+        ? new Response(JSON.stringify({ status: 'succeeded', final: { content: 'landed late' } }))
+        : url.includes('/chat/stream')
+          ? // `run_accepted`, then the stream just ends.
+            sse([{ event: 'run_accepted', data: { resume_token: 'fib_9' } }])
+          : new Response('{}'),
+    );
+    let n = 0;
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+      newId: () => `id-${++n}`,
+      onDurableComplete: () => void settled++,
+    });
+    engine.setTurns([
+      { id: 'u1', role: 'user', content: 'hello' },
+      { id: 'a1', role: 'assistant', content: '', tools: [] },
+    ]);
+    await run(engine);
+
+    expect(engine.state.turns.at(-1)?.content).toBe('landed late');
+    expect(settled).toBe(1);
+  });
+
+  /**
+   * And the safety property: hydrating replaces the local transcript with a
+   * snapshot rebuild, which is harmless when nothing was streamed and lossy
+   * when something was. An ordinary run streams deltas and tool frames, so it
+   * must never ask for this.
+   */
+  it('is not reported for an ordinary streamed run, which would lose what it streamed', async () => {
+    let settled = 0;
+    const engine = engineOn(
+      [
+        delta('thinking'),
+        { event: 'on_tool_start', data: { name: 'write_file', input: { path: 'a.md' } } },
+        { event: 'on_tool_end', data: { name: 'write_file', output: 'ok' } },
+        delta(' done'),
+        { event: 'on_chain_end', data: {} },
+      ],
+      { onDurableComplete: () => void settled++ },
+    );
+    await run(engine);
+
+    expect(settled).toBe(0);
+    expect(engine.state.turns.at(-1)?.tools?.length).toBe(1);
   });
 });
 

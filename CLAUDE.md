@@ -351,6 +351,20 @@ Flows worth knowing before editing the app:
   (`@felix/cowork-client` → in-tab VFS or a File System Access mount), then answers with
   `POST /chat/tool_result`. This is a real round trip inside the model loop; failing to post a
   result hangs the run.
+- **A durable stream can end without `final`.** `POST /chat/stream` emits `run_accepted` (carrying
+  `resume_token`), then `run_status` on each change, then `final` — but only when the run reaches
+  `completed`; any other terminal status yields a typed error frame instead, and the API's own
+  deadline can close the stream with the run still going. So the engine treats an unsettled
+  `resumeToken` after a **clean** stream end the same as after a dropped one: it polls
+  `GET /chat/runs/{token}`. `resumeToken` is exactly the right tell — set by `run_accepted`, cleared
+  only by `final`. Without that check the turn sits on `Background · running…` for the life of the
+  tab while the run finishes behind it, taking the answer and the tool cards with it. Both settle
+  paths, plus the `POST /chat` background path, call `EnginePorts.onDurableComplete`, which chat-ui
+  wires to `hydrateFromServer`: a durable run's stream carries no tool frames at all, so the tool
+  cards and anything derived from them exist only in the harness's transcript until something
+  re-reads it. Hydrating from there is safe **because** nothing was streamed — there is no local
+  detail for a snapshot rebuild to discard, which is not true of an ordinary run, and is why the
+  callback never fires for one.
 - **Durable runs** — two entry points, and they behave differently. `POST /chat` may return
   `202 + resume_token`; poll `GET /chat/runs/{token}` (`pollDurableRun`). `POST /chat/stream` with a
   `spec.execution.mode: durable` manifest instead streams the run's *progress* —
