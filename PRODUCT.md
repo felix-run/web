@@ -6,7 +6,7 @@ product
 
 ## Users
 
-Two audiences share one surface, and the design has to hold both.
+One audience, reached by running the harness yourself and holding the gate key.
 
 **Operators** run real agent work through `chat-ui`: they send a turn, watch tool calls land,
 approve or deny gated actions, and read token spend afterwards. Some wrote the harness; some did
@@ -14,10 +14,15 @@ not. Their context is a wide desktop window, often with a run already in flight,
 between the transcript and whatever the agent is doing underneath it. The job to be done is *know
 what the agent just did, and whether to let it continue*.
 
-**Demo viewers** see the same screen cold, over someone's shoulder or a shared window. They have no
-mental model of manifests, leases, or plan steps. They should be able to tell, without narration,
-that this is a control surface for something autonomous and that the machinery is on display
-deliberately.
+This is a tool someone opens daily, not a screen someone is shown. Density, learned affordances,
+and labels that assume the operator configured the harness are therefore permitted, and the cost
+of a concept that takes one run to learn is paid once rather than on every screen.
+
+A second audience — **demo viewers**, reading the same screen cold over a shoulder — used to bind
+here, and it no longer does: designing every surface to survive a stranger's first look capped the
+density the daily job needs. The demo case is served by the docs site and a screenshot. What that
+audience was really protecting is kept as a principle rather than a person, in *Legible on return*
+below.
 
 ## Product Purpose
 
@@ -71,8 +76,11 @@ Four failure modes, all of which this codebase is currently within reach of:
    spatial system, a header grammar, and a density scale; they do not each invent their own.
 4. **Color carries state, nothing else.** In a surface where color is the fastest channel for
    "healthy / waiting / failed", spending it on decoration is spending the operator's attention.
-5. **Legible cold.** A viewer with no harness knowledge should be able to read the shape of what is
-   happening. Labels say what the thing is, not what the API field is called.
+5. **Legible on return.** The operator is competent but not continuously attentive: they were
+   away, or in another tab, or it is the next morning. A surface has to be readable by someone who
+   knows the system and has lost the thread of *this* run — which is a different and more honest
+   bar than readable by someone who has never seen it. Labels say what the thing is, not what the
+   API field is called.
 
 ## Unattended runs
 
