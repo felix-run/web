@@ -203,6 +203,17 @@ export function summarizeToolArgs(toolName: string, args: Record<string, unknown
 export interface ApprovalSyncOptions {
   /** `GET /approvals?status=pending`. */
   listPending: () => Promise<ApprovalRequest[]>;
+  /**
+   * The thread this client is showing, so an approval belonging to a *different*
+   * conversation is not adopted into it.
+   *
+   * `/approvals` is tenant-wide — it is the only channel a durable run's approval
+   * has — so without this every pending approval in the tenant was lifted into
+   * whichever thread happened to be open, and the transcript banner asked the
+   * operator to authorise a write on behalf of a conversation they were not
+   * looking at. On the one surface in this app that authorises a write to disk.
+   */
+  threadId?: string;
   /** Ids already on screen, however they got there. Mutated as new ones adopt. */
   seen: Set<string>;
   /** The pre-edit file text for a `write_file` diff, where a client can read one. */
@@ -250,7 +261,25 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
     return { added: [], deadlines: new Map() };
   }
   const deadlines = new Map(items.map((item) => [item.id, deadlineOf(item)]));
-  const fresh = items.filter((item) => !opts.seen.has(item.id));
+  /**
+   * Adopted unless it is *provably* another thread's.
+   *
+   * Positive evidence only, the same rule the attention line's copy follows. An
+   * approval with no thread on it is not evidence of belonging elsewhere — a
+   * harness older than `felix-run/felix@f679310` sends no key at all, and a newer
+   * one sends `""` for a gated tool called outside a chat — so an unattributed
+   * approval still reaches the banner exactly as it did before. Only a different,
+   * non-empty thread is grounds for leaving it alone.
+   *
+   * Skipped ids stay **out of `seen`** on purpose: switching to that thread has to
+   * adopt it, and a `seen` entry would mean it is never offered anywhere again.
+   * The deadline map still covers every row, because the engine backfills those
+   * onto approvals that arrived by frame.
+   */
+  const mine = items.filter(
+    (item) => !item.thread_id || !opts.threadId || item.thread_id === opts.threadId,
+  );
+  const fresh = mine.filter((item) => !opts.seen.has(item.id));
   if (!fresh.length) return { added: [], deadlines };
 
   const entries: PendingApproval[] = [];

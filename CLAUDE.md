@@ -403,6 +403,15 @@ Flows worth knowing before editing the app:
   The deadline arrives only on the `/approvals` row; the **frame carries none**. So `syncApprovals`
   returns deadlines for *every* pending approval rather than only the ones it is adding, and the
   engine backfills them onto approvals that arrived by frame and are therefore already `seen`.
+  **`/approvals` is tenant-wide, so adoption is thread-scoped.** It is the only channel a durable
+  run's approval has, and without a filter every pending approval in the tenant was lifted into
+  whichever thread happened to be open — the transcript banner asking an operator to authorise a
+  write on behalf of a conversation they were not looking at, on the one surface in this app that
+  authorises a write to disk. `syncApprovals` now skips a row whose `thread_id` names a *different*
+  thread, on positive evidence only: a row with no thread is not evidence of belonging elsewhere
+  (an older harness sends no key, a newer one sends `""` for a tool called outside a chat), so an
+  unattributed approval still reaches the banner exactly as before. A skipped id stays **out of
+  `seen`**, or the thread it does belong to would never offer it either.
   **The row carries `thread_id` now** (`felix-run/felix@f679310`, answering `felix-run/felix#232`),
   which is the only attribution a durable run's approval has. It is **optional on the client and
   absent and empty mean the same thing**: an older harness sends no key, a new one sends `""` when

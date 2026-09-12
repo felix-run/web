@@ -247,3 +247,57 @@ describe('approvalRuleLabel', () => {
     expect(approvalRuleLabel('workspace-write')).toBe('workspace-write');
   });
 });
+
+/**
+ * `/approvals` is tenant-wide — it is the only channel a durable run's approval
+ * has — so adoption has to decide what belongs in *this* conversation. Getting it
+ * wrong put another thread's write in front of the operator attributed to the one
+ * they were reading, on the surface that authorises a write to disk.
+ */
+describe('syncApprovals thread scoping', () => {
+  const sync = (items: ApprovalRequest[], threadId?: string, seen = new Set<string>()) =>
+    syncApprovals({ listPending: async () => items, seen, threadId });
+
+  it('adopts an approval that names this thread', async () => {
+    const { added } = await sync([row({ id: 'a', thread_id: 'here' })], 'here');
+    expect(added.map((a) => a.approvalId)).toEqual(['a']);
+  });
+
+  it('leaves an approval that names another thread alone', async () => {
+    const { added } = await sync([row({ id: 'a', thread_id: 'elsewhere' })], 'here');
+    expect(added).toEqual([]);
+  });
+
+  /**
+   * Positive evidence only. A harness older than `felix-run/felix@f679310` sends
+   * no thread at all, and a newer one sends `""` for a gated tool called outside a
+   * chat; neither is evidence of belonging elsewhere, and treating them as such
+   * would mean an older harness silently lost its approval banner entirely.
+   */
+  it('adopts an approval with no thread on it, rather than guessing it is elsewhere', async () => {
+    const { added } = await sync([row({ id: 'a' }), row({ id: 'b', thread_id: '' })], 'here');
+    expect(added.map((x) => x.approvalId)).toEqual(['a', 'b']);
+  });
+
+  /**
+   * The skipped one must stay adoptable. Marking it `seen` to avoid re-checking it
+   * would mean the thread it actually belongs to never offers it either — the
+   * approval would exist in the count and nowhere else, for good.
+   */
+  it('does not remember a skipped approval, so its own thread still adopts it', async () => {
+    const seen = new Set<string>();
+    const items = [row({ id: 'a', thread_id: 'elsewhere' })];
+    expect((await sync(items, 'here', seen)).added).toEqual([]);
+    expect(seen.has('a')).toBe(false);
+
+    const { added } = await sync(items, 'elsewhere', seen);
+    expect(added.map((x) => x.approvalId)).toEqual(['a']);
+  });
+
+  /** The deadline map covers every row: the engine backfills frame-delivered ones from it. */
+  it('still reports deadlines for the approvals it did not adopt', async () => {
+    const { added, deadlines } = await sync([row({ id: 'a', thread_id: 'elsewhere' })], 'here');
+    expect(added).toEqual([]);
+    expect(deadlines.has('a')).toBe(true);
+  });
+});
