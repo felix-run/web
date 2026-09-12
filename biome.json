@@ -14,7 +14,8 @@
       "!**/node_modules",
       "!apps/chat-ui/harness-openapi.json",
       "!scripts/harness-events.json",
-      "!scripts/harness-payloads.json"
+      "!scripts/harness-payloads.json",
+      "!.impeccable/design.json"
     ]
   },
   "formatter": {
