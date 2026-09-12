@@ -619,6 +619,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     async syncApprovals() {
       const { added, deadlines } = await syncApprovals({
         listPending: () => ports.client.listApprovals('pending'),
+        threadId: ports.threadId(),
         seen: seenApprovals,
         readForDiff: ports.clientTools?.readForDiff?.bind(ports.clientTools),
       });
