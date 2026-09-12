@@ -247,10 +247,96 @@ describe('a durable run', () => {
   });
 
   /**
-   * The transcript a durable run leaves is the answer and nothing else — no
-   * deltas, no tool frames — so the tool calls that produced it exist only in
-   * the harness's own transcript. A client that draws tool cards has to be told
-   * to re-read the session, or it shows an answer that arrived from nowhere.
+   * The work behind the answer, while it is happening.
+   *
+   * The harness tails the thread's session log between status frames
+   * (felix-run/felix#238). These are the same rows a reattach replays, so the
+   * engine folds them with the same `eventsToTurns` — an assistant message
+   * carrying `tool_calls` opens a card, and the `tool_result` matching on
+   * `tool_call_id` closes it. Before this the run showed "Background · running…"
+   * and then an answer that arrived from nowhere.
+   */
+  it('folds session events into tool cards as they land', async () => {
+    const engine = engineOn([
+      { event: 'run_accepted', data: { resume_token: 'fib_1' } },
+      { event: 'run_status', data: { status: 'running' } },
+      {
+        event: 'session_event',
+        data: { id: 'e0', seq: 0, kind: 'message', role: 'user', content: 'hello' },
+      },
+      {
+        event: 'session_event',
+        data: {
+          id: 'e1',
+          seq: 1,
+          kind: 'message',
+          role: 'assistant',
+          content: 'let me check',
+          tool_calls: [{ id: 'c1', name: 'search', args: { q: 'answer' } }],
+        },
+      },
+      {
+        event: 'session_event',
+        data: {
+          id: 'e2',
+          seq: 2,
+          kind: 'tool_result',
+          role: 'tool',
+          content: '42',
+          tool_call_id: 'c1',
+        },
+      },
+      {
+        event: 'session_event',
+        data: { id: 'e3', seq: 3, kind: 'message', role: 'assistant', content: '42 it is' },
+      },
+      { event: 'final', data: { content: '42 it is' } },
+    ]);
+    await run(engine);
+
+    const withCards = engine.state.turns.filter((t) => (t.tools ?? []).length > 0);
+    expect(withCards).toHaveLength(1);
+    const card = withCards[0]?.tools?.[0];
+    expect(card?.name).toBe('search');
+    expect(card?.output).toBe('42');
+    expect(card?.done).toBe(true);
+    expect(withCards[0]?.content).toBe('let me check');
+
+    // The user message comes from the log, not from the local copy: the harness
+    // captured its cursor before enqueuing, so it re-supplies it, and keeping both
+    // would render the question twice.
+    expect(
+      engine.state.turns.filter((t) => t.role === 'user' && t.content === 'hello'),
+    ).toHaveLength(1);
+  });
+
+  /** Outside a durable run these frames stay inert — `reattachThread` owns them. */
+  it('ignores session events on a stream that is not a durable run', async () => {
+    const engine = engineOn([
+      delta('hi'),
+      {
+        event: 'session_event',
+        data: {
+          id: 'e1',
+          seq: 1,
+          kind: 'message',
+          role: 'assistant',
+          content: 'from the log',
+          tool_calls: [{ id: 'c1', name: 'search', args: {} }],
+        },
+      },
+      { event: 'on_chain_end', data: {} },
+    ]);
+    await run(engine);
+
+    expect(engine.state.turns.map((t) => t.content)).toEqual(['hello', 'hi']);
+  });
+
+  /**
+   * The transcript a durable run leaves is still not authoritative: the tail
+   * starts at a cursor, so it never carries the thread's earlier turns, and a
+   * dropped stream can have missed the end of it. A client that draws tool cards
+   * still has to re-read the session.
    */
   it('reports that its transcript is incomplete', async () => {
     let settled = 0;

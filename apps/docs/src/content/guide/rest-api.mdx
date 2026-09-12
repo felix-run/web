@@ -100,6 +100,19 @@ one, it replays only the session events after that cursor as `session_event` fra
 then tails the thread, sending `: keep-alive` comments while idle and closing after
 `FELIX_STREAM_RESUME_IDLE_SECONDS` — reconnect with the last `id:` you saw and nothing is lost.
 
+A `session_event` carries `id`, `seq`, `kind`, `role`, `content`, `name`, and — on the messages that
+have them — `tool_calls` and `tool_call_id`. Those last two are what a tool card is built from: read
+`tool_calls` off an assistant message to open one per call, and match `tool_call_id` on the following
+`tool_result` to close it.
+
+:::caution[On a harness older than `felix-run/felix#238`, a warm reattach loses its tool calls]
+Before it, `session_event` carried neither `tool_calls` nor `tool_call_id`, so an assistant turn that
+called a tool replayed as an empty message and its result had nothing to attach to. The `snapshot`
+frame has always carried both, so a *cold* reattach was unaffected — which is why this looked like a
+quirk of resuming rather than a missing field. Clients should treat the fields as optional and fall
+back to re-reading the session when they are absent.
+:::
+
 :::caution
 This recovers the **thread**, not the interrupted run. A disconnect still tears the run down, so
 that a client which hangs up stops incurring model cost. Reconnecting shows you what was persisted,
@@ -189,15 +202,41 @@ hung-up client deliberately kills the run so it stops burning tokens. A client t
 reattaches with [`GET /chat/runs/{resume_token}`](#get-chatrunsresume_token) rather than starting
 over.
 
+Between the status frames the stream carries the run's **transcript**, tailed from the thread's
+session log as `session_event` frames — the same rows, with the same `id:` cursor, that
+[`GET /chat/stream/{thread_id}`](#get-chatstreamthread_id) replays on a reattach. So the tool calls
+and assistant turns of a durable run arrive as they land, across replicas, rather than only as a
+finished answer.
+
 ```
 data: {"event":"run_accepted","data":{"resume_token":"…","expires_at":…}}
 data: {"event":"run_status","data":{"status":"running","resume_token":"…"}}
+
+id: 7
+data: {"event":"session_event","data":{"id":"…","seq":6,"kind":"message","role":"assistant","content":"let me check","tool_calls":[{"id":"c1","name":"search","args":{}}]}}
+
+id: 8
+data: {"event":"session_event","data":{"id":"…","seq":7,"kind":"tool_result","role":"tool","content":"42","tool_call_id":"c1"}}
+
 data: {"event":"final","data":{"role":"assistant","content":"…"}}
 data: [DONE]
 ```
 
+**Completed messages only — never token deltas.** The fiber runs the agent to completion in the
+worker and only whole messages are ever persisted, so a durable run reports tool cards and finished
+assistant turns and nothing finer. That is the right trade for the mode whose point is that nobody
+is watching; a client that wants token-by-token output wants a transient manifest.
+
+A run started without a `thread_id` still reports progress: the fiber mints `{tenant}:fiber:{id}`
+and writes its transcript there.
+
 A run that fails or expires says so in an `event: error` frame rather than closing quietly —
-"expired" and "still running" look identical to a client that only sees a stream end.
+"expired" and "still running" look identical to a client that only sees a stream end. Either way
+the events that already landed are delivered first.
+
+`GET /chat/runs/{resume_token}` is unchanged and stays coarse: it is a status read, not a stream, so
+it reports status and the final answer and carries no transcript. A client polling it that wants the
+tool calls reattaches to `GET /chat/stream/{thread_id}`.
 :::
 
 ### Frame format
@@ -297,7 +336,9 @@ tool, matched on a hash of the arguments, until it expires.
 
 **Poll `GET /approvals` as well as reading the stream.** The frame is prompt on a streaming run, but
 side events are a per-thread in-process queue: a **durable** run's agent is in the worker while its
-stream is served by the API, so no frame can cross. The poll is the only channel there — and since
+stream is served by the API, so no *side event* can cross. (What does cross on a durable run, since
+felix#238, is the session log — but an approval request is never written to it, only tool results
+are, so this is unaffected.) The poll is the only channel there — and since
 felix#232 a polled row carries `thread_id` like the frame does, so the two channels attribute a
 waiting approval the same way. See [Approvals](/guide/management-api/#approvals) for how far that
 attribution goes.
