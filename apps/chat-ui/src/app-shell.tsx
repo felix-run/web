@@ -52,6 +52,7 @@ import {
   steerChat,
 } from '@/api';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
+import { AttentionLine } from '@/components/attention-line';
 import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
@@ -1211,6 +1212,14 @@ export function AppShell() {
           </DropdownMenu>
         </div>
       </header>
+
+      {/*
+        Always rendered, never conditional, and above the `<Outlet/>` so it is the
+        same line on both addresses. It answers the question an operator has
+        before they have navigated anywhere, which means it cannot be somewhere
+        they have to navigate to.
+      */}
+      <AttentionLine streaming={streaming} handled={pendingQueue.map((a) => a.approvalId)} />
 
       {/*
         The address decides what renders here. The engine, the thread and the

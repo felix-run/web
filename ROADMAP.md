@@ -24,25 +24,10 @@ Four more closed in #139: the wire-key labels, the explanation on a disabled but
 fire, the badge that drew a failing run quieter than a passing one, and the canary that reported
 itself absent while offering to clear itself.
 
----
-
-## Sheets
-
-*The critiques' correctness, consistency and recognition findings are closed. What is left is the
-one entry that was never a defect.*
-
-### Four workbenches behind one unlabelled ellipsis
-
-Eval, jobs, manifests and the agent spec are reachable only from the toolbar overflow menu
-(`aria-label="More tools"`). No shortcut, no URL, no second entry point. PRODUCT.md sets the bar at
-"one glance at the right rail" and asks that a cold viewer see the machinery is on display
-deliberately.
-
-This is the one item on the list that is a **question, not a defect**: the sheets may be papering
-over the absence of a home for this material rather than merely being hard to find. Worth deciding
-before adding a fifth sheet.
-
-**Size:** unknown — that is the point. Scope it before building.
+The last entry from those passes — four workbenches reachable only from an unlabelled ellipsis —
+shipped in #157 and has been removed. It was the one item here that was a *question* rather than a
+defect, and the answer was that the sheets were standing in for a missing home: they are `/harness`
+destinations now, alongside the tenant-durable half of the inspector.
 
 ---
 
@@ -54,10 +39,11 @@ before adding a fifth sheet.
 are machine-facing (`/health`, `/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on) and
 belong there. Four are not:
 
-- `GET /usage/summary` — the inspector's usage panel reads `/usage` and aggregates in the client,
-  which is the shape this route exists to replace.
+- `GET /usage/summary` — the Ledger's usage half reads `/usage` and aggregates in the client, which
+  is the shape this route exists to replace. Cheaper to adopt now that the panel has one home
+  (`/harness/ledger`) rather than being a section in a rail.
 - `PUT /plans/{}` — editing a plan. chat-ui reads plans and cannot change one.
-- `POST /eval/runs` — starting an eval. The inspector shows runs and cannot start one.
+- `POST /eval/runs` — starting an eval. `/harness/eval` shows runs and cannot start one.
 - `POST /chat/sessions/custom` — no client touches it at all.
 
 CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up". What is
