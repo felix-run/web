@@ -248,7 +248,36 @@ load after the router went in. That key is no longer written at all. `StrictMode
 it: React re-runs a mount effect with the *first* render's closure, so the shell persists from
 current engine state rather than from the captured value.
 
-**`/harness` is the second address, and the split is by lifetime.** The inspector's eight sections
+****The shell is three zones now, and they yield in a fixed order.** `src/routes/workbench.tsx`
+renders the workspace (`src/components/workspace/workspace-zone.tsx`, 18rem), the transcript at
+reading width with the composer anchored, and the run instrument
+(`clamp(22rem,24vw,30rem)`). Three zones want 1200px of content before any chrome, so **1280** is
+where all three fit: below it the **instrument** becomes a drawer, below **1024** the workspace
+follows. The instrument goes first because it is reference material, and the half of it that cannot
+wait is already in the attention line and the banner above the composer — neither of which lives in
+a rail. The workspace yields last because it is the subject.
+
+**The thread rail is gone.** Threads are a popover off the workspace header, which makes that
+popover the *only* door to another conversation at any width — a break there is not a degraded rail,
+it is a thread list nobody can open, so `tests/workbench-layout.test.tsx` pins it. The association
+is local-only anyway (the harness records which threads exist, not which folder any of them used),
+so the popover is a flat list and the trigger names the current thread rather than implying a folder
+owns it.
+
+The instrument is **tabs**, not the old accordion: one section on screen is one poll. The strip
+carries no counts, because populating them would mean every section fetching for a label nobody is
+reading — and the count that matters is in the attention line, tenant-wide. That is also why the
+inspector's old "approvals always polls while the panel is open" exception is gone: the attention
+line took that job.
+
+**`Touched this session` is empty during a durable run, and that is the run loop.** The zone derives
+it from `Turn.tools[].input` via `collectToolCallPaths`, but a durable manifest's stream carries
+`run_accepted` → `run_status` → `final` and **no tool frames at all**, so the calls only arrive when
+the thread is next hydrated from the snapshot. Measured against `cowork`: `write_file` was invisible
+until a reload, then appeared with its arguments intact. The same gap hides the tool *cards* from
+the transcript, which is the bigger half of it.
+
+`/harness` is the second address, and the split is by lifetime.** The inspector's eight sections
 divided into the three that describe the run on screen — approvals, plans, tool metrics, which stayed
 in the right rail — and the five that outlive every run: memory, corpus, skills, and what the harness
 did and what it cost. Those five are `/harness` pages now (`src/components/harness/`), joined by the
