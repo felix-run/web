@@ -1,11 +1,16 @@
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { ClipboardListIcon, GaugeIcon, ListTodoIcon, XIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { decideApproval, deletePlan, getToolMetrics, listApprovals, listPlans } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 import { ConfirmButton } from '@/components/confirm-button';
-import { Section, SectionBody, SectionBoundary } from '@/components/inspector/primitives';
+import {
+  PanelModeProvider,
+  Section,
+  SectionBody,
+  SectionBoundary,
+} from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
 import type { Plan } from '@/types';
@@ -26,6 +31,13 @@ type SectionId = 'approvals' | 'plans' | 'metrics';
  * the inspector is open: it is the channel a paused run is waiting on, so its count
  * has to be true before anyone thinks to look at it.
  */
+/** The three sections, declared once so the strip and the panel cannot disagree. */
+const SECTIONS = [
+  { id: 'approvals', label: 'Approvals' },
+  { id: 'plans', label: 'Plans' },
+  { id: 'metrics', label: 'Tools' },
+] as const satisfies readonly { id: SectionId; label: string }[];
+
 export function Inspector({
   open,
   onClose,
@@ -36,63 +48,81 @@ export function Inspector({
   /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
-  const [expanded, setExpanded] = useState<Record<SectionId, boolean>>({
-    approvals: true,
-    plans: false,
-    metrics: false,
-  });
-
-  const toggle = (id: SectionId) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
-  // Stable identity: ApprovalsSection depends on this in an effect, and a new function
-  // every render would re-run it every render and re-open a section the user collapsed.
-  const expandApprovals = useCallback(
-    () => setExpanded((prev) => (prev.approvals ? prev : { ...prev, approvals: true })),
-    [],
-  );
+  const [active, setActive] = useState<SectionId>('approvals');
 
   return (
     <aside
       aria-labelledby="inspector-heading"
       className={cn(
-        // Same reasoning as the history rail: the panel is the thing worth widening on a
-        // large display, not the transcript. Floor is the old fixed 22rem.
+        // The panel is the thing worth widening on a large display, not the
+        // transcript. Floor is the old fixed 22rem.
         'flex h-full w-[clamp(22rem,24vw,30rem)] shrink-0 flex-col border-l border-border/60 bg-card/40',
         className,
       )}
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
         <h2 id="inspector-heading" className="text-base font-semibold">
-          Inspector
+          This run
         </h2>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close inspector">
           <XIcon className="size-4" />
         </Button>
       </div>
 
+      {/*
+        Tabs, not a stacked accordion. Three sections fit a 22rem strip where the
+        original eight did not, and one on screen is one poll rather than one per
+        expanded section.
+
+        The strip carries no counts. Showing them would mean every section
+        fetching to populate a label nobody is reading, which is the cost tabs
+        exist to avoid — and the count that actually matters is already in the
+        attention line, always, tenant-wide.
+      */}
+      <div
+        role="tablist"
+        aria-label="Run instrument"
+        className="flex shrink-0 gap-1 border-b border-border/60 px-2 py-1.5"
+      >
+        {SECTIONS.map(({ id, label }) => (
+          <Button
+            key={id}
+            role="tab"
+            aria-selected={active === id}
+            variant={active === id ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 flex-1 px-2 text-xs"
+            onClick={() => setActive(id)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+
       <ScrollArea className="min-h-0 flex-1">
-        <div className="divide-y divide-border/60">
-          <SectionBoundary title="Approvals">
-            <ApprovalsSection
-              enabled={open}
-              open={expanded.approvals}
-              onToggle={() => toggle('approvals')}
-              onPending={expandApprovals}
-            />
-          </SectionBoundary>
-          <SectionBoundary title="Plans">
-            <PlansSection
-              enabled={open && expanded.plans}
-              open={expanded.plans}
-              onToggle={() => toggle('plans')}
-            />
-          </SectionBoundary>
-          <SectionBoundary title="Tools">
-            <MetricsSection
-              enabled={open && expanded.metrics}
-              open={expanded.metrics}
-              onToggle={() => toggle('metrics')}
-            />
-          </SectionBoundary>
+        <div className="p-3">
+          {/*
+            `bare` chrome: the strip above is the heading, so the section draws
+            none of its own. Each is mounted only while it is the active tab, so
+            `enabled` is simply whether the rail is open.
+          */}
+          <PanelModeProvider chrome="bare">
+            {active === 'approvals' && (
+              <SectionBoundary title="Approvals">
+                <ApprovalsSection enabled={open} open onToggle={() => {}} onPending={() => {}} />
+              </SectionBoundary>
+            )}
+            {active === 'plans' && (
+              <SectionBoundary title="Plans">
+                <PlansSection enabled={open} open onToggle={() => {}} />
+              </SectionBoundary>
+            )}
+            {active === 'metrics' && (
+              <SectionBoundary title="Tools">
+                <MetricsSection enabled={open} open onToggle={() => {}} />
+              </SectionBoundary>
+            )}
+          </PanelModeProvider>
         </div>
       </ScrollArea>
     </aside>

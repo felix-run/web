@@ -168,16 +168,28 @@ and the FINISH line itself, which no PR has discharged. **There is no DESIGN.md 
 so that clause is a real debt and not a formality: the palette and header grammar above are
 recorded here and nowhere a later agent would look first.
 
+- **Which zone yields first below 1280px: the instrument** (decided 2026-09-12, by building it).
+  Three zones want 18rem + a ~560px reading column + 22rem — 1200px of content before any chrome,
+  so 1280 is where all three fit. Below it the instrument becomes a drawer; below 1024 the
+  workspace follows and the transcript takes the width. The instrument goes first because it is
+  reference material about the run, and the half of it that cannot wait — an approval, a
+  `ui_request` — is already in the attention line and the banner above the composer, neither of
+  which lives in a rail. The workspace yields last of the two because it is the subject.
+- **The right rail keeps its tabs** (decided 2026-09-12). Three sections fit a 22rem strip where
+  eight did not, so the question was whether tabs still earn their place — and they do, for the
+  reason that survived the cut: one section on screen is one poll rather than one per expanded
+  section. The strip carries **no counts**, because populating them would mean every section
+  fetching for a label nobody is reading, which is the cost tabs exist to avoid. The count that
+  matters is in the attention line, always and tenant-wide, which is also why the inspector's old
+  "approvals always polls while the panel is open" exception could be retired: #158 took that job.
+
 ## Unresolved
 
-- **Which zone yields first below 1280px.** The contract fixes three zones at ~18rem,
-  reading width and `clamp(22rem,24vw,30rem)`, which is the width budget the current
-  rails already blow: today the inspector drops to a drawer at 1152 and the thread rail
-  at 1024, each decided on its own. With the workspace replacing the thread rail the
-  order is a fresh question, and it is the one thing in the contract that cannot be
-  answered per component without the shell drifting back into three panes.
-- **Whether the right rail's tabs survive the eight-to-three cut.** The rail is down to
-  approvals, plans and tool metrics (#157). Three tabs over ~22rem is comfortable where
-  eight was not — but three sections may no longer need tabs at all, and the contract
-  says tabs because it was written against eight. Decide when the zone is built, not now.
-
+- **A durable run's tool calls never reach the transcript live**, so `Touched this session` is
+  empty during exactly the manifest the workspace zone exists for. The stream carries
+  `run_accepted` → `run_status` → `final` and no tool frames; the calls are in the harness's own
+  transcript and arrive only on the next hydration. Measured against `cowork` on 2026-09-12:
+  `write_file` was invisible until a reload, then appeared with its arguments intact. This is the
+  run loop, not the panel, and it hides the tool *cards* too — the bigger half. Fixing it means
+  hydrating when a durable run completes, which replaces a streamed transcript with a snapshot
+  rebuild and therefore needs its own verification.

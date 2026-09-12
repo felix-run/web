@@ -23,7 +23,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
-import { EllipsisIcon, HistoryIcon, PanelRightIcon, PlusIcon, ServerIcon } from 'lucide-react';
+import { EllipsisIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, ServerIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, Outlet, useMatch, useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -1086,10 +1086,10 @@ export function AppShell() {
             variant={historyOpen ? 'secondary' : 'ghost'}
             size="icon-sm"
             onClick={() => setHistoryOpen((o) => !o)}
-            aria-label="Toggle history"
-            title="Conversation history"
+            aria-label="Toggle workspace"
+            title="Workspace"
           >
-            <HistoryIcon className="size-4" />
+            <PanelLeftIcon className="size-4" />
           </Button>
         )}
         <div className="flex min-w-0 items-center gap-2 px-1.5">
@@ -1158,8 +1158,8 @@ export function AppShell() {
               variant={inspectorOpen ? 'secondary' : 'ghost'}
               size="icon-sm"
               onClick={() => setInspectorOpen((o) => !o)}
-              aria-label="Toggle inspector"
-              title="Inspector"
+              aria-label="Toggle run instrument"
+              title="This run"
             >
               <PanelRightIcon className="size-4" />
             </Button>

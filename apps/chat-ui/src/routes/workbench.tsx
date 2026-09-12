@@ -5,10 +5,9 @@ import { Conversation } from '@/components/chat/conversation';
 import { Greeting } from '@/components/chat/greeting';
 import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
-import { ThreadList } from '@/components/chat/thread-list';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
-import { WorkspaceStrip } from '@/components/chat/workspace-strip';
 import { Inspector } from '@/components/inspector/inspector';
+import { WorkspaceZone } from '@/components/workspace/workspace-zone';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { useShell } from '@/shell-context';
@@ -35,7 +34,6 @@ export function Workbench() {
     uiResolving,
     onUiRespond,
     onUiCancel,
-    threadId,
     labels,
     labelTurn,
     send,
@@ -44,14 +42,6 @@ export function Workbench() {
     regenerate,
     rewindTo,
     onSlashCommand,
-    threads,
-    selectThread,
-    newThread,
-    deleteThread,
-    renameThread,
-    forkThread,
-    compactThread,
-    exportThread,
     manifest,
     setManifest,
     manifestOptions,
@@ -63,20 +53,20 @@ export function Workbench() {
     setInspectorOpen,
   } = useShell();
 
-  // Content-driven, not device-driven. The chat column wants ~560px before the
-  // transcript and composer start to feel cramped, and the two rails cost 592px of
-  // chrome, so both fit inline down to 1152. Below that the inspector becomes a
-  // drawer, which buys the chat back to ~790px; below 1024 the history rail follows
-  // and the transcript gets the full width. Neither rail ever squeezes the chat
-  // instead of yielding, which is what the old fixed-width flex row did all the way
-  // down to a 168px transcript.
+  // Content-driven, not device-driven, and the order is the thesis.
   //
-  // The inspector is kept inline as long as it fits rather than switching at a round
-  // number: it is a reference panel read *beside* the chat, and a drawer covers the
-  // thing it is describing. The drawer is the fallback for widths with no room, not
-  // the preferred form.
-  const inspectorInline = useMediaQuery('(min-width: 1152px)');
-  const historyInline = useMediaQuery('(min-width: 1024px)');
+  // Three zones want 18rem + a ~560px reading column + 22rem, which is 1200px of
+  // content before any chrome — so 1280 is where all three fit. Below it the
+  // **instrument** yields first: it is reference material about the run, and the
+  // half of it that cannot wait (an approval, a `ui_request`) is already in the
+  // attention line and the banner above the composer, neither of which is in a
+  // rail. Below 1024 the workspace follows, and the transcript takes the width.
+  //
+  // The workspace yields *last* of the two because it is the subject — the folder
+  // is what the agent is working on, and the thread is how you talk to it. A rail
+  // never narrows the thing it describes; it leaves.
+  const instrumentInline = useMediaQuery('(min-width: 1280px)');
+  const workspaceInline = useMediaQuery('(min-width: 1024px)');
 
   const modelOptions = useMemo(
     () => manifestOptions.map((id) => ({ id, label: id })),
@@ -86,20 +76,7 @@ export function Workbench() {
   return (
     <>
       <div className="flex min-h-0 flex-1">
-        {historyOpen && historyInline && (
-          <ThreadList
-            threads={threads}
-            currentId={threadId}
-            disabled={streaming}
-            onSelect={selectThread}
-            onNew={newThread}
-            onDelete={deleteThread}
-            onRename={renameThread}
-            onFork={forkThread}
-            onCompact={compactThread}
-            onExport={exportThread}
-          />
-        )}
+        {historyOpen && workspaceInline && <WorkspaceZone />}
         <main className="flex min-w-0 flex-1 flex-col">
           <Conversation>
             {turns.length === 0 && (
@@ -159,7 +136,6 @@ export function Workbench() {
                 onCancel={() => void onUiCancel()}
               />
             ) : null}
-            {manifest === DEFAULT_MANIFEST ? <WorkspaceStrip /> : null}
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
               reattaching={reattaching}
@@ -181,46 +157,27 @@ export function Workbench() {
             />
           </div>
         </main>
-        {inspectorOpen && inspectorInline && (
+        {inspectorOpen && instrumentInline && (
           <Inspector open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
         )}
       </div>
 
-      {/* Below their breakpoints the same rails become overlays. Same components and
-        same toggle state, so the header buttons keep working and nothing is
-        reachable in one layout but missing in the other. */}
-      {!historyInline && (
+      {/* Below their breakpoints the same zones become overlays — the same
+        components and the same toggle state, so the header buttons keep working
+        and nothing is reachable in one layout but missing in the other. */}
+      {!workspaceInline && (
         <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-          <SheetContent side="left" className="w-[17rem] gap-0 p-0 sm:max-w-none">
-            <SheetTitle className="sr-only">Conversation history</SheetTitle>
-            <ThreadList
-              threads={threads}
-              currentId={threadId}
-              disabled={streaming}
-              onSelect={(id) => {
-                selectThread(id);
-                setHistoryOpen(false);
-              }}
-              onNew={() => {
-                newThread();
-                setHistoryOpen(false);
-              }}
-              onDelete={deleteThread}
-              onRename={renameThread}
-              onFork={(id) => {
-                forkThread(id);
-                setHistoryOpen(false);
-              }}
-              onCompact={compactThread}
-              onExport={exportThread}
-              // The drawer supplies its own close button in the top-right corner, which
-              // would otherwise land on top of this rail's "New chat" control.
-              className="w-full border-r-0 bg-transparent [&>div:first-child]:pr-11"
-            />
+          <SheetContent side="left" className="w-[18rem] gap-0 p-0 sm:max-w-none">
+            <SheetTitle className="sr-only">Workspace</SheetTitle>
+            {/* The same zone, not a smaller stand-in: the threads popover, the
+                mount controls and the tree all have to be reachable here or the
+                narrow layout is missing a third of the app. The drawer supplies
+                its own close button top-right, which the header pads around. */}
+            <WorkspaceZone className="w-full border-r-0 bg-transparent [&>div:first-child]:pr-11" />
           </SheetContent>
         </Sheet>
       )}
-      {!inspectorInline && (
+      {!instrumentInline && (
         <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
           <SheetContent
             side="right"
