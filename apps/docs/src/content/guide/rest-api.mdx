@@ -299,6 +299,14 @@ tool, matched on a hash of the arguments, until it expires.
 side events are a per-thread in-process queue: a **durable** run's agent is in the worker while its
 stream is served by the API, so no frame can cross. The poll is the only channel there.
 
+:::note[On a harness older than `felix-run/felix#210`, the poll is the only channel anywhere]
+That fix is newer than `v0.2.2`. Before it the harness queued `approval_required` when the call
+blocked and drained the queue only once the tool batch returned — so the frame reached a live
+stream in the same flush as `tool_end`, *after* the decision it was asking for, and a stream
+blocked on a gated call carried none at all while it waited. A client that reads the stream and
+does not poll will show a tool card stuck at `running` and never offer the choice.
+:::
+
 ### UI prompts
 
 A `ui_request` frame asks the user a question. `kind` is `select`, `confirm` or `input`. Answer it:

@@ -254,10 +254,14 @@ Focus is tracked with `DECSET 1004`, which most modern terminals support and the
 Three frames pause a run until something answers, and all three take the keyboard:
 
 - **`approval_required`** — a gated tool. `y` approves, `n` denies
-  (`POST /approvals/{id}/decide`). The frame lands about a second after the tool card appears, while
-  the run is still blocked. The client polls `GET /approvals` as well, and needs to: a **durable**
-  run's agent is in the worker while its stream is served by the API, and side events are an
-  in-process queue, so no frame can cross. The poll is what makes an unwatched run answerable.
+  (`POST /approvals/{id}/decide`). Against a harness newer than `v0.2.2` the frame lands about a
+  second after the tool card appears, while the run is still blocked; an older one delivered it
+  *after* the decision it was asking for
+  ([felix-run/felix#210](https://github.com/felix-run/felix/pull/210)). Either way the client polls
+  `GET /approvals` as well, and needs to: a **durable** run's agent is in the worker while its
+  stream is served by the API, and side events are an in-process queue, so no frame can cross. The
+  poll is what makes an unwatched run answerable — and what keeps this client usable against an
+  older harness.
 - **`ui_request`** — the agent is asking you something. Select, confirm or type
   (`POST /chat/ui`).
 - **`tool_request`** — the harness handed a tool back for this process to run. See below.
