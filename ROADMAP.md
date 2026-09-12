@@ -48,22 +48,6 @@ before adding a fifth sheet.
 
 ## Cross-cutting
 
-### chat-ui defines colours the design package now owns
-
-`packages/design/src/tokens.ts:106,114` exports `STATE_LIGHT` / `STATE_DARK` — the blocked / done /
-running / failed / danger ramp — and `apps/tui/src/theme.ts` reads them. `apps/chat-ui/src/index.css`
-still declares its own values for the same five states, twice, at `:122-128` and `:187-190`.
-
-The tokens were promoted out of that stylesheet for the terminal client's benefit, and the
-stylesheet was left as it was, so the package's own docstring — "the single source of truth for the
-palette" — is true in one direction only. Two definitions of one ramp is the shape that drifts.
-
-Note the formats differ on purpose: chat-ui's are `oklch()` because CSS wants them and the design
-package's are sRGB hex because neither a terminal nor `RGBA.fromHex` takes `oklch()`. Aligning them
-means deciding which is canonical and generating the other, not deleting one.
-
-**Size:** small, but it is a decision before it is an edit.
-
 ### Four harness routes nothing calls
 
 `pnpm check-api-drift` prints seventeen, down from twenty-one once `/documents` was built. Thirteen
