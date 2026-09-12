@@ -546,6 +546,14 @@ browser cannot do rather than about the chat:
   at a time — which meant a pasted answer put nothing in the field. `esc` stays on `useKeyboard`
   because a global handler runs *before* the focused renderable and can take the key outright,
   which is the only way to cancel out of an input that would otherwise consume it.
+- **`/help` is generated, and tied to the router.** It was four hand-written lines and had already
+  drifted — naming six inspector sections when there were eight, and listing no keys at all. The
+  keys now come from `BINDINGS` in `src/keys.ts`, grouped by the surface that owns them because the
+  same key means different things in each, and the section list from `SECTIONS`. What makes that
+  more than a refactor is `ACTION_KINDS`: a `satisfies` plus an exhaustiveness type means an
+  `Action` kind added without a binding **fails to compile**, naming the missing one, and
+  `tests/keys.test.ts` asserts the coverage from the other side. Adopting `@opentui/keymap` was
+  considered for this and decided against — ROADMAP.md says why.
 - **The commands are the client's whole surface.** `@felix/client` reaches every chat verb the
   harness serves; a slash command is the only thing that exposes one here, so a verb with no `case`
   in `command()` — rename, fork, compact, export, rewind, search — is a verb this client does not

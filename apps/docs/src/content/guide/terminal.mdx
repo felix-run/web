@@ -100,6 +100,12 @@ What these keys do at any moment is written along the bottom of the screen, besi
 origin — the rail's bindings included, which is where it matters most, because the prompt's own hint
 is not drawn while the rail has focus.
 
+`/help` prints the whole set, grouped by which surface owns the key, because the same key means
+different things in each: `esc` aborts a run in the chat, clears the filter in the thread list, and
+leaves the search in the inspector. That listing is **generated** from the table the router is
+tested against, so a binding the client has and the help does not is a failing test rather than a
+discovery.
+
 The picker opens over the conversation rather than beside it, so it costs nothing when closed and
 is the same on a narrow terminal as on a wide one. It takes the keyboard whole while it is open, so `↑` moves its cursor rather than recalling a
 prompt, and `enter` picks a thread rather than sending what is typed. **Typing filters it**, over

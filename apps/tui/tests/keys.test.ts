@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { KeyEvent } from '@opentui/core';
-import { type KeyState, route } from '../src/keys';
+import { ACTION_KINDS, BINDINGS, type KeyState, route } from '../src/keys';
 
 /**
  * The precedence chain, decided without a terminal.
@@ -173,5 +173,39 @@ describe('the inspector sits under the prompts and above the rail', () => {
 
   it('still lets ctrl+c stop the run from inside', () => {
     expect(route(key('c', { ctrl: true }), open({ streaming: true }))).toEqual({ kind: 'stop' });
+  });
+});
+
+describe('the help cannot drift away from the keyboard', () => {
+  /**
+   * `/help` used to be four hand-written lines, and it had already gone stale:
+   * it named six inspector sections when there were eight, and listed no keys at
+   * all. Generating it is only half a fix — a generated list of the wrong things
+   * is still wrong — so what makes it true is this: every action the router can
+   * return has to be spoken for.
+   */
+  it('documents every action route() can return', () => {
+    // The union has no runtime form, so the list is the one in `keys.ts` — and a
+    // `kind` added to `Action` without a BINDINGS line is a `covers` entry that
+    // no longer typechecks, which is the half the type system does catch.
+    const covered = new Set(BINDINGS.flatMap((b) => b.covers));
+    const missing = ACTION_KINDS.filter((k) => !covered.has(k));
+    expect(missing).toEqual([]);
+  });
+
+  it('names every surface that owns keys, so a group cannot go missing', () => {
+    for (const where of ['chat', 'threads', 'inspector'] as const) {
+      expect(BINDINGS.some((b) => b.where === where)).toBe(true);
+    }
+  });
+
+  it('lists the inspector sections the inspector actually has', async () => {
+    // The stale half: six named, eight rendered. Derived now, and pinned so the
+    // derivation is not quietly replaced by a literal again.
+    const { HELP } = await import('../src/commands');
+    const { SECTIONS } = await import('../src/inspector');
+    for (const section of SECTIONS) {
+      expect(HELP.toLowerCase()).toContain(section.name.toLowerCase());
+    }
   });
 });

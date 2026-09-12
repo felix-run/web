@@ -82,31 +82,29 @@ embedder ran for it, which is the answer to "why did recall miss this". `UsageEv
 
 ## Terminal client
 
-### The keyboard is layers in all but name
+### The keyboard is layers in all but name — and the case for adopting them has gone
 
-**Half of this shipped in #133 and #134.** The switch is out of `app.tsx` and into
-`apps/tui/src/keys.ts` as a pure `route(key, state) -> Action | null`, with 29 tests that run in
-milliseconds rather than by mounting the app. Writing it down settled the thing the original note
-got wrong about its own mechanism: **`preventDefault()` does not stop another global handler** — it
-gates only the *focused* renderable — and because React runs child effects first, the three banners
-in `prompts.tsx` subscribe *before* `App` does. So mutual exclusion was never enforced by
-`preventDefault`; it is the `blocked` early return, and that is now a test rather than a sentence.
+**The prize is claimed; the dependency is not worth taking for what is left.**
 
-What remains is the adoption itself. There are still five `useKeyboard` calls (one in `app.tsx`, one
-in `composer.tsx`, three in `prompts.tsx`), and `@opentui/keymap` would replace the hand-rolled
-precedence with layers carrying priorities and `enabled` predicates. The remaining prize is
-`/help`: it is a hand-maintained string in `commands.ts` beside the `COMMANDS` switch, so an
-undocumented command is still possible, and a keymap table would generate it.
+Two of the three reasons this entry gave are spent. The precedence chain moved to
+`apps/tui/src/keys.ts` as a pure `route(key, state) -> Action | null` (#133, #134), so the layers
+exist in all but name, and the invariant that lived in a comment is a typed `Overlay` union plus
+tests. And `/help` is generated now: `BINDINGS` in `keys.ts` describes every key grouped by the
+surface that owns it, `commands.ts` renders it, and `tests/keys.test.ts` asserts every
+`Action['kind']` is spoken for — with `ACTION_KINDS` typed so a kind added without a binding fails
+to compile, naming the missing one.
 
-Two things it does **not** solve, which the original note got right: no focus-traversal API (tab
-order stays hand-rolled), and it cannot express the picker's catch-all "every printable character is
-filter text" — that needs an intercept or a `useKeyboard` behind the layer.
+What is left is replacing a tested pure function with a third-party resolver. That buys `enabled`
+predicates this already expresses as an early return, and costs a dependency that pins
+`@opentui/core` exactly — `@opentui/keymap@0.5.10` does match the pinned `0.5.10`, so the version
+objection has gone too, but it means the renderer and the keymap can never move apart.
 
-It pins `@opentui/core` to an exact version, so it lands with a version bump or not at all.
+It still would not solve either thing the original note got right: no focus-traversal API, and no
+way to express the picker's catch-all "every printable character is filter text".
 
-**Size:** medium, and smaller than it was — the risky half (deciding and pinning the precedence
-chain) is done. Provider, App layer, picker layer, the three banners, then generate the help panel.
-Leave the composer's `CHAT_BINDINGS` alone.
+So this is recorded as **decided against** rather than removed, because the next person will have
+the same idea. Reopen it if the keyboard grows a case the pure chain cannot express — a fourth
+overlay, or a binding that has to be rebound at runtime.
 
 ### Every code frame carries one empty row, and the obvious fix is wrong
 
