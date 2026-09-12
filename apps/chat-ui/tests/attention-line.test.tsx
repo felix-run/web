@@ -232,4 +232,24 @@ describe('the attention line', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /approve/i })).toBeTruthy());
     expect(screen.queryByText(/Blocking/)).toBeNull();
   });
+
+  /**
+   * The queue is everything the banner is not drawing, not everything it knows.
+   *
+   * `ApprovalBanner` renders one approval and reports the rest as a count, so a
+   * `handled` list covering the whole engine queue left every approval after the
+   * first reachable nowhere — not in the banner, which draws one, and not here,
+   * which suppressed them all. The count was right and the queue was a lie.
+   */
+  it('still offers an approval the banner is not the one drawing', async () => {
+    stub([approval({ id: 'a1' }), approval({ id: 'a2', thread_id: 'elsewhere' })]);
+    mount(false, ['a1']);
+
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('2 calls are waiting'),
+    );
+    // One card, for the one the banner is not showing — named by its thread.
+    expect(await screen.findByRole('link', { name: 'Overnight batch' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /approve/i })).toHaveLength(1);
+  });
 });
