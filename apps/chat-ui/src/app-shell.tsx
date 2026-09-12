@@ -1221,7 +1221,11 @@ export function AppShell() {
       */}
       <AttentionLine
         streaming={streaming}
-        handled={pendingQueue.map((a) => a.approvalId)}
+        // Only the one the banner actually *draws*, not the whole queue:
+        // `ApprovalBanner` renders `pendingQueue[0]` and reports the rest as a
+        // count, so suppressing all of them here left every approval after the
+        // first visible nowhere but in this line's own total.
+        handled={pendingQueue[0] ? [pendingQueue[0].approvalId] : []}
         threadId={threadId}
         threads={threads}
       />
