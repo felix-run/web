@@ -389,6 +389,16 @@ Flows worth knowing before editing the app:
   The deadline arrives only on the `/approvals` row; the **frame carries none**. So `syncApprovals`
   returns deadlines for *every* pending approval rather than only the ones it is adding, and the
   engine backfills them onto approvals that arrived by frame and are therefore already `seen`.
+  **The row carries `thread_id` now** (`felix-run/felix@f679310`, answering `felix-run/felix#232`),
+  which is the only attribution a durable run's approval has. It is **optional on the client and
+  absent and empty mean the same thing**: an older harness sends no key, a new one sends `""` when
+  there was no thread, and distinguishing the two would report the client's version rather than the
+  run's. It is the *originating* thread — `create_pending` reuses one pending row for every
+  byte-identical call, so it names whichever asked first — and `listApprovals` normalises it to the
+  suffix, like every other thread id a client holds. The attention line narrows its copy from
+  "across the harness" to "on this thread" only when **every** pending row is provably this thread;
+  one row elsewhere, or one carrying no thread, keeps the tenant-wide phrase, because an
+  unattributed row is not evidence of being here.
   **The frame arrives promptly, but only because that was fixed.** Until `felix-run/felix#210` the
   harness queued `approval_required` when the call blocked and drained the queue only after the tool
   batch returned, so it reached a live stream in the same flush as `tool_end` — *after* the decision

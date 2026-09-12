@@ -1219,7 +1219,12 @@ export function AppShell() {
         before they have navigated anywhere, which means it cannot be somewhere
         they have to navigate to.
       */}
-      <AttentionLine streaming={streaming} handled={pendingQueue.map((a) => a.approvalId)} />
+      <AttentionLine
+        streaming={streaming}
+        handled={pendingQueue.map((a) => a.approvalId)}
+        threadId={threadId}
+        threads={threads}
+      />
 
       {/*
         The address decides what renders here. The engine, the thread and the

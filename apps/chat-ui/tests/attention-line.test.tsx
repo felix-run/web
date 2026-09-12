@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttentionLine } from '../src/components/attention-line';
 
@@ -48,11 +49,18 @@ function stub(rows: unknown[]) {
 const approvalCalls = (spy: ReturnType<typeof stub>) =>
   spy.mock.calls.filter((c) => String(c[0]).includes('/approvals')).length;
 
+const THREADS = [
+  { id: 'here', title: 'The thread on screen', manifest: 'cowork', updatedAt: Date.now() },
+  { id: 'elsewhere', title: 'Overnight batch', manifest: 'cowork', updatedAt: Date.now() },
+];
+
 function mount(streaming = false, handled: string[] = []) {
   return render(
-    <TooltipProvider>
-      <AttentionLine streaming={streaming} handled={handled} />
-    </TooltipProvider>,
+    <MemoryRouter>
+      <TooltipProvider>
+        <AttentionLine streaming={streaming} handled={handled} threadId="here" threads={THREADS} />
+      </TooltipProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -79,7 +87,9 @@ describe('the attention line', () => {
     expect(screen.queryByRole('button', { name: /review/i })).toBeNull();
   });
 
-  it('counts what is waiting, and says where — the phrase is the whole point', async () => {
+  it('says "across the harness" when nothing can be attributed', async () => {
+    // No `thread_id` at all — a harness older than felix@f679310, which is the
+    // state every row was in when this phrase was written.
     stub([approval(), approval({ id: 'a2' })]);
     mount();
     await waitFor(() =>
@@ -169,5 +179,57 @@ describe('the attention line', () => {
     );
     expect(screen.queryByRole('button', { name: /review/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
+  });
+
+  /**
+   * The phrase narrows only when it can be proven.
+   *
+   * `thread_id` arrived with `felix-run/felix@f679310`, answering the constraint
+   * this line was built under. It is the originating thread, not an owner — one
+   * pending row is shared by every byte-identical call — so it is good enough to
+   * point someone at a conversation and not good enough to claim exclusivity.
+   */
+  it('narrows to "on this thread" only when every row is provably here', async () => {
+    stub([approval({ thread_id: 'here' }), approval({ id: 'a2', thread_id: 'here' })]);
+    mount();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        '2 calls are waiting on you on this thread',
+      ),
+    );
+  });
+
+  it('keeps the tenant-wide phrase when one row is somewhere else', async () => {
+    stub([approval({ thread_id: 'here' }), approval({ id: 'a2', thread_id: 'elsewhere' })]);
+    mount();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('across the harness'),
+    );
+  });
+
+  it('keeps it when one row carries no thread, which is not evidence of being here', async () => {
+    stub([approval({ thread_id: 'here' }), approval({ id: 'a2', thread_id: '' })]);
+    mount();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('across the harness'),
+    );
+  });
+
+  /**
+   * The payoff the brief predicted: threads have addresses since #156, so an
+   * approval blocking another conversation is a link rather than an id.
+   */
+  it('names and links the thread an approval is blocking, when it is not this one', async () => {
+    stub([approval({ thread_id: 'elsewhere' })]);
+    mount();
+    const link = await screen.findByRole('link', { name: 'Overnight batch' });
+    expect(link.getAttribute('href')).toBe('/t/elsewhere');
+  });
+
+  it('does not label a row that is already on the thread in front of you', async () => {
+    stub([approval({ thread_id: 'here' })]);
+    mount();
+    await waitFor(() => expect(screen.getByRole('button', { name: /approve/i })).toBeTruthy());
+    expect(screen.queryByText(/Blocking/)).toBeNull();
   });
 });

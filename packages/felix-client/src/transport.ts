@@ -591,7 +591,13 @@ export function createFelixClient(opts: FelixClientOptions) {
       const res = await chatFetch(`/approvals?status=${status}`);
       if (!res.ok) throw new Error(`approvals: ${res.status}`);
       const body = (await res.json()) as { requests?: ApprovalRequest[] };
-      return body.requests ?? [];
+      // Normalised here, where every other thread id a client holds is: the wire
+      // spells them `{tenant}:{suffix}` and clients send and store the suffix.
+      // Left raw, a caller building `/t/{thread_id}` would produce an address the
+      // harness rejects for containing a colon.
+      return (body.requests ?? []).map((row) =>
+        row.thread_id ? { ...row, thread_id: threadSuffix(row.thread_id) } : row,
+      );
     },
 
     /** POST /approvals/:id/decide → approve or deny a gated tool call. */
