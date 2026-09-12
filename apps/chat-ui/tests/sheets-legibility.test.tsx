@@ -37,7 +37,7 @@ async function sheet(over: Record<string, unknown> = {}) {
     getAgentCard: vi.fn().mockRejectedValue(new Error('no card')),
   }));
   const { AgentSheet } = await import('../src/components/agent/agent-sheet');
-  render(<AgentSheet open onOpenChange={() => {}} manifest="quick" />);
+  render(<AgentSheet manifest="quick" />);
   await waitFor(() => expect(screen.getByText('Pattern')).toBeTruthy());
 }
 

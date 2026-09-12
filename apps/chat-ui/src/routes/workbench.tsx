@@ -28,7 +28,6 @@ export function Workbench() {
     reattaching,
     error,
     sessionPhase,
-    skills,
     pending,
     queueLength,
     onDecide,
@@ -183,13 +182,7 @@ export function Workbench() {
           </div>
         </main>
         {inspectorOpen && inspectorInline && (
-          <Inspector
-            open={inspectorOpen}
-            onClose={() => setInspectorOpen(false)}
-            skills={skills}
-            onSuggest={send}
-            busy={streaming}
-          />
+          <Inspector open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
         )}
       </div>
 
@@ -238,12 +231,6 @@ export function Workbench() {
             <Inspector
               open={inspectorOpen}
               onClose={() => setInspectorOpen(false)}
-              skills={skills}
-              onSuggest={(text) => {
-                send(text);
-                setInspectorOpen(false);
-              }}
-              busy={streaming}
               className="w-full border-l-0 bg-transparent"
             />
           </SheetContent>

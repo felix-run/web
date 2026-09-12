@@ -2,7 +2,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Inspector } from '../src/components/inspector/inspector';
+import { ActivitySection } from '../src/components/harness/ledger';
 
 /**
  * The Activity feed's keyboard path and its drill-down.
@@ -45,7 +45,10 @@ function stubHarness(events: unknown[]) {
 }
 
 function renderInspector() {
-  return render(<Inspector open onClose={() => {}} skills={null} onSuggest={() => {}} />);
+  // The feed is a `/harness/ledger` half now rather than an inspector row, so this
+  // mounts the section itself. `open` is the disclosure state it still carries for
+  // the inspector's sake; the keyboard path under test is the same either way.
+  return render(<ActivitySection enabled open onToggle={() => {}} />);
 }
 
 /** The audit calls only — Approvals polls on its own schedule and would skew a count. */

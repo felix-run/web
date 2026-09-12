@@ -245,8 +245,34 @@ load after the router went in. That key is no longer written at all. `StrictMode
 it: React re-runs a mount effect with the *first* render's closure, so the shell persists from
 current engine state rather than from the captured value.
 
-`/harness` is in the brief and is **not built yet** — the four sheets still live in the shell and
-open from the header's ellipsis menu.
+**`/harness` is the second address, and the split is by lifetime.** The inspector's eight sections
+divided into the three that describe the run on screen — approvals, plans, tool metrics, which stayed
+in the right rail — and the five that outlive every run: memory, corpus, skills, and what the harness
+did and what it cost. Those five are `/harness` pages now (`src/components/harness/`), joined by the
+four workbenches that used to be slide-over sheets behind the header's ellipsis. Those were never
+hard to find; they had no home, which is what an ellipsis menu means. `Section` grew a chrome mode
+(`PanelModeProvider`) so a section is a disclosure row in the inspector and a page under `/harness`
+**without being edited**, and the shared pieces both surfaces draw from live in
+`src/components/inspector/primitives.tsx`.
+
+Eight destinations, declared once as `HARNESS_DESTINATIONS` — the nav and the route table are built
+from that one list, because a nav entry with no route is a dead link and a route with no nav entry is
+a page nobody can reach, and both fail silently. Audit and usage are **one** destination, the Ledger:
+segmented rather than stacked so only the half being read polls. `SheetBoundary` became
+`PanelBoundary` and wraps each destination individually — a panel throws during its *own* render, so
+one boundary around the group would take the other seven down with it. Wide, the nav is a resident
+rail; narrow there is no room for both, so `/harness` *is* the list and only redirects to
+`/harness/memory` on a wide viewport — redirecting on a phone would mean the list could never be
+seen.
+
+**The shell must never treat a non-thread address as a thread.** `/t/:threadSuffix` is the truth when
+it matches, `/` mints one and redirects (`NewThread` in `App.tsx`), and **every other address keeps
+the thread the tab was already on**. Redirecting whenever the URL carried no thread was
+indistinguishable from correct while `/` was the only such address; the moment `/harness` existed it
+bounced the operator to a freshly minted thread, and minting one resets the engine, so a run in
+flight died on the way out. `tests/harness-route.test.tsx` pins it, along with every destination
+rendering — the first version of that layout threw on mount for all eight because a `||` between two
+`useMatch` calls made the second a conditional hook.
 
 `apps/chat-ui/src/api.ts` supplies the browser's half of the arrangement and keeps the **write**
 surface (eval datasets, manifest versions and canaries, scheduled jobs, the A2A card). That split is
@@ -363,9 +389,10 @@ Flows worth knowing before editing the app:
   the end: one quoted mid-text is a tool *talking about* an artifact) and the tool card fetches
   `GET /artifacts/{manifest_id}/{artifact_id}` on request. The tenant is in the key and is
   deliberately not a parameter — the harness takes it from the caller's credentials.
-- **Memory** — `/memory` is what the agent has stored across sessions, surfaced in the inspector so
-  a stale or hostile fact can be found and removed without a database console. Listing, the agent's
-  own hybrid ranking (`/memory/search`, whose hits report *which retriever* found them), and a
+- **Memory** — `/memory` is what the agent has stored across sessions, surfaced at
+  `/harness/memory` so a stale or hostile fact can be found and removed without a database
+  console. Listing, the agent's own hybrid ranking (`/memory/search`, whose hits report *which
+  retriever* found them), and a
   read-only `as-of/{turn_seq}` view including superseded facts, and an **Add** tab that writes one
   (`POST /memory`) — an injection ingress by design, which is why the form says so. `DELETE` is
   **soft** — the row becomes `forgotten` and drops out of recall rather than being erased, which is
@@ -472,8 +499,10 @@ browser cannot do rather than about the chat:
 - **The inspector is the harness's read-only operator surface, on `shift+tab`.** Eight sections over
   a `<tab-select>` strip, one `<scrollbox>` panel, and **only the visible section polls** — with tabs
   rather than chat-ui's disclosure stack, exactly one is on screen, so the terminal costs one request
-  where the browser costs one per expanded panel. It does *not* gate on terminal focus the way
-  chat-ui gates on `visibilityState`: focus reporting is tri-state here because plenty of terminals
+  where the browser's inspector costs one per expanded panel. (chat-ui reached the same economy from
+  the other direction for the tenant-durable half: those are `/harness` pages now, one at a time.)
+  It does *not* gate on terminal focus the way chat-ui gates on `visibilityState`: focus reporting
+  is tri-state here because plenty of terminals
   never answer, so gating would silently freeze the panel on those. The approvals section reads the
   engine's existing queue rather than adding a second poll — that one runs unwatched by design.
   Three things about the widgets. `TextTableRenderable` is **not** a JSX intrinsic at 0.5.10 despite

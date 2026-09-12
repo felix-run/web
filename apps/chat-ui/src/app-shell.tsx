@@ -23,18 +23,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
-import {
-  BotIcon,
-  ClockIcon,
-  EllipsisIcon,
-  FlaskConicalIcon,
-  GitBranchIcon,
-  HistoryIcon,
-  PanelRightIcon,
-  PlusIcon,
-} from 'lucide-react';
+import { EllipsisIcon, HistoryIcon, PanelRightIcon, PlusIcon, ServerIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Outlet, useMatch, useNavigate } from 'react-router';
+import { Link, Outlet, useMatch, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
   abortChat,
@@ -60,15 +51,10 @@ import {
   setThinkingLevel,
   steerChat,
 } from '@/api';
-import { AgentSheet } from '@/components/agent/agent-sheet';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
-import { EvalSheet } from '@/components/eval/eval-sheet';
-import type { SkillState } from '@/components/inspector/inspector';
-import { JobsSheet } from '@/components/jobs/jobs-sheet';
-import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
-import { SheetBoundary } from '@/components/sheet-boundary';
+import type { SkillState } from '@/components/inspector/primitives';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useHarnessReachable } from '@/lib/connection';
@@ -133,12 +119,16 @@ export function AppShell() {
     return stored || DEFAULT_MANIFEST;
   });
   /**
-   * The address is the thread.
+   * The address is the thread — but only the addresses that name one.
    *
-   * `/` means a fresh one: it mints an id and *replaces* the address with it, so
-   * the thread is linkable the moment it exists and a reload resumes it instead
-   * of minting a second one. Everything downstream reads `threadId` and does not
-   * care which of the two routes produced it.
+   * `/t/:threadSuffix` is the truth when it matches. `/` mints a fresh thread and
+   * redirects (see `NewThread` in `App.tsx`). **Any other address keeps whatever
+   * thread this tab was already on**, which is the whole reason the engine lives
+   * up here: visiting `/harness` must not change the thread, because changing it
+   * resets the engine and a live run dies with it.
+   *
+   * This used to redirect to a fresh thread whenever the URL carried none, which
+   * was indistinguishable from correct while `/` was the only such address.
    *
    * The URL carries the suffix alone, never `{tenant}:{suffix}` — the harness
    * rejects a suffix containing `:` outright.
@@ -146,9 +136,21 @@ export function AppShell() {
   const navigate = useNavigate();
   const threadRoute = useMatch('/t/:threadSuffix');
   const routeThread = threadRoute?.params.threadSuffix ?? null;
-  const freshThread = useRef<string | null>(null);
-  freshThread.current ??= crypto.randomUUID();
-  const threadId = routeThread ?? freshThread.current;
+  const activeThread = useRef<string | null>(null);
+  if (routeThread) activeThread.current = routeThread;
+  activeThread.current ??= crypto.randomUUID();
+  const threadId = activeThread.current;
+  /**
+   * The workbench's own chrome does nothing on the harness address.
+   *
+   * Both matches are read unconditionally and combined afterwards. Written as
+   * `useMatch(a) !== null || useMatch(b) !== null` the `||` short-circuits, so
+   * the second hook is skipped on exactly the renders where the first matches —
+   * the hook order changes and React throws the whole app away.
+   */
+  const harnessRoot = useMatch('/harness');
+  const harnessPanel = useMatch('/harness/*');
+  const onHarness = harnessRoot !== null || harnessPanel !== null;
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
   // Canary rollout state for the selected manifest, from the `/manifests`
   // active pointer. Deliberately *not* "which side served this thread": that
@@ -169,10 +171,6 @@ export function AppShell() {
   );
   const [inspectorOpen, setInspectorOpen] = useState(() => readBool(INSPECTOR_KEY, false));
   const [verbose, setVerbose] = useState(() => readBool(VERBOSE_KEY, false));
-  const [evalOpen, setEvalOpen] = useState(false);
-  const [manifestsOpen, setManifestsOpen] = useState(false);
-  const [jobsOpen, setJobsOpen] = useState(false);
-  const [agentOpen, setAgentOpen] = useState(false);
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { resolved, setTheme } = useTheme();
 
@@ -468,15 +466,6 @@ export function AppShell() {
     // `/` minted a moment ago does not.
     loadThread(threadId, routeThread !== null);
   }, [threadId, routeThread, loadThread]);
-
-  useEffect(() => {
-    if (routeThread) {
-      // Whatever `/` means next, it is not the thread already on screen.
-      freshThread.current = crypto.randomUUID();
-      return;
-    }
-    navigate(`/t/${threadId}`, { replace: true });
-  }, [routeThread, threadId, navigate]);
 
   const newThread = useCallback(() => {
     stopRun();
@@ -1079,6 +1068,7 @@ export function AppShell() {
     manifest,
     setManifest,
     manifestOptions: options,
+    refreshCanary: () => void refreshCanary(),
     verbose,
     harnessReachable,
     historyOpen,
@@ -1090,15 +1080,17 @@ export function AppShell() {
   return (
     <div className="flex h-screen flex-col bg-background">
       <header className="flex h-[var(--header-height)] shrink-0 items-center gap-1 border-b border-border/60 px-3">
-        <Button
-          variant={historyOpen ? 'secondary' : 'ghost'}
-          size="icon-sm"
-          onClick={() => setHistoryOpen((o) => !o)}
-          aria-label="Toggle history"
-          title="Conversation history"
-        >
-          <HistoryIcon className="size-4" />
-        </Button>
+        {!onHarness && (
+          <Button
+            variant={historyOpen ? 'secondary' : 'ghost'}
+            size="icon-sm"
+            onClick={() => setHistoryOpen((o) => !o)}
+            aria-label="Toggle history"
+            title="Conversation history"
+          >
+            <HistoryIcon className="size-4" />
+          </Button>
+        )}
         <div className="flex min-w-0 items-center gap-2 px-1.5">
           {/* Wordmark: caps via CSS, not in the string, so the accessible name
               and anything copied out stay the proper noun. */}
@@ -1147,16 +1139,30 @@ export function AppShell() {
             <PlusIcon className="size-4" />
             <span className="hidden sm:inline">New chat</span>
           </Button>
-          <ThemeToggle />
-          <Button
-            variant={inspectorOpen ? 'secondary' : 'ghost'}
-            size="icon-sm"
-            onClick={() => setInspectorOpen((o) => !o)}
-            aria-label="Toggle inspector"
-            title="Inspector"
-          >
-            <PanelRightIcon className="size-4" />
+          {/*
+            The second top-level address, and a real control rather than a menu
+            item: the four workbenches behind the ellipsis were not hard to find,
+            they had no home. This is the switch between the two things this
+            client is — a conversation, and the harness behind it.
+          */}
+          <Button asChild variant={onHarness ? 'secondary' : 'ghost'} size="sm" className="gap-1.5">
+            <Link to={onHarness ? `/t/${threadId}` : '/harness'}>
+              <ServerIcon className="size-4" />
+              <span className="hidden sm:inline">{onHarness ? 'Chat' : 'Harness'}</span>
+            </Link>
           </Button>
+          <ThemeToggle />
+          {!onHarness && (
+            <Button
+              variant={inspectorOpen ? 'secondary' : 'ghost'}
+              size="icon-sm"
+              onClick={() => setInspectorOpen((o) => !o)}
+              aria-label="Toggle inspector"
+              title="Inspector"
+            >
+              <PanelRightIcon className="size-4" />
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label="More tools">
@@ -1195,24 +1201,6 @@ export function AppShell() {
                 Continue run
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Tools</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => setAgentOpen(true)}>
-                <BotIcon className="size-4" />
-                Agent spec
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setManifestsOpen(true)}>
-                <GitBranchIcon className="size-4" />
-                Manifests
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setJobsOpen(true)}>
-                <ClockIcon className="size-4" />
-                Jobs
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setEvalOpen(true)}>
-                <FlaskConicalIcon className="size-4" />
-                Eval
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem
                 disabled
                 className="font-mono text-xs text-muted-foreground data-disabled:opacity-100"
@@ -1233,56 +1221,6 @@ export function AppShell() {
       <ShellProvider value={shell}>
         <Outlet />
       </ShellProvider>
-
-      {/*
-        Each sheet is wrapped, not the group: a sheet throws during its own render,
-        so a boundary around all four would catch the first failure and take the
-        other three down with it.
-      */}
-      <SheetBoundary
-        open={evalOpen}
-        onOpenChange={setEvalOpen}
-        title="Eval harness"
-        className="w-full gap-0 p-0 sm:max-w-xl"
-      >
-        <EvalSheet open={evalOpen} onOpenChange={setEvalOpen} manifest={manifest} />
-      </SheetBoundary>
-      <SheetBoundary
-        open={manifestsOpen}
-        onOpenChange={setManifestsOpen}
-        title="Manifest lifecycle"
-        className="w-full gap-0 p-0 sm:max-w-xl"
-      >
-        <ManifestsSheet
-          open={manifestsOpen}
-          onOpenChange={(o) => {
-            setManifestsOpen(o);
-            if (!o) void refreshCanary();
-          }}
-          manifest={manifest}
-        />
-      </SheetBoundary>
-      <SheetBoundary
-        open={jobsOpen}
-        onOpenChange={setJobsOpen}
-        title="Scheduled jobs"
-        className="w-full gap-0 p-0 sm:max-w-xl"
-      >
-        <JobsSheet
-          open={jobsOpen}
-          onOpenChange={setJobsOpen}
-          manifest={manifest}
-          manifestOptions={options}
-        />
-      </SheetBoundary>
-      <SheetBoundary
-        open={agentOpen}
-        onOpenChange={setAgentOpen}
-        title="Agent spec"
-        className="w-full gap-0 p-0 sm:max-w-md"
-      >
-        <AgentSheet open={agentOpen} onOpenChange={setAgentOpen} manifest={manifest} />
-      </SheetBoundary>
     </div>
   );
 }

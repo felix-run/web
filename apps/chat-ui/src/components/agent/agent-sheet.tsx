@@ -1,10 +1,10 @@
 import { Badge } from '@felix/ui/badge';
 import { ScrollArea } from '@felix/ui/scroll-area';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
 import { BotIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
+import { Panel, PanelDescription, PanelHeader, PanelTitle } from '@/components/harness/panel';
 import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
 
 /**
@@ -13,22 +13,17 @@ import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
  * below it, the orchestrator's A2A discovery card (the peer-facing document for
  * the default manifest). Read-only; reflects what the harness compiled.
  */
-export function AgentSheet({
-  open,
-  onOpenChange,
-  manifest,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  manifest: string;
-}) {
+export function AgentSheet({ manifest }: { manifest: string }) {
   const [resolved, setResolved] = useState<ResolvedManifest | null>(null);
   const [card, setCard] = useState<AgentCard | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [cardError, setCardError] = useState<unknown>(null);
 
   useEffect(() => {
-    if (!open) return;
+    // No `open` guard: a route mounts this only while it is the address, so being
+    // rendered *is* being open. Left in place, `open` silently resolved to
+    // `window.open` — always truthy, and a condition that reads as a gate while
+    // gating nothing.
     setResolved(null);
     setCard(null);
     setError(null);
@@ -46,125 +41,121 @@ export function AgentSheet({
     return () => {
       live = false;
     };
-  }, [open, manifest]);
+  }, [manifest]);
 
   const spec = (resolved?.manifest as ManifestLike | undefined)?.spec;
   const meta = (resolved?.manifest as ManifestLike | undefined)?.metadata;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-md">
-        <SheetHeader className="border-b">
-          <SheetTitle className="flex items-center gap-2">
-            <BotIcon className="size-4" /> Agent spec
-            <span className="font-mono text-xs text-muted-foreground">{manifest}</span>
-          </SheetTitle>
-          <SheetDescription>
-            The resolved manifest the harness compiled for the selected agent.
-          </SheetDescription>
-        </SheetHeader>
+    <Panel>
+      <PanelHeader className="border-b">
+        <PanelTitle className="flex items-center gap-2">
+          <BotIcon className="size-4" /> Agent spec
+          <span className="font-mono text-xs text-muted-foreground">{manifest}</span>
+        </PanelTitle>
+        <PanelDescription>
+          The resolved manifest the harness compiled for the selected agent.
+        </PanelDescription>
+      </PanelHeader>
 
-        <ScrollArea className="min-h-0 flex-1">
-          {/* The spec rows are rows, not captions. This container set `text-xs` so the
+      <ScrollArea className="min-h-0 flex-1">
+        {/* The spec rows are rows, not captions. This container set `text-xs` so the
               whole panel — every label, value and description — inherited the 11px
               caption step and nothing ranked. Section headings and badges stay at xs. */}
-          <div className="space-y-4 p-4 text-sm">
-            {error != null && <ErrorNotice error={error} doing="load the agent spec" />}
-            {!resolved && !error && <p className="text-muted-foreground">Loading…</p>}
+        <div className="space-y-4 p-4 text-sm">
+          {error != null && <ErrorNotice error={error} doing="load the agent spec" />}
+          {!resolved && !error && <p className="text-muted-foreground">Loading…</p>}
 
-            {resolved && spec && (
-              <>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Badge variant="secondary" className="font-mono">
-                    {resolved.source}
-                    {resolved.version != null ? ` v${resolved.version}` : ''}
-                  </Badge>
-                  {meta?.version && (
-                    <span className="text-muted-foreground">spec {meta.version}</span>
-                  )}
-                </div>
-                {meta?.description && <p className="text-muted-foreground">{meta.description}</p>}
-
-                <Section title="Loop">
-                  <Row label="Pattern" value={spec.pattern} />
-                  <Row label="Runs" value={runsAs(spec.execution?.mode)} />
-                  <Row label="History" value={historyAs(spec.session?.strategy)} />
-                </Section>
-
-                <Section title="Model">
-                  <Row label="Model" value={modelField(spec.model, 'id')} />
-                  <Row label="Temperature" value={modelField(spec.model, 'temperature')} />
-                  <Row label="Reply limit" value={modelField(spec.model, 'max_tokens')} />
-                  {asArray(spec.model?.fallbacks).length > 0 && (
-                    <Chips
-                      label="Falls back to"
-                      items={asArray(spec.model?.fallbacks).map(String)}
-                    />
-                  )}
-                  {spec.model?.cache ? <Row label="Prompt cache" value="on" /> : null}
-                  {spec.model?.thinking_budget ? (
-                    <Row
-                      label="Thinking budget"
-                      value={`${String(spec.model.thinking_budget)} tok`}
-                    />
-                  ) : null}
-                </Section>
-
-                <Section title="Tools & skills">
-                  <Chips label="Tools" items={asArray(spec.tools).map(String)} />
-                  <Chips
-                    label="Skills"
-                    items={asArray(spec.skills).map(
-                      (s) => (s as { name?: string })?.name ?? String(s),
-                    )}
-                  />
-                </Section>
-
-                <Section title="Memory">
-                  <Row label="Conversation state" value={spec.memory?.checkpointer ?? 'none'} />
-                  <Row label="Long-term store" value={spec.memory?.store ?? 'none'} />
-                </Section>
-
-                {(asArray(spec.guardrails?.judges).length > 0 ||
-                  asArray(spec.approvals).length > 0 ||
-                  asArray(spec.policies).length > 0 ||
-                  spec.limits) && (
-                  <Section title="Governance">
-                    {asArray(spec.guardrails?.judges).map((j, i) => {
-                      const judge = j as { name?: string; threshold?: number };
-                      return (
-                        <Row
-                          // static read-only manifest list, never reordered
-                          key={`judge-${i}`}
-                          label={`judge: ${judge.name ?? i}`}
-                          value={`≥ ${judge.threshold ?? '—'}`}
-                        />
-                      );
-                    })}
-                    {asArray(spec.approvals).map((a, i) => {
-                      const ap = a as { id?: string; tools?: string[] };
-                      return (
-                        <Row
-                          // static read-only manifest list, never reordered
-                          key={`appr-${i}`}
-                          label={`approval: ${ap.id ?? i}`}
-                          value={asArray(ap.tools).join(', ')}
-                        />
-                      );
-                    })}
-                    {asArray(spec.policies).map((p, i) => {
-                      const pol = p as { id?: string };
-                      // static read-only manifest list, never reordered
-                      return <Row key={`pol-${i}`} label="Policy" value={pol.id ?? String(i)} />;
-                    })}
-                    {spec.limits &&
-                      Object.entries(spec.limits).map(([k, v]) => (
-                        <Row key={`lim-${k}`} label={k} value={String(v)} />
-                      ))}
-                  </Section>
+          {resolved && spec && (
+            <>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="secondary" className="font-mono">
+                  {resolved.source}
+                  {resolved.version != null ? ` v${resolved.version}` : ''}
+                </Badge>
+                {meta?.version && (
+                  <span className="text-muted-foreground">spec {meta.version}</span>
                 )}
+              </div>
+              {meta?.description && <p className="text-muted-foreground">{meta.description}</p>}
 
-                {/*
+              <Section title="Loop">
+                <Row label="Pattern" value={spec.pattern} />
+                <Row label="Runs" value={runsAs(spec.execution?.mode)} />
+                <Row label="History" value={historyAs(spec.session?.strategy)} />
+              </Section>
+
+              <Section title="Model">
+                <Row label="Model" value={modelField(spec.model, 'id')} />
+                <Row label="Temperature" value={modelField(spec.model, 'temperature')} />
+                <Row label="Reply limit" value={modelField(spec.model, 'max_tokens')} />
+                {asArray(spec.model?.fallbacks).length > 0 && (
+                  <Chips label="Falls back to" items={asArray(spec.model?.fallbacks).map(String)} />
+                )}
+                {spec.model?.cache ? <Row label="Prompt cache" value="on" /> : null}
+                {spec.model?.thinking_budget ? (
+                  <Row
+                    label="Thinking budget"
+                    value={`${String(spec.model.thinking_budget)} tok`}
+                  />
+                ) : null}
+              </Section>
+
+              <Section title="Tools & skills">
+                <Chips label="Tools" items={asArray(spec.tools).map(String)} />
+                <Chips
+                  label="Skills"
+                  items={asArray(spec.skills).map(
+                    (s) => (s as { name?: string })?.name ?? String(s),
+                  )}
+                />
+              </Section>
+
+              <Section title="Memory">
+                <Row label="Conversation state" value={spec.memory?.checkpointer ?? 'none'} />
+                <Row label="Long-term store" value={spec.memory?.store ?? 'none'} />
+              </Section>
+
+              {(asArray(spec.guardrails?.judges).length > 0 ||
+                asArray(spec.approvals).length > 0 ||
+                asArray(spec.policies).length > 0 ||
+                spec.limits) && (
+                <Section title="Governance">
+                  {asArray(spec.guardrails?.judges).map((j, i) => {
+                    const judge = j as { name?: string; threshold?: number };
+                    return (
+                      <Row
+                        // static read-only manifest list, never reordered
+                        key={`judge-${i}`}
+                        label={`judge: ${judge.name ?? i}`}
+                        value={`≥ ${judge.threshold ?? '—'}`}
+                      />
+                    );
+                  })}
+                  {asArray(spec.approvals).map((a, i) => {
+                    const ap = a as { id?: string; tools?: string[] };
+                    return (
+                      <Row
+                        // static read-only manifest list, never reordered
+                        key={`appr-${i}`}
+                        label={`approval: ${ap.id ?? i}`}
+                        value={asArray(ap.tools).join(', ')}
+                      />
+                    );
+                  })}
+                  {asArray(spec.policies).map((p, i) => {
+                    const pol = p as { id?: string };
+                    // static read-only manifest list, never reordered
+                    return <Row key={`pol-${i}`} label="Policy" value={pol.id ?? String(i)} />;
+                  })}
+                  {spec.limits &&
+                    Object.entries(spec.limits).map(([k, v]) => (
+                      <Row key={`lim-${k}`} label={k} value={String(v)} />
+                    ))}
+                </Section>
+              )}
+
+              {/*
                   Only the connections that exist, and nothing at all when none
                   do. On a typical manifest every one of these six was `—`, which
                   spent a bordered panel — at the same visual weight as
@@ -172,63 +163,62 @@ export function AgentSheet({
                   reader is choosing between present and absent; here they are
                   all absent, and the useful statement is the one line below.
                 */}
-                {connections(spec).length > 0 ? (
-                  <Section title="Connectivity">
-                    {connections(spec).map(([label, count]) => (
-                      <Row key={label} label={label} value={count} />
-                    ))}
-                  </Section>
-                ) : (
-                  <Section title="Connectivity">
-                    <span className="text-muted-foreground">
-                      Nothing outside the harness — no MCP servers, peers, containers, queues,
-                      sandboxes or browser tools.
-                    </span>
-                  </Section>
-                )}
-
-                <Section title="Inbound auth">
-                  <Row
-                    label="Anonymous callers"
-                    value={spec.auth?.inbound?.allow_anonymous ? 'allowed' : 'denied'}
-                  />
-                  {asArray(spec.auth?.inbound?.required_scopes).length > 0 && (
-                    <Chips
-                      label="scopes"
-                      items={asArray(spec.auth?.inbound?.required_scopes).map(String)}
-                    />
-                  )}
+              {connections(spec).length > 0 ? (
+                <Section title="Connectivity">
+                  {connections(spec).map(([label, count]) => (
+                    <Row key={label} label={label} value={count} />
+                  ))}
                 </Section>
-              </>
-            )}
+              ) : (
+                <Section title="Connectivity">
+                  <span className="text-muted-foreground">
+                    Nothing outside the harness — no MCP servers, peers, containers, queues,
+                    sandboxes or browser tools.
+                  </span>
+                </Section>
+              )}
 
-            {card && !card.error && (
-              <Section title="A2A discovery card (default agent)">
-                <Row label="name" value={card.name} />
-                <Row label="version" value={card.version} />
-                <Row label="url" value={card.url} />
-                <Chips label="capabilities" items={capabilityChips(card.capabilities)} />
-                <Chips label="Skills" items={skillChips(card.skills)} />
-                {card.transparencyNotice && <Row label="transparency" value="disclosed to peers" />}
+              <Section title="Inbound auth">
+                <Row
+                  label="Anonymous callers"
+                  value={spec.auth?.inbound?.allow_anonymous ? 'allowed' : 'denied'}
+                />
+                {asArray(spec.auth?.inbound?.required_scopes).length > 0 && (
+                  <Chips
+                    label="scopes"
+                    items={asArray(spec.auth?.inbound?.required_scopes).map(String)}
+                  />
+                )}
               </Section>
-            )}
+            </>
+          )}
 
-            {/*
+          {card && !card.error && (
+            <Section title="A2A discovery card (default agent)">
+              <Row label="name" value={card.name} />
+              <Row label="version" value={card.version} />
+              <Row label="url" value={card.url} />
+              <Chips label="capabilities" items={capabilityChips(card.capabilities)} />
+              <Chips label="Skills" items={skillChips(card.skills)} />
+              {card.transparencyNotice && <Row label="transparency" value="disclosed to peers" />}
+            </Section>
+          )}
+
+          {/*
               The route answers 200 with `{error, name}` when the default manifest is
               missing, and 404 when the agent has `spec.a2a.publish` unset. Neither is
               a fault in this panel, and both are worth saying out loud: an operator
               looking for the discovery card wants to know it is deliberately absent.
             */}
-            {card?.error && (
-              <Section title="A2A discovery card (default agent)">
-                <Row label="unavailable" value={card.error} />
-              </Section>
-            )}
-            {cardError != null && <ErrorNotice error={cardError} doing="load the discovery card" />}
-          </div>
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
+          {card?.error && (
+            <Section title="A2A discovery card (default agent)">
+              <Row label="unavailable" value={card.error} />
+            </Section>
+          )}
+          {cardError != null && <ErrorNotice error={cardError} doing="load the discovery card" />}
+        </div>
+      </ScrollArea>
+    </Panel>
   );
 }
 

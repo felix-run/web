@@ -4,7 +4,6 @@ import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { ScrollArea } from '@felix/ui/scroll-area';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@felix/ui/sheet';
 import { Textarea } from '@felix/ui/textarea';
 import { GitBranchIcon, RotateCcwIcon, SaveIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -18,6 +17,7 @@ import {
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
+import { Panel, PanelDescription, PanelHeader, PanelTitle } from '@/components/harness/panel';
 import {
   type KnownVersion,
   knownVersions,
@@ -41,15 +41,7 @@ import type { ManifestSummary } from '@/types';
  * Writes need the `manifests:write` scope; with FELIX_AUTH_MODE=none the harness
  * skips scope checks, so the whole flow is drivable unauthenticated locally.
  */
-export function ManifestsSheet({
-  open,
-  onOpenChange,
-  manifest,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  manifest: string;
-}) {
+export function ManifestsSheet({ manifest }: { manifest: string }) {
   const [rows, setRows] = useState<ManifestSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [importName, setImportName] = useState(manifest);
@@ -72,8 +64,12 @@ export function ManifestsSheet({
   }, []);
 
   useEffect(() => {
-    if (open) void refresh();
-  }, [open, refresh]);
+    // No `open` guard: a route mounts this only while it is the address, so being
+    // rendered *is* being open. Left in place, `open` silently resolved to
+    // `window.open` — always truthy, and a condition that reads as a gate while
+    // gating nothing.
+    void refresh();
+  }, [refresh]);
 
   // Import any resolvable manifest (e.g. the bundled chat-ui-demo) into the
   // tenant version log as v1 so the lifecycle has something to act on.
@@ -106,105 +102,98 @@ export function ManifestsSheet({
   const selectedRow = rows.find((r) => r.name === selected) ?? null;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-xl">
-        <SheetHeader className="border-b">
-          <SheetTitle className="flex items-center gap-2">
-            <GitBranchIcon className="size-4" /> Manifest lifecycle
-          </SheetTitle>
-          <SheetDescription>
-            Tenant-managed versions, active-pointer rollback, and weighted canary rollout.
-          </SheetDescription>
-        </SheetHeader>
+    <Panel>
+      <PanelHeader className="border-b">
+        <PanelTitle className="flex items-center gap-2">
+          <GitBranchIcon className="size-4" /> Manifest lifecycle
+        </PanelTitle>
+        <PanelDescription>
+          Tenant-managed versions, active-pointer rollback, and weighted canary rollout.
+        </PanelDescription>
+      </PanelHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          {failure && (
-            <ErrorNotice
-              error={failure.err}
-              doing={failure.doing}
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="self-start text-xs"
-                  onClick={refresh}
-                >
-                  Try again
-                </Button>
-              }
-            />
-          )}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+        {failure && (
+          <ErrorNotice
+            error={failure.err}
+            doing={failure.doing}
+            action={
+              <Button size="sm" variant="outline" className="self-start text-xs" onClick={refresh}>
+                Try again
+              </Button>
+            }
+          />
+        )}
 
-          {/*
+        {/*
             Capped and scrollable. It wrapped without a height, so twenty of
             these pushed the panel they select *for* off the bottom of the sheet
             — the control growing until the thing it controls is unreachable.
             Read from the code rather than measured: the local harness has one.
           */}
-          <div className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto">
-            {rows.map((r) => (
-              <Button
-                key={r.name}
-                size="sm"
-                variant={selected === r.name ? 'secondary' : 'ghost'}
-                className="gap-1 font-mono text-sm"
-                // Selection was carried by the `secondary` fill alone, which is colour
-                // as the only channel and inaudible to a screen reader.
-                aria-pressed={selected === r.name}
-                onClick={() => setSelected(r.name)}
-              >
-                {r.name}
-                {r.canary_version != null && (r.canary_weight ?? 0) > 0 && (
-                  // The numbers, not a diamond that only a mouse could decode.
-                  // The version and the weight were in a `title` — invisible to
-                  // touch and to a keyboard — while the `aria-label` said only
-                  // "has a canary rollout", so the two facts that decide whether
-                  // to care reached nobody who was not hovering. They are short
-                  // enough to render, and `v3 · 10%` is the whole message.
-                  <span className="font-mono text-xs text-foreground">
-                    v{r.canary_version} · {r.canary_weight}%
-                  </span>
-                )}
-              </Button>
-            ))}
-            {rows.length === 0 && (
-              <span className="text-sm text-muted-foreground">
-                No tenant-managed manifests yet. Import one below to start a version log.
-              </span>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            <Input
-              id="manifest-import-name"
-              aria-label="Manifest name to import"
-              value={importName}
-              onChange={(e) => setImportName(e.target.value)}
-              placeholder="manifest name to import"
-              className="h-8 font-mono text-sm"
-              onKeyDown={(e) => e.key === 'Enter' && importManifest()}
-            />
+        <div className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto">
+          {rows.map((r) => (
             <Button
+              key={r.name}
               size="sm"
-              className="whitespace-nowrap"
-              disabled={busy || !importName.trim()}
-              onClick={importManifest}
+              variant={selected === r.name ? 'secondary' : 'ghost'}
+              className="gap-1 font-mono text-sm"
+              // Selection was carried by the `secondary` fill alone, which is colour
+              // as the only channel and inaudible to a screen reader.
+              aria-pressed={selected === r.name}
+              onClick={() => setSelected(r.name)}
             >
-              Import as version
+              {r.name}
+              {r.canary_version != null && (r.canary_weight ?? 0) > 0 && (
+                // The numbers, not a diamond that only a mouse could decode.
+                // The version and the weight were in a `title` — invisible to
+                // touch and to a keyboard — while the `aria-label` said only
+                // "has a canary rollout", so the two facts that decide whether
+                // to care reached nobody who was not hovering. They are short
+                // enough to render, and `v3 · 10%` is the whole message.
+                <span className="font-mono text-xs text-foreground">
+                  v{r.canary_version} · {r.canary_weight}%
+                </span>
+              )}
             </Button>
-          </div>
-
-          {selectedRow ? (
-            <VersionsPanel
-              key={selectedRow.name}
-              summary={selectedRow}
-              onChanged={refresh}
-              onError={(err, doing) => setFailure({ err, doing })}
-            />
-          ) : null}
+          ))}
+          {rows.length === 0 && (
+            <span className="text-sm text-muted-foreground">
+              No tenant-managed manifests yet. Import one below to start a version log.
+            </span>
+          )}
         </div>
-      </SheetContent>
-    </Sheet>
+
+        <div className="flex gap-2">
+          <Input
+            id="manifest-import-name"
+            aria-label="Manifest name to import"
+            value={importName}
+            onChange={(e) => setImportName(e.target.value)}
+            placeholder="manifest name to import"
+            className="h-8 font-mono text-sm"
+            onKeyDown={(e) => e.key === 'Enter' && importManifest()}
+          />
+          <Button
+            size="sm"
+            className="whitespace-nowrap"
+            disabled={busy || !importName.trim()}
+            onClick={importManifest}
+          >
+            Import as version
+          </Button>
+        </div>
+
+        {selectedRow ? (
+          <VersionsPanel
+            key={selectedRow.name}
+            summary={selectedRow}
+            onChanged={refresh}
+            onError={(err, doing) => setFailure({ err, doing })}
+          />
+        ) : null}
+      </div>
+    </Panel>
   );
 }
 

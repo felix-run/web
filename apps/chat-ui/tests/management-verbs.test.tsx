@@ -148,11 +148,9 @@ describe('the memory panel', () => {
       memoriesAsOf: vi.fn().mockResolvedValue([]),
       searchMemories: vi.fn().mockResolvedValue([]),
     }));
-    const { Inspector } = await import('../src/components/inspector/inspector');
+    const { MemorySection } = await import('../src/components/harness/memory');
 
-    render(<Inspector open onClose={() => {}} skills={null} onSuggest={() => {}} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Memory' }));
+    render(<MemorySection enabled open onToggle={() => {}} />);
     fireEvent.click(await screen.findByRole('tab', { name: 'Add' }));
     fireEvent.change(screen.getByLabelText('What to remember'), {
       target: { value: 'staging runs on :8081' },
