@@ -677,6 +677,25 @@ tab honest: the poll surfaces an approval the durable run cannot deliver, and pr
 *blocked* / *idle* into `document.title` plus an OS notification when the tab is hidden. Permission
 is requested inside the background-run click, never on load.
 
+**The attention line is the in-viewport half of that pair.** `src/components/attention-line.tsx`
+renders full width under the header on **both** addresses, always — it says so when nothing is
+waiting, because a line that only appears in trouble teaches the operator not to look at it, and
+then it is not a signal but a surprise. It runs its **own** always-on `/approvals` poll, and
+deliberately **not** through `usePoll`: that hook skips ticks while the tab is hidden, which is right
+for a reference panel and exactly wrong here, since a hidden tab is the case this exists for. The
+shell's other approvals poll is gated on `streaming`, i.e. on someone already watching.
+
+Two pieces of its copy are load-bearing. **"across the harness"** must not be edited out: a
+`/approvals` row carries no `thread_id` (`felix-run/felix#232`), so the count is tenant-wide and
+without the phrase it reads as "on the thread you are looking at". And the line **counts** an
+approval the transcript banner already owns but does not re-offer it — an approval that reached the
+banner came by frame, so the banner can draw the write's before/after diff, and a `/approvals` row
+carries no `before` to build one from. Deciding from the line would mean deciding with strictly less
+in front of you. The expanded queue reuses `ApprovalDecision`, the same card the banner and the
+inspector use, rather than a third and smaller decision surface: approving grants every
+byte-identical call until the deadline, and that sentence has to be wherever the decision is made.
+`tests/attention-line.test.tsx` pins the hidden-tab poll, the phrase and the dedupe.
+
 This was previously a second app (`apps/float`, removed 2026-08-23) that served the same operator at
 lower density. What it actually contributed was the constraint above — assume no one is looking —
 which is now a mode of chat-ui rather than a separate surface. See `PRODUCT.md`.
