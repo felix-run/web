@@ -52,6 +52,25 @@ export interface ApprovalRequest {
   expires_at: number | null;
   /** Epoch ms a one-shot grant was spent, or `null`. */
   consumed_at: number | null;
+  /**
+   * The thread this call is blocking — the only attribution a durable run's
+   * approval has, since no frame can reach its stream.
+   *
+   * Optional, and **absent and empty mean the same thing**: a harness older than
+   * `felix-run/felix@f679310` sends no key at all, and one new enough sends `""`
+   * when there was no thread (a gated tool called outside a chat). A client that
+   * distinguished the two would be reporting its own version, not the run's.
+   *
+   * It is the **originating** thread, not an owner. `create_pending` reuses one
+   * pending row for every byte-identical call to the same tool on the same
+   * manifest, so two threads making that call share one row and one decision, and
+   * this names whichever asked first. Good enough to point someone at the
+   * conversation to look in; not a claim that only that conversation is blocked.
+   *
+   * Normalised to the suffix by `listApprovals`, like every other thread id a
+   * client holds.
+   */
+  thread_id?: string;
 }
 
 /**

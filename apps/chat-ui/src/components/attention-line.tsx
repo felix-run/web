@@ -1,7 +1,8 @@
-import type { ApprovalRequest } from '@felix/client';
+import type { ApprovalRequest, ThreadMeta } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { ChevronRightIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { decideApproval, listApprovals } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 import { cn } from '@/lib/utils';
@@ -60,6 +61,8 @@ function usePendingApprovals(): { pending: ApprovalRequest[]; refresh: () => voi
 export function AttentionLine({
   streaming,
   handled,
+  threadId,
+  threads,
 }: {
   streaming: boolean;
   /**
@@ -73,6 +76,10 @@ export function AttentionLine({
    * line would mean deciding with strictly less to go on.
    */
   handled: string[];
+  /** The thread on screen, so the line can tell "here" from "somewhere else". */
+  threadId: string;
+  /** The thread index, for naming an approval's thread rather than showing an id. */
+  threads: ThreadMeta[];
 }) {
   const { pending, refresh } = usePendingApprovals();
   const [open, setOpen] = useState(() => {
@@ -95,6 +102,17 @@ export function AttentionLine({
   const owned = new Set(handled);
   const reviewable = pending.filter((a) => !owned.has(a.id));
 
+  /**
+   * Whether the count is provably all on the thread in front of you.
+   *
+   * `thread_id` arrived with `felix-run/felix@f679310`; before it, every row was
+   * unattributed and this line could only ever say "across the harness". It still
+   * says that whenever *any* row is on another thread or carries no thread at all
+   * — an unattributed row is not evidence of being here, and a phrase that
+   * narrows the count on a guess is worse than one that does not narrow it.
+   */
+  const allOnThisThread = count > 0 && pending.every((a) => a.thread_id === threadId);
+
   // Open itself when something starts waiting, and only on that transition —
   // re-opening while a count merely stays non-zero would fight an operator who
   // deliberately collapsed it. Same rule the inspector's approvals section uses.
@@ -106,7 +124,9 @@ export function AttentionLine({
 
   const waiting = count > 0;
   const summary = waiting
-    ? `${count} ${count === 1 ? 'call is' : 'calls are'} waiting on you across the harness`
+    ? `${count} ${count === 1 ? 'call is' : 'calls are'} waiting on you ${
+        allOnThisThread ? 'on this thread' : 'across the harness'
+      }`
     : streaming
       ? 'Working. Nothing waiting on you.'
       : 'Nothing waiting on you.';
@@ -171,17 +191,30 @@ export function AttentionLine({
             says "across the harness" rather than implying this thread.
           */}
           {reviewable.map((a) => (
-            <ApprovalDecision
-              key={a.id}
-              toolName={a.tool_name}
-              args={(a.args ?? {}) as Record<string, unknown>}
-              context={a.manifest_id}
-              expiresAt={a.expires_at}
-              onDecide={async (status) => {
-                await decideApproval(a.id, { status });
-                refresh();
-              }}
-            />
+            <div key={a.id} className="space-y-1">
+              {a.thread_id && a.thread_id !== threadId ? (
+                <p className="text-xs text-muted-foreground">
+                  Blocking{' '}
+                  <Link
+                    to={`/t/${a.thread_id}`}
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    {threads.find((t) => t.id === a.thread_id)?.title ?? 'another conversation'}
+                  </Link>
+                </p>
+              ) : null}
+              <ApprovalDecision
+                key={a.id}
+                toolName={a.tool_name}
+                args={(a.args ?? {}) as Record<string, unknown>}
+                context={a.manifest_id}
+                expiresAt={a.expires_at}
+                onDecide={async (status) => {
+                  await decideApproval(a.id, { status });
+                  refresh();
+                }}
+              />
+            </div>
           ))}
         </div>
       )}
