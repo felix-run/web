@@ -1,6 +1,7 @@
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router';
 import App from './App';
 import { AppErrorFallback, ErrorBoundary } from './components/error-boundary';
 import { Gate } from './components/gate';
@@ -23,7 +24,10 @@ createRoot(document.getElementById('root') as HTMLElement).render(
     <ThemeProvider>
       <TooltipProvider delayDuration={300}>
         <ErrorBoundary label="app" fallback={(error) => <AppErrorFallback error={error} />}>
-          {Root}
+          {/* The Worker already serves `not_found_handling: single-page-application`,
+              so a deep link to `/t/:threadSuffix` reaches this bundle rather than a
+              404 and no Worker change is needed for these routes. */}
+          <BrowserRouter>{Root}</BrowserRouter>
         </ErrorBoundary>
         <Toaster />
       </TooltipProvider>

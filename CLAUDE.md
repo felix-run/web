@@ -214,14 +214,39 @@ fine and silently does nothing — when the harness gains an event, add the arm 
 `packages/felix-client/src/engine.ts`, or it is indistinguishable from an event that never arrives.
 
 **The conversation itself is `@felix/client`, not the app.** `createChatEngine` owns the frame
-switch, the transcript, the durable-run and reattach paths, and the approval queue; `App.tsx`
-mirrors its state with `useSyncExternalStore` and renders. `createFelixClient` owns the chat REST
-calls with the origin and credentials injected — `/api` plus `x-chat-key` for a browser that cannot
+switch, the transcript, the durable-run and reattach paths, and the approval queue;
+`src/app-shell.tsx` mirrors its state with `useSyncExternalStore` and renders. `createFelixClient`
+owns the chat REST calls with the origin and credentials injected — `/api` plus `x-chat-key` for a browser that cannot
 reach the harness directly, a real origin plus a bearer token for anything that can. Nothing in the
 package touches storage, the DOM, or notifications. `src/management/` holds the **read-only** half
 of the harness's operator surface — audit, usage, memory, plans, artifacts — composed onto the same
 client so a terminal can ask why a run did what it did; those routes were browser-only by accident
 rather than by design.
+
+**The shell is a layout route, and that is load-bearing.** `src/App.tsx` is now the route table
+alone (react-router v7, declarative — a literal version in `apps/chat-ui`, single-use, so not the
+catalog); `src/app-shell.tsx` is the layout route that owns the engine, the thread, the `/approvals`
+poll and `presence.ts`, and renders the matched route into an `<Outlet/>`. Everything below that
+seam reads `src/shell-context.ts`. The engine is *above* the `<Outlet/>` on purpose: a run is alive
+for as long as the tab is, so mounting `createChatEngine` inside a route would unmount it — and kill
+a live run — on a visit to any other address.
+
+**The address is the thread.** `/` mints a thread and *replaces* itself with `/t/:threadSuffix`, so
+a thread is linkable the moment it exists and a reload resumes it; the URL carries the suffix alone,
+never `{tenant}:{suffix}`. A thread change now has three ways to happen — the rail, Back/Forward and
+a pasted link — which `loadThread` collapses into one idempotent path. Two traps came out of that,
+and `tests/routing.test.tsx` pins the property both protect. `turns` **lags** a thread change driven
+from outside the app's own handlers, so the persistence effect runs once with the new thread's id
+and the previous thread's transcript still in hand: writing it there files one conversation under
+another's key, and the load that follows reads it straight back. And the engine's render-time seed
+used to come from a `felix.threadId` key — right while that key chose the thread, wrong once the URL
+did, and the reason a fresh `/` inherited the previous thread's transcript on the first real page
+load after the router went in. That key is no longer written at all. `StrictMode` is what surfaced
+it: React re-runs a mount effect with the *first* render's closure, so the shell persists from
+current engine state rather than from the captured value.
+
+`/harness` is in the brief and is **not built yet** — the four sheets still live in the shell and
+open from the header's ellipsis menu.
 
 `apps/chat-ui/src/api.ts` supplies the browser's half of the arrangement and keeps the **write**
 surface (eval datasets, manifest versions and canaries, scheduled jobs, the A2A card). That split is
@@ -618,8 +643,8 @@ browser cannot do rather than about the chat:
 ### Unattended runs
 
 A background run (`POST /chat` → `202 + resume_token`) has no stream to carry an approval frame, so
-`src/lib/presence.ts` and the `/approvals` poll in `App.tsx` exist to make an unwatched tab honest:
-the poll surfaces an approval the durable run cannot deliver, and presence puts *working* /
+`src/lib/presence.ts` and the `/approvals` poll in `src/app-shell.tsx` exist to make an unwatched
+tab honest: the poll surfaces an approval the durable run cannot deliver, and presence puts *working* /
 *blocked* / *idle* into `document.title` plus an OS notification when the tab is hidden. Permission
 is requested inside the background-run click, never on load.
 
