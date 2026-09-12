@@ -297,7 +297,10 @@ tool, matched on a hash of the arguments, until it expires.
 
 **Poll `GET /approvals` as well as reading the stream.** The frame is prompt on a streaming run, but
 side events are a per-thread in-process queue: a **durable** run's agent is in the worker while its
-stream is served by the API, so no frame can cross. The poll is the only channel there.
+stream is served by the API, so no frame can cross. The poll is the only channel there — and since
+felix#232 a polled row carries `thread_id` like the frame does, so the two channels attribute a
+waiting approval the same way. See [Approvals](/guide/management-api/#approvals) for how far that
+attribution goes.
 
 :::note[On a harness older than `felix-run/felix#210`, the poll is the only channel anywhere]
 That fix is newer than `v0.2.2`. Before it the harness queued `approval_required` when the call

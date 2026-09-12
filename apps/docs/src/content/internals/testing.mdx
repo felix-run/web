@@ -15,25 +15,45 @@ How the Python harness is tested. Repo: [felix-run/felix](https://github.com/fel
 |---|---|---|
 | **Unit** | `tests/unit/` | Schema, patterns, governance, stores (often `memory://` DB + `object_store=memory`), auth modes |
 | **Integration** | `tests/integration/` | FastAPI HTTP surfaces (`/health`, `/chat`, `/v1`, …) against a test app |
-| **Conformance** | `tests/conformance/` | One contract run against every backend of a store — session, memory, migrations |
+| **Conformance** | `tests/conformance/` | One contract run against every backend of a store — session, memory, manifests, approvals, eval, documents, usage, fibers, retention, RLS, migrations |
 | **Smoke** | `tests/test_smoke.py` | Coarse import / build / optional live-model checks |
 | **Eval** | CLI + `felix.eval` | Offline datasets; `--mock` scores rubric without a live model |
 
 The conformance suite is the one to know about, because it can pass without proving anything. A
 store's contract is written once and run against each backend — the in-memory arm always runs, but
 the Postgres arm runs **only** when `FELIX_CONFORMANCE_DATABASE_URL` points at a reachable database
-(CI sets it from a service container) and skips otherwise. That skip is a real hole in coverage
-rather than a pass, which matters because the logic under test exists twice: once for `memory://`
-and once in SQL. Run it against Postgres before trusting it.
+and skips otherwise. That skip is a real hole in coverage rather than a pass, which matters because
+the logic under test exists twice: once for `memory://` and once in SQL. CI sets
+`FELIX_CONFORMANCE_REQUIRE_POSTGRES=1` so a missing database fails the job instead of silently
+skipping half of it.
+
+```bash
+FELIX_CONFORMANCE_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/db \
+  ./scripts/test.sh tests/conformance -q
+```
+
+Every store that has gained a Postgres arm so far has produced a real divergence between the two
+copies, which is the argument for adding the rest. The eval store's was the worst: `put_dataset`
+overwrote an existing item on the in-memory twin and raised `UniqueViolation` on Postgres, so the
+second run of any eval failed on every real deployment while the suite stayed green. Adding a
+backend to `BACKENDS` in a contract file makes it inherit every assertion in that file.
+
+<Aside type="caution">
+  Run tests with `./scripts/test.sh`, never a bare `uv run pytest`. The repo's `.env` points
+  `FELIX_DATABASE_URL` at a real Postgres and pydantic-settings reads it, so a bare run fails every
+  database-touching test with a connection error that looks like a code bug. The script exports the
+  in-memory environment — `FELIX_DATABASE_URL=memory://ci`, `FELIX_OBJECT_STORE=memory` — and
+  blanks every vendor credential so a mis-routed model call cannot bill anyone. It is what `make
+  test` and CI both run, and it forwards its arguments to pytest.
+</Aside>
 
 No Vitest / miniflare. Run via:
 
 ```bash
-make check          # ruff + ty + pytest
-# or
-uv run pytest
-uv run pytest tests/unit -q
-uv run pytest tests/integration -q
+make check                                          # ruff + ty + pytest with the coverage floor + format check
+./scripts/test.sh                                   # the full suite
+./scripts/test.sh tests/unit/test_react_loop.py -q  # one file
+./scripts/test.sh -k compact                        # one theme
 ```
 
 ## Patterns when adding tests
