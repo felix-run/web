@@ -56,6 +56,23 @@ Core reads these members off your plugin object with `getattr`, so implement onl
 | Startup hooks | `registry.register_startup_hook(hook)` |
 | Agent-loop hooks | `register_before_turn`, `register_filter_history`, `register_before_compact`, `register_before_tool`, `register_after_tool`, `register_compact_failed` |
 
+### Command-line entry points
+
+There is **no** CLI seam. `felix`'s subcommands are defined in `felix_cli/main.py` and a plugin
+cannot add one. A plugin that wants a command line declares its own console script alongside its
+`felix.plugins` entry point, and is invoked under its own name:
+
+```toml title="pyproject.toml"
+[project.entry-points."felix.plugins"]
+my-plugin = "my_plugin:register"
+
+[project.scripts]
+my-plugin = "my_plugin.cli:main"
+```
+
+It can still reach everything the harness exposes — `Settings`, the stores, `require_mgmt_scopes`
+— so this costs a second binary name, not capability.
+
 ## Open registries
 
 These live in core and are called at import time, not on the registry object. Each is selected by

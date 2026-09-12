@@ -35,11 +35,11 @@ Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compact
 |---|---|
 | `audit_events` | Append-only; API buffers, worker flushes; optional warehouse spill |
 | `manifests` + `manifest_active` | Append-only versions + active/canary pointer |
-| `approvals` | Signature-indexed pending/approved/denied (+ TTL / one-shot) |
+| `approvals` | Signature-indexed pending/approved/denied (+ TTL / one-shot). `thread_id` names the thread that first requested the row, which is the only attribution a durable run's approval has |
 | `plans` | Deep / plan tools; TTL expiry |
 | `jobs` | Cron schedules; `(tenant_id, name)` PK |
 | `fibers` | Durable sleep/step/resume state |
-| `eval_*` | Datasets, items, runs |
+| `eval_*` | Datasets, items, runs. `put_dataset` upserts on `(tenant_id, dataset_name, item_id)` — it adds and updates items but never removes one, and re-writing an item leaves its `created_at` at first appearance |
 | `memory_vectors` | pgvector HNSW; kinds `fact` / `preference` / `episode` / `procedural` |
 | `document_chunks` | Operator-ingested corpus; generated `content_tsv` (GIN) + **nullable** pgvector HNSW, so a deployment with no embedder still gets full-text retrieval |
 
@@ -49,7 +49,9 @@ Used for artifact spill when `spec.artifacts.enabled` and output exceeds `thresh
 
 ## Analytics warehouse (optional)
 
-Postgres remains system of record. Optional append-only spill (`FELIX_WAREHOUSE=duckdb|clickhouse|doris|none`) for audit/eval analytics — worker exports after Postgres write. Lean default is `none`.
+Postgres remains system of record. Optional append-only spill (`FELIX_WAREHOUSE=duckdb|clickhouse|doris|none`) — the worker exports after the Postgres write. Lean default is `none`.
+
+The spill carries **audit events only**: `export_audit_events` is the sole write on the `Warehouse` Protocol, and `felix.audit.store.flush` is its only caller. Nothing in `felix.eval` reaches the warehouse; eval results are read back through `GET /eval/runs/{run_id}`.
 
 :::tip
 `felix doctor` checks database URL, object store, auth, and consumer secret readiness without mutating state.

@@ -146,6 +146,14 @@ curl -s "$BASE_URL/approvals?status=pending" -H "authorization: Bearer $FELIX_KE
 
 `GET /approvals/{approval_id}` returns one request.
 
+Each row carries `thread_id` — the conversation that requested it, so a client polling cold can
+say *which* run is waiting rather than only that something is. Read it as attribution, not
+ownership: a pending row is reused for a byte-identical call to the same tool in the same
+manifest, so two threads making that call share one row and one decision, and the field names
+whichever asked first. It is `""` where there is no thread (a gated tool called outside a chat
+context) and on any row created before the field existed, so mirror it as **optional** in a
+client that must work against an older harness.
+
 ### `POST /approvals/{approval_id}/decide`
 
 <Badge text="approvals:write" variant="note" />
@@ -436,9 +444,55 @@ A dataset is written whole — name, description and its items — in one `PUT`:
 curl -s -X PUT "$BASE_URL/eval/datasets/refunds" \
   -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
   -d '{"description":"Refund policy questions",
-       "items":[{"user_input":"Can I refund after 40 days?",
-                 "rubric":{"criteria":"States the 30-day limit","pass_threshold":0.7}}]}'
+       "items":[{"item_id":"late-refund",
+                 "user_input":"Can I refund after 40 days?",
+                 "rubric":{"contains":"30 days"}}]}'
 ```
+
+### Rubric keys
+
+An item's `rubric` is free-form JSON, and only these keys are read. The scorer picks **one** rule
+per item, in this order, and stops at the first one present:
+
+| Key | Rule | Passes when |
+|---|---|---|
+| `expect`, or `equals` | `equals` | the answer equals it, after stripping whitespace |
+| `contains` | `contains` | the answer contains it, case-insensitively |
+| `min_chars` | `min_chars` | the stripped answer is at least that long |
+| *(none of the above)* | `nonempty` | the answer is not blank — **any** answer passes |
+| `mock_answer` | — | the answer `--mock` scores instead of calling a model |
+
+Judging is separate and only runs when the rubric names `llm_judge`, `judge_criteria` or
+`judge_model` — or when the request sends `use_llm_judge: true`. It then reads `judge_criteria`
+(falling back to `criteria`), `judge_threshold` (default `0.7`) and `judge_model` (default
+`claude-haiku`), and its verdict replaces the rule above.
+
+Items are validated on write. `PUT` returns `422` for an item that would be stored and then score
+nothing, naming what to change — a prompt under a near-miss key (`input`, `prompt`, `question`, …)
+rather than `user_input`, a rubric that is not an object, or a repeated `item_id`. Every problem in
+the batch is reported at once:
+
+```json
+{"detail": {
+  "errors": [
+    "item 'a' (items[0]) has no user_input (found 'input' — the key Felix reads is 'user_input'); it would be stored as an empty prompt"
+  ],
+  "warnings": [
+    "item 'a' (items[0]).rubric names no rule (expect, equals, contains, min_chars) and no judge; it will score as non-empty, which passes any answer at all"
+  ]
+}}
+```
+
+Nothing is written when the batch is refused.
+
+<Aside type="caution">
+  A rubric naming **no** rule is legal and is not refused — it falls through to `nonempty`, which
+  passes any non-blank answer, so the dataset gates nothing. That returns `200` with a `warnings`
+  array alongside the stored dataset; `felix eval --fixture` prints the same warning to stderr.
+
+  `contains: ""` and a negative `min_chars` are handled further down, at scoring: a rubric that
+  could never reject is scored `invalid_rubric` and fails closed.
+</Aside>
 
 Run one:
 
