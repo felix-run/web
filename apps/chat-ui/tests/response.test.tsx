@@ -55,6 +55,46 @@ describe('Response lists', () => {
   });
 });
 
+describe('Response line breaks', () => {
+  it('breaks a line where the model put a newline', () => {
+    // A haiku is the shortest thing that proves it: three lines, two bare newlines,
+    // and CommonMark renders all three as one sentence without this.
+    const { container } = render(
+      <Response>
+        {'Words flow one by one,\nDigital thoughts take their shape\nMeaning emerges.'}
+      </Response>,
+    );
+    expect(container.querySelectorAll('p br')).toHaveLength(2);
+  });
+
+  it('leaves a blank line as a paragraph break, not a line break', () => {
+    // The softbreak fix must not pull a hard break into one paragraph.
+    const { container } = render(<Response>{'first\n\nsecond'}</Response>);
+    expect(container.querySelectorAll('p')).toHaveLength(2);
+    expect(container.querySelectorAll('br')).toHaveLength(0);
+  });
+});
+
+/**
+ * `remarkPlugins` replaces the renderer's own list rather than merging with it, so the
+ * moment this file passes one, every default becomes this file's problem. These are the
+ * two that would go quietly: a table still parses, and `~~text~~` is still struck
+ * through. Both come from `remark-gfm`, which a one-plugin array would have dropped
+ * while every other test here kept passing.
+ */
+describe('the renderer keeps its own plugins', () => {
+  it('still parses a GFM table', () => {
+    const { container } = render(<Response>{'| a | b |\n| - | - |\n| 1 | 2 |\n'}</Response>);
+    expect(container.querySelector('table')).not.toBeNull();
+    expect(container.querySelectorAll('td')).toHaveLength(2);
+  });
+
+  it('still parses GFM strikethrough', () => {
+    const { container } = render(<Response>{'~~gone~~'}</Response>);
+    expect(container.querySelector('del')).not.toBeNull();
+  });
+});
+
 /**
  * Every selector in `index.css` that reaches into the renderer's own markup, with any
  * pseudo-element trimmed off so it can be queried.
