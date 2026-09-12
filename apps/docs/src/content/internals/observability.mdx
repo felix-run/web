@@ -47,6 +47,7 @@ out of a non-empty allowlist is never registered at all.
 | `felix_secret_masking` | `manifest_id`, `tool` | A resolved credential was stripped from tool output |
 | `felix_approval_required` | `manifest_id`, `tool`, `rule` | A call hit an approval gate (`rule: command` for command screening) |
 | `felix_content_screening` | `manifest_id`, `tool`, `action` | Post-call screening acted (`action` is the applied `on_flag`, or `unavailable`) |
+| `felix_inbound_screening` | `manifest_id`, `surface` (`turn` / `tool_arguments`), `action` | Screening acted on the way *in* — the counterpart to the row above, and the one a tool-shaped panel misses |
 | `felix_control_unavailable` | `control` | A named control could not run and was not treated as a pass |
 | `felix_control_degraded` | `control`, `reason` | A control fell back to a weaker implementation (e.g. PII regex fallback) |
 | `felix_model_switch` | `from`, `to`, `reason` (`provider_error` / `low_confidence`) | A fallback or confidence escalation fired |
@@ -58,6 +59,7 @@ out of a non-empty allowlist is never registered at all.
 | `felix_egress_blocked` | `reason` | An outbound request was refused by SSRF / egress policy |
 | `felix_model_timeout` | `provider` | `FELIX_MODEL_TIMEOUT_SECONDS` elapsed on a provider call |
 | `felix_model_unmetered` | `manifest_id`, `model` | A turn reported no usage — see the warning below |
+| `felix_model_unpriced` | `manifest_id`, `model` | The turn *was* metered, but the model it was priced by has no entry in the catalog — see the warning below |
 | `felix_policy_unsatisfiable` | `manifest_id` | A policy can never pass |
 | `felix_rule_targets_nothing` | `manifest_id`, `rule`, `kind` | A rule matches no tool |
 | `felix_untrusted_tools_unscreened` | `manifest_id` | Untrusted tool output reached the model without content screening |
@@ -78,6 +80,12 @@ MCP tool names arrive from a remote server and are unbounded label values.
 :::danger[Two counters mean a control is not working]
 `felix_model_unmetered` — the turn counted against no budget, so `limits.max_cost_usd` and the token
 limits failed *open* for it. Usually a streamed response missing `stream_options.include_usage`.
+
+`felix_model_unpriced` — the tokens were counted but the spend was not. The model has no entry in
+the pricing catalog and no `spec.model.price` override, so the row's `cost_usd` is `0` while real
+money was spent: the token caps still bite, `limits.max_cost_usd` fails open, and anything summing
+`/usage` is reporting a floor rather than a total. A custom or self-hosted route is the usual
+cause. The fix is an override, not a dashboard note.
 
 `felix_buffer_dropped` — audit or usage rows are gone from Postgres and the warehouse both. Silent
 data loss; nothing else reports it.
@@ -148,7 +156,8 @@ activity. The request span still measures the whole request.
 ## Audit events
 
 Every row carries `tenant_id`, `ts`, `event_type`, `manifest_id`, `principal_subj`, `status` and
-`payload_json`. The agent loop emits exactly four types:
+`payload_json`. Seven types are written — four by the agent loop, three by the governance wrappers
+on either side of it:
 
 | `event_type` | Emitted | `status` | Payload |
 |---|---|---|---|
@@ -156,12 +165,19 @@ Every row carries `tenant_id`, `ts`, `event_type`, `manifest_id`, `principal_sub
 | `tool_call` | Per tool invocation that was not denied | `ok`, `error` | `tool`, `tool_call_id`, `thread_id` |
 | `policy_deny` | Per tool invocation a governance wrapper denied | `denied` | `tool`, `tool_call_id`, `thread_id` |
 | `final_response` | Once per completed turn | `ok`, `error` (fatal) | `thread_id`, `chars` |
+| `inbound_screening` | Per screening decision on the way in | `denied`, `quarantined`, `redacted`, `oversize`, `unavailable` | `surface` (`turn` \| `tool_arguments`) |
+| `guardrails_reply` | PII matched in the answer | `blocked`, `redacted` | `engine` |
+| `judge_deny` | A `final_response` judge scored under threshold | `denied` | `judge`, `score`, `threshold` |
 
-:::note[`policy_deny` is not only policies]
-The name is narrower than the behaviour. The loop emits `policy_deny` whenever the wrapper stack
-returns a deny marker — policies, command or content screening, limits, guardrails, judges, or a
-pending approval all land here. Read `payload.tool` and correlate with the governance counters above
-to tell which layer denied.
+:::note[`policy_deny` is not only policies — and is not every denial]
+The name is narrower than the behaviour in one direction and wider in the other. The loop emits
+`policy_deny` whenever the **tool** wrapper stack returns a deny marker — policies, command or
+content screening, limits, guardrails, tool-targeted judges, or a pending approval all land here.
+Read `payload.tool` and correlate with the governance counters above to tell which layer denied.
+
+What does *not* land there is anything decided outside a tool call: a turn refused on the way in is
+`inbound_screening`, and an answer blocked on the way out is `guardrails_reply` or `judge_deny`. An
+incident query filtered to `policy_deny` alone sees none of those three.
 :::
 
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
