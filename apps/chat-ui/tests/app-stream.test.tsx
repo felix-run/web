@@ -2,6 +2,7 @@
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, render, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { ThemeProvider } from '../src/components/theme-provider';
@@ -54,11 +55,13 @@ function stubFetch(frames: unknown[], stream?: () => Response) {
 
 function mount() {
   render(
-    <ThemeProvider>
-      <TooltipProvider>
-        <App />
-      </TooltipProvider>
-    </ThemeProvider>,
+    <MemoryRouter initialEntries={['/']}>
+      <ThemeProvider>
+        <TooltipProvider>
+          <App />
+        </TooltipProvider>
+      </ThemeProvider>
+    </MemoryRouter>,
   );
 }
 

@@ -2,6 +2,7 @@
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { ThemeProvider } from '../src/components/theme-provider';
@@ -105,11 +106,13 @@ describe('typing into the composer', () => {
 
   it('keeps every character it was given', async () => {
     render(
-      <ThemeProvider>
-        <TooltipProvider>
-          <App />
-        </TooltipProvider>
-      </ThemeProvider>,
+      <MemoryRouter initialEntries={['/']}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <App />
+          </TooltipProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
     );
     const box = await textarea();
 
@@ -123,11 +126,13 @@ describe('typing into the composer', () => {
   it('does not drive React past its update-depth limit', async () => {
     const complaints = await reactComplaints(async () => {
       render(
-        <ThemeProvider>
-          <TooltipProvider>
-            <App />
-          </TooltipProvider>
-        </ThemeProvider>,
+        <MemoryRouter initialEntries={['/']}>
+          <ThemeProvider>
+            <TooltipProvider>
+              <App />
+            </TooltipProvider>
+          </ThemeProvider>
+        </MemoryRouter>,
       );
       const box = await textarea();
       await act(async () => {
@@ -161,11 +166,13 @@ describe('refusing a submission', () => {
 
   async function mount(): Promise<HTMLTextAreaElement> {
     const { container } = render(
-      <ThemeProvider>
-        <TooltipProvider>
-          <App />
-        </TooltipProvider>
-      </ThemeProvider>,
+      <MemoryRouter initialEntries={['/']}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <App />
+          </TooltipProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
     );
     await waitFor(() => expect(container.querySelector('textarea')).toBeTruthy());
     return container.querySelector('textarea') as HTMLTextAreaElement;
