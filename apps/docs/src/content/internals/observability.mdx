@@ -217,5 +217,12 @@ including a governance row for the counters above. It also builds the image with
 without it, OTLP export logs one warning at startup and exports nothing while everything else looks
 healthy.
 
+To export to a backend you already run instead of one this overlay starts, set the `FELIX_OTEL_*`
+variables in `.env` — `compose.yml` passes every one of them through to `api` and `worker`, so no
+overlay is involved and nothing in the harness names the destination. `uv run felix doctor` then
+reports whether the exporter is installed, in every environment including `development`; it checks
+the module the configured `FELIX_OTEL_PROTOCOL` actually needs, so an install carrying only the
+other one reads as broken rather than fine.
+
 `make up` / `make dev` → hit `/metrics` (with a credential) and `/audit`. Deploy guidance:
 [deploy](/guide/deploy/).

@@ -41,7 +41,6 @@ the Makefile passes `--project-directory .`.
 | `make up-replicas` | Two API replicas behind one nginx origin |
 | `make up-observability` | OTel Collector, Prometheus, Grafana, Jaeger, Loki, Postgres/Valkey exporters |
 | `make up-temporal` | Temporal server, UI on :8233, and `felix-temporal-worker` |
-| `make up-memoturn` | Memoturn LLM observability, on the existing Postgres/Valkey/MinIO |
 
 ### Observability stack
 
@@ -81,22 +80,43 @@ correct, since a durable chat that quietly ran transiently would be worse.
 `Client.connect` takes no TLS or API-key options, so this is a self-hosted Temporal path only.
 </Aside>
 
-### Memoturn
+### Sending traces to a backend you already run
+
+Felix exports OTLP, so any backend that reads it works — a collector, a hosted vendor, an
+LLM-observability console you self-host elsewhere. None of that runs inside the Felix compose
+project: every `FELIX_OTEL_*` setting is passed through `compose.yml`, so `make up` exports with no
+overlay at all.
 
 ```bash
-make up-memoturn        # console :3002
+FELIX_DOCKER_EXTRAS=otel            # the exporter lives behind an extra
+FELIX_OTEL_ENABLED=true
+FELIX_OTEL_PROTOCOL=http            # grpc for a collector on 4317; http for a hosted ingest
+FELIX_OTEL_ENDPOINT=https://ingest.example.com/v1/otel
+FELIX_OTEL_INSECURE=false
+FELIX_OTEL_HEADERS=authorization=Basic <credential>
+FELIX_OTEL_SERVICE_NAME=felix-prod  # when several deployments share one backend
 ```
 
-Felix needs no SDK and no extra dependency: Memoturn ingests OTLP natively and maps spans carrying
-`gen_ai.*` attributes to generations, which is what the harness already emits — so the integration is
-an endpoint plus a Basic auth header (`FELIX_OTEL_PROTOCOL=http`, `FELIX_OTEL_HEADERS`).
+Felix needs **no vendor SDK and no extra dependency**. Spans carry the `gen_ai.*`
+semantic-convention attributes, so a backend that understands them renders a chat as a generation
+with model, token usage and cost rather than as a bare span — the integration is an endpoint and a
+header, and nothing in the harness knows which product is on the other end.
 
-It borrows Felix's Postgres (its own database), Valkey (its own index) and MinIO (its own bucket)
-rather than the Postgres + Valkey + MinIO + Caddy + Doris its own compose stands up.
+Run `uv run felix doctor` after: it reports whether the exporter is actually installed, in every
+environment. Enabling export on a lean image logs one warning and sends nothing, and an empty
+dashboard is otherwise the only sign.
 
-A process has one OTLP destination. To send to Jaeger **and** Memoturn, run the observability
-overlay too, leave `FELIX_OTEL_ENDPOINT` pointing at the collector, and add an `otlphttp` exporter
-there — fanning out is the collector's job.
+<Aside type="note" title="Identity reaches the backend by default">
+`user.id` and the tenant id are on spans unless you set `FELIX_OTEL_CAPTURE_IDENTITY=false`. Prompts
+and completions are **not** — they sit outside governance content screening, so
+`FELIX_OTEL_CAPTURE_CONTENT=true` is an explicit opt-in.
+</Aside>
+
+A process has one OTLP destination. To send to Jaeger **and** a second backend, run the
+observability overlay too, leave `FELIX_OTEL_ENDPOINT` pointing at the collector, and add an
+`otlphttp` exporter there — fanning out is the collector's job. The second backend's credential goes
+in the collector's config, not in `.env`: the overlay blanks `FELIX_OTEL_HEADERS` so a header meant
+for a hosted ingest is not sent to a local collector that never asked for one.
 
 ## Sizing
 
