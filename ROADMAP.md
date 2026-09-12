@@ -147,14 +147,17 @@ worker while the stream is served by the API.
 
 ## Environmental, not code
 
-**The local harness is older than the committed OpenAPI snapshot.** `POST /manifests/{name}/rollback`
-— the route `activateManifestVersion` calls — returns 404 against the harness on `:8080`, and that
-harness's agent card omits `transparencyNotice`, which `build_agent_card` sends. So **Activate
-cannot currently succeed locally**, independent of any client change.
+**The drift check cannot see the harness that is actually running.** `pnpm check-api-drift` diffs
+the client against `harness-openapi.json`, a committed snapshot — so a snapshot *ahead of* the
+deployed harness looks identical to one in sync with it, and every call the client makes to a route
+the deployment does not have passes.
 
-`pnpm check-api-drift` cannot catch this by design: it diffs the client against
-`harness-openapi.json`, a committed snapshot, not against whatever is running. A snapshot ahead of
-the deployed harness looks identical to a snapshot in sync with it.
+The instance that prompted this is resolved: the container on `:8080` was behind, `POST
+/manifests/{name}/rollback` returned 404, and **Activate could not succeed locally** independent of
+any client change. Rebuilt on 2026-09-11 at `c9bb10f` — rollback answers `200`, and the live
+`/openapi.json` and the snapshot both carry 74 paths.
 
-Worth knowing before debugging the manifest sheet, and worth considering whether the drift check
-should be able to run against a live `/openapi.json` as well as the snapshot.
+The gap it exposed is still open, and is why this stays: nothing in the pipeline compares the
+snapshot to a deployment. Worth considering whether the drift check should take a live
+`/openapi.json` as an optional second target, run against a dev harness rather than in CI — which
+has none to point at.
