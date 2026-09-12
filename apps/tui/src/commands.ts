@@ -26,6 +26,8 @@ import type { ThinkingLevel } from '@felix/protocol';
 import type { Spill } from './artifacts.js';
 import type { Config } from './config.js';
 import { explainError } from './errors.js';
+import { SECTIONS } from './inspector.js';
+import { BINDINGS } from './keys.js';
 import { oneLine } from './text.js';
 import type { ThreadStore } from './threads.js';
 
@@ -34,11 +36,27 @@ const THINKING: ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'x
 /** Search hits shown at once. A notice is a few lines, not a panel. */
 const SEARCH_LIMIT = 5;
 
+/**
+ * What this client can do, derived rather than described.
+ *
+ * The commands stay a hand-written list — they are this file's own `switch` and
+ * a `case` with no line here is the kind of omission review catches. The two
+ * halves that had already drifted are generated: the keys come from
+ * `BINDINGS`, which `tests/keys.test.ts` ties to every `Action` the router can
+ * return, and the inspector's sections come from `SECTIONS`, which had grown to
+ * eight while this string still named six.
+ */
 export const HELP = [
   '/new /clear /continue /think <level> /manifest [name] /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n]',
   '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
-  'shift+tab inspects the harness — activity, plans, tools, usage, memory, skills',
+  ...(['chat', 'threads', 'inspector'] as const).flatMap((where) => [
+    '',
+    `${where}:`,
+    ...BINDINGS.filter((b) => b.where === where).map((b) => `  ${b.keys.padEnd(11)}${b.what}`),
+  ]),
+  '',
+  `the inspector's sections: ${SECTIONS.map((s) => s.name.toLowerCase()).join(', ')}`,
 ].join('\n');
 
 /** A hit, a title, a path — one line each, because a notice is one line each. */

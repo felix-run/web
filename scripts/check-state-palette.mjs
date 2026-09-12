@@ -130,7 +130,10 @@ if (argv.includes('--self-test')) {
     console.error(`✗ self-test: converted ${css.light.done}, expected #006045`);
     exit(1);
   }
-  const drifted = compare({ light: { done: '#006045' }, dark: {} }, { light: { done: '#ff0000' }, dark: {} });
+  const drifted = compare(
+    { light: { done: '#006045' }, dark: {} },
+    { light: { done: '#ff0000' }, dark: {} },
+  );
   if (!drifted.some((p) => p.includes('done'))) {
     console.error('✗ self-test: a changed token did not fail');
     exit(1);

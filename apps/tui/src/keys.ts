@@ -75,6 +75,113 @@ export type Action =
   | { kind: 'consume' };
 
 /**
+ * Every key this client binds, as data.
+ *
+ * `route()` decides what a key *means right now*, which is contextual — the same
+ * `esc` closes the rail, clears a filter, or aborts a run depending on what is
+ * open. That precedence cannot be a flat table, so this is not one: it is the
+ * description of the chain, kept beside it.
+ *
+ * What makes it more than a comment is `tests/keys.test.ts`, which asserts every
+ * `Action['kind']` appears here. A binding added without a line fails, which is
+ * the failure mode this replaces — `/help` was four hand-written lines and had
+ * already drifted, naming six inspector sections when there were eight.
+ */
+/**
+ * Every `Action` kind, at runtime.
+ *
+ * The union has no runtime form, and `BINDINGS` has to be checked against
+ * something. The `satisfies` keeps this list honest in one direction — a name
+ * that is not a kind fails — and `_Exhaustive` below keeps it honest in the
+ * other, so adding a kind without listing it is a type error rather than a
+ * silently unchecked binding.
+ */
+export const ACTION_KINDS = [
+  'quit',
+  'stop',
+  'scroll',
+  'close-rail',
+  'clear-filter',
+  'rail-move',
+  'rail-open-selected',
+  'filter-backspace',
+  'filter-append',
+  'abort',
+  'open-rail',
+  'new-thread',
+  'toggle-console',
+  'open-inspector',
+  'close-inspector',
+  'section',
+  'panel',
+  'refresh-section',
+  'search-open',
+  'search-close',
+  'consume',
+] as const satisfies readonly Action['kind'][];
+
+/** Fails to compile when `Action` gains a kind `ACTION_KINDS` does not list. */
+type _Exhaustive =
+  Exclude<Action['kind'], (typeof ACTION_KINDS)[number]> extends never
+    ? true
+    : ['missing from ACTION_KINDS', Exclude<Action['kind'], (typeof ACTION_KINDS)[number]>];
+const _exhaustive: _Exhaustive = true;
+void _exhaustive;
+
+export const BINDINGS: ReadonlyArray<{
+  /** Which surface owns the key. The same key means different things in each. */
+  where: 'chat' | 'threads' | 'inspector';
+  keys: string;
+  /** Which `Action` kinds this line covers, so the test can prove coverage. */
+  covers: ReadonlyArray<Action['kind']>;
+  what: string;
+}> = Object.freeze([
+  { where: 'chat', keys: 'enter', covers: [], what: 'send · shift+enter opens a line' },
+  { where: 'chat', keys: 'ctrl+c', covers: ['stop', 'quit'], what: 'stop the run, again to quit' },
+  { where: 'chat', keys: 'esc', covers: ['abort'], what: 'abort the run' },
+  { where: 'chat', keys: 'pgup/pgdn', covers: ['scroll'], what: 'scroll the transcript' },
+  { where: 'chat', keys: 'ctrl+e', covers: [], what: 'compose in $EDITOR' },
+  { where: 'chat', keys: 'ctrl+n', covers: ['new-thread'], what: 'new thread' },
+  { where: 'chat', keys: 'tab', covers: ['open-rail'], what: 'open the thread list' },
+  { where: 'chat', keys: 'shift+tab', covers: ['open-inspector'], what: 'open the inspector' },
+  {
+    where: 'chat',
+    keys: 'ctrl+d',
+    covers: ['toggle-console'],
+    what: 'debug console (FELIX_DEBUG=1)',
+  },
+  { where: 'threads', keys: '↑/↓', covers: ['rail-move'], what: 'move the selection' },
+  {
+    where: 'threads',
+    keys: 'enter',
+    covers: ['rail-open-selected'],
+    what: 'open the selected thread',
+  },
+  {
+    where: 'threads',
+    keys: 'type',
+    covers: ['filter-append', 'filter-backspace', 'consume'],
+    what: 'filter by title · backspace edits',
+  },
+  {
+    where: 'threads',
+    keys: 'esc',
+    covers: ['clear-filter', 'close-rail'],
+    what: 'clear the filter, then close',
+  },
+  { where: 'inspector', keys: '←/→', covers: ['section'], what: 'move between sections' },
+  { where: 'inspector', keys: '↑/↓', covers: ['panel'], what: 'scroll the panel' },
+  { where: 'inspector', keys: 'r', covers: ['refresh-section'], what: 're-read this section now' },
+  { where: 'inspector', keys: '/', covers: ['search-open'], what: 'search memory or the corpus' },
+  {
+    where: 'inspector',
+    keys: 'esc',
+    covers: ['search-close', 'close-inspector'],
+    what: 'leave the search, then close',
+  },
+]);
+
+/**
  * What this key means right now, or `null` for "not ours".
  *
  * A non-null result is also the signal to `preventDefault`, which is what stops
