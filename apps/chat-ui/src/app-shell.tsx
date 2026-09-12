@@ -178,6 +178,13 @@ export function AppShell() {
   const leaseTokenRef = useRef<string | null>(null);
   /** Which thread the engine currently holds — see `loadThread`. */
   const loadedThreadRef = useRef<string | null>(null);
+  /**
+   * `hydrateFromServer`, for the engine's callbacks.
+   *
+   * The engine is built once, above the callback's own declaration, and must not
+   * be rebuilt when it changes — a new engine mid-run is a lost run.
+   */
+  const hydrateFromServerRef = useRef<(id: string) => void>(() => {});
   const verboseRef = useRef(verbose);
   const threadIdRef = useRef(threadId);
 
@@ -197,6 +204,20 @@ export function AppShell() {
         if (verboseRef.current) setInspectorOpen(true);
       },
       onSkills: setSkills,
+      /**
+       * Re-read the session once a durable run lands.
+       *
+       * Its stream carried the answer and nothing else — no deltas, no tool
+       * frames — so the tool cards, and the workspace zone's "touched this
+       * session" list that is derived from them, are empty until something
+       * re-reads the harness's own transcript. Before this they stayed empty
+       * until the operator happened to reload.
+       *
+       * Reading `threadIdRef` rather than closing over a thread: the engine is
+       * created once and the run may well finish on a thread the operator has
+       * since left, in which case `hydrateFromServer` drops the result itself.
+       */
+      onDurableComplete: () => hydrateFromServerRef.current(threadIdRef.current),
     });
     // Seeded from the thread *the address names*, so the first paint is this
     // thread's transcript rather than an empty one — and, on a deep link, not
@@ -382,6 +403,7 @@ export function AppShell() {
       }
     })();
   }, []);
+  hydrateFromServerRef.current = hydrateFromServer;
 
   const attachLease = useCallback(async (id: string) => {
     try {

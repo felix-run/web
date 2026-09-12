@@ -62,6 +62,22 @@ export interface EnginePorts {
   onToolStart?: () => void;
   /** A `list_skills` result, for a client that shows which skills a manifest loaded. */
   onSkills?: (skills: { declared: string[]; active: string[] }) => void;
+  /**
+   * A durable run finished, and the transcript it left here is incomplete.
+   *
+   * A durable manifest's stream carries `run_accepted` → `run_status` → `final`
+   * and **no deltas or tool frames at all** — side events are an in-process
+   * queue keyed by thread id, the agent runs in the worker and the stream is
+   * served by the API, so nothing crosses. What lands here is the final answer;
+   * the tool calls that produced it exist only in the harness's own transcript.
+   * A client that draws tool cards, or anything derived from them, has to
+   * re-read the session to see them.
+   *
+   * Hydrating from here is safe *because* nothing was streamed: there is no
+   * local detail for a snapshot rebuild to discard. That is not true of an
+   * ordinary run, which is why this fires only on the two durable paths.
+   */
+  onDurableComplete?: () => void;
 }
 
 export interface SendArgs {
@@ -367,6 +383,8 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         const content = String((ev.data as { content?: string }).content ?? '').trim();
         resumeToken = null;
         patch((t) => ({ ...t, content: content || t.content }));
+        // The answer is here; the tool calls that produced it are not.
+        ports.onDurableComplete?.();
         break;
       }
       // Only `GET /chat/stream/{thread_id}` sends these two, and only
@@ -453,6 +471,8 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         });
         if (started.kind === 'done') {
           patch((t) => ({ ...t, content: started.final.content }));
+          // Same shape as the `final` frame: an answer with no tool calls behind it.
+          ports.onDurableComplete?.();
           return;
         }
         const runResult = await ports.client.pollDurableRun(started.resumeToken, {
@@ -472,6 +492,31 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         return;
       }
 
+      /**
+       * Finish a durable run by polling it, and say so when it lands.
+       *
+       * Shared by the two ways a stream can leave one unfinished: it dropped, or
+       * it ended cleanly having never sent `final`.
+       */
+      const settleDurable = async (token: string) => {
+        set({ phase: 'durable' });
+        const rejoined = await ports.client.pollDurableRun(token, {
+          signal: ctrl.signal,
+          onTick: (r) => {
+            patch((t) => ({ ...t, content: `Background · ${r.status || 'pending'}…` }));
+          },
+        });
+        if (rejoined.error) {
+          set({ error: rejoined.error });
+          return;
+        }
+        patch((t) => ({
+          ...t,
+          content: finalOf(rejoined) || `(${rejoined.status || 'completed'})`,
+        }));
+        ports.onDurableComplete?.();
+      };
+
       try {
         await ports.client.streamChat(
           {
@@ -487,6 +532,17 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
             },
           },
         );
+        /**
+         * A durable stream can end **cleanly** without ever sending `final`.
+         *
+         * The run is handed to the worker and the API's stream simply stops;
+         * nothing throws, so the drop path below never runs. `resumeToken` is the
+         * tell — set by `run_accepted`, cleared only by `final` — and without
+         * this the turn sits on "Background · running…" for the life of the tab
+         * while the run finishes behind it, taking the answer, the tool cards and
+         * everything derived from them with it.
+         */
+        if (resumeToken && !ctrl.signal.aborted) await settleDurable(resumeToken);
       } catch (err) {
         if (ctrl.signal.aborted) throw err;
         // A durable run survives its stream. If one was accepted and has not yet
@@ -514,21 +570,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           }
           return;
         }
-        set({ phase: 'durable' });
-        const rejoined = await ports.client.pollDurableRun(resumeToken, {
-          signal: ctrl.signal,
-          onTick: (r) => {
-            patch((t) => ({ ...t, content: `Background · ${r.status || 'pending'}…` }));
-          },
-        });
-        if (rejoined.error) {
-          set({ error: rejoined.error });
-          return;
-        }
-        patch((t) => ({
-          ...t,
-          content: finalOf(rejoined) || `(${rejoined.status || 'completed'})`,
-        }));
+        await settleDurable(resumeToken);
       }
     };
 
