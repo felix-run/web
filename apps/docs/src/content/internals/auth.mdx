@@ -19,7 +19,19 @@ Inbound authentication, tenant derivation, and isolation defenses. Source: `feli
 | `api_key` | `Authorization: Bearer|ApiKey` or `X-Api-Key` matched against `FELIX_AUTH_API_KEYS` JSON map (tenant, sub, scopes) |
 | `jwt` | Bearer JWT verified via `FELIX_JWT_VERIFIERS` + JWKS (`FELIX_JWKS_PUBLIC` for self-issued) |
 
-Public paths stay open in all modes: `/health`, `/metrics`, `/docs`, `/openapi.json`, `/redoc`, `/.well-known/*`.
+Unauthenticated in every mode: the probes `/health`, `/live`, `/ready`, and everything under
+`/.well-known/*`. That set is deliberately short.
+
+- **`/metrics` is not in it.** Its label values carry tenant-supplied manifest ids and remote MCP
+  tool names, so an anonymous scrape discloses every tenant's manifests and tools. It is not
+  rate-limit exempt either. See [observability](/internals/observability/) for the credential a
+  scraper needs.
+- **`/docs` and `/openapi.json` are not in it** unless the operator opts in with
+  `FELIX_DOCS_PUBLIC=true` — they describe every route, management ones included, and were the one
+  map of the surface an unauthenticated caller could read. Setting it on an authenticated
+  deployment logs a warning at startup. Under `FELIX_AUTH_MODE=none` everything is public anyway.
+- **`/redoc` does not exist.** FastAPI's Swagger and ReDoc are both disabled (`docs_url=None`,
+  `redoc_url=None`); `/docs` is a Scalar page the harness mounts itself, under one CSP.
 
 Missing credentials in `api_key` / `jwt` → **401** (fail closed). Mint self-issued tokens with `felix mint-jwt`.
 
@@ -30,7 +42,9 @@ Routes call `enforce_inbound_auth` (via `prepare_tenant_invoke`):
 - `inbound.allow_anonymous: false` → reject anonymous
 - `inbound.required_scopes` → all must be present on the principal → else 403
 
-Management routes use `require_scope` (`audit:read`, `manifests:write`, `approvals:decide`, …).
+Management routes call `require_mgmt_scopes` with the scopes in `felix.auth.mgmt` — `audit:read`,
+`manifests:write`, `approvals:write`, and the rest of the pairs listed in the
+[Management API](/guide/management-api/#scopes).
 
 ## RequestContext
 

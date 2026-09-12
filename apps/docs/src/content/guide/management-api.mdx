@@ -73,8 +73,8 @@ curl -s "$BASE_URL/audit?limit=20&status=denied" \
   -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
-The agent loop emits exactly **four** event types. Filter on these — `event_type` is matched
-literally, so a name that is not in this table returns an empty page rather than an error:
+**Seven** event types are written. Filter on these — `event_type` is matched literally, so a name
+that is not in this table returns an empty page rather than an error:
 
 | `event_type` | Emitted by | `status` |
 |---|---|---|
@@ -82,11 +82,20 @@ literally, so a name that is not in this table returns an empty page rather than
 | `tool_call` | the agent loop, per tool invocation that was not denied | `ok`, `error` |
 | `policy_deny` | the agent loop, per tool invocation a governance wrapper denied | `denied` |
 | `final_response` | the agent loop, once per completed turn | `ok`, `error` |
+| `inbound_screening` | inbound screening, before the turn reaches the model | `denied`, `quarantined`, `redacted`, `oversize`, `unavailable` |
+| `guardrails_reply` | the reply path, when PII was found in the answer | `blocked`, `redacted` |
+| `judge_deny` | the reply path, when a `final_response` judge scored under threshold | `denied` |
 
-`policy_deny` covers **every** governance denial, not only `spec.policies`: command and content
-screening, limits, guardrails, judges and pending approvals all return a deny marker that the loop
-records under this one name. To attribute a denial to a layer, correlate with the Prometheus
-counters — `felix_policy_deny`, `felix_approval_required`, `felix_content_screening` — described in
+The last three are the ones an operator looking only at `policy_deny` will miss. They are emitted
+by the governance wrappers on either side of the loop rather than by the loop itself, so they carry
+no `tool` — `inbound_screening` carries `surface` (`turn` or `tool_arguments`), `judge_deny` carries
+`judge`, `score` and `threshold`.
+
+`policy_deny` covers every governance denial **that a tool call ran into**, not only
+`spec.policies`: command and content screening, limits, guardrails, tool-targeted judges and
+pending approvals all return a deny marker the loop records under this one name. To attribute one
+to a layer, correlate with the Prometheus counters — `felix_policy_deny`,
+`felix_approval_required`, `felix_content_screening`, `felix_inbound_screening` — described in
 [Observability](/internals/observability/).
 
 Secret values are masked out of payloads before they are written.
@@ -152,7 +161,13 @@ curl -s -X POST "$BASE_URL/approvals/apr_123/decide" \
 | `decision` | `approved` \| `denied` | — | |
 | `status` | `approved` \| `denied` | — | Accepted as an alias for `decision`. |
 | `note` | string | `""` | |
-| `edited_args` | object \| null | `null` | **Replaces** the tool's arguments before it runs. |
+| `edited_args` | object \| null | `null` | **Replaces** the tool's arguments — see below. |
+
+`edited_args` is the third answer, besides yes and no: it approves a *modified* call, and the tool
+runs with the arguments you sent rather than the ones the model asked for. Note that it is a
+**standing substitution**, not a one-off correction — the grant is matched on a hash of the
+original arguments, and the reuse path applies your replacement to every identical call until the
+grant expires or is consumed.
 
 Two rules change who a grant covers:
 
@@ -456,9 +471,13 @@ That is the merge-blocking path in the harness repo's CI. See [Testing](/interna
 
 ## Usage
 
+The token meter: what each turn spent, and what a tenant has spent over a window.
+
+### `GET /usage`
+
 <Badge text="usage:read" variant="note" />
 
-Per-request token counts and derived cost.
+Per-request token counts and the cost each was priced at.
 
 | Query | Type | Default |
 |---|---|---|
@@ -471,5 +490,41 @@ curl -s "$BASE_URL/usage?limit=50&manifest_id=support" \
   -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
+A row carries `tokens_input`, `tokens_output`, `cache_creation`, `cache_read`, `cost_usd`, and
+**two** model ids. `model_id` is the logical route the operator configured; `wire_model_id` is the
+provider's own id, and is what the row was priced by. On a plain route they agree; on a custom one
+they are the interesting thing on the row.
+
 Cost comes from a built-in per-model price table, overridable per manifest with `spec.model.price`
-(USD per 1M tokens).
+(USD per 1M tokens). It is priced **once**, at write time, and fixed on the row — a later rate
+change does not rewrite history.
+
+:::caution[`cost_usd: 0` does not mean the turn was free]
+A model with no entry in the pricing catalog and no `spec.model.price` override is metered but
+unpriced: its tokens count against the token caps while its spend records as zero, and
+`limits.max_cost_usd` fails open for it. So a `SUM(cost_usd)` over this endpoint is a **floor**,
+not a total. `felix_model_unpriced` counts the turns it is missing — see
+[Observability](/internals/observability/#counters).
+:::
+
+### `GET /usage/summary`
+
+<Badge text="usage:read" variant="note" />
+
+Spend grouped by manifest, model and UTC day, with totals — "what did this tenant spend last
+month" in one call, instead of paging `/usage` and adding it up yourself.
+
+| Query | Type | Default |
+|---|---|---|
+| `since_ms` | int, epoch ms, inclusive | 30 days ago |
+| `until_ms` | int, epoch ms, exclusive | now |
+| `manifest_id` | string | — |
+
+```bash
+curl -s "$BASE_URL/usage/summary?manifest_id=support" \
+  -H "authorization: Bearer $FELIX_KEY" | jq '.totals'
+```
+
+Returns `{since_ms, until_ms, items, totals}`. The window is half-open, and `since_ms >= until_ms`
+is a `422`. The same unpriced caveat applies to `totals.cost_usd`: it sums the column, so it
+inherits the floor.

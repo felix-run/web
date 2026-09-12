@@ -41,18 +41,31 @@ Felix is plain CPython in containers you run. There is no serverless or edge run
 | A2A | `POST /a2a` |
 | MCP | `POST /mcp` |
 | Discovery | `GET /.well-known/agent-card.json`, JWKS when configured |
-| Management | `/audit`, `/approvals`, `/plans`, `/jobs`, `/manifests`, `/eval` |
+| Management | `/audit`, `/approvals`, `/plans`, `/jobs`, `/manifests`, `/eval`, `/usage`, `/memory`, `/documents`, `/artifacts` |
 | Internal | `POST /internal/*` (consumer secret when auth ≠ none) |
 
-Interactive OpenAPI UI: a running harness serves Scalar at `/docs` (hosted: [api.felix.run/docs](https://api.felix.run/docs)).
+Interactive OpenAPI UI: a running harness serves Scalar at `/docs` (hosted:
+[api.felix.run/docs](https://api.felix.run/docs)). Swagger and ReDoc are both off, so there is one
+reference surface under one CSP — and it is authenticated unless `FELIX_DOCS_PUBLIC=true`.
+
+The manifest **write** verbs (`PUT`, canary, rollback, clear-canary) are not registered at all under
+`FELIX_MANIFEST_SOURCE=bundled`, so they are absent from the OpenAPI document rather than present
+and refusing.
 
 ## Middleware chain
 
-Order on every request:
+Order on every request, outermost first:
 
-1. **Body limit** — reject oversized payloads early.
-2. **Auth** — `none` / `api_key` / `jwt` (see [auth](/internals/auth/)); installs `RequestContext` (tenant, scopes, `LimitState`).
-3. **Rate limit** — keyed by tenant; skips `/health`, `/.well-known/*`, `/docs`, `/openapi.json`, `/metrics`.
+1. **Request id** — every response carries `x-request-id`, including one rejected downstream.
+2. **Security headers** — on every response, a 413 and a 401 included.
+3. **Body limit** — reject oversized payloads before any other work.
+4. **Rate limit** — keyed by tenant; skips only the probes (`/health`, `/live`, `/ready`) and `/.well-known/*`.
+5. **Auth** — `none` / `api_key` / `jwt` (see [auth](/internals/auth/)); installs `RequestContext` (tenant, scopes, `LimitState`).
+
+**Rate limit is outside auth, and that is the point.** Registered the other way round, a 401
+returned before the limiter was consulted and credential guessing was entirely unthrottled. For
+the same reason `/docs`, `/openapi.json` and `/metrics` are *not* exempt: under `api_key` / `jwt`
+those were three more paths where a credential could be guessed at no cost.
 
 Self-authenticating mounts (e.g. `/internal`) skip bearer parsing; the router enforces its own credential (`FELIX_CONSUMER_SHARED_SECRET`).
 
