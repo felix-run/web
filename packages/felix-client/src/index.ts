@@ -62,7 +62,12 @@ export {
   type PlanStepStatus,
   type PlanWire,
 } from './management/plans';
-export type { UsageEvent } from './management/usage';
+export type {
+  UsageEvent,
+  UsageSummary,
+  UsageSummaryItem,
+  UsageSummaryTotals,
+} from './management/usage';
 export { type ReattachOptions, reattachThread } from './reattach';
 export {
   eventsToTurns,

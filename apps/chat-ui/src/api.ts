@@ -92,6 +92,7 @@ export const decideApproval = felix.decideApproval.bind(felix);
 export const listAudit = felix.listAudit.bind(felix);
 export const getToolMetrics = felix.getToolMetrics.bind(felix);
 export const listUsage = felix.listUsage.bind(felix);
+export const getUsageSummary = felix.getUsageSummary.bind(felix);
 export const listMemories = felix.listMemories.bind(felix);
 export const searchMemories = felix.searchMemories.bind(felix);
 export const memoriesAsOf = felix.memoriesAsOf.bind(felix);

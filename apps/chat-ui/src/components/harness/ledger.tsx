@@ -3,7 +3,7 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { ActivityIcon, ChevronRightIcon, CoinsIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { listAudit, listUsage } from '@/api';
+import { getUsageSummary, listAudit, listUsage } from '@/api';
 import {
   Field,
   isFailure,
@@ -17,7 +17,7 @@ import {
 } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
-import type { AuditEvent, UsageEvent } from '@/types';
+import type { AuditEvent, UsageSummary } from '@/types';
 
 /**
  * The Ledger: what the harness *did*, and what it cost.
@@ -394,6 +394,8 @@ function summary(e: AuditEvent): string {
 }
 
 const USAGE_VISIBLE = 8;
+/** What `GET /usage/summary` answers for when asked for no window. */
+const SUMMARY_DEFAULT_DAYS = 30;
 
 export function UsageSection({
   enabled,
@@ -404,21 +406,48 @@ export function UsageSection({
   open: boolean;
   onToggle: () => void;
 }) {
+  /**
+   * Two requests, one tick.
+   *
+   * They answer different questions and neither can answer the other's. The
+   * **summary** is what the tenant actually spent: the harness groups and totals
+   * over a window — thirty days unless asked otherwise — which is a number this
+   * panel could not produce before, because it was summing whatever page of rows
+   * it happened to fetch and labelling the result as the total. The **rows** are
+   * the recent detail the summary drops, above all `wire_model_id`, which is what
+   * a turn was priced by and the one thing worth seeing when it disagrees with
+   * the route the operator configured.
+   *
+   * One `usePoll` rather than two, so the section still costs one tick — the
+   * economy the Ledger's tabs exist for.
+   */
   const { data, error, loading, refresh } = usePoll(
     async () => {
-      const page = await listUsage({ limit: 40 });
-      return page.items;
+      const [summary, page] = await Promise.all([
+        getUsageSummary(),
+        listUsage({ limit: USAGE_VISIBLE }),
+      ]);
+      return { summary, rows: page.items };
     },
     { enabled },
   );
-  const totals = summarizeUsage(data ?? []);
-  const rows = data?.slice(0, USAGE_VISIBLE) ?? [];
+  const summary = data?.summary ?? null;
+  // Zeroed rather than nullable, so the readout below stays one shape. `SectionBody`
+  // renders the loading skeleton ahead of the empty state, so a zero here is only
+  // ever on screen once the window really is empty.
+  const totals = summary
+    ? summarizeWindow(summary)
+    : { in: 0, out: 0, cost: 0, calls: 0, unpriced: 0 };
+  const days = summary ? windowDays(summary) : SUMMARY_DEFAULT_DAYS;
+  const rows = data?.rows ?? [];
 
   return (
     <Section
       icon={<CoinsIcon className="size-3.5" />}
       title="Usage"
-      meta={data && data.length > 0 ? `${compact(totals.in + totals.out)} tok` : undefined}
+      meta={
+        totals && totals.in + totals.out > 0 ? `${compact(totals.in + totals.out)} tok` : undefined
+      }
       open={open}
       onToggle={onToggle}
     >
@@ -427,14 +456,18 @@ export function UsageSection({
         doing="load token usage"
         loading={loading && !data}
         error={error}
-        empty={data?.length === 0}
+        empty={totals.calls === 0}
         emptyText="Token meters appear here after model turns flush to the usage store."
         status={
-          data
-            ? `${data.length} usage records, ${totals.in.toLocaleString()} tokens in, ${totals.out.toLocaleString()} out`
+          totals
+            ? `${totals.calls} turns in the last ${days} days, ${totals.in.toLocaleString()} tokens in, ${totals.out.toLocaleString()} out`
             : undefined
         }
       >
+        <p className="mb-1.5 text-xs text-muted-foreground">
+          Last {days} days, across {totals.calls.toLocaleString()}{' '}
+          {totals.calls === 1 ? 'turn' : 'turns'}
+        </p>
         <dl className="mb-2.5 flex gap-6 border-b border-border/40 pb-2.5">
           <div>
             <dt className="text-xs text-muted-foreground">Input</dt>
@@ -504,48 +537,58 @@ export function UsageSection({
             </li>
           ))}
         </ol>
-        <Truncated shown={rows.length} total={data?.length ?? 0} noun="records" />
+        {/*
+          The rows are a recent sample, not a page of the window. Saying "8 of 8"
+          would be true and useless; what the reader needs is that the list and
+          the totals above it are measuring different things.
+        */}
+        {rows.length > 0 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            The {rows.length} most recent {rows.length === 1 ? 'turn' : 'turns'}; the totals above
+            cover the window.
+          </p>
+        )}
       </SectionBody>
     </Section>
   );
 }
 
-/**
- * Tokens and spend over the rows in hand.
- *
- * `unpriced` is the load-bearing part. A model with no entry in the pricing
- * catalog is metered but costs `0` — the tokens count against the token caps
- * while the spend they represent is recorded as nothing, and the harness counts
- * that as `felix_model_unpriced`. Summing the column without saying how many
- * rows were unpriced reports an underestimate as a total, which is the one
- * number an operator would act on.
- */
-export function summarizeUsage(items: UsageEvent[]): {
-  in: number;
-  out: number;
-  cost: number;
-  unpriced: number;
-} {
-  let inn = 0;
-  let out = 0;
-  let cost = 0;
-  let unpriced = 0;
-  for (const e of items) {
-    inn += e.tokens_input ?? 0;
-    out += e.tokens_output ?? 0;
-    cost += e.cost_usd ?? 0;
-    // Tokens but no cost. A row with neither is not a gap, it is an empty turn.
-    if (!e.cost_usd && (e.tokens_input || e.tokens_output)) unpriced += 1;
-  }
-  return { in: inn, out, cost, unpriced };
+/** The window the harness answered for, in whole days, for a label. */
+export function windowDays(summary: UsageSummary): number {
+  return Math.max(1, Math.round((summary.until_ms - summary.since_ms) / 86_400_000));
 }
 
 /**
- * Dollars at a resolution that does not round a real cost to nothing.
+ * Tokens and spend over the **window**, from the harness's own grouping.
  *
- * A single cheap turn is fractions of a cent, so the usual two decimals shows
- * `$0.00` for every row and a running total that never moves.
+ * `unpriced` is still the load-bearing part, and the summary can count it
+ * properly where the old client-side sum could not. A bucket priced at `0` with
+ * tokens in it is a model with no entry in the pricing catalog: metered, counted
+ * against the token caps, and recorded as costing nothing, which is what makes
+ * `limits.max_cost_usd` fail open for it. `calls` says how many turns that
+ * covers, so the count is over everything in the window rather than over
+ * whichever rows happened to be on screen.
  */
+export function summarizeWindow(summary: UsageSummary): {
+  in: number;
+  out: number;
+  cost: number;
+  calls: number;
+  unpriced: number;
+} {
+  let unpriced = 0;
+  for (const item of summary.items) {
+    if (item.cost_usd === 0 && item.tokens_input + item.tokens_output > 0) unpriced += item.calls;
+  }
+  return {
+    in: summary.totals.tokens_input,
+    out: summary.totals.tokens_output,
+    cost: summary.totals.cost_usd,
+    calls: summary.totals.calls,
+    unpriced,
+  };
+}
+
 export function usd(n: number): string {
   if (n === 0) return '$0';
   if (n < 0.01) return `$${n.toFixed(5)}`;

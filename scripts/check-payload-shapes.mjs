@@ -76,6 +76,11 @@ export const GUARDED = [
     serializer: 'felix/usage/store.py:_event_dict',
   },
   {
+    type: 'UsageSummaryItem',
+    file: 'packages/felix-client/src/management/usage.ts',
+    serializer: 'felix/usage/store.py:_summary_item_dict',
+  },
+  {
     type: 'MemoryRecord',
     file: 'packages/felix-client/src/management/memory.ts',
     serializer: 'felix/memory/store.py:_row_dict',

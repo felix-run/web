@@ -39,6 +39,8 @@ export {
   type ToolMetrics,
   type ToolMetricsRow,
   type UsageEvent,
+  type UsageSummary,
+  type UsageSummaryItem,
 } from '@felix/client';
 export type {
   ArtifactRef,

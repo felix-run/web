@@ -471,6 +471,28 @@ Flows worth knowing before editing the app:
   `limits.max_cost_usd` failing open for it. Anything summing that column is summing an
   underestimate, so chat-ui labels the total `Cost (floor)` and says how many turns were unpriced,
   and the terminal leaves the cell blank rather than drawing `$0`.
+
+  **The Ledger's totals come from `/usage/summary`, not from adding up `/usage`.** The panel used to
+  sum whichever page of rows it had fetched — `limit: 40` — and label the result the total, so
+  "Cost (floor)" described a page rather than a period. The summary route groups and totals
+  server-side over a window (thirty days unless asked otherwise) and echoes the range it used, which
+  is the number an operator was already reading it as. It also counts the unpriced gap properly: a
+  bucket priced at `0` with tokens in it is an unpriced model, and its `calls` says how many turns
+  that covers, so the warning is over the window rather than over whatever was on screen.
+
+  Both are fetched, in one `usePoll` and therefore one tick: the summary drops `wire_model_id`, and
+  a row where that disagrees with `model_id` is the thing worth seeing, so `/usage` still supplies
+  the recent detail. `summarizeWindow` reads `totals` off the response rather than re-adding
+  `items` — adding them would reintroduce exactly the bug, since the items are what the harness
+  chose to return and the totals are what it counted.
+
+  `UsageSummaryItem` is guarded against `felix/usage/store.py:_summary_item_dict`, which had to be
+  extracted harness-first (`felix-run/felix#242`) because the response was built inline and the
+  recorder only reads `_<row>_dict` functions — the same reason `/documents` was unguardable before
+  `#213`. `UsageSummaryTotals` is derived from the item type with `Pick` rather than declared,
+  because `_summary_totals_dict` builds its dict imperatively and the recorder lists it as
+  `unreadable`; a `GUARDED` entry naming it would fail by design, and deriving keeps the field names
+  in the one place that *is* checked.
 - **Documents** — `/documents` is the corpus the agent *retrieves* from, where `/memory` is what it
   *learned*; the operator question is the same one, so the panels are the same shape deliberately.
   Two differences change what a UI may say. A search hit is a **chunk**, not a document, so the
