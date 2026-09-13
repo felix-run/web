@@ -110,7 +110,17 @@ export function WorkspaceZone({ className }: { className?: string }) {
     const seen = new Set<string>();
     for (let i = turns.length - 1; i >= 0; i--) {
       for (const tool of turns[i]?.tools ?? []) {
-        for (const path of collectToolCallPaths(tool.input)) seen.add(path);
+        // A file tool's own `path` argument is a path *by construction*, so it needs
+        // no heuristic and must not be filtered by one. `collectToolCallPaths` keeps
+        // only strings containing a `/`, which is right for its own job — telling a
+        // prose mention of `foo.md` apart from the three other `foo.md` — and wrong
+        // here, where it dropped every write to the root of a flat workspace. The
+        // agent writing `notes.txt` is exactly what this panel exists to report.
+        const path = (tool.input as { path?: unknown } | null | undefined)?.path;
+        if (typeof path === 'string' && path.trim()) seen.add(path.trim());
+        // Everything else a call names — a shell command's `notes/todo.md` — still
+        // goes through the heuristic, which is the only thing that can judge those.
+        for (const found of collectToolCallPaths(tool.input)) seen.add(found);
       }
     }
     return [...seen];
