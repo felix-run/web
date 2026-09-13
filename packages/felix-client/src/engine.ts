@@ -16,9 +16,16 @@
  * part of the behaviour. A reducer returning effects would move them a tick
  * later and change what the user sees.
  */
-import type { ChatMessage, PendingUiRequest, StreamEvent, TokenUsage } from '@felix/protocol';
+import type {
+  ChatMessage,
+  PendingUiRequest,
+  SessionEvent,
+  StreamEvent,
+  TokenUsage,
+} from '@felix/protocol';
 import { type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
 import { reattachThread } from './reattach';
+import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
 import { closeTool, markToolPhase, type Turn } from './turns';
 
@@ -63,19 +70,24 @@ export interface EnginePorts {
   /** A `list_skills` result, for a client that shows which skills a manifest loaded. */
   onSkills?: (skills: { declared: string[]; active: string[] }) => void;
   /**
-   * A durable run finished, and the transcript it left here is incomplete.
+   * A durable run finished, and the transcript it left here may be incomplete.
    *
    * A durable manifest's stream carries `run_accepted` → `run_status` → `final`
-   * and **no deltas or tool frames at all** — side events are an in-process
-   * queue keyed by thread id, the agent runs in the worker and the stream is
-   * served by the API, so nothing crosses. What lands here is the final answer;
-   * the tool calls that produced it exist only in the harness's own transcript.
-   * A client that draws tool cards, or anything derived from them, has to
-   * re-read the session to see them.
+   * and **never any deltas**: the fiber runs the agent through `invoke`, which
+   * drops display events at the source, and only completed messages are ever
+   * persisted. What it does now carry (felix-run/felix#238) are `session_event`
+   * frames tailed from the thread's session log, which the engine folds as they
+   * land — so the tool cards appear during the run rather than only after it.
    *
-   * Hydrating from here is safe *because* nothing was streamed: there is no
-   * local detail for a snapshot rebuild to discard. That is not true of an
-   * ordinary run, which is why this fires only on the two durable paths.
+   * That tail is progressive rendering, not a replacement for this. It starts at
+   * a cursor, so it never carries the thread's earlier turns, and a stream that
+   * dropped can have missed the end of it. Re-reading the session is still what
+   * makes the transcript authoritative.
+   *
+   * Hydrating from here is safe *because* no deltas were streamed: there is no
+   * local detail for a snapshot rebuild to discard, and the folded turns came
+   * from the same session the rebuild reads. That is not true of an ordinary
+   * run, which is why this fires only on the two durable paths.
    */
   onDurableComplete?: () => void;
 }
@@ -191,6 +203,43 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
   // Newest `id:` the stream stamped, handed to a reattach so it replays only
   // what was missed; undefined means a cold reattach off a full snapshot.
   let lastEventId: string | undefined;
+
+  /**
+   * Progressive rendering for a durable run.
+   *
+   * The harness now tails the thread's session log between status frames
+   * (felix-run/felix#238), so the tool calls and assistant turns of a durable
+   * run land here as they happen rather than only in the final answer. They are
+   * the same rows `reattachThread` folds, so they go through the same
+   * `eventsToTurns` — one definition of how events become turns, not a second
+   * synthesis path that would drift from it.
+   *
+   * `durablePrefix` is the transcript *before* the in-flight turn, captured at
+   * `run_accepted`. Everything after it is rebuilt from the log rather than
+   * patched, because the log is the thing that knows what happened. Null means
+   * no durable run is in flight, which is also what keeps these frames inert on
+   * a reattach stream — `reattachThread` owns them there.
+   *
+   * What this is **not** is a second source of truth. `onDurableComplete` still
+   * hydrates from the session when the run lands; this only decides what the
+   * user watches in the meantime.
+   */
+  let durableEvents: SessionEvent[] = [];
+  let durablePrefix: Turn[] | null = null;
+
+  const renderDurable = () => {
+    if (durablePrefix === null) return;
+    // A deterministic generator, not `newId`. `eventsToTurns` mints an id for a
+    // turn the log does not name — a dangling tool-only step — and this re-folds
+    // on every frame, so a random one would hand React a different key each time
+    // and remount the card mid-run.
+    let n = 0;
+    const folded = eventsToTurns(durableEvents, () => `durable-${n++}`);
+    // The status turn stays last and keeps its id, so `patch` still finds it and
+    // `run_status` keeps reporting into the same place.
+    const status = state.turns.find((t) => t.id === activeAssistantId);
+    set({ turns: status ? [...durablePrefix, ...folded, status] : [...durablePrefix, ...folded] });
+  };
 
   const applyEvent = async (ev: StreamEvent): Promise<void> => {
     switch (ev.event) {
@@ -360,9 +409,11 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       }
       // The durable trio. A manifest with `spec.execution.mode: durable` makes
       // /chat/stream stream the *run's progress* rather than tokens: no deltas
-      // ever arrive, and the answer lands in `final`. Rendered the same way as
-      // the background-run path below, because to the user it is the same thing —
-      // it just got here down a different route.
+      // ever arrive, and the answer lands in `final`. Interleaved with them now
+      // are `session_event` frames tailed from the thread's session log, which is
+      // how the work behind the answer becomes visible while it is happening —
+      // completed messages only, never token deltas, because chunks are never
+      // persisted.
       case 'run_accepted': {
         const data = ev.data as { resume_token?: string };
         // Held so a dropped connection can rejoin the run instead of abandoning
@@ -370,6 +421,18 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         if (data.resume_token) resumeToken = data.resume_token;
         set({ phase: 'durable' });
         patch((t) => ({ ...t, content: t.content || 'Durable run accepted…' }));
+        // Everything before the in-flight turn. The user message is dropped from
+        // the prefix on purpose: the harness captured its cursor *before* the run
+        // was enqueued, so the log re-supplies that message and keeping the local
+        // copy too would render it twice. Guarded on the role rather than assumed,
+        // because `assistantId` is the only turn `send` is contracted to know about.
+        const at = state.turns.findIndex((t) => t.id === activeAssistantId);
+        const head = at < 0 ? state.turns.length : at;
+        durablePrefix = state.turns.slice(
+          0,
+          state.turns[head - 1]?.role === 'user' ? head - 1 : head,
+        );
+        durableEvents = [];
         break;
       }
       case 'run_status': {
@@ -382,18 +445,32 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       case 'final': {
         const content = String((ev.data as { content?: string }).content ?? '').trim();
         resumeToken = null;
+        durablePrefix = null;
+        durableEvents = [];
         patch((t) => ({ ...t, content: content || t.content }));
-        // The answer is here; the tool calls that produced it are not.
+        // The tail above is progressive rendering, not a substitute for hydration:
+        // it starts at the cursor, so it never carries the thread's earlier turns,
+        // and a dropped stream can have missed the end of it. Re-reading the
+        // session is still what makes the transcript authoritative.
         ports.onDurableComplete?.();
         break;
       }
-      // Only `GET /chat/stream/{thread_id}` sends these two, and only
-      // `reattachThread` reads them — it folds them through `eventsToTurns`, the
-      // same path thread hydration uses, rather than patching the turn in flight.
-      // Listed here so the frames are not silently unhandled if they ever arrive
+      // Tailed from the thread's session log. On a **durable run** they are this
+      // client's only view of the work behind the answer, so they are folded here
+      // — through `eventsToTurns`, the same function `reattachThread` uses, rather
+      // than a second synthesis path. Outside one, `durablePrefix` is null and
+      // these stay inert: on a reattach stream `reattachThread` owns them, and it
+      // folds the same rows the same way.
+      case 'session_event': {
+        if (durablePrefix === null) break;
+        durableEvents = [...durableEvents, ev.data as SessionEvent];
+        renderDurable();
+        break;
+      }
+      // Only `GET /chat/stream/{thread_id}` sends this, and only `reattachThread`
+      // reads it. Listed so the frame is not silently unhandled if it ever arrives
       // on a stream that is not a reattach.
       case 'snapshot':
-      case 'session_event':
         break;
       // Normalised by `readSseStream` from the harness's `event: error` frame —
       // the one SSE-typed frame, and the only way a stream reports a failure that
