@@ -111,6 +111,16 @@
     "/artifacts/{manifest_id}/{artifact_id}": {
       "get": {}
     },
+    "/files/": {
+      "post": {}
+    },
+    "/files": {
+      "post": {}
+    },
+    "/files/{file_id}": {
+      "get": {},
+      "delete": {}
+    },
     "/approvals/": {
       "get": {}
     },
