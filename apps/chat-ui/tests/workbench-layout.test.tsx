@@ -168,6 +168,43 @@ describe('the workspace zone', () => {
 });
 
 describe('the run instrument', () => {
+  /**
+   * The tab strip is a real tab widget, not roles painted on buttons.
+   *
+   * It used to carry `role="tablist"` and `aria-selected` with **no** `tabpanel`,
+   * no `aria-controls` and no arrow-key roving focus — which announces a widget
+   * and then does not behave like one, and is worse than plain buttons. It uses
+   * `@felix/ui/tabs` now, and these assert the contract that made the roles
+   * honest rather than the roles themselves.
+   */
+  it('associates every tab with a panel, both ways', async () => {
+    render(
+      <TooltipProvider>
+        <Inspector open onClose={() => {}} />
+      </TooltipProvider>,
+    );
+
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Approvals', 'Plans', 'Tools']);
+
+    for (const tab of tabs) {
+      const id = tab.getAttribute('aria-controls');
+      expect(id).toBeTruthy();
+      const panel = document.getElementById(id as string);
+      expect(panel?.getAttribute('role')).toBe('tabpanel');
+      // And back: the panel names the tab that controls it.
+      expect(panel?.getAttribute('aria-labelledby')).toBe(tab.id);
+    }
+  });
+
+  /**
+   * Roving tabindex — one stop for the strip, arrows within it — is **not**
+   * asserted here. Radix sets it from a real focus environment, and happy-dom
+   * leaves every trigger at `-1`, so a test would be asserting the environment
+   * rather than the widget. Verified in a browser instead: at rest the selected
+   * trigger is `0` and the other two `-1`, and ArrowRight moves focus and
+   * selection together.
+   */
   it('mounts exactly one section at a time, which is what tabs bought', async () => {
     render(
       <TooltipProvider>
@@ -176,15 +213,15 @@ describe('the run instrument', () => {
     );
 
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Approvals' })).toBeTruthy());
-    expect(screen.getByRole('tab', { name: 'Plans' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Tools' })).toBeTruthy();
-
-    // Only the active tab's panel is rendered — an inactive section that still
-    // mounted would still poll, which is the cost tabs exist to avoid.
     expect(screen.getByRole('tab', { name: 'Approvals' }).getAttribute('aria-selected')).toBe(
       'true',
     );
-    expect(screen.getByRole('tab', { name: 'Plans' }).getAttribute('aria-selected')).toBe('false');
+
+    // An inactive panel renders its element for the association and *not* its
+    // children — which is the poll economy, not a rendering detail.
+    const inactive = [...document.querySelectorAll('[role=tabpanel][data-state=inactive]')];
+    expect(inactive.length).toBeGreaterThan(0);
+    for (const panel of inactive) expect(panel.childElementCount).toBe(0);
 
     await act(async () => {
       await userEvent.click(screen.getByRole('tab', { name: 'Plans' }));

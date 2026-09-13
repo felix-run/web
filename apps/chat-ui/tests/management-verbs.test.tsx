@@ -151,7 +151,10 @@ describe('the memory panel', () => {
     const { MemorySection } = await import('../src/components/harness/memory');
 
     render(<MemorySection enabled open onToggle={() => {}} />);
-    fireEvent.click(await screen.findByRole('tab', { name: 'Add' }));
+    // A toggle button, not a tab: these modes switch the input above a list all
+    // three share, so there is no panel per mode and the tab roles were a promise
+    // the widget did not keep.
+    fireEvent.click(await screen.findByRole('button', { name: 'Add', pressed: false }));
     fireEvent.change(screen.getByLabelText('What to remember'), {
       target: { value: 'staging runs on :8081' },
     });

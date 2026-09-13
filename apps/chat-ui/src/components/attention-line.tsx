@@ -132,7 +132,8 @@ export function AttentionLine({
       : 'Nothing waiting on you.';
 
   return (
-    <div
+    <section
+      aria-label="What is waiting"
       className={cn(
         'shrink-0 border-b border-border/60 text-sm',
         waiting ? 'bg-state-blocked/10' : 'bg-muted/30',
@@ -218,6 +219,6 @@ export function AttentionLine({
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
