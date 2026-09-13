@@ -140,8 +140,12 @@ describe('the workspace zone', () => {
             { name: 'write_file', input: { path: 'notes/one.md' }, done: true },
             { name: 'write_file', input: { path: 'notes/one.md' }, done: true },
             { name: 'read_file', input: { path: 'src/two.ts' }, done: true },
-            // No directory: the tree already says this, so it is not a hint.
-            { name: 'read_file', input: { path: 'bare.md' }, done: true },
+            // A bare name is still a path when it is a file tool's own `path`
+            // argument. This is the write-to-the-workspace-root case, which the
+            // mention heuristic drops and this panel exists to report.
+            { name: 'write_file', input: { path: 'bare.md' }, done: true },
+            // Not a path, and nothing should invent one from it.
+            { name: 'local_shell', input: { command: 'echo hi' }, done: true },
           ],
         },
       ] as ShellValue['turns'],
@@ -150,7 +154,8 @@ describe('the workspace zone', () => {
     await waitFor(() => expect(screen.getByText('Touched this session')).toBeTruthy());
     expect(screen.getByText('notes/one.md')).toBeTruthy();
     expect(screen.getByText('src/two.ts')).toBeTruthy();
-    expect(screen.queryByText('bare.md')).toBeNull();
+    expect(screen.getByText('bare.md')).toBeTruthy();
+    expect(screen.queryByText('echo hi')).toBeNull();
     // Deduped, not listed once per call.
     expect(screen.getAllByText('notes/one.md')).toHaveLength(1);
   });
