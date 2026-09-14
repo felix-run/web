@@ -33,20 +33,29 @@ destinations now, alongside the tenant-durable half of the inspector.
 
 ## Cross-cutting
 
-### Three harness routes nothing calls
+### Two harness routes nothing calls, and one that is a duplicate
 
 `pnpm check-api-drift` prints the advisory list; most of it is machine-facing (`/health`,
-`/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on) and belongs there. Three are not.
-`GET /usage/summary` came off this list in #169 — the Ledger totalled a page of rows and called it
-the total, which the route exists to fix.
+`/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on) and belongs there. `GET /usage/summary`
+came off this list in #169 — the Ledger totalled a page of rows and called it the total, which the
+route exists to fix.
 
 - `PUT /plans/{}` — editing a plan. chat-ui reads plans and cannot change one.
-- `POST /eval/runs` — starting an eval. `/harness/eval` shows runs and cannot start one.
 - `POST /chat/sessions/custom` — no client touches it at all.
 
-CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up". What is
-left is smaller than what came off it: three single routes, each of which would add a *write* to a
-surface that currently only reads.
+**`POST /eval/runs` is not one of them, and this entry said it was.** It has no caller, but the
+feature is built: `/harness/eval` starts runs from `Run vs {manifest}`
+(`components/eval/eval-sheet.tsx`), through `runEvalDataset`. That posts to
+`POST /eval/datasets/{name}/run`, a second harness route whose own docstring reads *"Alias for
+chat-ui"* and which differs only in taking the dataset name from the path rather than the body.
+
+That is the failure mode of a list built from call sites: **it cannot tell a missing feature from a
+redundant route.** Acting on it here would have added a second button for something the panel
+already does. Whether the duplication should exist at all is a harness question, raised as
+`felix-run/felix#247`.
+
+So what is left is two single routes, each of which would add a *write* to a surface that currently
+only reads. Before building either, check the harness for an alias that already covers it.
 
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 

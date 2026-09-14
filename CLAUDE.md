@@ -112,7 +112,12 @@ the `check-api-drift` script in `package.json` is simply not walked — the chec
 `✓ no drift` while covering fewer calls than it did. Compare the call-site count, not just the exit
 code. It catches a route the harness renamed or dropped; it cannot catch a call that hits a real
 route for the wrong purpose, and it says nothing about payload shapes. It also prints, advisory only, the routes the
-harness serves that nothing calls — the direction where a whole unbuilt feature shows up.
+harness serves that nothing calls — sometimes the direction where a whole unbuilt feature shows up,
+and sometimes just a duplicate. **An uncalled route is not evidence of a missing feature.**
+`POST /eval/runs` sat on that list while `/harness/eval` had started runs all along, through
+`POST /eval/datasets/{name}/run` — a second harness route whose docstring reads "Alias for chat-ui".
+A list built from call sites cannot tell the two apart, so check the harness for an alias before
+building anything it suggests.
 
 `pnpm check-protocol-parity` covers the events, in **both** directions: every `StreamEvent` arm must
 have a handler in `packages/felix-client/src/engine.ts` — the one switch every client runs — and
