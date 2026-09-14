@@ -258,10 +258,13 @@ Three frames pause a run until something answers, and all three take the keyboar
   second after the tool card appears, while the run is still blocked; an older one delivered it
   *after* the decision it was asking for
   ([felix-run/felix#210](https://github.com/felix-run/felix/pull/210)). Either way the client polls
-  `GET /approvals` as well, and needs to: a **durable** run's agent is in the worker while its
-  stream is served by the API, and side events are an in-process queue, so no frame can cross. The
-  poll is what makes an unwatched run answerable — and what keeps this client usable against an
-  older harness.
+  `GET /approvals` as well, and needs to. A **durable** run's agent is in the worker while its
+  stream is served by the API, and side events are an in-process queue, so no *side event* can
+  cross; since
+  [felix-run/felix#246](https://github.com/felix-run/felix/pull/246) the durable stream rebuilds
+  `approval_required` from the pending row instead, for a caller holding `approvals:read`. The poll
+  is still what makes an *unwatched* run answerable — nothing is streamed to a client that was
+  never attached — and what keeps this client usable against an older harness.
 - **`ui_request`** — the agent is asking you something. Select, confirm or type
   (`POST /chat/ui`).
 - **`tool_request`** — the harness handed a tool back for this process to run. See below.

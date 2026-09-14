@@ -139,20 +139,41 @@ frame, and blocks until someone decides or the rule's `ttl_seconds` expires. It 
 |---|---|---|
 | `status` | string | `pending` |
 | `limit` | int 1–200 | `50` |
+| `thread_id` | string | *(all threads)* |
 
 ```bash
 curl -s "$BASE_URL/approvals?status=pending" -H "authorization: Bearer $FELIX_KEY" | jq
+curl -s "$BASE_URL/approvals?thread_id=acme:demo" -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
 `GET /approvals/{approval_id}` returns one request.
 
-Each row carries `thread_id` — the conversation that requested it, so a client polling cold can
-say *which* run is waiting rather than only that something is. Read it as attribution, not
-ownership: a pending row is reused for a byte-identical call to the same tool in the same
-manifest, so two threads making that call share one row and one decision, and the field names
-whichever asked first. It is `""` where there is no thread (a gated tool called outside a chat
-context) and on any row created before the field existed, so mirror it as **optional** in a
-client that must work against an older harness.
+`thread_id` narrows to one conversation, applied **before** the limit — filtering a returned page
+yourself would drop whatever `limit` had already cut off, so a busy tenant would hide the thread you
+asked about. `?thread_id=` (empty) means "approvals with no thread" and is distinct from omitting
+the parameter.
+
+**Why the gate fired, and what it is blocking.** Alongside `tool_name`, `args` and `rule_id`, each
+row carries:
+
+| Field | Meaning |
+|---|---|
+| `reason` | The gate's own words — an approval rule's `description`, or the finding for a command-screening gate. Distinct from `decision_note`, which is the *decider's* note, written when someone answers. |
+| `thread_id` | The conversation that requested it, so a client polling cold can say *which* run is waiting. |
+| `tool_call_id` | The call it is blocking, so a prompt can be attached to the tool card on screen instead of floating free. |
+| `expires_at` | Epoch ms after which the harness stops waiting and denies. `null` when the rule set no `ttl_seconds` — a real state, not a missing value; fall back to your own default. |
+
+Read `thread_id` and `tool_call_id` as **attribution, not ownership**. A pending row is reused for a
+byte-identical call to the same tool in the same manifest, so two threads making that call share one
+row and one decision, and each field names whichever asked first. Filtering by thread therefore
+under-reports rather than over-reports — the safe direction, since a caller asking about one
+conversation never learns about another's.
+
+`reason`, `tool_call_id` and `thread_id` are `""` where the harness genuinely has no answer (a
+command-screening gate has no rule description; a tool called outside a tool loop has no call id;
+a gated tool called outside a chat context has no thread) and on any row created before the field
+existed. Mirror all three as **optional** in a client that must work against an older harness —
+`reason` and `tool_call_id` arrived in `felix-run/felix#245`, `thread_id` in `#232`.
 
 ### `POST /approvals/{approval_id}/decide`
 
