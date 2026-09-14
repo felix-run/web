@@ -103,6 +103,23 @@ assets as reaching whatever they resolve to at load time.
 
 Unattended runs (scheduler, eval replay) refuse approval-gated tools unless `allow_unattended: true`. TTL / one-shot options bound standing grants.
 
+**Reaching the human.** Step 2 emits `approval_required` as a *side event* — a per-thread
+in-process `asyncio.Queue` — which the react loop drains into the stream. That works when the agent
+and the stream are in one process, and a **durable** run is exactly when they are not: the agent is
+in the worker, the stream is served by the API. Two things follow, and they are the whole shape of
+the problem:
+
+- The queue is not the API↔worker channel. Both ends of it are already in the worker.
+- A fiber calls `agent.invoke`, which runs the loop with `emit_events=False`, so the drain never
+  executes at all.
+
+So the row written in step 2 is the only durable record, and both channels read from it.
+`GET /approvals` always has. Since `felix-run/felix#246` the durable stream does too — it reads the
+pending rows for the run's thread and **rebuilds** the frame, gated on `approvals:read`. Rebuilding
+rather than bridging is deliberate: a pub/sub bridge is at-most-once and here the message *is* the
+prompt, so a dropped one costs a decision rather than latency. The same reasoning is why the
+transcript tail reads the session log instead of forwarding display events.
+
 ## Fatal tools
 
 `fatal=True` on a tool aborts the loop with the error as the final message (no model recovery). Use sparingly — quotas, hard security failures, unusable config.
@@ -143,8 +160,18 @@ and never displaces a stricter literal rule.
 scopes". Several contexts carry an empty scope set by construction, and in those a policied
 tool always denies:
 
-- durable fibers (principal `fiber`), scheduled jobs (`cron`), and `felix eval`
+- scheduled jobs (`cron`) and `felix eval`
 - `FELIX_AUTH_MODE=none`, which is what `make dev` sets
+- a **durable fiber with no recorded caller** — one enqueued outside a request context, or
+  before fibers began recording authority
+
+A durable fiber started *from a request* is not in that list: `start_durable_chat` records the
+caller's scopes on the row and the resume rebuilds an `AuthContext` from them, so `spec.policies`
+and `execution.mode: durable` do work together. The principal stays `fiber` rather than the person
+— `on_behalf_of` carries who it is for — so an audit row never claims a human took an action a
+worker took. Authority in durable state is bounded three ways: never wider than the caller's own
+scope set, never outliving the run's `expires_at`, and clamped to the token's `exp` where it has
+one. See `deploy/GOVERNANCE.md` in the harness repo for the table.
 
 `manifests/governed.yaml` policies `calculator` on `tools:calc`, so it denies its own
 calculator under `make dev`. Mint a token carrying the scope rather than removing the policy.

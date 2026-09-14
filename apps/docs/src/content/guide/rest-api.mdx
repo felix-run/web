@@ -208,6 +208,11 @@ session log as `session_event` frames — the same rows, with the same `id:` cur
 and assistant turns of a durable run arrive as they land, across replicas, rather than only as a
 finished answer.
 
+It also announces the gates the run is **blocked on**, as `approval_required` frames — the same
+eight fields the transient path emits, so a client folds them with the handler it already has.
+These need the `approvals:read` scope; see [Approvals on a durable run](#approvals-on-a-durable-run)
+below for why, and for what a caller without it sees instead.
+
 ```
 data: {"event":"run_accepted","data":{"resume_token":"…","expires_at":…}}
 data: {"event":"run_status","data":{"status":"running","resume_token":"…"}}
@@ -217,6 +222,8 @@ data: {"event":"session_event","data":{"id":"…","seq":6,"kind":"message","role
 
 id: 8
 data: {"event":"session_event","data":{"id":"…","seq":7,"kind":"tool_result","role":"tool","content":"42","tool_call_id":"c1"}}
+
+data: {"event":"approval_required","data":{"approval_id":"…","tool_name":"write_file","args":{"path":"notes.txt"},"rule_id":"workspace-write","reason":"writes outside the workspace need a human","thread_id":"acme:demo","tool_call_id":"c2","expires_at":…}}
 
 data: {"event":"final","data":{"role":"assistant","content":"…"}}
 data: [DONE]
@@ -334,14 +341,36 @@ is asking about a decision already made, so show the deadline and stop accepting
 The same number is the *grant's* lifetime — approving authorizes every byte-identical call to that
 tool, matched on a hash of the arguments, until it expires.
 
-**Poll `GET /approvals` as well as reading the stream.** The frame is prompt on a streaming run, but
-side events are a per-thread in-process queue: a **durable** run's agent is in the worker while its
-stream is served by the API, so no *side event* can cross. (What does cross on a durable run, since
-felix#238, is the session log — but an approval request is never written to it, only tool results
-are, so this is unaffected.) The poll is the only channel there — and since
-felix#232 a polled row carries `thread_id` like the frame does, so the two channels attribute a
-waiting approval the same way. See [Approvals](/guide/management-api/#approvals) for how far that
-attribution goes.
+**Poll `GET /approvals` as well as reading the stream.** The frame is prompt on a streaming run, and
+since felix#232 a polled row carries `thread_id` like the frame does, so the two channels attribute
+a waiting approval the same way. See [Approvals](/guide/management-api/#approvals) for how far that
+attribution goes. The poll is still what an operator console should be built on: it finds the
+approvals no stream was open for.
+
+### Approvals on a durable run
+
+A durable run's agent is in the worker while its stream is served by the API, so the in-process side
+event cannot cross. Since **felix#246** the durable stream announces gates anyway — it reads the
+pending rows for the run's thread and **rebuilds** `approval_required` from them, rather than
+forwarding a message over a bus. (A bus would be at-most-once, and here the message *is* the prompt:
+drop it and the run blocks its whole `ttl_seconds` before denying, with nobody ever asked. Rebuilding
+from the durable row also means a client that attaches *after* a gate fired still sees it.)
+
+Three things to know before relying on it:
+
+- **It needs the `approvals:read` scope**, the same one `GET /approvals` needs. Without it a durable
+  run still streams its transcript, status and answer, and says nothing about gates. `thread_id` is
+  supplied by the caller and Felix does not bind a thread to a principal, so ungated this would let
+  chat access alone read the tool names, arguments and gate reasons of any thread in the tenant.
+- **Each gate is announced once per stream.** `GET /approvals` answers "what is pending now", so a
+  row returns on every poll until decided; re-showing a prompt someone already answered is worse
+  than showing it late. A decided **or expired** gate is never announced — both are history.
+- **The poll remains the channel of record.** A stream that was never opened, or that dropped before
+  the gate fired, sees nothing. These frames are a convenience for a watching client, not a
+  replacement for polling.
+
+An approval request is never written to the session log, so the transcript tail added in felix#238
+does not carry it — that is the gap this closes.
 
 :::note[On a harness older than `felix-run/felix#210`, the poll is the only channel anywhere]
 That fix is newer than `v0.2.2`. Before it the harness queued `approval_required` when the call
