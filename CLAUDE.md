@@ -248,7 +248,19 @@ load after the router went in. That key is no longer written at all. `StrictMode
 it: React re-runs a mount effect with the *first* render's closure, so the shell persists from
 current engine state rather than from the captured value.
 
-****The shell is three zones now, and they yield in a fixed order.** `src/routes/workbench.tsx`
+****Tabs come from `@felix/ui/tabs`, never hand-rolled.** Four strips carried
+`role="tablist"`/`role="tab"`/`aria-selected` with no `tabpanel`, no `aria-controls` and no
+arrow-key roving focus — which announces a widget and then does not behave like one, and is worse
+than plain buttons. The run instrument and the Ledger use the primitive now; `tests/workbench-layout.test.tsx`
+asserts the association both ways rather than the roles. An inactive `TabsContent` renders its
+element for the association and **not its children**, which is what keeps one section on screen to
+one poll — `forceMount` would silently undo that and mount all three.
+
+The Memory and Corpus strips are deliberately *not* tabs. They switch the input above a list all
+their modes share, so there is no panel per mode to point at; they are `role="group"` with
+`aria-pressed` buttons, which promises only what they are.
+
+**The shell is three zones now, and they yield in a fixed order.** `src/routes/workbench.tsx`
 renders the workspace (`src/components/workspace/workspace-zone.tsx`, 18rem), the transcript at
 reading width with the composer anchored, and the run instrument
 (`clamp(22rem,24vw,30rem)`). Three zones want 1200px of content before any chrome, so **1280** is

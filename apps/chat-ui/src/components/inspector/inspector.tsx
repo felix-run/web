@@ -1,5 +1,6 @@
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { ClipboardListIcon, GaugeIcon, ListTodoIcon, XIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { decideApproval, deletePlan, getToolMetrics, listApprovals, listPlans } from '@/api';
@@ -78,53 +79,59 @@ export function Inspector({
         fetching to populate a label nobody is reading, which is the cost tabs
         exist to avoid — and the count that actually matters is already in the
         attention line, always, tenant-wide.
-      */}
-      <div
-        role="tablist"
-        aria-label="Run instrument"
-        className="flex shrink-0 gap-1 border-b border-border/60 px-2 py-1.5"
-      >
-        {SECTIONS.map(({ id, label }) => (
-          <Button
-            key={id}
-            role="tab"
-            aria-selected={active === id}
-            variant={active === id ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-7 flex-1 px-2 text-xs"
-            onClick={() => setActive(id)}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="p-3">
-          {/*
-            `bare` chrome: the strip above is the heading, so the section draws
-            none of its own. Each is mounted only while it is the active tab, so
-            `enabled` is simply whether the rail is open.
-          */}
-          <PanelModeProvider chrome="bare">
-            {active === 'approvals' && (
-              <SectionBoundary title="Approvals">
-                <ApprovalsSection enabled={open} open onToggle={() => {}} onPending={() => {}} />
-              </SectionBoundary>
-            )}
-            {active === 'plans' && (
-              <SectionBoundary title="Plans">
-                <PlansSection enabled={open} open onToggle={() => {}} />
-              </SectionBoundary>
-            )}
-            {active === 'metrics' && (
-              <SectionBoundary title="Tools">
-                <MetricsSection enabled={open} open onToggle={() => {}} />
-              </SectionBoundary>
-            )}
-          </PanelModeProvider>
-        </div>
-      </ScrollArea>
+        `@felix/ui/tabs` rather than hand-rolled roles. A `role="tablist"` with
+        `aria-selected` and no `tabpanel`, no `aria-controls` and no arrow-key
+        roving focus announces a widget and then does not behave like one, which
+        is worse than plain buttons. The primitive owns that contract.
+      */}
+      <Tabs
+        value={active}
+        onValueChange={(v) => setActive(v as SectionId)}
+        className="min-h-0 flex-1 gap-0"
+      >
+        <TabsList className="mx-2 mt-1.5 w-auto shrink-0">
+          {SECTIONS.map(({ id, label }) => (
+            <TabsTrigger key={id} value={id} className="text-xs">
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {SECTIONS.map(({ id, label }) => (
+          <TabsContent key={id} value={id} className="min-h-0">
+            <ScrollArea className="h-full">
+              <div className="p-3">
+                {/*
+                  `bare` chrome: the tab is the heading, so the section draws none
+                  of its own.
+
+                  `enabled` is simply whether the rail is open, because an
+                  inactive `TabsContent` renders its element for the ARIA
+                  association but **not its children** — measured: inactive panels
+                  hold zero child nodes, and nine seconds on Plans issued three
+                  `/plans` requests and none to `/approvals` or the tool metrics.
+                  That is the one-section-one-poll economy tabs were chosen for,
+                  and `forceMount` would silently undo it by mounting all three.
+                */}
+                <PanelModeProvider chrome="bare">
+                  <SectionBoundary title={label}>
+                    {id === 'approvals' && (
+                      <ApprovalsSection
+                        enabled={open}
+                        open
+                        onToggle={() => {}}
+                        onPending={() => {}}
+                      />
+                    )}
+                    {id === 'plans' && <PlansSection enabled={open} open onToggle={() => {}} />}
+                    {id === 'metrics' && <MetricsSection enabled={open} open onToggle={() => {}} />}
+                  </SectionBoundary>
+                </PanelModeProvider>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        ))}
+      </Tabs>
     </aside>
   );
 }

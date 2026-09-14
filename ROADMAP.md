@@ -33,21 +33,20 @@ destinations now, alongside the tenant-durable half of the inspector.
 
 ## Cross-cutting
 
-### Four harness routes nothing calls
+### Three harness routes nothing calls
 
-`pnpm check-api-drift` prints seventeen, down from twenty-one once `/documents` was built. Thirteen
-are machine-facing (`/health`, `/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on) and
-belong there. Four are not:
+`pnpm check-api-drift` prints the advisory list; most of it is machine-facing (`/health`,
+`/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on) and belongs there. Three are not.
+`GET /usage/summary` came off this list in #169 — the Ledger totalled a page of rows and called it
+the total, which the route exists to fix.
 
-- `GET /usage/summary` — the Ledger's usage half reads `/usage` and aggregates in the client, which
-  is the shape this route exists to replace. Cheaper to adopt now that the panel has one home
-  (`/harness/ledger`) rather than being a section in a rail.
 - `PUT /plans/{}` — editing a plan. chat-ui reads plans and cannot change one.
 - `POST /eval/runs` — starting an eval. `/harness/eval` shows runs and cannot start one.
 - `POST /chat/sessions/custom` — no client touches it at all.
 
 CLAUDE.md calls that advisory list "the direction where a whole unbuilt feature shows up". What is
-left is smaller than what came off it: three single routes and one aggregate.
+left is smaller than what came off it: three single routes, each of which would add a *write* to a
+surface that currently only reads.
 
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 

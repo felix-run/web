@@ -259,9 +259,14 @@ export function WorkspaceZone({ className }: { className?: string }) {
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 p-3">
+          {/* Named sections: a `<section>` with no accessible name is announced as
+              an anonymous region, which is worse than no landmark at all. */}
           {touched.length > 0 && (
-            <section>
-              <h3 className="mb-1.5 text-xs font-semibold text-muted-foreground">
+            <section aria-labelledby="workspace-touched-heading">
+              <h3
+                id="workspace-touched-heading"
+                className="mb-1.5 text-xs font-semibold text-muted-foreground"
+              >
                 Touched this session
               </h3>
               <ul className="space-y-0.5">
@@ -279,8 +284,13 @@ export function WorkspaceZone({ className }: { className?: string }) {
             </section>
           )}
 
-          <section>
-            <h3 className="mb-1.5 text-xs font-semibold text-muted-foreground">Files</h3>
+          <section aria-labelledby="workspace-files-heading">
+            <h3
+              id="workspace-files-heading"
+              className="mb-1.5 text-xs font-semibold text-muted-foreground"
+            >
+              Files
+            </h3>
             {files.length ? (
               <ul className="space-y-0.5">
                 {files.slice(0, TREE_VISIBLE).map((path) => (

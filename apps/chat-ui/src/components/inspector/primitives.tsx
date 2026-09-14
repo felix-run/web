@@ -131,11 +131,17 @@ export function Section({
   // is an empty page. The heading, the icon and the `meta` count all stay — they
   // are what the row was worth reading at a glance for.
   if (chrome === 'panel') {
+    // The heading names the region rather than merely sitting inside it: a
+    // `<section>` with no accessible name is announced as an anonymous region,
+    // which is worse than no landmark at all.
+    const headingId = `panel-heading-${title.replace(/\W+/g, '-').toLowerCase()}`;
     return (
-      <section className="flex min-h-0 flex-1 flex-col">
+      <section aria-labelledby={headingId} className="flex min-h-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3">
           <span className="shrink-0 text-muted-foreground">{icon}</span>
-          <h2 className="flex-1 truncate text-sm font-semibold">{title}</h2>
+          <h2 id={headingId} className="flex-1 truncate text-sm font-semibold">
+            {title}
+          </h2>
           {meta ? (
             <span
               className={cn(

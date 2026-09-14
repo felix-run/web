@@ -185,11 +185,8 @@ recorded here and nowhere a later agent would look first.
 
 ## Unresolved
 
-- **A durable run's tool calls never reach the transcript live**, so `Touched this session` is
-  empty during exactly the manifest the workspace zone exists for. The stream carries
-  `run_accepted` → `run_status` → `final` and no tool frames; the calls are in the harness's own
-  transcript and arrive only on the next hydration. Measured against `cowork` on 2026-09-12:
-  `write_file` was invisible until a reload, then appeared with its arguments intact. This is the
-  run loop, not the panel, and it hides the tool *cards* too — the bigger half. Fixing it means
-  hydrating when a durable run completes, which replaces a streamed transcript with a snapshot
-  rebuild and therefore needs its own verification.
+*Nothing outstanding.* The durable-run gap that stood here — a run's tool calls never reaching the
+transcript live — is closed: the engine settles a stream that ended without `final` (#165), the
+harness tails the session log between status frames (felix-run/felix#238), and the engine folds
+those `session_event` frames on the durable path (#167). Verified end to end on 2026-09-12 once a
+thread-id collision was ruled out.

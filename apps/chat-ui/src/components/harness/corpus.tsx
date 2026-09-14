@@ -82,7 +82,17 @@ export function DocumentsSection({
       open={open}
       onToggle={onToggle}
     >
-      <div className="mb-2 flex gap-1" role="tablist" aria-label="Corpus view">
+      {/*
+        A toggle group, not tabs — and deliberately not the `@felix/ui/tabs` the
+        Ledger and the run instrument use. Those switch between independent
+        panels; these switch the *input* above a list all three modes share, so
+        there is no panel per mode to point an `aria-controls` at. It previously
+        carried `role="tablist"`/`role="tab"`/`aria-selected` with no `tabpanel`
+        and no arrow-key roving focus, which announces a widget and then does not
+        behave like one. `aria-pressed` on buttons in a named group promises only
+        what this actually is.
+      */}
+      <div className="mb-2 flex gap-1" role="group" aria-label="Corpus view">
         {(
           [
             ['recent', 'Documents'],
@@ -93,8 +103,7 @@ export function DocumentsSection({
           <button
             key={id}
             type="button"
-            role="tab"
-            aria-selected={mode === id}
+            aria-pressed={mode === id}
             onClick={() => setMode(id)}
             className={cn(
               'rounded px-2 py-1 text-xs transition-colors',

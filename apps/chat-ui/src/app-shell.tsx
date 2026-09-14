@@ -1116,8 +1116,12 @@ export function AppShell() {
         )}
         <div className="flex min-w-0 items-center gap-2 px-1.5">
           {/* Wordmark: caps via CSS, not in the string, so the accessible name
-              and anything copied out stay the proper noun. */}
-          <span className="truncate font-semibold uppercase tracking-wider">Felix</span>
+              and anything copied out stay the proper noun.
+
+              An `h1` because the document had none — every page began at `h2`,
+              so there was no top-level heading naming the application for anyone
+              navigating by heading. */}
+          <h1 className="truncate text-base font-semibold uppercase tracking-wider">Felix</h1>
           {verbose && (
             <Badge variant="secondary" className="hidden font-normal sm:inline-flex">
               Verbose

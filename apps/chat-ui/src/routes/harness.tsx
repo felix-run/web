@@ -1,4 +1,5 @@
 import { Button } from '@felix/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import {
   ActivityIcon,
   BookOpenIcon,
@@ -85,33 +86,36 @@ function LedgerPanel() {
   const [half, setHalf] = useState<'activity' | 'usage'>('activity');
   return (
     <Panel>
-      <PanelHeader className="flex items-center gap-3">
-        <PanelTitle className="flex-1">Ledger</PanelTitle>
-        <div role="tablist" aria-label="Ledger view" className="flex gap-1">
-          {(['activity', 'usage'] as const).map((id) => (
-            <Button
-              key={id}
-              role="tab"
-              aria-selected={half === id}
-              size="sm"
-              variant={half === id ? 'secondary' : 'ghost'}
-              className="h-7 px-2.5 text-xs capitalize"
-              onClick={() => setHalf(id)}
-            >
-              {id}
-            </Button>
-          ))}
-        </div>
-      </PanelHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      {/*
+        `@felix/ui/tabs` rather than hand-rolled roles: a `role="tablist"` with no
+        `tabpanel`, no `aria-controls` and no arrow-key roving focus announces a
+        widget that does not behave like one.
+      */}
+      <Tabs
+        value={half}
+        onValueChange={(v) => setHalf(v as 'activity' | 'usage')}
+        className="min-h-0 flex-1 gap-0"
+      >
+        <PanelHeader className="flex items-center gap-3">
+          <PanelTitle className="flex-1">Ledger</PanelTitle>
+          <TabsList aria-label="Ledger view" className="w-auto">
+            <TabsTrigger value="activity" className="px-2.5 text-xs">
+              Activity
+            </TabsTrigger>
+            <TabsTrigger value="usage" className="px-2.5 text-xs">
+              Usage
+            </TabsTrigger>
+          </TabsList>
+        </PanelHeader>
         <PanelModeProvider chrome="bare">
-          {half === 'activity' ? (
+          <TabsContent value="activity" className="min-h-0 overflow-y-auto p-4">
             <ActivitySection enabled open onToggle={() => {}} />
-          ) : (
+          </TabsContent>
+          <TabsContent value="usage" className="min-h-0 overflow-y-auto p-4">
             <UsageSection enabled open onToggle={() => {}} />
-          )}
+          </TabsContent>
         </PanelModeProvider>
-      </div>
+      </Tabs>
     </Panel>
   );
 }
