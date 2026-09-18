@@ -682,7 +682,26 @@ a preview plus an `[artifact:<id> key=<key> …]` marker. Keys are tenant-scoped
 | `replan_on_failure` | bool | `true` |
 | `max_replans` | int 0–5 | `2` |
 | `executor_recursion_limit` | int 1–20 | `6` |
-| `planner_few_shots` | int 0–10 | `3` |
+
+`planner_model` routes the planning turn and `executor_model` the per-subtask agent; empty
+keeps `spec.model` for that turn, and everything else on `spec.model` — price overrides,
+fallbacks, thinking level — is carried across either way. Naming a planner route chooses
+which route plans, not which model configuration applies. A `model` named on the request
+outranks both.
+
+`replan_on_failure` replaces the *unfinished remainder* of the plan when a subtask ends
+early, keeping the completed steps and their notes; `max_replans` bounds it, and `0` turns
+it off as surely as the boolean does. "Ends early" means the subtask stopped on `refusal`
+or `max_tokens` — a governance denial or a truncated answer. A short answer is not a
+failure, so it does not replan. `max_subtasks` bounds the whole run, not each plan: a
+replan is asked only for the budget the ceiling has left.
+
+:::caution[Removed after 0.3.0]
+`planner_few_shots` is gone. It named a count of planner examples with no corpus behind it,
+so nothing could make it mean anything. A stored manifest that sets it still loads — the
+field is stripped on read with a warning rather than failing under `extra: forbid`. Delete
+the line to clear the warning; nothing else changes, because nothing ever read the value.
+:::
 
 ## `spec.procedural_memory`
 

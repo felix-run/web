@@ -19,7 +19,7 @@ Patterns are the agent's loop shape. Built-ins self-register via `register_patte
 | **parallel** | multi | Fan-out all children, then aggregator synthesis; parent owns the session |
 | **groupchat** | multi | Round-robin speakers sharing a parent transcript (`max_turns`) |
 | **reflect** | single | react + verifier model; below-threshold critique replays up to `max_iterations` |
-| **plan_execute** | single | Planner decomposes → per-subtask react executor → synthesis; optional replan |
+| **plan_execute** | single | Planner decomposes → per-subtask react executor → synthesis; replans the remainder when a subtask ends early |
 
 ## react (default)
 
@@ -29,6 +29,29 @@ Patterns are the agent's loop shape. Built-ins self-register via `register_patte
 4. Stop on non-`tool_use`, fatal tool, or recursion exhaustion.
 
 Streaming uses an async generator: text deltas yield; the final structured result (tool calls + usage) is the generator return value — no second non-stream call.
+
+## plan_execute
+
+Three kinds of turn, and they do not share a model unless you let them.
+
+1. **Plan** — one call to `planner_model` (or `spec.model`) for a numbered list, truncated to `max_subtasks`.
+2. **Execute** — each subtask runs on a react agent built from `executor_model` and `executor_recursion_limit`, with the earlier subtasks' notes in its prompt.
+3. **Synthesise** — one call on `spec.model` composing the answer from the notes. This is the answering turn, so it is the one that carries `spec.output_schema`; the planning and executing turns stay free-form, because a plan shaped like the answer schema is not a plan.
+
+That split is the reason to reach for the pattern: planning is one call whose quality shapes everything after it, execution is many narrow calls. "Plan with the expensive model, execute with the cheap one" is the lever.
+
+### Replanning
+
+When a subtask ends on `refusal` or `max_tokens` — governance replaced the reply, or the model was cut off mid-answer — the note the synthesiser would record is not an answer. With `replan_on_failure`, the planner is asked again for the *remaining* work only, described rather than reissued verbatim, and the completed steps keep their notes. `max_replans` bounds it; `max_subtasks` still bounds the whole run, so a replan asks only for the budget the ceiling has left.
+
+Deliberately not a failure: an empty or unhelpful answer. That step ran to completion and produced little, which is a planning problem — replanning on it would spend the budget looping on subtasks that are simply hard to say anything about.
+
+<Aside type="caution" title="Procedural memory reaches the executor, not the planner">
+`_inject_procedures` lives in the react loop, so `spec.procedural_memory` recalls how-tos for
+each *subtask* run. The planning call goes straight to the model and never passes through
+react, so stored procedures do not shape the plan. Put planning guidance in the manifest's
+system prompt, which the planner does receive.
+</Aside>
 
 ## Multi-agent thread discipline
 
@@ -46,5 +69,5 @@ Streaming uses an async generator: text deltas yield; the final structured resul
 - **Durable** — `spec.execution.mode: durable` wraps any pattern so invoke enqueues a fiber / Temporal run (see [architecture](/internals/architecture/)).
 
 :::tip
-Pick **reflect** when one shot might be right and you want quality via replay. Pick **plan_execute** when the task is multi-phase and a single react loop loses the plot — pair with `procedural_memory` for planner few-shots.
+Pick **reflect** when one shot might be right and you want quality via replay. Pick **plan_execute** when the task is multi-phase and a single react loop loses the plot.
 :::

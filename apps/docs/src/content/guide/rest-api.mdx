@@ -290,7 +290,7 @@ present, else `data.text` or `data.delta`, else `""`.
 | `aborted` | `{"thread_id":str}` | `POST /chat/abort` was observed |
 | `on_error` | `{"message":str}` | The run failed mid-stream. Not terminal — the stream still ends with `done`/`[DONE]`, so a client that ignores it reports success |
 | `on_chain_end` | `{"output": InvokeOutput}` | Penultimate frame; carries per-turn `usage` |
-| `done` | `{"final": ChatMessage, "messages":[…]}` | Final frame before `[DONE]` |
+| `done` | `{"final": ChatMessage, "messages":[…], "stop_reason": str}` | Final frame before `[DONE]`. `stop_reason` is how the run ended — `end_turn`, `tool_use`, `max_tokens`, `stop_sequence`, `pause_turn`, `refusal`, `unknown` — and is what `/v1` maps to `finish_reason` |
 
 :::note
 `tool_request`, `approval_required` and `ui_request` are **side-channel** frames: the blocked tool
