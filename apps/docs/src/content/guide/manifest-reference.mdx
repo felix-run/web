@@ -224,6 +224,7 @@ spec:
 | `env` | map[string,string] | `{}` | |
 | `auth` | string | `""` | Literal token or `secret:NAME`. |
 | `transport` | `http` \| `sse` \| `stdio` | `sse` | |
+| `tools` | string[] | `[]` | Glob patterns over the **remote** tool names (`issue_write`, not `github__issue_write`). Empty binds every tool the server lists. Non-empty binds only matches, which is what lets an approval or policy rule enumerate a server's write tools rather than gate whatever it served on the day; a pattern that matches nothing is logged at bind time, not refused. |
 
 Outbound URLs pass an SSRF guard. Parsing checks what needs no lookup — scheme, plain `http`
 outside development, internal names and suffixes, and IP literals including the decimal form.
@@ -310,6 +311,39 @@ Container-backed code execution (the `sandbox` extra, Docker).
 | `path_prefix` | string | `""` |
 | `args_schema` | JSON Schema \| null | `null` |
 | `fatal` | bool | `false` |
+
+## `spec.shell_tools`
+
+Exec an allowlisted argv on the host the API runs on, in the `FELIX_WORKSPACE_ROOT` checkout —
+the tool that lets a coding agent run the repository's own gates. No shell interpreter: `&&`,
+`|` and `;` are literal arguments.
+
+```yaml
+spec:
+  shell_tools:
+    - name: run
+      commands: [uv run ruff, ./scripts/test.sh, git status, git diff]
+      timeout_ms: 300000
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `name` | string | required | |
+| `description` | string | `""` | Defaults to a sentence naming the allowed prefixes. |
+| `commands` | string[] | required | argv prefixes, matched token for token from `argv[0]`. `git status` covers `git status --short`, not `git push` and not `git -c x status`. |
+| `timeout_ms` | int \| null | `null` | Default 300 s; the process is killed at the limit. |
+| `fatal` | bool | `false` | |
+
+The tool takes `argv` (list), `cwd` (relative to the workspace root) and optional `stdin`, and
+returns `exit_code`, `stdout`, `stderr` (each capped and marked `truncated`), `timed_out` and
+`duration_ms`. `argv` is command-screened like a sandbox payload.
+
+:::caution[disabled by default]
+Every prefix in `commands` must be covered by one in `FELIX_SHELL_ALLOWED_COMMANDS` (comma-separated;
+empty, the default, refuses every shell tool). Checked on manifest **write** (`400`), at compile,
+and per call. The child inherits only `PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ`. What the allowlist
+cannot bound: a listed command runs repository code as the API's user — the host is the boundary.
+:::
 
 ## `spec.browser_tools`
 
