@@ -93,10 +93,13 @@ no `tool` — `inbound_screening` carries `surface` (`turn` or `tool_arguments`)
 
 `policy_deny` covers every governance denial **that a tool call ran into**, not only
 `spec.policies`: command and content screening, limits, guardrails, tool-targeted judges and
-pending approvals all return a deny marker the loop records under this one name. To attribute one
-to a layer, correlate with the Prometheus counters — `felix_policy_deny`,
-`felix_approval_required`, `felix_content_screening`, `felix_inbound_screening` — described in
-[Observability](/internals/observability/).
+pending approvals all return a deny marker the loop records under this one name. The row's
+`payload.control` names the layer — one of `policy`, `limits`, `guardrails`, `approvals`,
+`command`, `screening` — so `GET /audit?event_type=policy_deny` filtered on it answers "every
+call approvals blocked this week" without correlating counters. The Prometheus counters —
+`felix_policy_deny`, `felix_approval_required`, `felix_content_screening`,
+`felix_inbound_screening`, described in [Observability](/internals/observability/) — still carry
+the per-rule detail (which policy, which judge) the audit row does not.
 
 Secret values are masked out of payloads before they are written.
 
@@ -336,6 +339,13 @@ curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
 | `payload` | object | `{}` |
 | `enabled` | bool | `true` |
 
+`payload.prompt` (or `payload.message`) is the user turn the manifest is invoked with; the rest
+of the payload is the job's to interpret. Every firing runs on one thread named after the job,
+so a job that should remember its last run — a weekly digest — does. Set `payload.fresh_thread:
+true` for a job that works something different each time, such as the next ticket in a queue:
+each firing then gets a thread of its own, so one run's transcript never sits in the next run's
+context.
+
 Schedules use standard five-field cron — see [Deploy](/guide/deploy/#cron-schedules).
 
 ## Manifests
@@ -472,16 +482,22 @@ curl -s -X PUT "$BASE_URL/eval/datasets/refunds" \
 
 ### Rubric keys
 
-An item's `rubric` is free-form JSON, and only these keys are read. The scorer picks **one** rule
-per item, in this order, and stops at the first one present:
+An item's `rubric` is free-form JSON, and only these keys are read. Trajectory rules are read
+first and can only reject — an item that names one and an answer rule needs both. Then the
+scorer picks **one** answer rule per item, in this order, and stops at the first one present:
 
 | Key | Rule | Passes when |
 |---|---|---|
+| `tools_called` | `tools_called` | every named tool was invoked at least once during the run |
+| `tools_not_called` | `tools_not_called` | none of the named tools was invoked |
+| `max_tool_calls` | `max_tool_calls` | the run made at most that many tool calls |
+| `max_errors` | `max_errors` | at most that many tool calls came back as an error or a governance denial |
 | `expect`, or `equals` | `equals` | the answer equals it, after stripping whitespace |
 | `contains` | `contains` | the answer contains it, case-insensitively |
 | `min_chars` | `min_chars` | the stripped answer is at least that long |
 | *(none of the above)* | `nonempty` | the answer is not blank — **any** answer passes |
 | `mock_answer` | — | the answer `--mock` scores instead of calling a model |
+| `mock_tool_calls`, `mock_tool_errors` | — | the trajectory `--mock` scores: a list of tool names and an error count |
 
 Judging is separate and only runs when the rubric names `llm_judge`, `judge_criteria` or
 `judge_model` — or when the request sends `use_llm_judge: true`. It then reads `judge_criteria`
@@ -511,8 +527,9 @@ Nothing is written when the batch is refused.
   passes any non-blank answer, so the dataset gates nothing. That returns `200` with a `warnings`
   array alongside the stored dataset; `felix eval --fixture` prints the same warning to stderr.
 
-  `contains: ""` and a negative `min_chars` are handled further down, at scoring: a rubric that
-  could never reject is scored `invalid_rubric` and fails closed.
+  `contains: ""`, a negative `min_chars`, an empty `tools_called` and a negative `max_tool_calls`
+  are handled further down, at scoring: a rubric that could never reject is scored
+  `invalid_rubric` and fails closed.
 </Aside>
 
 Run one:
