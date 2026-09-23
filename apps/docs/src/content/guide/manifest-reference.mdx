@@ -503,12 +503,20 @@ which returns `[error/timeout] client tool timed out` as the tool result. See
 `sub_agents` is a list of manifest names, required by the multi-agent patterns and resolved at build
 time. `aggregator_prompt` (string, `""`) tells `parallel` and `groupchat` how to merge their results.
 
-## `spec.max_turns`
+## `spec.max_turns` and `spec.recursion_limit`
 
 ```yaml
 spec:
-  max_turns: 4   # default; ceiling 100
+  max_turns: 4          # rounds for the multi-agent patterns; default 4, ceiling 100
+  recursion_limit: 10   # steps for a react loop; default 10, ceiling 50
 ```
+
+They bound different loops. `max_turns` is read by `groupchat`, `plan_execute` and the other
+delegating patterns. A `react` agent — the default pattern — is bounded by `recursion_limit`,
+where one step is a model call plus the tool batch it asked for; `max_turns` on a react agent
+bounds nothing, and the compile step warns (`felix_rule_targets_nothing{kind="max_turns"}`).
+A react loop that runs out of steps with tool calls still pending ends with
+`stop_reason: max_turns`, a `truncated` session status, and `felix_run_stop_reason{reason="max_turns"}`.
 
 ## `spec.memory`
 
