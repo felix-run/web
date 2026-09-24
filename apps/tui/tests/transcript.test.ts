@@ -87,6 +87,25 @@ describe('an assistant turn', () => {
     usage: { input: 120, output: 40 },
   };
 
+  it('says when the run ran out of steps, under the answer it cut short', async () => {
+    const cut: Turn = {
+      ...reply,
+      id: 'a2',
+      content: 'half an answer',
+      stop: { reason: 'max_turns', limit: 10 },
+    };
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [cut] }), {
+      width: 80,
+      height: 8,
+    });
+    try {
+      await ui.until(() => shows(ui.frame(), 'step limit (10)'));
+      expect(shows(ui.frame(), 'half an answer')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
   it('draws prose, the fence and the list', async () => {
     const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [reply] }), {
       width: 60,

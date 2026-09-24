@@ -258,6 +258,13 @@ function AssistantTurn({
           <Prose key={`p${i}`} text={segment.text} streaming={live && i === tail} theme={theme} />
         );
       })}
+      {turn.stop ? (
+        <text fg={theme.blocked}>
+          {'  '}stopped at the step limit
+          {turn.stop.limit === undefined ? '' : ` (${turn.stop.limit})`} with tool calls still
+          pending
+        </text>
+      ) : null}
       {turn.usage ? (
         <text attributes={DIM}>
           {'  '}

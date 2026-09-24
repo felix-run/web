@@ -64,6 +64,14 @@ export interface Turn {
   usage?: TokenUsage;
   /** Server event id when hydrated from a session snapshot (enables rewind). */
   eventId?: string;
+  /**
+   * Why the run stopped short, when it did. Set from the `max_turns` frame: the
+   * react loop ran out of `recursion_limit` steps with tool calls still pending,
+   * so the content above is an answer cut off mid-thought, not a finished one.
+   * Live only — the session log carries no such event, so a hydrated turn has
+   * none.
+   */
+  stop?: { reason: 'max_turns'; limit?: number };
 }
 
 /**

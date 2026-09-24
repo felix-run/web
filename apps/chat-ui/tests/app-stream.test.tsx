@@ -180,6 +180,20 @@ describe('usage', () => {
   });
 });
 
+describe('a run that ran out of steps', () => {
+  it('says so under the turn the cut landed on, with the limit', async () => {
+    stubFetch([
+      { event: 'text_delta', data: { delta: 'half an answer' } },
+      { event: 'max_turns', data: { limit: 10 } },
+      { event: 'done', data: { final: { content: 'half an answer' }, stop_reason: 'max_turns' } },
+    ]);
+    mount();
+    await send();
+    await seeText('half an answer');
+    await seeText('Stopped at the step limit (10)');
+  });
+});
+
 describe('failure after a 200', () => {
   it('surfaces the normalised on_error frame', async () => {
     // `event: error` is the harness's one SSE-typed frame and the only way a
