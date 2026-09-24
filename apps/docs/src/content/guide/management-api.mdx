@@ -96,7 +96,9 @@ no `tool` — `inbound_screening` carries `surface` (`turn` or `tool_arguments`)
 pending approvals all return a deny marker the loop records under this one name. The row's
 `payload.control` names the layer — one of `policy`, `limits`, `guardrails`, `approvals`,
 `command`, `screening` — so `GET /audit?event_type=policy_deny` filtered on it answers "every
-call approvals blocked this week" without correlating counters. The Prometheus counters —
+call approvals blocked this week" without correlating counters. The web UI's Ledger names the
+layer on the row and filters its window to one layer; a row from a harness that predates the
+field reads as plain `Blocked`. The Prometheus counters —
 `felix_policy_deny`, `felix_approval_required`, `felix_content_screening`,
 `felix_inbound_screening`, described in [Observability](/internals/observability/) — still carry
 the per-rule detail (which policy, which judge) the audit row does not.
@@ -344,7 +346,8 @@ of the payload is the job's to interpret. Every firing runs on one thread named 
 so a job that should remember its last run — a weekly digest — does. Set `payload.fresh_thread:
 true` for a job that works something different each time, such as the next ticket in a queue:
 each firing then gets a thread of its own, so one run's transcript never sits in the next run's
-context.
+context. Both are fields on the web UI's job form, and a stored job's row says which mode it runs
+in.
 
 Schedules use standard five-field cron — see [Deploy](/guide/deploy/#cron-schedules).
 
@@ -484,7 +487,9 @@ curl -s -X PUT "$BASE_URL/eval/datasets/refunds" \
 
 An item's `rubric` is free-form JSON, and only these keys are read. Trajectory rules are read
 first and can only reject — an item that names one and an answer rule needs both. Then the
-scorer picks **one** answer rule per item, in this order, and stops at the first one present:
+scorer picks **one** answer rule per item, in this order, and stops at the first one present.
+The web UI's eval workbench authors exactly these keys, previews the reading an item will get
+before it is stored, and shows the `rule` that decided each score:
 
 | Key | Rule | Passes when |
 |---|---|---|

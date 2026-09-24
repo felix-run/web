@@ -106,11 +106,40 @@ export interface EvalComparison {
 // Shapes mirror src/eval/types.ts. The UI authors a simplified rubric
 // (criteria + must_include + threshold); the harness fills rubric defaults.
 
+/**
+ * An eval item's rubric: the keys `felix.eval.runner._score_answer` reads, and
+ * nothing else.
+ *
+ * The previous shape — `criteria`, `must_include`, `must_not_include`,
+ * `pass_threshold` — shared one key with the harness, and that one (`criteria`)
+ * only *tunes* a judge without selecting one. Every item the Add form wrote
+ * therefore named no rule the scorer reads and fell through to `nonempty`, which
+ * passes any answer that is not blank: a dataset that looked configured and gated
+ * nothing. See the rubric table in the management API guide.
+ *
+ * Trajectory rules are read first and can only reject. Then exactly one answer
+ * rule applies, in this order: `expect`/`equals`, `contains`, `min_chars`, else
+ * `nonempty`. A judge runs only when `llm_judge`, `judge_criteria` or
+ * `judge_model` is set, and its verdict replaces the answer rule.
+ */
 export interface Rubric {
+  tools_called?: string[];
+  tools_not_called?: string[];
+  max_tool_calls?: number;
+  max_errors?: number;
+  expect?: string;
+  equals?: string;
+  contains?: string;
+  min_chars?: number | string;
+  llm_judge?: boolean;
+  judge_criteria?: string;
+  judge_model?: string;
+  judge_threshold?: number;
+  /** Judge tuning only; does not select the judge. */
   criteria?: string;
-  must_include?: string[];
-  must_not_include?: string[];
-  pass_threshold?: number;
+  mock_answer?: string;
+  /** Free-form on the wire; anything else is stored and ignored by the scorer. */
+  [key: string]: unknown;
 }
 
 export interface EvalDataset {
@@ -129,16 +158,33 @@ export interface EvalDatasetItem {
   created_at?: number;
 }
 
+/**
+ * One item's score, as `felix.eval.runner` builds it.
+ *
+ * `rule` is the harness's own name for what decided the row — one of the rubric
+ * keys, `nonempty`, `invalid_rubric`, or `llm_judge` — and is the thing worth
+ * reading on a failure. `reason` is set by a judge, or by a judge that fell back
+ * (`llm_fallback:…`). `error` replaces the rest on an item that never reached
+ * the scorer; such rows are counted in `fail_count` *and* `error_count`.
+ *
+ * Nothing here is nested inside the run row's `scores` list on the wire, so
+ * `check-payload-shapes` cannot see it; the previous shape (`verdict`,
+ * `reasoning`, `response`, per-item tokens) matched no field the runner writes
+ * and rendered an empty verdict on every row.
+ */
 export interface ItemScore {
   item_id: string;
-  score: number;
-  verdict: 'pass' | 'fail';
-  reasoning: string;
-  response: string;
-  tokens_input?: number | null;
-  tokens_output?: number | null;
-  tool_call_count?: number | null;
-  duration_ms?: number | null;
+  pass?: boolean;
+  score?: number;
+  rule?: string;
+  /** The answer, cut at 500 characters by the harness. */
+  answer?: string;
+  reason?: string;
+  mock?: boolean;
+  /** Tool invocations the run made, and how many came back as an error or a denial. */
+  tool_calls?: number;
+  tool_errors?: number;
+  error?: string;
 }
 
 export interface EvalRun {
@@ -150,6 +196,13 @@ export interface EvalRun {
   status: 'in_progress' | 'completed' | 'failed';
   pass_count: number;
   fail_count: number;
+  /**
+   * Items that never reached the scorer — a malformed item, a run that threw.
+   * A subset of `fail_count`, which keeps meaning "did not pass" for the CLI's
+   * exit code; this is what tells a malformed dataset from a rejected one.
+   * Optional because a harness before `felix-run/felix@6853057` does not send it.
+   */
+  error_count?: number;
   scores: ItemScore[];
 }
 
