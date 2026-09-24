@@ -66,6 +66,15 @@ const run = (engine: ReturnType<typeof createChatEngine>) =>
 
 const delta = (text: string) => ({ event: 'text_delta', data: { delta: text } });
 
+/** Poll a condition rather than sleeping a fixed time: the stream is read on a task. */
+async function until(cond: () => boolean, ms = 2000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error('condition not met in time');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 beforeEach(() => {
   vi.unstubAllGlobals();
 });
@@ -331,6 +340,171 @@ describe('a durable run', () => {
     expect(
       engine.state.turns.filter((t) => t.role === 'user' && t.content === 'hello'),
     ).toHaveLength(1);
+  });
+
+  /**
+   * A blocked run says what is blocking it.
+   *
+   * No approval frame can reach a durable run's stream, so the `/approvals`
+   * poll is the only way a client learns the run is waiting on a person — and it
+   * used to put that in a banner while the turn kept saying `Background ·
+   * running…`. An operator reading the turn typed "proceed" into the composer,
+   * and the write timed out twice (2026-09-23). The status line names the gate
+   * now, and goes back to reporting the run once the approval is answered.
+   */
+  it('names the approval it is waiting on, and stops once it is answered', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    posted = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes('/chat/stream')) {
+          return sse([
+            { event: 'run_accepted', data: { resume_token: 'fib_1' } },
+            { event: 'run_status', data: { status: 'running' } },
+          ]);
+        }
+        if (url.includes('/approvals')) {
+          return new Response(
+            JSON.stringify({
+              requests: [
+                {
+                  id: 'ap-1',
+                  tenant_id: 't',
+                  manifest_id: 'cowork',
+                  tool_name: 'write_file',
+                  call_signature: 'sig',
+                  args: { path: 'notes/todo.md', content: 'do the thing' },
+                  principal_subj: 'fiber',
+                  status: 'pending',
+                  created_at: 1,
+                  decided_at: null,
+                  decided_by: '',
+                  decision_note: '',
+                  edited_args: null,
+                  rule_id: 'workspace-write',
+                  ttl_seconds: 600,
+                  expires_at: 600_001,
+                  consumed_at: null,
+                  thread_id: 'default:t1',
+                },
+              ],
+            }),
+          );
+        }
+        if (url.includes('/chat/runs/')) {
+          // The stream ended without `final`, so the engine polls; hold the poll
+          // open until the test has looked at the turn mid-run.
+          await gate;
+          return new Response(
+            JSON.stringify({ status: 'completed', final: { content: 'wrote it' } }),
+          );
+        }
+        return new Response('{}');
+      }),
+    );
+    let n = 0;
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+      newId: () => `id-${++n}`,
+    } as Parameters<typeof createChatEngine>[0]);
+    engine.setTurns([
+      { id: 'u1', role: 'user', content: 'hello' },
+      { id: 'a1', role: 'assistant', content: '', tools: [] },
+    ]);
+    const status = () => engine.state.turns.find((t) => t.id === 'a1')?.content;
+
+    const finished = run(engine);
+    await until(() => status() === 'Background · running…');
+
+    await engine.syncApprovals();
+    expect(status()).toBe('Waiting on your approval · Write notes/todo.md (12 chars)');
+
+    engine.shiftApproval();
+    expect(status()).toBe('Background · running…');
+
+    release();
+    await finished;
+    expect(status()).toBe('wrote it');
+  });
+
+  /**
+   * A run stopped mid-wait is not in flight any more, so the answer to an
+   * approval that arrives afterwards must not rewrite the turn it left behind.
+   */
+  it('leaves an aborted turn alone when its approval is answered later', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes('/chat/stream')) {
+          return sse([
+            { event: 'run_accepted', data: { resume_token: 'fib_2' } },
+            { event: 'run_status', data: { status: 'running' } },
+          ]);
+        }
+        if (url.includes('/approvals')) {
+          return new Response(
+            JSON.stringify({
+              requests: [
+                {
+                  id: 'ap-2',
+                  tenant_id: 't',
+                  manifest_id: 'cowork',
+                  tool_name: 'local_shell',
+                  call_signature: 'sig',
+                  args: { command: 'ls' },
+                  principal_subj: 'fiber',
+                  status: 'pending',
+                  created_at: 1,
+                  decided_at: null,
+                  decided_by: '',
+                  decision_note: '',
+                  edited_args: null,
+                  rule_id: 'client-shell',
+                  ttl_seconds: 600,
+                  expires_at: 600_001,
+                  consumed_at: null,
+                },
+              ],
+            }),
+          );
+        }
+        if (url.includes('/chat/runs/')) {
+          // Still going, as the harness would say. The poll checks the abort
+          // signal before each request, so the run ends on the next tick.
+          return new Response(JSON.stringify({ status: 'running' }));
+        }
+        return new Response('{}');
+      }),
+    );
+    let n = 0;
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+      newId: () => `id-${++n}`,
+    } as Parameters<typeof createChatEngine>[0]);
+    engine.setTurns([
+      { id: 'u1', role: 'user', content: 'hello' },
+      { id: 'a1', role: 'assistant', content: '', tools: [] },
+    ]);
+    const status = () => engine.state.turns.find((t) => t.id === 'a1')?.content;
+
+    const finished = run(engine);
+    await until(() => status() === 'Background · running…');
+    await engine.syncApprovals();
+    expect(status()).toBe('Waiting on your approval · Shell: ls');
+
+    engine.abort();
+    await finished;
+    const after = status();
+    engine.shiftApproval();
+    expect(status()).toBe(after);
   });
 
   /** Outside a durable run these frames stay inert — `reattachThread` owns them. */

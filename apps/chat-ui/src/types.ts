@@ -21,6 +21,7 @@ export type {
   TurnSegment,
 } from '@felix/client';
 export {
+  type ApprovalOutcome,
   type ArtifactContent,
   AUDIT_EVENT_TYPES,
   type AuditEvent,
@@ -29,6 +30,7 @@ export {
   DOCUMENT_LIMITS,
   type DocumentHit,
   type DocumentRecord,
+  describeRefusal,
   type MemoryHit,
   type MemoryRecord,
   type Plan,
@@ -36,6 +38,7 @@ export {
   type PlanStep,
   type PlanStepStatus,
   type PlanWire,
+  parseApprovalOutcome,
   type ToolMetrics,
   type ToolMetricsRow,
   type UsageEvent,

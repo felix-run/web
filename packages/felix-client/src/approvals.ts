@@ -200,6 +200,71 @@ export function summarizeToolArgs(toolName: string, args: Record<string, unknown
   }
 }
 
+/**
+ * A gated call as one short phrase — `Write notes/todo.md (57 chars)`, or just
+ * the tool's name when there is no sentence for it.
+ *
+ * `summarizeToolArgs` falls back to pretty-printed JSON, which is right for a
+ * card and wrong for a status line: a turn reading "Waiting on your approval"
+ * followed by six lines of arguments is a banner, and the banner already
+ * exists. So an unknown tool contributes its name and nothing else.
+ */
+export function describeGate(toolName: string, args: Record<string, unknown>): string {
+  return toolName === 'write_file' || toolName === 'local_shell' || toolName === 'local_open'
+    ? summarizeToolArgs(toolName, args)
+    : toolName;
+}
+
+/**
+ * What a gated call's *result* says happened to it.
+ *
+ * When a decision is anything but `approved`, the harness hands the model —
+ * and the transcript — a tool result spelled `[approval <note>] tool=<name>
+ * rule=<id>` (`manifests/builder.py`), where `<note>` is `timeout` when nobody
+ * answered, `denied` when someone refused without a word, or the refuser's own
+ * note. Rendered raw, a write that timed out looked like a tool that ran and
+ * printed a bracket; rendered as nothing, which is what an empty final turn
+ * after it amounts to, it looked like the agent gave up. Both were observed on
+ * 2026-09-23, on a run an operator was watching.
+ *
+ * `[approval required]` is the same shape with a different meaning — the call
+ * is *waiting*, not refused — so `note` is returned as-is and `describeRefusal`
+ * is what decides which notes are refusals.
+ */
+export interface ApprovalOutcome {
+  note: string;
+  toolName: string;
+  ruleId?: string;
+}
+
+export function parseApprovalOutcome(output: unknown): ApprovalOutcome | null {
+  if (typeof output !== 'string') return null;
+  const m = /^\[approval ([^\]]+)\] tool=(\S+)(?: rule=(\S+))?/.exec(output);
+  if (!m?.[1] || !m[2]) return null;
+  return { note: m[1], toolName: m[2], ...(m[3] ? { ruleId: m[3] } : {}) };
+}
+
+/**
+ * The refusal as a sentence, or null when the outcome is not one.
+ *
+ * `timeout` is the one that needs explaining, because it is the one nobody
+ * chose: the harness stopped waiting, and the operator reading this may have
+ * been looking at the screen the whole time.
+ */
+export function describeRefusal(outcome: ApprovalOutcome): string | null {
+  const what = `${outcome.toolName}${outcome.ruleId ? ` (${outcome.ruleId})` : ''}`;
+  switch (outcome.note) {
+    case 'required':
+      return null;
+    case 'timeout':
+      return `Refused: nobody approved ${what} before the deadline.`;
+    case 'denied':
+      return `Refused: ${what} was denied.`;
+    default:
+      return `Refused: ${what} was denied — ${outcome.note}`;
+  }
+}
+
 export interface ApprovalSyncOptions {
   /** `GET /approvals?status=pending`. */
   listPending: () => Promise<ApprovalRequest[]>;

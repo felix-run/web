@@ -2,11 +2,17 @@ import { describeError } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
-import { CheckCircle2Icon, ChevronDownIcon, LoaderIcon, WrenchIcon } from 'lucide-react';
+import { BanIcon, CheckCircle2Icon, ChevronDownIcon, LoaderIcon, WrenchIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getArtifact } from '@/api';
 import { cn } from '@/lib/utils';
-import { type ArtifactRef, parseArtifactMarker, type ToolCall } from '@/types';
+import {
+  type ArtifactRef,
+  describeRefusal,
+  parseApprovalOutcome,
+  parseArtifactMarker,
+  type ToolCall,
+} from '@/types';
 
 /**
  * Collapsible tool-call card driven by SSE `ToolCall.done`.
@@ -19,6 +25,13 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
   }, [verbose]);
   const shell = tool.done ? parseShellResult(tool.output) : null;
   const shellState = shell ? shellStatus(shell) : null;
+  // A gated call the harness refused. Its result is a marker the model reads,
+  // not a sentence a person does: rendered as output it looked like the tool
+  // ran and printed a bracket, and the empty answer after it looked like the
+  // agent gave up. `done` is true and useless here for the same reason it is
+  // on a shell command that exited 1.
+  const outcome = tool.done ? parseApprovalOutcome(tool.output) : null;
+  const refusal = outcome ? describeRefusal(outcome) : null;
 
   return (
     <Collapsible
@@ -40,6 +53,11 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
             )}
           >
             {shellState.label}
+          </Badge>
+        ) : refusal ? (
+          <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans text-state-failed">
+            <BanIcon className="size-3" />
+            {outcome?.note === 'timeout' ? 'not approved in time' : 'refused'}
           </Badge>
         ) : tool.done ? (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
@@ -63,6 +81,8 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         <Field label="Input" value={tool.input} />
         {shell ? (
           <ShellOutput result={shell} />
+        ) : refusal ? (
+          <p className="text-xs text-state-failed">{refusal}</p>
         ) : tool.done ? (
           <Field label="Output" value={tool.output} emphasis />
         ) : (

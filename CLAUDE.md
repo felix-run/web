@@ -449,6 +449,16 @@ Flows worth knowing before editing the app:
   **The durable path is still poll-only, by construction.** Side events are an in-process queue
   keyed by thread id; a durable run's agent is in the worker and its stream is served by the API, so
   no frame can cross. That is what the backfill onto already-`seen` approvals is for.
+  **So the turn has to say it is waiting, not only the banner.** A durable run's status turn read
+  `Background · running…` for the whole of an approval's deadline, and on 2026-09-23 an operator
+  typed "proceed" into the composer while a `write_file` timed out behind it, twice. The engine now
+  writes `Waiting on your approval · <call>` into that turn when the poll adopts one, and returns to
+  the run's own status once it is answered — only while a durable run is in flight, which is what
+  `durableStatus` tracks and what every exit from `send` clears. And a refusal is a sentence: the
+  harness answers an undecided gate with a tool result spelled `[approval <note>] tool=… rule=…`
+  (`manifests/builder.py`), which rendered as output under a `done` badge. `parseApprovalOutcome`
+  reads it at the **start** of the output only, and both clients' tool cards say
+  "nobody approved … before the deadline" for a `timeout`.
   The rule path now sends `reason` too — the manifest rule's `description`, so a banner can say
   `Confirm writes to the workspace` rather than only `workspace-write`. The `/approvals` row still
   carries none, so it is frame-only and stays optional.

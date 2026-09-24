@@ -301,3 +301,52 @@ describe('syncApprovals thread scoping', () => {
     expect(deadlines.has('a')).toBe(true);
   });
 });
+
+/**
+ * What a refused gate's result says, in words.
+ *
+ * The harness hands the model `[approval <note>] tool=<name> rule=<id>` when a
+ * decision was anything but `approved`. `timeout` is the note nobody chose, and
+ * the one an operator most needs spelled out.
+ */
+describe('parseApprovalOutcome', () => {
+  it('reads the harness marker and nothing else', async () => {
+    const { parseApprovalOutcome } = await import('../src/approvals');
+    expect(parseApprovalOutcome('[approval timeout] tool=write_file rule=workspace-write')).toEqual(
+      { note: 'timeout', toolName: 'write_file', ruleId: 'workspace-write' },
+    );
+    expect(parseApprovalOutcome('[approval denied] tool=local_shell')).toEqual({
+      note: 'denied',
+      toolName: 'local_shell',
+    });
+    expect(parseApprovalOutcome('[approval not on my watch] tool=write_file rule=r')).toEqual({
+      note: 'not on my watch',
+      toolName: 'write_file',
+      ruleId: 'r',
+    });
+    expect(parseApprovalOutcome('wrote 3 lines')).toBeNull();
+    expect(parseApprovalOutcome({ ok: true })).toBeNull();
+    // A tool talking *about* the marker is not the marker.
+    expect(parseApprovalOutcome('the result was [approval timeout] tool=x')).toBeNull();
+  });
+});
+
+describe('describeRefusal', () => {
+  it('explains a timeout as the decision nobody made', async () => {
+    const { describeRefusal } = await import('../src/approvals');
+    expect(
+      describeRefusal({ note: 'timeout', toolName: 'write_file', ruleId: 'workspace-write' }),
+    ).toBe('Refused: nobody approved write_file (workspace-write) before the deadline.');
+    expect(describeRefusal({ note: 'denied', toolName: 'local_shell' })).toBe(
+      'Refused: local_shell was denied.',
+    );
+    expect(describeRefusal({ note: 'wrong path', toolName: 'write_file' })).toBe(
+      'Refused: write_file was denied — wrong path',
+    );
+  });
+
+  it('does not call a waiting gate a refusal', async () => {
+    const { describeRefusal } = await import('../src/approvals');
+    expect(describeRefusal({ note: 'required', toolName: 'write_file' })).toBeNull();
+  });
+});
