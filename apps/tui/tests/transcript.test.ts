@@ -99,8 +99,15 @@ describe('an assistant turn', () => {
       height: 8,
     });
     try {
-      await ui.until(() => shows(ui.frame(), 'step limit (10)'));
-      expect(shows(ui.frame(), 'half an answer')).toBe(true);
+      // The notice is plain text and lands first; the prose above it is
+      // `<markdown>`, parsed on a worker, so it is asserted inside the wait or
+      // the frame is read before it exists. That is how CI caught the first cut.
+      await ui.until(
+        () => shows(ui.frame(), 'step limit (10)') && shows(ui.frame(), 'half an answer'),
+      );
+      const frame = ui.frame();
+      expect(shows(frame, 'half an answer')).toBe(true);
+      expect(shows(frame, 'step limit (10)')).toBe(true);
     } finally {
       ui.stop();
     }
