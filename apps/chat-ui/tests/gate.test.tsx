@@ -148,10 +148,27 @@ describe('Gate', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByText('chat is open')).toBeNull();
     expect(screen.getByText(/rejected/i)).toBeTruthy();
-    // submit() stores the key before verifying it, so a rejected key stays in
-    // localStorage until a 401 through apiFetch clears it. Harmless — the next
-    // mount re-checks and stays locked — but surprising, so it is pinned here.
-    expect(getApiKey()).toBe('wrong-key');
+    // submit() stores the key before verifying it; a rejection takes it back out,
+    // so nothing keeps a key the Worker has already refused.
+    expect(getApiKey()).toBeNull();
+  });
+
+  it('forgets a stored key that fails its check on load', async () => {
+    setApiKey('stale-key');
+    fetchMock.mockResolvedValue(rejected());
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/rejected/i)).toBeTruthy());
+    expect(getApiKey()).toBeNull();
+  });
+
+  // Offline says nothing about the key, so it must survive: a laptop that wakes
+  // without a network would otherwise be asked for a key that was fine.
+  it('keeps a stored key when the check cannot reach the server', async () => {
+    setApiKey('good-key');
+    fetchMock.mockRejectedValue(new Error('offline'));
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/could not reach the server/i)).toBeTruthy());
+    expect(getApiKey()).toBe('good-key');
   });
 
   // The rotation path: any 401 anywhere in the app drops the key and re-prompts,

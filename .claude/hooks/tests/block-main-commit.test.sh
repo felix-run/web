@@ -123,6 +123,24 @@ t deny  main "cd - falls back to this repo" \
   'cd - && git commit -m x'
 t allow feature "unresolvable cd from a feature branch is still allowed" \
   'cd "$SOME_DIR" && git commit -m x'
+
+echo "cross-repo: a path named by an earlier assignment in the same command"
+# The worktree case: the main checkout is on the protected branch, the worktree
+# is not, and the path is held in a variable to avoid retyping it.
+t allow main "git -C through a literal assignment to a feature-branch repo" \
+  "W=$tmp/feature; git -C \$W add x && git -C \$W commit -m x"
+t allow main "cd through a braced, exported, quoted assignment" \
+  "export W='$tmp/feature' && cd \${W} && git commit -m x"
+t allow main "an assignment built from an earlier one" \
+  "R=$tmp; W=\$R/feature; git -C \$W commit -m x"
+t deny  feature "an assignment naming the protected repo is still denied" \
+  "W=$tmp/protected; git -C \$W commit -m x"
+t deny  main "a computed assignment is never trusted" \
+  "W=\$(printf %s $tmp/feature); git -C \$W commit -m x"
+t deny  main "a variable assigned nowhere in the command still falls back" \
+  "git -C \$ELSEWHERE commit -m x"
+t deny  main "an env prefix on a command is not an assignment" \
+  "W=$tmp/feature git status && git -C \$W commit -m x"
 # A directory that is not a repo yields no branch, so nothing is denied.
 t allow main "cd into a non-repo" \
   "cd $tmp && git commit -m x"

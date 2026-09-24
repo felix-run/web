@@ -15,7 +15,7 @@
 
 import { Spinner } from '@felix/ui/spinner';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
-import { getApiKey, setApiKey, setUnauthorizedHandler } from '@/lib/auth';
+import { clearApiKey, getApiKey, setApiKey, setUnauthorizedHandler } from '@/lib/auth';
 import { AccessKeyForm } from './auth/access-key-form';
 import { AuthLayout } from './auth/auth-layout';
 
@@ -86,6 +86,20 @@ async function probe(): Promise<Probe> {
   return { ok: false, reason: 'error', status: res.status };
 }
 
+/**
+ * Drop the stored key once the Worker has said no to it, and only then.
+ *
+ * `submit` stores the key before checking it, so a rejected one used to stay in
+ * localStorage until some later request 401'd through the API client — and a
+ * stored key that failed its check on load stayed too, so every reload probed a
+ * key already known to be wrong. Offline and every other failure keep it: those
+ * say nothing about the key, and dropping it would make a laptop that woke up
+ * without a network ask for a key that was fine.
+ */
+function forgetIfRejected(result: Extract<Probe, { ok: false }>): void {
+  if (result.reason === 'rejected') clearApiKey();
+}
+
 function probeMessage(result: Extract<Probe, { ok: false }>): string {
   switch (result.reason) {
     case 'rejected':
@@ -121,6 +135,7 @@ export function Gate({ children }: { children: ReactNode }) {
       if (result.ok) {
         setPhase('open');
       } else {
+        forgetIfRejected(result);
         setError(probeMessage(result));
         setPhase('locked');
       }
@@ -144,6 +159,7 @@ export function Gate({ children }: { children: ReactNode }) {
         setValue('');
         setPhase('open');
       } else {
+        forgetIfRejected(result);
         setError(probeMessage(result));
       }
     },

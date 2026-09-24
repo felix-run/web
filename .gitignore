@@ -22,6 +22,9 @@ apps/docs/.astro/
 
 # Claude Code local audit trail (subagent-log hook)
 .claude/logs/
+# Git worktrees for parallel sessions. The checkout is shared, so work goes in a
+# worktree here, and without this each one shows up as untracked in the main one.
+.claude/worktrees/
 
 # Turborepo local cache
 .turbo/
