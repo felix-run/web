@@ -1,6 +1,7 @@
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { ActivityIcon, ChevronRightIcon, CoinsIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getUsageSummary, listAudit, listUsage } from '@/api';
@@ -60,9 +61,10 @@ const EVENT_HELP: Record<string, string> = {
   // Deliberately broader than "a policy said no". The harness folds every governance
   // denial into this one name — screening, limits, guardrails, judges, and a pending
   // approval — so naming only one of them would send the reader looking in the wrong
-  // place. Which layer denied it is a Prometheus question, not an audit one.
+  // place. Which layer denied it is on the row when the harness recorded it; see
+  // `CONTROL_LABEL`.
   policy_deny:
-    'Something refused this tool call before it ran: a policy, a limit, a guardrail, a judge, or an approval nobody has answered.',
+    'Something refused this tool call before it ran. The row says which layer when the harness recorded it: a policy rule, a limit, a guardrail, an approval nobody answered, a command rule, or screening.',
   final_response: 'The turn ended; the agent produced its reply.',
 };
 
@@ -86,6 +88,58 @@ const EVENT_TONE: Record<string, string> = {
   policy_deny: 'bg-state-blocked/15 text-state-blocked',
 };
 
+/**
+ * The governance layer that refused a call, as `payload.control` names it.
+ *
+ * Every wrapper deny lands in the feed as one `policy_deny`, and until the harness
+ * stamped the source on the row, which layer said no was a Prometheus question:
+ * `felix_policy_deny` carried the rule, the audit row carried only the fact. The row
+ * carries the layer now (`felix-run/felix@6853057`), so "what has approvals blocked
+ * this week" is a filter on this feed rather than a join across two systems. The
+ * row is still the coarser record — the counter knows *which* policy or judge, the
+ * row knows which *kind* — which is why the layer is a filter here and not a chart.
+ *
+ * An older harness sends no `control`; those rows keep reading as plain `Blocked`,
+ * and the filter cannot find them, which the empty state says.
+ */
+export const CONTROL_LAYERS = [
+  'policy',
+  'limits',
+  'guardrails',
+  'approvals',
+  'command',
+  'screening',
+] as const;
+
+const CONTROL_LABEL: Record<string, string> = {
+  policy: 'a policy rule',
+  limits: 'a limit',
+  guardrails: 'a guardrail',
+  approvals: 'an approval',
+  command: 'a command rule',
+  screening: 'screening',
+};
+
+function controlOf(e: AuditEvent): string | undefined {
+  const c = e.payload?.control;
+  return typeof c === 'string' && c ? c : undefined;
+}
+
+/**
+ * The feed's two filters, applied to the whole fetched window before the render cap.
+ * Pure and exported so the test can drive it without opening a Radix select in a
+ * DOM that lays nothing out. `layer` narrows to `policy_deny` rows that name it;
+ * `'any'` is no filter.
+ */
+export function filterActivity(
+  rows: AuditEvent[],
+  opts: { failuresOnly: boolean; layer: string },
+): AuditEvent[] {
+  const base = opts.failuresOnly ? rows.filter((e) => isFailure(e.status)) : rows;
+  if (opts.layer === 'any') return base;
+  return base.filter((e) => e.event_type === 'policy_deny' && controlOf(e) === opts.layer);
+}
+
 /** Rows rendered per section before the footer starts saying what was left out. */
 const ACTIVITY_VISIBLE = 12;
 
@@ -107,6 +161,7 @@ export function ActivitySection({
   onToggle: () => void;
 }) {
   const [failuresOnly, setFailuresOnly] = useState(false);
+  const [layer, setLayer] = useState<string>('any');
   const [openId, setOpenId] = useState<string | null>(null);
 
   // Polling stops while a row is open. The feed repaints every 3s and a new event
@@ -122,7 +177,7 @@ export function ActivitySection({
   // Close the drill-down when the list it belongs to changes underneath it. Without
   // this, filtering or collapsing the section unmounts the open row while `openId`
   // stays set — nothing looks expanded and the poll never resumes.
-  useEffect(() => setOpenId(null), [failuresOnly, open]);
+  useEffect(() => setOpenId(null), [failuresOnly, layer, open]);
 
   // Applied to the whole fetched window, before the render cap. Filtering the twelve
   // visible rows instead would drop exactly what the filter exists to find: a failure
@@ -131,9 +186,12 @@ export function ActivitySection({
   // Deliberately client-side even though `/audit` accepts `status`. A failure here is
   // `error` *or* `denied`, the server filter takes one value at a time, and a filter
   // that disagreed with the "N failed" count in the header would be worse than none.
+  // The layer filter is client-side for a plainer reason: `control` lives inside the
+  // payload, and `/audit` filters on columns.
   const failed = data?.filter((e) => isFailure(e.status)) ?? [];
-  const visible = failuresOnly ? failed : (data ?? []);
+  const visible = filterActivity(data ?? [], { failuresOnly, layer });
   const rows = visible.slice(0, ACTIVITY_VISIBLE);
+  const layerLabel = layer === 'any' ? null : (CONTROL_LABEL[layer] ?? layer);
 
   return (
     <Section
@@ -154,9 +212,14 @@ export function ActivitySection({
         error={error}
         empty={visible.length === 0}
         emptyText={
-          failuresOnly
-            ? `Nothing failed or was denied in the last ${ACTIVITY_FETCH} events.`
-            : 'Turns, tool calls, and policy denials from chat show up here as they happen.'
+          layerLabel
+            ? // Says "recorded" on purpose: a harness older than the `control` stamp
+              // writes denials this filter can never find, and "nothing was blocked"
+              // would be the wrong reading of that.
+              `No denial recorded as blocked by ${layerLabel} in the last ${ACTIVITY_FETCH} events.`
+            : failuresOnly
+              ? `Nothing failed or was denied in the last ${ACTIVITY_FETCH} events.`
+              : 'Turns, tool calls, and policy denials from chat show up here as they happen.'
         }
         // Derived from the newest event rather than the count, which stops changing
         // once the window is full — and a live region that never changes never speaks.
@@ -166,7 +229,28 @@ export function ActivitySection({
             : undefined
         }
       >
-        <div className="mb-1.5 flex justify-end">
+        <div className="mb-1.5 flex items-center justify-end gap-1.5">
+          {/* The layer filter answers one question — "what has approvals blocked this
+              week" — so it reads as that question rather than as a column picker. */}
+          <Select value={layer} onValueChange={setLayer}>
+            <SelectTrigger
+              size="sm"
+              className="h-6 w-auto gap-1 px-2 text-xs"
+              aria-label="Blocked by which layer"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any" className="text-xs">
+                Any layer
+              </SelectItem>
+              {CONTROL_LAYERS.map((c) => (
+                <SelectItem key={c} value={c} className="text-xs">
+                  Blocked by {CONTROL_LABEL[c]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {/* Outline rather than ghost: at this size a ghost toggle reads as a caption
               floating above the list, and a control nobody recognises as one is the
               same as no filter at all. */}
@@ -195,8 +279,14 @@ export function ActivitySection({
         <Truncated
           shown={rows.length}
           total={visible.length}
-          noun={failuresOnly ? `failed events in the last ${ACTIVITY_FETCH}` : 'recent events'}
-          windowed={!failuresOnly}
+          noun={
+            layerLabel
+              ? `denials by ${layerLabel} in the last ${ACTIVITY_FETCH}`
+              : failuresOnly
+                ? `failed events in the last ${ACTIVITY_FETCH}`
+                : 'recent events'
+          }
+          windowed={!failuresOnly && !layerLabel}
         />
         {openId !== null && (
           // A list that has quietly stopped updating looks exactly like a harness that
@@ -234,6 +324,7 @@ function ActivityRow({
   const label = EVENT_LABEL[e.event_type] ?? e.event_type;
   const subject = subjectOf(e);
   const text = summary(e);
+  const control = e.event_type === 'policy_deny' ? controlOf(e) : undefined;
 
   return (
     <li>
@@ -273,6 +364,14 @@ function ActivityRow({
                 )
               )}
               <span className="truncate font-medium">{subject}</span>
+              {control && (
+                // Which layer said no, next to what it said no to. A row from a
+                // harness that did not stamp it shows nothing here rather than a
+                // guess.
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  by {CONTROL_LABEL[control] ?? control}
+                </span>
+              )}
             </div>
             {text && (
               // The clamp is a scanning aid, so it lifts once this row is the one

@@ -6,7 +6,7 @@ import { Label } from '@felix/ui/label';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Textarea } from '@felix/ui/textarea';
 import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useState } from 'react';
 import {
   addEvalItem,
   compareEvalRuns,
@@ -19,16 +19,25 @@ import {
 import { ErrorNotice } from '@/components/error-notice';
 import { Panel, PanelDescription, PanelHeader, PanelTitle } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
-import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun } from '@/types';
+import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } from '@/types';
 
 /**
  * Eval workbench — the `/eval` offline-benchmark surface as a slide-over.
- * Create a golden dataset, append items with a (simplified) rubric, replay the
- * dataset against the currently-selected manifest, and read back per-item
- * pass/fail scores. Tenant-scoped.
+ * Create a golden dataset, append items with a rubric the scorer reads, replay
+ * the dataset against the currently-selected manifest, and read back per-item
+ * scores with the rule that decided each. Tenant-scoped.
  *
  * The harness writes datasets whole — there is no per-item route — so appending
  * an item is a read-modify-write of the whole dataset.
+ *
+ * The rubric and score shapes here follow `felix.eval.runner`, and the previous
+ * version of this file did not: it wrote `must_include` and `pass_threshold`,
+ * which the scorer never reads, and rendered `verdict`, `reasoning` and
+ * `response`, which it never writes. Every item the form produced fell through
+ * to `nonempty` — any non-blank answer passes — and every score row drew an
+ * empty verdict in the failed colour. Nothing mechanical could catch it: the
+ * rubric is free-form on the wire and the scores are nested inside the run row,
+ * so `check-payload-shapes` sees neither. The docs' rubric table is the contract.
  */
 export function EvalSheet({ manifest }: { manifest: string }) {
   const [datasets, setDatasets] = useState<EvalDataset[]>([]);
@@ -240,14 +249,7 @@ function DatasetPanel({
               {items.map((it) => (
                 <div key={it.item_id} className="rounded-md border bg-background p-2 text-sm">
                   <div className="font-medium">{it.user_input}</div>
-                  {it.rubric.criteria && (
-                    <div className="mt-1 text-muted-foreground">criteria: {it.rubric.criteria}</div>
-                  )}
-                  {!!it.rubric.must_include?.length && (
-                    <div className="mt-0.5 text-muted-foreground">
-                      must include: {it.rubric.must_include.join(', ')}
-                    </div>
-                  )}
+                  <RubricSummary rubric={it.rubric} />
                 </div>
               ))}
             </section>
@@ -404,6 +406,63 @@ function ComparePanel({
   );
 }
 
+/**
+ * What the scorer will do with a rubric, in the order it does it. Exported so the
+ * test can pin the reading without rendering.
+ *
+ * Mirrors `_score_answer`: trajectory rules first (each can only reject), then the
+ * one answer rule it stops at — `expect`/`equals`, else `contains`, else
+ * `min_chars` — and a judge only when one of the three selecting keys is set.
+ * `rules` empty means the item scores `nonempty`, which passes any non-blank
+ * answer, and that is the case worth saying loudest.
+ */
+export function describeRubric(r: Rubric): string[] {
+  const rules: string[] = [];
+  const list = (v: unknown) => (Array.isArray(v) ? v.map(String).join(', ') : String(v));
+  if (r.tools_called != null) rules.push(`must call ${list(r.tools_called)}`);
+  if (r.tools_not_called != null) rules.push(`must not call ${list(r.tools_not_called)}`);
+  if (r.max_tool_calls != null) rules.push(`at most ${r.max_tool_calls} tool calls`);
+  if (r.max_errors != null) rules.push(`at most ${r.max_errors} tool errors`);
+  const expect = r.expect ?? r.equals;
+  if (expect != null) rules.push(`answer equals “${expect}”`);
+  else if (r.contains != null) rules.push(`answer contains “${r.contains}”`);
+  else if (r.min_chars != null && r.min_chars !== '') {
+    rules.push(`answer is at least ${r.min_chars} characters`);
+  }
+  const judged = r.llm_judge !== false && Boolean(r.llm_judge || r.judge_criteria || r.judge_model);
+  if (judged) rules.push(`judged on “${r.judge_criteria ?? r.criteria ?? 'relevance'}”`);
+  return rules;
+}
+
+function RubricSummary({ rubric }: { rubric: Rubric }) {
+  const rules = describeRubric(rubric);
+  if (rules.length === 0) {
+    return (
+      // The harness's own warning, on the item, where the decision to fix it is made.
+      <div className="mt-1 text-xs text-state-blocked">
+        No rule: any non-empty answer passes, so this item gates nothing.
+      </div>
+    );
+  }
+  return <div className="mt-1 text-xs text-muted-foreground">{rules.join(' · ')}</div>;
+}
+
+const csv = (s: string) =>
+  s
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+/**
+ * The rubric an item will be scored by, field by field, and a live reading of it.
+ *
+ * Three answer inputs rather than a rule picker, because that is how the scorer
+ * reads them: `expect` wins over `contains` wins over `min_chars`, and a form that
+ * lets two be filled and says which one counts is truer than one that forbids it.
+ * The trajectory rules are the four the harness added for coding agents — what a
+ * run *did* rather than what it said — and a judge is selected by naming criteria
+ * for it, which is the one spelling (`judge_criteria`) that actually selects one.
+ */
 function AddItemForm({
   dataset,
   onAdded,
@@ -414,27 +473,47 @@ function AddItemForm({
   onError: (err: unknown, doing: string) => void;
 }) {
   const [input, setInput] = useState('');
-  const [criteria, setCriteria] = useState('');
-  const [mustInclude, setMustInclude] = useState('');
+  const [equals, setEquals] = useState('');
+  const [contains, setContains] = useState('');
+  const [minChars, setMinChars] = useState('');
+  const [called, setCalled] = useState('');
+  const [notCalled, setNotCalled] = useState('');
+  const [maxCalls, setMaxCalls] = useState('');
+  const [maxErrors, setMaxErrors] = useState('');
+  const [judge, setJudge] = useState('');
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+
+  const rubric: Rubric = {
+    ...(equals.trim() ? { expect: equals.trim() } : {}),
+    ...(contains.trim() ? { contains: contains.trim() } : {}),
+    ...(minChars.trim() ? { min_chars: Number(minChars) } : {}),
+    ...(csv(called).length ? { tools_called: csv(called) } : {}),
+    ...(csv(notCalled).length ? { tools_not_called: csv(notCalled) } : {}),
+    ...(maxCalls.trim() ? { max_tool_calls: Number(maxCalls) } : {}),
+    ...(maxErrors.trim() ? { max_errors: Number(maxErrors) } : {}),
+    ...(judge.trim() ? { judge_criteria: judge.trim() } : {}),
+  };
+  const reading = describeRubric(rubric);
 
   async function add() {
     if (!input.trim()) return;
     setBusy(true);
     try {
-      await addEvalItem(dataset, {
-        user_input: input.trim(),
-        rubric: {
-          criteria: criteria.trim(),
-          must_include: mustInclude
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
-        },
-      });
+      const stored = await addEvalItem(dataset, { user_input: input.trim(), rubric });
+      // The harness warns on a 200 for an item that is legal and gates nothing.
+      // Cleared on the next successful add rather than on typing, so it stays
+      // readable for as long as the item it describes is the newest one.
+      setWarnings(stored.warnings ?? []);
       setInput('');
-      setCriteria('');
-      setMustInclude('');
+      setEquals('');
+      setContains('');
+      setMinChars('');
+      setCalled('');
+      setNotCalled('');
+      setMaxCalls('');
+      setMaxErrors('');
+      setJudge('');
       onAdded();
     } catch (err) {
       onError(err, `add an item to ${dataset}`);
@@ -443,34 +522,91 @@ function AddItemForm({
     }
   }
 
+  const field = (
+    id: string,
+    label: string,
+    value: string,
+    set: (v: string) => void,
+    placeholder: string,
+    extra: Partial<ComponentProps<typeof Input>> = {},
+  ) => (
+    <div className="min-w-0">
+      <Label htmlFor={id} className="text-xs">
+        {label}
+      </Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(e) => set(e.target.value)}
+        placeholder={placeholder}
+        className="mt-0.5 h-8 text-sm"
+        {...extra}
+      />
+    </div>
+  );
+
   return (
-    <section className="space-y-1.5 rounded-md border border-dashed p-2.5">
+    <section className="space-y-2 rounded-md border border-dashed p-2.5">
       <Heading>Add item</Heading>
-      <Label htmlFor="eval-item-input">User input</Label>
-      <Textarea
-        id="eval-item-input"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="e.g. What is 7 × 6?"
-        rows={2}
-        className="min-h-0 resize-none bg-transparent px-2 py-1.5 shadow-none"
-      />
-      <Label htmlFor="eval-item-criteria">Pass criteria, judged by the model</Label>
-      <Input
-        id="eval-item-criteria"
-        value={criteria}
-        onChange={(e) => setCriteria(e.target.value)}
-        placeholder="e.g. answers 42"
-        className="h-8 text-sm"
-      />
-      <Label htmlFor="eval-item-must-include">Must include, checked literally</Label>
-      <Input
-        id="eval-item-must-include"
-        value={mustInclude}
-        onChange={(e) => setMustInclude(e.target.value)}
-        placeholder="comma-separated, e.g. 42"
-        className="h-8 text-sm"
-      />
+      <div>
+        <Label htmlFor="eval-item-input">User input</Label>
+        <Textarea
+          id="eval-item-input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="e.g. What is 7 × 6?"
+          rows={2}
+          className="mt-0.5 min-h-0 resize-none bg-transparent px-2 py-1.5 shadow-none"
+        />
+      </div>
+
+      <Heading>Answer rule (the first one filled in counts)</Heading>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {field('eval-item-equals', 'Equals', equals, setEquals, 'exact answer')}
+        {field('eval-item-contains', 'Contains', contains, setContains, 'e.g. 42')}
+        {field('eval-item-min-chars', 'At least N characters', minChars, setMinChars, 'e.g. 80', {
+          type: 'number',
+          min: 1,
+        })}
+      </div>
+
+      <Heading>Trajectory rules (each can only reject)</Heading>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {field('eval-item-called', 'Must call', called, setCalled, 'tools, comma-separated')}
+        {field('eval-item-not-called', 'Must not call', notCalled, setNotCalled, 'tools')}
+        {field('eval-item-max-calls', 'Max tool calls', maxCalls, setMaxCalls, 'e.g. 6', {
+          type: 'number',
+          min: 0,
+        })}
+        {field('eval-item-max-errors', 'Max tool errors', maxErrors, setMaxErrors, 'e.g. 0', {
+          type: 'number',
+          min: 0,
+        })}
+      </div>
+
+      {field(
+        'eval-item-judge',
+        'Judge criteria (selects a judge model; its verdict replaces the answer rule)',
+        judge,
+        setJudge,
+        'e.g. answers the question and cites the file',
+      )}
+
+      {/* The reading the scorer will have, before the item is stored — the same
+          function that labels stored items, so the two cannot disagree. */}
+      <p className={cn('text-xs', reading.length ? 'text-muted-foreground' : 'text-state-blocked')}>
+        {reading.length
+          ? `Will score: ${reading.join(' · ')}`
+          : 'No rule yet: this item would pass any non-empty answer.'}
+      </p>
+      {warnings.length > 0 && (
+        <ul className="space-y-0.5 text-xs text-state-blocked">
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      )}
+
       <Button size="sm" className="gap-1" disabled={busy || !input.trim()} onClick={add}>
         <PlusIcon className="size-3.5" /> Add
       </Button>
@@ -479,34 +615,23 @@ function AddItemForm({
 }
 
 /**
- * A run's own instrumentation, which it was collecting and throwing away.
+ * What a run did, summed off its scores.
  *
- * `EvalRun` carries `started_at` and `finished_at`; every `ItemScore` carries
- * `duration_ms`, `tokens_input`, `tokens_output` and `tool_call_count`. None of
- * it was rendered, so two runs of the same dataset stacked with nothing to tell
- * them apart and nothing to answer "what did it cost" — one of the three
- * questions PRODUCT.md says this surface has to answer at a glance.
+ * `EvalRun` carries `started_at` and `finished_at`; every score carries
+ * `tool_calls` and `tool_errors`, the trajectory the rules were checked against.
+ * Two runs of the same dataset against the same manifest are otherwise identical
+ * on screen, which is the state this list is normally in.
  *
- * The per-item numbers are optional on the wire, so a run where the harness
- * reported none shows the timing it always has and no token line at all, rather
- * than a row of zeroes that reads as a free run.
+ * No token line: the runner records none per item (the previous version summed
+ * `tokens_input`/`tokens_output` fields it had invented, and the line never
+ * appeared). Cost is the Ledger's question, on `/harness/ledger`.
  */
-function runTotals(run: EvalRun): {
-  wallMs: number | null;
-  tokensIn: number;
-  tokensOut: number;
-  toolCalls: number;
-  metered: boolean;
-} {
-  let tokensIn = 0;
-  let tokensOut = 0;
+function runTotals(run: EvalRun): { wallMs: number | null; toolCalls: number; toolErrors: number } {
   let toolCalls = 0;
-  let metered = false;
+  let toolErrors = 0;
   for (const s of run.scores) {
-    if (s.tokens_input != null || s.tokens_output != null) metered = true;
-    tokensIn += s.tokens_input ?? 0;
-    tokensOut += s.tokens_output ?? 0;
-    toolCalls += s.tool_call_count ?? 0;
+    toolCalls += s.tool_calls ?? 0;
+    toolErrors += s.tool_errors ?? 0;
   }
   return {
     // Both ends required, or the subtraction yields `NaN` and renders as one.
@@ -514,12 +639,28 @@ function runTotals(run: EvalRun): {
       run.finished_at == null || !Number.isFinite(run.started_at)
         ? null
         : run.finished_at - run.started_at,
-    tokensIn,
-    tokensOut,
     toolCalls,
-    metered,
+    toolErrors,
   };
 }
+
+/**
+ * What each `rule` the runner names means, for the row that names it. The rule
+ * itself is rendered verbatim above this — it is the harness's word and the one
+ * to grep for — and this is the sentence under it.
+ */
+const RULE_TEXT: Record<string, string> = {
+  equals: 'The answer had to equal the expected text, after trimming.',
+  contains: 'The answer had to contain the expected text, case-insensitively.',
+  min_chars: 'The answer had to reach the minimum length.',
+  nonempty: 'The rubric named no rule, so any non-empty answer passes.',
+  tools_called: 'A tool the rubric requires was never called.',
+  tools_not_called: 'A tool the rubric forbids was called.',
+  max_tool_calls: 'The run made more tool calls than the rubric allows.',
+  max_errors: 'More tool calls errored or were denied than the rubric allows.',
+  invalid_rubric: 'The rubric could never reject anything, so it fails closed.',
+  llm_judge: 'A judge model scored the answer against the criteria.',
+};
 
 /** Milliseconds at a scale a person reads, not a number they convert. */
 function duration(ms: number): string {
@@ -572,10 +713,18 @@ function RunCard({ run }: { run: EvalRun }) {
           'start time unreported'
         )}
         {t.wallMs == null ? ' · still running' : ` · ${duration(t.wallMs)}`}
-        {t.metered
-          ? ` · ${t.tokensIn.toLocaleString()} in / ${t.tokensOut.toLocaleString()} out`
-          : ''}
         {t.toolCalls > 0 ? ` · ${t.toolCalls} tool ${t.toolCalls === 1 ? 'call' : 'calls'}` : ''}
+        {t.toolErrors > 0
+          ? ` · ${t.toolErrors} tool ${t.toolErrors === 1 ? 'error' : 'errors'}`
+          : ''}
+        {/* Counted inside `fail_count` too, so this is the subset that never reached
+            the scorer: a malformed item or a run that threw, which reads differently
+            from an answer the rubric rejected. */}
+        {run.error_count ? (
+          <span className="text-state-failed" title="Items that never reached the scorer">
+            {` · ${run.error_count} errored`}
+          </span>
+        ) : null}
       </p>
       {run.scores.length > 0 && (
         <ul className="mt-1.5 space-y-1">
@@ -589,20 +738,25 @@ function RunCard({ run }: { run: EvalRun }) {
 }
 
 /**
- * One item's verdict, and the judge's reasoning behind it.
+ * One item's verdict, the rule that decided it, and the answer it decided on.
  *
- * The reasoning **is** the output of an eval — it is the thing that says why a
- * case failed — and it was reachable only as a `title` on hover, over a response
- * already cut at 80 characters with no ellipsis and no way to expand. Invisible
- * to touch, invisible to a keyboard, and truncated for everyone.
+ * The rule **is** the output of an eval — it is the thing that says why a case
+ * failed — so it sits on the collapsed row, verbatim, in the harness's own word.
+ * `invalid_rubric` gets the blocked colour rather than failed: nothing about the
+ * run was wrong, the rubric could never have said no, and the fix is to the
+ * dataset. An item that never reached the scorer carries `error` instead of a
+ * verdict and is drawn as its own third state.
  *
- * So it expands. Collapsed by default because a run of twenty items is a list to
- * scan first; the trigger is the row itself rather than a separate control,
- * since the row is what someone is already looking at when they want more.
+ * Expanding is the only way to the answer and the reason. Collapsed by default
+ * because a run of twenty items is a list to scan first; the trigger is the row
+ * itself rather than a separate control, since the row is what someone is
+ * already looking at when they want more.
  */
 function ScoreRow({ score }: { score: EvalRun['scores'][number] }) {
   const [open, setOpen] = useState(false);
-  const summary = score.response || score.reasoning;
+  const verdict = score.error != null ? 'error' : score.pass ? 'pass' : 'fail';
+  const invalid = score.rule === 'invalid_rubric';
+  const summary = score.reason || score.answer || score.error || '';
   return (
     <li>
       <Collapsible open={open} onOpenChange={setOpen}>
@@ -614,43 +768,68 @@ function ScoreRow({ score }: { score: EvalRun['scores'][number] }) {
           <span
             className={cn(
               'mt-0.5 font-mono text-xs uppercase',
-              score.verdict === 'pass' ? 'text-state-done' : 'text-state-failed',
+              verdict === 'pass' ? 'text-state-done' : 'text-state-failed',
             )}
           >
-            {score.verdict}
+            {verdict}
           </span>
+          {score.rule && (
+            <span
+              className={cn(
+                'mt-0.5 shrink-0 font-mono text-xs',
+                invalid ? 'text-state-blocked' : 'text-muted-foreground',
+              )}
+              title={RULE_TEXT[score.rule]}
+            >
+              {score.rule}
+            </span>
+          )}
           {/*
             Truncated by CSS rather than by `slice`, so the ellipsis is real and
             the full string is still in the DOM for find-in-page and for a screen
             reader — neither of which a cut string leaves anything to work with.
           */}
           <span className="min-w-0 flex-1 truncate text-muted-foreground">{summary}</span>
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">
-            {score.score.toFixed(2)}
-          </span>
+          {score.score != null && (
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">
+              {score.score.toFixed(2)}
+            </span>
+          )}
         </CollapsibleTrigger>
         <CollapsibleContent className="ml-5 space-y-1.5 pt-1 pb-1.5">
-          {score.response && (
-            <div>
-              <Heading>Response</Heading>
-              <p className="mt-0.5 text-xs break-words whitespace-pre-wrap">{score.response}</p>
-            </div>
+          {score.rule && RULE_TEXT[score.rule] && (
+            <p className={cn('text-xs', invalid ? 'text-state-blocked' : 'text-muted-foreground')}>
+              {RULE_TEXT[score.rule]}
+            </p>
           )}
-          {score.reasoning && (
+          {score.error && (
             <div>
-              <Heading>Why the judge said {score.verdict}</Heading>
-              <p className="mt-0.5 text-xs break-words whitespace-pre-wrap text-muted-foreground">
-                {score.reasoning}
+              <Heading>Error</Heading>
+              <p className="mt-0.5 text-xs break-words whitespace-pre-wrap text-state-failed">
+                {score.error}
               </p>
             </div>
           )}
-          {(score.duration_ms != null || score.tool_call_count != null) && (
+          {score.answer && (
+            <div>
+              <Heading>Answer{score.mock ? ' (mocked)' : ''}</Heading>
+              <p className="mt-0.5 text-xs break-words whitespace-pre-wrap">{score.answer}</p>
+            </div>
+          )}
+          {score.reason && (
+            <div>
+              <Heading>
+                {score.rule === 'llm_judge' ? `Why the judge said ${verdict}` : 'Reason'}
+              </Heading>
+              <p className="mt-0.5 text-xs break-words whitespace-pre-wrap text-muted-foreground">
+                {score.reason}
+              </p>
+            </div>
+          )}
+          {score.tool_calls != null && (
             <p className="font-mono text-xs text-muted-foreground">
-              {score.duration_ms != null ? duration(score.duration_ms) : ''}
-              {score.duration_ms != null && score.tool_call_count != null ? ' · ' : ''}
-              {score.tool_call_count != null
-                ? `${score.tool_call_count} tool ${score.tool_call_count === 1 ? 'call' : 'calls'}`
-                : ''}
+              {`${score.tool_calls} tool ${score.tool_calls === 1 ? 'call' : 'calls'}`}
+              {score.tool_errors ? `, ${score.tool_errors} errored` : ''}
             </p>
           )}
         </CollapsibleContent>

@@ -162,8 +162,11 @@ export async function putEvalDataset(
   name: string,
   description = '',
   items: Array<{ user_input: string; rubric: Rubric }> = [],
-): Promise<EvalDataset> {
-  return evalFetch<EvalDataset>(`/datasets/${encodeURIComponent(name)}`, {
+): Promise<EvalDataset & { warnings?: string[] }> {
+  // `warnings` rides alongside the stored dataset on a 200: an item whose rubric
+  // names no rule and no judge is legal, is stored, and will pass any non-blank
+  // answer — which the harness says out loud here and nowhere else.
+  return evalFetch<EvalDataset & { warnings?: string[] }>(`/datasets/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ description, items }),
@@ -192,7 +195,7 @@ export async function listEvalItems(dataset: string): Promise<EvalDatasetItem[]>
 export async function addEvalItem(
   dataset: string,
   item: { user_input: string; rubric: Rubric },
-): Promise<EvalDataset> {
+): Promise<EvalDataset & { warnings?: string[] }> {
   const current = await getEvalDataset(dataset);
   const items = [
     ...current.items.map((i) => ({ user_input: i.user_input, rubric: i.rubric })),

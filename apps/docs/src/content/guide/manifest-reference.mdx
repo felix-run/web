@@ -336,7 +336,9 @@ spec:
 
 The tool takes `argv` (list), `cwd` (relative to the workspace root) and optional `stdin`, and
 returns `exit_code`, `stdout`, `stderr` (each capped and marked `truncated`), `timed_out` and
-`duration_ms`. `argv` is command-screened like a sandbox payload.
+`duration_ms`. `argv` is command-screened like a sandbox payload. The web UI's tool card
+recognises that shape and leads with the exit status, drawing the two streams as streams rather
+than as one JSON object.
 
 :::caution[disabled by default]
 Every prefix in `commands` must be covered by one in `FELIX_SHELL_ALLOWED_COMMANDS` (comma-separated;

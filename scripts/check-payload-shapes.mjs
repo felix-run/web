@@ -56,6 +56,23 @@ const DEFAULT_RECORD = 'scripts/harness-payloads.json';
  */
 export const GUARDED = [
   {
+    // The eval run row. Its `scores` list is nested and stays invisible to this
+    // check — which is how the client rendered `verdict` and `reasoning` off
+    // rows that carried `pass` and `rule` for as long as it did — but the row's
+    // own keys (`error_count` arrived in v0.3.0) are guarded from here on.
+    type: 'EvalRun',
+    file: 'apps/chat-ui/src/types.ts',
+    serializer: 'felix/eval/store.py:_run_dict',
+  },
+  {
+    // The job row. `payload` is one key here and a free dict on the wire, so
+    // `prompt` and `fresh_thread` inside it are the scheduler's contract, not
+    // this check's.
+    type: 'JobRecord',
+    file: 'apps/chat-ui/src/types.ts',
+    serializer: 'felix/jobs/store.py:_job_dict',
+  },
+  {
     // Moved with the inspector reads into @felix/client, the same way
     // ApprovalRequest was: a terminal client needs the row shape too. AuditEvent
     // rides along in that file because `extends` resolves only within one source.

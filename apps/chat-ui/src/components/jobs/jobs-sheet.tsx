@@ -39,6 +39,14 @@ export function JobsSheet({
   const [name, setName] = useState('');
   const [schedule, setSchedule] = useState('0 9 * * *');
   const [manifestId, setManifestId] = useState(manifest);
+  // Both live in the job's free-form `payload`. `prompt` is the turn each firing
+  // sends (the worker falls back to "ping" when there is none, which is a job that
+  // runs and asks nothing). `fresh_thread` gives each firing its own thread: by
+  // default every run of a job shares one, named after the job, so a digest
+  // remembers last week — and a job that works a different ticket each time would
+  // carry ticket N's transcript into ticket N+1's context.
+  const [prompt, setPrompt] = useState('');
+  const [freshThread, setFreshThread] = useState(false);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   // `null` means "not loaded yet", which is not the same as "no runs". Rendering an
@@ -52,8 +60,20 @@ export function JobsSheet({
     setBusy(true);
     setActionError(null);
     try {
-      await upsertJob({ name: name.trim(), schedule: schedule.trim(), manifest_id: manifestId });
+      // Only the keys that were set: the scheduler reads `payload.get(...)`, so an
+      // explicit `fresh_thread: false` is noise on every row nobody asked for.
+      const payload: Record<string, unknown> = {};
+      if (prompt.trim()) payload.prompt = prompt.trim();
+      if (freshThread) payload.fresh_thread = true;
+      await upsertJob({
+        name: name.trim(),
+        schedule: schedule.trim(),
+        manifest_id: manifestId,
+        payload,
+      });
       setName('');
+      setPrompt('');
+      setFreshThread(false);
       refresh();
     } catch (err) {
       setActionError(err);
@@ -163,6 +183,37 @@ export function JobsSheet({
               </SelectContent>
             </Select>
           </div>
+          <Label htmlFor="job-prompt" className="sr-only">
+            Prompt sent on each run
+          </Label>
+          <Input
+            id="job-prompt"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="prompt sent each run; empty sends “ping”"
+            className="h-8 text-sm"
+            onKeyDown={(e) => e.key === 'Enter' && create()}
+          />
+          {/* A native checkbox: the shared primitives have no switch, and a `<button
+              aria-pressed>` for a yes/no that is submitted with a form promises a
+              toggle rather than a field. */}
+          <label
+            htmlFor="job-fresh-thread"
+            className="flex items-start gap-2 text-xs text-muted-foreground"
+          >
+            <input
+              id="job-fresh-thread"
+              type="checkbox"
+              checked={freshThread}
+              onChange={(e) => setFreshThread(e.target.checked)}
+              className="mt-0.5 size-3.5 shrink-0 accent-primary"
+            />
+            <span>
+              Fresh thread each run. By default every run shares one thread named after the job, so
+              a digest remembers last week; set this for a job that works something different each
+              time, so one run's transcript never sits in the next run's context.
+            </span>
+          </label>
           <Button size="sm" className="gap-1" disabled={busy || !name.trim()} onClick={create}>
             <PlusIcon className="size-3.5" /> Create
           </Button>
@@ -207,8 +258,20 @@ export function JobsSheet({
                     <span className="sr-only">Delete {j.name}</span>
                   </ConfirmButton>
                 </div>
-                <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   {j.enabled === false && <span>disabled</span>}
+                  {/* Said only when set: the default is one thread kept between runs, and
+                      restating a default on every row is what makes the exception vanish. */}
+                  {j.payload?.fresh_thread === true && (
+                    <span title="Each run gets a thread of its own; nothing carries over between runs.">
+                      fresh thread each run
+                    </span>
+                  )}
+                  {typeof j.payload?.prompt === 'string' && j.payload.prompt && (
+                    <span className="min-w-0 truncate" title={j.payload.prompt}>
+                      “{j.payload.prompt}”
+                    </span>
+                  )}
                   {j.last_status && <span>last: {j.last_status}</span>}
                   {j.last_run_at && <span>ran {relativeTime(j.last_run_at)}</span>}
                   {j.next_run_at && <span>next {relativeTime(j.next_run_at)}</span>}

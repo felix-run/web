@@ -182,3 +182,76 @@ describe('Activity polling while a row is open', () => {
     await waitFor(() => expect(screen.queryByText(/Paused while a row is open/)).toBeNull());
   });
 });
+
+/**
+ * Which layer refused a call.
+ *
+ * Every wrapper deny is one `policy_deny`, and until the harness stamped
+ * `payload.control` on the row the layer was a Prometheus question. The row
+ * carries it now; the feed says it next to the tool, and the filter over the
+ * window finds it. The filter is pinned through the pure function rather than
+ * the select, because a Radix select in a DOM that lays nothing out proves
+ * nothing about the filter and everything about the DOM.
+ */
+describe('a denial says which layer refused it', () => {
+  it('names the layer on the row when the harness recorded it', async () => {
+    stubHarness([
+      auditRow({
+        id: 'd1',
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload_json: { tool: 'write_file', tool_call_id: 'tc9', control: 'approvals' },
+      }),
+    ]);
+    renderInspector();
+
+    const row = await screen.findByRole('button', { name: /write_file/ });
+    expect(row.textContent).toMatch(/by an approval/);
+  });
+
+  it('says nothing about the layer on a row from a harness that did not stamp it', async () => {
+    stubHarness([
+      auditRow({
+        id: 'd2',
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload_json: { tool: 'write_file', tool_call_id: 'tc9' },
+      }),
+    ]);
+    renderInspector();
+
+    const row = await screen.findByRole('button', { name: /write_file/ });
+    expect(row.textContent).not.toMatch(/\bby\b/);
+  });
+
+  it('filters the window to denials by one layer, and only denials', async () => {
+    const { filterActivity } = await import('../src/components/harness/ledger');
+    const rows = [
+      auditRow({ id: 'ok', payload_json: { tool: 'read_file', control: 'approvals' } }),
+      auditRow({
+        id: 'd1',
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload_json: { tool: 'write_file', control: 'approvals' },
+      }),
+      auditRow({
+        id: 'd2',
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload_json: { tool: 'shell', control: 'command' },
+      }),
+      auditRow({ id: 'd3', event_type: 'policy_deny', status: 'denied', payload_json: {} }),
+    ].map((r) => ({ ...r, payload: r.payload_json }));
+
+    const by = (layer: string) =>
+      filterActivity(rows, { failuresOnly: false, layer }).map((e) => e.id);
+    expect(by('approvals')).toEqual(['d1']);
+    expect(by('command')).toEqual(['d2']);
+    // No filter keeps everything, including the unstamped denial.
+    expect(by('any')).toEqual(['ok', 'd1', 'd2', 'd3']);
+    // Both filters compose; a `tool_call` that mentions a layer is not a denial.
+    expect(
+      filterActivity(rows, { failuresOnly: true, layer: 'approvals' }).map((e) => e.id),
+    ).toEqual(['d1']);
+  });
+});
