@@ -64,10 +64,47 @@ unquote() {
   printf '%s' "$v"
 }
 
+# Variables assigned earlier in this same command, one `NAME=value` per line.
+#
+# `W=/path/to/worktree; git -C $W commit` is the ordinary way to commit from a
+# worktree without retyping its path, and it used to be denied as a commit on
+# the protected branch: `$W` could not be resolved, so the target fell back to
+# CLAUDE_PROJECT_DIR — the main checkout, which sits on main (2026-09-23). Only
+# a *literal* assignment is recorded. A value containing `$` or a backtick is
+# computed at run time and still cannot be known here, so it is not recorded and
+# a path through it keeps the strict fallback. A plain string rather than an
+# associative array, because macOS runs this under bash 3.2.
+known_vars=""
+
+has_var() { printf '%s\n' "$known_vars" | grep -q "^$1="; }
+
+get_var() { # the last assignment wins, as it does in the shell
+  printf '%s\n' "$known_vars" | awk -v k="$1" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2) } END { printf "%s", v }'
+}
+
+# Substitute `$NAME` and `${NAME}` for recorded variables; anything else is left
+# as written, which `resolve_dir` then treats as unresolvable.
+expand_vars() {
+  v="$1"
+  n=0
+  while [[ $v =~ \$\{?([A-Za-z_][A-Za-z0-9_]*)\}? ]] && [ "$n" -lt 16 ]; do
+    name="${BASH_REMATCH[1]}"
+    whole="${BASH_REMATCH[0]}"
+    has_var "$name" || break
+    val=$(get_var "$name")
+    prefix="${v%%"$whole"*}"
+    suffix="${v#*"$whole"}"
+    v="$prefix$val$suffix"
+    n=$((n + 1))
+  done
+  printf '%s' "$v"
+}
+
 # Resolve <path> against the tracked cwd; empty if it still contains an
 # unexpanded shell expression.
 resolve_dir() {
   d=$(unquote "$1")
+  d=$(expand_vars "$d")
   case "$d" in *'$'*|*'`'*|"") printf ''; return;; esac
   case "$d" in /*) printf '%s' "$d";; *) printf '%s/%s' "$cwd" "$d";; esac
 }
@@ -80,6 +117,28 @@ branch_of() { # branch_of <dir>
 printf '%s\n' "$stripped" | tr ';' '\n' | sed 's/&&/\n/g; s/||/\n/g; s/|/\n/g' | \
 while IFS= read -r seg; do
   seg="${seg#"${seg%%[![:space:]]*}"}"                  # ltrim
+  # A bare assignment (optionally exported) names a path a later `cd` or `-C`
+  # may use. A quoted value may hold spaces; an unquoted one with a space in it
+  # is an environment prefix on a command, not an assignment, and is skipped.
+  if [[ $seg =~ ^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+    aname="${BASH_REMATCH[2]}"
+    araw="${BASH_REMATCH[3]}"
+    araw="${araw%"${araw##*[![:space:]]}"}"               # rtrim
+    case "$araw" in
+      \'*\'|'"'*'"') aval=$(unquote "$araw");;
+      *[[:space:]]*) aval='';  araw='';;
+      *) aval=$(unquote "$araw");;
+    esac
+    if [ -n "$aval" ]; then
+      aval=$(expand_vars "$aval")                         # `X=$W/sub` with W known
+      case "$aval" in
+        *'$'*|*'`'*) ;;                                   # still computed: never known
+        *) known_vars="$known_vars
+$aname=$aval";;
+      esac
+    fi
+    [ -n "$araw" ] && continue
+  fi
   # A `cd` moves where any later `git` in this command runs.
   case "$seg" in
     cd|cd\ *)
