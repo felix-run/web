@@ -7,7 +7,7 @@
  * browser's localStorage, a CLI's state directory — is the client's business.
  */
 import type { SessionEvent, SessionSnapshot } from '@felix/protocol';
-import type { ToolCall, Turn } from './turns';
+import type { ReasoningBlock, ToolCall, Turn } from './turns';
 
 /**
  * One row from GET /chat/sessions — the tenant's threads, as the harness knows
@@ -55,6 +55,7 @@ export function snapshotToEvents(snapshot: SessionSnapshot): SessionEvent[] {
     tool_call_id: item.toolCallId,
     name: item.toolName,
     tool_calls: item.toolCalls,
+    ...(item.metadata ? { metadata: item.metadata } : {}),
   }));
 
   // `GET /chat/sessions/{id}` returns every event on the session, not the active
@@ -131,6 +132,30 @@ export function mergeSessions(local: ThreadMeta[], server: SessionSummary[]): Th
 }
 
 /**
+ * The readable reasoning stored on an assistant message, one string per block.
+ *
+ * The harness keeps the provider's blocks verbatim in `metadata.thinking` so a
+ * later turn can replay them (`felix_ai/wire/anthropic_messages.py`):
+ * `{type: "thinking", thinking, signature}` for readable reasoning, and
+ * `{type: "redacted_thinking", data}` for reasoning the provider encrypted. Only
+ * the first has anything a person can read; the second, and the signature, are
+ * opaque by design and are never rendered.
+ */
+export function readableThinking(metadata: Record<string, unknown> | undefined): string[] {
+  const raw = metadata?.thinking;
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const block of raw) {
+    if (!block || typeof block !== 'object') continue;
+    const b = block as { type?: unknown; thinking?: unknown };
+    if (b.type === 'thinking' && typeof b.thinking === 'string' && b.thinking.trim()) {
+      out.push(b.thinking);
+    }
+  }
+  return out;
+}
+
+/**
  * Rebuild a UI transcript from the session event log. Assistant messages
  * that carry only `tool_calls` (no text) are merged into the next assistant
  * message with content, so the result mirrors the live streaming UI (tool cards
@@ -148,6 +173,9 @@ export function eventsToTurns(
   const turns: Turn[] = [];
   const toolById = new Map<string, ToolCall>();
   let pendingTools: ToolCall[] = [];
+  // Reasoning from a tool-only step rides forward with its cards, for the same
+  // reason they do: the step has no prose of its own to hang it on.
+  let pendingReasoning: ReasoningBlock[] = [];
 
   for (const ev of ordered) {
     if (ev.kind === 'tool_result' || ev.role === 'tool') {
@@ -162,14 +190,16 @@ export function eventsToTurns(
 
     if (ev.role === 'user') {
       // Flush any dangling tool-only assistant turn before the next user turn.
-      if (pendingTools.length) {
+      if (pendingTools.length || pendingReasoning.length) {
         turns.push({
           id: newId(),
           role: 'assistant',
           content: '',
           tools: pendingTools,
+          ...(pendingReasoning.length ? { reasoning: pendingReasoning } : {}),
         });
         pendingTools = [];
+        pendingReasoning = [];
       }
       turns.push({
         id: ev.id ?? newId(),
@@ -195,10 +225,21 @@ export function eventsToTurns(
         return t;
       });
       const tools = [...pendingTools, ...newTools];
+      // A message's reasoning ran before anything it said or called, so it sits at
+      // offset 0 and `interleaveTurn` puts it ahead of the prose and the cards.
+      // One limit: every block in a merged turn lands at 0, so a turn that thought,
+      // called a tool, then thought again shows both thoughts above both calls.
+      // The offset model has nothing below 0 to tell them apart with.
+      const reasoning = [
+        ...pendingReasoning,
+        ...readableThinking(ev.metadata).map((text) => ({ text, at: 0 })),
+      ];
       pendingTools = [];
+      pendingReasoning = [];
       if (!content && tools.length) {
         // Tool-only step — hold the tools and attach to the next answer.
         pendingTools = tools;
+        pendingReasoning = reasoning;
         continue;
       }
       turns.push({
@@ -206,12 +247,19 @@ export function eventsToTurns(
         role: 'assistant',
         content,
         tools,
+        ...(reasoning.length ? { reasoning } : {}),
         eventId: ev.id,
       });
     }
   }
-  if (pendingTools.length) {
-    turns.push({ id: newId(), role: 'assistant', content: '', tools: pendingTools });
+  if (pendingTools.length || pendingReasoning.length) {
+    turns.push({
+      id: newId(),
+      role: 'assistant',
+      content: '',
+      tools: pendingTools,
+      ...(pendingReasoning.length ? { reasoning: pendingReasoning } : {}),
+    });
   }
   return turns;
 }

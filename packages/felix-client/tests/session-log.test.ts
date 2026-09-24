@@ -259,3 +259,77 @@ describe('mergeSessions', () => {
     expect(out[0]?.updatedAt).toBe(900);
   });
 });
+
+/**
+ * Reasoning, read back out of the log.
+ *
+ * The harness stores the provider's reasoning blocks on the assistant message's
+ * `metadata.thinking`, and the snapshot sends metadata whole. The fold dropped it,
+ * so a hydrated thread — including every durable run, which is only ever seen
+ * whole once it has landed and been re-read — showed no reasoning at all while
+ * the same turn streamed live showed it.
+ */
+describe('reasoning from the session log', () => {
+  const thinking = (text: string) => ({ type: 'thinking', thinking: text, signature: 'sig' });
+
+  it('attaches an answer\x27s reasoning ahead of its prose, and drops what cannot be read', async () => {
+    const { eventsToTurns, snapshotToEvents } = await import('../src/session-log');
+    const turns = eventsToTurns(
+      snapshotToEvents({
+        transcript: [
+          { id: 'e0', seq: 0, kind: 'message', role: 'user', content: 'why?' },
+          {
+            id: 'e1',
+            seq: 1,
+            kind: 'message',
+            role: 'assistant',
+            content: 'because',
+            metadata: {
+              thinking: [
+                thinking('weigh the options'),
+                { type: 'redacted_thinking', data: 'opaque' },
+                thinking('   '),
+              ],
+            },
+          },
+        ],
+      } as never),
+    );
+    const answer = turns.find((t) => t.role === 'assistant');
+    expect(answer?.reasoning).toEqual([{ text: 'weigh the options', at: 0 }]);
+    // The signature and the redacted block are opaque on purpose.
+    expect(JSON.stringify(answer)).not.toContain('sig');
+    expect(JSON.stringify(answer)).not.toContain('opaque');
+  });
+
+  it('carries a tool-only step\x27s reasoning into the answer it belongs to', async () => {
+    const { eventsToTurns } = await import('../src/session-log');
+    const turns = eventsToTurns([
+      { id: 'e0', seq: 0, kind: 'message', role: 'user', content: 'find it' },
+      {
+        id: 'e1',
+        seq: 1,
+        kind: 'message',
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'c1', name: 'search', args: {} }],
+        metadata: { thinking: [thinking('search first')] },
+      },
+      { id: 'e2', seq: 2, kind: 'tool_result', role: 'tool', content: '42', tool_call_id: 'c1' },
+      { id: 'e3', seq: 3, kind: 'message', role: 'assistant', content: '42 it is' },
+    ]);
+    const assistants = turns.filter((t) => t.role === 'assistant');
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0]?.reasoning).toEqual([{ text: 'search first', at: 0 }]);
+    expect(assistants[0]?.tools?.[0]?.output).toBe('42');
+  });
+
+  it('leaves a turn with no stored reasoning exactly as it was', async () => {
+    const { eventsToTurns } = await import('../src/session-log');
+    const [, answer] = eventsToTurns([
+      { id: 'e0', seq: 0, kind: 'message', role: 'user', content: 'hi' },
+      { id: 'e1', seq: 1, kind: 'message', role: 'assistant', content: 'hello' },
+    ]);
+    expect(answer && 'reasoning' in answer).toBe(false);
+  });
+});
