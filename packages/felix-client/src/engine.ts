@@ -23,7 +23,7 @@ import type {
   StreamEvent,
   TokenUsage,
 } from '@felix/protocol';
-import { type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
+import { describeGate, type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
@@ -226,6 +226,43 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    */
   let durableEvents: SessionEvent[] = [];
   let durablePrefix: Turn[] | null = null;
+
+  /**
+   * The harness's last word on a durable run — `running`, `pending` — or null
+   * when none is in flight. It is what the status turn would say if nothing
+   * were waiting on a person.
+   */
+  let durableStatus: string | null = null;
+
+  /**
+   * What the status turn says while a durable run is in flight.
+   *
+   * A durable run blocked on an approval sat on `Background · running…` for the
+   * whole of its deadline, because the stream carries no approval frame and the
+   * poll that finds the approval put it in a banner the turn said nothing about.
+   * An operator reading the turn typed "proceed" into the composer, which is not
+   * where the decision lives, and the write timed out twice (2026-09-23). So the
+   * turn names what is blocking it, in the same words the banner uses to
+   * describe the call; the countdown and the decision stay in the banner.
+   */
+  const statusLine = (status: string): string => {
+    const blocked = state.approvals[0];
+    return blocked
+      ? `Waiting on your approval · ${describeGate(blocked.toolName, blocked.args)}`
+      : `Background · ${status}…`;
+  };
+
+  /** Re-say the status when what is waiting has changed, and only mid-run. */
+  const refreshStatus = () => {
+    if (durableStatus === null) return;
+    const line = statusLine(durableStatus);
+    patch((t) => ({ ...t, content: line }));
+  };
+
+  const tick = (status: string) => {
+    durableStatus = status;
+    patch((t) => ({ ...t, content: statusLine(status) }));
+  };
 
   const renderDurable = () => {
     if (durablePrefix === null) return;
@@ -437,7 +474,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       }
       case 'run_status': {
         const status = String((ev.data as { status?: string }).status ?? '').trim();
-        if (status) patch((t) => ({ ...t, content: `Background · ${status}…` }));
+        if (status) tick(status);
         break;
       }
       // The durable answer, and the only place it arrives — there are no deltas
@@ -445,6 +482,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       case 'final': {
         const content = String((ev.data as { content?: string }).content ?? '').trim();
         resumeToken = null;
+        durableStatus = null;
         durablePrefix = null;
         durableEvents = [];
         patch((t) => ({ ...t, content: content || t.content }));
@@ -548,10 +586,12 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     controller = ctrl;
     set({ streaming: true, error: null, phase: 'turn' });
     resumeToken = null;
+    durableStatus = null;
     lastEventId = undefined;
 
     const run = async () => {
       if (mode === 'background') {
+        durableStatus = 'queued';
         patch((t) => ({ ...t, content: t.content || 'Queued durable job…' }));
         const started = await ports.client.startChat({
           manifest: args.manifest,
@@ -560,6 +600,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           signal: ctrl.signal,
         });
         if (started.kind === 'done') {
+          durableStatus = null;
           patch((t) => ({ ...t, content: started.final.content }));
           // Same shape as the `final` frame: an answer with no tool calls behind it.
           ports.onDurableComplete?.();
@@ -567,10 +608,9 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         }
         const runResult = await ports.client.pollDurableRun(started.resumeToken, {
           signal: ctrl.signal,
-          onTick: (r) => {
-            patch((t) => ({ ...t, content: `Background · ${r.status || 'pending'}…` }));
-          },
+          onTick: (r) => tick(r.status || 'pending'),
         });
+        durableStatus = null;
         if (runResult.error) {
           set({ error: runResult.error });
           return;
@@ -592,10 +632,9 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         set({ phase: 'durable' });
         const rejoined = await ports.client.pollDurableRun(token, {
           signal: ctrl.signal,
-          onTick: (r) => {
-            patch((t) => ({ ...t, content: `Background · ${r.status || 'pending'}…` }));
-          },
+          onTick: (r) => tick(r.status || 'pending'),
         });
+        durableStatus = null;
         if (rejoined.error) {
           set({ error: rejoined.error });
           return;
@@ -670,6 +709,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       if (!ctrl.signal.aborted) set({ error: String((err as Error)?.message ?? err) });
     } finally {
       if (controller === ctrl) controller = null;
+      // However the run ended — `final`, a settled poll, an abort, a thrown
+      // error — nothing is in flight to report on any more, so an approval
+      // answered after this must not rewrite the turn it left behind.
+      durableStatus = null;
       // A card still not `done` never reported back — the run was stopped, or
       // ended with no matching tool_end. The `done` frame settles this when it
       // arrives; an aborted run has no such frame, and a spinner that outlives
@@ -701,6 +744,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       seenApprovals.clear();
       activeAssistantId = '';
       resumeToken = null;
+      durableStatus = null;
       lastEventId = undefined;
       set({ turns: [], error: null, phase: 'idle', approvals: [], uiPrompt: null });
     },
@@ -725,9 +769,11 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         return { ...pending, expiresAt: deadline };
       });
       if (added.length || patched) set({ approvals: [...known, ...added] });
+      if (added.length) refreshStatus();
     },
     shiftApproval() {
       set({ approvals: state.approvals.slice(1) });
+      refreshStatus();
     },
     clearUiPrompt() {
       set({ uiPrompt: null });

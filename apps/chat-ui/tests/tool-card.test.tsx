@@ -106,3 +106,44 @@ describe('the tool card for a shell result', () => {
     expect(screen.getByText('42 lines')).toBeTruthy();
   });
 });
+
+/**
+ * A gated call the harness refused.
+ *
+ * The result is a marker for the model, `[approval timeout] tool=write_file
+ * rule=workspace-write`, and the card drew it as output under a `done` badge:
+ * a tool that ran and printed a bracket. What actually happened is that nobody
+ * approved it in time, which is the sentence the operator needs.
+ */
+describe('the tool card for a refused gate', () => {
+  it('says nobody approved it, not that it ran', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(
+      <Tool
+        tool={{
+          name: 'write_file',
+          done: true,
+          input: { path: 'notes/todo.md' },
+          output: '[approval timeout] tool=write_file rule=workspace-write',
+        }}
+        verbose
+      />,
+    );
+    expect(screen.getByText('not approved in time')).toBeTruthy();
+    expect(screen.getByText(/nobody approved write_file/)).toBeTruthy();
+    expect(screen.queryByText('done')).toBeNull();
+    expect(screen.queryByText(/\[approval timeout\]/)).toBeNull();
+  });
+
+  it('carries the refuser\x27s note when someone said no', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(
+      <Tool
+        tool={{ name: 'local_shell', done: true, output: '[approval denied] tool=local_shell' }}
+        verbose
+      />,
+    );
+    expect(screen.getByText('refused')).toBeTruthy();
+    expect(screen.getByText(/local_shell was denied/)).toBeTruthy();
+  });
+});

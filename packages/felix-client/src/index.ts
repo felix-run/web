@@ -7,16 +7,20 @@
  * credentials, persistence and renderer; this owns the conversation.
  */
 export {
+  type ApprovalOutcome,
   type ApprovalRequest,
   type ApprovalSync,
   type ApprovalSyncOptions,
   type ArgEdit,
   approvalRuleLabel,
   DEFAULT_APPROVAL_TTL_MS,
+  describeGate,
+  describeRefusal,
   formatArgsForEditing,
   formatCountdown,
   msUntilDecision,
   type PendingApproval,
+  parseApprovalOutcome,
   parseEditedArgs,
   summarizeToolArgs,
   syncApprovals,

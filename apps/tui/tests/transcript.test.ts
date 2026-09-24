@@ -473,3 +473,31 @@ describe('reasoning', () => {
     }
   });
 });
+
+describe('a refused gate on the tool card', () => {
+  it('says nobody approved it rather than drawing the marker', async () => {
+    const turn: Turn = {
+      id: 'a-refused',
+      role: 'assistant',
+      content: '',
+      tools: [
+        {
+          name: 'write_file',
+          done: true,
+          input: { path: 'notes/todo.md' },
+          output: '[approval timeout] tool=write_file rule=workspace-write',
+        },
+      ],
+    };
+    const ui = await mount(createElement(Transcript, { turns: [turn], theme: testTheme }), {
+      width: 100,
+      height: 8,
+    });
+    try {
+      expect(shows(ui.frame(), 'nobody approved write_file')).toBe(true);
+      expect(ui.frame()).not.toContain('[approval timeout]');
+    } finally {
+      ui.stop();
+    }
+  });
+});
