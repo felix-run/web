@@ -15,14 +15,12 @@ import { Loader2Icon } from 'lucide-react';
 import { type FormEvent, useEffect, useRef } from 'react';
 
 export function AccessKeyForm({
-  checking,
   busy,
   value,
   error,
   onValueChange,
   onSubmit,
 }: {
-  checking: boolean;
   busy: boolean;
   value: string;
   error: string | null;
@@ -31,13 +29,14 @@ export function AccessKeyForm({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus from an effect rather than the `autoFocus` prop. React only honours
-  // `autoFocus` at mount, and the input is already mounted through the
-  // `checking` phase — so a stored key that fails its check left the field
-  // unfocused, which is the one moment the user has to type into it.
+  // The form only mounts once the gate has decided to ask — a missing key, a
+  // stored key that failed its check, or a 401 mid-session — so mount is the
+  // one moment the user has to type into it, and the field takes focus then.
+  // An effect rather than `autoFocus`, which Biome flags and which browsers
+  // honour inconsistently for an element inserted after load.
   useEffect(() => {
-    if (!checking) inputRef.current?.focus();
-  }, [checking]);
+    inputRef.current?.focus();
+  }, []);
 
   return (
     <form
@@ -50,9 +49,7 @@ export function AccessKeyForm({
         <h1 className="text-lg font-semibold tracking-tight">
           <span className="uppercase tracking-wider">Felix</span> chat
         </h1>
-        <p className="text-sm text-muted-foreground">
-          {checking ? 'Checking your access key…' : 'Enter your access key to open the chat.'}
-        </p>
+        <p className="text-sm text-muted-foreground">Enter your access key to open the chat.</p>
       </div>
 
       <div className="space-y-2">
