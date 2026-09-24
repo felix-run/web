@@ -105,6 +105,15 @@ have them — `tool_calls` and `tool_call_id`. Those last two are what a tool ca
 `tool_calls` off an assistant message to open one per call, and match `tool_call_id` on the following
 `tool_result` to close it.
 
+On an assistant message with readable reasoning, it also carries `metadata: {"thinking": [{"type":
+"thinking", "thinking": str}, …]}` — the same key the `snapshot` frame's `metadata` already uses, so
+one function folds both. This is what lets a *durable* run's reasoning reach a watching client while
+the run is still going: a durable stream carries no deltas, so before this the reasoning behind an
+assistant turn appeared only once the run had landed and the client re-read the snapshot. Only the
+readable text goes on the frame — a stored thinking block's `signature`, and a `redacted_thinking`
+block's opaque `data`, exist to be replayed back to the model provider, not shown, and stay in the
+log. The key is omitted entirely when a turn has nothing readable to show.
+
 :::caution[On a harness older than `felix-run/felix#238`, a warm reattach loses its tool calls]
 Before it, `session_event` carried neither `tool_calls` nor `tool_call_id`, so an assistant turn that
 called a tool replayed as an empty message and its result had nothing to attach to. The `snapshot`

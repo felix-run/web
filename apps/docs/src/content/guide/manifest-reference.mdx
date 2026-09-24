@@ -163,7 +163,7 @@ A list of built-in tool names.
 
 ```yaml
 spec:
-  tools: [calculator, read_file, write_file, search_files, list_dir]
+  tools: [calculator, read_file, write_file, edit_file, search_files, list_dir]
 ```
 
 | Tool | Args | Notes |
@@ -172,10 +172,16 @@ spec:
 | `list_dir` | `{path}` | Max 500 entries. |
 | `read_file` | `{path, offset, limit}` | Max 512 KB; flags binary files. |
 | `write_file` | `{path, content, append}` | Max 512 KB. |
+| `edit_file` | `{path, old_string, new_string, replace_all}` | Replaces one exact string, leaving the rest of the file untouched. Max 4 MB file; refuses a match it cannot find, and a match it finds more than once unless `replace_all` is set; refuses when the resulting file would exceed the limit before writing it. |
 | `search_files` | `{query, path, regex, max_hits}` | ≤ 50 hits; skips files over 256 KB. |
 | `list_skills` / `activate_skill` / `deactivate_skill` | — | Bound to the real catalog when `spec.skills` is set. |
 
-The four workspace tools resolve every path under `FELIX_WORKSPACE_ROOT`, rejecting absolute paths
+`edit_file` reads and writes bytes, not text — a universal-newline read would turn every `\r\n` in
+a file into `\n`, and writing the result back would rewrite every line ending in a CRLF file the
+edit never touched. Use it instead of `write_file` on any file the model did not just create: it is
+the only one of the two that cannot lose a byte the model failed to reproduce.
+
+The five workspace tools resolve every path under `FELIX_WORKSPACE_ROOT`, rejecting absolute paths
 and any traversal that escapes the root. With the variable unset they fail with
 `workspace_root is not configured (set FELIX_WORKSPACE_ROOT)`.
 
@@ -1049,6 +1055,7 @@ spec:
     - list_dir
     - read_file
     - write_file
+    - edit_file
     - search_files
   client_tools:
     - name: local_shell
@@ -1066,7 +1073,7 @@ spec:
   approvals:
     - id: workspace-write
       description: Confirm writes to the workspace
-      tools: [write_file]
+      tools: [write_file, edit_file]
       ttl_seconds: 600
     - id: client-shell
       description: Confirm local shell commands

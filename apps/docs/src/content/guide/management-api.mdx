@@ -527,6 +527,13 @@ the batch is reported at once:
 
 Nothing is written when the batch is refused.
 
+A run row's `fail_count` is every item that did not pass — a scored rejection and one that
+raised, counted the same, which is what the CLI's exit code has always keyed on. `error_count` is
+the subset of `fail_count` that never reached the scorer at all, so a dataset with a bad item reads
+differently from a manifest that regressed: a `fail_count` with no `error_count` behind it is a
+real scoring loss, and one that is entirely `error_count` is a dataset or a run problem, not the
+model's.
+
 <Aside type="caution">
   A rubric naming **no** rule is legal and is not refused — it falls through to `nonempty`, which
   passes any non-blank answer, so the dataset gates nothing. That returns `200` with a `warnings`
