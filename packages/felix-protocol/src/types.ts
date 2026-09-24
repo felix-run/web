@@ -209,6 +209,14 @@ export interface SessionSnapshot {
     toolName?: string;
     toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
     status?: string;
+    /**
+     * The event's stored metadata, sent whole (`session/snapshot.py`). The part a
+     * client reads is `thinking`: the provider's reasoning blocks for an assistant
+     * message, kept so a later turn can replay them. A durable run's live tail
+     * frame carries no metadata, so after one lands the snapshot is the only place
+     * its reasoning reaches a client.
+     */
+    metadata?: Record<string, unknown>;
   }>;
   wake?: {
     fresh?: boolean;
@@ -247,6 +255,8 @@ export interface SessionEvent {
   tool_call_id?: string;
   name?: string;
   tool_calls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+  /** Carried from a snapshot row; see `SessionSnapshot.transcript[].metadata`. */
+  metadata?: Record<string, unknown>;
 }
 
 /**
