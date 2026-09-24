@@ -113,6 +113,12 @@ export type StreamEvent =
   /** A queued steer / follow-up was drained into the run as a user message. */
   | { event: 'steer'; data: { content: string } }
   | { event: 'follow_up'; data: { content: string } }
+  /**
+   * A `react` loop ran out of `spec.recursion_limit` steps with the model still
+   * asking for tools. The session is recorded `truncated` and `done` says
+   * `stop_reason: max_turns`; this frame is the one that carries the limit.
+   */
+  | { event: 'max_turns'; data: { limit: number } }
   | {
       event: 'session_progress';
       data: { phase?: string; reason?: string; [k: string]: unknown };

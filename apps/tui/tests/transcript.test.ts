@@ -87,6 +87,32 @@ describe('an assistant turn', () => {
     usage: { input: 120, output: 40 },
   };
 
+  it('says when the run ran out of steps, under the answer it cut short', async () => {
+    const cut: Turn = {
+      ...reply,
+      id: 'a2',
+      content: 'half an answer',
+      stop: { reason: 'max_turns', limit: 10 },
+    };
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [cut] }), {
+      width: 80,
+      height: 8,
+    });
+    try {
+      // The notice is plain text and lands first; the prose above it is
+      // `<markdown>`, parsed on a worker, so it is asserted inside the wait or
+      // the frame is read before it exists. That is how CI caught the first cut.
+      await ui.until(
+        () => shows(ui.frame(), 'step limit (10)') && shows(ui.frame(), 'half an answer'),
+      );
+      const frame = ui.frame();
+      expect(shows(frame, 'half an answer')).toBe(true);
+      expect(shows(frame, 'step limit (10)')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
   it('draws prose, the fence and the list', async () => {
     const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [reply] }), {
       width: 60,

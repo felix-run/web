@@ -110,6 +110,17 @@ export function Message({
         );
       })}
 
+      {turn.stop && (
+        <div
+          className="font-mono text-xs text-state-blocked"
+          title="The react loop hit spec.recursion_limit before the model finished; the answer above is cut short"
+        >
+          Stopped at the step limit
+          {turn.stop.limit === undefined ? '' : ` (${turn.stop.limit})`} with tool calls still
+          pending
+        </div>
+      )}
+
       {turn.usage && (
         <div
           className="font-mono text-xs text-muted-foreground"

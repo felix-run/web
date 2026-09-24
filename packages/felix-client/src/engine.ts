@@ -490,6 +490,19 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         if (content) interject(content);
         break;
       }
+      // The react loop ran out of `recursion_limit` steps with the model still
+      // asking for tools. The harness records the session `truncated` and the
+      // `done` frame's `stop_reason` agrees, but nothing in the transcript would:
+      // the last assistant message reads as an answer that merely stopped
+      // mid-sentence. Pin the reason and the limit to the turn, where the cut is.
+      case 'max_turns': {
+        const limit = Number((ev.data as { limit?: unknown }).limit);
+        patch((t) => ({
+          ...t,
+          stop: { reason: 'max_turns', ...(Number.isFinite(limit) ? { limit } : {}) },
+        }));
+        break;
+      }
       case 'session_progress': {
         const phase = (ev.data as { phase?: string }).phase;
         if (phase) set({ phase });

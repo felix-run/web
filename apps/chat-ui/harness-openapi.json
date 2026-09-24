@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.2.2"
+    "version": "0.3.0"
   },
   "paths": {
     "/health": {
@@ -231,6 +231,15 @@
     },
     "/documents/{doc_id}": {
       "delete": {}
+    },
+    "/skills/{manifest_name}": {
+      "get": {}
+    },
+    "/skills/{manifest_name}/{skill_name}": {
+      "get": {}
+    },
+    "/skills/{manifest_name}/activations/recent": {
+      "get": {}
     },
     "/a2a/": {
       "post": {}

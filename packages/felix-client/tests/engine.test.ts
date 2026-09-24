@@ -118,6 +118,29 @@ describe('a drained steer', () => {
   });
 });
 
+describe('a run that ran out of steps', () => {
+  /**
+   * The harness says so three ways — a `truncated` session status, the `done`
+   * frame's `stop_reason`, and this frame — and until it was modelled the
+   * transcript said none of them: the last message read as an answer that
+   * happened to stop mid-sentence. The frame is the one that carries the limit.
+   */
+  it('pins the reason and the limit to the turn it cut short', async () => {
+    const engine = engineOn([
+      delta('half an answer'),
+      { event: 'max_turns', data: { limit: 10 } },
+      { event: 'done', data: { final: { content: 'half an answer' }, stop_reason: 'max_turns' } },
+    ]);
+    await run(engine);
+
+    const last = engine.state.turns.at(-1);
+    expect(last?.content).toBe('half an answer');
+    expect(last?.stop).toEqual({ reason: 'max_turns', limit: 10 });
+    // Cut short is not failed: the run ended the way the harness said it would.
+    expect(engine.state.error).toBeNull();
+  });
+});
+
 describe('tool cards', () => {
   it('opens a card where the prose had got to, and closes it by id', async () => {
     const engine = engineOn([
