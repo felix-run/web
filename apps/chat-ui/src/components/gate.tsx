@@ -13,12 +13,47 @@
  * That branch lives in main.tsx (so this component's hooks stay unconditional).
  */
 
+import { Spinner } from '@felix/ui/spinner';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { getApiKey, setApiKey, setUnauthorizedHandler } from '@/lib/auth';
 import { AccessKeyForm } from './auth/access-key-form';
 import { AuthLayout } from './auth/auth-layout';
 
+/**
+ * `checking` is a stored key being verified, and it must draw nothing that
+ * looks like a decision. It used to render the key prompt with the field
+ * disabled, so every returning visitor saw the login screen for one round
+ * trip before the chat replaced it — a flash that read as "logged out" on a
+ * page that was about to open. The prompt is only right once the key is known
+ * to be missing or rejected.
+ */
 type Phase = 'checking' | 'locked' | 'open';
+
+/**
+ * How long the check may run before the holding surface admits it is waiting.
+ * A probe that returns inside this shows nothing at all, which is the point:
+ * a spinner that appears for 80ms and vanishes is itself a flash. Past it, a
+ * slow proxy gets a "still working" signal rather than a blank page.
+ */
+const HOLDING_SPINNER_DELAY_MS = 400;
+
+/**
+ * The full-viewport surface drawn while a stored key is checked. Same box as
+ * <AuthLayout /> (`min-h-svh bg-background`) so the swap to either the app or
+ * the prompt does not shift the page behind it.
+ */
+function Holding() {
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setWaiting(true), HOLDING_SPINNER_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return (
+    <div className="flex min-h-svh w-full items-center justify-center bg-background">
+      {waiting && <Spinner className="size-5 text-muted-foreground" />}
+    </div>
+  );
+}
 
 /**
  * Why the probe carries a reason rather than a boolean: a swallowed network
@@ -116,12 +151,12 @@ export function Gate({ children }: { children: ReactNode }) {
   );
 
   if (phase === 'open') return <>{children}</>;
+  if (phase === 'checking') return <Holding />;
 
   return (
     <AuthLayout>
       <AccessKeyForm
-        checking={phase === 'checking'}
-        busy={submitting || phase === 'checking'}
+        busy={submitting}
         value={value}
         error={error}
         onValueChange={setValue}

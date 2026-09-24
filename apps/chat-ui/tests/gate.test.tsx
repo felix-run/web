@@ -44,6 +44,44 @@ describe('Gate', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // The flash: a stored key used to be checked *behind* the key prompt, so every
+  // returning visitor saw the login screen for one round trip before the chat
+  // replaced it. While the check is in flight the gate must draw neither.
+  it('shows neither the prompt nor the app while a stored key is being checked', async () => {
+    setApiKey('stored-key');
+    let settle!: (r: Response) => void;
+    fetchMock.mockReturnValue(new Promise<Response>((r) => (settle = r)));
+    renderGate();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.queryByPlaceholderText('Access key')).toBeNull();
+    expect(screen.queryByText(/access key/i)).toBeNull();
+    expect(screen.queryByText('chat is open')).toBeNull();
+    await act(async () => settle(unlocked()));
+    await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
+  });
+
+  // The holding surface admits it is waiting only once the check has run long
+  // enough to be worth saying so. A spinner for a fast probe is itself a flash.
+  it('shows a spinner only once the check has run long', async () => {
+    vi.useFakeTimers();
+    try {
+      setApiKey('stored-key');
+      fetchMock.mockReturnValue(new Promise<Response>(() => {}));
+      renderGate();
+      expect(screen.queryByRole('status')).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(399);
+      });
+      expect(screen.queryByRole('status')).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.getByRole('status')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('verifies a stored key and opens on success', async () => {
     setApiKey('stored-key');
     renderGate();

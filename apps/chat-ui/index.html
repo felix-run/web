@@ -4,6 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Felix chat</title>
+    <!--
+      Theme before first paint. ThemeProvider toggles `.dark` from an effect,
+      which runs after React's first commit — so without this a dark-theme
+      visitor got one light frame on every load. Same storage key and the same
+      `system` fallback as src/components/theme-provider.tsx; the provider's
+      effect then finds the class already set and changes nothing.
+      Wrapped in try/catch because localStorage throws in some private modes.
+    -->
+    <script>
+      (() => {
+        try {
+          const stored = localStorage.getItem('felix.theme');
+          const dark =
+            stored === 'dark' ||
+            (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        } catch {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
