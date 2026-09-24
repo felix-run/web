@@ -163,7 +163,7 @@ on either side of it:
 |---|---|---|---|
 | `user_input` | Once per caller turn | `ok` | `user_input` (first 2000 chars), `thread_id` |
 | `tool_call` | Per tool invocation that was not denied | `ok`, `error` | `tool`, `tool_call_id`, `thread_id` |
-| `policy_deny` | Per tool invocation a governance wrapper denied | `denied` | `tool`, `tool_call_id`, `thread_id` |
+| `policy_deny` | Per tool invocation a governance wrapper denied | `denied` | `tool`, `tool_call_id`, `thread_id`, `control` |
 | `final_response` | Once per completed turn | `ok`, `error` (fatal) | `thread_id`, `chars` |
 | `inbound_screening` | Per screening decision on the way in | `denied`, `quarantined`, `redacted`, `oversize`, `unavailable` | `surface` (`turn` \| `tool_arguments`) |
 | `guardrails_reply` | PII matched in the answer | `blocked`, `redacted` | `engine` |
@@ -173,7 +173,10 @@ on either side of it:
 The name is narrower than the behaviour in one direction and wider in the other. The loop emits
 `policy_deny` whenever the **tool** wrapper stack returns a deny marker — policies, command or
 content screening, limits, guardrails, tool-targeted judges, or a pending approval all land here.
-Read `payload.tool` and correlate with the governance counters above to tell which layer denied.
+`payload.control` names which one — one of `policy`, `limits`, `guardrails`, `approvals`,
+`command`, `screening` — so `GET /audit?event_type=policy_deny` filtered on it answers "which
+layer denied" without correlating counters; a row from a harness older than this field carries no
+`control` key at all. Read `payload.tool` alongside it to know which tool.
 
 What does *not* land there is anything decided outside a tool call: a turn refused on the way in is
 `inbound_screening`, and an answer blocked on the way out is `guardrails_reply` or `judge_deny`. An
