@@ -12,7 +12,7 @@
  */
 
 import type { ReasoningBlock, ToolCall, Turn } from '@felix/client';
-import { describeRefusal, interleaveTurn, parseApprovalOutcome } from '@felix/client';
+import { classifyToolResult, interleaveTurn } from '@felix/client';
 import {
   BoxRenderable,
   type CodeRenderable,
@@ -178,12 +178,11 @@ function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
   // A spill's preview is the part the harness kept inline; everything else is
   // the output as it stands.
   const body = spill ? spill.ref.preview : typeof tool.output === 'string' ? tool.output : '';
-  // A refused gate says so in words. The raw `[approval timeout] tool=…` marker
-  // is what the model reads; a person reading it saw a tool that ran and
-  // printed a bracket, and then nothing.
-  const outcome = tool.done ? parseApprovalOutcome(tool.output) : null;
-  const refusal = outcome ? describeRefusal(outcome) : null;
-  const result = oneLine(refusal ?? body, RESULT_WIDTH);
+  // A failed or refused call says so in words. The raw `[approval timeout] …` or
+  // `[tool error/permission_denied] …` marker is what the model reads; a person
+  // reading it saw a tool that ran and printed a bracket, and then nothing.
+  const issue = tool.done ? classifyToolResult(tool.name, tool.output) : null;
+  const result = oneLine(issue ? `${issue.label}: ${issue.message}` : body, RESULT_WIDTH);
   return (
     <box>
       <text attributes={DIM}>

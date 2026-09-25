@@ -507,6 +507,75 @@ describe('a durable run', () => {
     expect(status()).toBe(after);
   });
 
+  /**
+   * An approval announced on the stream says so in the turn, too.
+   *
+   * A v0.4.0 harness sends a durable run's `approval_required` on the stream, and on the reference
+   * deployment it arrived straight after `run_accepted`, before any `run_status`. The engine only
+   * counted a durable run as in flight from its first status, so the frame changed nothing and the
+   * turn said "Durable run accepted…" for the whole wait. The card must also land *after* the
+   * status line: cards sit at the text's length when they open, and a line rewritten afterwards
+   * would put the card part-way through it.
+   */
+  it('names an approval that arrives by frame before any status', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes('/chat/stream')) {
+          return sse([
+            { event: 'run_accepted', data: { resume_token: 'fib_3' } },
+            {
+              event: 'approval_required',
+              data: {
+                approval_id: 'ap-3',
+                tool_name: 'write_file',
+                args: { path: 'notes.txt', content: 'hello' },
+                rule_id: 'workspace-write',
+              },
+            },
+          ]);
+        }
+        if (url.includes('/chat/runs/')) {
+          await gate;
+          return new Response(
+            JSON.stringify({ status: 'completed', final: { content: 'wrote it' } }),
+          );
+        }
+        return new Response('{}');
+      }),
+    );
+    let n = 0;
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+      newId: () => `id-${++n}`,
+    } as Parameters<typeof createChatEngine>[0]);
+    engine.setTurns([
+      { id: 'u1', role: 'user', content: 'hello' },
+      { id: 'a1', role: 'assistant', content: '', tools: [] },
+    ]);
+    const turn = () => engine.state.turns.find((t) => t.id === 'a1');
+
+    const finished = run(engine);
+    await until(() => (turn()?.tools ?? []).length > 0);
+
+    const waiting = 'Waiting on your approval · Write notes.txt (5 chars)';
+    expect(turn()?.content).toBe(waiting);
+    expect(turn()?.tools?.[0]).toMatchObject({ name: 'approval · write_file', at: waiting.length });
+
+    engine.shiftApproval();
+    expect(turn()?.content).toBe('Durable run accepted…');
+
+    release();
+    await finished;
+    expect(turn()?.content).toBe('wrote it');
+  });
+
   /** Outside a durable run these frames stay inert — `reattachThread` owns them. */
   it('ignores session events on a stream that is not a durable run', async () => {
     const engine = engineOn([

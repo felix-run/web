@@ -83,6 +83,7 @@ export {
   titleFromText,
 } from './session-log';
 export { relativeTime } from './time';
+export { classifyToolResult, type ToolResultIssue } from './tool-results';
 export {
   createFelixClient,
   type FelixClient,
