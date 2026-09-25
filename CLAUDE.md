@@ -452,13 +452,20 @@ Flows worth knowing before editing the app:
   **So the turn has to say it is waiting, not only the banner.** A durable run's status turn read
   `Background · running…` for the whole of an approval's deadline, and on 2026-09-23 an operator
   typed "proceed" into the composer while a `write_file` timed out behind it, twice. The engine now
-  writes `Waiting on your approval · <call>` into that turn when the poll adopts one, and returns to
-  the run's own status once it is answered — only while a durable run is in flight, which is what
-  `durableStatus` tracks and what every exit from `send` clears. And a refusal is a sentence: the
-  harness answers an undecided gate with a tool result spelled `[approval <note>] tool=… rule=…`
-  (`manifests/builder.py`), which rendered as output under a `done` badge. `parseApprovalOutcome`
-  reads it at the **start** of the output only, and both clients' tool cards say
-  "nobody approved … before the deadline" for a `timeout`.
+  writes `Waiting on your approval · <call>` into that turn when an approval arrives — by the poll,
+  **or by frame**: a v0.4.0 harness announces a durable run's approval on the stream, often straight
+  after `run_accepted` and before any `run_status`, which is why `run_accepted` (not the first
+  status) is what marks the run in flight. It returns to the run's own status once the approval is
+  answered, only while a durable run is in flight — what `durableStatus` tracks and every exit from
+  `send` clears. The status line is refreshed *before* the approval's card opens, because a card is
+  placed at the text's length and a line rewritten afterwards would split around it.
+  And a finished call is not a successful one. `classifyToolResult` in `@felix/client` reads the
+  **start** of a result for the harness's failure spellings — `[tool error/<code>]`,
+  `[error/…]`/`[fatal/…]`, the control refusals (`[policy …]`, `[limits]`, …) and the
+  `[approval <note>]` outcomes — plus a bare `error: …` from the five workspace tools, which is
+  what a harness older than `felix-run/felix#308` returns. Both clients' tool cards draw a failed
+  or refused call as such instead of `done`: a `write_file` that failed with `Errno 13` sat under
+  a green `done` badge on the reference deployment.
   The rule path now sends `reason` too — the manifest rule's `description`, so a banner can say
   `Confirm writes to the workspace` rather than only `workspace-write`. The `/approvals` row still
   carries none, so it is frame-only and stays optional.

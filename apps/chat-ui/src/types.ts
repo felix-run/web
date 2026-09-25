@@ -27,6 +27,7 @@ export {
   type AuditEvent,
   type AuditEventType,
   type AuditEventWire,
+  classifyToolResult,
   DOCUMENT_LIMITS,
   type DocumentHit,
   type DocumentRecord,

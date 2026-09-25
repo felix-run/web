@@ -147,3 +147,56 @@ describe('the tool card for a refused gate', () => {
     expect(screen.getByText(/local_shell was denied/)).toBeTruthy();
   });
 });
+
+/**
+ * A finished call that failed is not `done`.
+ *
+ * On the reference deployment an approved `write_file` failed with `Errno 13` and the card drew
+ * the raw error under a green `done` badge. The harness marks a failure with a
+ * `[tool error/<code>]` prefix; an older one returned workspace failures as bare `error: …`.
+ */
+describe('the tool card for a failed call', () => {
+  it('names a structured tool error, not done', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(
+      <Tool
+        tool={{
+          name: 'write_file',
+          done: true,
+          input: { path: 'a.txt' },
+          output:
+            "[tool error/permission_denied] PermissionError: [Errno 13] Permission denied: '/workspace/a.txt'",
+        }}
+        verbose
+      />,
+    );
+    expect(screen.getByText('permission denied')).toBeTruthy();
+    expect(screen.getByText(/PermissionError: \[Errno 13\] Permission denied/)).toBeTruthy();
+    expect(screen.queryByText('done')).toBeNull();
+    expect(screen.queryByText(/\[tool error\//)).toBeNull();
+  });
+
+  it('reads the older workspace spelling that production still sends', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(
+      <Tool
+        tool={{
+          name: 'write_file',
+          done: true,
+          output: "error: [Errno 13] Permission denied: '/workspace/a.txt'",
+        }}
+        verbose
+      />,
+    );
+    expect(screen.getByText('permission denied')).toBeTruthy();
+    expect(screen.queryByText('done')).toBeNull();
+  });
+
+  it('leaves an ordinary tool whose output happens to start with "error:" alone', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(
+      <Tool tool={{ name: 'calculator', done: true, output: 'error: division by zero' }} verbose />,
+    );
+    expect(screen.getByText('done')).toBeTruthy();
+  });
+});

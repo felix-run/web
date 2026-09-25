@@ -501,3 +501,31 @@ describe('a refused gate on the tool card', () => {
     }
   });
 });
+
+describe('a failed call on the tool card', () => {
+  it('says what failed rather than drawing the marker', async () => {
+    const turn: Turn = {
+      id: 'a-failed',
+      role: 'assistant',
+      content: '',
+      tools: [
+        {
+          name: 'write_file',
+          done: true,
+          input: { path: 'a.txt' },
+          output: '[tool error/permission_denied] PermissionError: [Errno 13] Permission denied',
+        },
+      ],
+    };
+    const ui = await mount(createElement(Transcript, { turns: [turn], theme: testTheme }), {
+      width: 110,
+      height: 8,
+    });
+    try {
+      expect(shows(ui.frame(), 'permission denied: PermissionError')).toBe(true);
+      expect(ui.frame()).not.toContain('[tool error/');
+    } finally {
+      ui.stop();
+    }
+  });
+});

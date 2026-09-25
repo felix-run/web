@@ -233,6 +233,18 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    * were waiting on a person.
    */
   let durableStatus: string | null = null;
+  /**
+   * The durable run has been accepted and has not reported a status yet.
+   *
+   * Set by `run_accepted`, so a durable run counts as in flight from its first frame. It used to
+   * start at the first `run_status`, and a v0.4.0 harness announces a durable run's approval on
+   * the stream — often before any status — so the frame arrived while the engine did not yet
+   * consider a run in flight, and the turn went on saying "Durable run accepted…" for the whole
+   * wait. Observed on the reference deployment on 2026-09-24.
+   */
+  // A plain word, not a sentinel: a harness that reported `accepted` as a real status would want
+  // the same line.
+  const ACCEPTED = 'accepted';
 
   /**
    * What the status turn says while a durable run is in flight.
@@ -247,9 +259,9 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    */
   const statusLine = (status: string): string => {
     const blocked = state.approvals[0];
-    return blocked
-      ? `Waiting on your approval · ${describeGate(blocked.toolName, blocked.args)}`
-      : `Background · ${status}…`;
+    if (blocked)
+      return `Waiting on your approval · ${describeGate(blocked.toolName, blocked.args)}`;
+    return status === ACCEPTED ? 'Durable run accepted…' : `Background · ${status}…`;
   };
 
   /** Re-say the status when what is waiting has changed, and only mid-run. */
@@ -370,6 +382,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
             },
           ],
         });
+        // Before the card, not after it. On a durable run the turn's text *is* the status
+        // line, and a card is placed at the text's length when it opens — rewriting the line
+        // afterwards would leave the card part-way through "Waiting on your approval".
+        refreshStatus();
         patch((t) => ({
           ...t,
           tools: [
@@ -457,6 +473,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         // it: the run itself outlives this stream.
         if (data.resume_token) resumeToken = data.resume_token;
         set({ phase: 'durable' });
+        durableStatus = ACCEPTED;
         patch((t) => ({ ...t, content: t.content || 'Durable run accepted…' }));
         // Everything before the in-flight turn. The user message is dropped from
         // the prefix on purpose: the harness captured its cursor *before* the run
