@@ -529,3 +529,26 @@ describe('a failed call on the tool card', () => {
     }
   });
 });
+
+describe('a note', () => {
+  it('says whether the model read it, and is not drawn as a prompt', async () => {
+    const note: Turn = {
+      id: 'n1',
+      role: 'note',
+      content: 'Prefer the staging bucket.',
+      note: { role: 'system', inContext: false },
+    };
+    const ui = await mount(createElement(Transcript, { turns: [note], theme: testTheme }), {
+      width: 70,
+      height: 8,
+    });
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'note · system · not sent to the model')).toBe(true);
+      expect(shows(frame, 'Prefer the staging bucket.')).toBe(true);
+      expect(shows(frame, '› Prefer')).toBe(false);
+    } finally {
+      ui.stop();
+    }
+  });
+});

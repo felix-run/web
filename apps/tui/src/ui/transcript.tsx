@@ -279,6 +279,29 @@ function AssistantTurn({
   );
 }
 
+/**
+ * An entry appended through `POST /chat/sessions/custom` — neither side of the
+ * conversation, so it gets neither the `›` of a prompt nor a reply's prose. The
+ * header says in words whether the model read it: an entry steering the run and
+ * one only an operator will see otherwise draw identically.
+ */
+function NoteTurn({ turn, theme }: { turn: Turn; theme: Theme }) {
+  const role = turn.note?.role ?? 'system';
+  const reach = turn.note?.inContext ? 'in the model’s context' : 'not sent to the model';
+  return (
+    <box
+      flexDirection="column"
+      marginBottom={1}
+      paddingLeft={1}
+      border={['left']}
+      borderColor={theme.faint}
+    >
+      <text attributes={DIM}>{`note · ${role} · ${reach}`}</text>
+      {turn.content ? <text>{turn.content}</text> : null}
+    </box>
+  );
+}
+
 export function Transcript({
   turns,
   streaming = false,
@@ -330,7 +353,9 @@ export function Transcript({
     >
       {turns.length === 0 ? greeting : null}
       {turns.map((turn) =>
-        turn.role === 'user' ? (
+        turn.role === 'note' ? (
+          <NoteTurn key={turn.id} turn={turn} theme={theme} />
+        ) : turn.role === 'user' ? (
           <box key={turn.id} flexDirection="row" marginBottom={1}>
             <text fg={theme.ready}>{'› '}</text>
             <text>{turn.content}</text>

@@ -138,3 +138,27 @@ describe('Message reasoning', () => {
     expect(container.textContent).toContain('Thought for a moment');
   });
 });
+
+describe('a note', () => {
+  const note = (inContext: boolean): Turn => ({
+    id: 'n1',
+    role: 'note',
+    content: 'Prefer the staging bucket.',
+    note: { role: 'system', inContext },
+  });
+
+  it('says whether the model read it, in words', () => {
+    const seen = render(<Message turn={note(true)} />);
+    expect(seen.container.textContent).toContain('in the model’s context');
+    expect(seen.container.textContent).toContain('Prefer the staging bucket.');
+    cleanup();
+    const unseen = render(<Message turn={note(false)} />);
+    expect(unseen.container.textContent).toContain('not sent to the model');
+  });
+
+  it('is not drawn as either side of the conversation', () => {
+    const { container } = render(<Message turn={note(true)} />);
+    expect(container.textContent).not.toContain('Felix');
+    expect(container.querySelector('.bg-foreground')).toBeNull();
+  });
+});

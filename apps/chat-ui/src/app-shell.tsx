@@ -813,9 +813,15 @@ export function AppShell() {
     engine.setError(null);
 
     const replay = turns.slice(0, lastAssistant);
-    const messagesToSend: ChatMessage[] = replay
-      .filter((t) => t.content.trim().length > 0)
-      .map((t) => ({ role: t.role, content: t.content }));
+    // A note is not replayed. It came through `/chat/sessions/custom`, not the
+    // conversation, and re-sending it as a message would turn an annotation the
+    // model never saw into one it does. The cost: the reset below erases it from
+    // the log, in-context or not, the same way it erases every tool result.
+    const messagesToSend: ChatMessage[] = replay.flatMap((t) =>
+      t.role !== 'note' && t.content.trim().length > 0
+        ? [{ role: t.role, content: t.content }]
+        : [],
+    );
     if (messagesToSend.length === 0) return;
 
     const assistantId = crypto.randomUUID();

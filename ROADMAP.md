@@ -33,7 +33,7 @@ destinations now, alongside the tenant-durable half of the inspector.
 
 ## Cross-cutting
 
-### Two harness routes nothing calls, and one that is a duplicate
+### Two harness routes nothing calls, both held back on purpose, and one duplicate
 
 `pnpm check-api-drift` prints the advisory list; most of it is machine-facing (`/health`,
 `/metrics`, `/mcp`, `/a2a`, `/v1/chat/completions`, and so on) and belongs there. `GET /usage/summary`
@@ -41,7 +41,7 @@ came off this list in #169 — the Ledger totalled a page of rows and called it 
 route exists to fix.
 
 - `PUT /plans/{}` — editing a plan. chat-ui reads plans and cannot change one.
-- `POST /chat/sessions/custom` — no client touches it at all.
+- `POST /chat/sessions/custom` — no client writes one.
 
 **`POST /eval/runs` is not one of them, and this entry said it was.** It has no caller, but the
 feature is built: `/harness/eval` starts runs from `Run vs {manifest}`
@@ -54,8 +54,25 @@ redundant route.** Acting on it here would have added a second button for someth
 already does. Whether the duplication should exist at all is a harness question, raised as
 `felix-run/felix#247`.
 
-So what is left is two single routes, each of which would add a *write* to a surface that currently
-only reads. Before building either, check the harness for an alias that already covers it.
+**Both were read at the harness on 2026-09-25 (#178). Neither has an alias, and neither is worth a
+button yet.**
+
+- **Plan editing waits on the harness.** Nothing puts a plan into the prompt; the agent sees an
+  edit only if it chooses to call `plan_get` (`felix/patterns/plan_tools.py`). `put_plan` replaces
+  the whole row with no version check while `plan_update_step` does a read-modify-write, so an
+  operator's save mid-run and the agent's step update erase each other, last one wins. And it
+  overwrites `manifest_id` and `expires_at` on every call, so a client that sends only the plan
+  orphans it from its manifest and exempts it from retention. The fix is a precondition on the
+  write, which is harness work.
+- **A custom-entry writer waits on a product decision.** With `in_context: true` the entry enters
+  the model's context under whatever role the caller picks: `system` is a standing instruction
+  stronger than steer, and `assistant` is a turn the model will believe it said. That is a lever,
+  not a form field.
+
+The **read** side of custom entries was a bug regardless and is fixed: the SDK's `append_custom`
+writes them, and `eventsToTurns` used to fold them in by role — a `user` entry drew as a message
+the person sent, even one the model never saw, and a `system` entry vanished, even one steering the
+model. They are `note` turns now, named by role and by whether the model read them.
 
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 
