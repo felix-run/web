@@ -5,7 +5,9 @@
   "description": "Felix public docs site — Starlight static site deployed as a Workers static-assets Worker",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/fetch-api-spec.mjs --soft",
     "dev": "astro dev",
+    "prebuild": "node scripts/fetch-api-spec.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "deploy": "pnpm build && wrangler deploy",
