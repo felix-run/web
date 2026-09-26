@@ -236,12 +236,72 @@ describe('the tool card header', () => {
 });
 
 describe('toolTarget', () => {
-  it('reads a JSON-string input, falls back to compact JSON, and says nothing for no args', async () => {
+  it('reads a JSON-string input, falls back to key=value, and says nothing for no args', async () => {
     const { toolTarget } = await import('../src/components/chat/tool');
     expect(toolTarget('search', '{"query":"TODO"}')).toBe('TODO');
-    expect(toolTarget('calc', { a: 1, b: 2 })).toBe('{"a":1,"b":2}');
+    expect(toolTarget('calc', { a: 1, b: 2 })).toBe('a=1 · b=2');
     expect(toolTarget('list_dir', {})).toBeNull();
     expect(toolTarget('list_dir', undefined)).toBeNull();
     expect(toolTarget('local_shell', { command: 'ls\n-la' })).toBe('Shell: ls -la');
+  });
+
+  /**
+   * The case that made the fallback worth replacing: every GitHub call opens with
+   * `owner` and `repo`, so compact JSON truncated two different questions to one
+   * identical header.
+   */
+  it('tells two calls to the same MCP tool apart', async () => {
+    const { toolTarget } = await import('../src/components/chat/tool');
+    const bugs = toolTarget('github__list_issues', {
+      owner: 'felix-run',
+      repo: 'felix',
+      state: 'open',
+      labels: ['bug'],
+      per_page: 30,
+    });
+    const closed = toolTarget('github__list_issues', {
+      owner: 'felix-run',
+      repo: 'felix',
+      state: 'closed',
+      per_page: 30,
+    });
+    expect(bugs).toBe('felix-run/felix · labels=bug');
+    expect(closed).toBe('felix-run/felix · state=closed');
+  });
+
+  it('writes an issue or pull request as owner/repo#number', async () => {
+    const { toolTarget } = await import('../src/components/chat/tool');
+    expect(
+      toolTarget('github__get_issue', { owner: 'felix-run', repo: 'felix', issue_number: 232 }),
+    ).toBe('felix-run/felix#232');
+    expect(
+      toolTarget('github__get_pull_request', { owner: 'o', repo: 'r', pull_number: '12' }),
+    ).toBe('o/r#12');
+  });
+
+  it('keeps compact JSON for arguments that are nothing but paging', async () => {
+    const { toolTarget } = await import('../src/components/chat/tool');
+    expect(toolTarget('mcp__list', { page: 2 })).toBe('{"page":2}');
+  });
+});
+
+describe('the tool card output pane', () => {
+  it('pretty-prints output that parses as JSON, and wraps rather than scrolling sideways', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(
+      <Tool
+        tool={{ name: 'github__get_issue', done: true, output: '{"number":232,"state":"open"}' }}
+        verbose
+      />,
+    );
+    const pre = screen.getByText(/"number": 232/).closest('pre') as HTMLElement;
+    expect(pre.textContent).toBe('{\n  "number": 232,\n  "state": "open"\n}');
+    expect(pre.className).toContain('whitespace-pre-wrap');
+  });
+
+  it('leaves output that only starts with a brace exactly as sent', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(<Tool tool={{ name: 'grep', done: true, output: '{ not json' }} verbose />);
+    expect(screen.getByText('{ not json')).toBeTruthy();
   });
 });
