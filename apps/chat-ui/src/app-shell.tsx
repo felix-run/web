@@ -58,6 +58,7 @@ import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { usePendingApprovals } from '@/hooks/use-pending-approvals';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
@@ -684,6 +685,16 @@ export function AppShell() {
   const bannerOwned = pending ? [pending.approvalId] : [];
 
   /**
+   * The tenant's pending approvals, polled for the life of the tab — hidden or
+   * not — and read by the attention line and the thread list's blocked marker.
+   * Owned here rather than by either reader so the two cannot disagree about
+   * which threads are waiting, and the tab pays for one poll rather than two.
+   * Distinct from the 2.5s `syncApprovals` poll below, which adopts approvals
+   * into the engine and runs only while this tab has a run in flight.
+   */
+  const tenantApprovals = usePendingApprovals();
+
+  /**
    * When the current (or last) run started and stopped, for the inspector's
    * readout. The engine keeps no clock, and the inspector is mounted only while
    * it is open, so the transition has to be observed up here or a run already in
@@ -1160,6 +1171,7 @@ export function AppShell() {
     queueLength: pendingQueue.length,
     approvalQueue: pendingQueue,
     bannerOwned,
+    tenantApprovals,
     runClock,
     onDecide,
     uiPrompt,
@@ -1344,6 +1356,7 @@ export function AppShell() {
         they have to navigate to.
       */}
       <AttentionLine
+        approvals={tenantApprovals}
         streaming={streaming}
         handled={bannerOwned}
         threadId={threadId}

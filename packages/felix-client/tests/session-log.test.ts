@@ -380,3 +380,45 @@ describe('custom entries (`POST /chat/sessions/custom`)', () => {
     expect(turns.map((t) => t.role)).toEqual(['user', 'note', 'assistant']);
   });
 });
+
+/**
+ * The harness stores a model call's usage on the assistant message only when
+ * that message is the last thing the step produced, so a step that called tools
+ * stores none. A rebuilt turn gets a figure only when it is one step; merged with
+ * a tool-only step, the stored number would be part of the turn reading as all
+ * of it — and a sum over the thread has to be able to call itself a floor.
+ */
+describe('usage from the session log', () => {
+  const usage = { input: 1200, output: 80, cacheRead: 0, cacheWrite: 0, totalTokens: 1280 };
+
+  it('carries the usage stored on a single-step answer', () => {
+    const turns = eventsToTurns([
+      ev({ seq: 1, role: 'user', content: 'hi' }),
+      ev({ seq: 2, role: 'assistant', content: 'hello', metadata: { usage } }),
+    ]);
+    expect(turns[1]?.usage).toEqual({ input: 1200, output: 80 });
+  });
+
+  it('leaves a turn that absorbed a tool-only step without a figure', () => {
+    const turns = eventsToTurns([
+      ev({ seq: 1, role: 'user', content: 'read it' }),
+      ev({
+        seq: 2,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'c1', name: 'read_file', args: { path: 'a.md' } }],
+      }),
+      ev({ seq: 3, kind: 'tool_result', role: 'tool', tool_call_id: 'c1', content: 'x' }),
+      ev({ seq: 4, role: 'assistant', content: 'done', metadata: { usage } }),
+    ]);
+    expect(turns[1]?.content).toBe('done');
+    expect(turns[1]?.usage).toBeUndefined();
+  });
+
+  it('ignores a usage block it cannot read as numbers', () => {
+    const turns = eventsToTurns([
+      ev({ seq: 1, role: 'assistant', content: 'a', metadata: { usage: { input: '12' } } }),
+    ]);
+    expect(turns[0]?.usage).toBeUndefined();
+  });
+});

@@ -1,10 +1,11 @@
-import type { ApprovalRequest, ThreadMeta } from '@felix/client';
+import { relativeTime, type ThreadMeta } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { ChevronRightIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { decideApproval, listApprovals } from '@/api';
+import { decideApproval } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
+import type { PendingApprovals } from '@/hooks/use-pending-approvals';
 import { ariaShortcut, isMacPlatform } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
@@ -23,48 +24,30 @@ import { cn } from '@/lib/utils';
  * crosses. `GET /approvals` is the only channel, and until now it was polled only
  * while *this tab* had a run in flight — exactly the case where someone is
  * already watching.
+ *
+ * The poll itself is the shell's (`usePendingApprovals`), handed in, so the
+ * thread list's blocked marker reads the same rows rather than a second poll.
+ *
+ * **It never claims the all-clear on a list it could not refresh.** "Nothing
+ * waiting on you" is a statement about the harness, and it is only true when the
+ * latest ask was answered. Before the first answer the line says it is checking;
+ * after a failed one it says it cannot reach approvals and how old its last
+ * answer is, keeping the last known count if there was one. It said all-clear
+ * for as long as the harness was returning 429 on this route — the one failure a
+ * line whose whole promise is "true without being looked at" cannot have.
  */
 
-/** Slow: a TTL is minutes long, and this runs for the life of the tab. */
-const POLL_MS = 10_000;
 const OPEN_KEY = 'felix.attentionOpen';
 
-/**
- * Deliberately not `usePoll`.
- *
- * That hook skips ticks while the tab is hidden, which is right for a reference
- * panel nothing depends on while nobody is looking, and exactly wrong here: a
- * hidden tab is the case this line exists to serve. It is the in-viewport half of
- * a pair whose other half is `presence.ts`, and both have to keep counting.
- */
-function usePendingApprovals(): { pending: ApprovalRequest[]; refresh: () => void } {
-  const [pending, setPending] = useState<ApprovalRequest[]>([]);
-
-  const refresh = useCallback(() => {
-    void listApprovals('pending')
-      .then(setPending)
-      // Silent: the harness being unreachable is already reported by the
-      // composer's connection hint and by every call the operator makes on
-      // purpose. A toast per failed background tick would be a second, louder
-      // channel for something they did not ask for.
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const id = window.setInterval(refresh, POLL_MS);
-    return () => window.clearInterval(id);
-  }, [refresh]);
-
-  return { pending, refresh };
-}
-
 export function AttentionLine({
+  approvals,
   streaming,
   handled,
   threadId,
   threads,
 }: {
+  /** The shell's tenant-wide `/approvals` poll — see `usePendingApprovals`. */
+  approvals: PendingApprovals;
   streaming: boolean;
   /**
    * Approval ids the transcript banner already owns.
@@ -82,7 +65,7 @@ export function AttentionLine({
   /** The thread index, for naming an approval's thread rather than showing an id. */
   threads: ThreadMeta[];
 }) {
-  const { pending, refresh } = usePendingApprovals();
+  const { pending, error, lastOkAt, refresh } = approvals;
   const [open, setOpen] = useState(() => {
     try {
       return localStorage.getItem(OPEN_KEY) === '1';
@@ -124,13 +107,51 @@ export function AttentionLine({
   }, [reviewable.length]);
 
   const waiting = count > 0;
-  const summary = waiting
-    ? `${count} ${count === 1 ? 'call is' : 'calls are'} waiting on you ${
-        allOnThisThread ? 'on this thread' : 'across the harness'
-      }`
-    : streaming
-      ? 'Working. Nothing waiting on you.'
-      : 'Nothing waiting on you.';
+  /**
+   * Whether the latest answer may be spoken as the present.
+   *
+   * `stale` is a failed latest tick; `unchecked` is before any tick has
+   * answered. Neither may say "nothing waiting": an empty list nobody refreshed
+   * is the absence of an answer, not a no.
+   */
+  const stale = error != null;
+  const unchecked = !stale && lastOkAt === null;
+  const where = allOnThisThread ? 'on this thread' : 'across the harness';
+  const calls = `${count} ${count === 1 ? 'call' : 'calls'}`;
+  const summary = stale
+    ? waiting
+      ? `Can't reach approvals · ${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where}`
+      : "Can't reach approvals"
+    : unchecked
+      ? 'Checking approvals…'
+      : waiting
+        ? `${calls} ${count === 1 ? 'is' : 'are'} waiting on you ${where}`
+        : streaming
+          ? 'Working. Nothing waiting on you.'
+          : 'Nothing waiting on you.';
+  // Outside the live region: it changes on every failed tick, and a screen
+  // reader re-reading the sentence for a clock would bury the change that matters.
+  const age = stale
+    ? lastOkAt === null
+      ? 'not checked yet'
+      : `last checked ${relativeTime(lastOkAt)}`
+    : null;
+
+  /**
+   * The dot follows the meaning, and the words always say it too. A known
+   * waiting call stays amber when the latest check failed — somebody was being
+   * asked, and nothing says they stopped being asked. A failed check with nothing
+   * known to be waiting is red: something went wrong and nobody is being asked.
+   * Resting is neutral, matching the run readout's idle: idle is not on the ramp,
+   * and green would claim a finished state this line has no evidence of.
+   */
+  const dot = waiting
+    ? 'bg-state-blocked'
+    : stale
+      ? 'bg-state-failed'
+      : streaming
+        ? 'bg-state-running'
+        : 'bg-muted-foreground/50';
 
   return (
     <section
@@ -143,10 +164,8 @@ export function AttentionLine({
       <div className="flex items-center gap-2 px-3 py-1.5">
         <span
           aria-hidden
-          className={cn(
-            'size-1.5 shrink-0 rounded-full',
-            waiting ? 'bg-state-blocked' : streaming ? 'bg-state-running' : 'bg-state-done',
-          )}
+          data-attention-dot
+          className={cn('size-1.5 shrink-0 rounded-full', dot)}
         />
         {/*
           A live region, because the whole promise is that this is true without
@@ -158,11 +177,19 @@ export function AttentionLine({
           aria-live="polite"
           className={cn(
             'min-w-0 flex-1 truncate',
-            waiting ? 'text-state-blocked' : 'text-muted-foreground',
+            waiting ? 'text-state-blocked' : stale ? 'text-state-failed' : 'text-muted-foreground',
           )}
         >
           {summary}
         </p>
+        {age && (
+          <span
+            className="shrink-0 text-xs tabular-nums text-muted-foreground"
+            title={error instanceof Error ? error.message : undefined}
+          >
+            {age}
+          </span>
+        )}
         {reviewable.length > 0 && (
           <Button
             variant="ghost"
@@ -192,9 +219,11 @@ export function AttentionLine({
             deadline — and that is a sentence the card already says. A compact
             triage row that omitted it would be the most dangerous control here.
 
-            `/approvals` rows carry no `thread_id` (felix-run/felix#232), so these
-            are not attributed to a conversation. That is why the summary above
-            says "across the harness" rather than implying this thread.
+            A row names its originating thread (`thread_id`, since
+            felix-run/felix@f679310), so one blocking another conversation links
+            there. A row with none is unattributed rather than "here", which is
+            why the summary keeps "across the harness" unless every row is
+            provably this thread.
           */}
           {reviewable.map((a) => (
             // Focusable but out of the tab order: the keyboard layer lands on

@@ -2,7 +2,7 @@ import { Button } from '@felix/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@felix/ui/popover';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { ChevronsUpDownIcon, FolderIcon, HardDriveIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ThreadList } from '@/components/chat/thread-list';
 import {
@@ -18,6 +18,7 @@ import {
   vfs,
 } from '@/lib/cowork';
 import { ariaShortcut, isMacPlatform, shortcutLabel } from '@/lib/shortcuts';
+import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 
@@ -53,6 +54,7 @@ export function WorkspaceZone({ className }: { className?: string }) {
     forkThread,
     compactThread,
     exportThread,
+    tenantApprovals,
   } = useShell();
 
   const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
@@ -157,6 +159,20 @@ export function WorkspaceZone({ className }: { className?: string }) {
   }, [refresh]);
 
   const current = threads.find((t) => t.id === threadId);
+  const currentLabel = useMemo(() => (current ? threadLabel(current) : null), [current]);
+  const threadSearchRef = useRef<HTMLInputElement | null>(null);
+
+  /**
+   * Threads with a pending approval, from the shell's tenant-wide poll. The last
+   * list that arrived, so a failed tick keeps the marks it had — an approval does
+   * not stop waiting because a request failed, and the attention line is where
+   * the staleness is said.
+   */
+  const blocked = useMemo(() => {
+    const ids = new Set<string>();
+    for (const a of tenantApprovals.pending) if (a.thread_id) ids.add(a.thread_id);
+    return ids;
+  }, [tenantApprovals.pending]);
 
   return (
     <aside
@@ -228,16 +244,29 @@ export function WorkspaceZone({ className }: { className?: string }) {
               aria-keyshortcuts={ariaShortcut('open-threads', isMacPlatform())}
               title={`Threads (${shortcutLabel('open-threads', isMacPlatform())})`}
             >
-              <span className="min-w-0 truncate text-left">
-                {current?.title ?? 'New conversation'}
+              <span className={cn('min-w-0 truncate text-left', currentLabel?.isId && 'font-mono')}>
+                {currentLabel?.text ?? 'New conversation'}
               </span>
               <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-[19rem] p-0">
+          <PopoverContent
+            align="start"
+            className="w-[19rem] p-0"
+            // Land on the search field, not on New chat. Radix focuses the first
+            // tabbable element, which here is the one control that throws away the
+            // thread you are on; `mod+k` opens this to *find* a thread, and the
+            // pointer path loses nothing by starting in the same place.
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              threadSearchRef.current?.focus();
+            }}
+          >
             <ThreadList
               threads={threads}
               currentId={threadId}
+              blocked={blocked}
+              searchRef={threadSearchRef}
               disabled={streaming}
               onSelect={(id) => {
                 selectThread(id);

@@ -6,7 +6,7 @@
  * and produces what a client renders. Where a client *keeps* its copy — a
  * browser's localStorage, a CLI's state directory — is the client's business.
  */
-import type { SessionEvent, SessionSnapshot } from '@felix/protocol';
+import type { SessionEvent, SessionSnapshot, TokenUsage } from '@felix/protocol';
 import type { ReasoningBlock, ToolCall, Turn } from './turns';
 
 /**
@@ -108,6 +108,14 @@ export function titleFromText(text: string): string {
  *   a different deployment than the one it was created against. Dropping it
  *   would destroy the only copy of a transcript.
  */
+/**
+ * The title `mergeSessions` gives a server thread nobody named and this client
+ * has no local guess for. Exported so a renderer can recognise it as a
+ * placeholder and say something more useful — a list where every row reads the
+ * same words tells the operator nothing about which row is which.
+ */
+export const UNTITLED_THREAD_TITLE = 'Untitled conversation';
+
 export function mergeSessions(local: ThreadMeta[], server: SessionSummary[]): ThreadMeta[] {
   const byId = new Map<string, ThreadMeta>();
   for (const t of local) byId.set(t.id, { ...t, onServer: false });
@@ -120,7 +128,7 @@ export function mergeSessions(local: ThreadMeta[], server: SessionSummary[]): Th
       id: row.id,
       // A server name is a deliberate act; a local title is a guess from the
       // first message. The guess never overrides the act.
-      title: named ? (row.name as string) : (existing?.title ?? 'Untitled conversation'),
+      title: named ? (row.name as string) : (existing?.title ?? UNTITLED_THREAD_TITLE),
       manifest: existing?.manifest ?? '',
       updatedAt: row.updatedAt ?? existing?.updatedAt ?? 0,
       onServer: true,
@@ -153,6 +161,27 @@ export function readableThinking(metadata: Record<string, unknown> | undefined):
     }
   }
   return out;
+}
+
+/**
+ * The token usage the harness stored on an assistant message, when it did.
+ *
+ * The harness writes the model call's usage block into the message's metadata
+ * (`patterns/react.py:_append_produced`), but only when the assistant message is
+ * the *last* of what that step produced — so a step that called tools, whose
+ * batch ends in tool results, stores none. That is why a turn rebuilt from the
+ * log gets a figure only when it is exactly one step: merged with an earlier
+ * tool-only step, the stored number would cover the final call alone while
+ * reading as the turn's total. Such a turn carries no usage, and a sum over the
+ * thread says `floor` for it rather than presenting a partial figure as whole.
+ */
+function storedUsage(metadata: Record<string, unknown> | undefined): TokenUsage | undefined {
+  const raw = metadata?.usage;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const { input, output } = raw as { input?: unknown; output?: unknown };
+  if (typeof input !== 'number' || typeof output !== 'number') return undefined;
+  if (!Number.isFinite(input) || !Number.isFinite(output)) return undefined;
+  return { input, output };
 }
 
 /**
@@ -238,6 +267,10 @@ export function eventsToTurns(
         toolById.set(tc.id, t);
         return t;
       });
+      // Whether this turn absorbed an earlier tool-only step. That step's usage is
+      // not stored — see `storedUsage` — so this turn's own figure would describe
+      // part of it while reading as the whole.
+      const carried = pendingTools.length > 0 || pendingReasoning.length > 0;
       const tools = [...pendingTools, ...newTools];
       // A message's reasoning ran before anything it said or called, so it sits at
       // offset 0 and `interleaveTurn` puts it ahead of the prose and the cards.
@@ -256,12 +289,14 @@ export function eventsToTurns(
         pendingReasoning = reasoning;
         continue;
       }
+      const usage = carried ? undefined : storedUsage(ev.metadata);
       turns.push({
         id: ev.id ?? newId(),
         role: 'assistant',
         content,
         tools,
         ...(reasoning.length ? { reasoning } : {}),
+        ...(usage ? { usage } : {}),
         eventId: ev.id,
       });
     }
