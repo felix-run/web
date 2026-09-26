@@ -737,6 +737,9 @@ offset=<end>]`, or `; end]` on the last one, so the model pages by the offset it
 - **It is governed like any tool.** It is bound before the governance stack, so policies, limits,
   screening and audit apply to a read as to the call that produced the artifact.
 - **It is never itself spilled**, although a window can be larger than `threshold_chars`.
+- **Spill expires.** The worker's retention sweep deletes spills older than
+  `FELIX_ARTIFACT_RETENTION_DAYS` (30 by default, `0` keeps forever); after that `read_artifact`
+  reports the id as missing.
 
 Clients read artifacts through [`GET /artifacts`](/guide/management-api/#artifacts) instead, which
 needs `artifacts:read` and is not held to a conversation. The bundled manifests that read files or
@@ -1015,7 +1018,7 @@ spec:
 | `transparency_notice` | bool | `false` | Prepends an "you are talking to an AI agent" notice. |
 | `forbid_plaintext_secrets` | bool | `false` | Also forced on when `FELIX_ENVIRONMENT=production`. |
 | `pin_compile` | bool | `false` | Freezes the manifest version for a thread; drift → `409`. |
-| `retention_days` | int 1–3650 \| null | `null` | |
+| `retention_days` | int 1–3650 \| null | `null` | Shortens this manifest's **audit** rows below `FELIX_AUDIT_RETENTION_DAYS`, never lengthens them. Does not reach its spilled artifacts, which follow `FELIX_ARTIFACT_RETENTION_DAYS`. |
 
 Setting any framework forces `forbid_plaintext_secrets` and `pin_compile` to `true`, and then:
 

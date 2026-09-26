@@ -45,7 +45,7 @@ Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compact
 
 ## Object store
 
-Used for artifact spill when `spec.artifacts.enabled` and output exceeds `threshold_chars`. Keys are tenant-scoped: `artifacts/{tenant}/{manifest}/{id}.txt`, with an `{id}.owner` object beside it recording the conversation that spilled it, which is what limits the model's `read_artifact` to its own. **Nothing collects the `artifacts/` prefix** — the retention sweep covers `attachments/` but not spill, so on a long-lived deployment it grows until an operator prunes it. Small VMs: `FELIX_OBJECT_STORE=fs` under `FELIX_DATA_DIR`. Helm: enable `persistence` so `/data` survives restarts.
+Used for artifact spill when `spec.artifacts.enabled` and output exceeds `threshold_chars`. Keys are tenant-scoped: `artifacts/{tenant}/{manifest}/{id}.txt`, with an `{id}.owner` object beside it recording the conversation that spilled it, which is what limits the model's `read_artifact` to its own. Each spill is also recorded in the `artifacts` table (tenant RLS like every tenant table), because the store cannot be listed and an object nothing records is one nothing can collect. The row is written before the objects and deleted after them, so drift is always a row naming absent objects. The worker's nightly retention sweep drops spills older than `FELIX_ARTIFACT_RETENTION_DAYS` — **30 by default**, `0` keeps forever — text, owner record and row together. Uploads (`attachments/`) are swept the same way but kept forever by default. Spills written before migration `0018` have no row and are not collected. Small VMs: `FELIX_OBJECT_STORE=fs` under `FELIX_DATA_DIR`. Helm: enable `persistence` so `/data` survives restarts.
 
 ## Analytics warehouse (optional)
 

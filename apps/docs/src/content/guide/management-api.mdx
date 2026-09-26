@@ -307,7 +307,8 @@ store and replaces it in the transcript with a preview and a reference:
 |---|---|---|
 | `GET` | `/artifacts/{manifest_id}/{artifact_id}` | `artifacts:read` |
 
-Returns `{artifact_id, manifest_id, chars, content}`.
+Returns `{artifact_id, manifest_id, chars, content}`. Spill is kept for `FELIX_ARTIFACT_RETENTION_DAYS`
+(30 by default) and then swept, after which this answers `404`.
 
 This is the client's way back. The model's is the `read_artifact` tool, which pages through the same
 object but only for the conversation that spilled it — see
