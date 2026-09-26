@@ -415,10 +415,13 @@ function MultimodalInputInner({
           <AttachmentsPreview />
 
           {/* The placeholder changes with run state and disappears on the first
-              keystroke, so it cannot be this control's accessible name. */}
+              keystroke, so it cannot be this control's accessible name.
+              `text-base` because a sent message renders at `text-base`
+              (`message.tsx`): drafting at 13px and reading back at 16px made the
+              message look re-set on send. 16px also keeps iOS from zooming on focus. */}
           <PromptInputTextarea
             ref={textareaRef}
-            className="field-sizing-content max-h-48 min-h-[4.5rem] w-full min-w-0 px-4 pt-3.5 pb-2 text-sm leading-relaxed placeholder:text-muted-foreground"
+            className="field-sizing-content max-h-48 min-h-[4.5rem] w-full min-w-0 px-4 pt-3.5 pb-2 text-base leading-relaxed placeholder:text-muted-foreground"
             placeholder={placeholder}
             aria-label="Message Felix"
             maxLength={MAX_TEXT_LENGTH + 200 /* slack: going over is visible, not truncated */}
