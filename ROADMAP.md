@@ -118,14 +118,18 @@ is not known until after layout, or a change upstream.
 
 ## Unverified
 
-**Narrow-viewport behaviour of the sheets.** Below the `sm` breakpoint `SheetContent` is `w-full`
-with no max-width, so full-bleed is correct *by construction*, but it has never been confirmed in a
-browser: `resize_window` moves the OS window without moving the page's layout viewport
-(`innerWidth` stayed 1698 at a 390px window), so the breakpoint never engaged. The same limitation
-blocked a 4K check in an earlier pass.
+**Narrow viewports were measured on 2026-09-25, and the entry that stood here was wrong about
+what it described.** It said the sheets were `w-full` below `sm` and so full-bleed by
+construction. By then the four sheets were `/harness` pages, and the only sheets left — the
+workspace and run-instrument drawers — carry fixed `w-[18rem]` / `w-[22rem]` with the primitive's
+cap lifted. At 320px the instrument hung 32px off the left edge. Capped with `max-w-full`, pinned
+in `tests/workbench-layout.test.tsx`. The eight `/harness` pages show no horizontal overflow at 320
+or 390px — but only in their error states, since `/api/*` was stubbed; a long table with real rows
+has not been seen at phone width.
 
-Needs a real device, a browser whose device-emulation the tooling can drive, or a test that asserts
-on the classes rather than the rendering.
+The tooling limit that kept this open is specific to moving an OS window: a Playwright context
+created with a `viewport` of the target width does move `innerWidth` and engage the breakpoints.
+Stub `/api/**` in the page (`page.route`) and nothing reaches the harness.
 
 **Both approval unknowns were closed on 2026-09-11** and are recorded here only so the next person
 does not re-measure them. The screening gate (`apply_command_screening` → `_await_approval`, a
