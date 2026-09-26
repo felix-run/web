@@ -146,8 +146,49 @@ describe('the run readout', () => {
     mount();
     const r = within(readout());
     expect(r.getByRole('status').textContent).toBe('Idle');
-    expect(r.getByText('No run in this tab yet')).toBeTruthy();
-    expect(r.getByText('None reported on this thread')).toBeTruthy();
+    expect(r.getByText('No runs on this thread yet')).toBeTruthy();
+    expect(r.getByText('None yet')).toBeTruthy();
+  });
+
+  /**
+   * A thread opened from history, which this tab never ran.
+   *
+   * It used to say "No run in this tab yet" and "None reported on this thread"
+   * above dozens of completed turns: true of the tab, and useless to someone
+   * coming back to the thread. What the loaded history does say is quoted; what
+   * it does not — a duration — is not invented.
+   */
+  it('reads a thread it never ran from the history it loaded', () => {
+    stub([]);
+    mount({
+      threads: [
+        { id: 'here', title: 'x', manifest: 'cowork', updatedAt: Date.now() - 2 * 86_400_000 },
+      ],
+      turns: [
+        { id: 'u1', role: 'user', content: 'one' },
+        { id: 'a1', role: 'assistant', content: 'answered', usage: { input: 1200, output: 80 } },
+        { id: 'u2', role: 'user', content: 'two' },
+        { id: 'a2', role: 'assistant', content: 'after tools', tools: [] },
+      ] as ShellValue['turns'],
+    });
+    const r = within(readout());
+    expect(r.getByText('2d ago')).toBeTruthy();
+    expect(r.queryByText(/No run/)).toBeNull();
+    expect(r.getByText('1,200')).toBeTruthy();
+    expect(r.getByText('(floor)', { exact: false })).toBeTruthy();
+  });
+
+  it('says usage was not recorded rather than that there was none', () => {
+    stub([]);
+    mount({
+      turns: [
+        { id: 'u1', role: 'user', content: 'one' },
+        { id: 'a1', role: 'assistant', content: 'durable answer' },
+      ] as ShellValue['turns'],
+    });
+    const r = within(readout());
+    expect(r.getByText('Not recorded for the turn here')).toBeTruthy();
+    expect(r.getByText('Not run from this tab')).toBeTruthy();
   });
 
   it('shows a live run with the open tool and its target', () => {
@@ -214,7 +255,13 @@ describe('the readout helpers', () => {
       { id: '1', role: 'assistant', content: 'hydrated, no usage' },
       { id: '2', role: 'assistant', content: 'streamed', usage: { input: 100, output: 20 } },
     ] as ShellValue['turns'];
-    expect(threadTokens(turns)).toEqual({ input: 100, output: 20, reported: 1, floor: true });
+    expect(threadTokens(turns)).toEqual({
+      input: 100,
+      output: 20,
+      reported: 1,
+      missing: 1,
+      floor: true,
+    });
     expect(threadTokens(turns.slice(1)).floor).toBe(false);
   });
 

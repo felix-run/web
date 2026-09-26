@@ -3,6 +3,7 @@ import { createContext, type Dispatch, type SetStateAction, useContext } from 'r
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
+import type { PendingApprovals } from '@/hooks/use-pending-approvals';
 import type { ImageAttachment } from '@/types';
 
 /**
@@ -50,6 +51,12 @@ export interface ShellValue {
    * `handled` for why deciding elsewhere means deciding with less in front of you.
    */
   bannerOwned: string[];
+  /**
+   * The tenant-wide `/approvals` poll the attention line reads. `pending` is the
+   * last list that arrived, which may be older than `error` says — see
+   * `PendingApprovals` before treating an empty list as "nothing waiting".
+   */
+  tenantApprovals: PendingApprovals;
   /** When this tab saw the current or last run start and stop. */
   runClock: RunClock;
   onDecide(status: 'approved' | 'denied', editedArgs?: Record<string, unknown>): Promise<void>;

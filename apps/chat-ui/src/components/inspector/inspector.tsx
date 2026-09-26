@@ -1,4 +1,4 @@
-import { describeGate } from '@felix/client';
+import { describeGate, relativeTime } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
@@ -202,17 +202,21 @@ export function formatElapsed(ms: number): string {
 /**
  * Tokens reported on this thread's assistant turns, and whether that is a floor.
  *
- * `usage` arrives only on a streamed turn's terminal `on_chain_end`. A turn
- * rebuilt from the session snapshot, or written by a durable run, carries none —
- * so a thread holding any such turn has spent more than this adds up to, and the
- * readout says `floor` the way the Ledger says `Cost (floor)` rather than
- * presenting a partial sum as the total. There is no cost here at all: the frame
- * carries tokens and nothing priced, and the Ledger is where spend is read.
+ * `usage` arrives on a streamed turn's terminal `on_chain_end`, and on a turn
+ * rebuilt from the session snapshot when the harness stored it — which it does
+ * only for a single-step answer (see `storedUsage` in `@felix/client`). A turn
+ * that ran tools, or was written by a durable run, may carry none — so a thread
+ * holding any such turn has spent more than this adds up to, and the readout says
+ * `floor` the way the Ledger says `Cost (floor)` rather than presenting a partial
+ * sum as the total. There is no cost here at all: the frame carries tokens and
+ * nothing priced, and the Ledger is where spend is read.
  */
 export function threadTokens(turns: Turn[]): {
   input: number;
   output: number;
   reported: number;
+  /** Assistant turns with content and no usage — what makes a sum a floor. */
+  missing: number;
   floor: boolean;
 } {
   let input = 0;
@@ -229,7 +233,7 @@ export function threadTokens(turns: Turn[]): {
       missing += 1;
     }
   }
-  return { input, output, reported, floor: reported > 0 && missing > 0 };
+  return { input, output, reported, missing, floor: reported > 0 && missing > 0 };
 }
 
 /** Argument keys that name what a call acts on, for tools with no sentence of their own. */
@@ -282,7 +286,7 @@ const nf = new Intl.NumberFormat();
  */
 function RunReadout() {
   const shell = useShell();
-  const { turns, runClock, pending, uiPrompt, error, sessionPhase } = shell;
+  const { turns, runClock, pending, uiPrompt, error, sessionPhase, threads, threadId } = shell;
   const state = runState(shell);
   const tone = RUN_STATE[state];
   const live = runClock.startedAt !== null && runClock.endedAt === null;
@@ -303,6 +307,18 @@ function RunReadout() {
   const tool = inFlightTool(turns);
   const last = lastAssistant(turns);
   const stopped = !live && last?.stop?.reason === 'max_turns' ? last.stop : null;
+  /**
+   * What the thread says about its last run when this tab never saw one.
+   *
+   * The stopwatch is this tab's own measurement, so a thread opened from history
+   * has none — and "No run in this tab yet" above thirty completed turns was true
+   * and useless. The index row's `updatedAt` is when the harness last recorded
+   * anything on the thread (or, for a thread only this browser knows, when it
+   * last sent), so it is the one time the client can honestly quote. A duration
+   * is not derivable: the snapshot carries no start or end for a run.
+   */
+  const updatedAt = threads.find((t) => t.id === threadId)?.updatedAt;
+  const hasHistory = last !== undefined;
 
   return (
     <section
@@ -323,7 +339,18 @@ function RunReadout() {
         )}
         <span className="ml-auto shrink-0 text-muted-foreground">
           {elapsed === null ? (
-            'No run in this tab yet'
+            !hasHistory ? (
+              'No runs on this thread yet'
+            ) : updatedAt ? (
+              <>
+                last activity{' '}
+                <span className="font-mono tabular-nums text-foreground">
+                  {relativeTime(updatedAt)}
+                </span>
+              </>
+            ) : (
+              'Not run from this tab'
+            )
           ) : (
             <>
               {live ? 'for ' : 'last run '}
@@ -373,7 +400,14 @@ function RunReadout() {
         </dt>
         <dd className="min-w-0">
           {tokens.reported === 0 ? (
-            <span className="text-muted-foreground">None reported on this thread</span>
+            // Two different truths: nothing has run, or things ran and the harness
+            // stored no usage for any of them (every one called tools, or a
+            // durable run wrote them). The second must not read as the first.
+            <span className="text-muted-foreground">
+              {tokens.missing === 0
+                ? 'None yet'
+                : `Not recorded for ${tokens.missing === 1 ? 'the turn' : `the ${tokens.missing} turns`} here`}
+            </span>
           ) : (
             <>
               <span className="font-mono tabular-nums">{nf.format(tokens.input)}</span>{' '}

@@ -11,7 +11,6 @@ import { ScrollArea } from '@felix/ui/scroll-area';
 import {
   DownloadIcon,
   GitBranchIcon,
-  MessageSquareIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -19,9 +18,12 @@ import {
   ShrinkIcon,
   Trash2Icon,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { searchSessions } from '@/api';
+import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
+
+const NO_BLOCKED: ReadonlySet<string> = new Set();
 
 /**
  * Left rail listing past conversations.
@@ -34,6 +36,12 @@ import { cn } from '@/lib/utils';
  * Selecting a thread loads its cached transcript and hydrates it from the server
  * event log; the trash icon removes it locally (and best-effort server-side).
  * Search queries local titles first, then the server FTS index when available.
+ *
+ * A row is read by someone coming back, so what it says has to tell rows apart
+ * without hovering: the best title there is (see `threadLabel`), the agent when
+ * this client knows it, how long ago, and whether a call on that thread is
+ * waiting on a person. There is no per-row icon — an icon on every row marks a
+ * row, not a kind, and the width is worth more as title.
  */
 export function ThreadList({
   threads,
@@ -46,10 +54,20 @@ export function ThreadList({
   onFork,
   onCompact,
   onExport,
+  blocked = NO_BLOCKED,
+  searchRef,
   className,
 }: {
   threads: ThreadMeta[];
   currentId: string;
+  /**
+   * Threads with an approval pending, by suffix — from the shell's tenant-wide
+   * `/approvals` poll, which names each row's originating thread. Only positive
+   * evidence marks a row: an approval with no thread marks none.
+   */
+  blocked?: ReadonlySet<string>;
+  /** The search field, so a popover can land focus there rather than on New chat. */
+  searchRef?: Ref<HTMLInputElement>;
   disabled?: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
@@ -98,13 +116,22 @@ export function ThreadList({
   >([]);
   const [searching, setSearching] = useState(false);
 
+  // Keyed on the list, not the query: a placeholder-titled row reads its cached
+  // transcript once per index change rather than once per keystroke.
+  const labels = useMemo(() => new Map(threads.map((t) => [t.id, threadLabel(t)])), [threads]);
+
   const localFiltered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return threads;
+    // Matches what the row *shows*, so a thread listed by its first message or
+    // its id can be found by typing what is on screen.
     return threads.filter(
-      (t) => t.title.toLowerCase().includes(q) || t.manifest.toLowerCase().includes(q),
+      (t) =>
+        (labels.get(t.id)?.text ?? t.title).toLowerCase().includes(q) ||
+        t.id.toLowerCase().includes(q) ||
+        t.manifest.toLowerCase().includes(q),
     );
-  }, [threads, query]);
+  }, [threads, labels, query]);
 
   useEffect(() => {
     const q = query.trim();
@@ -170,6 +197,7 @@ export function ThreadList({
         <label className="relative block">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
+            ref={searchRef}
             type="search"
             aria-label="Search sessions"
             value={query}
@@ -193,132 +221,159 @@ export function ThreadList({
               )}
             </div>
           )}
-          {localFiltered.map((t) => (
-            <div
-              key={t.id}
-              className={cn(
-                'group flex items-center gap-2 rounded-lg px-2 py-2 text-sm',
-                t.id === currentId ? 'bg-accent' : 'hover:bg-accent/50',
-              )}
-            >
-              <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              {renaming?.id === t.id ? (
-                <input
-                  // Renaming is a text edit, so it happens in place rather than in
-                  // a dialog: the row already shows the name being changed. Focus
-                  // moves here via a stable callback ref rather than `autoFocus`,
-                  // which only reads as helpful because the user just asked for it.
-                  ref={renameInputRef}
-                  aria-label="Conversation name"
-                  value={renaming.draft}
-                  onChange={(e) => setRenaming({ id: t.id, draft: e.target.value })}
-                  onBlur={() => {
-                    // Commit rather than discard. A stray click losing a typed
-                    // name is worse than an unintended rename, which is undone
-                    // by renaming again.
-                    const name = renaming.draft.trim();
-                    if (name && name !== t.title) onRename?.(t.id, name);
-                    setRenaming(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+          {localFiltered.map((t) => {
+            const label = labels.get(t.id) ?? { text: t.title, isId: false };
+            const waiting = blocked.has(t.id);
+            return (
+              <div
+                key={t.id}
+                className={cn(
+                  'group flex items-center gap-2 rounded-lg px-2 py-2 text-sm',
+                  t.id === currentId ? 'bg-accent' : 'hover:bg-accent/50',
+                )}
+              >
+                {renaming?.id === t.id ? (
+                  <input
+                    // Renaming is a text edit, so it happens in place rather than in
+                    // a dialog: the row already shows the name being changed. Focus
+                    // moves here via a stable callback ref rather than `autoFocus`,
+                    // which only reads as helpful because the user just asked for it.
+                    ref={renameInputRef}
+                    aria-label="Conversation name"
+                    value={renaming.draft}
+                    onChange={(e) => setRenaming({ id: t.id, draft: e.target.value })}
+                    onBlur={() => {
+                      // Commit rather than discard. A stray click losing a typed
+                      // name is worse than an unintended rename, which is undone
+                      // by renaming again.
                       const name = renaming.draft.trim();
-                      if (name) onRename?.(t.id, name);
+                      if (name && name !== t.title) onRename?.(t.id, name);
                       setRenaming(null);
-                    }
-                    if (e.key === 'Escape') setRenaming(null);
-                  }}
-                  className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1.5 py-1 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-              ) : (
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 truncate text-left"
-                  title={`${t.title}\nAgent: ${t.manifest || 'unknown'}${
-                    t.onServer === false ? '\nLocal only — not on this harness' : ''
-                  }`}
-                  onClick={() => onSelect(t.id)}
-                >
-                  <span className="block truncate font-medium">{t.title}</span>
-                  <span className="block truncate font-mono text-xs text-muted-foreground">
-                    {/* A thread from another browser has no local manifest record. */}
-                    {t.manifest || '—'} · {relativeTime(t.updatedAt)}
-                    {t.onServer === false && ' · local'}
-                  </span>
-                </button>
-              )}
-              {(onRename || onFork || onCompact || onExport) && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={`Actions for ${t.title}`}
-                      className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
-                    >
-                      <MoreHorizontalIcon className="size-3.5" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="w-44"
-                    onCloseAutoFocus={(e) => {
-                      if (!renameJustStarted.current) return;
-                      renameJustStarted.current = false;
-                      e.preventDefault();
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const name = renaming.draft.trim();
+                        if (name) onRename?.(t.id, name);
+                        setRenaming(null);
+                      }
+                      if (e.key === 'Escape') setRenaming(null);
+                    }}
+                    className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1.5 py-1 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 truncate text-left"
+                    // The full title only: everything else the old tooltip carried is
+                    // on the row now, and a truncated title is the one thing that
+                    // still needs a way to be read whole.
+                    title={label.text}
+                    onClick={() => onSelect(t.id)}
                   >
-                    {onRename && (
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          renameJustStarted.current = true;
-                          setRenaming({ id: t.id, draft: t.named ? t.title : '' });
-                        }}
+                    <span className={cn('block truncate font-medium', label.isId && 'font-mono')}>
+                      {label.text}
+                    </span>
+                    <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                      {/*
+                      First, because it is the one fact on the row that asks
+                      something of the reader. A word beside the dot, never the
+                      dot alone. From `/approvals`' `thread_id`, so it marks the
+                      thread that first asked — an identical call elsewhere shares
+                      the row.
+                    */}
+                      {waiting && (
+                        <span className="flex shrink-0 items-center gap-1 text-state-blocked">
+                          <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                          Waiting on you ·
+                        </span>
+                      )}
+                      <span className="min-w-0 truncate">
+                        {/* A thread from another browser has no local manifest
+                          record; the row says nothing rather than a placeholder. */}
+                        {t.manifest && (
+                          <>
+                            <span className="font-mono">{t.manifest}</span> ·{' '}
+                          </>
+                        )}
+                        {relativeTime(t.updatedAt)}
+                        {t.onServer === false && ' · local only'}
+                      </span>
+                    </span>
+                  </button>
+                )}
+                {(onRename || onFork || onCompact || onExport) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`Actions for ${label.text}`}
+                        className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
                       >
-                        <PencilIcon className="size-3.5" /> Rename
-                      </DropdownMenuItem>
-                    )}
-                    {/* The three below all act on server state, so a thread the
+                        <MoreHorizontalIcon className="size-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="w-44"
+                      onCloseAutoFocus={(e) => {
+                        if (!renameJustStarted.current) return;
+                        renameJustStarted.current = false;
+                        e.preventDefault();
+                      }}
+                    >
+                      {onRename && (
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            renameJustStarted.current = true;
+                            setRenaming({ id: t.id, draft: t.named ? t.title : '' });
+                          }}
+                        >
+                          <PencilIcon className="size-3.5" /> Rename
+                        </DropdownMenuItem>
+                      )}
+                      {/* The three below all act on server state, so a thread the
                         harness has never seen cannot offer them. */}
-                    {onFork && (
-                      <DropdownMenuItem
-                        disabled={t.onServer === false}
-                        onSelect={() => onFork(t.id)}
-                      >
-                        <GitBranchIcon className="size-3.5" /> Duplicate
-                      </DropdownMenuItem>
-                    )}
-                    {onCompact && (
-                      <DropdownMenuItem
-                        disabled={t.onServer === false}
-                        onSelect={() => onCompact(t.id)}
-                      >
-                        <ShrinkIcon className="size-3.5" /> Compact context
-                      </DropdownMenuItem>
-                    )}
-                    {onExport && (
-                      <>
-                        <DropdownMenuSeparator />
+                      {onFork && (
                         <DropdownMenuItem
                           disabled={t.onServer === false}
-                          onSelect={() => onExport(t.id)}
+                          onSelect={() => onFork(t.id)}
                         >
-                          <DownloadIcon className="size-3.5" /> Export JSONL
+                          <GitBranchIcon className="size-3.5" /> Duplicate
                         </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-              <button
-                type="button"
-                aria-label="Delete conversation"
-                className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-state-failed focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-                onClick={() => onDelete(t.id)}
-              >
-                <Trash2Icon className="size-3.5" />
-              </button>
-            </div>
-          ))}
+                      )}
+                      {onCompact && (
+                        <DropdownMenuItem
+                          disabled={t.onServer === false}
+                          onSelect={() => onCompact(t.id)}
+                        >
+                          <ShrinkIcon className="size-3.5" /> Compact context
+                        </DropdownMenuItem>
+                      )}
+                      {onExport && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            disabled={t.onServer === false}
+                            onSelect={() => onExport(t.id)}
+                          >
+                            <DownloadIcon className="size-3.5" /> Export JSONL
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                <button
+                  type="button"
+                  aria-label="Delete conversation"
+                  className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-state-failed focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                  onClick={() => onDelete(t.id)}
+                >
+                  <Trash2Icon className="size-3.5" />
+                </button>
+              </div>
+            );
+          })}
           {remoteOnly.length > 0 && (
             <div className="pt-2">
               <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Server</p>
@@ -332,7 +387,6 @@ export function ThreadList({
                   )}
                   onClick={() => onSelect(t.id)}
                 >
-                  <MessageSquareIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{t.snippet.slice(0, 48)}</span>
                     <span className="block truncate font-mono text-xs text-muted-foreground">

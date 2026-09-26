@@ -308,7 +308,9 @@ headers match it at 48px, so the header's rule and each rail's rule line up.
 The workbench is **three zones**: the workspace (18rem), the transcript at reading width
 (`max-w-3xl`, turns 24px apart) with the composer anchored beneath it, and the run instrument
 (`clamp(22rem, 24vw, 30rem)` — the panel is what widens on a large display, not the
-transcript). An attention line runs full width under the header on every address.
+transcript). An attention line runs full width under the header on every address. At rest its
+dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach
+approvals* with the age of its last answer, in `state-failed`, and never the all-clear.
 
 Spacing is Tailwind's default scale used narrowly: rows sit at `px-3 py-1.5`, panels pad at
 `p-4`, and stacked cards gap at `2.5`. Rhythm comes from repeating a few steps, not from a wide
@@ -433,7 +435,8 @@ matching the app header.
 The top of the instrument, above its tabs: what the run is doing, derived from state the shell
 already holds, so it costs no request. A 6px dot and a **state word** at 13px medium in the ramp
 colour — *Waiting on you*, *Running*, *Rejoining thread*, *Failed*, *Idle* — then a stopwatch
-(`for 3:07` live, `last run 42s` at rest) in tabular mono. Beneath, an 11px definition list:
+(`for 3:07` live, `last run 42s` at rest) in tabular mono — or, on a thread this tab never ran,
+`last activity 2d ago` from the thread index, since no duration is derivable from history. Beneath, an 11px definition list:
 what it is asking, which tool is in flight and on what, tokens (marked `floor` when some turns
 reported none). The word is the live region; the stopwatch is not, because a clock that speaks
 every second is noise.
