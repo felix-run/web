@@ -154,6 +154,24 @@ Either `messages` or `template` must produce a message, else `400
 messages_or_template_required`. An empty `manifest` is `400 manifest_required`. A `model` outside the
 allowlist is `400 model_not_allowlisted:<id>`.
 
+### Message content
+
+A message's `content` is a string or a list of parts, in OpenAI's shape. The same parsing applies to
+`POST /chat`, `POST /chat/stream` and `POST /v1/chat/completions`.
+
+| Part `type` | Shape | Notes |
+|---|---|---|
+| `text` (or no `type`) | `{"type":"text","text":"..."}` | Text parts are joined with newlines. |
+| `image_url` / `image` | `{"type":"image_url","image_url":{"url":"...","detail":"low"}}` | `url` is an `https:` or `data:` URL. `media_type` defaults to `image/png`. |
+| `file` | `{"type":"file","file":{"file_id":"..."}}` | An image uploaded with [`POST /files`](/guide/management-api/#files). A top-level `file_id` is also accepted. |
+
+A `file` part is stored in the session log as a reference, and the bytes are swapped in just before
+each model call. An inline `data:` URL is stored in the log whole, so a large image in a long thread
+grows the log it sits in, and `full_replay` reads that log back every turn. A `file_id` that resolves
+to nothing is dropped with a warning, and the turn still answers.
+
+A part of any other type, or a `file` part with no `file_id`, is dropped with a logged warning.
+
 Response:
 
 ```json

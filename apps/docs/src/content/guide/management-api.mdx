@@ -1,6 +1,6 @@
 ---
 title: "Management API"
-description: "Tenant-scoped management endpoints — audit, approvals, plans, jobs, manifests, eval, usage — with scope requirements and curl examples."
+description: "Tenant-scoped management endpoints — audit, approvals, plans, memory, documents, artifacts, files, skills, jobs, manifests, eval, usage — with scope requirements and curl examples."
 sidebar:
   order: 5
 ---
@@ -29,6 +29,8 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `memory:read` / `memory:write` | read stored memory / write and forget it |
 | `documents:read` / `documents:write` | search and list the corpus / ingest and delete |
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
+| `files:read` / `files:write` | read an upload back / upload and delete |
+| `skills:read` | `/skills/{manifest_name}` and everything under it |
 
 Three rules make this practical:
 
@@ -314,6 +316,101 @@ the object, is validated rather than trusted. A reference that is not well-forme
 
 The web UI reads these markers off tool output and offers the rest of the result behind a **Show full
 output** control on the tool card, fetched on request rather than on render.
+
+## Files
+
+Upload an image once and reference it by id on later turns. An image sent inline as a `data:` URL
+lands in the session event log, and `full_replay` re-sends that log every turn; a stored upload
+leaves only a reference in the log, expanded to bytes immediately before each model call.
+
+| Method | Path | Scope |
+|---|---|---|
+| `POST` | `/files` | `files:write` |
+| `GET` | `/files/{file_id}` | `files:read` |
+| `DELETE` | `/files/{file_id}` | `files:write` |
+
+`POST` takes `{data, media_type, filename}` — `data` is the file's bytes base64-encoded, `media_type`
+is one of `image/gif`, `image/jpeg`, `image/png`, `image/webp`, and `filename` is optional, up to 255
+chars. It returns `{file_id, media_type, size_bytes, filename}`. The bytes decide, not the label: a
+body whose leading bytes do not match `media_type` is refused.
+
+A later message references the upload with an OpenAI-shaped content part:
+
+```json
+{"role": "user", "content": [
+  {"type": "text", "text": "What is in this screenshot?"},
+  {"type": "file", "file": {"file_id": "5f2c…"}}
+]}
+```
+
+A reference that no longer resolves — deleted, expired, or another tenant's — is **dropped with a
+warning** naming the id, not raised, so the thread keeps answering; the model answers without that
+image.
+
+`GET` returns `{file_id, size_bytes, data}`, with `data` base64-encoded as it was sent — a JSON
+envelope rather than raw bytes, so a caller-supplied media type is never served as a content type.
+`DELETE` returns `{file_id, deleted}`. It is idempotent: a well-formed id that names nothing still
+reports `deleted: true`, and `false` means the harness could not act (a malformed id, or the object
+store raised).
+
+**The tenant comes from your credentials, never the path**, as with Artifacts. A malformed or unknown
+`file_id` on `GET` is `404 not_found`.
+
+| Status | When |
+|---|---|
+| `400` | `data` is not valid base64 or is empty, `media_type` is not allowed, the bytes are not that type, or the decoded size exceeds 600 KiB |
+| `409` | the upload would put the tenant over `FELIX_ATTACHMENTS_MAX_BYTES_PER_TENANT` (default 256 MiB; `0` disables) |
+| `503` | no object store is configured |
+
+:::note
+The 600 KiB per-file cap sits below the 1 MiB request body limit because base64 inflates by a third.
+Uploads are kept forever by default; `FELIX_ATTACHMENT_RETENTION_DAYS` (default `0`) sets a
+retention window swept by the worker's retention task, which deletes an image a live thread may still
+reference.
+:::
+
+## Skills
+
+Read-only inspection of the [Agent Skills](/guide/manifest-reference/) a manifest compiles: which
+skills the model can reach, which are active, and the instructions activation would hand it.
+Activation stays a decision the model makes mid-turn; there is no write surface.
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/skills/{manifest_name}` | `skills:read` |
+| `GET` | `/skills/{manifest_name}/{skill_name}` | `skills:read` |
+| `GET` | `/skills/{manifest_name}/activations/recent?limit=` | `skills:read` |
+
+The manifest resolves the way a chat request resolves it — stored revision first, bundled YAML
+behind it — so the answer is what the next turn will see. An unknown or invalid manifest name, or a
+skill not in its catalog, is `404 not_found`.
+
+The list returns `{manifest, declared_only, items, active}`. Each item is
+`{name, description, version, active, has_body, model_invocable, declared}`:
+
+| Field | Meaning |
+|---|---|
+| `active` | switched on for this `(tenant, manifest)` in the activation store |
+| `has_body` | the skill has instructions; the body itself is only on the single-skill route |
+| `model_invocable` | `false` when the skill sets `disable_model_invocation` — in the catalog, never offered to the model |
+| `declared` | the manifest named it in `spec.skills` |
+
+`declared: false` is the one to read. Unless the manifest sets `spec.skills_declared_only`, the
+catalog is seeded with every bundled skill and every skill in `FELIX_SKILLS_DIR` before `spec.skills`
+is resolved, so a manifest declaring one skill is offered every skill on the host. With
+`declared_only: true`, only declared skills are in the catalog.
+
+The single-skill route returns `{name, description, version, filename, metadata, active,
+model_invocable, declared, body}`. `body` is the text appended to the system prompt on activation;
+`body` and `metadata` are secret-redacted, and `filename` is the basename only. A skill named in
+`spec.skills` whose body was never found still resolves, with the loader's placeholder description
+and an empty body.
+
+`activations/recent` reads the audit log, newest first — the activation store holds only current
+state. `limit` is 1–200, default 50. Each item is `{ts, skill, action, thread_id, tool_call_id,
+status}`: `action` is `activate` or `deactivate`, and `status` is `ok` or `unknown_skill` (the model
+named a skill that does not exist). `tool_call_id` joins the row to the matching `tool_call` audit
+event.
 
 ## Jobs
 
