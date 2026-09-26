@@ -149,9 +149,57 @@ Configured on `spec.model`:
 | Mechanism | Behavior |
 |---|---|
 | `fallbacks: [...]` | On provider error (5xx / 429 / network), retry the same call against the next logical id |
-| `confidence_escalation` | After `chat`, if the reply looks low-confidence, re-call `escalate_to` (streaming skips scoring) |
+| `confidence_escalation` | After `chat`, if the reply looks low-confidence, re-call `escalate_to`. A streamed turn settles the reply first and then chunks it, so it is judged too — escalation trades time-to-first-token for that. With `decider: true` the judgement is the decider's, not the length-and-markers heuristic |
 
 Both are eager-built so unknown ids fail at build time, not mid-request. A switch increments the `felix_model_switch` counter (labels `from`, `to`, `reason` ∈ `provider_error` / `low_confidence`); it does **not** write an audit row.
+
+## Decision models
+
+Some calls decide rather than write — which tool fits, which sub-agent takes a request, whether a
+reply answers, whether a text is an injection. Those used to ask a chat model for "a number only" or
+`{"score": ...}` and parse the reply, with no idea how sure it was. **`felix_ai.decide`** is a
+separate seam for models that answer *typed* questions:
+
+| Question | Answer |
+|---|---|
+| `Choice(instructions, criteria)` — one of ≤255 options | the option, a probability per option, a confidence |
+| `Score(instructions, levels)` — 2–10 ordered levels | a probability-weighted level, a confidence |
+| `Noul(instructions)` — true or false | the probability it is true |
+
+It is a registry beside the model registry, not a model provider: a decision provider has no `chat`,
+so routing one from `spec.model.id` would build a client that fails on its first turn. Routes live in
+**`FELIX_DECISION_ROUTES`** and credentials in the same `FELIX_MODEL_PROVIDER_OPTIONS` entry as the
+provider of the same name:
+
+| Route | Provider | Wire model | Configured with |
+|---|---|---|---|
+| `jev` | `typesafe` — `api.typesafe.ai/v1/systemone` | `jev-latest` | `api_key` (refused at compile without one) |
+| `jev-cf` | `workers_ai` — `…/accounts/{account_id}/ai/run` | `typesafe/jev` | `api_key`, `account_id`, optional `gateway_id` |
+| *(yours)* | `llm` | any `FELIX_MODEL_ROUTES` id | the chat provider's own |
+
+`llm` answers the same questions with a chat model through `output_schema`, so nothing depends on a
+second vendor; it reports its pick with no confidence, because a chat model's self-assessed certainty
+is not calibrated, and consumers treat that as "no signal" rather than as sure. Jev is priced at
+$0.042 per million input tokens with output unbilled, and HTTP 529 is retried like 429.
+
+The harness half, `felix.decisions`, builds a **`MeteredDecider`** per compile. Every decision goes
+through `record_usage` — the same path as a turn, so it counts against `limits.max_cost_usd` — and
+every answer is checked at that boundary whatever backend gave it: a choice that was not offered, a
+probability that is NaN or outside `[0, 1]`, an unanswered question, or a wrong answer type is an
+error, never a value. A plugin adds a backend with `register_decision_provider(name, factory)`.
+
+Each consumer opts in with its own manifest flag and keeps its old path as the fallback — see
+[`spec.decider`](/guide/manifest-reference/#specdecider) for the list.
+
+### Transient messages
+
+A per-request note in the prompt costs the conversation its cache. It is present in one request and
+gone from the next, so it splits the cached prefix where it stood: as a system message the Anthropic
+wire folds it into the cached `system` block, and as a user message it takes the newest-message
+breakpoint. **`ChatMessage.transient`** marks a message for this request only. The Anthropic wire
+sends it after the cache breakpoint, the OpenAI wire sends it last, and the react loop attaches it to
+the run's first model call and never writes it to the session log. The skill hint and recalled
+procedures travel this way.
 
 :::tip
 For local/OSS-only stacks, point routes at Ollama (see bundled `oss-only` / `hybrid-router` manifests) and leave cloud keys unset.

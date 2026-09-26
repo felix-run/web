@@ -42,6 +42,13 @@ A control that cannot run has not cleared anything, so unavailability is never t
   unavailable, which honours `content_screening.on_flag` — `block` denies (inbound: `503`),
   `quarantine` replaces the content — and emits `felix_control_unavailable{control="content_screening"}`.
   Marker-based screening still runs regardless of model availability.
+- **The decider screener** (`content_screening.decider`) is held to the same rule and independently
+  of the model: with both set, either one flagging flags and either one unable to run leaves the text
+  unscreened. A decider whose route no longer resolves counts as unavailable. Both read the whole
+  text a window at a time; tool output longer than eight windows is reported unavailable rather than
+  screened on its first window and admitted.
+- **Decider judges** fall back to the model judge and then the heuristic on any failure, and do not
+  judge text longer than 8,000 characters — a prefix judge would pass filler followed by a payload.
 - **The PII guardrail** falls back to three regexes (email, US SSN, card-like digit runs) when
   Presidio or its spaCy model is absent. That fallback is announced at `WARNING` with
   `felix_control_degraded{control="pii"}`. Only deterministic outcomes are cached — a *transient*
