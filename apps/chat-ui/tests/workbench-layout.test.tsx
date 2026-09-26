@@ -59,6 +59,7 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     queueLength: 0,
     approvalQueue: [],
     bannerOwned: [],
+    tenantApprovals: { pending: [], error: null, lastOkAt: Date.now(), refresh: () => {} },
     runClock: { startedAt: null, endedAt: null },
     onDecide: async () => {},
     uiPrompt: null,
@@ -137,6 +138,39 @@ describe('the workspace zone', () => {
       await userEvent.click(trigger);
     });
     await waitFor(() => expect(screen.getByText('The other one')).toBeTruthy());
+  });
+
+  /**
+   * `mod+k` opens this to find a thread, and Radix lands on the first tabbable
+   * element — which was New chat, the one control that leaves the thread you are
+   * on. The shortcut clicks the trigger, so the click path is the shortcut path.
+   */
+  it('puts focus in the search field when the list opens, not on New chat', async () => {
+    mountZone();
+    const trigger = await screen.findByText('Current thread');
+    await act(async () => {
+      await userEvent.click(trigger);
+    });
+    const search = await screen.findByRole('searchbox', { name: 'Search sessions' });
+    await waitFor(() => expect(document.activeElement).toBe(search));
+  });
+
+  it('marks a thread an approval is waiting on, from the shell poll it already has', async () => {
+    mountZone({
+      tenantApprovals: {
+        pending: [{ id: 'a1', thread_id: 'other', tool_name: 'write_file' }],
+        error: null,
+        lastOkAt: Date.now(),
+        refresh: () => {},
+      } as unknown as ShellValue['tenantApprovals'],
+    });
+    await act(async () => {
+      await userEvent.click(await screen.findByText('Current thread'));
+    });
+    const row = (await screen.findByText('The other one')).closest('button');
+    expect(row?.textContent).toContain('Waiting on you');
+    const current = screen.getAllByText('Current thread').at(-1)?.closest('button');
+    expect(current?.textContent).not.toContain('Waiting on you');
   });
 
   it('lists what this session touched, from the tool calls themselves', async () => {

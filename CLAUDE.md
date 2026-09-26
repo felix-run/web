@@ -801,14 +801,22 @@ is requested inside the background-run click, never on load.
 **The attention line is the in-viewport half of that pair.** `src/components/attention-line.tsx`
 renders full width under the header on **both** addresses, always — it says so when nothing is
 waiting, because a line that only appears in trouble teaches the operator not to look at it, and
-then it is not a signal but a surprise. It runs its **own** always-on `/approvals` poll, and
-deliberately **not** through `usePoll`: that hook skips ticks while the tab is hidden, which is right
-for a reference panel and exactly wrong here, since a hidden tab is the case this exists for. The
-shell's other approvals poll is gated on `streaming`, i.e. on someone already watching.
+then it is not a signal but a surprise. It reads an always-on `/approvals` poll
+(`src/hooks/use-pending-approvals.ts`), owned by the shell so the thread list's *Waiting on you*
+row marker reads the same rows, and deliberately **not** through `usePoll`: that hook skips ticks
+while the tab is hidden, which is right for a reference panel and exactly wrong here, since a hidden
+tab is the case this exists for. The shell's other approvals poll (`syncApprovals`) is gated on
+`streaming`, i.e. on someone already watching.
 
-Two pieces of its copy are load-bearing. **"across the harness"** must not be edited out: a
-`/approvals` row carries no `thread_id` (`felix-run/felix#232`), so the count is tenant-wide and
-without the phrase it reads as "on the thread you are looking at". And the line **counts** an
+**It never says the all-clear on a list it could not refresh.** The hook keeps the last list on a
+failed tick and reports `error` and `lastOkAt`; the line says *Checking approvals…* before the first
+answer and *Can't reach approvals* plus the answer's age after a failed one, keeping the last known
+count. Its failures used to be swallowed, and it read "Nothing waiting on you." with a green dot for
+as long as the harness answered the route with 429. The resting dot is neutral, not `state-done`.
+
+Two pieces of its copy are load-bearing. **"across the harness"** must not be edited out: a row
+with no `thread_id` is unattributed, not "here", so the count stays tenant-wide unless every row is
+provably this thread, and without the phrase it reads as "on the thread you are looking at". And the line **counts** an
 approval the transcript banner already owns but does not re-offer it — an approval that reached the
 banner came by frame, so the banner can draw the write's before/after diff, and a `/approvals` row
 carries no `before` to build one from. Deciding from the line would mean deciding with strictly less
