@@ -448,6 +448,14 @@ Thinking levels map to token budgets: `off` (none), `minimal` 128, `low` 512, `m
 | `GET` | `/chat/history/{thread_id}?limit=&before_seq=` | Flat transcript, newest window — `{thread_id, messages, events, oldest_seq, has_more}` |
 | `DELETE` | `/chat/history/{thread_id}` | Reset the session log |
 
+`/chat/sessions/custom` appends an entry from outside the conversation: a note, or an instruction
+from a plugin. `role` defaults to `system`, and `in_context` (default `false`) decides whether the
+model ever sees it. With `in_context: true` the entry enters the model's context under the role
+you gave it, so a `system` entry steers every later turn and an `assistant` one reads to the model
+as something it said itself. The entry lands in the log as `kind: "custom"` with the flag in
+`metadata.in_context`. Both Felix clients draw it as a note that names its role and says whether
+the model read it, never as a message from either side.
+
 ### The session snapshot
 
 `GET /chat/sessions/{thread_id}` is the contract a client hydrates from. Its keys are **camelCase**,

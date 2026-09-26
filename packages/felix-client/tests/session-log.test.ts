@@ -333,3 +333,50 @@ describe('reasoning from the session log', () => {
     expect(answer && 'reasoning' in answer).toBe(false);
   });
 });
+
+describe('custom entries (`POST /chat/sessions/custom`)', () => {
+  /**
+   * These were folded into the conversation by role: a `user` entry drew as a
+   * message the person sent — including one the model never saw — and a
+   * `system` entry vanished, including one that was steering the model.
+   */
+  const custom = (over: Partial<SessionEvent> & { seq: number }) => ev({ kind: 'custom', ...over });
+
+  it('is a note, whatever role it was appended with', () => {
+    const turns = eventsToTurns([
+      custom({ seq: 1, id: 'c1', role: 'user', content: 'looks like a prompt' }),
+      custom({
+        seq: 2,
+        id: 'c2',
+        role: 'system',
+        content: 'steer',
+        metadata: { in_context: true },
+      }),
+      custom({ seq: 3, id: 'c3', role: 'assistant', content: 'looks like a reply' }),
+    ]);
+    expect(turns.map((t) => [t.role, t.note?.role])).toEqual([
+      ['note', 'user'],
+      ['note', 'system'],
+      ['note', 'assistant'],
+    ]);
+    expect(turns[1]?.eventId).toBe('c2');
+  });
+
+  it('says the model saw it only when the harness would have included it', () => {
+    const turns = eventsToTurns([
+      custom({ seq: 1, content: 'a', metadata: { in_context: true } }),
+      custom({ seq: 2, content: 'b', metadata: { in_context: false } }),
+      custom({ seq: 3, content: 'c' }),
+    ]);
+    expect(turns.map((t) => t.note?.inContext)).toEqual([true, false, false]);
+  });
+
+  it('sits between the turns around it without disturbing them', () => {
+    const turns = eventsToTurns([
+      ev({ seq: 1, role: 'user', content: 'hi' }),
+      custom({ seq: 2, content: 'operator note' }),
+      ev({ seq: 3, role: 'assistant', content: 'hello' }),
+    ]);
+    expect(turns.map((t) => t.role)).toEqual(['user', 'note', 'assistant']);
+  });
+});

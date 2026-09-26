@@ -35,6 +35,34 @@ export function Message({
   /** Expand tool I/O and surface tool counts when set. */
   verbose?: boolean;
 }) {
+  if (turn.role === 'note') {
+    // Neither side of the conversation, so neither bubble. Whether the model read
+    // it is said in words rather than by styling alone, because an entry that is
+    // steering the run and one nobody but an operator will see look the same
+    // otherwise, and only one of them explains what the model did next.
+    const inContext = turn.note?.inContext ?? false;
+    return (
+      <div className="group flex w-full flex-col gap-1.5">
+        <div className="border-l-2 border-border py-1 pl-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-medium">Note · {turn.note?.role ?? 'system'}</span>
+            <span>{inContext ? 'in the model’s context' : 'not sent to the model'}</span>
+            {label && <LabelChip label={label} />}
+          </div>
+          {turn.content && (
+            <div className="mt-1 whitespace-pre-wrap text-sm text-foreground">{turn.content}</div>
+          )}
+        </div>
+        <MessageActions
+          content={turn.content}
+          onRewind={onRewind}
+          {...(label === undefined ? {} : { label })}
+          {...(onLabel ? { onLabel } : {})}
+        />
+      </div>
+    );
+  }
+
   if (turn.role === 'user') {
     return (
       <div className="group flex w-full flex-col items-end gap-1.5">

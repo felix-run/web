@@ -53,7 +53,19 @@ export interface ReasoningBlock {
 /** A turn in the UI transcript. Assistant turns may carry inline tool calls. */
 export interface Turn {
   id: string;
-  role: Exclude<Role, 'tool' | 'system'>;
+  role: Exclude<Role, 'tool' | 'system'> | 'note';
+  /**
+   * Set on every `note` turn and nowhere else: an entry appended to the thread
+   * through `POST /chat/sessions/custom` rather than said in the conversation.
+   *
+   * The harness stores these with a role of the caller's choosing and a flag
+   * that decides whether the model ever sees them. Rendering one as an ordinary
+   * turn claims both things wrongly — a `user` note looked like a message the
+   * person sent and a `system` one vanished, whether or not it was steering the
+   * model — so a note keeps its role here for the renderer to say, and
+   * `inContext` for the renderer to say whether the model read it.
+   */
+  note?: { role: Role; inContext: boolean };
   content: string;
   tools?: ToolCall[];
   /** Reasoning the model streamed, if the harness is new enough to name it. */

@@ -186,7 +186,21 @@ export function eventsToTurns(
       }
       continue;
     }
-    if (ev.kind !== 'message' && ev.kind !== 'custom') continue;
+    // Appended from outside the conversation (`POST /chat/sessions/custom`), so
+    // it is neither side of it. `metadata.in_context` is the flag the harness's
+    // own `include_in_llm_context` reads; anything but `true` means the model
+    // never saw it, which is the harness's default too.
+    if (ev.kind === 'custom') {
+      turns.push({
+        id: ev.id ?? newId(),
+        role: 'note',
+        content: ev.content ?? '',
+        note: { role: ev.role ?? 'system', inContext: ev.metadata?.in_context === true },
+        eventId: ev.id,
+      });
+      continue;
+    }
+    if (ev.kind !== 'message') continue;
 
     if (ev.role === 'user') {
       // Flush any dangling tool-only assistant turn before the next user turn.
