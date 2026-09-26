@@ -621,7 +621,7 @@ the batch is reported at once:
     "item 'a' (items[0]) has no user_input (found 'input' — the key Felix reads is 'user_input'); it would be stored as an empty prompt"
   ],
   "warnings": [
-    "item 'a' (items[0]).rubric names no rule (expect, equals, contains, min_chars) and no judge; it will score as non-empty, which passes any answer at all"
+    "item 'a' (items[0]) rubric names no rule (tools_called, tools_not_called, max_tool_calls, max_errors, expect, equals, contains, min_chars) and no judge; it will score as non-empty, which passes any answer that is not blank"
   ]
 }}
 ```
