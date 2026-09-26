@@ -1,4 +1,4 @@
-import type { ChatEngine, ThreadMeta } from '@felix/client';
+import type { ChatEngine, ManifestEntry, ThreadMeta } from '@felix/client';
 import { createContext, type Dispatch, type SetStateAction, useContext } from 'react';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
@@ -90,6 +90,11 @@ export interface ShellValue {
   manifest: string;
   setManifest: Dispatch<SetStateAction<string>>;
   manifestOptions: string[];
+  /**
+   * What `/v1/models` said about each manifest, in the harness's order. Empty
+   * until it answers; `manifestOptions` still carries the current manifest then.
+   */
+  manifestEntries: ManifestEntry[];
   /**
    * Re-read the canary rollout badge. `/harness/manifests` can change the thing
    * the header reports, so leaving that panel is what refreshes it.

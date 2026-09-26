@@ -56,6 +56,52 @@ interface RawSessionRow {
 
 export type { FelixClientOptions };
 
+/** One `/v1/models` row, as the harness builds it in `felix/usage/catalog.py`. */
+interface RawModelEntry {
+  id: string;
+  felix?: {
+    providerModel?: string | null;
+    contextWindow?: number | null;
+  } | null;
+}
+
+/**
+ * A manifest as the agent picker sees it.
+ *
+ * Not covered by `check-payload-shapes`: `/v1/models` is built by
+ * `model_catalog_entry` and patched imperatively in `catalog_from_manifest`,
+ * neither of which is a `store.py` row serializer the recorder reads, so there
+ * is nothing recorded to guard this against.
+ */
+export interface ManifestEntry {
+  /** The manifest name — what `/chat/stream` takes as `manifest`. */
+  id: string;
+  /**
+   * The provider model the manifest runs on (`spec.model.id`), present only
+   * when it differs from the manifest name. `null` on the wire means "same as
+   * the name"; both that and an absent key arrive here as `undefined`.
+   */
+  providerModel?: string;
+  /**
+   * `felix.contextWindow`, when sent. Read with care: the harness computes it
+   * from the manifest *name*, not the provider model, so unless the manifest
+   * sets `spec.session.context_window_tokens` it is the catalog's fallback
+   * (128k) for any manifest whose name is not itself a model id.
+   */
+  contextWindow?: number;
+}
+
+function toManifestEntry(raw: RawModelEntry): ManifestEntry {
+  const entry: ManifestEntry = { id: raw.id };
+  const provider = raw.felix?.providerModel;
+  if (typeof provider === 'string' && provider && provider !== raw.id) {
+    entry.providerModel = provider;
+  }
+  const tokens = raw.felix?.contextWindow;
+  if (typeof tokens === 'number' && tokens > 0) entry.contextWindow = tokens;
+  return entry;
+}
+
 export type FelixClient = ReturnType<typeof createFelixClient>;
 
 export function createFelixClient(opts: FelixClientOptions) {
@@ -64,6 +110,23 @@ export function createFelixClient(opts: FelixClientOptions) {
   // call site — renaming them here would take all 28 routes out of the check.
   const http = createHttp(opts);
   const { baseUrl: base, chatFetch, rawFetch, detailOf } = http;
+
+  /**
+   * GET /v1/models → each manifest with what the harness says about it.
+   *
+   * The route answers with OpenAI model objects whose `id` is the manifest
+   * name, plus a `felix` block. Only what a picker can use is kept, and every
+   * field past `id` is optional: an older harness sends no `felix` block, and
+   * a manifest that failed to resolve is still listed with whatever could be
+   * derived from its name alone. A plain function rather than a method so
+   * `listManifests` can share it without depending on how it was called.
+   */
+  async function listManifestEntries(signal?: AbortSignal): Promise<ManifestEntry[]> {
+    const res = await chatFetch('/v1/models', { signal });
+    if (!res.ok) throw new Error(`models: ${res.status}`);
+    const body = (await res.json()) as { data?: RawModelEntry[] };
+    return (body.data ?? []).map(toManifestEntry);
+  }
 
   return {
     // The management half — audit, usage, memory, plans, artifacts. Spread
@@ -74,12 +137,11 @@ export function createFelixClient(opts: FelixClientOptions) {
     /** The origin every call above is made against, for a client that reports it. */
     baseUrl: base,
 
-    /** GET /v1/models → manifest names for the switcher. */
+    listManifestEntries,
+
+    /** GET /v1/models → manifest names only, for a caller that needs no more. */
     async listManifests(signal?: AbortSignal): Promise<string[]> {
-      const res = await chatFetch('/v1/models', { signal });
-      if (!res.ok) throw new Error(`models: ${res.status}`);
-      const body = (await res.json()) as { data?: Array<{ id: string }> };
-      return (body.data ?? []).map((m) => m.id);
+      return (await listManifestEntries(signal)).map((m) => m.id);
     },
 
     /**

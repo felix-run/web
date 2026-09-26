@@ -537,6 +537,13 @@ is the exception and an equal-weight pill made every send read as a two-way choi
 explanation is the button's accessible description and a tooltip that opens on focus as well as
 hover — never a `title`, which a keyboard user does not see.
 
+**The agent picker lists manifests in the harness's order**, each name over the provider model
+it runs on in 11px mono — `felix.providerModel` from `GET /v1/models`, shown only when it
+differs from the name, because it is a quotation of the harness. The trigger shows the name
+alone. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
+the manifest *name*, so for most manifests it is the catalog's 128k fallback rather than the
+model's real window, and printing it would be exact-looking and wrong.
+
 **The composer's focus indicator is its border.** It removes its textarea's ring and signals
 focus with a full-alpha `--ring` border plus the heavier composer shadow. The border is the
 indicator, so it owes 3:1: against the composer surface (`card/80` over the dock) it measures

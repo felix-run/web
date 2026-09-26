@@ -1,13 +1,16 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import App from '../src/App';
 import {
   BACKGROUND_EXPLANATION,
   MultimodalInput,
   type MultimodalInputProps,
 } from '../src/components/chat/multimodal-input';
+import { ThemeProvider } from '../src/components/theme-provider';
 
 /**
  * The composer's footer controls, mounted on their own rather than through `App`,
@@ -18,7 +21,9 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  localStorage.clear();
 });
 
 function mount(props: Partial<MultimodalInputProps> = {}) {
@@ -58,5 +63,82 @@ describe('Run in background', () => {
     await user.keyboard('{Enter}');
     expect(onBackground).toHaveBeenCalledOnce();
     expect(onBackground.mock.calls[0]?.[0]).toMatchObject({ text: 'overnight job' });
+  });
+});
+
+describe('the agent picker', () => {
+  it('draws each manifest with the provider model it runs on, in mono, in the order given', async () => {
+    mount({
+      models: [
+        { id: 'cowork', label: 'cowork', description: 'claude-sonnet-4-5' },
+        { id: 'default', label: 'default' },
+      ],
+      modelId: 'cowork',
+      onModelChange: vi.fn(),
+    });
+    const user = userEvent.setup({ delay: null });
+    const trigger = screen.getByRole('combobox', { name: 'Choose agent' });
+    // The trigger names the agent only; the model belongs in the list.
+    expect(trigger.textContent).toBe('cowork');
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.getAttribute('data-value') ?? o.textContent)).toHaveLength(2);
+    expect(options[0]?.textContent).toContain('claude-sonnet-4-5');
+    expect(options[1]?.textContent).toBe('default');
+    const model = screen.getByText('claude-sonnet-4-5');
+    expect(model.className.split(/\s+/)).toContain('font-mono');
+  });
+});
+
+describe('the agent picker, fed by the harness', () => {
+  it('shows what /v1/models says each manifest runs on', async () => {
+    // The whole path: `listManifestEntries` → the shell → the workbench's options.
+    // Until this, the shell kept only `id` and the picker had nothing to show.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.endsWith('/v1/models')) {
+          return new Response(
+            JSON.stringify({
+              object: 'list',
+              data: [
+                { id: 'default', felix: { providerModel: 'gpt-5-mini' } },
+                { id: 'cowork', felix: { providerModel: null } },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes('/chat/sessions')) {
+          return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
+        }
+        if (url.includes('/approvals')) {
+          return new Response(JSON.stringify({ requests: [] }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <App />
+          </TooltipProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup({ delay: null });
+    const trigger = await screen.findByRole('combobox', { name: 'Choose agent' });
+    // Two manifests means the list arrived; one would be the pre-answer fallback.
+    await waitFor(async () => {
+      trigger.focus();
+      await user.keyboard('{Enter}');
+      expect(screen.getAllByRole('option')).toHaveLength(2);
+    });
+    const [first, second] = screen.getAllByRole('option');
+    expect(first?.textContent).toBe('defaultgpt-5-mini');
+    expect(second?.textContent).toBe('cowork');
   });
 });

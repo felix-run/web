@@ -75,6 +75,11 @@ function refuseSubmit(message: string): never {
 
 type Status = 'submitted' | 'streaming' | 'ready' | 'error';
 
+/**
+ * One entry in the agent picker. `description` is drawn under the name in mono:
+ * the workbench passes the provider model a manifest runs on, when it differs
+ * from the name, so it is always a quotation of the harness.
+ */
 export type ModelOption = { id: string; label: string; description?: string };
 
 export type MultimodalInputProps = {
@@ -650,11 +655,16 @@ function InlinePicker({
       </SelectTrigger>
       <SelectContent align="start">
         {options.map((o) => (
-          <SelectItem key={o.id} value={o.id} className="text-sm">
-            <span className="flex flex-col gap-0.5">
+          // `textValue` keeps typeahead on the name: the item text now carries the
+          // provider model too, and a match should not depend on it.
+          <SelectItem key={o.id} value={o.id} textValue={o.label} className="text-sm">
+            <span className="flex min-w-0 flex-col gap-0.5">
               <span className="font-medium">{o.label}</span>
+              {/* Mono because it is a quotation: the harness's own model id. */}
               {o.description && (
-                <span className="text-xs text-muted-foreground">{o.description}</span>
+                <span className="font-mono text-xs wrap-anywhere text-muted-foreground">
+                  {o.description}
+                </span>
               )}
             </span>
           </SelectItem>

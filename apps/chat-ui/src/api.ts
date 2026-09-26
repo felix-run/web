@@ -59,7 +59,7 @@ export const felix = createFelixClient({
   onUnauthorized: handleUnauthorized,
 });
 
-export const listManifests = felix.listManifests.bind(felix);
+export const listManifestEntries = felix.listManifestEntries.bind(felix);
 export const streamChat = felix.streamChat.bind(felix);
 export const resumeStream = felix.resumeStream.bind(felix);
 export const postToolResult = felix.postToolResult.bind(felix);
