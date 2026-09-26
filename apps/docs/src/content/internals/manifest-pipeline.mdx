@@ -27,7 +27,7 @@ Manifests use `apiVersion: felix/v1`, `kind: Agent` (Pydantic v2, `extra=forbid`
 
 4. **External tools** — bind MCP servers (`server__tool`), A2A peers (`peer__name`), sandboxes, containers, queues (Valkey/Redis lists), browser tools (Playwright extra). Bind failures are logged; the rest of the agent still builds.
 
-5. **Sub-agents / local tools** — multi-agent patterns build children; single-agent resolves `spec.tools` from the provider. Auto-inject memory / procedural / `fetch_artifact` when enabled. `pattern: deep` injects plan tools **before** governance so they are gated like everything else.
+5. **Sub-agents / local tools** — multi-agent patterns build children; single-agent resolves `spec.tools` from the provider. Auto-inject memory / procedural / `read_artifact` when enabled — all before governance, so they are gated like any other tool. `pattern: deep` injects plan tools **before** governance so they are gated like everything else.
 
 6. **Governance pipeline** (innermost → outermost on the call path):
 
@@ -51,7 +51,7 @@ Manifests use `apiVersion: felix/v1`, `kind: Agent` (Pydantic v2, `extra=forbid`
 | Checkpointer | `memory.checkpointer` → resolved through the checkpointer registry: `postgres` (default), `none`, or a plugin-registered store |
 | Strategy | `session.strategy` → `full_replay` / `windowed:N` / `summarizing:N` / `semantic:N` / `compacting` |
 | Long-term memory | `memory.store` ∈ `{pgvector, memory}` injects remember/recall tools |
-| Artifacts | Large tool outputs spill to the object store; `fetch_artifact` is injected |
+| Artifacts | Large tool outputs spill to the object store; `read_artifact` is bound so the model can page through them, limited to its own conversation's |
 
 ## Caching
 

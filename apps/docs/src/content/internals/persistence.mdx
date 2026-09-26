@@ -45,7 +45,7 @@ Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compact
 
 ## Object store
 
-Used for artifact spill when `spec.artifacts.enabled` and output exceeds `threshold_chars`. Keys are tenant-scoped; `fetch_artifact` reads windows back. Retention sweeps prune old objects. Small VMs: `FELIX_OBJECT_STORE=fs` under `FELIX_DATA_DIR`. Helm: enable `persistence` so `/data` survives restarts.
+Used for artifact spill when `spec.artifacts.enabled` and output exceeds `threshold_chars`. Keys are tenant-scoped: `artifacts/{tenant}/{manifest}/{id}.txt`, with an `{id}.owner` object beside it recording the conversation that spilled it, which is what limits the model's `read_artifact` to its own. **Nothing collects the `artifacts/` prefix** — the retention sweep covers `attachments/` but not spill, so on a long-lived deployment it grows until an operator prunes it. Small VMs: `FELIX_OBJECT_STORE=fs` under `FELIX_DATA_DIR`. Helm: enable `persistence` so `/data` survives restarts.
 
 ## Analytics warehouse (optional)
 
