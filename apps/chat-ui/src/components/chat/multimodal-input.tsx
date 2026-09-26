@@ -397,7 +397,12 @@ function MultimodalInputInner({
             '[&>[data-slot=input-group]]:bg-card/80 [&>[data-slot=input-group]]:backdrop-blur-md',
             '[&>[data-slot=input-group]]:shadow-[var(--shadow-composer)]',
             '[&>[data-slot=input-group]]:transition-[border-color,box-shadow,background-color] [&>[data-slot=input-group]]:duration-200',
-            '[&>[data-slot=input-group]]:has-[textarea:focus-visible]:border-ring/60',
+            // Full-alpha `--ring`, not `/60`. The textarea's own ring is removed below,
+            // so this border *is* the focus indicator, and WCAG 1.4.11 holds it to 3:1.
+            // At 60% it composited to 2.10:1 on the composer light and 2.15:1 dark; at
+            // full alpha it measures 3.96:1 light and 3.78:1 dark against the composer
+            // surface, and 3.53:1 / 3.34:1 against the resting border it replaces.
+            '[&>[data-slot=input-group]]:has-[textarea:focus-visible]:border-ring',
             '[&>[data-slot=input-group]]:has-[textarea:focus-visible]:shadow-[var(--shadow-composer-focus)]',
             '[&_textarea]:min-w-0 [&_textarea]:w-full [&_textarea]:focus-visible:ring-0 [&_textarea]:focus-visible:ring-offset-0 [&_textarea]:focus-visible:outline-none',
             isDragging &&

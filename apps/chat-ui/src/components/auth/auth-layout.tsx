@@ -6,6 +6,15 @@
  * The panel is painted from this app's own tokens instead, so the gate makes
  * no network request of its own.
  *
+ * Flat `muted`, the resting-rail tone, rather than the `muted` → `background`
+ * gradient it arrived with: that was the only gradient in the app, and "a
+ * gradient somewhere" is one of the marks of the scaffolded default this surface
+ * is meant not to look like. A tonal step is how everything else here separates
+ * one region from another. Muted text measures 4.81:1 on it light, 5.66:1 dark.
+ *
+ * The heading is a headline (16px), the top of the type ramp. It was 24px, a
+ * size the ramp does not define, on the one screen that renders before the app.
+ *
  * The split lands at `lg`, not `md`: at tablet widths the panel squeezes the
  * form column narrower than its own `max-w-sm` and both halves read cramped.
  */
@@ -25,13 +34,13 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       */}
       <aside
         aria-hidden="true"
-        className="relative hidden overflow-hidden border-r border-border/60 bg-gradient-to-br from-muted to-background lg:block"
+        className="relative hidden overflow-hidden border-r border-border/60 bg-muted lg:block"
       >
         <div className="flex h-full flex-col justify-between p-8">
           <span className="text-sm font-semibold uppercase tracking-wider">Felix</span>
 
           <div className="max-w-lg space-y-2">
-            <h2 className="text-balance text-2xl font-semibold tracking-tight">
+            <h2 className="text-balance text-base font-semibold">
               Chat and inspect a self-hosted Felix harness.
             </h2>
             <p className="text-pretty text-sm text-muted-foreground">
