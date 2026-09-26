@@ -54,7 +54,9 @@ export function Greeting({ manifest }: { manifest: string }) {
             )}
           </dd>
         </dl>
-        <p className="mt-3 text-xs text-muted-foreground">
+        {/* A sentence, so it is Body (13px) at a reading measure rather than the
+            11px Label step the readout's rows use: it is read, not scanned. */}
+        <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
           The first message starts the run. Tool calls and approvals appear here as they happen.
         </p>
       </div>

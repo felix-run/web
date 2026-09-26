@@ -1,5 +1,13 @@
 import { Button } from '@felix/ui/button';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  type ButtonHTMLAttributes,
+  type ForwardedRef,
+  forwardRef,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -21,7 +29,78 @@ import { cn } from '@/lib/utils';
  * a sheet to restate what is visible underneath adds focus-management risk and no
  * information.
  */
-export function ConfirmButton({
+/**
+ * Anything else lands on the *resting* button, and so does a ref. That is what
+ * lets an icon-only instance sit inside a `TooltipTrigger asChild` with an
+ * `aria-label`, like the icon buttons beside it: the trigger clones its child
+ * with a ref and pointer handlers, and a component that dropped both would
+ * leave the tooltip with nothing to anchor to.
+ */
+type RestingProps = Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'children' | 'onClick' | 'disabled' | 'className'
+>;
+
+export const ConfirmButton = forwardRef<
+  HTMLButtonElement,
+  RestingProps & {
+    /** Resting label. */
+    children: ReactNode;
+    /** What will happen, in concrete terms, with the values already resolved. */
+    question: string;
+    /** Verb + object, e.g. "Activate v13". */
+    confirmLabel: string;
+    onConfirm: () => void | Promise<void>;
+    disabled?: boolean;
+    /** Colours the confirm step as a loss rather than a change. */
+    destructive?: boolean;
+    size?: 'xs' | 'sm' | 'default';
+    variant?: 'default' | 'outline' | 'ghost';
+    /** Both states. */
+    className?: string;
+    /**
+     * The resting button only. An icon button's fixed square (`size-7`) cannot go
+     * on `className`, because the armed state is a wrapping row of a sentence and
+     * two buttons, and a fixed height there overlaps whatever is below it.
+     */
+    restingClassName?: string;
+  }
+>(function ConfirmButton(
+  {
+    children,
+    question,
+    confirmLabel,
+    onConfirm,
+    disabled,
+    destructive,
+    size = 'sm',
+    variant = 'default',
+    className,
+    restingClassName,
+    ...resting
+  },
+  ref,
+) {
+  return (
+    <ConfirmButtonInner
+      question={question}
+      confirmLabel={confirmLabel}
+      onConfirm={onConfirm}
+      disabled={disabled}
+      destructive={destructive}
+      size={size}
+      variant={variant}
+      className={className}
+      restingClassName={restingClassName}
+      resting={resting}
+      restingRef={ref}
+    >
+      {children}
+    </ConfirmButtonInner>
+  );
+});
+
+function ConfirmButtonInner({
   children,
   question,
   confirmLabel,
@@ -31,7 +110,13 @@ export function ConfirmButton({
   size = 'sm',
   variant = 'default',
   className,
+  restingClassName,
+  resting,
+  restingRef,
 }: {
+  resting: RestingProps;
+  restingRef: ForwardedRef<HTMLButtonElement>;
+  restingClassName?: string | undefined;
   /** Resting label. */
   children: ReactNode;
   /** What will happen, in concrete terms, with the values already resolved. */
@@ -90,9 +175,11 @@ export function ConfirmButton({
   if (!armed) {
     return (
       <Button
+        {...resting}
+        ref={restingRef}
         size={size}
         variant={variant}
-        className={className}
+        className={cn(className, restingClassName)}
         disabled={disabled}
         onClick={() => setArmed(true)}
       >
