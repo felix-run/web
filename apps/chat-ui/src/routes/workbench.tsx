@@ -79,7 +79,7 @@ export function Workbench() {
     <>
       <div className="flex min-h-0 flex-1">
         {historyOpen && workspaceInline && <WorkspaceZone />}
-        <main className="bg-dots relative isolate flex min-w-0 flex-1 flex-col">
+        <main className="flex min-w-0 flex-1 flex-col">
           <Conversation>
             {turns.length === 0 && <Greeting manifest={manifest} />}
             {turns.map((t, i) => {

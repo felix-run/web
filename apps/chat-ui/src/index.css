@@ -245,28 +245,6 @@
   }
 }
 
-/* A dot grid behind the transcript that fades out as it falls toward the composer.
-   Painted on a pseudo-element under `isolate`, so it sits above the zone's own
-   background and below every child without a z-index on any of them. The dot is
-   drawn from `--foreground`, which is what keeps it faint in both themes rather
-   than needing a second value for dark. */
-@layer components {
-  .bg-dots::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background-image: radial-gradient(
-      color-mix(in oklch, var(--foreground) 16%, transparent) 1px,
-      transparent 1.5px
-    );
-    background-size: 18px 18px;
-    background-position: center top;
-    mask-image: linear-gradient(to bottom, black 0%, transparent 65%);
-  }
-}
-
 /* Fenced code blocks own their surface, in both themes.
 
    Shiki highlights against two themes at once and smuggles the second one through
