@@ -503,6 +503,14 @@ the manifest, the queue count and the **deadline chip**; the reason; the summary
 Approve actually does; then Approve / Deny / Edit arguments — Approve and Deny identical in weight. Evidence precedes the
 decision.
 
+Approve names its tool, and a tool name has no spaces to break at: `Approve
+github__create_pull_request_review_comment` is wider than the card at phone width. The two
+decision buttons therefore override the primitive's `whitespace-nowrap` *on this card only* —
+`min-w-0` so `flex-1` still splits the row equally, `wrap-anywhere` so the label takes a second
+line rather than leaving the card. It wraps rather than truncates because an ellipsis keeps the
+name only in the accessible name, and the sighted operator is deciding too. The tool badge and
+the grant sentence carry the same override for the same reason.
+
 ### State chips, dots and the deadline chip
 
 A state is never colour alone. Every dot carries adjacent text, and every chip carries its

@@ -108,6 +108,27 @@ describe('ApprovalDecision', () => {
     expect(approve.className).not.toContain('bg-primary');
   });
 
+  it('lets a long tool name wrap inside Approve instead of pushing it out of the card', () => {
+    // The primitive is nowrap with an automatic minimum width, so at phone width
+    // `Approve github__create_pull_request_review_comment` was wider than the card.
+    // jsdom has no layout, so what is pinned is the override that makes it wrap —
+    // on both buttons, so the equal-width claim above survives it — and that the
+    // full name is still what assistive tech hears.
+    const toolName = 'github__create_pull_request_review_comment';
+    render(<ApprovalDecision toolName={toolName} args={{ pull: 1 }} onDecide={vi.fn()} />);
+    const approve = screen.getByRole('button', { name: `Approve ${toolName}` });
+    const deny = screen.getByRole('button', { name: 'Deny' });
+    for (const button of [approve, deny]) {
+      const classes = button.className.split(/\s+/);
+      expect(classes).toContain('whitespace-normal');
+      expect(classes).not.toContain('whitespace-nowrap');
+      expect(classes).toContain('wrap-anywhere');
+      expect(classes).toContain('min-w-0');
+      expect(classes).toContain('flex-1');
+    }
+    expect(approve.className).toBe(deny.className);
+  });
+
   it('once lapsed, says who decided and offers nothing to click', () => {
     vi.spyOn(Date, 'now').mockReturnValue(2_000_000);
     render(
