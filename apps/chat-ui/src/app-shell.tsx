@@ -58,6 +58,7 @@ import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { useRails } from '@/hooks/use-rails';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
@@ -80,8 +81,6 @@ const MANIFEST_KEY = 'felix.manifest';
 /** How long a deleted conversation can be restored, and how long the server delete waits. */
 const DELETE_UNDO_MS = 7000;
 
-const HISTORY_KEY = 'felix.historyOpen';
-const INSPECTOR_KEY = 'felix.inspectorOpen';
 const VERBOSE_KEY = 'felix.verbose';
 const HOLDER_KEY = 'felix.holderId';
 const THINKING_LEVELS: ThinkingLevel[] = [
@@ -167,12 +166,12 @@ export function AppShell() {
   } | null>(null);
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
-  // History open by default only when there are prior threads; inspector off
-  // so chat owns the first viewport.
-  const [historyOpen, setHistoryOpen] = useState(() =>
-    readBool(HISTORY_KEY, listThreads().length > 0),
-  );
-  const [inspectorOpen, setInspectorOpen] = useState(() => readBool(INSPECTOR_KEY, false));
+  // Workspace open by default only when there are prior threads; instrument off
+  // so chat owns the first viewport. What is persisted is the *inline*
+  // preference — a drawer at a narrow width starts closed and is never written
+  // down; `useRails` says why.
+  const { historyOpen, setHistoryOpen, inspectorOpen, setInspectorOpen, revealInspector } =
+    useRails(() => listThreads().length > 0);
   const [verbose, setVerbose] = useState(() => readBool(VERBOSE_KEY, false));
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { resolved, setTheme } = useTheme();
@@ -203,7 +202,7 @@ export function AppShell() {
       threadId: () => threadIdRef.current,
       clientTools: { execute: executeClientTool, readForDiff: readWorkspaceFile },
       onToolStart: () => {
-        if (verboseRef.current) setInspectorOpen(true);
+        if (verboseRef.current) revealInspector();
       },
       onSkills: setSkills,
       /**
@@ -273,8 +272,6 @@ export function AppShell() {
   // hint. The rails' breakpoints moved to the workbench route with the rails.
   const harnessReachable = useHarnessReachable();
 
-  useEffect(() => localStorage.setItem(HISTORY_KEY, historyOpen ? '1' : '0'), [historyOpen]);
-  useEffect(() => localStorage.setItem(INSPECTOR_KEY, inspectorOpen ? '1' : '0'), [inspectorOpen]);
   useEffect(() => localStorage.setItem(VERBOSE_KEY, verbose ? '1' : '0'), [verbose]);
   useEffect(() => {
     // `turns` lags a thread change that came from outside this app's own
@@ -1203,6 +1200,9 @@ export function AppShell() {
             variant={historyOpen ? 'secondary' : 'ghost'}
             size="icon-sm"
             onClick={() => setHistoryOpen((o) => !o)}
+            // What is on screen, not what is stored: at a narrow width the
+            // stored rail preference is not what the operator is looking at.
+            aria-pressed={historyOpen}
             aria-label="Toggle workspace"
             aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
             title={`Workspace (${shortcutLabel('toggle-workspace', mac)})`}
@@ -1281,6 +1281,7 @@ export function AppShell() {
               variant={inspectorOpen ? 'secondary' : 'ghost'}
               size="icon-sm"
               onClick={() => setInspectorOpen((o) => !o)}
+              aria-pressed={inspectorOpen}
               aria-label="Toggle run instrument"
               aria-keyshortcuts={ariaShortcut('toggle-instrument', mac)}
               title={`This run (${shortcutLabel('toggle-instrument', mac)})`}
