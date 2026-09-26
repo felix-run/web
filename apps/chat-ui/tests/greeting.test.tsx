@@ -20,7 +20,7 @@ function mount(over: Partial<ShellValue> = {}) {
   const shell = { threadId: 'a1b2c3', harnessReachable: true, ...over } as ShellValue;
   return render(
     <ShellProvider value={shell}>
-      <Greeting manifest="cowork" disabled={false} onSend={() => {}} />
+      <Greeting manifest="cowork" />
     </ShellProvider>,
   );
 }
