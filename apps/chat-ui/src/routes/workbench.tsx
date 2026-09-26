@@ -36,7 +36,6 @@ export function Workbench() {
     onUiCancel,
     labels,
     labelTurn,
-    send,
     submit,
     stopRun,
     regenerate,
@@ -79,9 +78,7 @@ export function Workbench() {
         {historyOpen && workspaceInline && <WorkspaceZone />}
         <main className="flex min-w-0 flex-1 flex-col">
           <Conversation>
-            {turns.length === 0 && (
-              <Greeting manifest={manifest} disabled={streaming} onSend={send} />
-            )}
+            {turns.length === 0 && <Greeting manifest={manifest} />}
             {turns.map((t, i) => {
               const isLast = i === turns.length - 1;
               return (

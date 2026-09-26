@@ -13,17 +13,8 @@ import { useShell } from '@/shell-context';
  * and only what the client actually holds; a fact it would have to guess at
  * (the manifest's tool list, which is not fetched until a run reports it) is
  * left out rather than approximated.
- *
- * `disabled` and `onSend` are accepted and unused: they drove the starter cards,
- * and the caller still passes them.
  */
-export function Greeting({
-  manifest,
-}: {
-  manifest: string;
-  disabled?: boolean;
-  onSend?: (text: string) => void;
-}) {
+export function Greeting({ manifest }: { manifest: string }) {
   const { threadId, harnessReachable } = useShell();
   const folder = useMountLabel();
 
