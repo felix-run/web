@@ -16,6 +16,7 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { toastProblem } from '@/lib/error-toast';
+import { ariaShortcut, isMacPlatform, type ShortcutAction, shortcutKeys } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 import { PaperclipIcon, StopIcon } from './icons';
 import { PreviewAttachment } from './preview-attachment';
@@ -421,6 +422,8 @@ function MultimodalInputInner({
             className="field-sizing-content max-h-48 min-h-[4.5rem] w-full min-w-0 px-4 pt-3.5 pb-2 text-sm leading-relaxed placeholder:text-muted-foreground"
             placeholder={placeholder}
             aria-label="Message Felix"
+            aria-keyshortcuts={ariaShortcut('focus-composer', isMacPlatform())}
+            data-shortcut-target="composer"
             maxLength={MAX_TEXT_LENGTH + 200 /* slack: going over is visible, not truncated */}
             aria-invalid={tooLong || undefined}
             onKeyDown={handleTextareaKeyDown}
@@ -752,7 +755,31 @@ function KeyboardHint({ isBusy }: { isBusy: boolean }) {
         </Kbd>
         <span>for a new line</span>
       </span>
+      {/* Two of the workbench's bindings, the two worth learning from here: the
+          thread switcher, and the way out of the composer to an approval — an
+          operator once typed "proceed" into this box while a write timed out
+          behind it. The panel toggles say theirs on the header buttons. Hidden
+          below md, where the hint would wrap and a keyboard is the exception. */}
+      <ShortcutHint action="open-threads" what="for threads" />
+      <ShortcutHint action="focus-approval" what="to reach an approval" />
     </p>
+  );
+}
+
+function ShortcutHint({ action, what }: { action: ShortcutAction; what: string }) {
+  const keys = shortcutKeys(action, isMacPlatform());
+  return (
+    <>
+      <span aria-hidden className="mx-2 hidden text-muted-foreground md:inline">
+        ·
+      </span>
+      <span className="hidden items-center gap-1 md:inline-flex">
+        {keys.map((k) => (
+          <Kbd key={k}>{k}</Kbd>
+        ))}
+        <span>{what}</span>
+      </span>
+    </>
   );
 }
 

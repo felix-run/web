@@ -58,11 +58,13 @@ import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
 import { useTheme } from '@/components/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { toastError, toastProblem } from '@/lib/error-toast';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
+import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import {
   indexThread,
   listThreads,
@@ -744,6 +746,56 @@ export function AppShell() {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
+  /**
+   * The keyboard layer. What each key means, and when it means nothing, is
+   * `route()` in `src/lib/shortcuts.ts`; this is only what each action does.
+   *
+   * The targets are found by `data-` hooks rather than lifted state, because the
+   * thing each binding reaches for already owns its open state — the thread
+   * popover in the workspace zone, the queue in the attention line — and
+   * clicking the real trigger means the shortcut and the pointer take exactly
+   * the same path. A binding that opened a copy of the state would be a second
+   * way for the two to disagree.
+   */
+  useShortcuts(onHarness ? 'harness' : 'workbench', {
+    'toggle-workspace': () => setHistoryOpen((o) => !o),
+    'toggle-instrument': () => setInspectorOpen((o) => !o),
+    'open-threads': () => {
+      // The popover hangs off the workspace, so the zone has to be open first —
+      // inline or as the drawer, whichever this width gets.
+      setHistoryOpen(true);
+      whenMounted('[data-shortcut="threads"]', (el) => el.click());
+    },
+    'focus-composer': () => {
+      document.querySelector<HTMLElement>('[data-shortcut-target="composer"]')?.focus();
+    },
+    'focus-approval': () => {
+      // The banner first: an approval that reached it came by frame, and the
+      // banner can draw a write's before/after where a queue row cannot.
+      const banner = '[data-approval-focus="banner"]';
+      const queued = '[data-approval-focus="queue"]';
+      const focus = (el: HTMLElement) => el.focus();
+      const onScreen = document.querySelector<HTMLElement>(banner);
+      if (onScreen) return focus(onScreen);
+      // On `/harness` the attention line leaves the banner's approval out of its
+      // queue, so the only place to decide it with the diff is back on the thread.
+      if (pendingQueue.length > 0 && onHarness) {
+        navigate(`/t/${threadId}`);
+        return whenMounted(banner, focus);
+      }
+      const inQueue = document.querySelector<HTMLElement>(queued);
+      if (inQueue) return focus(inQueue);
+      const review = document.querySelector<HTMLElement>('[data-shortcut="review-approvals"]');
+      if (review) {
+        review.click();
+        return whenMounted(queued, focus);
+      }
+      // Said rather than swallowed: a key that silently does nothing reads as
+      // a broken key, not as an empty queue.
+      toast.message('Nothing is waiting on you.');
+    },
+  });
+
   const send = useCallback(
     (text: string, attachments?: ImageAttachment[], mode: 'stream' | 'background' = 'stream') => {
       // A reattach keeps `streaming` true, but there is no run to steer — this
@@ -1053,6 +1105,8 @@ export function AppShell() {
   );
 
   const options = manifests.length ? manifests : [manifest];
+  // Read per render rather than stored: it cannot change, and costs a regex.
+  const mac = isMacPlatform();
 
   /**
    * Everything below the `<Outlet/>`.
@@ -1115,7 +1169,8 @@ export function AppShell() {
             size="icon-sm"
             onClick={() => setHistoryOpen((o) => !o)}
             aria-label="Toggle workspace"
-            title="Workspace"
+            aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
+            title={`Workspace (${shortcutLabel('toggle-workspace', mac)})`}
           >
             <PanelLeftIcon className="size-4" />
           </Button>
@@ -1191,7 +1246,8 @@ export function AppShell() {
               size="icon-sm"
               onClick={() => setInspectorOpen((o) => !o)}
               aria-label="Toggle run instrument"
-              title="This run"
+              aria-keyshortcuts={ariaShortcut('toggle-instrument', mac)}
+              title={`This run (${shortcutLabel('toggle-instrument', mac)})`}
             >
               <PanelRightIcon className="size-4" />
             </Button>
