@@ -164,10 +164,16 @@ export function Workbench() {
 
       {/* Below their breakpoints the same zones become overlays — the same
         components and the same toggle state, so the header buttons keep working
-        and nothing is reachable in one layout but missing in the other. */}
+        and nothing is reachable in one layout but missing in the other.
+
+        Each width is capped at the viewport by `max-w-full`. The primitive's own
+        cap is `sm:`-only, and `sm:max-w-none` below lifts even that, so under 640px
+        a fixed rem width is the whole story: the instrument's 22rem is 352px, and
+        on a 320px phone it hung 32px off the left edge — its title, its first tab
+        and the start of every row cut away, measured in a real browser. */}
       {!workspaceInline && (
         <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-          <SheetContent side="left" className="w-[18rem] gap-0 p-0 sm:max-w-none">
+          <SheetContent side="left" className="w-[18rem] max-w-full gap-0 p-0 sm:max-w-none">
             <SheetTitle className="sr-only">Workspace</SheetTitle>
             {/* The same zone, not a smaller stand-in: the threads popover, the
                 mount controls and the tree all have to be reachable here or the
@@ -182,7 +188,7 @@ export function Workbench() {
           <SheetContent
             side="right"
             showCloseButton={false}
-            className="w-[22rem] gap-0 p-0 sm:max-w-none"
+            className="w-[22rem] max-w-full gap-0 p-0 sm:max-w-none"
           >
             <SheetTitle className="sr-only">Harness inspector</SheetTitle>
             <Inspector

@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Inspector } from '../src/components/inspector/inspector';
 import { WorkspaceZone } from '../src/components/workspace/workspace-zone';
+import { Workbench } from '../src/routes/workbench';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
@@ -232,5 +233,40 @@ describe('the run instrument', () => {
     expect(screen.getByRole('tab', { name: 'Approvals' }).getAttribute('aria-selected')).toBe(
       'false',
     );
+  });
+});
+
+describe('the narrow drawers', () => {
+  /**
+   * Below their breakpoints both zones are sheets with a fixed rem width, and the
+   * primitive's own cap is `sm:`-only. Uncapped, the instrument's 22rem measured
+   * 352px wide at `left: -32` on a 320px phone in Chromium — its title, first tab
+   * and the start of every row off-screen. happy-dom has no layout, so this pins
+   * the cap rather than the geometry; the geometry was measured in a browser.
+   * Its window is 1024px wide by default, which already puts the workspace
+   * inline, so `matchMedia` is stubbed to a phone.
+   */
+  beforeEach(() => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  });
+
+  it.each([
+    ['workspace', { historyOpen: true, inspectorOpen: false }],
+    ['instrument', { historyOpen: false, inspectorOpen: true }],
+  ])('caps the %s drawer at the viewport', (_, open) => {
+    render(
+      <TooltipProvider>
+        <ShellProvider value={shell(open)}>
+          <Workbench />
+        </ShellProvider>
+      </TooltipProvider>,
+    );
+    const drawer = document.querySelector('[data-slot="sheet-content"]');
+    expect(drawer?.classList).toContain('max-w-full');
   });
 });
