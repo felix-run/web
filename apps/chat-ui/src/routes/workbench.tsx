@@ -8,6 +8,7 @@ import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { Inspector } from '@/components/inspector/inspector';
 import { WorkspaceZone } from '@/components/workspace/workspace-zone';
+import { INSTRUMENT_INLINE, WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { useShell } from '@/shell-context';
@@ -64,8 +65,8 @@ export function Workbench() {
   // The workspace yields *last* of the two because it is the subject — the folder
   // is what the agent is working on, and the thread is how you talk to it. A rail
   // never narrows the thing it describes; it leaves.
-  const instrumentInline = useMediaQuery('(min-width: 1280px)');
-  const workspaceInline = useMediaQuery('(min-width: 1024px)');
+  const instrumentInline = useMediaQuery(INSTRUMENT_INLINE);
+  const workspaceInline = useMediaQuery(WORKSPACE_INLINE);
 
   const modelOptions = useMemo(
     () => manifestOptions.map((id) => ({ id, label: id })),
@@ -165,7 +166,10 @@ export function Workbench() {
 
       {/* Below their breakpoints the same zones become overlays — the same
         components and the same toggle state, so the header buttons keep working
-        and nothing is reachable in one layout but missing in the other.
+        and nothing is reachable in one layout but missing in the other. The
+        *state* differs underneath: `historyOpen`/`inspectorOpen` report what is on
+        screen, and at these widths that is an unpersisted drawer, never the stored
+        rail preference (`hooks/use-rails.ts`).
 
         Each width is capped at the viewport by `max-w-full`. The primitive's own
         cap is `sm:`-only, and `sm:max-w-none` below lifts even that, so under 640px
@@ -198,7 +202,10 @@ export function Workbench() {
             data-shortcut-surface="instrument"
             className="w-[22rem] max-w-full gap-0 p-0 sm:max-w-none"
           >
-            <SheetTitle className="sr-only">Harness inspector</SheetTitle>
+            {/* The dialog's name is the heading it shows. It read "Harness
+                inspector" — a name for a panel that no longer exists, announced
+                over a heading that says something else. */}
+            <SheetTitle className="sr-only">This run</SheetTitle>
             <Inspector
               open={inspectorOpen}
               onClose={() => setInspectorOpen(false)}

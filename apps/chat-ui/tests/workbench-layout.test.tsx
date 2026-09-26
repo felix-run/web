@@ -2,8 +2,11 @@
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import App from '../src/App';
 import { Inspector } from '../src/components/inspector/inspector';
+import { ThemeProvider } from '../src/components/theme-provider';
 import { WorkspaceZone } from '../src/components/workspace/workspace-zone';
 import { Workbench } from '../src/routes/workbench';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
@@ -27,6 +30,9 @@ vi.mock('../src/lib/cowork', () => ({
   reconnectMount: async () => null,
   pickDirectory: async () => 'picked',
   clearMount: () => {},
+  // The shell hands these to the engine at mount; no test here runs a tool.
+  executeClientTool: async () => ({}),
+  readWorkspaceFile: async () => null,
   supportsDirectoryPicker: () => false,
   collectToolCallPaths: (args: unknown) => {
     const path = (args as { path?: string } | null)?.path;
@@ -309,5 +315,163 @@ describe('the narrow drawers', () => {
     );
     const drawer = document.querySelector('[data-slot="sheet-content"]');
     expect(drawer?.classList).toContain('max-w-full');
+  });
+});
+
+describe('rail state across widths', () => {
+  /**
+   * The inline rail preference and the narrow drawer are two different things,
+   * and only the first is remembered. One flag used to serve both: a thread at
+   * 1100px loaded behind a modal instrument because the flag had been set on a
+   * wide monitor, two drawers stacked over the transcript on a phone, and
+   * closing either wrote `0` that collapsed the rail on the monitor.
+   *
+   * `matchMedia` is a width the test can move, and it notifies subscribers, so
+   * a resize is the same event `useMediaQuery` hears in a browser.
+   */
+  let width = 1024;
+  const listeners = new Set<() => void>();
+  const resize = (next: number) =>
+    act(() => {
+      width = next;
+      for (const fn of listeners) fn();
+    });
+
+  beforeEach(() => {
+    listeners.clear();
+    vi.stubGlobal('matchMedia', (query: string) => {
+      const min = Number(/min-width:\s*(\d+)px/.exec(query)?.[1]);
+      return {
+        get matches() {
+          return Number.isFinite(min) && width >= min;
+        },
+        media: query,
+        addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+        removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+      };
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes('/chat/sessions')) {
+          return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ requests: [], items: [] }), { status: 200 });
+      }),
+    );
+  });
+
+  async function mountApp(at: number) {
+    width = at;
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <App />
+          </TooltipProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(document.querySelector('[data-shortcut-target="composer"]')).toBeTruthy(),
+    );
+  }
+
+  const drawer = (zone: 'workspace' | 'instrument') =>
+    document.querySelector(`[data-slot="sheet-content"][data-shortcut-surface="${zone}"]`);
+  const drawers = () => document.querySelectorAll('[data-slot="sheet-content"]');
+  /** The instrument as a column: its aside, outside any dialog. */
+  const instrumentRail = () =>
+    [...document.querySelectorAll('aside[aria-labelledby="inspector-heading"]')].find(
+      (el) => !el.closest('[role="dialog"]'),
+    ) ?? null;
+  /**
+   * Found by label rather than by role: with a modal drawer open, Radix hides
+   * the rest of the page from the accessibility tree. And a real `click()`
+   * rather than userEvent, which refuses to click through the `pointer-events:
+   * none` the same modal sets. A keyboard shortcut reaches the same setter.
+   */
+  const button = (name: 'Toggle workspace' | 'Toggle run instrument') =>
+    document.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`) as HTMLButtonElement;
+  const toggle = async (name: 'Toggle workspace' | 'Toggle run instrument') => {
+    const el = button(name);
+    await act(async () => el.click());
+    return el;
+  };
+  const stored = () => [
+    localStorage.getItem('felix.historyOpen'),
+    localStorage.getItem('felix.inspectorOpen'),
+  ];
+
+  it('starts a narrow load with both drawers closed, whatever the desktop remembered', async () => {
+    localStorage.setItem('felix.historyOpen', '1');
+    localStorage.setItem('felix.inspectorOpen', '1');
+    await mountApp(390);
+
+    expect(drawers()).toHaveLength(0);
+    expect(button('Toggle workspace').getAttribute('aria-pressed')).toBe('false');
+    expect(button('Toggle run instrument').getAttribute('aria-pressed')).toBe('false');
+    expect(stored()).toEqual(['1', '1']);
+  });
+
+  it('opens one drawer at a time, and never writes a drawer to the preference', async () => {
+    localStorage.setItem('felix.historyOpen', '1');
+    localStorage.setItem('felix.inspectorOpen', '1');
+    await mountApp(390);
+
+    const ws = await toggle('Toggle workspace');
+    await waitFor(() => expect(drawer('workspace')).toBeTruthy());
+    expect(ws.getAttribute('aria-pressed')).toBe('true');
+
+    const inst = await toggle('Toggle run instrument');
+    await waitFor(() => expect(drawer('instrument')).toBeTruthy());
+    expect(drawer('workspace')).toBeNull();
+    expect(drawers()).toHaveLength(1);
+    expect(inst.getAttribute('aria-pressed')).toBe('true');
+    expect(ws.getAttribute('aria-pressed')).toBe('false');
+    // Named for the heading it shows.
+    expect(screen.getByRole('dialog', { name: 'This run' })).toBeTruthy();
+
+    await toggle('Toggle run instrument');
+    await waitFor(() => expect(drawers()).toHaveLength(0));
+    expect(stored()).toEqual(['1', '1']);
+  });
+
+  it('persists a toggle made while the rail is inline', async () => {
+    await mountApp(1400);
+    expect(instrumentRail()).toBeNull();
+
+    const inst = await toggle('Toggle run instrument');
+    await waitFor(() => expect(instrumentRail()).toBeTruthy());
+    expect(drawers()).toHaveLength(0);
+    expect(inst.getAttribute('aria-pressed')).toBe('true');
+    expect(localStorage.getItem('felix.inspectorOpen')).toBe('1');
+
+    await toggle('Toggle run instrument');
+    await waitFor(() => expect(instrumentRail()).toBeNull());
+    expect(localStorage.getItem('felix.inspectorOpen')).toBe('0');
+  });
+
+  it('does not pop a drawer on narrowing, and restores the rail on widening', async () => {
+    localStorage.setItem('felix.inspectorOpen', '1');
+    await mountApp(1400);
+    await waitFor(() => expect(instrumentRail()).toBeTruthy());
+
+    await resize(1100);
+    expect(instrumentRail()).toBeNull();
+    expect(drawers()).toHaveLength(0);
+    expect(button('Toggle run instrument').getAttribute('aria-pressed')).toBe('false');
+
+    // A drawer opened here belongs to this width: widening hands back to the
+    // stored rail, and narrowing again does not bring the drawer back with it.
+    await toggle('Toggle run instrument');
+    await waitFor(() => expect(drawer('instrument')).toBeTruthy());
+    await resize(1400);
+    await waitFor(() => expect(instrumentRail()).toBeTruthy());
+    expect(drawers()).toHaveLength(0);
+    await resize(1100);
+    expect(drawers()).toHaveLength(0);
+    expect(localStorage.getItem('felix.inspectorOpen')).toBe('1');
   });
 });
