@@ -51,6 +51,9 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     skills: null,
     pending: null,
     queueLength: 0,
+    approvalQueue: [],
+    bannerOwned: [],
+    runClock: { startedAt: null, endedAt: null },
     onDecide: async () => {},
     uiPrompt: null,
     uiResolving: false,
@@ -181,7 +184,9 @@ describe('the run instrument', () => {
   it('associates every tab with a panel, both ways', async () => {
     render(
       <TooltipProvider>
-        <Inspector open onClose={() => {}} />
+        <ShellProvider value={shell()}>
+          <Inspector open onClose={() => {}} />
+        </ShellProvider>
       </TooltipProvider>,
     );
 
@@ -209,7 +214,9 @@ describe('the run instrument', () => {
   it('mounts exactly one section at a time, which is what tabs bought', async () => {
     render(
       <TooltipProvider>
-        <Inspector open onClose={() => {}} />
+        <ShellProvider value={shell()}>
+          <Inspector open onClose={() => {}} />
+        </ShellProvider>
       </TooltipProvider>,
     );
 
