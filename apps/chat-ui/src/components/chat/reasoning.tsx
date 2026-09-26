@@ -31,7 +31,7 @@ export function Reasoning({ text, streaming = false }: { text: string; streaming
         />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-1.5 whitespace-pre-wrap border-l-2 border-border/60 pl-3 text-sm text-muted-foreground">
+        <div className="mt-1.5 whitespace-pre-wrap wrap-anywhere border-l-2 border-border/60 pl-3 text-sm text-muted-foreground">
           {text}
         </div>
       </CollapsibleContent>

@@ -2,7 +2,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ActivitySection } from '../src/components/harness/ledger';
+import { ActivitySection, middleTruncate } from '../src/components/harness/ledger';
 
 /**
  * The Activity feed's keyboard path and its drill-down.
@@ -271,6 +271,34 @@ describe('the row and the window, read at a glance', () => {
     expect(row.textContent).not.toContain('default:');
   });
 
+  it('tells two threads with a shared prefix apart on screen', async () => {
+    // `max-w-[10ch]` drew both of these as `self-tri…`. The column exists to say
+    // which thread a row belongs to, so two that read the same answered nothing.
+    stubHarness([
+      auditRow({
+        id: 'a1',
+        payload_json: { tool: 'read_file', thread_id: 'default:self-triage-changelog-union' },
+      }),
+      auditRow({
+        id: 'a2',
+        payload_json: { tool: 'write_file', thread_id: 'default:self-triage-other' },
+      }),
+    ]);
+    renderInspector();
+
+    const first = await screen.findByRole('button', { name: /read_file/ });
+    const second = screen.getByRole('button', { name: /write_file/ });
+    const shown = (row: HTMLElement) =>
+      row.querySelector('[title^="Thread "] [aria-hidden]')?.textContent;
+    expect(shown(first)).toBe('self-tria…elog-union');
+    expect(shown(second)).toBe('self-triage-other');
+    // Whole for matching against a log line, and whole to a screen reader.
+    expect(first.querySelector('[title^="Thread "]')?.getAttribute('title')).toBe(
+      'Thread self-triage-changelog-union',
+    );
+    expect(within(first).getByText('Thread self-triage-changelog-union')).toBeTruthy();
+  });
+
   it('counts the window and its failures, and says how to reach the rows it cut', async () => {
     const events = Array.from({ length: 13 }, (_, i) =>
       auditRow({ id: `e${i}`, status: i === 0 ? 'error' : 'ok' }),
@@ -284,5 +312,19 @@ describe('the row and the window, read at a glance', () => {
     ).toBeTruthy();
     // The phrasing it replaced said "recent" twice and nothing about the rest.
     expect(document.body.textContent).not.toMatch(/recent events/);
+  });
+});
+
+describe('middleTruncate', () => {
+  it('leaves an id that fits alone', () => {
+    expect(middleTruncate('thread-abc', 20)).toBe('thread-abc');
+    expect(middleTruncate('x'.repeat(20), 20)).toBe('x'.repeat(20));
+  });
+
+  it('keeps both ends of a long one, at exactly the budget', () => {
+    const cut = middleTruncate('3f2a9c1e-7b4d-4e21-9a0c-a1b2c3d4e5f6', 20);
+    expect(cut).toHaveLength(20);
+    expect(cut.startsWith('3f2a9c1e')).toBe(true);
+    expect(cut.endsWith('c3d4e5f6')).toBe(true);
   });
 });

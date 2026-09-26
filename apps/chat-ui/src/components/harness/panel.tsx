@@ -21,6 +21,15 @@ export function Panel({ children, className }: { children: ReactNode; className?
 }
 
 /**
+ * The width a `/harness` page holds its rows to when they are read across rather
+ * than scanned down: a status is read with its name rather than found 1300px
+ * away. One constant so a page's rows and its header's `measured` row cannot
+ * drift apart — they did, which is how a switch ended up nowhere near the rows
+ * it switched.
+ */
+export const READING_MEASURE = 'max-w-3xl';
+
+/**
  * The one header every `/harness` destination draws: icon · title · one
  * at-a-glance value, with any controls to the right — or on a second row when
  * the pane is too narrow for both, which `flex-wrap` decides rather than a
@@ -41,6 +50,14 @@ export function Panel({ children, className }: { children: ReactNode; className?
  *
  * `valueMono` follows the Provenance Rule — a manifest id is something the
  * harness said, a count is something we said about it.
+ *
+ * `measured` is for a page whose content is held to `READING_MEASURE`. The rule
+ * under the header stays full width, because it separates the header from the
+ * pane; the row above it takes the content's measure, so the controls end where
+ * the rows they act on end. Unmeasured, the Ledger's Activity/Usage switch sat at
+ * the far edge of a 1300px pane with every row it switched ~500px to its left.
+ * A page whose rows run full width leaves it off, and its controls stay at the
+ * edge its rows reach.
  */
 export function PageHeader({
   icon,
@@ -50,6 +67,7 @@ export function PageHeader({
   valueMono,
   headingId,
   controls,
+  measured = false,
 }: {
   icon: ReactNode;
   title: string;
@@ -63,33 +81,39 @@ export function PageHeader({
   valueMono?: boolean;
   headingId?: string;
   controls?: ReactNode;
+  /** Hold the row to `READING_MEASURE`, matching content that is. */
+  measured?: boolean;
 }) {
   return (
-    <header className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-border/60 px-4 py-3">
-      {/* Normalised here so a section's 14px row icon and a page's 16px one are
+    <header className="shrink-0 border-b border-border/60 px-4 py-3">
+      <div
+        className={cn('flex flex-wrap items-center gap-x-2 gap-y-2', measured && READING_MEASURE)}
+      >
+        {/* Normalised here so a section's 14px row icon and a page's 16px one are
           the same size on the page, where the nav beside it draws 16px. */}
-      <span aria-hidden className="shrink-0 text-muted-foreground [&>svg]:size-4">
-        {icon}
-      </span>
-      <h2 id={headingId} className="truncate text-sm font-semibold">
-        {title}
-      </h2>
-      {value ? (
-        <span
-          className={cn(
-            'min-w-0 truncate text-xs tabular-nums',
-            valueMono && 'font-mono',
-            valueTone === 'attention' &&
-              'rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-medium text-state-blocked',
-            valueTone === 'failed' &&
-              'rounded-full bg-state-failed/15 px-1.5 py-0.5 font-medium text-state-failed',
-            valueTone === 'default' && 'text-muted-foreground',
-          )}
-        >
-          {value}
+        <span aria-hidden className="shrink-0 text-muted-foreground [&>svg]:size-4">
+          {icon}
         </span>
-      ) : null}
-      {controls ? <div className="ml-auto flex items-center gap-2">{controls}</div> : null}
+        <h2 id={headingId} className="truncate text-sm font-semibold">
+          {title}
+        </h2>
+        {value ? (
+          <span
+            className={cn(
+              'min-w-0 truncate text-xs tabular-nums',
+              valueMono && 'font-mono',
+              valueTone === 'attention' &&
+                'rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-medium text-state-blocked',
+              valueTone === 'failed' &&
+                'rounded-full bg-state-failed/15 px-1.5 py-0.5 font-medium text-state-failed',
+              valueTone === 'default' && 'text-muted-foreground',
+            )}
+          >
+            {value}
+          </span>
+        ) : null}
+        {controls ? <div className="ml-auto flex items-center gap-2">{controls}</div> : null}
+      </div>
     </header>
   );
 }

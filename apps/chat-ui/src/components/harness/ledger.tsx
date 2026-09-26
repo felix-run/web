@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ActivityIcon, ChevronRightIcon, CoinsIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getUsageSummary, listAudit, listUsage } from '@/api';
+import { READING_MEASURE } from '@/components/harness/panel';
 import {
   Field,
   isFailure,
@@ -140,6 +141,31 @@ export function filterActivity(
   return base.filter((e) => e.event_type === 'policy_deny' && controlOf(e) === opts.layer);
 }
 
+/**
+ * How many characters of a thread id the Activity row shows.
+ *
+ * It was `max-w-[10ch]` with CSS truncation, which kept a uuid's first group and
+ * nothing of a named thread: `self-triage-changelog-union` and `self-triage-other`
+ * both read `self-tri…`, so the column could not tell two threads apart — the one
+ * thing it is there for. Twenty characters holds a whole short name, and for a
+ * longer one `middleTruncate` keeps both ends, which is where ids differ: a shared
+ * prefix names the kind of work and the tail names the instance.
+ */
+const THREAD_CHARS = 20;
+
+/**
+ * `s` at most `max` characters long, cut from the middle with one `…`.
+ *
+ * The head gets the smaller half because a common prefix is the likeliest thing
+ * two ids share; the tail is what distinguishes them.
+ */
+export function middleTruncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const keep = Math.max(0, max - 1);
+  const head = Math.floor(keep / 2);
+  return `${s.slice(0, head)}…${s.slice(s.length - (keep - head))}`;
+}
+
 /** Rows rendered per section before the footer starts saying what was left out. */
 const ACTIVITY_VISIBLE = 12;
 
@@ -242,7 +268,7 @@ export function ActivitySection({
           row meant carrying a word across the screen; the filters sit on the same
           edge the statuses do.
         */}
-        <div className="max-w-3xl">
+        <div className={READING_MEASURE}>
           <div className="mb-1.5 flex items-center justify-end gap-1.5">
             {/* The layer filter answers one question — "what has approvals blocked this
               week" — so it reads as that question rather than as a column picker. */}
@@ -400,13 +426,16 @@ function ActivityRow({
                 </span>
               )}
               {thread && (
-                // The suffix, as every other thread id a client holds. Cut to a
-                // uuid's first group on screen; whole in `title` for matching.
+                // The suffix, as every other thread id a client holds, cut from the
+                // middle rather than the end: see `middleTruncate`. Whole in `title`
+                // for matching against a log line, and whole to a screen reader,
+                // which has no ellipsis to decode.
                 <span
                   title={`Thread ${thread}`}
-                  className="max-w-[10ch] shrink-0 truncate font-mono text-xs text-muted-foreground"
+                  className="shrink-0 font-mono text-xs text-muted-foreground"
                 >
-                  {thread}
+                  <span aria-hidden>{middleTruncate(thread, THREAD_CHARS)}</span>
+                  <span className="sr-only">Thread {thread}</span>
                 </span>
               )}
               <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
@@ -601,7 +630,7 @@ export function UsageSection({
         }
       >
         {/* The same measure as Activity, so switching halves does not move the edge. */}
-        <div className="max-w-3xl">
+        <div className={READING_MEASURE}>
           <p className="mb-1.5 text-xs text-muted-foreground">
             Last {days} days, across {totals.calls.toLocaleString()}{' '}
             {totals.calls === 1 ? 'turn' : 'turns'}

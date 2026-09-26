@@ -32,8 +32,15 @@
      sm  13px  rows, labels, controls, instructional copy
 
    Prose, for the transcript, which is read rather than scanned:
-     base 16px  message bodies
-     2xl  24px  the greeting
+     base 16px  message bodies and the composer; also the headline tier — a rail's
+                heading, the header wordmark, and the access gate's and crash
+                screen's headings
+
+   Nothing is set above 16px. `2xl` once listed "the greeting" at 24px; the
+   greeting became a 13px readout, and the last three headings off the ramp (the
+   gate's 24px panel heading and two 18px h1s) now sit on the headline step, so no
+   element uses `lg`, `xl` or `2xl`. They keep Tailwind's stock values and go
+   unused on purpose: this surface has no hero and no display tier.
 
    `xs` and `sm` are redefined rather than given new names so the existing ~80 uses
    across the app and `@felix/ui` land on the ramp without touching every call site.

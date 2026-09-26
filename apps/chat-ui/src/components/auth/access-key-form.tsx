@@ -5,8 +5,13 @@
  * The card treatment is a deliberate divergence from the client this was
  * ported from, where the form sits directly on the page background because
  * the hero photo's edge supplies the boundary. With no photo — and below
- * `lg` no panel at all — the border and shadow are what give the form an
- * edge at every width.
+ * `lg` no panel at all — the hairline is what gives the form an edge at every
+ * width.
+ *
+ * Flat, with the notice radius (`lg`). It used to borrow the composer's shadow
+ * and its 16px radius, which made it a second floating surface in an app whose
+ * system reserves lift for the composer alone — the one control that is always
+ * the primary action. A border does the job the shadow was doing here.
  */
 
 import { Button } from '@felix/ui/button';
@@ -41,12 +46,13 @@ export function AccessKeyForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="w-full max-w-sm space-y-6 rounded-2xl border border-border/60 bg-card p-6 shadow-[var(--shadow-composer)]"
+      className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6"
     >
       <div className="space-y-1.5">
-        {/* Only the wordmark is set in caps, and via CSS — the heading's text
-            content stays "Felix chat" for the accessible name. */}
-        <h1 className="text-lg font-semibold tracking-tight">
+        {/* A headline — 16px, the top of the ramp. Only the wordmark is set in
+            caps, and via CSS — the heading's text content stays "Felix chat" for
+            the accessible name. */}
+        <h1 className="text-base font-semibold">
           <span className="uppercase tracking-wider">Felix</span> chat
         </h1>
         <p className="text-sm text-muted-foreground">Enter your access key to open the chat.</p>

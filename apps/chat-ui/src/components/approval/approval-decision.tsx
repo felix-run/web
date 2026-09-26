@@ -91,9 +91,11 @@ export interface ApprovalDecisionProps {
  *    313px box, so a measured 52% of the content being approved sat off-screen
  *    behind a horizontal scrollbar. Payloads wrap, and when they are genuinely long
  *    they fold with a control that says how much is hidden.
- * 3. **Deny is not subordinate.** Approve was a solid fill and Deny a near-invisible
- *    ghost, which is the wrong emphasis for the irreversible half of a pair. They
- *    carry equal visual weight and Approve names its target.
+ * 3. **Neither answer is the default.** Approve was a solid fill and Deny a
+ *    near-invisible ghost, then an outline beside a solid — still a nudge, on the
+ *    one surface here that authorises a write to disk. Both are now the same
+ *    variant at the same width, so nothing but the words tells them apart: Approve
+ *    names its target, and the grant sentence above says what it allows.
  */
 export function ApprovalDecision({
   toolName,
@@ -251,8 +253,11 @@ export function ApprovalDecision({
       )}
 
       <div className="mt-2.5 flex flex-wrap gap-2">
+        {/* Same variant, same width, as Deny: see (3) above. The label carries the
+            difference, so neither button is the one the eye lands on first. */}
         <Button
           size="sm"
+          variant="outline"
           className="h-8 flex-1"
           disabled={deciding !== null || lapsed || edit?.status === 'invalid'}
           onClick={() => void decide('approved')}

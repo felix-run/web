@@ -265,8 +265,9 @@ and panels, which are scanned; 16 for the transcript, which is read.
 ### Hierarchy
 
 - **Headline** (600, 16px, 1.6): the heading of a whole rail — the instrument's "This run", the
-  thread list — and the header wordmark, which alone is set uppercase with wide tracking. There
-  is no display tier: this surface has no hero.
+  thread list — the header wordmark, which alone is set uppercase with wide tracking, and the
+  headings of the two screens that render instead of the app: the access gate and the crash
+  screen. There is no display tier: this surface has no hero.
 - **Prose** (400, 16px, 1.6): transcript message bodies, both sides, and the composer's
   textarea — at the same size on purpose, so a message does not change size when it is sent.
   Held to a reading measure (`max-w-3xl`) rather than the full pane width.
@@ -291,11 +292,11 @@ Density comes from tighter rows and fewer borders, never from shrinking type pas
 **Tabular numerals on anything that counts.** Token meters, durations, countdowns and queue
 counts change in place; proportional figures make them jitter and the eye reads motion as change.
 
-**Where the code is off the ramp.** Three headings outside the workbench use sizes the ramp does
-not define: the access gate's panel headline (`text-2xl`, 24px) and the gate form's and error
-boundary's `h1` (`text-lg`, 18px). The stylesheet's own comment still assigns 24px to "the
-greeting", which no longer exists — the greeting is now a 13px title. Treat those three as
-incumbent, not as a display tier to reuse.
+**Nothing is set above 16px.** The last three headings off the ramp — the access gate's panel
+heading at 24px and the gate form's and error boundary's `h1` at 18px — are headlines now, and
+the stylesheet's ramp comment no longer assigns 24px to a greeting that became a 13px readout.
+No element uses `text-lg`, `text-xl` or `text-2xl`; reaching for one is adding a display tier
+this surface does not have.
 
 ## Layout
 
@@ -349,12 +350,11 @@ Further uses in app code: a `shadow-md` on the floating scroll-to-latest button,
 one control that overlays the transcript, and `shadow-sm` on the composer's own furniture (send
 control, drop hint, notice pill).
 
-**Where the system and the code disagree.** The access-key gate's form card borrows
-`--shadow-composer` (and the composer's 16px radius) to give it an edge on a page with no other
-boundary; that is a second floating surface the One Lifted Surface Rule does not account for.
-The gate's decorative side panel is also the app's one gradient (`muted` to `background`), which
-the first anti-reference names.
-The vendored primitives in `packages/ui/src` are shadcn defaults and still carry theirs —
+The access-key gate follows the tonal model too: its form card is flat — a full-strength
+`border` hairline at `rounded-lg`, no shadow — and its side panel is flat `muted`, where it was
+the app's one gradient. There is no gradient anywhere in the app.
+
+**Where the system and the code disagree.** The vendored primitives in `packages/ui/src` are shadcn defaults and still carry theirs —
 `shadow-2xl` on overlays, `shadow-lg` on dialog-class surfaces, `shadow-xs` on outline buttons.
 Nothing here has reconciled them with the tonal model above. Treat both as incumbent truth
 rather than as a pattern to copy: a new surface should reach for a tonal step, and a primitive
@@ -382,7 +382,7 @@ deadline chip, state dots and the scrollbar thumb use `full`.
 Two further steps are in use and are *not* derived from `--radius`: they are Tailwind's stock
 values, reached for directly. `xs` (4px, bare `rounded`) is the small-object radius — `kbd`
 keys, inline code, row-level icon buttons, the inline rename field. `2xl` (16px) belongs to the
-composer and the slash menu it opens, plus the gate's form card. It sits only 2px from `xl`, so
+composer and the slash menu it opens, and to nothing else. It sits only 2px from `xl`, so
 the two do not read as different tiers; it is a separate value by accident of utility, not by
 decision.
 
@@ -406,10 +406,13 @@ border.
 - **Shape:** `rounded-md` (8px), 36px default, 32px `sm` (the size most toolbar and card
   buttons use), with `xs` and square icon sizes.
 - **Primary:** `bg-primary` with `primary-foreground`, `hover:bg-primary/90`. Used for the one
-  affirmative action on a surface — Approve on an approval card.
-- **Outline:** page-coloured with a hairline; the Deny beside Approve. The two are equal width
-  (`flex-1`) so Deny is not subordinate, though the fill still makes Approve the heavier of the
-  pair.
+  affirmative action on a surface that has no second answer — the gate's Continue, the crash
+  screen's Reload.
+- **Outline:** page-coloured with a hairline. **Approve and Deny are both outline**, at equal
+  width (`flex-1`): a gated call is a question with two answers, and on the surface that
+  authorises a write to disk the button styling must not be the thing that picks one. The words
+  carry the difference — Approve names its target, and the grant sentence above says what it
+  allows.
 - **Ghost:** transparent until `hover:bg-accent` — the default for header and row affordances,
   including New chat, because a toolbar of filled buttons is chrome competing with content.
 - **Secondary:** `bg-secondary`, used for the "this is currently on" state of a toggle (the
@@ -436,8 +439,14 @@ icon, the title the nav uses, then the value **with its unit** (`0 memories`, `l
 wrapping to a second row when the pane is narrow. A page whose value would need a request of its
 own shows none; a list that came back at its fetch cap reads `50+`, not a total. A section drawn
 bare still computes its value and reports it to the host's header, which is how the Ledger's one
-header carries whichever half is on screen. Rows on a full-width page are held to `max-w-3xl`, so a
-status is read with its name rather than found 1300px away.
+header carries whichever half is on screen. Rows that are read across — the Ledger's — are held
+to `READING_MEASURE` (`max-w-3xl`), so a status is read with its name rather than found 1300px
+away, and that page's header row is held to the same constant (`PageHeader measured`) so its
+Activity/Usage switch ends where the rows it switches end. The rule under the header stays full
+width; it separates the header from the pane. A page whose rows run full width leaves its
+controls at the pane's edge. An id that has to distinguish rows is cut from the **middle**, not
+the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
+`self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
 
 ### Run readout
 
@@ -456,6 +465,13 @@ every second is noise.
   message at 16px. No bubble, no fill, no avatar.
 - **Assistant turn:** a "Felix" label, then prose, reasoning and tool cards interleaved in the
   order they happened, then a mono usage line. Also no avatar.
+- **Long tokens wrap; wide blocks scroll in place.** Nothing in a turn may widen the column.
+  Plain text — the operator's turn, a note, reasoning — wraps with `wrap-anywhere`, so a
+  commit hash or an absolute path breaks rather than giving the transcript a sideways scroll
+  at phone width. Assistant prose uses `wrap-break-word` instead, which breaks an overflowing
+  word the same way but keeps words whole when a box is *sized*: that is what lets a table or
+  a code block keep its natural width and scroll inside its own `overflow-x-auto` box rather
+  than crushing its columns to a letter each.
 - **Empty thread:** a readout, not a greeting — a left-ruled block anchored at the bottom where
   the first turn will land, headed "Empty thread" at title size, listing agent, folder, thread
   and whether the harness is reachable (unreachable in `state-failed`, with the word).
@@ -472,9 +488,10 @@ tool shows its exit status, and a result the harness marked as an error or refus
 
 ### Cards
 
-Reserved. The only carded surfaces are the ones that stop a run — approval and `ui_request`
-banners, `rounded-xl` at `state-blocked/5` with a `/40` border. Everything else in a panel is a
-readout and gets a row. This is what keeps the app off its nearest anti-reference.
+Reserved. The only carded surfaces in the app are the ones that stop a run — approval and
+`ui_request` banners, `rounded-xl` at `state-blocked/5` with a `/40` border. Everything else in a
+panel is a readout and gets a row. Outside the app, the access gate's form is a flat bordered
+card, because below `lg` nothing else on that page gives the form an edge. This is what keeps the app off its nearest anti-reference.
 
 ### Approval card
 
@@ -483,7 +500,8 @@ line's queue and the instrument. Top to bottom, in reading order: the tool name 
 the manifest, the queue count and the **deadline chip**; the reason; the summary; the evidence
 (before/after for a write, arguments otherwise, editable); the grant sentence at 13px
 (`foreground/85`, measured 12.84:1 light) directly above the buttons, because it is what
-Approve actually does; then Approve / Deny / Edit arguments. Evidence precedes the decision.
+Approve actually does; then Approve / Deny / Edit arguments — Approve and Deny identical in weight. Evidence precedes the
+decision.
 
 ### State chips, dots and the deadline chip
 
@@ -505,10 +523,12 @@ banners docked directly above it, a slash menu that opens upward, and a hint lin
 11px that names the keys worth learning from there — Enter, ⇧Enter, and (from `md` up) the
 thread switcher and the jump to a waiting approval — as small bordered `kbd` keys.
 
-**Where the composer disagrees with the focus rule.** The composer removes its textarea's ring
-and signals focus instead with a `ring/60` border and the heavier composer shadow. That is the
-one focus indicator in the app drawn at reduced alpha, and nothing has measured it against the
-3:1 the ring was tuned for.
+**The composer's focus indicator is its border.** It removes its textarea's ring and signals
+focus with a full-alpha `--ring` border plus the heavier composer shadow. The border is the
+indicator, so it owes 3:1: against the composer surface (`card/80` over the dock) it measures
+3.96:1 light and 3.78:1 dark, and 3.53:1 / 3.34:1 against the resting `border/50` it replaces.
+It was `ring/60` until that was measured — 2.10:1 light, 2.15:1 dark — which failed. There is
+no reduced-alpha focus indicator left in the app.
 
 ## Do's and Don'ts
 

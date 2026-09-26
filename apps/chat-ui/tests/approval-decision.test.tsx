@@ -97,6 +97,17 @@ describe('ApprovalDecision', () => {
     expect(grant.className).toContain('text-sm');
   });
 
+  it('draws Approve and Deny at equal weight, told apart only by their words', () => {
+    // Approve was a solid fill beside an outlined Deny: a nudge toward yes on the
+    // one surface that authorises a write. Identical classes is the whole claim —
+    // same variant, same size, same width — and the label still names the target.
+    render(<ApprovalDecision toolName="write_file" args={{ path: 'a.txt' }} onDecide={vi.fn()} />);
+    const approve = screen.getByRole('button', { name: 'Approve write_file' });
+    const deny = screen.getByRole('button', { name: 'Deny' });
+    expect(approve.className).toBe(deny.className);
+    expect(approve.className).not.toContain('bg-primary');
+  });
+
   it('once lapsed, says who decided and offers nothing to click', () => {
     vi.spyOn(Date, 'now').mockReturnValue(2_000_000);
     render(
