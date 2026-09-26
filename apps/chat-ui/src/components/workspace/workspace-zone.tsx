@@ -17,6 +17,7 @@ import {
   supportsDirectoryPicker,
   vfs,
 } from '@/lib/cowork';
+import { ariaShortcut, isMacPlatform, shortcutLabel } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 
@@ -223,6 +224,9 @@ export function WorkspaceZone({ className }: { className?: string }) {
               variant="ghost"
               size="sm"
               className="mt-2 h-8 w-full justify-between gap-2 px-2 text-xs font-normal"
+              data-shortcut="threads"
+              aria-keyshortcuts={ariaShortcut('open-threads', isMacPlatform())}
+              title={`Threads (${shortcutLabel('open-threads', isMacPlatform())})`}
             >
               <span className="min-w-0 truncate text-left">
                 {current?.title ?? 'New conversation'}

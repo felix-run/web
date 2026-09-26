@@ -177,7 +177,13 @@ export function Workbench() {
         and the start of every row cut away, measured in a real browser. */}
       {!workspaceInline && (
         <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-          <SheetContent side="left" className="w-[18rem] max-w-full gap-0 p-0 sm:max-w-none">
+          {/* `data-shortcut-surface` names this drawer to the keyboard layer, so
+              the binding that opened it may also close it while it holds focus. */}
+          <SheetContent
+            side="left"
+            data-shortcut-surface="workspace"
+            className="w-[18rem] max-w-full gap-0 p-0 sm:max-w-none"
+          >
             <SheetTitle className="sr-only">Workspace</SheetTitle>
             {/* The same zone, not a smaller stand-in: the threads popover, the
                 mount controls and the tree all have to be reachable here or the
@@ -192,6 +198,7 @@ export function Workbench() {
           <SheetContent
             side="right"
             showCloseButton={false}
+            data-shortcut-surface="instrument"
             className="w-[22rem] max-w-full gap-0 p-0 sm:max-w-none"
           >
             <SheetTitle className="sr-only">Harness inspector</SheetTitle>

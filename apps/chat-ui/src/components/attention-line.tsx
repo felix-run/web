@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { decideApproval, listApprovals } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
+import { ariaShortcut, isMacPlatform } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
 /**
@@ -169,6 +170,10 @@ export function AttentionLine({
             className="h-6 shrink-0 gap-1 px-2 text-xs"
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
+            // The keyboard layer clicks this to expand the queue before focusing
+            // it, so the shortcut and the pointer open it the same way.
+            data-shortcut="review-approvals"
+            aria-keyshortcuts={ariaShortcut('focus-approval', isMacPlatform())}
           >
             <ChevronRightIcon
               className={cn('size-3.5 transition-transform duration-150', open && 'rotate-90')}
@@ -192,7 +197,16 @@ export function AttentionLine({
             says "across the harness" rather than implying this thread.
           */}
           {reviewable.map((a) => (
-            <div key={a.id} className="space-y-1">
+            // Focusable but out of the tab order: the keyboard layer lands on
+            // the card rather than on Approve, for the reason the banner gives.
+            <div
+              key={a.id}
+              tabIndex={-1}
+              role="group"
+              aria-label={`Approval waiting: ${a.tool_name}`}
+              data-approval-focus="queue"
+              className="space-y-1 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
               {a.thread_id && a.thread_id !== threadId ? (
                 <p className="text-xs text-muted-foreground">
                   Blocking{' '}
