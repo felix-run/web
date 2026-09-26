@@ -54,7 +54,8 @@ describe('the tool card for a shell result', () => {
     expect(screen.getAllByText('exit 0')).toHaveLength(2);
     expect(screen.getByText(/\$ uv run ruff check/)).toBeTruthy();
     expect(screen.getByText('All checks passed!')).toBeTruthy();
-    expect(screen.getByText(/1\.8s/)).toBeTruthy();
+    // Twice as well: the collapsed header's duration, and the expanded result's.
+    expect(screen.getAllByText('1.8s')).toHaveLength(2);
     // No raw JSON: the object is chrome now, not output.
     expect(screen.queryByText(/"exit_code"/)).toBeNull();
     // Empty stderr is the normal case and says nothing.
@@ -198,5 +199,49 @@ describe('the tool card for a failed call', () => {
       <Tool tool={{ name: 'calculator', done: true, output: 'error: division by zero' }} verbose />,
     );
     expect(screen.getByText('done')).toBeTruthy();
+  });
+});
+
+/**
+ * The collapsed header reads `name · target · duration`.
+ *
+ * It read a wrench and the name, so five `read_file` cards were five identical
+ * rows and the file each one read was one click away on every one of them.
+ */
+describe('the tool card header', () => {
+  it('names what the call acted on without being opened', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(<Tool tool={{ name: 'read_file', done: true, input: { path: 'src/a.ts' } }} />);
+    const trigger = screen.getByRole('button');
+    expect(trigger.textContent).toContain('read_file');
+    expect(trigger.textContent).toContain('src/a.ts');
+    expect(trigger.textContent).toContain('done');
+  });
+
+  it('uses the approval card\x27s sentence for a known client tool', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(
+      <Tool
+        tool={{ name: 'write_file', done: false, input: { path: 'notes.md', content: 'hi' } }}
+      />,
+    );
+    expect(screen.getByRole('button').textContent).toContain('Write notes.md (2 chars)');
+  });
+
+  it('shows a duration only when the harness reported one', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    render(<Tool tool={{ name: 'read_file', done: true, input: { path: 'a' }, output: 'x' }} />);
+    expect(screen.getByRole('button').textContent).not.toMatch(/\d(ms|s)\b/);
+  });
+});
+
+describe('toolTarget', () => {
+  it('reads a JSON-string input, falls back to compact JSON, and says nothing for no args', async () => {
+    const { toolTarget } = await import('../src/components/chat/tool');
+    expect(toolTarget('search', '{"query":"TODO"}')).toBe('TODO');
+    expect(toolTarget('calc', { a: 1, b: 2 })).toBe('{"a":1,"b":2}');
+    expect(toolTarget('list_dir', {})).toBeNull();
+    expect(toolTarget('list_dir', undefined)).toBeNull();
+    expect(toolTarget('local_shell', { command: 'ls\n-la' })).toBe('Shell: ls -la');
   });
 });

@@ -6,8 +6,14 @@ import { Response } from './response';
 import { Tool } from './tool';
 
 /**
- * One transcript turn. User turns are right-aligned bubbles; assistant turns
- * are full-width prose with optional tool cards (ChatGPT / Claude style).
+ * One transcript turn. Both sides are labelled, left-aligned and full-width;
+ * the operator's turn is set off by a rule rather than an inverted bubble.
+ *
+ * The bubble and the avatar were consumer-chat furniture: a solid near-black
+ * block was the heaviest thing in the column, so the eye landed on what the
+ * operator had typed instead of on what the agent did about it. A label and a
+ * rule keep the two sides apart without colour — the word says whose turn it is,
+ * and the rule says it where the word is out of view.
  *
  * The assistant's prose and its tool cards are interleaved, not stacked: see
  * `interleaveTurn`. A turn is a sequence of saying and doing, and rendering
@@ -65,33 +71,35 @@ export function Message({
 
   if (turn.role === 'user') {
     return (
-      <div className="group flex w-full flex-col items-end gap-1.5">
-        {/* Outside the actions row on purpose: that row is hidden until hover,
-            and a label nobody can see without hunting for it is not a label. */}
-        {label && <LabelChip label={label} />}
-        {turn.attachments && turn.attachments.length > 0 && (
-          <div className="flex max-w-[min(80%,28rem)] flex-wrap justify-end gap-2">
-            {turn.attachments.map((a) => (
-              <img
-                key={a.url}
-                src={a.url}
-                alt={a.filename ?? 'attachment'}
-                className="size-24 rounded-xl border border-border/50 object-cover"
-              />
-            ))}
+      <div className="group flex w-full flex-col gap-1.5">
+        <div className="border-l-2 border-foreground/25 py-0.5 pl-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">You</span>
+            {/* Outside the actions row on purpose: that row is hidden until hover,
+                and a label nobody can see without hunting for it is not a label. */}
+            {label && <LabelChip label={label} />}
           </div>
-        )}
-        {turn.content && (
-          <div className="max-w-[min(80%,36rem)] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-4 py-2.5 text-base text-background">
-            {turn.content}
-          </div>
-        )}
+          {turn.attachments && turn.attachments.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {turn.attachments.map((a) => (
+                <img
+                  key={a.url}
+                  src={a.url}
+                  alt={a.filename ?? 'attachment'}
+                  className="size-24 rounded-xl border border-border/50 object-cover"
+                />
+              ))}
+            </div>
+          )}
+          {turn.content && (
+            <div className="mt-1 whitespace-pre-wrap text-base text-foreground">{turn.content}</div>
+          )}
+        </div>
         <MessageActions
           content={turn.content}
           onRewind={onRewind}
           {...(label === undefined ? {} : { label })}
           {...(onLabel ? { onLabel } : {})}
-          className="pr-0.5"
         />
       </div>
     );
@@ -102,14 +110,8 @@ export function Message({
   return (
     <div className="group flex w-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold tracking-wide text-muted-foreground"
-          aria-hidden
-        >
-          F
-        </span>
         <span className="text-xs font-medium text-muted-foreground">Felix</span>
-        {streaming && !empty && <span className="text-xs text-muted-foreground/80">streaming</span>}
+        {streaming && !empty && <span className="text-xs text-muted-foreground">streaming</span>}
         {verbose && toolCount > 0 && (
           <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
             {toolCount} tool{toolCount === 1 ? '' : 's'}
@@ -159,7 +161,8 @@ export function Message({
         </div>
       )}
 
-      {empty && streaming && <TypingIndicator />}
+      {/* A turn carrying reasoning already says "Thinking" in its own block. */}
+      {empty && streaming && !turn.reasoning?.length && <AwaitingStatus />}
 
       {!streaming && !empty && (
         <MessageActions
@@ -174,18 +177,20 @@ export function Message({
   );
 }
 
-function TypingIndicator() {
+/**
+ * A sent turn that nothing has come back for yet.
+ *
+ * Three pulsing dots claimed the agent was typing, which is the one thing it is
+ * provably not doing — no delta has arrived. What is true is that the request
+ * is out and the harness has not answered, so that is what it says, in a word
+ * that does not move: motion here would compete with the stream it is waiting
+ * for, and a static word honours reduced motion without needing a query.
+ */
+function AwaitingStatus() {
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex items-center gap-1.5 py-1 text-muted-foreground"
-      aria-label="Felix is typing"
-    >
-      <span className="size-1.5 animate-pulse rounded-full bg-current opacity-40 [animation-delay:0ms]" />
-      <span className="size-1.5 animate-pulse rounded-full bg-current opacity-70 [animation-delay:150ms]" />
-      <span className="size-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" />
-    </div>
+    <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+      Waiting for the harness…
+    </p>
   );
 }
 

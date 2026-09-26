@@ -1198,13 +1198,14 @@ export function AppShell() {
 
         <div className="ml-auto flex items-center gap-1">
           <Button
-            variant="default"
+            variant="ghost"
             size="sm"
             onClick={newThread}
             disabled={streaming}
-            className="gap-1.5 rounded-full px-3"
+            className="gap-1.5"
+            aria-label="New chat"
           >
-            <PlusIcon className="size-4" />
+            <PlusIcon className="size-4" aria-hidden />
             <span className="hidden sm:inline">New chat</span>
           </Button>
           {/*

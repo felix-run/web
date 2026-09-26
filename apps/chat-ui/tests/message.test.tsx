@@ -158,7 +158,37 @@ describe('a note', () => {
 
   it('is not drawn as either side of the conversation', () => {
     const { container } = render(<Message turn={note(true)} />);
+    // Each side is named in words now, so a note carrying neither name is one
+    // that cannot be mistaken for either — the bubble this once checked is gone.
     expect(container.textContent).not.toContain('Felix');
-    expect(container.querySelector('.bg-foreground')).toBeNull();
+    expect(container.textContent).not.toContain('You');
+  });
+});
+
+/**
+ * Whose turn it is, said in words.
+ *
+ * The operator's turn was an inverted bubble and the agent's carried an "F"
+ * avatar — the two sides told apart by a filled block and a circle. Both are
+ * gone, so the labels are what keeps them distinguishable without colour.
+ */
+describe('turn attribution', () => {
+  it('labels the operator\x27s turn and the agent\x27s', async () => {
+    const user = render(<Message turn={{ id: 'u1', role: 'user', content: 'list the files' }} />);
+    expect(user.container.textContent).toContain('You');
+    expect(user.container.textContent).toContain('list the files');
+    cleanup();
+    const agent = render(<Message turn={assistant({ content: 'here they are' })} />);
+    await waitFor(() => expect(agent.container.textContent).toContain('here they are'));
+    expect(agent.container.textContent).toContain('Felix');
+  });
+
+  it('says a sent turn is waiting, in a word, until something arrives', () => {
+    const { getByRole, rerender, queryByRole } = render(<Message turn={assistant({})} streaming />);
+    expect(getByRole('status').textContent).toBe('Waiting for the harness…');
+    rerender(
+      <Message turn={assistant({ tools: [{ name: 'read_file', done: false }] })} streaming />,
+    );
+    expect(queryByRole('status')).toBeNull();
   });
 });
