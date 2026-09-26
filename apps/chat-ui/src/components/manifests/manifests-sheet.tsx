@@ -17,7 +17,7 @@ import {
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
-import { Panel, PanelDescription, PanelHeader, PanelTitle } from '@/components/harness/panel';
+import { PageHeader, Panel, plural } from '@/components/harness/panel';
 import {
   type KnownVersion,
   knownVersions,
@@ -43,6 +43,8 @@ import type { ManifestSummary } from '@/types';
  */
 export function ManifestsSheet({ manifest }: { manifest: string }) {
   const [rows, setRows] = useState<ManifestSummary[]>([]);
+  /** Whether `rows` is an answer yet: `0 manifests` before the first list is a claim. */
+  const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [importName, setImportName] = useState(manifest);
   const [busy, setBusy] = useState(false);
@@ -56,6 +58,7 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
       const r = await listTenantManifests();
       for (const row of r) recordFromPointer(row.name, row);
       setRows(r);
+      setLoaded(true);
       setFailure(null);
       setSelected((cur) => cur ?? r[0]?.name ?? null);
     } catch (err) {
@@ -100,17 +103,28 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
   }
 
   const selectedRow = rows.find((r) => r.name === selected) ?? null;
+  // The same test the picker uses to draw `v3 · 10%`, so the header and the
+  // buttons below it never disagree about what is rolling out.
+  const canaries = rows.filter(
+    (r) => r.canary_version != null && (r.canary_weight ?? 0) > 0,
+  ).length;
 
   return (
     <Panel>
-      <PanelHeader className="border-b">
-        <PanelTitle className="flex items-center gap-2">
-          <GitBranchIcon className="size-4" /> Manifest lifecycle
-        </PanelTitle>
-        <PanelDescription>
-          Tenant-managed versions, active-pointer rollback, and weighted canary rollout.
-        </PanelDescription>
-      </PanelHeader>
+      {/* Named as the nav names it. The value counts what this tenant manages
+          and, when any is mid-rollout, how many — the one fact on this page that
+          changes what the next chat turn runs. */}
+      <PageHeader
+        icon={<GitBranchIcon />}
+        title="Manifests"
+        value={
+          loaded
+            ? [plural(rows.length, 'manifest'), canaries > 0 ? `${canaries} in canary` : null]
+                .filter(Boolean)
+                .join(' · ')
+            : undefined
+        }
+      />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         {failure && (

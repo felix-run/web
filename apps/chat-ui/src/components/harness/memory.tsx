@@ -4,6 +4,7 @@ import { BrainIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { addMemory, forgetMemory, listMemories, memoriesAsOf, searchMemories } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
+import { plural } from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,11 @@ import type { MemoryHit, MemoryRecord } from '@/types';
  * out of recall rather than being erased. The UI says "forget" rather than
  * "delete" so it does not promise more than that.
  */
+/** The fetch caps, named because the header's value has to know them to stay true. */
+const RECENT_LIMIT = 50;
+const SEARCH_LIMIT = 12;
+const AS_OF_LIMIT = 100;
+
 export function MemorySection({
   enabled,
   open,
@@ -59,13 +65,13 @@ export function MemorySection({
   const asOfReady = mode === 'asOf' && Number.isFinite(seq) && seq >= 0;
   const searchReady = mode === 'search' && committedQuery.length > 0;
 
-  const recent = usePoll(() => listMemories({ limit: 50 }), {
+  const recent = usePoll(() => listMemories({ limit: RECENT_LIMIT }), {
     enabled: enabled && mode === 'recent',
   });
-  const found = usePoll(() => searchMemories(committedQuery, { limit: 12 }), {
+  const found = usePoll(() => searchMemories(committedQuery, { limit: SEARCH_LIMIT }), {
     enabled: enabled && searchReady,
   });
-  const past = usePoll(() => memoriesAsOf(seq, { limit: 100 }), {
+  const past = usePoll(() => memoriesAsOf(seq, { limit: AS_OF_LIMIT }), {
     enabled: enabled && asOfReady,
   });
 
@@ -82,7 +88,18 @@ export function MemorySection({
     <Section
       icon={<BrainIcon className="size-3.5" />}
       title="Memory"
-      meta={mode === 'recent' && recent.data ? String(recent.data.length) : undefined}
+      // The value follows the view, because each view is a different question:
+      // what is held, what a query recalls, what was believed at a turn. Nothing
+      // while a view's first fetch is in flight — `0` then would be a claim.
+      meta={
+        mode === 'recent' && recent.data
+          ? plural(recent.data.length, 'memory', 'memories', RECENT_LIMIT)
+          : mode === 'search' && searchReady && found.data
+            ? plural(found.data.length, 'match', 'matches', SEARCH_LIMIT)
+            : mode === 'asOf' && asOfReady && past.data
+              ? `${plural(past.data.length, 'memory', 'memories', AS_OF_LIMIT)} at turn ${seq}`
+              : undefined
+      }
       open={open}
       onToggle={onToggle}
     >

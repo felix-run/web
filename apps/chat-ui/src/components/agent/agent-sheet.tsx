@@ -4,7 +4,7 @@ import { BotIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
-import { Panel, PanelDescription, PanelHeader, PanelTitle } from '@/components/harness/panel';
+import { PageHeader, Panel } from '@/components/harness/panel';
 import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
 
 /**
@@ -48,15 +48,10 @@ export function AgentSheet({ manifest }: { manifest: string }) {
 
   return (
     <Panel>
-      <PanelHeader className="border-b">
-        <PanelTitle className="flex items-center gap-2">
-          <BotIcon className="size-4" /> Agent spec
-          <span className="font-mono text-xs text-muted-foreground">{manifest}</span>
-        </PanelTitle>
-        <PanelDescription>
-          The resolved manifest the harness compiled for the selected agent.
-        </PanelDescription>
-      </PanelHeader>
+      {/* The value is the manifest id, in mono because the harness named it —
+          and it is the whole answer to "which agent is this", which the subline
+          below the old title restated in a sentence. */}
+      <PageHeader icon={<BotIcon />} title="Agent" value={manifest} valueMono />
 
       <ScrollArea className="min-h-0 flex-1">
         {/* The spec rows are rows, not captions. This container set `text-xs` so the

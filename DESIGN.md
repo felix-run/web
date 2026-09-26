@@ -428,6 +428,15 @@ an instrument tab (where the tab is the heading), chosen by context rather than 
 section does not become two implementations. A rail's own heading is a headline at 48px,
 matching the app header.
 
+Under `/harness` every destination draws the same `PageHeader` (`components/harness/panel.tsx`):
+icon, the title the nav uses, then the value **with its unit** (`0 memories`, `last 60 events ·
+1 failed`, `3 jobs`) set beside the title rather than at the far edge, and controls pushed right —
+wrapping to a second row when the pane is narrow. A page whose value would need a request of its
+own shows none; a list that came back at its fetch cap reads `50+`, not a total. A section drawn
+bare still computes its value and reports it to the host's header, which is how the Ledger's one
+header carries whichever half is on screen. Rows on a full-width page are held to `max-w-3xl`, so a
+status is read with its name rather than found 1300px away.
+
 ### Run readout
 
 The top of the instrument, above its tabs: what the run is doing, derived from state the shell

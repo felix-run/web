@@ -116,4 +116,23 @@ describe('the harness address', () => {
     const back = [...document.querySelectorAll('a')].map((a) => a.getAttribute('href'));
     expect(back).toContain('/t/keep-me');
   });
+
+  it("carries the visible Ledger half's value in the page header, not a second poll's", async () => {
+    mount('/harness/ledger');
+    // Reported up from the Activity half's own `/audit` poll; the halves draw no
+    // heading of their own, so without the sink this value had nowhere to go.
+    await waitFor(() => {
+      const header = document.querySelector('main header');
+      expect(header?.textContent).toContain('Ledger');
+      expect(header?.textContent).toContain('0 events · 0 failed');
+    });
+  });
+
+  it('puts the destination in a main landmark, outside the nav', async () => {
+    mount('/harness/jobs');
+    await waitFor(() => expect(document.querySelector('main h2')).not.toBeNull());
+    const main = document.querySelector('main') as HTMLElement;
+    expect(main.querySelector('h2')?.textContent).toBe('Jobs');
+    expect(main.querySelector('nav[aria-label="Harness"]')).toBeNull();
+  });
 });

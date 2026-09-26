@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
-import { Panel, PanelDescription, PanelHeader, PanelTitle } from '@/components/harness/panel';
+import { PageHeader, Panel, plural } from '@/components/harness/panel';
 import { usePoll } from '@/hooks/usePoll';
 import type { JobRun } from '@/types';
 
@@ -33,9 +33,16 @@ export function JobsSheet({
   // `usePoll` rather than a bare interval: this was the one poll in the app that
   // never moved onto it, so a backgrounded tab with the sheet open kept hitting the
   // harness every four seconds forever.
-  const { data: jobs = [], error: listError, refresh } = usePoll(listJobs, { intervalMs: 4000 });
+  const { data, error: listError, refresh } = usePoll(listJobs, { intervalMs: 4000 });
+  // Kept apart from `data` so the header can tell "no jobs" from "not loaded yet".
+  const jobs = data ?? [];
 
   const [actionError, setActionError] = useState<unknown>(null);
+  // The form sits behind a button. It led the page, so what an operator comes
+  // here to read — which jobs exist, and how their last run went — started below
+  // five inputs and a paragraph about thread reuse, for a page visited far more
+  // often to look than to create.
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [schedule, setSchedule] = useState('0 9 * * *');
   const [manifestId, setManifestId] = useState(manifest);
@@ -74,6 +81,7 @@ export function JobsSheet({
       setName('');
       setPrompt('');
       setFreshThread(false);
+      setCreating(false);
       refresh();
     } catch (err) {
       setActionError(err);
@@ -114,15 +122,25 @@ export function JobsSheet({
 
   return (
     <Panel>
-      <PanelHeader>
-        <PanelTitle className="flex items-center gap-2">
-          <ClockIcon className="size-4" /> Scheduled jobs
-        </PanelTitle>
-        <PanelDescription>
-          Persistent cron-scheduled agent runs, swept by the worker. Expand a job for its recent run
-          history.
-        </PanelDescription>
-      </PanelHeader>
+      {/* "Jobs", as the nav says. The page was "Scheduled jobs" under a nav entry
+          reading "Jobs", which is one place answering to two names. */}
+      <PageHeader
+        icon={<ClockIcon />}
+        title="Jobs"
+        value={data ? plural(jobs.length, 'job') : undefined}
+        controls={
+          <Button
+            size="sm"
+            variant={creating ? 'secondary' : 'outline'}
+            className="gap-1"
+            aria-expanded={creating}
+            aria-controls="job-create"
+            onClick={() => setCreating((v) => !v)}
+          >
+            <PlusIcon className="size-3.5" /> New job
+          </Button>
+        }
+      />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         {listError ? (
@@ -138,91 +156,106 @@ export function JobsSheet({
         ) : null}
         {actionError != null && <ErrorNotice error={actionError} doing="update this job" />}
 
-        {/* Create form */}
-        <div className="space-y-1.5 rounded-md border border-dashed p-2.5">
-          <div className="text-xs font-medium text-muted-foreground">New job</div>
-          <Label htmlFor="job-name" className="sr-only">
-            Job name
-          </Label>
-          <Input
-            id="job-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="job name, e.g. nightly-digest"
-            className="h-8 font-mono text-sm"
-            onKeyDown={(e) => e.key === 'Enter' && create()}
-          />
-          <div className="flex gap-2">
-            <Label htmlFor="job-schedule" className="sr-only">
-              Schedule, as 5-field cron in UTC. Leave empty to never run automatically.
+        {creating && (
+          <div
+            id="job-create"
+            role="group"
+            aria-label="New job"
+            className="space-y-1.5 rounded-md border border-dashed p-2.5"
+          >
+            <Label htmlFor="job-name" className="sr-only">
+              Job name
             </Label>
             <Input
-              id="job-schedule"
-              value={schedule}
-              onChange={(e) => setSchedule(e.target.value)}
-              placeholder="cron (m h dom mon dow); leave empty to never run"
+              id="job-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="job name, e.g. nightly-digest"
               className="h-8 font-mono text-sm"
               onKeyDown={(e) => e.key === 'Enter' && create()}
             />
-            {/* The shared primitive, not a bare `<select>`: a native one draws its
+            <div className="flex gap-2">
+              <Label htmlFor="job-schedule" className="sr-only">
+                Schedule, as 5-field cron in UTC. Leave empty to never run automatically.
+              </Label>
+              <Input
+                id="job-schedule"
+                value={schedule}
+                onChange={(e) => setSchedule(e.target.value)}
+                placeholder="cron (m h dom mon dow); leave empty to never run"
+                className="h-8 font-mono text-sm"
+                onKeyDown={(e) => e.key === 'Enter' && create()}
+              />
+              {/* The shared primitive, not a bare `<select>`: a native one draws its
                   option list with the OS, which ignores the app's theme entirely. */}
-            <Select value={manifestId} onValueChange={setManifestId}>
-              <SelectTrigger
-                size="sm"
-                className="h-8 w-40 font-mono text-sm"
-                aria-label="Manifest for this job"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
-                  <SelectItem key={m} value={m} className="font-mono text-sm">
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Label htmlFor="job-prompt" className="sr-only">
-            Prompt sent on each run
-          </Label>
-          <Input
-            id="job-prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="prompt sent each run; empty sends “ping”"
-            className="h-8 text-sm"
-            onKeyDown={(e) => e.key === 'Enter' && create()}
-          />
-          {/* A native checkbox: the shared primitives have no switch, and a `<button
+              <Select value={manifestId} onValueChange={setManifestId}>
+                <SelectTrigger
+                  size="sm"
+                  className="h-8 w-40 font-mono text-sm"
+                  aria-label="Manifest for this job"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
+                    <SelectItem key={m} value={m} className="font-mono text-sm">
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Label htmlFor="job-prompt" className="sr-only">
+              Prompt sent on each run
+            </Label>
+            <Input
+              id="job-prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="prompt sent each run; empty sends “ping”"
+              className="h-8 text-sm"
+              onKeyDown={(e) => e.key === 'Enter' && create()}
+            />
+            {/* A native checkbox: the shared primitives have no switch, and a `<button
               aria-pressed>` for a yes/no that is submitted with a form promises a
               toggle rather than a field. */}
-          <label
-            htmlFor="job-fresh-thread"
-            className="flex items-start gap-2 text-xs text-muted-foreground"
-          >
-            <input
-              id="job-fresh-thread"
-              type="checkbox"
-              checked={freshThread}
-              onChange={(e) => setFreshThread(e.target.checked)}
-              className="mt-0.5 size-3.5 shrink-0 accent-primary"
-            />
-            <span>
-              Fresh thread each run. By default every run shares one thread named after the job, so
-              a digest remembers last week; set this for a job that works something different each
-              time, so one run's transcript never sits in the next run's context.
-            </span>
-          </label>
-          <Button size="sm" className="gap-1" disabled={busy || !name.trim()} onClick={create}>
-            <PlusIcon className="size-3.5" /> Create
-          </Button>
-        </div>
+            <label
+              htmlFor="job-fresh-thread"
+              className="flex items-start gap-2 text-xs text-muted-foreground"
+            >
+              <input
+                id="job-fresh-thread"
+                type="checkbox"
+                checked={freshThread}
+                onChange={(e) => setFreshThread(e.target.checked)}
+                className="mt-0.5 size-3.5 shrink-0 accent-primary"
+              />
+              <span>
+                Fresh thread each run. By default every run shares one thread named after the job,
+                so a digest remembers last week; set this for a job that works something different
+                each time, so one run's transcript never sits in the next run's context.
+              </span>
+            </label>
+            <div className="flex gap-2">
+              <Button size="sm" className="gap-1" disabled={busy || !name.trim()} onClick={create}>
+                <PlusIcon className="size-3.5" /> Create
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setCreating(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-1.5 pr-3">
-            {jobs.length === 0 && (
-              <p className="text-sm text-muted-foreground">No jobs yet. Create one above.</p>
+            {/* The page's one explanation lives here now, where it is needed: the
+                header lost its subline, and a page with jobs on it explains itself. */}
+            {data && jobs.length === 0 && (
+              <p className="max-w-prose text-sm text-muted-foreground">
+                No jobs yet. A job is an agent run the worker starts on a cron schedule, with its
+                recent runs under Runs. New job creates one.
+              </p>
             )}
             {jobs.map((j) => (
               <div key={j.name} className="rounded-md border bg-background px-2.5 py-1.5 text-sm">

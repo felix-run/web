@@ -43,10 +43,30 @@ async function sheet(jobs: unknown[] = []) {
   return { upsertJob };
 }
 
+/** The form is behind a disclosure now; open it the way an operator would. */
+async function openForm() {
+  fireEvent.click(await screen.findByRole('button', { name: /New job/ }));
+  return waitFor(() => screen.getByLabelText(/Job name/));
+}
+
+describe('the page reads as a list first', () => {
+  it('keeps the create form closed until asked, and counts jobs in the header', async () => {
+    await sheet([job()]);
+    await waitFor(() => expect(screen.getByText('1 job')).toBeTruthy());
+    expect(screen.getByRole('heading', { name: 'Jobs' })).toBeTruthy();
+    expect(screen.queryByLabelText(/Job name/)).toBeNull();
+    const toggle = screen.getByRole('button', { name: /New job/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByLabelText(/Job name/)).toBeTruthy();
+  });
+});
+
 describe('creating a job', () => {
   it('sends the prompt and fresh_thread only when they were set', async () => {
     const { upsertJob } = await sheet();
-    const name = await waitFor(() => screen.getByLabelText(/Job name/));
+    const name = await openForm();
     fireEvent.change(name, { target: { value: 'triage' } });
     fireEvent.change(screen.getByLabelText(/Prompt sent on each run/), {
       target: { value: 'Take the next ticket.' },
@@ -67,7 +87,7 @@ describe('creating a job', () => {
     // The scheduler reads `payload.get("fresh_thread")`; a stored `false` is a
     // key on every row that says nothing.
     const { upsertJob } = await sheet();
-    const name = await waitFor(() => screen.getByLabelText(/Job name/));
+    const name = await openForm();
     fireEvent.change(name, { target: { value: 'digest' } });
     fireEvent.click(screen.getByRole('button', { name: /Create/ }));
 

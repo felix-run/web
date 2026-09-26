@@ -3,8 +3,9 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Skeleton } from '@felix/ui/skeleton';
 import { ChevronRightIcon, CircleAlertIcon } from 'lucide-react';
-import { createContext, type ReactNode, useContext } from 'react';
+import { createContext, type ReactNode, useContext, useEffect } from 'react';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
+import { PageHeader } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
 
 /**
@@ -85,6 +86,22 @@ type SectionChrome =
 
 const PanelMode = createContext<SectionChrome>('disclosure');
 
+/** A section's header value, as `Section` would have drawn it. */
+export interface SectionMeta {
+  meta: string | undefined;
+  metaTone: 'default' | 'attention' | 'failed' | undefined;
+}
+
+/**
+ * Where a `bare` section sends the header value it no longer draws.
+ *
+ * The Ledger draws one header for two halves, so its halves draw none — but the
+ * value each computes is the thing a header is *for*, and it comes from data the
+ * half already polled. Reporting it upward lets the host's header carry it
+ * without a second request made only to fill a label.
+ */
+export const SectionMetaSink = createContext<((m: SectionMeta) => void) | null>(null);
+
 /** Marks everything inside as a `/harness` page rather than an inspector row. */
 export function PanelModeProvider({
   children,
@@ -120,10 +137,18 @@ export function Section({
   children: React.ReactNode;
 }) {
   const chrome = useContext(PanelMode);
+  const sink = useContext(SectionMetaSink);
+
+  // Before the early returns: a hook after a conditional return is a hook that
+  // runs on some renders and not others.
+  useEffect(() => {
+    if (chrome === 'bare') sink?.({ meta, metaTone });
+  }, [chrome, sink, meta, metaTone]);
 
   // The Ledger draws one heading for two halves, so its halves draw none: a
   // section heading under a tab strip that already names the same thing is the
-  // label repeated, and it costs a row on every screen.
+  // label repeated, and it costs a row on every screen. The value still reaches
+  // that heading, through `SectionMetaSink`.
   if (chrome === 'bare') return <>{children}</>;
 
   // A page does not disclose: there is nothing else on it to collapse *to*, and a
@@ -137,26 +162,13 @@ export function Section({
     const headingId = `panel-heading-${title.replace(/\W+/g, '-').toLowerCase()}`;
     return (
       <section aria-labelledby={headingId} className="flex min-h-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3">
-          <span className="shrink-0 text-muted-foreground">{icon}</span>
-          <h2 id={headingId} className="flex-1 truncate text-sm font-semibold">
-            {title}
-          </h2>
-          {meta ? (
-            <span
-              className={cn(
-                'shrink-0 text-xs tabular-nums',
-                metaTone === 'attention' &&
-                  'rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-medium text-state-blocked',
-                metaTone === 'failed' &&
-                  'rounded-full bg-state-failed/15 px-1.5 py-0.5 font-medium text-state-failed',
-                (!metaTone || metaTone === 'default') && 'text-muted-foreground',
-              )}
-            >
-              {meta}
-            </span>
-          ) : null}
-        </header>
+        <PageHeader
+          icon={icon}
+          title={title}
+          value={meta}
+          valueTone={metaTone}
+          headingId={headingId}
+        />
         <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
       </section>
     );
