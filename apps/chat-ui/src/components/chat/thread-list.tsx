@@ -187,9 +187,9 @@ export function ThreadList({
                 {query.trim() ? (searching ? 'Searching…' : 'No matches') : 'No chats yet'}
               </p>
               {!query.trim() && (
-                <p className="mt-1 text-xs text-muted-foreground/80">
-                  Start one from the composer below.
-                </p>
+                // Points at the button in this list's own header: the list lives in a
+                // popover now, so "the composer below" named something not below it.
+                <p className="mt-1 text-xs text-muted-foreground">Start one with New chat above.</p>
               )}
             </div>
           )}

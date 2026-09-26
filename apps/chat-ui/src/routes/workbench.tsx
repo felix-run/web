@@ -101,10 +101,14 @@ export function Workbench() {
                 />
               );
             })}
+            {/* Neutral, not `running`: the run this names was torn down when the
+                connection went, so painting it blue claimed the one thing the copy
+                denies. Nor `failed` — nothing is broken and nobody is asked to act;
+                the reattach is only collecting what already landed. */}
             {reattaching && (
               <div
                 role="status"
-                className="mx-auto max-w-2xl rounded-lg border border-state-running/30 bg-state-running/10 px-3 py-2 text-sm text-state-running"
+                className="mx-auto max-w-2xl rounded-lg border border-border bg-muted/60 px-3 py-2 text-sm text-foreground"
               >
                 Connection dropped. That run was stopped — showing what it finished, and anything
                 still landing on this thread.

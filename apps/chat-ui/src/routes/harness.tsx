@@ -212,7 +212,9 @@ export function HarnessLayout() {
       return (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 border-b border-border/60 px-4 py-3">
-            <h1 className="text-sm font-semibold">Harness</h1>
+            {/* `h2`: the shell's wordmark is the page's one `h1`, and every
+                destination's own heading is an `h2` beside this one. */}
+            <h2 className="text-sm font-semibold">Harness</h2>
             <p className="text-xs text-muted-foreground">
               What this tenant owns, across every run.
             </p>
