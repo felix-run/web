@@ -445,7 +445,7 @@ suffix you opened the stream with, not the namespaced `thread_id` on the frame. 
 prompt on another thread is accepted (`ok`) and reaches nothing, the same as an answer for one that
 already timed out.
 
-:::caution[Breaking in the harness release after felix-run/felix#333]
+:::caution[Breaking in the harness release carrying felix-run/felix#335]
 `thread_id` used to be absent. A request without it is now `422`, so upgrade the harness and any
 client that answers prompts together.
 :::
