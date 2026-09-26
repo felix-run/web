@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-12T15:52:42.133609Z",
+  "generatedAt": "2026-09-26T14:45:44Z",
   "title": "Design System: Felix chat-ui",
   "extensions": {
     "colorMeta": {
@@ -15,7 +15,7 @@
       },
       "foreground": {
         "role": "neutral",
-        "displayName": "Ink",
+        "displayName": "Foreground",
         "canonical": "oklch(0.141 0.005 285.823)",
         "tonalRamp": [
           "oklch(0.141 0.005 285.823)",
@@ -76,9 +76,18 @@
           "oklch(0.205 0.006 285.885)"
         ]
       },
+      "scrollbar-thumb": {
+        "role": "neutral",
+        "displayName": "Scrollbar Thumb",
+        "canonical": "oklch(0.62 0.01 285.9)",
+        "tonalRamp": [
+          "oklch(0.62 0.01 285.9)",
+          "oklch(1 0 0 / 36%)"
+        ]
+      },
       "primary": {
         "role": "primary",
-        "displayName": "Ink Control",
+        "displayName": "Ink",
         "canonical": "oklch(0.21 0.006 285.885)",
         "tonalRamp": [
           "oklch(0.21 0.006 285.885)",
@@ -161,33 +170,41 @@
       }
     },
     "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "A whole rail's heading (\"This run\", the thread list) and the uppercase header wordmark. 16px semibold; there is no display tier."
+      },
+      "prose": {
+        "displayName": "Prose",
+        "purpose": "Transcript message bodies and the composer textarea, at one size so a message does not change size when sent. Held to max-w-3xl."
+      },
       "title": {
         "displayName": "Title",
-        "purpose": "Panel and section headers. The largest type in the app; there is no display tier."
+        "purpose": "Panel and section headers, disclosure rows, the empty-thread readout heading. 13px semibold."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Transcript prose and panel copy, held to a reading measure."
+        "purpose": "Rows, controls, instructional copy, and a card's prose (an approval's reason, summary and grant sentence)."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Metadata, timestamps, counts, chip text. 11px is the floor."
+        "purpose": "Metadata, timestamps, counts, chip text, kbd hints, speaker labels, run readout rows. 11px is the floor."
       },
       "value": {
         "displayName": "Value",
-        "purpose": "Monospace. Anything the harness emitted: ids, paths, event types, token counts."
+        "purpose": "Monospace. Anything the harness emitted: ids, paths, event types, token counts, a tool card's collapsed header."
       }
     },
     "shadows": [
       {
         "name": "composer",
         "value": "0 1px 2px oklch(0 0 0 / 5%), 0 4px 16px oklch(0 0 0 / 6%)",
-        "purpose": "The resting composer \u2014 the only lifted surface in the app."
+        "purpose": "The resting composer — the only lifted surface in the app."
       },
       {
         "name": "composer-focus",
         "value": "0 2px 4px oklch(0 0 0 / 6%), 0 8px 28px oklch(0 0 0 / 10%)",
-        "purpose": "The focused composer. There is no third shadow; depth is otherwise tonal."
+        "purpose": "The focused composer, and the slash menu that opens out of it. There is no third shadow token; depth is otherwise tonal."
       }
     ],
     "motion": [
@@ -195,23 +212,28 @@
         "name": "state-transition",
         "value": "150ms",
         "purpose": "Disclosure chevrons and hover colour. Nothing that competes with streaming text; prefers-reduced-motion is honoured."
+      },
+      {
+        "name": "surface-transition",
+        "value": "200ms",
+        "purpose": "The composer's border and shadow on focus, and the tool card's chevron (motion-reduce: none)."
       }
     ],
     "breakpoints": [
       {
-        "name": "inspector-inline",
-        "value": "1152px",
-        "purpose": "Above this the inspector is an inline column; below it becomes a drawer. Derived from the chat column needing ~560px, not from a device."
+        "name": "instrument-inline",
+        "value": "1280px",
+        "purpose": "Above this the run instrument is an inline column; below it becomes a drawer. Three zones want ~1200px of content; the instrument yields first because it is reference material."
       },
       {
-        "name": "history-inline",
+        "name": "workspace-inline",
         "value": "1024px",
-        "purpose": "Above this the thread rail is an inline column; below it becomes a drawer."
+        "purpose": "Above this the workspace zone is an inline column; below it becomes a drawer. It yields last because it is the subject."
       },
       {
         "name": "harness-nav",
         "value": "768px",
-        "purpose": "Above this /harness is nav-rail + panel; below it the index is the list and a destination is a page with a back control."
+        "purpose": "Above this /harness is nav-rail + panel; below it the index is the list and a destination is a page with a back control. Also where the composer hint shows its shortcut keys."
       }
     ],
     "layoutTokens": [
@@ -224,6 +246,21 @@
         "name": "--z-toast",
         "value": "60",
         "purpose": "One step above every portalled primitive at z-50, so a toast reporting on a sheet is readable over it."
+      },
+      {
+        "name": "workspace-width",
+        "value": "18rem",
+        "purpose": "The workspace zone, left of the transcript."
+      },
+      {
+        "name": "instrument-width",
+        "value": "clamp(22rem, 24vw, 30rem)",
+        "purpose": "The run instrument. The panel widens on a large display, not the transcript."
+      },
+      {
+        "name": "transcript-measure",
+        "value": "48rem (max-w-3xl)",
+        "purpose": "The transcript and the empty-thread readout share one reading width."
       }
     ]
   },
@@ -232,25 +269,73 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Solid near-black control for the one affordance a header is for.",
-      "html": "<button class=\"ds-btn-primary\">New chat</button>",
-      "css": ".ds-btn-primary { background: oklch(0.21 0.006 285.885); color: oklch(0.985 0 0); height: 36px; padding: 8px 16px; border: none; border-radius: 8px; font: 500 0.875rem/1.25rem ui-sans-serif, system-ui, sans-serif; transition: background .15s; } .ds-btn-primary:hover { background: color-mix(in oklch, oklch(0.21 0.006 285.885) 90%, transparent); }"
+      "description": "Solid ink control for the one affirmative action on a surface, e.g. Approve on an approval card.",
+      "html": "<button class=\"ds-btn-primary\">Approve write_file</button>",
+      "css": ".ds-btn-primary { background: var(--primary, oklch(0.21 0.006 285.885)); color: var(--primary-foreground, oklch(0.985 0 0)); height: 36px; padding: 8px 16px; border: 1px solid transparent; border-radius: 8px; font: 500 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; transition: background .15s; cursor: pointer; } .ds-btn-primary:hover { background: color-mix(in oklch, var(--primary, oklch(0.21 0.006 285.885)) 90%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, oklch(0.6 0.015 286.067)); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Deny beside Approve: equal width, page-coloured with a hairline.",
+      "html": "<button class=\"ds-btn-outline\">Deny</button>",
+      "css": ".ds-btn-outline { background: var(--background, oklch(1 0 0)); color: var(--foreground, oklch(0.141 0.005 285.823)); height: 32px; padding: 6px 12px; border: 1px solid var(--border, oklch(0.92 0.004 286.32)); border-radius: 8px; font: 500 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; transition: background .15s; cursor: pointer; } .ds-btn-outline:hover { background: var(--accent, oklch(0.967 0.001 286.375)); } .ds-btn-outline:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, oklch(0.6 0.015 286.067)); }"
     },
     {
       "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "The default for header and row affordances. A toolbar of filled buttons is chrome competing with content.",
-      "html": "<button class=\"ds-btn-ghost\">Review</button>",
-      "css": ".ds-btn-ghost { background: transparent; color: oklch(0.141 0.005 285.823); height: 36px; padding: 8px 16px; border: none; border-radius: 8px; font: 500 0.875rem/1.25rem ui-sans-serif, system-ui, sans-serif; transition: background .15s; } .ds-btn-ghost:hover { background: oklch(0.967 0.001 286.375); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 3px oklch(0.6 0.015 286.067); }"
+      "description": "The default for header and row affordances, New chat included. A toolbar of filled buttons is chrome competing with content.",
+      "html": "<button class=\"ds-btn-ghost\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14M12 5v14\"/></svg>New chat</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 6px; background: transparent; color: var(--foreground, oklch(0.141 0.005 285.823)); height: 32px; padding: 6px 12px 6px 10px; border: 1px solid transparent; border-radius: 8px; font: 500 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; transition: background .15s; cursor: pointer; } .ds-btn-ghost:hover { background: var(--accent, oklch(0.967 0.001 286.375)); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, oklch(0.6 0.015 286.067)); }"
     },
     {
       "name": "Panel Header",
       "kind": "custom",
       "refersTo": "panel-header",
-      "description": "The repeated unit of the app: icon, title, and one at-a-glance value. The value is load-bearing \u2014 it is what makes opening the panel unnecessary most of the time.",
-      "html": "<div class=\"ds-panel-header\"><svg class=\"ds-icon\" width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"5.5\" fill=\"none\" stroke=\"currentColor\"/></svg><span class=\"ds-title\">Approvals</span><span class=\"ds-meta\">1 waiting</span></div>",
-      "css": ".ds-panel-header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid oklch(0.92 0.004 286.32); font: 600 0.875rem/1.25rem ui-sans-serif, system-ui, sans-serif; color: oklch(0.141 0.005 285.823); } .ds-icon { color: oklch(0.53 0.016 285.938); flex: none; } .ds-title { flex: 1; min-width: 0; } .ds-meta { flex: none; font: 500 0.75rem/1rem ui-sans-serif, system-ui, sans-serif; font-variant-numeric: tabular-nums; color: oklch(0.473 0.137 46.201); background: color-mix(in oklch, oklch(0.473 0.137 46.201) 15%, transparent); border-radius: 10px; padding: 2px 6px; }"
+      "description": "The repeated unit of the app: icon, title, and one at-a-glance value. The value is load-bearing — it is what makes opening the panel unnecessary most of the time.",
+      "html": "<div class=\"ds-panel-header\"><svg class=\"ds-icon\" width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"5.5\" fill=\"none\" stroke=\"currentColor\"/></svg><span class=\"ds-title\">Memory</span><span class=\"ds-meta\">128 facts</span></div>",
+      "css": ".ds-panel-header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border, oklch(0.92 0.004 286.32)); font: 600 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; color: var(--foreground, oklch(0.141 0.005 285.823)); } .ds-icon { color: var(--muted-foreground, oklch(0.53 0.016 285.938)); flex: none; } .ds-title { flex: 1; min-width: 0; } .ds-meta { flex: none; font: 400 0.6875rem/1.45 ui-sans-serif, system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); }"
+    },
+    {
+      "name": "Run Readout",
+      "kind": "custom",
+      "refersTo": "run-readout",
+      "description": "Top of the run instrument: a dot plus a state word in the ramp colour, a tabular stopwatch, then an 11px definition list. The word carries the state; the dot is only the fast channel.",
+      "html": "<section class=\"ds-readout\" aria-label=\"Run status\"><div class=\"ds-readout-top\"><span class=\"ds-readout-dot\" aria-hidden=\"true\"></span><p class=\"ds-readout-word\">Waiting on you</p><span class=\"ds-readout-clock\">for <span>3:07</span></span></div><dl class=\"ds-readout-dl\"><dt>Asking</dt><dd>Write notes.txt</dd><dt>Tool</dt><dd class=\"ds-mono\">write_file</dd><dt>Tokens</dt><dd class=\"ds-mono\">12,408 floor</dd></dl></section>",
+      "css": ".ds-readout { padding: 10px 12px; border-bottom: 1px solid color-mix(in oklch, var(--border, oklch(0.92 0.004 286.32)) 60%, transparent); font: 400 0.6875rem/1.45 ui-sans-serif, system-ui, sans-serif; color: var(--foreground, oklch(0.141 0.005 285.823)); } .ds-readout-top { display: flex; align-items: center; gap: 8px; } .ds-readout-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--state-blocked, oklch(0.473 0.137 46.201)); flex: none; } .ds-readout-word { margin: 0; font: 500 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; color: var(--state-blocked, oklch(0.473 0.137 46.201)); } .ds-readout-clock { margin-left: auto; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-readout-clock span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; color: var(--foreground, oklch(0.141 0.005 285.823)); } .ds-readout-dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 4px 12px; margin: 8px 0 0; } .ds-readout-dl dt { color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-readout-dl dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "User Turn",
+      "kind": "custom",
+      "refersTo": "user-turn",
+      "description": "A left rule and a 'You' label, the message at 16px. No bubble, no fill, no avatar.",
+      "html": "<div class=\"ds-user-turn\"><span class=\"ds-speaker\">You</span><div class=\"ds-user-body\">Rename the helpers in src/lib and update the callers.</div></div>",
+      "css": ".ds-user-turn { border-left: 2px solid color-mix(in oklch, var(--foreground, oklch(0.141 0.005 285.823)) 25%, transparent); padding: 2px 0 2px 12px; } .ds-speaker { font: 500 0.6875rem/1.45 ui-sans-serif, system-ui, sans-serif; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-user-body { margin-top: 4px; font: 400 1rem/1.6 ui-sans-serif, system-ui, sans-serif; color: var(--foreground, oklch(0.141 0.005 285.823)); white-space: pre-wrap; }"
+    },
+    {
+      "name": "Tool Card",
+      "kind": "card",
+      "refersTo": "tool-card",
+      "description": "Collapsed header reads name · target · duration in mono, then the state. No wrench: an icon on every card marks a row, not a kind.",
+      "html": "<button class=\"ds-tool\"><span class=\"ds-tool-name\">run_shell</span><span class=\"ds-tool-sep\" aria-hidden=\"true\">·</span><span class=\"ds-tool-target\">pnpm test</span><span class=\"ds-tool-sep\" aria-hidden=\"true\">·</span><span class=\"ds-tool-dur\">4.2s</span><span class=\"ds-tool-state\">exit 0</span></button>",
+      "css": ".ds-tool { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 12px; text-align: left; border: 1px solid color-mix(in oklch, var(--border, oklch(0.92 0.004 286.32)) 60%, transparent); border-radius: 14px; background: color-mix(in oklch, var(--muted, oklch(0.967 0.001 286.375)) 30%, transparent); font: 400 0.6875rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--foreground, oklch(0.141 0.005 285.823)); cursor: pointer; transition: background .15s; } .ds-tool:hover { background: color-mix(in oklch, var(--muted, oklch(0.967 0.001 286.375)) 40%, transparent); } .ds-tool:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, oklch(0.6 0.015 286.067)); } .ds-tool-name { font-weight: 500; flex: none; } .ds-tool-sep, .ds-tool-target, .ds-tool-dur { color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-tool-target { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-tool-dur { flex: none; font-variant-numeric: tabular-nums; } .ds-tool-state { margin-left: auto; padding: 0 8px; border-radius: 9999px; background: var(--secondary, oklch(0.967 0.001 286.375)); font: 500 0.6875rem/1.45 ui-sans-serif, system-ui, sans-serif; color: var(--state-done, oklch(0.432 0.095 166.913)); }"
+    },
+    {
+      "name": "Approval Card",
+      "kind": "card",
+      "refersTo": "approval-card",
+      "description": "The one place a gated call is decided. Evidence before decision; the grant sentence sits directly above the buttons; the deadline chip is in the header (live: 9.07:1 dark / 5.18:1 light on the card tint).",
+      "html": "<div class=\"ds-approval\"><div class=\"ds-approval-head\"><span class=\"ds-approval-tool\">write_file</span><span class=\"ds-approval-ctx\">cowork</span><span class=\"ds-deadline\" role=\"timer\">Auto-denies in <span>4:12</span></span></div><p class=\"ds-approval-reason\">Confirm writes to the workspace</p><p class=\"ds-approval-grant\">Approving also allows every identical <code>write_file</code> call until the deadline, not just this one.</p><div class=\"ds-approval-actions\"><button class=\"ds-approve\">Approve write_file</button><button class=\"ds-deny\">Deny</button></div></div>",
+      "css": ".ds-approval { padding: 12px; border-radius: 14px; border: 1px solid color-mix(in oklch, var(--state-blocked, oklch(0.473 0.137 46.201)) 40%, transparent); background: color-mix(in oklch, var(--state-blocked, oklch(0.473 0.137 46.201)) 5%, var(--background, oklch(1 0 0))); font: 400 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; color: var(--foreground, oklch(0.141 0.005 285.823)); } .ds-approval-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } .ds-approval-tool { padding: 0 8px; border-radius: 9999px; background: var(--secondary, oklch(0.967 0.001 286.375)); font: 500 0.6875rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; } .ds-approval-ctx { font-size: 0.6875rem; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-deadline { margin-left: auto; padding: 2px 6px; border-radius: 9999px; font: 500 0.6875rem/1.45 ui-sans-serif, system-ui, sans-serif; color: var(--state-blocked, oklch(0.473 0.137 46.201)); background: color-mix(in oklch, var(--state-blocked, oklch(0.473 0.137 46.201)) 15%, transparent); } .ds-deadline span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; } .ds-approval-reason { margin: 6px 0 0; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-approval-grant { margin: 12px 0 0; color: color-mix(in oklch, var(--foreground, oklch(0.141 0.005 285.823)) 85%, transparent); } .ds-approval-grant code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } .ds-approval-actions { display: flex; gap: 8px; margin-top: 10px; } .ds-approve, .ds-deny { flex: 1; height: 32px; border-radius: 8px; font: 500 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-approve { background: var(--primary, oklch(0.21 0.006 285.885)); color: var(--primary-foreground, oklch(0.985 0 0)); border: 1px solid transparent; } .ds-deny { background: var(--background, oklch(1 0 0)); color: var(--foreground, oklch(0.141 0.005 285.823)); border: 1px solid var(--border, oklch(0.92 0.004 286.32)); } .ds-approve:focus-visible, .ds-deny:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, oklch(0.6 0.015 286.067)); }"
+    },
+    {
+      "name": "Deadline Chip (lapsed)",
+      "kind": "chip",
+      "refersTo": "deadline-chip-lapsed",
+      "description": "Once the harness has answered for the operator the chip turns failed: blocked asks, failed reports. Measured 6.03:1 dark / 5.72:1 light on the card tint.",
+      "html": "<span class=\"ds-deadline-lapsed\" role=\"timer\">Denied · timed out</span>",
+      "css": ".ds-deadline-lapsed { display: inline-flex; padding: 2px 6px; border-radius: 9999px; font: 500 0.6875rem/1.45 ui-sans-serif, system-ui, sans-serif; color: var(--state-failed, oklch(0.44 0.19 27.3)); background: color-mix(in oklch, var(--state-failed, oklch(0.44 0.19 27.3)) 15%, transparent); }"
     },
     {
       "name": "State Row",
@@ -258,79 +343,92 @@
       "refersTo": "state-chip-blocked",
       "description": "A status is never colour alone: every dot carries adjacent text.",
       "html": "<p class=\"ds-state\"><span class=\"ds-dot\" aria-hidden=\"true\"></span>1 call is waiting on you across the harness</p>",
-      "css": ".ds-state { display: flex; align-items: center; gap: 8px; font: 400 0.875rem/1.25rem ui-sans-serif, system-ui, sans-serif; color: oklch(0.473 0.137 46.201); } .ds-dot { width: 6px; height: 6px; border-radius: 999px; background: oklch(0.473 0.137 46.201); flex: none; }"
+      "css": ".ds-state { display: flex; align-items: center; gap: 8px; margin: 0; font: 400 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; color: var(--state-blocked, oklch(0.473 0.137 46.201)); } .ds-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--state-blocked, oklch(0.473 0.137 46.201)); flex: none; }"
     }
   ],
   "narrative": {
     "northStar": "The Workbench",
-    "overview": "A window onto a running process that happens to accept messages, not a chat app that happens to log tool calls. Read daily by one operator who ran the harness themselves, so density and learned affordances are permitted and a tidier abstraction in front of what the harness reported is not. The register is instrumented, calm, exact.",
+    "overview": "This is not a chat app that happens to log tool calls; it is a window onto a running process that happens to accept messages. The mounted folder is the subject, the thread is how you talk to it, and the machinery is on display because supervising it is the job. The surface is read daily by one operator who ran the harness themselves and holds the gate key — so density, learned affordances, and labels that assume the harness was configured by the reader are all permitted. What is not permitted is a tidier abstraction standing in front of what the harness actually reported.\n\nThe register is **instrumented, calm, exact**. Instrumented: show real states, real numbers, real event types. Calm: an autonomous process already generates uncertainty, and the interface does not add to it — no alarm colours for ordinary states, no motion competing with streaming text, no celebration. Exact: a number is a number, and rounding away information the operator would act on is a defect, not a simplification.\n\nThe confirmed anti-references are specific and close. The nearest is the **scaffolded AI-chat default** — untouched neutral tokens, `rounded-xl` bordered cards stacked down every panel, an icon on every row, a gradient somewhere: recognisable as generated rather than designed. Then **density without hierarchy**, the observability-dashboard failure where every panel is equally loud and the eye has nowhere to land. Then **consumer-chat warmth** — the inverted user bubble, the avatar, the headline asking what you want to work on over a grid of starter cards — which hides the mechanism and so inverts the product. Then **warm-neutral editorial** — cream, serif display, marketing cadence — which is the wrong register entirely.",
     "keyCharacteristics": [
       "A neutral zinc field where colour means run state and nothing else.",
       "Rules and tonal steps for separation; cards reserved for things that stop a run.",
-      "One header grammar \u2014 icon, title, one at-a-glance value \u2014 repeated at every scale.",
+      "One header grammar — icon, title, one at-a-glance value — repeated at every scale.",
       "Monospace for anything the harness emitted; proportional for anything we wrote.",
+      "Two densities: 16px for the conversation that is read, 11/13px for the instruments that are scanned.",
       "Tonal depth by default. One surface floats by design, and it is the composer."
     ],
     "rules": [
       {
         "name": "The State-Only Rule",
-        "body": "Outside the four-hue run ramp, the destructive action colour and the recording indicator, the interface is neutral. There is no brand accent, and adding one is a regression.",
+        "body": "Colour is the fastest channel for \"healthy / waiting / failed\", and spending it on decoration spends the operator's attention. Outside the four-hue ramp, the destructive action colour, and the recording indicator, the interface is neutral. There is no brand accent, and adding one is a regression.",
         "section": "colors"
       },
       {
         "name": "The Two-Client Rule",
-        "body": "The ramp is authored as oklch() in apps/chat-ui/src/index.css and frozen as sRGB hex in packages/design/src/tokens.ts for clients that cannot parse oklch. check-state-palette fails when they disagree. The stylesheet is authored; the hex is derived.",
+        "body": "The ramp is authored as `oklch()` in `apps/chat-ui/src/index.css`, where the lightness is tuned and the comments say why, and frozen as sRGB hex in `packages/design/src/tokens.ts` because neither a terminal nor `RGBA.fromHex` takes `oklch()`. `pnpm check-state-palette` converts the first to the second and fails when they disagree. The stylesheet is the authored form; the hex is derived. Never edit the hex to match a change.",
         "section": "colors"
       },
       {
         "name": "The Attention-Blocked Rule",
-        "body": "blocked (amber) means a person is being asked to act. failed (red) means something already went wrong and nobody is being asked.",
+        "body": "`blocked` (amber) means a person is being asked to act. `failed` (red) means something already went wrong and nobody is being asked. Collapsing the two puts the surface's two most different states in one colour. The approval deadline chip is the rule in one element: amber while a person can still answer, red the moment the harness has answered for them.",
         "section": "colors"
       },
       {
         "name": "The Provenance Rule",
-        "body": "Monospace marks what the harness said; proportional marks what we said.",
+        "body": "Monospace marks what the harness said; proportional marks what we said. A model id, a path, a tool name, an event type and a raw status are mono because they are quotations. Our own sentences about them are not.",
         "section": "typography"
       },
       {
         "name": "The 11px Floor",
-        "body": "Text below 11px is a smell requiring justification, not a density tool.",
+        "body": "Text below 11px is a smell requiring justification, not a density tool. Density comes from tighter rows and fewer borders, never from shrinking type past legibility.",
         "section": "typography"
       },
       {
+        "name": "Tabular numerals on anything that counts",
+        "body": "Token meters, durations, countdowns and queue counts change in place; proportional figures make them jitter and the eye reads motion as change.",
+        "section": "typography"
+      },
+      {
+        "name": "The Yield Rule",
+        "body": "A rail never narrows the thing it describes; it leaves.",
+        "section": "layout"
+      },
+      {
+        "name": "The Shrink-Floor Rule",
+        "body": "Anything below a scrolling region carries `flexShrink: 0`. A transcript longer than the screen will otherwise eat the composer's rows and leave a box you cannot type in, with nothing on screen to say why. Each component is correct alone; the failure only appears when they are rendered together against a long transcript.",
+        "section": "layout"
+      },
+      {
         "name": "The One Lifted Surface Rule",
-        "body": "The composer is the only element that floats by design and the only one with shadow tokens of its own. The vendored shadcn primitives still carry their default shadows; that is incumbent truth, not a pattern to copy.",
+        "body": "The composer is the only element in the workbench that floats *by design*, because it is the only one always available and always the primary action. It is also the only element with shadow tokens of its own; everything else either borrows a primitive's default or uses a tonal step.",
         "section": "elevation"
       },
       {
         "name": "The Nesting Rule",
-        "body": "A pane takes whichever tonal level its container does not: bg-code-surface on the page, bg-background inside a card. Flat colours, never alphas.",
+        "body": "A pane takes whichever tonal level its container does not: on the page it is `bg-code-surface`, inside a card it is `bg-background`. Both are flat colours, never alphas — these panes once carried three different alphas for one job, which made a pane's colour a function of the tint behind it, and an approval's diff came out faintly amber because the banner around it was.",
         "section": "elevation"
-      },
-      {
-        "name": "The Shrink-Floor Rule",
-        "body": "Anything below a scrolling region carries flexShrink: 0, or a long transcript eats the composer's rows.",
-        "section": "layout"
       }
     ],
     "dos": [
-      "Do spend colour on run state and nothing else.",
-      "Do give every panel header one at-a-glance value.",
+      "Do spend colour on run state and nothing else — the four-hue ramp, `destructive` for a destructive action, `recording` for the microphone.",
+      "Do give every panel header one at-a-glance value, so expanding it is usually unnecessary.",
       "Do set monospace for anything the harness emitted and proportional for anything we wrote.",
+      "Do set what is read at 16px and what is scanned at 11/13px, and nothing in between.",
       "Do separate with a rule or a tonal step before reaching for a card.",
-      "Do carry flexShrink: 0 on anything below a scrolling region.",
-      "Do measure contrast in each theme in its natural state, never by toggling .dark at runtime.",
-      "Do state the resting case; a signal that appears only in trouble teaches the operator not to look at it."
+      "Do carry `flexShrink: 0` on anything below a scrolling region.",
+      "Do measure contrast in each theme in its natural state. Flipping `.dark` at runtime leaves portalled content reporting stale backgrounds, which invents failures that are not there.",
+      "Do state the resting case. A signal that appears only in trouble teaches the operator not to look at it."
     ],
     "donts": [
       "Don't add a brand accent colour. There isn't one, and the absence is the system.",
-      "Don't stack rounded-xl bordered cards down a panel.",
+      "Don't stack `rounded-xl` bordered cards down a panel. That is the closest anti-reference and the fastest way to make this look generated. In the transcript column `rounded-xl` is the established block radius and is correct.",
       "Don't put an icon on every row. Icons mark kinds, not rows.",
-      "Don't introduce a new shadow token; elsewhere reach for a tonal step or a rule.",
-      "Don't encode a status in colour alone, and don't use amber and red interchangeably.",
-      "Don't edit the frozen hex in packages/design to resolve a palette mismatch.",
+      "Don't draw a user turn as a bubble or give either speaker an avatar.",
+      "Don't introduce a new shadow token. The composer holds the only two; elsewhere reach for a tonal step or a rule, and do not read the vendored primitives' shadcn defaults as licence.",
+      "Don't encode a status in colour alone, and don't use amber and red interchangeably — `blocked` asks a person to act, `failed` reports something that already happened.",
+      "Don't edit the frozen hex in `packages/design/src/tokens.ts` to resolve a palette mismatch. The stylesheet is authored, the hex is derived.",
       "Don't drop below 11px to gain density.",
-      "Don't add motion that competes with streaming text."
+      "Don't add motion that competes with streaming text, and honour `prefers-reduced-motion`."
     ]
   }
 }
