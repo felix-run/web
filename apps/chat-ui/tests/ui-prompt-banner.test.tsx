@@ -21,12 +21,14 @@ afterEach(() => {
 
 const confirm: PendingUiRequest = {
   requestId: 'r1',
+  threadId: 't1',
   kind: 'confirm',
   prompt: 'Overwrite it?',
   options: [],
 };
 const input: PendingUiRequest = {
   requestId: 'r2',
+  threadId: 't1',
   kind: 'input',
   prompt: 'Which branch?',
   options: [],

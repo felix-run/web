@@ -426,17 +426,29 @@ A `ui_request` frame asks the user a question. `kind` is `select`, `confirm` or 
 curl -s -X POST "$BASE_URL/chat/ui" \
   -H "authorization: Bearer $FELIX_KEY" \
   -H 'content-type: application/json' \
-  -d '{"request_id":"abc123","value":"option-a"}'
+  -d '{"thread_id":"my-thread","request_id":"abc123","value":"option-a"}'
 ```
 
 | Field | Type | Default |
 |---|---|---|
-| `request_id` | string | required |
+| `thread_id` | string | required — your thread id, the one the stream was opened on |
+| `request_id` | string, ≤ 64 chars | required |
 | `value` | any | `null` |
 | `cancelled` | bool | `false` |
 | `note` | string | `""` |
 
 The default wait is **300 s**; on timeout the agent sees `cancelled: true` with `note: "timeout"`.
+
+A prompt is answerable only on the thread that asked it, and a thread is scoped to your tenant, so
+knowing a `request_id` is not enough to answer someone else's prompt. Send your own thread id — the
+suffix you opened the stream with, not the namespaced `thread_id` on the frame. An answer for a
+prompt on another thread is accepted (`ok`) and reaches nothing, the same as an answer for one that
+already timed out.
+
+:::caution[Breaking in the harness release carrying felix-run/felix#335]
+`thread_id` used to be absent. A request without it is now `422`, so upgrade the harness and any
+client that answers prompts together.
+:::
 
 ## Steering a live run
 

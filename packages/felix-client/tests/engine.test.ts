@@ -696,3 +696,36 @@ describe('reset', () => {
     expect(engine.state).toMatchObject({ turns: [], approvals: [], error: null, phase: 'idle' });
   });
 });
+
+describe('a ui_request is answered on the thread that asked', () => {
+  /**
+   * The harness scopes a prompt's waiter to its thread, so `POST /chat/ui` must name it. The
+   * thread is taken when the frame arrives, not when the user answers: switching threads in
+   * between would otherwise send the answer to a thread that never asked.
+   */
+  it('records the thread on the prompt and sends it with the answer', async () => {
+    let thread = 't1';
+    const engine = engineOn(
+      [
+        {
+          event: 'ui_request',
+          data: { request_id: 'u1', kind: 'confirm', prompt: 'go?', thread_id: 'default:t1' },
+        },
+      ],
+      { threadId: () => thread },
+    );
+    void run(engine);
+    await until(() => engine.state.uiPrompt !== null);
+    const prompt = engine.state.uiPrompt!;
+    expect(prompt.threadId).toBe('t1');
+
+    thread = 't2';
+    await createFelixClient({ baseUrl: '/api' }).respondUiRequest({
+      requestId: prompt.requestId,
+      threadId: prompt.threadId,
+      value: 'yes',
+    });
+    const answer = posted.find((p) => p.url.endsWith('/chat/ui'));
+    expect(answer?.body).toMatchObject({ thread_id: 't1', request_id: 'u1', value: 'yes' });
+  });
+});

@@ -795,7 +795,7 @@ export function App({
           onRespond={(value) => {
             setUiResolving(true);
             void client
-              .respondUiRequest({ requestId: uiPrompt.requestId, value })
+              .respondUiRequest({ requestId: uiPrompt.requestId, threadId: uiPrompt.threadId, value })
               .catch((err) => engine.setError(explainError(err, 'answer the agent', config)))
               .finally(() => {
                 setUiResolving(false);
@@ -805,6 +805,7 @@ export function App({
           onCancel={() => {
             void client.respondUiRequest({
               requestId: uiPrompt.requestId,
+              threadId: uiPrompt.threadId,
               cancelled: true,
             });
             engine.clearUiPrompt();
