@@ -288,6 +288,12 @@ export interface ThreadHistory {
 /** Sticky mid-stream UI prompt waiting on POST /chat/ui. */
 export interface PendingUiRequest {
   requestId: string;
+  /**
+   * The thread the prompt was asked on — the client's own id, not the namespaced
+   * `thread_id` on the frame. `POST /chat/ui` requires it: the harness scopes a prompt to
+   * its thread (felix-run/felix: UI waiter tenant scoping), so an answer names where it goes.
+   */
+  threadId: string;
   kind: 'select' | 'confirm' | 'input';
   prompt: string;
   options: Array<{ value: string; label: string }>;
