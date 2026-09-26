@@ -23,7 +23,14 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
-import { EllipsisIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, ServerIcon } from 'lucide-react';
+import {
+  EllipsisIcon,
+  MessageSquareIcon,
+  PanelLeftIcon,
+  PanelRightIcon,
+  PlusIcon,
+  ServerIcon,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, Outlet, useMatch, useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -1269,9 +1276,15 @@ export function AppShell() {
             they had no home. This is the switch between the two things this
             client is — a conversation, and the harness behind it.
           */}
-          <Button asChild variant={onHarness ? 'secondary' : 'ghost'} size="sm" className="gap-1.5">
+          {/* Always ghost: it links to the *other* address, so a "current" fill
+              would mark the place you are leaving. The icon names the destination. */}
+          <Button asChild variant="ghost" size="sm" className="gap-1.5">
             <Link to={onHarness ? `/t/${threadId}` : '/harness'}>
-              <ServerIcon className="size-4" />
+              {onHarness ? (
+                <MessageSquareIcon className="size-4" aria-hidden />
+              ) : (
+                <ServerIcon className="size-4" aria-hidden />
+              )}
               <span className="hidden sm:inline">{onHarness ? 'Chat' : 'Harness'}</span>
             </Link>
           </Button>

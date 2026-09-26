@@ -74,7 +74,8 @@ export function Greeting({ manifest }: { manifest: string }) {
  * re-read is a string comparison — React bails out when it has not changed —
  * and only runs while a thread is empty, which is the only time this renders.
  */
-function useMountLabel(): string | null {
+/** The mounted folder's name, or null. Polled: the mount has no change event. */
+export function useMountLabel(): string | null {
   return useSyncExternalStore(subscribeMount, getMountLabel, () => null);
 }
 
