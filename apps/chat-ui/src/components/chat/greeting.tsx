@@ -1,37 +1,91 @@
-import { SuggestedActions } from './suggested-actions';
+import { useSyncExternalStore } from 'react';
+import { getMountLabel } from '@/lib/cowork';
+import { useShell } from '@/shell-context';
 
 /**
- * Empty-conversation overview: welcome + starter prompts for the active agent.
+ * The empty thread, as a readout of what the first message will be sent to.
+ *
+ * This was a 28px "What do you want to work on?" over four starter cards, one of
+ * them a haiku — the consumer-chat empty state, and the only type on the surface
+ * above the 14px title tier. What an operator needs from an empty thread is the
+ * same thing they need from the rest of it: which agent, which folder, which
+ * thread, and whether the harness is there to answer. So that is what it says,
+ * and only what the client actually holds; a fact it would have to guess at
+ * (the manifest's tool list, which is not fetched until a run reports it) is
+ * left out rather than approximated.
+ *
+ * `disabled` and `onSend` are accepted and unused: they drove the starter cards,
+ * and the caller still passes them.
  */
 export function Greeting({
   manifest,
-  disabled,
-  onSend,
 }: {
   manifest: string;
   disabled?: boolean;
-  onSend: (text: string) => void;
+  onSend?: (text: string) => void;
 }) {
+  const { threadId, harnessReachable } = useShell();
+  const folder = useMountLabel();
+
   return (
-    // `flex-1` rather than a fixed min-height: the greeting is the only child of the
-    // transcript column when a thread is empty, so it should centre in whatever height
-    // is actually available. The old `min-h-[min(52vh,28rem)]` pinned it to the top of
-    // the scroll area and left a measured 221px gap above the composer at 906px tall,
-    // and 818px on a 1503px display.
-    // `max-w-3xl` matches the composer and the transcript; at `max-w-2xl` the empty
-    // state was 96px narrower than the content that replaces it, so everything shifted
-    // sideways on the first message.
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 py-4">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-balance text-2xl font-semibold tracking-tight md:text-[1.75rem]">
-          What do you want to work on?
+    // Anchored at the bottom, where the first turn will land, rather than centred:
+    // the readout is read on the way to the composer, and nothing moves when the
+    // thread gains its first message. `max-w-3xl` matches the transcript for the
+    // same reason.
+    <section
+      aria-labelledby="empty-thread-title"
+      className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-end"
+    >
+      <div className="border-l border-border pl-3">
+        <h2 id="empty-thread-title" className="text-sm font-semibold">
+          Empty thread
         </h2>
-        <p className="max-w-prose text-pretty text-base text-muted-foreground">
-          You&apos;re chatting with <span className="font-medium text-foreground">{manifest}</span>.
-          Pick a starter or type below; you can switch agents anytime from the composer.
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+          <dt className="text-muted-foreground">Agent</dt>
+          <dd className="min-w-0 truncate font-mono">{manifest}</dd>
+          <dt className="text-muted-foreground">Folder</dt>
+          <dd className="min-w-0 truncate">
+            {folder ? (
+              <span className="font-mono">{folder}</span>
+            ) : (
+              <span className="text-muted-foreground">none mounted</span>
+            )}
+          </dd>
+          <dt className="text-muted-foreground">Thread</dt>
+          <dd className="min-w-0 truncate font-mono tabular-nums">{threadId}</dd>
+          <dt className="text-muted-foreground">Harness</dt>
+          <dd>
+            {/* The word carries the state; the colour is the fast channel only. */}
+            {harnessReachable ? (
+              'reachable'
+            ) : (
+              <span className="text-state-failed">unreachable — a send will fail</span>
+            )}
+          </dd>
+        </dl>
+        <p className="mt-3 text-xs text-muted-foreground">
+          The first message starts the run. Tool calls and approvals appear here as they happen.
         </p>
       </div>
-      <SuggestedActions manifest={manifest} disabled={disabled} onSend={onSend} />
-    </div>
+    </section>
   );
+}
+
+/**
+ * The mounted folder's name, kept current.
+ *
+ * The mount is module state in `@felix/cowork-client` with no change event, and
+ * it moves while this is on screen: `restoreMount()` resolves after first paint,
+ * and the workspace zone mounts and clears folders beside it. Read once, the
+ * readout said "none mounted" beside a zone naming the folder. A one-second
+ * re-read is a string comparison — React bails out when it has not changed —
+ * and only runs while a thread is empty, which is the only time this renders.
+ */
+function useMountLabel(): string | null {
+  return useSyncExternalStore(subscribeMount, getMountLabel, () => null);
+}
+
+function subscribeMount(onChange: () => void): () => void {
+  const id = window.setInterval(onChange, 1000);
+  return () => window.clearInterval(id);
 }

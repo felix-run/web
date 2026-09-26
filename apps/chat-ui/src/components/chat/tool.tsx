@@ -1,4 +1,4 @@
-import { describeError } from '@felix/client';
+import { describeError, summarizeToolArgs } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
@@ -8,7 +8,6 @@ import {
   ChevronDownIcon,
   CircleAlertIcon,
   LoaderIcon,
-  WrenchIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getArtifact } from '@/api';
@@ -18,6 +17,13 @@ import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCal
 /**
  * Collapsible tool-call card driven by SSE `ToolCall.done`.
  * In verbose mode, input/output stay expanded.
+ *
+ * Collapsed, the header reads `name · target · duration` and then the state. It
+ * used to read a wrench and the name, so a run of five `read_file` cards was five
+ * identical rows and the only way to learn which file each one read was to open
+ * it. The target is the half of the call that differs between rows; the wrench
+ * was the half that never did, on every card, which is an icon marking a row
+ * rather than a kind.
  */
 export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: boolean }) {
   const [open, setOpen] = useState(verbose);
@@ -31,6 +37,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
   // same reason it is on a shell command that exited 1: a write that failed
   // with Errno 13 sat under a green `done` badge on the reference deployment.
   const issue = tool.done ? classifyToolResult(tool.name, tool.output) : null;
+  const target = toolTarget(tool.name, tool.input);
 
   return (
     <Collapsible
@@ -39,8 +46,29 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
       className="overflow-hidden rounded-xl border border-border/60 bg-muted/30 text-sm"
     >
       <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-xs hover:bg-muted/40">
-        <WrenchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate font-medium">{tool.name}</span>
+        <span className="shrink-0 font-medium">{tool.name}</span>
+        {target && (
+          <>
+            <span aria-hidden className="text-muted-foreground">
+              ·
+            </span>
+            <span className="min-w-0 truncate text-muted-foreground" title={target}>
+              {target}
+            </span>
+          </>
+        )}
+        {/* Only a shell result carries timing; the frames carry none for any
+            other tool, and a duration measured here would be the network's. */}
+        {shell?.duration_ms != null && (
+          <>
+            <span aria-hidden className="text-muted-foreground">
+              ·
+            </span>
+            <span className="shrink-0 text-muted-foreground tabular-nums">
+              {formatDuration(shell.duration_ms)}
+            </span>
+          </>
+        )}
         {shellState ? (
           // A shell tool's "done" is its exit status. `done` on a command that
           // exited 1 is true and useless.
@@ -69,13 +97,13 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
           </Badge>
         ) : (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
-            <LoaderIcon className="size-3 animate-spin" />
+            <LoaderIcon className="size-3 motion-safe:animate-spin" />
             {tool.phase ?? 'running'}
           </Badge>
         )}
         <ChevronDownIcon
           className={cn(
-            'size-4 shrink-0 text-muted-foreground transition-transform duration-200',
+            'size-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none',
             open && 'rotate-180',
           )}
         />
@@ -257,9 +285,7 @@ function ShellOutput({ result: r }: { result: ShellResult }) {
           {status.label}
         </span>
         {r.duration_ms != null && (
-          <span className="text-muted-foreground">
-            {r.duration_ms < 1000 ? `${r.duration_ms}ms` : `${(r.duration_ms / 1000).toFixed(1)}s`}
-          </span>
+          <span className="text-muted-foreground">{formatDuration(r.duration_ms)}</span>
         )}
         {r.cwd && <span className="text-muted-foreground">in {r.cwd}</span>}
       </div>
@@ -288,6 +314,61 @@ function Stream({ label, text, sayEmpty }: { label: string; text: string; sayEmp
       </pre>
     </div>
   );
+}
+
+function formatDuration(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** Tools with a sentence in `summarizeToolArgs`; everything else falls back to JSON there. */
+const SUMMARIZED = new Set(['write_file', 'local_shell', 'local_open']);
+
+/**
+ * The argument names that say what a call is *about*, in the order they are
+ * tried. The workspace tools and most harness tools spell their subject one of
+ * these ways; a call with none of them shows its arguments as one line instead.
+ */
+const TARGET_KEYS = ['path', 'file', 'target', 'command', 'query', 'pattern', 'url', 'name', 'id'];
+
+/**
+ * What a call acted on, as one line for the card's header — or null when the
+ * call had no arguments to speak of.
+ *
+ * Known client tools get `summarizeToolArgs`'s sentence, the same words the
+ * approval card uses for them. Anything else leads with its subject argument
+ * when it has one, because `{"path":"src/a.ts"}` says less than `src/a.ts` in
+ * more characters; failing that, its arguments as compact JSON, which the
+ * header truncates and the `title` carries whole.
+ */
+export function toolTarget(name: string, input: unknown): string | null {
+  let args = input;
+  if (typeof args === 'string') {
+    const s = args.trim();
+    if (!s) return null;
+    if (!s.startsWith('{')) return oneLine(s);
+    try {
+      args = JSON.parse(s);
+    } catch {
+      return oneLine(s);
+    }
+  }
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return null;
+  const o = args as Record<string, unknown>;
+  if (Object.keys(o).length === 0) return null;
+  if (SUMMARIZED.has(name)) return oneLine(summarizeToolArgs(name, o));
+  for (const key of TARGET_KEYS) {
+    const v = o[key];
+    if (typeof v === 'string' && v.trim()) return oneLine(v);
+  }
+  try {
+    return oneLine(JSON.stringify(o));
+  } catch {
+    return null;
+  }
+}
+
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function render(value: unknown): string {
