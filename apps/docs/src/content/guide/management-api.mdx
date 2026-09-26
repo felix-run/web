@@ -307,6 +307,10 @@ store and replaces it in the transcript with a preview and a reference:
 
 Returns `{artifact_id, manifest_id, chars, content}`.
 
+This is the client's way back. The model's is the `read_artifact` tool, which pages through the same
+object but only for the conversation that spilled it — see
+[`spec.artifacts`](/guide/manifest-reference/#specartifacts).
+
 **The tenant is in the key and is not a parameter.** It comes from your own credentials, so no
 spelling of a reference reaches another tenant's data — while the manifest, which is needed to locate
 the object, is validated rather than trusted. A reference that is not well-formed is reported as

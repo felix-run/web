@@ -700,18 +700,47 @@ Selects a relevant subset of tools per turn instead of sending the whole catalog
 
 ## `spec.artifacts`
 
-Spills oversized tool output to the object store and shows the model a stub.
+Spills oversized tool output to the object store, shows the model a preview, and gives it a tool to
+read the rest.
 
-| Field | Type | Default |
-|---|---|---|
-| `enabled` | bool | `false` |
-| `threshold_chars` | int ≥ 1 | `8000` |
-| `preview_chars` | int ≥ 1 | `200` |
-| `default_window_chars` | int ≥ 1 | `4000` |
-| `max_window_chars` | int ≥ 1 | `16000` |
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `false` | Spill, and bind `read_artifact` |
+| `threshold_chars` | int ≥ 1 | `8000` | A tool result longer than this is spilled |
+| `preview_chars` | int ≥ 1 | `200` | How much of it stays in the transcript |
+| `default_window_chars` | int ≥ 1 | `4000` | `read_artifact` window when the model gives no `length` |
+| `max_window_chars` | int ≥ 1 | `16000` | Largest window one `read_artifact` call returns |
 
 Output over the threshold is written to `artifacts/{tenant}/{manifest}/{uuid}.txt` and replaced with
-a preview plus an `[artifact:<id> key=<key> …]` marker. Keys are tenant-scoped.
+the preview plus a marker, which is always the last thing in the output:
+
+```
+…[artifact:<id> key=artifacts/<tenant>/<manifest>/<id>.txt chars=<N> spilled_at=<unix>]
+```
+
+**The model reads it back with `read_artifact`**, bound automatically whenever `enabled` is true and
+an object store is configured:
+
+| Argument | Type | Default |
+|---|---|---|
+| `artifact_id` | string | — the id from the marker |
+| `offset` | int ≥ 0 | `0` |
+| `length` | int ≥ 1 | `default_window_chars`, capped at `max_window_chars` |
+
+Each window comes back headed `[artifact-window:<id> chars <start>-<end> of <total>; continue at
+offset=<end>]`, or `; end]` on the last one, so the model pages by the offset it was given.
+
+- **It reads only what its own conversation spilled** — the thread, or the request when there is no
+  thread. The tenant and manifest prefix is shared by every caller of a manifest, so an id alone
+  would otherwise reach another caller's run. Another conversation's id is refused exactly as a
+  missing one is.
+- **It is governed like any tool.** It is bound before the governance stack, so policies, limits,
+  screening and audit apply to a read as to the call that produced the artifact.
+- **It is never itself spilled**, although a window can be larger than `threshold_chars`.
+
+Clients read artifacts through [`GET /artifacts`](/guide/management-api/#artifacts) instead, which
+needs `artifacts:read` and is not held to a conversation. The bundled manifests that read files or
+fetch pages — `contributor`, `cowork`, `triage`, `deep`, `support` — enable artifacts.
 
 ## `spec.reflect`
 
