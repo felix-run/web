@@ -180,9 +180,17 @@ Response:
   "final": { "role": "assistant", "content": "42" },
   "thread_id": "default:my-thread",
   "model": "claude-sonnet",
-  "leaf_id": "evt_..."
+  "leaf_id": "evt_...",
+  "approvals": []
 }
 ```
+
+`approvals` lists every gate the run asked a human about. Each entry is the `approval_required`
+frame a stream would have carried — `approval_id`, `tool_name`, `args`, `rule_id`, `reason`,
+`thread_id`, `tool_call_id`, `expires_at` — plus `status`: `approved`, `denied`, or `expired` when
+nobody decided before the deadline and the gate denied on its own. A plain response cannot report
+anything until the run is over, so a caller blocked on a gate still waits; to decide it meanwhile,
+find it with `GET /approvals?thread_id=<thread_id>` (see [Approvals](#approvals)).
 
 ### Durable runs
 
@@ -373,7 +381,9 @@ tool, matched on a hash of the arguments, until it expires.
 since felix#232 a polled row carries `thread_id` like the frame does, so the two channels attribute
 a waiting approval the same way. See [Approvals](/guide/management-api/#approvals) for how far that
 attribution goes. The poll is still what an operator console should be built on: it finds the
-approvals no stream was open for.
+approvals no stream was open for. A non-streaming `POST /chat` has no frame to read at all: poll
+`GET /approvals?thread_id=` while it blocks, and read `approvals` on its response for how each gate
+ended.
 
 ### Approvals on a durable run
 
