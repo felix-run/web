@@ -11,8 +11,10 @@ The public surface of a running harness. Management endpoints (`/audit`, `/appro
 `/jobs`, `/manifests`, `/eval`, `/usage`, `/memory`, `/documents`, `/artifacts`) are in the
 [Management API](/guide/management-api/).
 
-A live, always-accurate reference is served by the harness itself: **`GET /openapi.json`**, rendered
-at **`/docs`** (Scalar). Both are behind auth in `api_key` and `jwt` modes unless the operator sets
+The full endpoint reference is at **[/reference/](/reference/)**, rendered from the OpenAPI
+document of the release `api.felix.run` runs — every release attaches its `openapi.json`. Your own
+harness serves the same thing for the version you run: **`GET /openapi.json`**, rendered at
+**`/docs`** (Scalar). Both are behind auth in `api_key` and `jwt` modes unless the operator sets
 `FELIX_DOCS_PUBLIC=true`.
 
 ## Base URL and auth

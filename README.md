@@ -90,6 +90,11 @@ pnpm chat:deploy
 pnpm docs:deploy
 ```
 
+The docs build downloads the API reference's spec: it asks `https://api.felix.run/health` for the
+version and fetches that felix release's `openapi.json` (`apps/docs/scripts/fetch-api-spec.mjs`), and
+fails if either is unreachable. Offline, point `FELIX_OPENAPI_SPEC` at a local file. Redeploy the
+docs after upgrading production — the daily `reference-freshness` workflow fails until you do.
+
 The proxy Workers take two secrets, never `vars`: `CHAT_UI_KEY` gates browser clients (the SPA
 sends it as `x-chat-key`; the Worker strips the header before going upstream), and `FELIX_API_KEY`
 is injected upstream as `Authorization: Bearer`.

@@ -14,7 +14,7 @@
  * divider rule Starlight draws after this group still lands in the right spot.
  *
  * The right group is `md:sl-flex`, so this is hidden below 50rem. The sidebar
- * keeps its own "API reference ↗" entry, which is what small screens get.
+ * keeps its own "API reference" entry, which is what small screens get.
  */
 // Biome parses only an .astro file's frontmatter, never the markup, so every
 // component import here reads as dead to it.
@@ -22,9 +22,7 @@
 import Default from '@astrojs/starlight/components/SocialIcons.astro';
 ---
 
-<a class="header-link" href="https://api.felix.run/docs">
-  API reference<span class="header-link-arrow" aria-hidden="true">↗</span>
-</a>
+<a class="header-link" href="/reference/">API reference</a>
 <Default><slot /></Default>
 
 <style>
@@ -40,16 +38,5 @@ import Default from '@astrojs/starlight/components/SocialIcons.astro';
 
   .header-link:hover {
     color: var(--sl-color-white);
-  }
-
-  /* Dimmer than the label: it marks the link as leaving the site, it is not
-     part of the name. Kept out of the accessible name by aria-hidden. */
-  .header-link-arrow {
-    color: var(--sl-color-gray-3);
-    margin-inline-start: 0.25em;
-  }
-
-  .header-link:hover .header-link-arrow {
-    color: inherit;
   }
 </style>
