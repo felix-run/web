@@ -125,3 +125,35 @@ describe('the stylesheet still reaches the renderer', () => {
     }
   });
 });
+
+/**
+ * The other half of the long-token fix. Prose wraps with `break-word`, which leaves
+ * words whole when a box is sized — so a table or a code block keeps its natural width
+ * and scrolls inside the renderer's own `overflow-x-auto` box instead of widening the
+ * transcript. `anywhere` here would squeeze a table's columns to a letter each. These
+ * pin both halves of that arrangement, since the second is the renderer's markup and
+ * would not announce a change.
+ */
+describe('long content stays inside its own box', () => {
+  it('wraps prose without letting a table collapse its columns', () => {
+    const { container } = render(<Response>{'x'}</Response>);
+    const root = container.firstElementChild;
+    expect(root?.className).toContain('wrap-break-word');
+    expect(root?.className).not.toContain('wrap-anywhere');
+  });
+
+  it('scrolls a table sideways inside its wrapper', () => {
+    const { container } = render(<Response>{'| a | b |\n| - | - |\n| 1 | 2 |\n'}</Response>);
+    expect(container.querySelector('table')?.parentElement?.className).toContain('overflow-x-auto');
+  });
+
+  it('scrolls a code block sideways inside its own body', async () => {
+    const { container } = render(<Response>{'```text\nx\n```\n'}</Response>);
+    await waitFor(() =>
+      expect(container.querySelector('[data-streamdown="code-block-body"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-streamdown="code-block-body"]')?.className).toContain(
+      'overflow-x-auto',
+    );
+  });
+});

@@ -192,3 +192,43 @@ describe('turn attribution', () => {
     expect(queryByRole('status')).toBeNull();
   });
 });
+
+/**
+ * A token with no space in it — a commit hash, a path, a URL — has nowhere to wrap,
+ * and one that overflowed its turn gave the whole transcript a sideways scroll on a
+ * phone: the scroll container measured 690px of content in a 368px column. What
+ * wraps it is `overflow-wrap`, which only a laid-out page can show working; happy-dom
+ * lays nothing out. So this pins the rule on each plain-text surface rather than the
+ * geometry, and the geometry is a browser check at 390px.
+ */
+describe('long unbroken tokens', () => {
+  const HASH = '9f1c2e7a4b8d0f3e6a5c1b2d4e8f0a3c5e7b9d1f';
+  const PATH = '/Users/operator/Projects/felix-web/apps/chat-ui/src/components/chat/message.tsx';
+
+  /** The innermost element holding exactly this text: its wrappers hold it too. */
+  const textNode = (container: HTMLElement, needle: string) =>
+    [...container.querySelectorAll('div')].filter((el) => el.textContent === needle).at(-1);
+
+  it('wraps the operator’s turn anywhere, so a hash cannot widen the column', () => {
+    const { container } = render(<Message turn={{ id: 'u1', role: 'user', content: HASH }} />);
+    expect(textNode(container, HASH)?.className).toContain('wrap-anywhere');
+  });
+
+  it('wraps a note the same way', () => {
+    const { container } = render(
+      <Message
+        turn={{ id: 'n1', role: 'note', content: PATH, note: { role: 'system', inContext: true } }}
+      />,
+    );
+    expect(textNode(container, PATH)?.className).toContain('wrap-anywhere');
+  });
+
+  it('wraps reasoning once it is opened', async () => {
+    const { container, getByRole } = render(
+      <Message turn={assistant({ reasoning: [{ text: PATH, at: 0 }], content: 'ok' })} />,
+    );
+    fireEvent.click(getByRole('button', { name: /thought/i }));
+    await waitFor(() => expect(textNode(container, PATH)).toBeDefined());
+    expect(textNode(container, PATH)?.className).toContain('wrap-anywhere');
+  });
+});

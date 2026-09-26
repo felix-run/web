@@ -117,7 +117,7 @@ export function Workbench() {
             {error && (
               <div
                 role="alert"
-                className="mx-auto max-w-2xl rounded-lg border border-state-failed/30 bg-state-failed/10 px-3 py-2 text-sm text-state-failed"
+                className="mx-auto max-w-2xl wrap-anywhere rounded-lg border border-state-failed/30 bg-state-failed/10 px-3 py-2 text-sm text-state-failed"
               >
                 {error}
               </div>

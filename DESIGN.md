@@ -456,6 +456,13 @@ every second is noise.
   message at 16px. No bubble, no fill, no avatar.
 - **Assistant turn:** a "Felix" label, then prose, reasoning and tool cards interleaved in the
   order they happened, then a mono usage line. Also no avatar.
+- **Long tokens wrap; wide blocks scroll in place.** Nothing in a turn may widen the column.
+  Plain text — the operator's turn, a note, reasoning — wraps with `wrap-anywhere`, so a
+  commit hash or an absolute path breaks rather than giving the transcript a sideways scroll
+  at phone width. Assistant prose uses `wrap-break-word` instead, which breaks an overflowing
+  word the same way but keeps words whole when a box is *sized*: that is what lets a table or
+  a code block keep its natural width and scroll inside its own `overflow-x-auto` box rather
+  than crushing its columns to a letter each.
 - **Empty thread:** a readout, not a greeting — a left-ruled block anchored at the bottom where
   the first turn will land, headed "Empty thread" at title size, listing agent, folder, thread
   and whether the harness is reachable (unreachable in `state-failed`, with the word).

@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
  * the built stylesheet contained the string and no `.prose` block. They are
  * removed rather than made real, because what shipped all along is the
  * renderer's own styling and switching to Typography now would be a visual
- * change, not a fix. `max-w-none` and `break-words` are core utilities and stay.
+ * change, not a fix. `max-w-none` and the wrap rule are core utilities and stay.
  *
  * Lists are the exception, and they are ours. The renderer sets
  * `list-style-position: inside` with no padding, which flattens nesting, wraps a
@@ -77,10 +77,21 @@ const components: Components = {
   ),
 };
 
+/**
+ * The wrap rule is `wrap-break-word`, deliberately not the `wrap-anywhere` the
+ * operator's own turn uses. Both break a hash or a path that has no space in it
+ * once it would overflow a line, which is what keeps a long token from widening
+ * the transcript. They differ in what they do to a box's *minimum* width:
+ * `anywhere` lets every word count as breakable there, so a table would squeeze
+ * its columns down to a letter each instead of scrolling inside the renderer's
+ * own `overflow-x-auto` wrapper. `break-word` leaves words whole for sizing,
+ * which is what lets tables and code blocks scroll within their own box.
+ * Links carry `wrap-anywhere` from the renderer already.
+ */
 export function Response({ children, className }: { children: string; className?: string }) {
   return (
     <Streamdown
-      className={cn('max-w-none break-words', className)}
+      className={cn('max-w-none wrap-break-word', className)}
       components={components}
       remarkPlugins={remarkPlugins}
     >

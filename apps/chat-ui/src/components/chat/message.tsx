@@ -56,7 +56,9 @@ export function Message({
             {label && <LabelChip label={label} />}
           </div>
           {turn.content && (
-            <div className="mt-1 whitespace-pre-wrap text-sm text-foreground">{turn.content}</div>
+            <div className="mt-1 whitespace-pre-wrap wrap-anywhere text-sm text-foreground">
+              {turn.content}
+            </div>
           )}
         </div>
         <MessageActions
@@ -91,8 +93,15 @@ export function Message({
               ))}
             </div>
           )}
+          {/* `wrap-anywhere`, not `break-words`: a commit hash, a path or a URL has no
+              space to wrap at, and unwrapped it overflowed the turn and gave the
+              whole transcript a sideways scroll at phone width (690px of content in
+              a 368px column). Plain text has no table or code block that would want
+              its words kept whole, so the stronger rule costs nothing here. */}
           {turn.content && (
-            <div className="mt-1 whitespace-pre-wrap text-base text-foreground">{turn.content}</div>
+            <div className="mt-1 whitespace-pre-wrap wrap-anywhere text-base text-foreground">
+              {turn.content}
+            </div>
           )}
         </div>
         <MessageActions
@@ -203,7 +212,7 @@ function AwaitingStatus() {
  */
 function LabelChip({ label }: { label: string }) {
   return (
-    <span className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground">
+    <span className="min-w-0 wrap-anywhere rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground">
       {label}
     </span>
   );
