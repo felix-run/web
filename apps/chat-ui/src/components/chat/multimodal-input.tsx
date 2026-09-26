@@ -1,8 +1,27 @@
 import { Button } from '@felix/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import equal from 'fast-deep-equal';
-import { ArrowUp, CornerDownLeft, ImagePlus, Loader2, Mic, MicOff, Upload } from 'lucide-react';
-import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowUp,
+  Clock,
+  CornerDownLeft,
+  ImagePlus,
+  Loader2,
+  Mic,
+  MicOff,
+  Upload,
+} from 'lucide-react';
+import {
+  type KeyboardEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 import {
   PromptInput,
@@ -475,12 +494,7 @@ function MultimodalInputInner({
               )}
 
               {onBackground && !isBusy ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-full px-3 text-xs"
-                  title="Start the run without streaming it here. Felix keeps working if you close the tab."
+                <BackgroundButton
                   disabled={!canBackground}
                   onClick={() => {
                     void onBackground({
@@ -489,9 +503,7 @@ function MultimodalInputInner({
                     });
                     controller.textInput.clear();
                   }}
-                >
-                  Run in background
-                </Button>
+                />
               ) : null}
 
               <SendOrStop canSubmit={canSubmit} isBusy={isBusy} onStop={onStop} />
@@ -649,6 +661,55 @@ function InlinePicker({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/** What a background run is, said once: visibly on hover and focus, always to AT. */
+export const BACKGROUND_EXPLANATION =
+  'Start the run without streaming it here. Felix keeps working if you close the tab.';
+
+/**
+ * The second way to send, drawn as the second way to send.
+ *
+ * It was an outline pill at the same weight as Send and right beside it, so
+ * every message read as a two-way choice when one of the two is the exception.
+ * Ghost and muted now, with an icon that stands in for the words below `sm`,
+ * so the filled Send is the one control the eye lands on.
+ *
+ * Its explanation was a `title`, which a keyboard user never sees and a screen
+ * reader may not announce. It is now the button's accessible description,
+ * always, and a tooltip that opens on focus as well as hover.
+ *
+ * The click handler is the caller's and unchanged: the shell requests
+ * notification permission inside it, because that is the gesture that earns it.
+ */
+function BackgroundButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  const descriptionId = useId();
+  return (
+    <>
+      <span id={descriptionId} className="sr-only">
+        {BACKGROUND_EXPLANATION}
+      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 rounded-full px-2 text-xs font-normal text-muted-foreground hover:bg-muted hover:text-foreground sm:px-2.5"
+            aria-describedby={descriptionId}
+            disabled={disabled}
+            onClick={onClick}
+          >
+            <Clock className="size-3.5" aria-hidden />
+            <span className="sr-only sm:not-sr-only">Run in background</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-64">
+          {BACKGROUND_EXPLANATION}
+        </TooltipContent>
+      </Tooltip>
+    </>
   );
 }
 

@@ -531,6 +531,12 @@ banners docked directly above it, a slash menu that opens upward, and a hint lin
 11px that names the keys worth learning from there — Enter, ⇧Enter, and (from `md` up) the
 thread switcher and the jump to a waiting approval — as small bordered `kbd` keys.
 
+**Send is the composer's one primary action.** *Run in background* sits beside it as a muted
+ghost with a clock icon (icon-only below `sm`, the words kept as its accessible name), because it
+is the exception and an equal-weight pill made every send read as a two-way choice. Its
+explanation is the button's accessible description and a tooltip that opens on focus as well as
+hover — never a `title`, which a keyboard user does not see.
+
 **The composer's focus indicator is its border.** It removes its textarea's ring and signals
 focus with a full-alpha `--ring` border plus the heavier composer shadow. The border is the
 indicator, so it owes 3:1: against the composer surface (`card/80` over the dock) it measures
