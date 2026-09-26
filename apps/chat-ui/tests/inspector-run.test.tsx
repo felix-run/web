@@ -126,7 +126,10 @@ describe('the approvals tab', () => {
     });
 
     await screen.findByRole('button', { name: 'Approve write_file' });
-    expect(screen.getByText(/Denied automatically in 1:(29|30)/)).toBeTruthy();
+    // What is pinned is that the deadline reaches the card, not how the card words it:
+    // the card's own tests own the copy, and it moved from the footer to a header chip
+    // that splits the countdown into its own element — so read the text, not a node.
+    expect(document.body.textContent).toMatch(/(Denied automatically|Auto-denies) in 1:(29|30)/);
     expect(screen.getByText('Confirm writes to the workspace')).toBeTruthy();
   });
 
