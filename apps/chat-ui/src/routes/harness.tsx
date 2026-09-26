@@ -109,6 +109,9 @@ function LedgerPanel() {
           title="Ledger"
           value={meta.meta}
           valueTone={meta.metaTone}
+          // The halves hold their rows to the reading measure, so the switch
+          // between them ends where those rows end rather than at the pane's edge.
+          measured
           controls={
             <TabsList aria-label="Ledger view" className="w-auto">
               <TabsTrigger value="activity" className="px-2.5 text-xs">

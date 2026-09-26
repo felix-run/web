@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
+import { READING_MEASURE } from '../src/components/harness/panel';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { HARNESS_DESTINATIONS } from '../src/routes/harness';
 
@@ -126,6 +127,22 @@ describe('the harness address', () => {
       expect(header?.textContent).toContain('Ledger');
       expect(header?.textContent).toContain('0 events · 0 failed');
     });
+  });
+
+  it("holds the Ledger header's switch to the rows' measure, and leaves full-width pages alone", async () => {
+    // The Activity/Usage switch sat at the far edge of the pane while the rows it
+    // switches stopped at the reading measure. The header row and the rows now
+    // read one constant; a page whose rows run full width keeps its controls at
+    // the edge those rows reach.
+    const row = () => document.querySelector('main header')?.firstElementChild;
+    mount('/harness/ledger');
+    await waitFor(() => expect(document.querySelector('main [role="tablist"]')).not.toBeNull());
+    expect(row()?.className).toContain(READING_MEASURE);
+    expect(row()?.contains(document.querySelector('main [role="tablist"]'))).toBe(true);
+    cleanup();
+    mount('/harness/jobs');
+    await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
+    expect(row()?.className).not.toContain(READING_MEASURE);
   });
 
   it('puts the destination in a main landmark, outside the nav', async () => {
