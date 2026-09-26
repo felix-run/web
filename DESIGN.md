@@ -448,6 +448,14 @@ controls at the pane's edge. An id that has to distinguish rows is cut from the 
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
 
+The workspace zone's header follows the same grammar: folder or drive icon, **Workspace**, then
+the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the
+tab's own store (including while a folder from last session waits on a reconnect, because until
+then that is where tools run). Its actions — *Mount a folder*, *Change folder* / *Disconnect*,
+*Reconnect <name>* — are an outline row beneath, never in the value slot: a header that holds an
+action says what to do rather than what is, and in the narrow drawer the header row is the one
+the close button shares.
+
 ### Run readout
 
 The top of the instrument, above its tabs: what the run is doing, derived from state the shell
