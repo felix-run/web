@@ -1,8 +1,10 @@
+import { describeGate } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { ClipboardListIcon, GaugeIcon, ListTodoIcon, XIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { decideApproval, deletePlan, getToolMetrics, listApprovals, listPlans } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -14,12 +16,21 @@ import {
 } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
-import type { Plan } from '@/types';
+import { type ShellValue, useShell } from '@/shell-context';
+import type { Plan, Turn } from '@/types';
 
 type SectionId = 'approvals' | 'plans' | 'metrics';
 
 /**
- * Right-hand inspector, scoped to **this run**: approvals, plans, tool metrics.
+ * Right-hand inspector: a readout of **this run**, then approvals, plans and tool
+ * metrics.
+ *
+ * Only the readout is run-scoped. It is derived from the engine the shell already
+ * holds, so it costs no request. The three tabs are not: `/approvals`, `/plans`
+ * and `/audit/metrics` take no thread filter, so each lists the whole tenant and
+ * says so on its first line. A rail headed "This run" whose every row was
+ * tenant-wide was the heading lying; the readout is what makes it true, and the
+ * scope line is what keeps the tabs from borrowing that claim.
  *
  * It used to hold eight sections, which is what made it an accordion — six tab
  * destinations did not fit the rail's 22rem. The other five were tenant-durable
@@ -34,10 +45,10 @@ type SectionId = 'approvals' | 'plans' | 'metrics';
  */
 /** The three sections, declared once so the strip and the panel cannot disagree. */
 const SECTIONS = [
-  { id: 'approvals', label: 'Approvals' },
-  { id: 'plans', label: 'Plans' },
-  { id: 'metrics', label: 'Tools' },
-] as const satisfies readonly { id: SectionId; label: string }[];
+  { id: 'approvals', label: 'Approvals', scope: 'All threads' },
+  { id: 'plans', label: 'Plans', scope: 'All threads · newest 25' },
+  { id: 'metrics', label: 'Tools', scope: 'All threads · last 60 minutes' },
+] as const satisfies readonly { id: SectionId; label: string; scope: string }[];
 
 export function Inspector({
   open,
@@ -70,6 +81,8 @@ export function Inspector({
         </Button>
       </div>
 
+      <RunReadout />
+
       {/*
         Tabs, not a stacked accordion. Three sections fit a 22rem strip where the
         original eight did not, and one on screen is one poll rather than one per
@@ -97,10 +110,13 @@ export function Inspector({
             </TabsTrigger>
           ))}
         </TabsList>
-        {SECTIONS.map(({ id, label }) => (
+        {SECTIONS.map(({ id, label, scope }) => (
           <TabsContent key={id} value={id} className="min-h-0">
             <ScrollArea className="h-full">
               <div className="p-3">
+                {/* None of these routes takes a thread filter, so the scope is
+                    stated rather than left to be inferred from the heading. */}
+                <p className="mb-2 text-xs text-muted-foreground">{scope}</p>
                 {/*
                   `bare` chrome: the tab is the heading, so the section draws none
                   of its own.
@@ -136,6 +152,265 @@ export function Inspector({
   );
 }
 
+// --- Run readout ---
+
+type RunState = 'blocked' | 'running' | 'rejoining' | 'failed' | 'idle';
+
+/**
+ * The ramp colour and the word for each state. The word always renders — a dot
+ * is the fast channel, never the only one.
+ *
+ * `rejoining` is blue but says something different from `running`: the stream
+ * dropped and the run was torn down on purpose, so what arrives now is what
+ * landed, not a reply still being written. `idle` spends no colour: resting is not
+ * a state the ramp has a hue for, and green would claim the last run succeeded,
+ * which an abort does not.
+ */
+const RUN_STATE: Record<RunState, { word: string; dot: string; text: string }> = {
+  blocked: { word: 'Waiting on you', dot: 'bg-state-blocked', text: 'text-state-blocked' },
+  running: { word: 'Running', dot: 'bg-state-running', text: 'text-state-running' },
+  rejoining: { word: 'Rejoining thread', dot: 'bg-state-running', text: 'text-state-running' },
+  failed: { word: 'Failed', dot: 'bg-state-failed', text: 'text-state-failed' },
+  idle: { word: 'Idle', dot: 'bg-muted-foreground/50', text: 'text-foreground' },
+};
+
+/**
+ * What the run is doing, in precedence order. Blocked outranks running because a
+ * run waiting on a person is the one thing on this rail that will not resolve by
+ * itself; failed is only ever a resting state, because `send` clears the error.
+ */
+export function runState(
+  shell: Pick<ShellValue, 'pending' | 'uiPrompt' | 'streaming' | 'reattaching' | 'error'>,
+): RunState {
+  if (shell.pending || shell.uiPrompt) return 'blocked';
+  if (shell.reattaching) return 'rejoining';
+  if (shell.streaming) return 'running';
+  if (shell.error) return 'failed';
+  return 'idle';
+}
+
+/** `42s`, `3:07`, `1:02:09` — a stopwatch, not a relative time. */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
+
+/**
+ * Tokens reported on this thread's assistant turns, and whether that is a floor.
+ *
+ * `usage` arrives only on a streamed turn's terminal `on_chain_end`. A turn
+ * rebuilt from the session snapshot, or written by a durable run, carries none —
+ * so a thread holding any such turn has spent more than this adds up to, and the
+ * readout says `floor` the way the Ledger says `Cost (floor)` rather than
+ * presenting a partial sum as the total. There is no cost here at all: the frame
+ * carries tokens and nothing priced, and the Ledger is where spend is read.
+ */
+export function threadTokens(turns: Turn[]): {
+  input: number;
+  output: number;
+  reported: number;
+  floor: boolean;
+} {
+  let input = 0;
+  let output = 0;
+  let reported = 0;
+  let missing = 0;
+  for (const t of turns) {
+    if (t.role !== 'assistant') continue;
+    if (t.usage) {
+      input += t.usage.input;
+      output += t.usage.output;
+      reported += 1;
+    } else if (t.content || t.tools?.length) {
+      missing += 1;
+    }
+  }
+  return { input, output, reported, floor: reported > 0 && missing > 0 };
+}
+
+/** Argument keys that name what a call acts on, for tools with no sentence of their own. */
+const TARGET_KEYS = ['path', 'file_path', 'url', 'query', 'target', 'command', 'name'] as const;
+
+function lastAssistant(turns: Turn[]): Turn | undefined {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i];
+    if (turn?.role === 'assistant') return turn;
+  }
+  return undefined;
+}
+
+/**
+ * The call still open on the newest assistant turn — the one the run is inside
+ * right now — as its name plus what it acts on.
+ *
+ * `describeGate` gives the three client tools their sentence (it is
+ * `summarizeToolArgs` without the pretty-printed JSON fallback, which is right
+ * for a card and wrong for one line). Any other tool gets the first argument
+ * that names a target, and nothing when none does.
+ */
+export function inFlightTool(turns: Turn[]): { name: string; target: string | null } | null {
+  const open = lastAssistant(turns)
+    ?.tools?.filter((t) => !t.done)
+    .at(-1);
+  if (!open) return null;
+  const args =
+    open.input && typeof open.input === 'object' ? (open.input as Record<string, unknown>) : {};
+  const gate = describeGate(open.name, args);
+  if (gate !== open.name) return { name: open.name, target: gate };
+  const key = TARGET_KEYS.find((k) => typeof args[k] === 'string' && args[k] !== '');
+  return { name: open.name, target: key ? String(args[key]) : null };
+}
+
+const nf = new Intl.NumberFormat();
+
+/**
+ * The run on screen, at a glance, above anything that fetches.
+ *
+ * Everything here is derived from the shell — the engine's state and the tab's
+ * own run clock — so it costs no request and is true the moment the rail opens.
+ * It always renders, including at rest: a readout that appears only while
+ * something is happening teaches the operator not to look at it, which is the
+ * attention line's rule applied to the rail.
+ *
+ * Deliberately absent: a step counter. The client learns `recursion_limit` only
+ * from the `max_turns` frame that reports it was hit, so a live "step n of m"
+ * would need a number nothing sends. When it *was* hit, that is shown.
+ */
+function RunReadout() {
+  const shell = useShell();
+  const { turns, runClock, pending, uiPrompt, error, sessionPhase } = shell;
+  const state = runState(shell);
+  const tone = RUN_STATE[state];
+  const live = runClock.startedAt !== null && runClock.endedAt === null;
+
+  // One re-render a second while a run is live, and none at rest. Scoped to this
+  // component, so the tabs below do not repaint with it.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(id);
+  }, [live]);
+
+  const elapsed =
+    runClock.startedAt === null ? null : (runClock.endedAt ?? now) - runClock.startedAt;
+  const tokens = threadTokens(turns);
+  const tool = inFlightTool(turns);
+  const last = lastAssistant(turns);
+  const stopped = !live && last?.stop?.reason === 'max_turns' ? last.stop : null;
+
+  return (
+    <section
+      aria-label="Run status"
+      className="shrink-0 border-b border-border/60 px-3 py-2.5 text-xs"
+    >
+      <div className="flex items-center gap-2">
+        <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
+        {/* The word alone is the live region: the stopwatch beside it changes every
+            second and would be read out every second. */}
+        <p role="status" aria-live="polite" className={cn('text-sm font-medium', tone.text)}>
+          {tone.word}
+        </p>
+        {sessionPhase && sessionPhase !== 'turn' && (
+          <span className="font-mono text-muted-foreground" title="Session phase">
+            {sessionPhase}
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-muted-foreground">
+          {elapsed === null ? (
+            'No run in this tab yet'
+          ) : (
+            <>
+              {live ? 'for ' : 'last run '}
+              <span className="font-mono tabular-nums text-foreground">
+                {formatElapsed(elapsed)}
+              </span>
+            </>
+          )}
+        </span>
+      </div>
+
+      <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+        {state === 'blocked' && (
+          <>
+            <dt className="text-muted-foreground">Asking</dt>
+            <dd className="min-w-0 truncate">
+              {pending
+                ? describeGate(pending.toolName, pending.args)
+                : (uiPrompt?.prompt ?? 'A question from the agent')}
+            </dd>
+          </>
+        )}
+        {tool && (
+          <>
+            <dt className="text-muted-foreground">Tool</dt>
+            <dd className="flex min-w-0 gap-1.5">
+              <span className="shrink-0 font-mono">{tool.name}</span>
+              {tool.target && (
+                <span
+                  className="min-w-0 truncate font-mono text-muted-foreground"
+                  title={tool.target}
+                >
+                  {tool.target}
+                </span>
+              )}
+            </dd>
+          </>
+        )}
+        <dt className="text-muted-foreground">
+          Tokens
+          {tokens.floor && (
+            <span title="Some turns on this thread reported no usage, so the true total is higher">
+              {' '}
+              (floor)
+            </span>
+          )}
+        </dt>
+        <dd className="min-w-0">
+          {tokens.reported === 0 ? (
+            <span className="text-muted-foreground">None reported on this thread</span>
+          ) : (
+            <>
+              <span className="font-mono tabular-nums">{nf.format(tokens.input)}</span>{' '}
+              <span className="text-muted-foreground">in ·</span>{' '}
+              <span className="font-mono tabular-nums">{nf.format(tokens.output)}</span>{' '}
+              <span className="text-muted-foreground">out, this thread</span>
+            </>
+          )}
+        </dd>
+        {stopped && (
+          <>
+            <dt className="text-muted-foreground">Stopped</dt>
+            <dd className="min-w-0">
+              Hit the step limit
+              {stopped.limit !== undefined && (
+                <>
+                  {' '}
+                  (<span className="font-mono tabular-nums">{stopped.limit}</span>)
+                </>
+              )}
+              ; the answer is cut short
+            </dd>
+          </>
+        )}
+        {state === 'failed' && error && (
+          <>
+            <dt className="text-muted-foreground">Error</dt>
+            <dd className="line-clamp-2 min-w-0 break-words font-mono text-state-failed">
+              {error}
+            </dd>
+          </>
+        )}
+      </dl>
+    </section>
+  );
+}
+
 // --- section shell ---
 
 // --- Activity ---
@@ -155,6 +430,8 @@ function ApprovalsSection({
 }) {
   const { data, error, loading, refresh } = usePoll(() => listApprovals('pending'), { enabled });
   const count = data?.length ?? 0;
+  const { bannerOwned, approvalQueue, threadId, threads } = useShell();
+  const owned = new Set(bannerOwned);
 
   // A gated run is stalled until someone answers, so the section opens itself rather
   // than waiting to be found. Only on the transition into a pending state: re-opening
@@ -197,15 +474,44 @@ function ApprovalsSection({
         {/* The only carded surface in the panel. Everything else here is a readout;
             this is the one thing that stops a run until a person acts on it. */}
         <div className="space-y-2.5">
-          {data?.map((a) => (
-            <ApprovalDecision
-              key={a.id}
-              toolName={a.tool_name}
-              args={(a.args ?? {}) as Record<string, unknown>}
-              context={a.manifest_id}
-              onDecide={(status) => decide(a.id, status)}
-            />
-          ))}
+          {data?.map((a) =>
+            owned.has(a.id) ? (
+              // Counted, not re-offered — the same rule as the attention line,
+              // from the same set. The banner came by frame, so it can show the
+              // write's before/after diff and the rule's reason; a `/approvals`
+              // row carries neither, and a second Approve button here would be
+              // the weaker of two for one call.
+              <p key={a.id} className="text-xs text-muted-foreground">
+                <span className="font-mono text-foreground">{a.tool_name}</span> · deciding in the
+                banner below the transcript
+              </p>
+            ) : (
+              <div key={a.id} className="space-y-1">
+                {a.thread_id && a.thread_id !== threadId ? (
+                  <p className="text-xs text-muted-foreground">
+                    Blocking{' '}
+                    <Link
+                      to={`/t/${a.thread_id}`}
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      {threads.find((t) => t.id === a.thread_id)?.title ?? 'another conversation'}
+                    </Link>
+                  </p>
+                ) : null}
+                <ApprovalDecision
+                  toolName={a.tool_name}
+                  args={(a.args ?? {}) as Record<string, unknown>}
+                  context={a.manifest_id}
+                  // The row carries the deadline; only a frame carries the
+                  // reason, so it is recovered from the engine's queue when this
+                  // tab saw one and left out when it did not.
+                  expiresAt={a.expires_at}
+                  reason={approvalQueue.find((q) => q.approvalId === a.id)?.reason}
+                  onDecide={(status) => decide(a.id, status)}
+                />
+              </div>
+            ),
+          )}
         </div>
       </SectionBody>
     </Section>
@@ -267,7 +573,11 @@ function PlansSection({
         loading={loading && !data}
         error={error}
         empty={data?.length === 0}
-        emptyText="Switch to the deep agent and ask a multi-step question."
+        // Plans are written only by the `deep` pattern's plan tools, so an empty
+        // list usually means no manifest in use runs that pattern. Named by
+        // pattern rather than by manifest, because a manifest called `deep` is a
+        // deployment's choice and may not exist here.
+        emptyText="No plans. They are written by manifests that run the deep pattern."
         status={data ? `${data.length} ${data.length === 1 ? 'plan' : 'plans'}` : undefined}
       >
         <div className="space-y-3">
@@ -372,7 +682,6 @@ function MetricsSection({
         emptyText="Ask the agent to use a tool. Rollups cover the last hour."
         status={data ? `${tools.length} tools called in the last hour` : undefined}
       >
-        <p className="mb-2 text-xs text-muted-foreground">Last 60 minutes</p>
         <ol className="space-y-2">
           {tools.map((t) => (
             <li key={t.tool} className="text-xs">

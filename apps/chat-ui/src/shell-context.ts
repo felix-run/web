@@ -38,6 +38,20 @@ export interface ShellValue {
   /** The two blocking interrupts, which the run is waiting on. */
   pending: EngineState['approvals'][number] | null;
   queueLength: number;
+  /**
+   * The whole queue, oldest first. The banner draws only the head; the rest are
+   * here so a surface listing `/approvals` rows can recover what only a frame
+   * carries — the `reason` — for an approval the banner is not drawing.
+   */
+  approvalQueue: EngineState['approvals'];
+  /**
+   * Approval ids the transcript banner owns. Every other surface that lists
+   * `/approvals` counts these without re-offering them — see `AttentionLine`'s
+   * `handled` for why deciding elsewhere means deciding with less in front of you.
+   */
+  bannerOwned: string[];
+  /** When this tab saw the current or last run start and stop. */
+  runClock: RunClock;
   onDecide(status: 'approved' | 'denied', editedArgs?: Record<string, unknown>): Promise<void>;
   uiPrompt: EngineState['uiPrompt'];
   uiResolving: boolean;
@@ -81,6 +95,17 @@ export interface ShellValue {
   inspectorOpen: boolean;
   setInspectorOpen: Dispatch<SetStateAction<boolean>>;
 }
+
+/**
+ * Epoch ms, observed by this tab. `endedAt` null with `startedAt` set means a
+ * run is in flight; both null means none has run on this thread since load.
+ */
+export interface RunClock {
+  startedAt: number | null;
+  endedAt: number | null;
+}
+
+export const NO_RUN: RunClock = { startedAt: null, endedAt: null };
 
 const ShellContext = createContext<ShellValue | null>(null);
 

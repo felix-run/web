@@ -71,7 +71,7 @@ import {
   removeThread,
   saveTurns,
 } from '@/lib/threads';
-import { ShellProvider, type ShellValue } from '@/shell-context';
+import { NO_RUN, type RunClock, ShellProvider, type ShellValue } from '@/shell-context';
 import type { ChatMessage, ImageAttachment, ThinkingLevel, Turn } from '@/types';
 
 const MANIFEST_KEY = 'felix.manifest';
@@ -670,6 +670,38 @@ export function AppShell() {
   );
 
   const pending = pendingQueue[0] ?? null;
+  /**
+   * Approval ids the transcript banner owns, so every other surface that lists
+   * `/approvals` — the attention line and the inspector — counts them without
+   * re-offering them. Only the one the banner actually *draws*, not the whole
+   * queue: `ApprovalBanner` renders `pendingQueue[0]` and reports the rest as a
+   * count, so suppressing all of them left every approval after the first
+   * visible nowhere but in a total. Computed once here so the two surfaces
+   * cannot disagree about which one that is.
+   */
+  const bannerOwned = pending ? [pending.approvalId] : [];
+
+  /**
+   * When the current (or last) run started and stopped, for the inspector's
+   * readout. The engine keeps no clock, and the inspector is mounted only while
+   * it is open, so the transition has to be observed up here or a run already in
+   * flight when the rail opens would report an elapsed time of zero.
+   *
+   * Measured by this tab: it is when *this client* started and stopped waiting,
+   * not a harness timestamp, and a thread switch forgets it rather than
+   * attributing one conversation's run to another.
+   */
+  const [runClock, setRunClock] = useState<RunClock>(NO_RUN);
+  useEffect(() => {
+    if (streaming) setRunClock({ startedAt: Date.now(), endedAt: null });
+    else
+      setRunClock((c) =>
+        c.startedAt !== null && c.endedAt === null ? { ...c, endedAt: Date.now() } : c,
+      );
+  }, [streaming]);
+  useEffect(() => {
+    setRunClock((c) => (c.startedAt === null ? c : NO_RUN));
+  }, [threadId]);
 
   // Deliberately bare: `ApprovalDecision` owns the in-flight guard and both
   // toasts, so this does the work and lets a failure propagate to it.
@@ -1072,6 +1104,9 @@ export function AppShell() {
     skills,
     pending,
     queueLength: pendingQueue.length,
+    approvalQueue: pendingQueue,
+    bannerOwned,
+    runClock,
     onDecide,
     uiPrompt,
     uiResolving,
@@ -1253,11 +1288,7 @@ export function AppShell() {
       */}
       <AttentionLine
         streaming={streaming}
-        // Only the one the banner actually *draws*, not the whole queue:
-        // `ApprovalBanner` renders `pendingQueue[0]` and reports the rest as a
-        // count, so suppressing all of them here left every approval after the
-        // first visible nowhere but in this line's own total.
-        handled={pendingQueue[0] ? [pendingQueue[0].approvalId] : []}
+        handled={bannerOwned}
         threadId={threadId}
         threads={threads}
       />
