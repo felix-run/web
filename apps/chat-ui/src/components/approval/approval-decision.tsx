@@ -170,10 +170,17 @@ export function ApprovalDecision({
           {toolName}
         </Badge>
         {context && <span className="truncate text-xs text-muted-foreground">{context}</span>}
-        {queueLength && queueLength > 1 ? (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {queueLength - 1} more waiting
-          </span>
+        {/* One group so the queue count and the deadline wrap together in the
+            22rem rail rather than the chip landing alone on a line of its own. */}
+        {(queueLength && queueLength > 1) || left !== null ? (
+          <div className="ml-auto flex items-center gap-2">
+            {queueLength && queueLength > 1 ? (
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {queueLength - 1} more waiting
+              </span>
+            ) : null}
+            {left !== null && <DeadlineChip left={left} />}
+          </div>
         ) : null}
       </div>
 
@@ -231,7 +238,19 @@ export function ApprovalDecision({
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      {/* Directly above the buttons and at body size, because it is what Approve
+          actually does: the harness matches later calls on a hash of the
+          arguments and lets every identical one through until the deadline. Set
+          as footer prose under the buttons it was the quietest line on the card
+          and read, if at all, after the click. */}
+      {!lapsed && (
+        <p className="mt-3 text-sm text-foreground/85">
+          Approving also allows every identical <span className="font-mono">{toolName}</span> call{' '}
+          {left !== null ? 'until the deadline' : 'until the grant expires'}, not just this one.
+        </p>
+      )}
+
+      <div className="mt-2.5 flex flex-wrap gap-2">
         <Button
           size="sm"
           className="h-8 flex-1"
@@ -277,19 +296,62 @@ export function ApprovalDecision({
         ) : runAborted ? (
           'This run was stopped, so deciding will not restart it. Answering still closes out the request.'
         ) : (
-          <>
-            Deciding resumes the paused run, no need to re-send.
-            {left !== null && (
-              <>
-                {' '}
-                Denied automatically in {formatCountdown(left)}; approving also allows this exact
-                call until then.
-              </>
-            )}
-          </>
+          'Deciding resumes the paused run, no need to re-send.'
         )}
       </p>
     </div>
+  );
+}
+
+/** Below this the deadline is announced once; above it, never. */
+const LAST_MINUTE_MS = 60_000;
+
+/**
+ * The deadline, where the card is read first rather than where it ends.
+ *
+ * It was a clause in the 11px footer — the one fact on the card that changes
+ * the outcome without anyone touching it, set as its quietest line. Amber while
+ * a person can still act, red once they cannot: `blocked` asks, `failed`
+ * reports, and a lapsed approval is no longer asking anyone.
+ *
+ * The visible chip is not a live region, because a clock that speaks every
+ * second is noise a screen reader cannot skip. A separate status line changes
+ * twice — entering the last minute, and lapsing — so each is announced once.
+ */
+function DeadlineChip({ left }: { left: number }) {
+  const lapsed = left === 0;
+  const countdown = formatCountdown(left);
+  const announcement = lapsed
+    ? 'The harness stopped waiting and denied this call.'
+    : left <= LAST_MINUTE_MS
+      ? 'Under a minute left before this call is denied automatically.'
+      : '';
+  return (
+    <>
+      <span
+        className={cn(
+          'shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium',
+          lapsed
+            ? 'bg-state-failed/15 text-state-failed'
+            : 'bg-state-blocked/15 text-state-blocked',
+        )}
+        // `timer` rather than a bare span: a generic element cannot carry a name,
+        // and the role's implicit `aria-live="off"` is the silence wanted here.
+        role="timer"
+        aria-label={lapsed ? 'Denied: timed out' : `Auto-denies in ${countdown}`}
+      >
+        {lapsed ? (
+          'Denied · timed out'
+        ) : (
+          <>
+            Auto-denies in <span className="font-mono tabular-nums">{countdown}</span>
+          </>
+        )}
+      </span>
+      <span className="sr-only" role="status">
+        {announcement}
+      </span>
+    </>
   );
 }
 
