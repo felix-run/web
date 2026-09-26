@@ -1168,8 +1168,9 @@ export function AppShell() {
             onClick={newThread}
             disabled={streaming}
             className="gap-1.5"
+            aria-label="New chat"
           >
-            <PlusIcon className="size-4" />
+            <PlusIcon className="size-4" aria-hidden />
             <span className="hidden sm:inline">New chat</span>
           </Button>
           {/*
