@@ -51,6 +51,11 @@ out of a non-empty allowlist is never registered at all.
 | `felix_control_unavailable` | `control` | A named control could not run and was not treated as a pass |
 | `felix_control_degraded` | `control`, `reason` | A control fell back to a weaker implementation (e.g. PII regex fallback) |
 | `felix_model_switch` | `from`, `to`, `reason` (`provider_error` / `low_confidence`) | A fallback or confidence escalation fired |
+| `felix_decisions` | `decider`, `purpose`, `outcome` (`ok` / `error` / `invalid`) | Once per call to a decision model; `invalid` means it answered, was billed, and the answer did not fit the question. Its tokens are in `felix_tokens` under `model=<decider id>` |
+| `felix_tool_selection` | `method` (`decider` / `unscored` / `unsure` / `error`) | `tools_retrieval.decider` chose a shortlist, or fell back to the default ranking. A rising `unsure` share means `top_k` is too small for the catalogue |
+| `felix_router_choice` | `manifest_id`, `method` (`decider` / `decider_unsure` / `decider_error` / `llm` / `unmatched`) | A router picked its sub-agent. **Watch `unmatched`**: the classifier named no child and the request went to the first one |
+| `felix_escalation_check` | `method` (`decider` / `error`) | `confidence_escalation.decider` judged a reply, or fell back to the heuristic |
+| `felix_skill_suggestion` | `outcome` (`suggested` / `none` / `error`) | `spec.skill_suggestion` ran for a turn |
 | `felix_model_retry` / `felix_model_retry_skipped` | `provider`, plus `status` / `reason` | Provider call retried, or deliberately not retried (`reason: quota`) |
 | `felix_context_overflow_recovered` | `manifest_id`, `reason` | The loop recovered from a context-window overflow |
 | `felix_run_stop_reason` | `manifest_id`, `reason` | A run ended on anything other than a clean completion |

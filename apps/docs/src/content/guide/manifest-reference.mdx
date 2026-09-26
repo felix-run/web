@@ -70,7 +70,6 @@ spec:
 | `id` | string \| null | `null` | Logical route name. Null falls back to `FELIX_DEFAULT_MODEL_ID` (`claude-sonnet`). |
 | `temperature` | float | `0.0` | |
 | `max_tokens` | int \| null | `null` | Provider default when unset. |
-| `region` | string \| null | `null` | |
 | `cache` | bool | `false` | Provider prompt caching. |
 | `thinking_budget` | int \| null, `128`–`64000` | `null` | Extended-thinking token budget. |
 | `thinking_level` | `off` `minimal` `low` `medium` `high` `xhigh` `max` \| null | `null` | When set, **overrides** `thinking_budget` via the level map. |
@@ -96,6 +95,12 @@ model has no known rates — supply them with `spec.model.price`. See
 | `escalate_to` | string | `""` |
 | `low_confidence_markers` | string[] | `["i am not sure", "i don't know", "i cannot answer", "unclear", "uncertain", "no information"]` |
 | `min_response_chars` | int ≥ 0 | `40` |
+| `decider` | bool | `false` |
+
+With `decider: true` the markers and length are not consulted: `spec.decider` is asked whether the
+reply fully answers the request, and a probability below `spec.decider.min_confidence` escalates. The
+heuristic stays as the fallback when the decider errors, and for side requests such as compaction
+summaries. Honoured on `react` and `deep` only — elsewhere it is refused at validation.
 
 :::note
 A client may override the model mid-session with `POST /chat` `{"model": "..."}`, but only against an
@@ -509,7 +514,17 @@ which returns `[error/timeout] client tool timed out` as the tool result. See
 ## `spec.sub_agents` and `spec.aggregator_prompt`
 
 `sub_agents` is a list of manifest names, required by the multi-agent patterns and resolved at build
-time. `aggregator_prompt` (string, `""`) tells `parallel` and `groupchat` how to merge their results.
+time the way a request resolves a manifest — the tenant's stored versions, then object storage, then
+bundled YAML. A name that resolves nowhere fails the compile; each child compiles once however many
+parents name it, nesting deeper than four routers is refused, and so is a cycle. `aggregator_prompt`
+(string, `""`) tells `parallel` and `groupchat` how to merge their results.
+
+A child **inherits the caller's admission**: `spec.auth.inbound` is checked on the manifest a request
+names, not again on each child. Put the admission you need on the router — a child's own
+`required_scopes` apply when it is called by name, not when a router hands it a request. Everything
+else a child declares (tools, policies, approvals, screening, limits) is compiled into it and applies
+however it was reached. A `router` with [`spec.decider`](#specdecider) picks its child with the
+decider and falls back to its model classifier when the decider is unsure.
 
 ## `spec.max_turns` and `spec.recursion_limit`
 
@@ -697,6 +712,59 @@ Selects a relevant subset of tools per turn instead of sending the whole catalog
 | `enabled` | bool | `false` |
 | `top_k` | int ≥ 1 | `20` |
 | `model` | string | `"bge-base-en-v1.5"` |
+| `decider` | bool | `false` |
+
+With `decider: true`, [`spec.decider`](#specdecider) picks the shortlist: one choice over the whole
+catalogue per user turn, the `top_k` most probable offered, tools already used this thread always
+kept. It falls back to the embedding (or keyword) ranking when the decider errors or when the
+shortlist holds less than `spec.decider.min_confidence` of the probability mass. Needs `enabled`.
+
+## `spec.decider`
+
+A **decision model** answers typed questions — pick one option, score against levels, true or false —
+with calibrated probabilities instead of generating text. Naming one here does nothing on its own;
+each consumer opts in with its own flag, and each keeps its previous behaviour as the fallback.
+
+```yaml
+spec:
+  decider:
+    id: jev              # a FELIX_DECISION_ROUTES id
+    min_confidence: 0.5
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `id` | string | `""` | Off when empty. `jev` (TypeSafe) and `jev-cf` (Jev on Workers AI) are built in; an id not in `FELIX_DECISION_ROUTES` fails the compile. |
+| `min_confidence` | float 0–1 | `0.5` | Below this a consumer treats the decision as unsure and takes its fallback. |
+
+| Consumer | Flag | What the decider decides |
+|---|---|---|
+| Tool selection | `tools_retrieval.decider` | Which tools the model is offered this turn |
+| Router | `pattern: router` with `decider.id` set | Which sub-agent answers |
+| Escalation | `model.confidence_escalation.decider` | Whether the reply answers the request |
+| Judges | `guardrails.judges[].decider` | Probability the text meets `criteria` |
+| Reflect | `reflect.decider` | Whether a draft meets the criteria |
+| Skill hints | `skill_suggestion.enabled` | Which skill fits a task, sent as a hint |
+| Screening | `content_screening.decider` | Injection, jailbreak and exfiltration risk |
+
+Every decision is metered like a model turn and counts against `limits.max_cost_usd`. The request
+text — and, for the consumers that judge them, replies and tool output — goes to the decider's
+provider unmasked. The bundled `decider-support` manifest switches on every consumer that fits a
+support agent. See [Model client](/internals/model-client/#decision-models).
+
+## `spec.skill_suggestion`
+
+Ranks the skill catalogue with [`spec.decider`](#specdecider), reranks a shortlist against each
+skill's body, and — only when the request asks for a task and a skill fits it — adds a one-line hint
+naming that skill. The model still decides whether to `activate_skill`. The hint rides the turn's
+first model call as a transient message: after the prompt-cache breakpoint, never in the session log.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | Needs `spec.decider.id`; `react` and `deep` only. |
+| `shortlist` | int 1–10 | `3` | Skills carried into the rerank; a catalogue no larger skips the ranking. |
+| `min_gate` | float 0–1 | `0.3` | Probability the request asks for a task at all. |
+| `min_fit` | float 0–1 | `0.3` | Probability the best skill does what was asked. |
 
 ## `spec.artifacts`
 
@@ -753,6 +821,10 @@ fetch pages — `contributor`, `cowork`, `triage`, `deep`, `support` — enable 
 | `threshold` | float 0–1 | `0.7` |
 | `max_iterations` | int 1–5 | `2` |
 | `criteria` | string | `""` |
+| `decider` | bool | `false` |
+
+`decider: true` verifies each draft with [`spec.decider`](#specdecider) instead of asking
+`verifier_model` for a bare number; the model verifier and the heuristic remain the fallback.
 
 ## `spec.plan_execute`
 
@@ -875,7 +947,14 @@ spec:
 | `judges` | JudgeRule[] | `[]` |
 
 `JudgeRule`: `name` (required), `criteria` (required), `threshold` (float 0–1, default `0.7`),
-`model` (string, `""`), `target_tools` (string[], `[]`), `final_response` (bool, `false`).
+`model` (string, `""`), `target_tools` (string[], `[]`), `final_response` (bool, `false`),
+`decider` (bool, `false`).
+
+A judge scores with, in order: [`spec.decider`](#specdecider) when `decider: true` — the probability
+the text meets `criteria`, read as written, so a negative criterion needs no `assert_absent:` prefix —
+then the model in `model`, then the heuristic. Each failure falls through to the next. Text longer
+than 8,000 characters skips the decider, which would otherwise judge only a prefix. A decider judge
+is a quality control, not a security boundary: the text it judges can argue for its own verdict.
 
 `providers` is a closed set, like `targets` beside it: a typo (`PII`, `pii-redaction`) is a
 compile error rather than a manifest that applies no wrapper while reporting guardrails enabled.
@@ -895,8 +974,15 @@ Screens tool **output** for prompt injection before the model sees it.
 |---|---|---|---|
 | `enabled` | bool | `false` | |
 | `model` | string | `""` | Empty = marker-based only; set an id to add an LLM injection score. |
-| `tools` | string[] | `[]` | Empty = all tools. |
+| `tools` | string[] | `[]` | Screened **in addition to** every untrusted tool — anything not executing in-process: MCP, peers, browser, sandbox, container, queue, fetch, any plugin transport — which is always screened. |
 | `on_flag` | `quarantine` \| `block` | `quarantine` | Applies to output that is flagged **and** to output that could not be screened. |
+| `decider` | bool | `false` | Also ask [`spec.decider`](#specdecider): injection, jailbreak and exfiltration in one call. |
+
+`decider` is **additive**: the markers run first, `model` runs beside it, either one flagging flags,
+and either one unable to run leaves the text unscreened rather than cleared. A decider is not
+adversarially robust, so it is an extra net, never a replacement for the model screener. The model
+screener and the decider read tool output and user turns window by window across the whole text;
+output longer than eight windows (32,000 characters) is reported unavailable, so `on_flag` decides.
 
 Inbound user turns are screened on `/chat`, `/v1` and `/a2a` as well.
 
@@ -1017,7 +1103,7 @@ spec:
 | `risk_tier` | `limited` \| `high` | `limited` | EU AI Act deployer hint. |
 | `transparency_notice` | bool | `false` | Prepends an "you are talking to an AI agent" notice. |
 | `forbid_plaintext_secrets` | bool | `false` | Also forced on when `FELIX_ENVIRONMENT=production`. |
-| `pin_compile` | bool | `false` | Freezes the manifest version for a thread; drift → `409`. |
+| `pin_compile` | bool | `false` | Freezes the manifest version for a thread — and every sub-agent it compiles, recursively; drift → `409`. |
 | `retention_days` | int 1–3650 \| null | `null` | Shortens this manifest's **audit** rows below `FELIX_AUDIT_RETENTION_DAYS`, never lengthens them. Does not reach its spilled artifacts, which follow `FELIX_ARTIFACT_RETENTION_DAYS`. |
 
 Setting any framework forces `forbid_plaintext_secrets` and `pin_compile` to `true`, and then:
