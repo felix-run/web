@@ -22,7 +22,9 @@ export function SkillsSection({
     <Section
       icon={<SparklesIcon className="size-3.5" />}
       title="Skills"
-      meta={skills ? `${skills.active.length}/${skills.declared.length}` : undefined}
+      // `2/5` asked the reader to know which number was which; the words cost
+      // three characters and remove the question.
+      meta={skills ? `${skills.active.length} of ${skills.declared.length} active` : undefined}
       open={open}
       onToggle={onToggle}
     >

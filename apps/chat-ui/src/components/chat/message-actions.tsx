@@ -2,6 +2,7 @@ import { Button } from '@felix/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import { CheckIcon, CopyIcon, RefreshCwIcon, TagIcon, Undo2Icon } from 'lucide-react';
 import { useState } from 'react';
+import { ConfirmButton } from '@/components/confirm-button';
 import { cn } from '@/lib/utils';
 
 /**
@@ -134,18 +135,30 @@ export function MessageActions({
           <TooltipContent>Continue from here, setting later turns aside</TooltipContent>
         </Tooltip>
       )}
+      {/*
+        Regenerate arms before it fires; Rewind does not. The difference is what
+        each can take back. Rewind moves the active leaf and its toast offers Undo,
+        which moves it back — nothing is lost. Regenerate resets the thread's
+        server history and replays only the message text, so the answer it
+        replaces goes, and with it every tool result and note in the thread's
+        log. One stray click on a hover control should not cost that.
+      */}
       {onRegenerate && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
+            <ConfirmButton
               variant="ghost"
-              size="icon-sm"
-              className="size-7 text-muted-foreground"
-              onClick={onRegenerate}
+              size="xs"
+              className="text-muted-foreground"
+              restingClassName="size-7 px-0"
               aria-label="Regenerate response"
+              question="Replace this answer? The thread's server log is reset and replayed as text, so tool results in it are dropped."
+              confirmLabel="Regenerate"
+              destructive
+              onConfirm={onRegenerate}
             >
               <RefreshCwIcon className="size-3.5" />
-            </Button>
+            </ConfirmButton>
           </TooltipTrigger>
           <TooltipContent>Regenerate</TooltipContent>
         </Tooltip>

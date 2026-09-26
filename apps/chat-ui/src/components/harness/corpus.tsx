@@ -4,6 +4,7 @@ import { BookOpenIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { addDocument, deleteDocument, listDocuments, searchDocuments } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
+import { plural } from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,10 @@ import { DOCUMENT_LIMITS } from '@/types';
  * - A search hit is a **chunk**, not a document. Showing the document title
  *   alone would hide the thing actually retrieved.
  */
+/** The fetch caps, named because the header's value has to know them to stay true. */
+const RECENT_LIMIT = 100;
+const SEARCH_LIMIT = 12;
+
 export function DocumentsSection({
   enabled,
   open,
@@ -57,10 +62,10 @@ export function DocumentsSection({
 
   const searchReady = mode === 'search' && committedQuery.length > 0;
 
-  const recent = usePoll(() => listDocuments({ limit: 100 }), {
+  const recent = usePoll(() => listDocuments({ limit: RECENT_LIMIT }), {
     enabled: enabled && mode === 'recent',
   });
-  const found = usePoll(() => searchDocuments(committedQuery, { limit: 12 }), {
+  const found = usePoll(() => searchDocuments(committedQuery, { limit: SEARCH_LIMIT }), {
     enabled: enabled && searchReady,
   });
 
@@ -78,7 +83,15 @@ export function DocumentsSection({
     <Section
       icon={<BookOpenIcon className="size-3.5" />}
       title="Corpus"
-      meta={mode === 'recent' && recent.data ? String(recent.data.length) : undefined}
+      // A search hit is a chunk, not a document, so the two views count different
+      // things and say so. Nothing while the first fetch is in flight.
+      meta={
+        mode === 'recent' && recent.data
+          ? plural(recent.data.length, 'document', 'documents', RECENT_LIMIT)
+          : mode === 'search' && searchReady && found.data
+            ? plural(found.data.length, 'passage', 'passages', SEARCH_LIMIT)
+            : undefined
+      }
       open={open}
       onToggle={onToggle}
     >

@@ -255,3 +255,34 @@ describe('a denial says which layer refused it', () => {
     ).toEqual(['d1']);
   });
 });
+
+describe('the row and the window, read at a glance', () => {
+  it('sets the tool name in mono and carries the thread beside it', async () => {
+    stubHarness([
+      auditRow({ payload_json: { tool: 'read_file', thread_id: 'default:thread-abc' } }),
+    ]);
+    renderInspector();
+
+    const row = await screen.findByRole('button', { name: /read_file/ });
+    // A tool name is a quotation of the harness (the Provenance Rule).
+    expect(within(row).getByText('read_file').className).toContain('font-mono');
+    // The suffix, never `{tenant}:{suffix}`.
+    expect(within(row).getByText('thread-abc')).toBeTruthy();
+    expect(row.textContent).not.toContain('default:');
+  });
+
+  it('counts the window and its failures, and says how to reach the rows it cut', async () => {
+    const events = Array.from({ length: 13 }, (_, i) =>
+      auditRow({ id: `e${i}`, status: i === 0 ? 'error' : 'ok' }),
+    );
+    stubHarness(events);
+    renderInspector();
+
+    expect(await screen.findByText('13 events · 1 failed')).toBeTruthy();
+    expect(
+      screen.getByText('Newest 12 of the last 13 events. The filters search all 13.'),
+    ).toBeTruthy();
+    // The phrasing it replaced said "recent" twice and nothing about the rest.
+    expect(document.body.textContent).not.toMatch(/recent events/);
+  });
+});

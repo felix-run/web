@@ -1,3 +1,4 @@
+import { threadSuffix } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
@@ -13,7 +14,6 @@ import {
   SectionBody,
   STATUS_LABEL,
   StatusDot,
-  Truncated,
   tsToMs,
 } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
@@ -197,10 +197,17 @@ export function ActivitySection({
     <Section
       icon={<ActivityIcon className="size-3.5" />}
       title="Activity"
-      // A census of the window is a constant once the harness has `ACTIVITY_FETCH`
-      // rows — it read "60" forever and answered nothing. What is worth knowing from a
-      // collapsed header is whether anything in the window went wrong.
-      meta={failed.length > 0 ? `${failed.length} failed` : undefined}
+      // A bare count of the window is a constant once the harness has
+      // `ACTIVITY_FETCH` rows — it read "60" forever and answered nothing. What is
+      // worth knowing at a glance is whether anything in the window went wrong, and
+      // the window is there as that number's denominator, labelled as a window.
+      meta={
+        data
+          ? `${data.length >= ACTIVITY_FETCH ? `last ${ACTIVITY_FETCH}` : data.length} ${
+              data.length === 1 ? 'event' : 'events'
+            } · ${failed.length} failed`
+          : undefined
+      }
       metaTone={failed.length > 0 ? 'failed' : 'default'}
       open={open}
       onToggle={onToggle}
@@ -229,70 +236,78 @@ export function ActivitySection({
             : undefined
         }
       >
-        <div className="mb-1.5 flex items-center justify-end gap-1.5">
-          {/* The layer filter answers one question — "what has approvals blocked this
+        {/*
+          Capped at a reading measure. Across a full-width page the tool name sat
+          at the left edge and its status ~1300px away at the right, so reading one
+          row meant carrying a word across the screen; the filters sit on the same
+          edge the statuses do.
+        */}
+        <div className="max-w-3xl">
+          <div className="mb-1.5 flex items-center justify-end gap-1.5">
+            {/* The layer filter answers one question — "what has approvals blocked this
               week" — so it reads as that question rather than as a column picker. */}
-          <Select value={layer} onValueChange={setLayer}>
-            <SelectTrigger
-              size="sm"
-              className="h-6 w-auto gap-1 px-2 text-xs"
-              aria-label="Blocked by which layer"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any" className="text-xs">
-                Any layer
-              </SelectItem>
-              {CONTROL_LAYERS.map((c) => (
-                <SelectItem key={c} value={c} className="text-xs">
-                  Blocked by {CONTROL_LABEL[c]}
+            <Select value={layer} onValueChange={setLayer}>
+              <SelectTrigger
+                size="sm"
+                className="h-6 w-auto gap-1 px-2 text-xs"
+                aria-label="Blocked by which layer"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any" className="text-xs">
+                  Any layer
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {/* Outline rather than ghost: at this size a ghost toggle reads as a caption
+                {CONTROL_LAYERS.map((c) => (
+                  <SelectItem key={c} value={c} className="text-xs">
+                    Blocked by {CONTROL_LABEL[c]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* Outline rather than ghost: at this size a ghost toggle reads as a caption
               floating above the list, and a control nobody recognises as one is the
               same as no filter at all. */}
-          <Button
-            size="sm"
-            variant={failuresOnly ? 'secondary' : 'outline'}
-            className="h-6 px-2 text-xs"
-            aria-pressed={failuresOnly}
-            onClick={() => setFailuresOnly((v) => !v)}
-          >
-            Failures only
-          </Button>
+            <Button
+              size="sm"
+              variant={failuresOnly ? 'secondary' : 'outline'}
+              className="h-6 px-2 text-xs"
+              aria-pressed={failuresOnly}
+              onClick={() => setFailuresOnly((v) => !v)}
+            >
+              Failures only
+            </Button>
+          </div>
+          <ol className="divide-y divide-border/40">
+            {rows.map((e) => (
+              <ActivityRow
+                key={e.id}
+                event={e}
+                open={openId === e.id}
+                onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
+              />
+            ))}
+          </ol>
+          {/* Counts the filtered set, not the fetch: with the filter on, "of the last 60"
+            would describe a window the reader is no longer looking at. And it says
+            where the rest are, because the filters run over the whole window while
+            only the newest rows are drawn — "Showing 12 of the last 60 recent
+            events" said "recent" twice and not how to reach the other 48. */}
+          {visible.length > rows.length && data && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {layerLabel
+                ? `Newest ${rows.length} of ${visible.length} denials by ${layerLabel} in the last ${data.length} events.`
+                : failuresOnly
+                  ? `Newest ${rows.length} of ${visible.length} failed events in the last ${data.length}.`
+                  : `Newest ${rows.length} of the last ${data.length} events. The filters search all ${data.length}.`}
+            </p>
+          )}
+          {openId !== null && (
+            // A list that has quietly stopped updating looks exactly like a harness that
+            // has stopped working. Say which one it is.
+            <p className="mt-1 text-xs text-muted-foreground">Paused while a row is open.</p>
+          )}
         </div>
-        <ol className="divide-y divide-border/40">
-          {rows.map((e) => (
-            <ActivityRow
-              key={e.id}
-              event={e}
-              open={openId === e.id}
-              onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-            />
-          ))}
-        </ol>
-        {/* Counts the filtered set, not the fetch: with the filter on, "of the last 60"
-            would describe a window the reader is no longer looking at. */}
-        <Truncated
-          shown={rows.length}
-          total={visible.length}
-          noun={
-            layerLabel
-              ? `denials by ${layerLabel} in the last ${ACTIVITY_FETCH}`
-              : failuresOnly
-                ? `failed events in the last ${ACTIVITY_FETCH}`
-                : 'recent events'
-          }
-          windowed={!failuresOnly && !layerLabel}
-        />
-        {openId !== null && (
-          // A list that has quietly stopped updating looks exactly like a harness that
-          // has stopped working. Say which one it is.
-          <p className="mt-1 text-xs text-muted-foreground">Paused while a row is open.</p>
-        )}
       </SectionBody>
     </Section>
   );
@@ -323,6 +338,9 @@ function ActivityRow({
   const tone = EVENT_TONE[e.event_type];
   const label = EVENT_LABEL[e.event_type] ?? e.event_type;
   const subject = subjectOf(e);
+  const tool = typeof e.payload?.tool === 'string' && e.payload.tool !== '';
+  const rawThread = e.payload?.thread_id;
+  const thread = typeof rawThread === 'string' && rawThread ? threadSuffix(rawThread) : null;
   const text = summary(e);
   const control = e.event_type === 'policy_deny' ? controlOf(e) : undefined;
 
@@ -339,6 +357,11 @@ function ActivityRow({
             className="mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90"
           />
           <div className="min-w-0 flex-1">
+            {/* One line in reading order — what, on which thread, how it went, when —
+                so the status is read with the name rather than found at the far
+                edge. There is no target: a `tool_call` row records the tool's name,
+                call id and thread, never its arguments, so a target here would be
+                invented. */}
             <div className="flex items-center gap-1.5">
               {/* Every row carries its type. The exception gets the tonal badge; the
                   routine majority gets a quiet label, which is what keeps the
@@ -363,7 +386,11 @@ function ActivityRow({
                   </span>
                 )
               )}
-              <span className="truncate font-medium">{subject}</span>
+              {/* A tool name is a quotation of the harness, so it is mono (the
+                  Provenance Rule); a turn boundary is our own label and is not. */}
+              <span className={cn('truncate font-medium', tool && 'font-mono text-xs')}>
+                {subject}
+              </span>
               {control && (
                 // Which layer said no, next to what it said no to. A row from a
                 // harness that did not stamp it shows nothing here rather than a
@@ -372,6 +399,29 @@ function ActivityRow({
                   by {CONTROL_LABEL[control] ?? control}
                 </span>
               )}
+              {thread && (
+                // The suffix, as every other thread id a client holds. Cut to a
+                // uuid's first group on screen; whole in `title` for matching.
+                <span
+                  title={`Thread ${thread}`}
+                  className="max-w-[10ch] shrink-0 truncate font-mono text-xs text-muted-foreground"
+                >
+                  {thread}
+                </span>
+              )}
+              <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+                <StatusDot status={e.status} />
+                {e.ts != null && (
+                  // The rounded "3h" is for scanning; the exact stamp is for matching a
+                  // row against a harness log line.
+                  <span
+                    title={new Date(tsToMs(e.ts)).toISOString()}
+                    className="w-8 text-right text-xs tabular-nums text-muted-foreground"
+                  >
+                    {relTime(e.ts)}
+                  </span>
+                )}
+              </span>
             </div>
             {text && (
               // The clamp is a scanning aid, so it lifts once this row is the one
@@ -384,19 +434,6 @@ function ActivityRow({
               >
                 {text}
               </p>
-            )}
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-0.5">
-            <StatusDot status={e.status} />
-            {e.ts != null && (
-              // The rounded "3h" is for scanning; the exact stamp is for matching a
-              // row against a harness log line.
-              <span
-                title={new Date(tsToMs(e.ts)).toISOString()}
-                className="text-xs tabular-nums text-muted-foreground"
-              >
-                {relTime(e.ts)}
-              </span>
             )}
           </div>
         </CollapsibleTrigger>
@@ -544,9 +581,9 @@ export function UsageSection({
     <Section
       icon={<CoinsIcon className="size-3.5" />}
       title="Usage"
-      meta={
-        totals && totals.in + totals.out > 0 ? `${compact(totals.in + totals.out)} tok` : undefined
-      }
+      // The window rides with the total: "12.4k tokens" alone does not say over
+      // what, and the header is read without the body under it.
+      meta={summary ? `${compact(totals.in + totals.out)} tokens · last ${days} days` : undefined}
       open={open}
       onToggle={onToggle}
     >
@@ -563,90 +600,97 @@ export function UsageSection({
             : undefined
         }
       >
-        <p className="mb-1.5 text-xs text-muted-foreground">
-          Last {days} days, across {totals.calls.toLocaleString()}{' '}
-          {totals.calls === 1 ? 'turn' : 'turns'}
-        </p>
-        <dl className="mb-2.5 flex gap-6 border-b border-border/40 pb-2.5">
-          <div>
-            <dt className="text-xs text-muted-foreground">Input</dt>
-            <dd className="mt-0.5 tabular-nums font-mono text-sm">{totals.in.toLocaleString()}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Output</dt>
-            <dd className="mt-0.5 tabular-nums font-mono text-sm">{totals.out.toLocaleString()}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">
-              {/*
+        {/* The same measure as Activity, so switching halves does not move the edge. */}
+        <div className="max-w-3xl">
+          <p className="mb-1.5 text-xs text-muted-foreground">
+            Last {days} days, across {totals.calls.toLocaleString()}{' '}
+            {totals.calls === 1 ? 'turn' : 'turns'}
+          </p>
+          <dl className="mb-2.5 flex gap-6 border-b border-border/40 pb-2.5">
+            <div>
+              <dt className="text-xs text-muted-foreground">Input</dt>
+              <dd className="mt-0.5 tabular-nums font-mono text-sm">
+                {totals.in.toLocaleString()}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Output</dt>
+              <dd className="mt-0.5 tabular-nums font-mono text-sm">
+                {totals.out.toLocaleString()}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">
+                {/*
                 Not "Cost" when any row was unpriced: the number is a floor, and
                 labelling a floor as the total is the misreading worth designing
                 against here.
               */}
-              {totals.unpriced > 0 ? 'Cost (floor)' : 'Cost'}
-            </dt>
-            <dd className="mt-0.5 tabular-nums font-mono text-sm">
-              {totals.unpriced > 0 ? '≥ ' : ''}
-              {usd(totals.cost)}
-            </dd>
-          </div>
-        </dl>
-        {totals.unpriced > 0 && (
-          <p className="mb-2.5 text-xs text-state-failed">
-            {totals.unpriced} {totals.unpriced === 1 ? 'turn is' : 'turns are'} metered but unpriced
-            — the model has no entry in the pricing catalog, so its spend counts as zero and{' '}
-            <code className="font-mono">limits.max_cost_usd</code> fails open for it.
-          </p>
-        )}
-        <ol className="divide-y divide-border/40">
-          {rows.map((e) => (
-            <li key={e.id} className="flex items-start gap-2 py-1.5 text-xs">
-              <div className="min-w-0 flex-1">
-                <div className="truncate">
-                  {e.manifest_id || '—'}
-                  {e.model_id ? (
-                    <span className="ml-1 font-mono text-xs text-muted-foreground">
-                      {e.model_id}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-0.5 tabular-nums font-mono text-xs text-muted-foreground">
-                  {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
-                  {(e.tokens_output ?? 0).toLocaleString()} out
-                  {(e.cache_read ?? 0) > 0 ? ` · ${e.cache_read.toLocaleString()} cache` : ''}
-                  {e.cost_usd ? ` · ${usd(e.cost_usd)}` : ''}
-                </p>
-                {/*
+                {totals.unpriced > 0 ? 'Cost (floor)' : 'Cost'}
+              </dt>
+              <dd className="mt-0.5 tabular-nums font-mono text-sm">
+                {totals.unpriced > 0 ? '≥ ' : ''}
+                {usd(totals.cost)}
+              </dd>
+            </div>
+          </dl>
+          {totals.unpriced > 0 && (
+            <p className="mb-2.5 text-xs text-state-failed">
+              {totals.unpriced} {totals.unpriced === 1 ? 'turn is' : 'turns are'} metered but
+              unpriced — the model has no entry in the pricing catalog, so its spend counts as zero
+              and <code className="font-mono">limits.max_cost_usd</code> fails open for it.
+            </p>
+          )}
+          <ol className="divide-y divide-border/40">
+            {rows.map((e) => (
+              <li key={e.id} className="flex items-start gap-2 py-1.5 text-xs">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate">
+                    {e.manifest_id || '—'}
+                    {e.model_id ? (
+                      <span className="ml-1 font-mono text-xs text-muted-foreground">
+                        {e.model_id}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-0.5 tabular-nums font-mono text-xs text-muted-foreground">
+                    {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
+                    {(e.tokens_output ?? 0).toLocaleString()} out
+                    {(e.cache_read ?? 0) > 0 ? ` · ${e.cache_read.toLocaleString()} cache` : ''}
+                    {e.cost_usd ? ` · ${usd(e.cost_usd)}` : ''}
+                  </p>
+                  {/*
                   Only when it disagrees with the reported id. `model_id` is the
                   logical route the operator configured; this is what the row was
                   actually priced by, and the two differing on a custom route is
                   the case worth being able to see.
                 */}
-                {e.wire_model_id && e.wire_model_id !== e.model_id ? (
-                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-                    priced as {e.wire_model_id}
-                  </p>
-                ) : null}
-              </div>
-              {e.ts != null && (
-                <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
-                  {relTime(e.ts)}
-                </span>
-              )}
-            </li>
-          ))}
-        </ol>
-        {/*
+                  {e.wire_model_id && e.wire_model_id !== e.model_id ? (
+                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                      priced as {e.wire_model_id}
+                    </p>
+                  ) : null}
+                </div>
+                {e.ts != null && (
+                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                    {relTime(e.ts)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+          {/*
           The rows are a recent sample, not a page of the window. Saying "8 of 8"
           would be true and useless; what the reader needs is that the list and
           the totals above it are measuring different things.
         */}
-        {rows.length > 0 && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            The {rows.length} most recent {rows.length === 1 ? 'turn' : 'turns'}; the totals above
-            cover the window.
-          </p>
-        )}
+          {rows.length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              The {rows.length} most recent {rows.length === 1 ? 'turn' : 'turns'}; the totals above
+              cover the window.
+            </p>
+          )}
+        </div>
       </SectionBody>
     </Section>
   );

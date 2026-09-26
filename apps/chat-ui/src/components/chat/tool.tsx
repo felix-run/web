@@ -135,9 +135,12 @@ function Field({ label, value, emphasis }: { label: string; value: unknown; emph
       {spilled ? (
         <SpilledOutput ref_={spilled} />
       ) : (
+        // Wrapped, not scrolled sideways. Unwrapped, an expanded Output was one line
+        // of escaped JSON under a horizontal scrollbar — present, and unreadable
+        // without dragging it a screen at a time. The height cap still scrolls.
         <pre
           className={cn(
-            'max-h-64 overflow-auto rounded-lg bg-background p-2.5 text-xs leading-relaxed',
+            'max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-background p-2.5 text-xs leading-relaxed',
             emphasis ? 'text-foreground' : 'text-muted-foreground',
           )}
         >
@@ -178,7 +181,7 @@ function SpilledOutput({ ref_ }: { ref_: ArtifactRef }) {
     <div className="space-y-1.5">
       <pre
         className={cn(
-          'overflow-auto rounded-lg bg-background p-2.5 text-xs leading-relaxed text-foreground',
+          'overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-background p-2.5 text-xs leading-relaxed text-foreground',
           full ? 'max-h-96' : 'max-h-64',
         )}
       >
@@ -309,7 +312,7 @@ function Stream({ label, text, sayEmpty }: { label: string; text: string; sayEmp
   return (
     <div>
       <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
-      <pre className="max-h-64 overflow-auto rounded-lg bg-background p-2.5 text-xs leading-relaxed text-foreground">
+      <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-background p-2.5 text-xs leading-relaxed text-foreground">
         {text}
       </pre>
     </div>
@@ -326,19 +329,48 @@ const SUMMARIZED = new Set(['write_file', 'local_shell', 'local_open']);
 /**
  * The argument names that say what a call is *about*, in the order they are
  * tried. The workspace tools and most harness tools spell their subject one of
- * these ways; a call with none of them shows its arguments as one line instead.
+ * these ways; a call with none of them falls through to `distinguishingArgs`.
  */
 const TARGET_KEYS = ['path', 'file', 'target', 'command', 'query', 'pattern', 'url', 'name', 'id'];
+
+/** The keys that number an issue or pull request, as GitHub-shaped MCP tools spell them. */
+const NUMBER_KEYS = ['issue_number', 'pull_number', 'pr_number', 'number'];
+
+/**
+ * Arguments that page, sort or cap a listing. Nearly every call sets them the
+ * same way, so spending the header on them spends it on what every card has in
+ * common — the opposite of what the target is for.
+ */
+const NOISE_KEYS = new Set([
+  'page',
+  'per_page',
+  'perPage',
+  'limit',
+  'offset',
+  'cursor',
+  'after',
+  'before',
+  'sort',
+  'direction',
+  'order',
+]);
 
 /**
  * What a call acted on, as one line for the card's header — or null when the
  * call had no arguments to speak of.
  *
  * Known client tools get `summarizeToolArgs`'s sentence, the same words the
- * approval card uses for them. Anything else leads with its subject argument
+ * approval card uses for them. A call naming a repository — which the
+ * GitHub-shaped MCP tools (`github__list_issues`, `github__get_issue`) all do —
+ * leads with `owner/repo#number`. Anything else leads with its subject argument
  * when it has one, because `{"path":"src/a.ts"}` says less than `src/a.ts` in
- * more characters; failing that, its arguments as compact JSON, which the
- * header truncates and the `title` carries whole.
+ * more characters; failing that, the arguments that tell one call from the next.
+ *
+ * That last step used to be the whole argument object as compact JSON, cut by
+ * the header's width. Every GitHub call starts `{"owner":"…","repo":"…"`, so two
+ * `github__list_issues` cards asking different questions truncated to the same
+ * row, and the difference sat past the ellipsis on both. Compact JSON is still
+ * the last resort, for arguments that have nothing but noise in them.
  */
 export function toolTarget(name: string, input: unknown): string | null {
   let args = input;
@@ -356,10 +388,18 @@ export function toolTarget(name: string, input: unknown): string | null {
   const o = args as Record<string, unknown>;
   if (Object.keys(o).length === 0) return null;
   if (SUMMARIZED.has(name)) return oneLine(summarizeToolArgs(name, o));
+
+  const repo = repoRef(o);
+  if (repo) {
+    const rest = distinguishingArgs(o, new Set(['owner', 'repo', ...NUMBER_KEYS]));
+    return oneLine(rest ? `${repo} · ${rest}` : repo);
+  }
   for (const key of TARGET_KEYS) {
     const v = o[key];
     if (typeof v === 'string' && v.trim()) return oneLine(v);
   }
+  const rest = distinguishingArgs(o, new Set());
+  if (rest) return oneLine(rest);
   try {
     return oneLine(JSON.stringify(o));
   } catch {
@@ -367,13 +407,75 @@ export function toolTarget(name: string, input: unknown): string | null {
   }
 }
 
+/** `owner/repo`, plus `#12` when the call names an issue or pull request. */
+function repoRef(o: Record<string, unknown>): string | null {
+  const { owner, repo } = o;
+  if (typeof owner !== 'string' || !owner || typeof repo !== 'string' || !repo) return null;
+  for (const key of NUMBER_KEYS) {
+    const n = o[key];
+    if (typeof n === 'number' || (typeof n === 'string' && /^\d+$/.test(n))) {
+      return `${owner}/${repo}#${n}`;
+    }
+  }
+  return `${owner}/${repo}`;
+}
+
+/**
+ * `key=value` for the arguments that make this call this call: everything except
+ * what `skip` has already said, the paging in `NOISE_KEYS`, empty values, and
+ * `state=open` — the default filter of every listing tool that takes one, so it
+ * earns a place only when it is something else.
+ */
+function distinguishingArgs(o: Record<string, unknown>, skip: Set<string>): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(o)) {
+    if (skip.has(k) || NOISE_KEYS.has(k)) continue;
+    if (k === 'state' && v === 'open') continue;
+    const text = argText(v);
+    if (text) parts.push(`${k}=${text}`);
+  }
+  return parts.join(' · ');
+}
+
+function argText(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v) && v.every((x) => typeof x === 'string' || typeof x === 'number')) {
+    return v.join(',');
+  }
+  try {
+    const json = JSON.stringify(v);
+    return json === '{}' || json === '[]' ? '' : json;
+  } catch {
+    return '';
+  }
+}
+
 function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * A tool's input or output as text for its pane.
+ *
+ * Output arrives as a string far more often than as an object, and a JSON string
+ * printed as-is is one line of escaped quotes. Input was already pretty-printed
+ * because it usually arrives parsed; output gets the same treatment when the
+ * whole string parses, so the two panes of one card read alike. A string that
+ * merely *starts* with a brace and does not parse is left exactly as sent.
+ */
 function render(value: unknown): string {
   if (value == null) return '';
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (!(s.startsWith('{') || s.startsWith('['))) return value;
+    try {
+      return JSON.stringify(JSON.parse(s), null, 2);
+    } catch {
+      return value;
+    }
+  }
   try {
     return JSON.stringify(value, null, 2);
   } catch {

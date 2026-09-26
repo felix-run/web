@@ -17,7 +17,7 @@ import {
   runEvalDataset,
 } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
-import { Panel, PanelDescription, PanelHeader, PanelTitle } from '@/components/harness/panel';
+import { PageHeader, Panel, plural } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
 import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } from '@/types';
 
@@ -41,6 +41,8 @@ import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } fr
  */
 export function EvalSheet({ manifest }: { manifest: string }) {
   const [datasets, setDatasets] = useState<EvalDataset[]>([]);
+  /** Whether `datasets` is an answer yet: `0 datasets` before the first list is a claim. */
+  const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   // Error and verb travel together: one hardcoded phrase meant a failed eval *run*
   // reported itself as a failure to reach the harness.
@@ -52,6 +54,7 @@ export function EvalSheet({ manifest }: { manifest: string }) {
     try {
       const ds = await listEvalDatasets();
       setDatasets(ds);
+      setLoaded(true);
       setFailure(null);
       setSelected((cur) => cur ?? ds[0]?.name ?? null);
     } catch (err) {
@@ -86,17 +89,20 @@ export function EvalSheet({ manifest }: { manifest: string }) {
 
   return (
     <Panel>
-      <PanelHeader className="border-b">
-        <PanelTitle className="flex items-center gap-2">
-          <FlaskConicalIcon className="size-4" /> Eval harness
-        </PanelTitle>
-        <PanelDescription>
-          Golden datasets replayed against a manifest and judged per item. Runs against the active{' '}
-          <span className="font-mono">{manifest}</span> agent.
-        </PanelDescription>
-      </PanelHeader>
+      <PageHeader
+        icon={<FlaskConicalIcon />}
+        title="Eval"
+        value={loaded ? plural(datasets.length, 'dataset') : undefined}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+        {/* Which agent a run replays against is the one sentence here that
+            changes what pressing Run does, so it left the header's subline for
+            the body rather than being dropped with it. */}
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Golden datasets, replayed and judged per item against the active{' '}
+          <span className="font-mono text-foreground">{manifest}</span> agent.
+        </p>
         {failure && <ErrorNotice error={failure.err} doing={failure.doing} />}
 
         {/* Dataset picker + create */}

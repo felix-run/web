@@ -54,7 +54,9 @@ export function Greeting({ manifest }: { manifest: string }) {
             )}
           </dd>
         </dl>
-        <p className="mt-3 text-xs text-muted-foreground">
+        {/* A sentence, so it is Body (13px) at a reading measure rather than the
+            11px Label step the readout's rows use: it is read, not scanned. */}
+        <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
           The first message starts the run. Tool calls and approvals appear here as they happen.
         </p>
       </div>
@@ -72,7 +74,8 @@ export function Greeting({ manifest }: { manifest: string }) {
  * re-read is a string comparison — React bails out when it has not changed —
  * and only runs while a thread is empty, which is the only time this renders.
  */
-function useMountLabel(): string | null {
+/** The mounted folder's name, or null. Polled: the mount has no change event. */
+export function useMountLabel(): string | null {
   return useSyncExternalStore(subscribeMount, getMountLabel, () => null);
 }
 

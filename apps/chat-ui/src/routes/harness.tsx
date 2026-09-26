@@ -19,9 +19,13 @@ import { EvalSheet } from '@/components/eval/eval-sheet';
 import { DocumentsSection } from '@/components/harness/corpus';
 import { ActivitySection, UsageSection } from '@/components/harness/ledger';
 import { MemorySection } from '@/components/harness/memory';
-import { Panel, PanelHeader, PanelTitle } from '@/components/harness/panel';
+import { PageHeader, Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';
-import { PanelModeProvider } from '@/components/inspector/primitives';
+import {
+  PanelModeProvider,
+  type SectionMeta,
+  SectionMetaSink,
+} from '@/components/inspector/primitives';
 import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -84,6 +88,10 @@ function SkillsPanel() {
  */
 function LedgerPanel() {
   const [half, setHalf] = useState<'activity' | 'usage'>('activity');
+  // The visible half's header value, reported up by its `bare` section. Only the
+  // visible half is mounted, so only it reports — the header describes the half
+  // being read, from the one poll already running.
+  const [meta, setMeta] = useState<SectionMeta>({ meta: undefined, metaTone: undefined });
   return (
     <Panel>
       {/*
@@ -96,25 +104,32 @@ function LedgerPanel() {
         onValueChange={(v) => setHalf(v as 'activity' | 'usage')}
         className="min-h-0 flex-1 gap-0"
       >
-        <PanelHeader className="flex items-center gap-3">
-          <PanelTitle className="flex-1">Ledger</PanelTitle>
-          <TabsList aria-label="Ledger view" className="w-auto">
-            <TabsTrigger value="activity" className="px-2.5 text-xs">
-              Activity
-            </TabsTrigger>
-            <TabsTrigger value="usage" className="px-2.5 text-xs">
-              Usage
-            </TabsTrigger>
-          </TabsList>
-        </PanelHeader>
-        <PanelModeProvider chrome="bare">
-          <TabsContent value="activity" className="min-h-0 overflow-y-auto p-4">
-            <ActivitySection enabled open onToggle={() => {}} />
-          </TabsContent>
-          <TabsContent value="usage" className="min-h-0 overflow-y-auto p-4">
-            <UsageSection enabled open onToggle={() => {}} />
-          </TabsContent>
-        </PanelModeProvider>
+        <PageHeader
+          icon={<ActivityIcon />}
+          title="Ledger"
+          value={meta.meta}
+          valueTone={meta.metaTone}
+          controls={
+            <TabsList aria-label="Ledger view" className="w-auto">
+              <TabsTrigger value="activity" className="px-2.5 text-xs">
+                Activity
+              </TabsTrigger>
+              <TabsTrigger value="usage" className="px-2.5 text-xs">
+                Usage
+              </TabsTrigger>
+            </TabsList>
+          }
+        />
+        <SectionMetaSink.Provider value={setMeta}>
+          <PanelModeProvider chrome="bare">
+            <TabsContent value="activity" className="min-h-0 overflow-y-auto p-4">
+              <ActivitySection enabled open onToggle={() => {}} />
+            </TabsContent>
+            <TabsContent value="usage" className="min-h-0 overflow-y-auto p-4">
+              <UsageSection enabled open onToggle={() => {}} />
+            </TabsContent>
+          </PanelModeProvider>
+        </SectionMetaSink.Provider>
       </Tabs>
     </Panel>
   );
@@ -168,6 +183,15 @@ export const HARNESS_DESTINATIONS: {
 ];
 
 function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; className?: string }) {
+  const { skills, manifest } = useShell();
+  // A value only where the shell already holds it. Every other destination's
+  // number comes from its own fetch, which runs only while that page is the
+  // address — putting those here would mean eight polls behind a list of links,
+  // each paid for a label nobody opened the page to read.
+  const glance: Record<string, { text: string; mono?: boolean } | undefined> = {
+    skills: skills ? { text: `${skills.active.length} active` } : undefined,
+    agent: manifest ? { text: manifest, mono: true } : undefined,
+  };
   return (
     <nav aria-label="Harness" className={cn('flex flex-col gap-0.5 p-2', className)}>
       {HARNESS_DESTINATIONS.map(({ path, label, icon: Icon }) => (
@@ -187,6 +211,16 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
         >
           <Icon className="size-4 shrink-0" />
           <span className="truncate">{label}</span>
+          {glance[path] && (
+            <span
+              className={cn(
+                'ml-auto min-w-0 truncate pl-2 text-xs font-normal tabular-nums text-muted-foreground',
+                glance[path]?.mono && 'font-mono',
+              )}
+            >
+              {glance[path]?.text}
+            </span>
+          )}
         </NavLink>
       ))}
     </nav>
@@ -207,10 +241,14 @@ export function HarnessLayout() {
 
   if (atIndex && wide) return <Navigate to="memory" replace />;
 
+  // Every shape below puts the destination in a `<main>`. The layout had a header
+  // and a nav and no main, so a screen reader's landmark list offered every way
+  // *around* the page and none into it, and "skip to main content" had nowhere to
+  // land. Narrow, the index's list is the page's content, so it is the main there.
   if (!wide) {
     if (atIndex) {
       return (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <main className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 border-b border-border/60 px-4 py-3">
             {/* `h2`: the shell's wordmark is the page's one `h1`, and every
                 destination's own heading is an `h2` beside this one. */}
@@ -222,7 +260,7 @@ export function HarnessLayout() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             <HarnessNav />
           </div>
-        </div>
+        </main>
       );
     }
     return (
@@ -235,7 +273,9 @@ export function HarnessLayout() {
             </Link>
           </Button>
         </div>
-        <Outlet />
+        <main className="flex min-h-0 flex-1 flex-col">
+          <Outlet />
+        </main>
       </div>
     );
   }
@@ -245,7 +285,9 @@ export function HarnessLayout() {
       <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60">
         <HarnessNav />
       </div>
-      <Outlet />
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <Outlet />
+      </main>
     </div>
   );
 }

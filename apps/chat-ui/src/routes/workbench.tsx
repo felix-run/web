@@ -2,7 +2,7 @@ import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { useMemo } from 'react';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { Conversation } from '@/components/chat/conversation';
-import { Greeting } from '@/components/chat/greeting';
+import { Greeting, useMountLabel } from '@/components/chat/greeting';
 import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
@@ -22,6 +22,8 @@ import { useShell } from '@/shell-context';
  * the split. Visiting a second top-level address must not unmount a live run.
  */
 export function Workbench() {
+  // "Workspace goal" promises a folder; with none mounted the composer says what it is.
+  const mountedFolder = useMountLabel();
   const {
     turns,
     streaming,
@@ -152,7 +154,7 @@ export function Workbench() {
               placeholder={
                 streaming
                   ? 'Type to steer the run…'
-                  : manifest === DEFAULT_MANIFEST
+                  : manifest === DEFAULT_MANIFEST && mountedFolder
                     ? 'Describe a workspace goal…'
                     : 'Message Felix…'
               }
