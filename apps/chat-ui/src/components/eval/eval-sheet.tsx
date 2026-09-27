@@ -141,13 +141,18 @@ export function EvalSheet({ manifest }: { manifest: string }) {
           ) : loaded ? (
             <span className="text-sm text-muted-foreground">No datasets yet.</span>
           ) : null}
-          <div className="flex w-full max-w-xs items-center gap-2 sm:w-auto">
+          <div className="flex w-full max-w-sm items-center gap-2 sm:w-auto">
+            {/* A visible label, and a placeholder that does not look typed: in
+                mono, `new-dataset-name` read as a value already entered. */}
+            <Label htmlFor="eval-new-dataset" className="shrink-0 text-xs text-muted-foreground">
+              New dataset
+            </Label>
             <Input
-              aria-label="New dataset name"
+              id="eval-new-dataset"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="new-dataset-name"
-              className="h-8 min-w-0 flex-1 font-mono text-sm"
+              placeholder="name"
+              className="h-8 min-w-0 flex-1 font-mono text-sm placeholder:font-sans"
               onKeyDown={(e) => e.key === 'Enter' && create()}
             />
             <Button

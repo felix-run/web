@@ -21,13 +21,40 @@ export type Presence = 'idle' | 'working' | 'blocked';
 
 const BASE_TITLE = 'Felix';
 
-const TITLES: Record<Presence, string> = {
-  idle: BASE_TITLE,
-  working: `(…) Working — ${BASE_TITLE}`,
-  blocked: `(!) Approve — ${BASE_TITLE}`,
+const PREFIX: Record<Presence, string> = {
+  idle: '',
+  working: '(…) Working — ',
+  blocked: '(!) Approve — ',
 };
 
 let current: Presence = 'idle';
+/**
+ * Where the tab is, when that is not the conversation: `Ledger`, `Memory`.
+ * Every `/harness` page read "Felix chat" in the tab strip and in history, so
+ * eight open destinations were eight identical tabs. The run state still leads,
+ * because it is the thing a glance at the tab strip is for.
+ */
+let place: string | null = null;
+
+function title(): string {
+  return `${PREFIX[current]}${place ? `${place} — ` : ''}${BASE_TITLE}`;
+}
+
+function paint(): void {
+  try {
+    document.title = title();
+  } catch {
+    // Non-DOM environment; the notification channel is independent.
+  }
+}
+
+/** Name the page the tab is on, or `null` for the conversation. Idempotent. */
+export function setPresencePlace(next: string | null): void {
+  if (next === place) return;
+  place = next;
+  paint();
+}
+
 let live: Notification | null = null;
 
 function notificationsGranted(): boolean {
@@ -83,12 +110,7 @@ export function setPresence(next: Presence): void {
   if (next === current) return;
   const previous = current;
   current = next;
-
-  try {
-    document.title = TITLES[next];
-  } catch {
-    // Non-DOM environment; the notification channel is independent.
-  }
+  paint();
 
   if (!hidden()) return;
   if (next === 'blocked') {
@@ -101,6 +123,7 @@ export function setPresence(next: Presence): void {
 /** Test seam: forget the cached state and dismiss any live notification. */
 export function resetPresence(): void {
   current = 'idle';
+  place = null;
   try {
     live?.close();
   } catch {

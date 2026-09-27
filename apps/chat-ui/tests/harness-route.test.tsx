@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { PageHeader, Panel, PanelBody, READING_MEASURE } from '../src/components/harness/panel';
 import { ThemeProvider } from '../src/components/theme-provider';
+import { resetPresence } from '../src/lib/presence';
 import { HARNESS_DESTINATIONS } from '../src/routes/harness';
 
 /**
@@ -64,6 +65,9 @@ function mount(at: string) {
 
 beforeEach(() => {
   localStorage.clear();
+  // Presence is module state, and the title is the document's: both outlive a test.
+  resetPresence();
+  document.title = 'Felix';
   sessionStorage.clear();
   stubFetch();
 });
@@ -222,7 +226,11 @@ describe('the harness address', () => {
     mount('/harness/memory');
     await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
     const groups = [...document.querySelectorAll('nav[aria-label="Harness"] ul')];
-    expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual(['Records', 'Workbenches']);
+    // Shown, not only announced: each list is named by a visible label.
+    const named = groups.map(
+      (g) => document.getElementById(g.getAttribute('aria-labelledby') ?? '')?.textContent,
+    );
+    expect(named).toEqual(['Records', 'Workbenches']);
     const inGroup = (i: number) =>
       // The label is the link's first span; a glance value may follow it.
       [...(groups[i]?.querySelectorAll('a') ?? [])].map(
@@ -230,6 +238,44 @@ describe('the harness address', () => {
       );
     expect(inGroup(0)).toEqual(['Memory', 'Corpus', 'Skills', 'Ledger']);
     expect(inGroup(1)).toEqual(['Manifests', 'Jobs', 'Eval', 'Agent']);
+  });
+
+  it('names the page in the tab title, and gives it back on the way out', async () => {
+    mount('/harness/ledger');
+    await waitFor(() => expect(document.title).toBe('Ledger — Felix'));
+    await act(async () => {
+      go('/harness/memory');
+    });
+    await waitFor(() => expect(document.title).toBe('Memory — Felix'));
+    await act(async () => {
+      go('/t/back-again');
+    });
+    await waitFor(() => expect(document.title).toBe('Felix'));
+  });
+
+  it("keeps the Ledger's half in the address, so Usage can be linked", async () => {
+    mount('/harness/ledger?view=usage');
+    await waitFor(() =>
+      expect(document.querySelector('main [role="tab"][aria-selected="true"]')?.textContent).toBe(
+        'Usage',
+      ),
+    );
+  });
+
+  it('keeps an accessible name on the Chat door at every width', async () => {
+    mount('/harness/memory');
+    await waitFor(() => expect(document.querySelector('header a[href^="/t/"]')).not.toBeNull());
+    const door = document.querySelector('header a[href^="/t/"]') as HTMLElement;
+    // The word is visually hidden below `sm`, never removed: the icon is aria-hidden.
+    expect(door.textContent).toContain('Chat');
+    expect(door.querySelector('.hidden')).toBeNull();
+  });
+
+  it('leaves the conversation controls with the conversation', async () => {
+    mount('/harness/memory');
+    await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
+    expect(document.querySelector('header [aria-label="New chat"]')).toBeNull();
+    expect(document.querySelector('header [aria-label="More tools"]')).toBeNull();
   });
 
   it('walks the nav with the arrow keys, wrapping at either end', async () => {

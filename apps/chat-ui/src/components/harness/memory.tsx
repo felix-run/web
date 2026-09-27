@@ -11,6 +11,16 @@ import { cn } from '@/lib/utils';
 import type { MemoryHit, MemoryRecord } from '@/types';
 
 /**
+ * The view-strip buttons Memory and Corpus share. The focus ring is explicit:
+ * these relied on the browser's own outline, which is the one control on either
+ * page that did not look like the rest when reached by Tab.
+ */
+export const VIEW_BUTTON =
+  'rounded px-2 py-1 text-xs transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none';
+export const VIEW_ON = 'bg-accent text-foreground';
+export const VIEW_OFF = 'text-muted-foreground hover:bg-accent/50';
+
+/**
  * Memory: what the agent has stored across sessions.
  *
  * Surfaced so a stale or hostile fact can be found and removed without a database
@@ -130,12 +140,7 @@ export function MemorySection({
               type="button"
               aria-pressed={mode === id}
               onClick={() => setMode(id)}
-              className={cn(
-                'rounded px-2 py-1 text-xs transition-colors',
-                mode === id
-                  ? 'bg-accent text-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50',
-              )}
+              className={cn(VIEW_BUTTON, mode === id ? VIEW_ON : VIEW_OFF)}
             >
               {label}
             </button>
@@ -146,10 +151,9 @@ export function MemorySection({
           aria-expanded={mode === 'add'}
           onClick={() => setMode(mode === 'add' ? 'recent' : 'add')}
           className={cn(
-            'ml-auto flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors',
-            mode === 'add'
-              ? 'bg-accent text-foreground'
-              : 'text-muted-foreground hover:bg-accent/50',
+            VIEW_BUTTON,
+            'ml-auto flex items-center gap-1',
+            mode === 'add' ? VIEW_ON : VIEW_OFF,
           )}
         >
           <PlusIcon aria-hidden className="size-3" />

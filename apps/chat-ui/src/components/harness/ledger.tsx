@@ -449,9 +449,13 @@ function ActivityRow({
                 // middle rather than the end: see `middleTruncate`. Whole in `title`
                 // for matching against a log line, and whole to a screen reader,
                 // which has no ellipsis to decode.
+                // Not below `sm`: at a phone's width it kept its 20 characters
+                // while the tool name beside it — the part that differs between
+                // rows — was cut to `github__g…`. The thread is still in the row's
+                // detail, whole, as the payload's `thread_id`.
                 <span
                   title={`Thread ${thread}`}
-                  className="shrink-0 font-mono text-xs text-muted-foreground"
+                  className="hidden shrink-0 font-mono text-xs text-muted-foreground sm:inline"
                 >
                   <span aria-hidden>{middleTruncate(thread, THREAD_CHARS)}</span>
                   <span className="sr-only">Thread {thread}</span>
