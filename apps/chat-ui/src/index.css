@@ -252,7 +252,7 @@
    than needing a second value for dark. */
 @layer components {
   .bg-dots::before {
-    content: '';
+    content: "";
     position: absolute;
     inset: 0;
     z-index: -1;
