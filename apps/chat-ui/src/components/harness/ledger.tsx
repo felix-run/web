@@ -18,6 +18,7 @@ import {
   tsToMs,
 } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
+import { middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, UsageSummary } from '@/types';
 
@@ -152,19 +153,6 @@ export function filterActivity(
  * prefix names the kind of work and the tail names the instance.
  */
 const THREAD_CHARS = 20;
-
-/**
- * `s` at most `max` characters long, cut from the middle with one `…`.
- *
- * The head gets the smaller half because a common prefix is the likeliest thing
- * two ids share; the tail is what distinguishes them.
- */
-export function middleTruncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  const keep = Math.max(0, max - 1);
-  const head = Math.floor(keep / 2);
-  return `${s.slice(0, head)}…${s.slice(s.length - (keep - head))}`;
-}
 
 /** Rows rendered per section before the footer starts saying what was left out. */
 const ACTIVITY_VISIBLE = 12;

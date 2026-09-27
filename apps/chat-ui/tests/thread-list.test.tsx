@@ -66,7 +66,7 @@ describe('ThreadList actions', () => {
     await openMenu(user);
     await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
 
-    const field = await screen.findByLabelText('Conversation name');
+    const field = await screen.findByLabelText('Thread name');
     await waitFor(() => {
       expect(document.activeElement).toBe(field);
     });
@@ -77,7 +77,7 @@ describe('ThreadList actions', () => {
     await openMenu(user);
     await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
 
-    const field = await screen.findByLabelText('Conversation name');
+    const field = await screen.findByLabelText('Thread name');
     await waitFor(() => expect(document.activeElement).toBe(field));
     await user.keyboard('Quarterly review{Enter}');
 
@@ -89,12 +89,12 @@ describe('ThreadList actions', () => {
     await openMenu(user);
     await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
 
-    const field = await screen.findByLabelText('Conversation name');
+    const field = await screen.findByLabelText('Thread name');
     await waitFor(() => expect(document.activeElement).toBe(field));
     await user.keyboard('discard me{Escape}');
 
     expect(onRename).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText('Conversation name')).toBeNull();
+    expect(screen.queryByLabelText('Thread name')).toBeNull();
   });
 
   // Losing a typed name to a stray click is worse than an unintended rename,
@@ -104,7 +104,7 @@ describe('ThreadList actions', () => {
     await openMenu(user);
     await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
 
-    const field = await screen.findByLabelText('Conversation name');
+    const field = await screen.findByLabelText('Thread name');
     await waitFor(() => expect(document.activeElement).toBe(field));
     await user.keyboard('typed then clicked away');
     await user.click(screen.getByRole('button', { name: 'New chat' }));
@@ -117,7 +117,7 @@ describe('ThreadList actions', () => {
     await openMenu(user);
     await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
 
-    const field = await screen.findByLabelText('Conversation name');
+    const field = await screen.findByLabelText('Thread name');
     await waitFor(() => expect(document.activeElement).toBe(field));
     await user.keyboard('   {Enter}');
 
@@ -203,8 +203,38 @@ describe('ThreadList rows', () => {
       JSON.stringify([{ id: 'u', role: 'user', content: 'Migrate the billing table' }]),
     );
     const { user } = setup({ threads: [thread(), untitled('t9')] });
-    await user.type(screen.getByRole('searchbox', { name: 'Search sessions' }), 'billing');
+    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'billing');
     expect(screen.getByText('Migrate the billing table')).toBeTruthy();
     expect(screen.queryByText('Local title')).toBeNull();
+  });
+});
+
+/**
+ * What a returning operator reads to find a thread. An untitled thread is listed
+ * by its id, and ids that differ differ at the end — so the row keeps both ends
+ * rather than the head alone. And the list uses one noun for what it lists.
+ */
+describe('ThreadList rows', () => {
+  const uuid = 'c9471ae6-345f-4288-a933-6f1e2d3c4b5a';
+
+  it('cuts an untitled thread id from the middle, and keeps it whole to a reader', () => {
+    setup({ threads: [thread({ id: uuid, title: UNTITLED_THREAD_TITLE })], currentId: 'x' });
+    const row = screen.getByTitle(uuid);
+    // What is drawn fits the row by itself rather than leaving CSS to cut the end
+    // off — which drew `c9471ae6-345f-4288-a933-6…`, dropping the tail two UUIDs
+    // differ in.
+    const drawn = row.querySelector('[aria-hidden]')?.textContent ?? '';
+    expect(drawn.length).toBeLessThanOrEqual(24);
+    expect(drawn.startsWith('c9471ae6')).toBe(true);
+    expect(drawn.endsWith('6f1e2d3c4b5a')).toBe(true);
+    expect(screen.getByRole('button', { name: new RegExp(`^${uuid}`) })).toBeTruthy();
+  });
+
+  it('names the list, its search and its empty state for threads', () => {
+    setup({ threads: [] });
+    expect(screen.getByRole('heading', { name: 'Threads' })).toBeTruthy();
+    expect(screen.getByRole('searchbox', { name: 'Search threads' })).toBeTruthy();
+    expect(screen.getByText('No threads yet')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/History|sessions|conversation/);
   });
 });

@@ -325,7 +325,13 @@ it matches, `/` mints one and redirects (`NewThread` in `App.tsx`), and **every 
 the thread the tab was already on**. Redirecting whenever the URL carried no thread was
 indistinguishable from correct while `/` was the only such address; the moment `/harness` existed it
 bounced the operator to a freshly minted thread, and minting one resets the engine, so a run in
-flight died on the way out. `tests/harness-route.test.tsx` pins it, along with every destination
+flight died on the way out. *Across a reload* the tab has no "already", so a cold load on `/harness`
+used to mint, and the header's Chat link led to an empty thread. `src/lib/tab-thread.ts` keeps the
+tab's last thread in **`sessionStorage`** (`felix.tabThread`) and the shell reads it only where the
+address names no thread **and is not `/`** — without that second condition `/` renders once on the
+remembered thread, and takes its lease, before `NewThread` replaces it. It is not the old
+`felix.threadId` key coming back: that was `localStorage`, shared by every tab, and chose the thread;
+this is one tab's, and never outranks an address. `tests/harness-route.test.tsx` pins it, along with every destination
 rendering — the first version of that layout threw on mount for all eight because a `||` between two
 `useMatch` calls made the second a conditional hook.
 

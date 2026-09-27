@@ -72,9 +72,11 @@ import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { toastError, toastProblem } from '@/lib/error-toast';
+import { middleTruncate } from '@/lib/format';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
+import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
 import {
   indexThread,
   listThreads,
@@ -148,10 +150,17 @@ export function AppShell() {
   const navigate = useNavigate();
   const threadRoute = useMatch('/t/:threadSuffix');
   const routeThread = threadRoute?.params.threadSuffix ?? null;
+  // `/` is the one address that asks for a new thread, so it never recalls one.
+  const freshRoute = useMatch('/') !== null;
   const activeThread = useRef<string | null>(null);
   if (routeThread) activeThread.current = routeThread;
-  activeThread.current ??= crypto.randomUUID();
+  // A cold load on `/harness` has no thread yet; the tab's last one is the one
+  // "keeps the thread the tab was already on" means after a reload.
+  activeThread.current ??= (freshRoute ? null : recallTabThread()) ?? crypto.randomUUID();
   const threadId = activeThread.current;
+  useEffect(() => {
+    if (routeThread) rememberTabThread(routeThread);
+  }, [routeThread]);
   /**
    * The workbench's own chrome does nothing on the harness address.
    *
@@ -1361,11 +1370,17 @@ export function AppShell() {
                 Continue run
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
+                  `self-pr-` for every `self-pr-*` thread, and was the item's whole
+                  accessible name. The id is whole in `title` and to a reader. */}
               <DropdownMenuItem
                 disabled
-                className="font-mono text-xs text-muted-foreground data-disabled:opacity-100"
+                title={threadId}
+                aria-label={`Thread ${threadId}`}
+                className="gap-1.5 text-xs text-muted-foreground data-disabled:opacity-100"
               >
-                {threadId.slice(0, 8)}
+                Thread
+                <span className="min-w-0 truncate font-mono">{middleTruncate(threadId, 22)}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

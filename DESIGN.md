@@ -447,6 +447,12 @@ width; it separates the header from the pane. A page whose rows run full width l
 controls at the pane's edge. An id that has to distinguish rows is cut from the **middle**, not
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
+The same rule holds wherever a thread id is drawn — an untitled row in the thread list, the
+threads trigger, the header menu's `Thread` item — through `middleTruncate` in `src/lib/format.ts`
+and `CutId`, which keeps the whole id in the accessible name. `slice(0, 8)` read `self-pr-` for
+every `self-pr-*` thread. The object those ids name has one noun, **thread** — the list's heading, its
+search, its empty state, the trigger's tooltip and its label for a thread not yet indexed all say
+it. "New chat" is the action that starts one, a verb phrase rather than a second noun.
 
 The workspace zone's header follows the same grammar: folder or drive icon, **Workspace**, then
 the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the

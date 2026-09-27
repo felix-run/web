@@ -5,6 +5,7 @@ import { ChevronsUpDownIcon, FolderIcon, HardDriveIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ThreadList } from '@/components/chat/thread-list';
+import { CutId } from '@/components/cut-id';
 import {
   clearMount,
   collectTouchedPaths,
@@ -307,9 +308,17 @@ export function WorkspaceZone({ className }: { className?: string }) {
               aria-keyshortcuts={ariaShortcut('open-threads', isMacPlatform())}
               title={`Threads (${shortcutLabel('open-threads', isMacPlatform())})`}
             >
-              <span className={cn('min-w-0 truncate text-left', currentLabel?.isId && 'font-mono')}>
-                {currentLabel?.text ?? 'New conversation'}
-              </span>
+              {currentLabel?.isId ? (
+                // An untitled thread's id, cut from the middle like every id that
+                // has to be told apart from another. Whole to a reader.
+                <span className="min-w-0 truncate text-left font-mono">
+                  <CutId id={currentLabel.text} max={28} />
+                </span>
+              ) : (
+                <span className="min-w-0 truncate text-left">
+                  {currentLabel?.text ?? 'New thread'}
+                </span>
+              )}
               <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
             </Button>
           </PopoverTrigger>
@@ -347,7 +356,11 @@ export function WorkspaceZone({ className }: { className?: string }) {
               }}
               onCompact={compactThread}
               onExport={exportThread}
-              className="h-[24rem] w-full border-r-0 bg-transparent"
+              // As tall as its rows, up to the viewport below the trigger. It was a
+              // fixed 24rem, which drew five of fifty threads on a screen with
+              // room for twenty. Radix measures the room and publishes it; the
+              // fallback is the old height, for a render with no popper around it.
+              className="h-auto max-h-[calc(var(--radix-popover-content-available-height,24rem)_-_0.75rem)] w-full border-r-0 bg-transparent"
             />
           </PopoverContent>
         </Popover>

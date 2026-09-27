@@ -2,7 +2,8 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ActivitySection, middleTruncate } from '../src/components/harness/ledger';
+import { ActivitySection } from '../src/components/harness/ledger';
+import { middleTruncate } from '../src/lib/format';
 
 /**
  * The Activity feed's keyboard path and its drill-down.

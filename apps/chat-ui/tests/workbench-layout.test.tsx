@@ -154,7 +154,7 @@ describe('the workspace zone', () => {
     await act(async () => {
       await userEvent.click(trigger);
     });
-    const search = await screen.findByRole('searchbox', { name: 'Search sessions' });
+    const search = await screen.findByRole('searchbox', { name: 'Search threads' });
     await waitFor(() => expect(document.activeElement).toBe(search));
   });
 

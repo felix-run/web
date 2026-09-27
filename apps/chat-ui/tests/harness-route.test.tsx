@@ -64,6 +64,7 @@ function mount(at: string) {
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   stubFetch();
 });
 afterEach(() => {
@@ -116,6 +117,34 @@ describe('the harness address', () => {
     // The header's own way back still names the thread the tab was on.
     const back = [...document.querySelectorAll('a')].map((a) => a.getAttribute('href'));
     expect(back).toContain('/t/keep-me');
+  });
+
+  /**
+   * The same rule, across a reload. A cold load on `/harness` has no thread "the
+   * tab was already on" in memory, so the shell minted one and Chat led to an
+   * empty thread rather than back to the one the operator left. The tab's last
+   * thread is kept in `sessionStorage` — per tab, and read only where the address
+   * names no thread and is not `/`.
+   */
+  it('returns Chat to the thread this tab was on after a reload on /harness', async () => {
+    const first = mount('/t/before-reload');
+    await waitFor(() => expect(address).toBe('/t/before-reload'));
+    first.unmount();
+
+    // The reload: a new shell, the same tab.
+    mount('/harness/ledger');
+    await waitFor(() => expect(document.body.textContent).toContain('Ledger'));
+    const hrefs = [...document.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('/t/before-reload');
+  });
+
+  it('still mints on a cold /harness load in a tab that has been on no thread', async () => {
+    mount('/harness/ledger');
+    await waitFor(() => expect(document.body.textContent).toContain('Ledger'));
+    const chat = [...document.querySelectorAll('a')]
+      .map((a) => a.getAttribute('href'))
+      .find((h) => h?.startsWith('/t/'));
+    expect(chat).toMatch(/^\/t\/[0-9a-f-]{36}$/);
   });
 
   it("carries the visible Ledger half's value in the page header, not a second poll's", async () => {

@@ -553,7 +553,7 @@ function ApprovalsSection({
                       to={`/t/${a.thread_id}`}
                       className="underline underline-offset-2 hover:text-foreground"
                     >
-                      {threads.find((t) => t.id === a.thread_id)?.title ?? 'another conversation'}
+                      {threads.find((t) => t.id === a.thread_id)?.title ?? 'another thread'}
                     </Link>
                   </p>
                 ) : null}
