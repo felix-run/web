@@ -118,10 +118,16 @@ export function AttentionLine({
   const unchecked = !stale && lastOkAt === null;
   const where = allOnThisThread ? 'on this thread' : 'across the harness';
   const calls = `${count} ${count === 1 ? 'call' : 'calls'}`;
+  // A 429 is the harness answering, just not with the list. "Can't reach"
+  // reads as an outage; the operator's next move differs (wait, not restart),
+  // so the words say which. The dot stays red either way: in both cases this
+  // line cannot vouch that nothing is waiting.
+  const limited = stale && /:\s*429\b/.test(String((error as Error)?.message ?? error));
+  const failure = limited ? 'Approvals rate-limited' : "Can't reach approvals";
   const summary = stale
     ? waiting
-      ? `Can't reach approvals · ${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where}`
-      : "Can't reach approvals"
+      ? `${failure} · ${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where}`
+      : failure
     : unchecked
       ? 'Checking approvals…'
       : waiting

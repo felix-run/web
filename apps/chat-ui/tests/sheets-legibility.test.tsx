@@ -1,5 +1,6 @@
 /** @vitest-environment happy-dom */
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -145,26 +146,55 @@ describe('every part of the page is a heading', () => {
 });
 
 describe('Skills before the agent has been asked', () => {
-  it('shows what the manifest declares, and says what is unknown', async () => {
+  it('shows what the manifest declares, says what is unknown, and links rather than writes', async () => {
     const { SkillsSection } = await import('../src/components/harness/skills');
     const { PanelModeProvider } = await import('../src/components/inspector/primitives');
     render(
-      <PanelModeProvider>
-        <SkillsSection
-          open
-          onToggle={() => {}}
-          skills={null}
-          specSkills={['calculator-help']}
-          onSuggest={() => {}}
-          target={{ text: '72d69cb1-1ea6-4d6f-949b-fcfd326bccdf', isId: true }}
-        />
-      </PanelModeProvider>,
+      <MemoryRouter>
+        <PanelModeProvider>
+          <SkillsSection
+            open
+            onToggle={() => {}}
+            skills={null}
+            specSkills={['calculator-help']}
+            agent="cowork"
+            thread={{
+              text: '72d69cb1-1ea6-4d6f-949b-fcfd326bccdf',
+              isId: true,
+              to: '/t/72d69cb1-1ea6-4d6f-949b-fcfd326bccdf',
+            }}
+          />
+        </PanelModeProvider>
+      </MemoryRouter>,
     );
     expect(screen.getByText('1 declared')).toBeTruthy();
     expect(screen.getByText('calculator-help')).toBeTruthy();
     expect(screen.getByText(/unknown until the agent calls/)).toBeTruthy();
-    // An untitled thread is said to be one, with its id cut from the middle.
-    expect(screen.getByText(/the untitled thread/)).toBeTruthy();
+    // A link to the conversation, not a button that posts into it from here.
+    const link = screen.getByRole('link', { name: /untitled thread/ });
+    expect(link.getAttribute('href')).toBe('/t/72d69cb1-1ea6-4d6f-949b-fcfd326bccdf');
+    expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByText('72d69cb1-1ea6-4d6f-949b-fcfd326bccdf')).toBeNull();
+  });
+
+  it("does not show a thread's active list for an agent that is not the chat's", async () => {
+    const { SkillsSection } = await import('../src/components/harness/skills');
+    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
+    render(
+      <MemoryRouter>
+        <PanelModeProvider>
+          <SkillsSection
+            open
+            onToggle={() => {}}
+            skills={null}
+            specSkills={['deep-research']}
+            agent="deep"
+            isChatAgent={false}
+          />
+        </PanelModeProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/only known for the agent Chat is talking to/)).toBeTruthy();
+    expect(screen.getByText('deep-research')).toBeTruthy();
   });
 });

@@ -446,10 +446,12 @@ opt-out, and no page takes it today. The rule under the header stays full width;
 header from the pane. Below the header a page is divided into `PageSection`s — a hairline rule and
 an `h3` title (Title, 13px 600), never a bordered box — and label/value pairs are a `Facts` grid
 with the value a gutter from its label rather than right-aligned across the pane. Lists are rows
-between hairlines, as the Ledger's are. The nav is two runs of four, each under a visible
-11px label that also names its list — Records (Memory, Corpus, Skills, Ledger) above Workbenches
-(Manifests, Jobs, Eval, Agent) — split by a full-strength `border` rule, and a glance value in it
-is spelled exactly as that page's header spells it. Every page header row is `min-h-8`, so the
+between hairlines, as the Ledger's are. The nav opens with the **agent picker** — `/harness` looks at its
+own agent, `?agent=` in the address, defaulting to the one Chat is talking to and never writing
+back to it; every link and every page that writes its own view keeps it — then two runs under
+visible 11px labels that name their lists: Records (Memory, Corpus, Skills, Ledger, Agent) and
+Workbenches (Manifests, Jobs, Eval), split by full-strength `border` rules. The nav is one tab
+stop (the current page's link) walked by the arrow keys, and carries no glance values. Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
 controls — New chat and the session menu — and keeps the door back to Chat. Two controls have
@@ -460,7 +462,12 @@ still under it. A view that can be linked is in the address (`?view=usage`,
 `?view=asof&turn=12`). Fields are the shared `Input`/`Textarea` at 13px with a visible `Label`;
 help that must survive typing goes under the field, never in a placeholder. A header value that
 mixes a window with a state draws the window neutral and only the state in its chip
-(`last 60 events ·` then `3 failed`). `/harness` opens on the Ledger. Narrow, the way back to the list
+(`last 60 events ·` then `3 failed`, `3 jobs ·` then `1 failing`), and a list puts its failures
+where the eye lands — failing jobs first, a failed Activity row's subject in `state-failed`.
+**Amber is only for a person being asked to act now**: a denial in the feed is an outlined
+badge, a rubric that can never reject is foreground text, a forgotten memory is not red. Names
+the harness gave in bulk (tools, skills) are a mono list, not a pill each. `/harness` opens on
+the Ledger. Narrow, the way back to the list
 takes the header's icon slot rather than a row of its own. An id that has to distinguish rows is cut from the **middle**, not
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.

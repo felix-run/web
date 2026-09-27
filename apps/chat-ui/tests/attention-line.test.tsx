@@ -318,8 +318,18 @@ describe('when the line cannot see', () => {
     expect(status()).not.toMatch(/nothing waiting/i);
     await settle();
     expect(status()).not.toMatch(/nothing waiting/i);
-    expect(status()).toMatch(/can't reach approvals/i);
+    // A 429 is the harness answering, so it is named as a rate limit, not an outage.
+    expect(status()).toMatch(/approvals rate-limited/i);
     expect(screen.getByText('no answer yet')).toBeTruthy();
+  });
+
+  it("says it can't reach approvals when the failure is not a rate limit", async () => {
+    vi.useFakeTimers();
+    switchable({ status: 503 });
+    mount();
+    await settle();
+    expect(status()).toMatch(/can't reach approvals/i);
+    expect(status()).not.toMatch(/rate-limited/i);
   });
 
   it('says how old its answer is once a good poll is followed by a failed one', async () => {
@@ -353,7 +363,7 @@ describe('when the line cannot see', () => {
     const answer = switchable({ status: 429 });
     mount();
     await settle();
-    expect(status()).toMatch(/can't reach approvals/i);
+    expect(status()).toMatch(/approvals rate-limited/i);
 
     answer({ status: 200, rows: [] });
     await tick();

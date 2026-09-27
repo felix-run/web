@@ -189,7 +189,9 @@ describe('a run says what it did', () => {
     });
     const rule = await waitFor(() => screen.getByText('invalid_rubric'));
     // Blocked, not failed: the run did nothing wrong, and the fix is to the item.
-    expect(rule.className).toMatch(/text-state-blocked/);
+    // Foreground, not amber: amber is "a person is being asked to act".
+    expect(rule.className).toMatch(/text-foreground/);
+    expect(rule.className).not.toMatch(/state-blocked/);
   });
 
   it('expands the judge reason instead of hiding it in a tooltip', async () => {
@@ -282,6 +284,8 @@ describe('the add form writes the keys the scorer reads', () => {
     const { EvalSheet } = await import('../src/components/eval/eval-sheet');
     render(<EvalSheet manifest="quick" />);
 
+    // Behind the Items section's toggle now, as every create is.
+    fireEvent.click(await screen.findByRole('button', { name: 'Add item', expanded: false }));
     const input = await waitFor(() => screen.getByLabelText(/User input/));
     fireEvent.change(input, { target: { value: 'What is 7 × 6?' } });
     fireEvent.change(screen.getByLabelText(/^Contains/), { target: { value: '42' } });

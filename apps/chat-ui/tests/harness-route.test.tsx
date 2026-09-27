@@ -237,8 +237,9 @@ describe('the harness address', () => {
       [...(groups[i]?.querySelectorAll('a') ?? [])].map(
         (a) => a.querySelector('span')?.textContent,
       );
-    expect(inGroup(0)).toEqual(['Memory', 'Corpus', 'Skills', 'Ledger']);
-    expect(inGroup(1)).toEqual(['Manifests', 'Jobs', 'Eval', 'Agent']);
+    // Agent is a record: it reads the resolved spec and changes nothing.
+    expect(inGroup(0)).toEqual(['Memory', 'Corpus', 'Skills', 'Ledger', 'Agent']);
+    expect(inGroup(1)).toEqual(['Manifests', 'Jobs', 'Eval']);
   });
 
   it('names the page in the tab title, and gives it back on the way out', async () => {
@@ -319,6 +320,53 @@ describe('the harness address', () => {
     );
     expect(toggle).toBeTruthy();
     expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('reads its own agent from the address, not the chat’s', async () => {
+    // Inspecting a second agent used to mean changing what the conversation
+    // talks to. `?agent=` is the harness's own, and the page asks for that one.
+    mount('/harness/agent?agent=deep');
+    await waitFor(() =>
+      expect(
+        vi.mocked(fetch).mock.calls.some((c) => String(c[0]).includes('/manifests/deep')),
+      ).toBe(true),
+    );
+  });
+
+  it('keeps the agent across the nav and across a view change', async () => {
+    mount('/harness/memory?agent=deep');
+    await waitFor(() =>
+      expect(document.querySelector('nav[aria-label="Harness"] a')).not.toBeNull(),
+    );
+    const hrefs = [...document.querySelectorAll('nav[aria-label="Harness"] a')].map((a) =>
+      a.getAttribute('href'),
+    );
+    expect(hrefs.every((h) => h?.endsWith('?agent=deep'))).toBe(true);
+
+    // Memory writes its own view into the query string; it must not drop the agent.
+    const search = [
+      ...document.querySelectorAll('[role="group"][aria-label="Memory view"] button'),
+    ].find((b) => b.textContent === 'Search') as HTMLElement;
+    fireEvent.click(search);
+    await waitFor(() => expect(address).toBe('/harness/memory'));
+    await waitFor(() =>
+      expect(
+        [...document.querySelectorAll('nav[aria-label="Harness"] a')].every((a) =>
+          a.getAttribute('href')?.endsWith('?agent=deep'),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it('is one tab stop: only the current page’s link takes Tab', async () => {
+    mount('/harness/jobs');
+    await waitFor(() =>
+      expect(document.querySelector('nav[aria-label="Harness"] a')).not.toBeNull(),
+    );
+    const stops = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Harness"] a')]
+      .filter((a) => a.tabIndex === 0)
+      .map((a) => a.textContent);
+    expect(stops).toEqual(['Jobs']);
   });
 
   it('walks the nav with the arrow keys, wrapping at either end', async () => {

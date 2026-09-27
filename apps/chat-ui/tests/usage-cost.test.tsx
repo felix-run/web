@@ -2,7 +2,7 @@
 
 import type { UsageSummary } from '@felix/client';
 import { describe, expect, it } from 'vitest';
-import { summarizeWindow, usd, windowDays } from '../src/components/harness/ledger';
+import { byModel, summarizeWindow, usd, windowDays } from '../src/components/harness/ledger';
 
 /**
  * What a usage total is allowed to claim.
@@ -120,5 +120,48 @@ describe('usd', () => {
 
   it('says plain zero rather than a string of decimals', () => {
     expect(usd(0)).toBe('$0');
+  });
+});
+
+describe('byModel', () => {
+  const item = (over: Record<string, unknown>) => ({
+    manifest_id: 'cowork',
+    model_id: 'claude-sonnet-4',
+    day: '2026-09-01',
+    calls: 1,
+    tokens_input: 100,
+    tokens_output: 10,
+    cache_creation: 0,
+    cache_read: 0,
+    cost_usd: 0.5,
+    ...over,
+  });
+
+  it('folds days into one row per agent and model, most expensive first', () => {
+    const rows = byModel({
+      since_ms: 0,
+      until_ms: 86_400_000,
+      totals: {} as never,
+      items: [
+        item({ day: '2026-09-01' }),
+        item({ day: '2026-09-02', cost_usd: 1 }),
+        item({ manifest_id: 'quick', model_id: 'haiku', cost_usd: 3 }),
+      ],
+    } as never);
+    expect(rows.map((r) => `${r.manifest_id}/${r.model_id}`)).toEqual([
+      'quick/haiku',
+      'cowork/claude-sonnet-4',
+    ]);
+    expect(rows[1]).toMatchObject({ calls: 2, tokens: 220, cost: 1.5, unpriced: false });
+  });
+
+  it('calls a bucket with tokens and no price unpriced, not free', () => {
+    const [row] = byModel({
+      since_ms: 0,
+      until_ms: 1,
+      totals: {} as never,
+      items: [item({ cost_usd: 0 })],
+    } as never);
+    expect(row?.unpriced).toBe(true);
   });
 });

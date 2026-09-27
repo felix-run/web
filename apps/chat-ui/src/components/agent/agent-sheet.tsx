@@ -558,14 +558,25 @@ function runsAs(mode: string | undefined): string {
   }
 }
 
+/**
+ * A list of names the harness gave — tools, skills, servers — as mono text
+ * rather than a pill each. Seventeen grey pills made the densest part of the
+ * page its loudest, and a pill says "tag" or "filter", neither of which these
+ * are. A list is what they are.
+ */
 function Chips({ items }: { items: string[] }) {
   return (
-    <span className="flex flex-wrap gap-1">
-      {items.map((it) => (
-        <Badge key={it} variant="secondary" className="py-0 font-mono text-xs">
+    <ul className="flex flex-wrap gap-x-1 font-mono text-sm">
+      {items.map((it, i) => (
+        <li key={it}>
           {it}
-        </Badge>
+          {i < items.length - 1 && (
+            <span aria-hidden className="text-muted-foreground">
+              ,
+            </span>
+          )}
+        </li>
       ))}
-    </span>
+    </ul>
   );
 }
