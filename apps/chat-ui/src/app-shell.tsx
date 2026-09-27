@@ -1247,6 +1247,12 @@ export function AppShell() {
             <PanelLeftIcon className="size-4" />
           </Button>
         )}
+        {/* The toggle's slot, held empty where the toggle has nothing to toggle.
+            Without it the wordmark moved 36px left on every switch between the
+            two addresses — the one element that should not move at all. */}
+        {onHarness && (
+          <span aria-hidden data-slot="workspace-toggle-slot" className="size-8 shrink-0" />
+        )}
         <div className="flex min-w-0 items-center gap-2 px-1.5">
           {/* Wordmark: caps via CSS, not in the string, so the accessible name
               and anything copied out stay the proper noun.

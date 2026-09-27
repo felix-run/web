@@ -147,6 +147,26 @@ describe('the harness address', () => {
     expect(chat).toMatch(/^\/t\/[0-9a-f-]{36}$/);
   });
 
+  /**
+   * The wordmark is the one element that should not move between the two
+   * addresses. The workspace toggle before it exists only on a thread, so on
+   * `/harness` the wordmark slid ~36px left. happy-dom lays nothing out, so what
+   * is pinned is that the same 32px slot precedes it on both.
+   */
+  it('keeps the slot before the wordmark on both addresses', async () => {
+    const slot = () =>
+      document.querySelector('header h1')?.parentElement?.previousElementSibling ?? null;
+    mount('/t/steady');
+    await waitFor(() => expect(address).toBe('/t/steady'));
+    expect(slot()?.classList.contains('size-8')).toBe(true);
+
+    await act(async () => {
+      go('/harness/ledger');
+    });
+    await waitFor(() => expect(address).toBe('/harness/ledger'));
+    expect(slot()?.classList.contains('size-8')).toBe(true);
+  });
+
   it("carries the visible Ledger half's value in the page header, not a second poll's", async () => {
     mount('/harness/ledger');
     // Reported up from the Activity half's own `/audit` poll; the halves draw no
