@@ -795,7 +795,11 @@ export function App({
           onRespond={(value) => {
             setUiResolving(true);
             void client
-              .respondUiRequest({ requestId: uiPrompt.requestId, threadId: uiPrompt.threadId, value })
+              .respondUiRequest({
+                requestId: uiPrompt.requestId,
+                threadId: uiPrompt.threadId,
+                value,
+              })
               .catch((err) => engine.setError(explainError(err, 'answer the agent', config)))
               .finally(() => {
                 setUiResolving(false);

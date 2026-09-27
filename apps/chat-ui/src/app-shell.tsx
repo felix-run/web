@@ -1078,7 +1078,11 @@ export function AppShell() {
       if (!uiPrompt) return;
       setUiResolving(true);
       try {
-        await respondUiRequest({ requestId: uiPrompt.requestId, threadId: uiPrompt.threadId, value });
+        await respondUiRequest({
+          requestId: uiPrompt.requestId,
+          threadId: uiPrompt.threadId,
+          value,
+        });
         engine.clearUiPrompt();
       } catch (err) {
         toastError(err, 'send that answer');
