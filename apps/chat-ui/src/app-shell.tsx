@@ -268,6 +268,9 @@ export function AppShell() {
   /** Latest turns, for callbacks that must not be rebuilt on every streamed delta. */
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
+  /** What `/v1/models` listed, for `loadThread`, which must not rebuild on it. */
+  const manifestsRef = useRef(manifests);
+  manifestsRef.current = manifests;
   /**
    * Read inside `send`, which is memoised on other things — a ref keeps the
    * "no steering during a reattach" guard correct without rebuilding it.
@@ -494,6 +497,18 @@ export function AppShell() {
       loadedThreadRef.current = id;
       engine.reset();
       engine.setTurns(loadTurns(id));
+      // The picker is where the next message goes, so on a thread this browser
+      // has sent to it names the agent the thread last ran on rather than
+      // whichever one the previous thread used. The local index is the only
+      // record: the harness keeps no manifest per thread, so a thread first seen
+      // from elsewhere has none and keeps the current selection (the composer
+      // says so). A recorded agent this harness does not list is not restored —
+      // the picker would draw its first option while the send carried the other.
+      const recorded = (listThreads().find((t) => t.id === id)?.manifest ?? '').trim();
+      const served = manifestsRef.current;
+      if (recorded && (served.length === 0 || served.includes(recorded))) {
+        setManifest(recorded);
+      }
       setSkills(null);
       // Server-owned like the rest of session state, so this clears and
       // hydration refills it rather than merging.

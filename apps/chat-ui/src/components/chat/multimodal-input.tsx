@@ -100,6 +100,13 @@ export type MultimodalInputProps = {
   models?: ReadonlyArray<ModelOption>;
   modelId?: string;
   onModelChange?: (modelId: string) => void;
+  /**
+   * The agent this thread's turns last ran on, as the local index recorded it.
+   * `undefined` when there is nothing earlier to compare (an empty thread),
+   * `null` when the thread has turns and no record — the harness keeps none,
+   * so a thread first seen from another browser has no known agent.
+   */
+  threadAgent?: string | null;
   placeholder?: string;
   className?: string;
 };
@@ -124,6 +131,7 @@ function MultimodalInputInner({
   models,
   modelId,
   onModelChange,
+  threadAgent,
   placeholder = 'Message Felix…',
   className,
 }: MultimodalInputProps) {
@@ -519,6 +527,12 @@ function MultimodalInputInner({
         </PromptInput>
       </div>
 
+      {models && models.length > 0 && (
+        <AgentNote
+          next={(models.find((o) => o.id === modelId) ?? models[0])?.label}
+          earlier={threadAgent}
+        />
+      )}
       <KeyboardHint isBusy={isBusy} />
     </div>
   );
@@ -641,12 +655,22 @@ function InlinePicker({
   return (
     <Select
       value={current?.id}
-      onValueChange={(id) => onChange?.(id)}
+      // An empty value is never a choice. Radix mirrors the value into a hidden
+      // native `<select>`, and when `value` moves to an option that is not in the
+      // list yet — the shell restoring a thread's agent before `/v1/models` has
+      // answered, while the options are still just the old selection — that
+      // select reports `""`, which would clear the agent the send carries.
+      onValueChange={(id) => {
+        if (id) onChange?.(id);
+      }}
       disabled={disabled || !onChange}
     >
+      {/* Mono, trigger and list alike: a manifest name is the harness's identifier
+          for an agent (the `manifest` field a send carries), not a label we wrote,
+          so the Provenance Rule sets it as a quotation. */}
       <SelectTrigger
         size="sm"
-        className="h-8 max-w-[10rem] gap-1.5 rounded-full border-border/40 bg-muted/40 px-2.5 text-xs font-medium text-foreground/80 shadow-none hover:bg-muted hover:text-foreground"
+        className="h-8 max-w-[10rem] gap-1.5 rounded-full border-border/40 bg-muted/40 px-2.5 font-mono text-xs text-foreground/80 shadow-none hover:bg-muted hover:text-foreground"
         aria-label={ariaLabel}
       >
         {/* SelectValue's default would render the SelectItem's full children
@@ -659,7 +683,7 @@ function InlinePicker({
           // provider model too, and a match should not depend on it.
           <SelectItem key={o.id} value={o.id} textValue={o.label} className="text-sm">
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="font-medium">{o.label}</span>
+              <span className="font-mono font-medium">{o.label}</span>
               {/* Mono because it is a quotation: the harness's own model id. */}
               {o.description && (
                 <span className="font-mono text-xs wrap-anywhere text-muted-foreground">
@@ -812,6 +836,42 @@ function DropOverlay() {
  * both say so. This hint used to keep saying "to send" underneath them, putting
  * three statements about one key on screen at once, two of which disagreed.
  */
+/**
+ * One line under the composer, drawn only when the agent the next message goes
+ * to is not the one this thread is known to have run on — or when the thread
+ * has turns and no record of any.
+ *
+ * Changing the picker mid-thread was silent, and a thread first seen from
+ * another browser drew the tab's current agent as though it were the thread's.
+ * The line is said where the change is made, not in a toast or a modal: it is a
+ * fact about the next send, and it lasts exactly as long as it is true. Once a
+ * message goes, the index records the new agent and the line goes with it.
+ *
+ * `role="status"` so a picker change is announced once, politely. The names are
+ * mono because they are the harness's identifiers.
+ */
+function AgentNote({
+  next,
+  earlier,
+}: {
+  next: string | undefined;
+  earlier: string | null | undefined;
+}) {
+  if (earlier === undefined || !next || earlier === next) return null;
+  return (
+    <p role="status" className="mt-2 px-1 text-center text-xs text-muted-foreground">
+      Next message goes to <span className="font-mono text-foreground">{next}</span>
+      {earlier === null ? (
+        <>; this thread&apos;s earlier agent was not recorded.</>
+      ) : (
+        <>
+          ; this thread last ran on <span className="font-mono text-foreground">{earlier}</span>.
+        </>
+      )}
+    </p>
+  );
+}
+
 function KeyboardHint({ isBusy }: { isBusy: boolean }) {
   return (
     <p className="mt-2 text-center text-xs text-muted-foreground">
@@ -897,6 +957,7 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.placeholder !== next.placeholder) return false;
   if (prev.modelId !== next.modelId) return false;
   if (prev.models !== next.models) return false;
+  if (prev.threadAgent !== next.threadAgent) return false;
   if (!equal(prev.className, next.className)) return false;
   return true;
 });

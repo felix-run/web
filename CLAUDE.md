@@ -413,6 +413,11 @@ Flows worth knowing before editing the app:
   (`POST /chat/sessions/name`); it does not record which manifest a thread used, and a thread that
   never reached it — or was created against a different deployment — exists only locally, so those
   rows are kept and marked rather than dropped.
+  - That local manifest is what `loadThread` restores into the agent picker on a thread change, so
+    the picker names the agent the next message will actually go to. It is not restored when
+    `/v1/models` no longer lists it. **A Radix `Select` reports `""` through `onValueChange`** when
+    `value` moves to an option not yet in its list, which is exactly a restore before the list
+    arrives; `InlinePicker` drops empty values, or the send would carry no agent at all.
   - Thread ids on the wire are `{tenant}:{suffix}`; clients send and store the **suffix** only
     (`threadSuffix`), because the harness rejects a suffix containing `:` outright.
   - `GET /chat/history/{id}` still rejects anonymous callers, which is why hydration prefers the

@@ -89,6 +89,24 @@ describe('the agent picker', () => {
     const model = screen.getByText('claude-sonnet-4-5');
     expect(model.className.split(/\s+/)).toContain('font-mono');
   });
+
+  it('sets the manifest names in mono too, because they are the harness identifiers', async () => {
+    mount({
+      models: [
+        { id: 'cowork', label: 'cowork', description: 'claude-sonnet-4-5' },
+        { id: 'research', label: 'research' },
+      ],
+      modelId: 'cowork',
+      onModelChange: vi.fn(),
+    });
+    const user = userEvent.setup({ delay: null });
+    const trigger = screen.getByRole('combobox', { name: 'Choose agent' });
+    expect(trigger.className.split(/\s+/)).toContain('font-mono');
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    const name = await screen.findByText('research', { selector: '[role="option"] span' });
+    expect(name.className.split(/\s+/)).toContain('font-mono');
+  });
 });
 
 describe('the agent picker, fed by the harness', () => {
