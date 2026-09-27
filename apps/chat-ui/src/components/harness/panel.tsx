@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { ChevronLeftIcon, TriangleAlertIcon } from 'lucide-react';
+import { createContext, type ReactNode, useContext, useId } from 'react';
+import { Link } from 'react-router';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { cn } from '@/lib/utils';
 
@@ -16,18 +18,59 @@ import { cn } from '@/lib/utils';
  * description, minus the overlay, the escape handling and the modal trap. What a
  * panel gains instead is an address.
  */
-export function Panel({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('flex min-h-0 flex-1 flex-col', className)}>{children}</div>;
+export function Panel({
+  children,
+  className,
+  fullBleed = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  /**
+   * Let this page's rows run the full width of the pane. The exception, not the
+   * rule: see `READING_MEASURE`.
+   */
+  fullBleed?: boolean;
+}) {
+  return (
+    <FullBleed.Provider value={fullBleed}>
+      <div className={cn('flex min-h-0 flex-1 flex-col', className)}>{children}</div>
+    </FullBleed.Provider>
+  );
 }
 
 /**
  * The width a `/harness` page holds its rows to when they are read across rather
  * than scanned down: a status is read with its name rather than found 1300px
- * away. One constant so a page's rows and its header's `measured` row cannot
- * drift apart — they did, which is how a switch ended up nowhere near the rows
- * it switched.
+ * away. One constant so a page's rows and its header's row cannot drift apart —
+ * they did, which is how a switch ended up nowhere near the rows it switched.
+ *
+ * **It is the default, not an opt-in.** The Ledger opted in and the four
+ * workbenches did not, so Agent drew its labels ~1200px from their values and
+ * Manifests parked its only button across the pane from the field it submits —
+ * the same fault the constant was written to fix, back on four pages because
+ * nobody had remembered to ask for the fix. A page that genuinely needs the width
+ * says so with `<Panel fullBleed>`.
  */
 export const READING_MEASURE = 'max-w-3xl';
+
+const FullBleed = createContext(false);
+
+/** The measure this page's rows take: `READING_MEASURE`, unless it opted out. */
+export function useMeasure(): string {
+  return useContext(FullBleed) ? '' : READING_MEASURE;
+}
+
+/**
+ * Where a destination's header puts the way back to the list, when there is one.
+ *
+ * Narrow, `/harness` is the list and a destination is a page, so the page needs
+ * a way back. It used to be a row of its own above the header — ~40px spent on
+ * one chevron, on the screen with the least height to spend. The header already
+ * leads with an icon that says what the page is; narrow, the nav beside it is
+ * gone and that icon's job is better done by the way out. `HarnessLayout`
+ * provides the target; everywhere else it is `null` and the icon stays.
+ */
+export const PageBack = createContext<{ to: string; label: string } | null>(null);
 
 /**
  * The one header every `/harness` destination draws: icon · title · one
@@ -51,13 +94,11 @@ export const READING_MEASURE = 'max-w-3xl';
  * `valueMono` follows the Provenance Rule — a manifest id is something the
  * harness said, a count is something we said about it.
  *
- * `measured` is for a page whose content is held to `READING_MEASURE`. The rule
- * under the header stays full width, because it separates the header from the
- * pane; the row above it takes the content's measure, so the controls end where
- * the rows they act on end. Unmeasured, the Ledger's Activity/Usage switch sat at
- * the far edge of a 1300px pane with every row it switched ~500px to its left.
- * A page whose rows run full width leaves it off, and its controls stay at the
- * edge its rows reach.
+ * The row takes the page's measure (`useMeasure`) while the rule under it stays
+ * full width, because the rule separates the header from the pane and the row
+ * belongs to the content: the controls end where the rows they act on end.
+ * Unmeasured, the Ledger's Activity/Usage switch sat at the far edge of a 1300px
+ * pane with every row it switched ~500px to its left.
  */
 export function PageHeader({
   icon,
@@ -67,7 +108,6 @@ export function PageHeader({
   valueMono,
   headingId,
   controls,
-  measured = false,
 }: {
   icon: ReactNode;
   title: string;
@@ -81,19 +121,29 @@ export function PageHeader({
   valueMono?: boolean;
   headingId?: string;
   controls?: ReactNode;
-  /** Hold the row to `READING_MEASURE`, matching content that is. */
-  measured?: boolean;
 }) {
+  const measure = useMeasure();
+  const back = useContext(PageBack);
   return (
     <header className="shrink-0 border-b border-border/60 px-4 py-3">
-      <div
-        className={cn('flex flex-wrap items-center gap-x-2 gap-y-2', measured && READING_MEASURE)}
-      >
-        {/* Normalised here so a section's 14px row icon and a page's 16px one are
-          the same size on the page, where the nav beside it draws 16px. */}
-        <span aria-hidden className="shrink-0 text-muted-foreground [&>svg]:size-4">
-          {icon}
-        </span>
+      <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-2', measure)}>
+        {back ? (
+          // Pulled left by its own padding so the chevron sits on the column the
+          // icon would have, and the title does not move between widths.
+          <Link
+            to={back.to}
+            aria-label={back.label}
+            className="-my-1 -ml-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <ChevronLeftIcon aria-hidden className="size-4" />
+          </Link>
+        ) : (
+          // Normalised here so a section's 14px row icon and a page's 16px one
+          // are the same size on the page, where the nav beside it draws 16px.
+          <span aria-hidden className="shrink-0 text-muted-foreground [&>svg]:size-4">
+            {icon}
+          </span>
+        )}
         <h2 id={headingId} className="truncate text-sm font-semibold">
           {title}
         </h2>
@@ -130,25 +180,114 @@ export function plural(n: number, one: string, many = `${one}s`, cap?: number): 
   return `${count} ${n === 1 ? one : many}`;
 }
 
-export function PanelHeader({ children, className }: { children: ReactNode; className?: string }) {
+/**
+ * The page below the header: scrolls, while the header above it does not, and
+ * holds its rows to the page's measure. The scrollbar stays at the pane's edge
+ * rather than the measure's, which is where a hand reaching for it expects it.
+ */
+export function PanelBody({ children, className }: { children: ReactNode; className?: string }) {
+  const measure = useMeasure();
   return (
-    <div className={cn('shrink-0 space-y-1 border-b border-border/60 px-4 py-3', className)}>
-      {children}
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className={cn('p-4', measure, className)}>{children}</div>
     </div>
   );
 }
 
-export function PanelTitle({ children, className }: { children: ReactNode; className?: string }) {
-  return <h2 className={cn('text-sm font-semibold', className)}>{children}</h2>;
+/**
+ * One part of a page: a rule, a heading, its rows.
+ *
+ * The workbenches drew each part as a bordered, tinted box — eight of them
+ * stacked on Agent — which is the scaffolded-card default this product names as
+ * its nearest failure, and which made a page of *parts* look like a page of
+ * *things*. A part is separated by a rule and ranked by its heading instead, the
+ * way the Ledger's rows are, so the eye goes to what the heading says rather than
+ * to how many boxes there are.
+ *
+ * The heading is a real `h3`. Agent's were `div`s, so the page had one heading
+ * and a screen reader navigating by heading skipped every part of it.
+ */
+export function PageSection({
+  title,
+  meta,
+  actions,
+  children,
+  className,
+}: {
+  title: string;
+  /** A short at-a-glance value beside the heading, as `PageHeader` has. */
+  meta?: ReactNode;
+  /** Controls for this part, at the end of its heading row. */
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  const id = useId();
+  return (
+    <section
+      aria-labelledby={id}
+      className={cn(
+        // `-of-type`, not `first:`: a page's sections share a parent with its
+        // status line and intro, so the first *section* is rarely the first child.
+        'border-t border-border/60 pt-3 pb-5 first-of-type:border-t-0 first-of-type:pt-0 last-of-type:pb-0',
+        className,
+      )}
+    >
+      <div className="mb-2 flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1">
+        <h3 id={id} className="text-sm font-semibold">
+          {title}
+        </h3>
+        {meta ? <span className="text-xs text-muted-foreground tabular-nums">{meta}</span> : null}
+        {actions ? <div className="ml-auto flex items-center gap-2">{actions}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
 }
 
-export function PanelDescription({ children }: { children: ReactNode }) {
-  return <p className="text-xs text-muted-foreground">{children}</p>;
+/**
+ * Label/value rows read across: the label in a fixed column, the value beside it.
+ *
+ * Right-aligned values in a full-width row put `Pattern` and `react` ~1200px
+ * apart at a desktop width — a label nobody could read *with* its value. A
+ * grid keeps them a gutter apart at every width, and a `dl` says to a screen
+ * reader what the visual pairing says to everyone else.
+ */
+export function Facts({ children }: { children: ReactNode }) {
+  return (
+    <dl className="grid grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+      {children}
+    </dl>
+  );
 }
 
-/** Scrolls; the header above it does not. */
-export function PanelBody({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('min-h-0 flex-1 overflow-y-auto', className)}>{children}</div>;
+/**
+ * One row of `Facts`. `mono` follows the Provenance Rule: a value the harness
+ * named (`react`, `github`) is set in mono, a value we wrote about it is not.
+ * `absent` is a reading rather than a blank, so an unset field still says so.
+ */
+export function Fact({
+  label,
+  children,
+  mono = false,
+  absent,
+}: {
+  label: ReactNode;
+  children?: ReactNode;
+  mono?: boolean;
+  absent?: string;
+}) {
+  const empty = children === undefined || children === null || children === '';
+  return (
+    <>
+      <dt className="min-w-0 text-muted-foreground">{label}</dt>
+      <dd
+        className={cn('min-w-0 break-words', empty ? 'text-muted-foreground' : mono && 'font-mono')}
+      >
+        {empty ? (absent ?? '—') : children}
+      </dd>
+    </>
+  );
 }
 
 /**
@@ -171,13 +310,18 @@ export function PanelBoundary({ title, children }: { title: string; children: Re
       label={`harness:${title}`}
       fallback={(error, reset) => (
         <Panel>
-          <PanelHeader>
-            <PanelTitle>{title}</PanelTitle>
-            <PanelDescription>
-              This panel failed to render. The rest of Felix is unaffected.
-            </PanelDescription>
-          </PanelHeader>
-          <PanelBody className="p-4">
+          {/* The page's own header, so the fallback keeps the title the nav
+              used and, narrow, the way back to the list. */}
+          <PageHeader
+            icon={<TriangleAlertIcon />}
+            title={title}
+            value="failed to render"
+            valueTone="failed"
+          />
+          <PanelBody className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              This page failed to render. The rest of Felix is unaffected.
+            </p>
             <PanelErrorFallback error={error} reset={reset} what={title} />
           </PanelBody>
         </Panel>

@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ActivityIcon, ChevronRightIcon, CoinsIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getUsageSummary, listAudit, listUsage } from '@/api';
-import { READING_MEASURE } from '@/components/harness/panel';
 import {
   Field,
   isFailure,
@@ -261,12 +260,12 @@ export function ActivitySection({
         }
       >
         {/*
-          Capped at a reading measure. Across a full-width page the tool name sat
-          at the left edge and its status ~1300px away at the right, so reading one
-          row meant carrying a word across the screen; the filters sit on the same
-          edge the statuses do.
+          Held to the reading measure by `Section` on `/harness`. Across a
+          full-width page the tool name sat at the left edge and its status ~1300px
+          away at the right, so reading one row meant carrying a word across the
+          screen; the filters sit on the same edge the statuses do.
         */}
-        <div className={READING_MEASURE}>
+        <div>
           <div className="mb-1.5 flex items-center justify-end gap-1.5">
             {/* The layer filter answers one question — "what has approvals blocked this
               week" — so it reads as that question rather than as a column picker. */}
@@ -625,6 +624,7 @@ export function UsageSection({
     : { in: 0, out: 0, cost: 0, calls: 0, unpriced: 0 };
   const days = summary ? windowDays(summary) : SUMMARY_DEFAULT_DAYS;
   const rows = data?.rows ?? [];
+  const pricedAs = sharedPricing(rows);
 
   return (
     <Section
@@ -649,8 +649,7 @@ export function UsageSection({
             : undefined
         }
       >
-        {/* The same measure as Activity, so switching halves does not move the edge. */}
-        <div className={READING_MEASURE}>
+        <div>
           <p className="mb-1.5 text-xs text-muted-foreground">
             Last {days} days, across {totals.calls.toLocaleString()}{' '}
             {totals.calls === 1 ? 'turn' : 'turns'}
@@ -690,6 +689,16 @@ export function UsageSection({
               and <code className="font-mono">limits.max_cost_usd</code> fails open for it.
             </p>
           )}
+          {/* One line for a mapping every row shares, rather than the same line
+              under each of them: repeated eight times it is texture, and the
+              row that *differs* — the thing this exists to show — is lost in it. */}
+          {pricedAs && (
+            <p className="mb-1 text-xs text-muted-foreground">
+              {rows.length === 1 ? 'The turn' : `All ${rows.length} turns`} below routed{' '}
+              <span className="font-mono">{pricedAs.model}</span>, priced as{' '}
+              <span className="font-mono">{pricedAs.wire}</span>.
+            </p>
+          )}
           <ol className="divide-y divide-border/40">
             {rows.map((e) => (
               <li key={e.id} className="flex items-start gap-2 py-1.5 text-xs">
@@ -714,7 +723,7 @@ export function UsageSection({
                   actually priced by, and the two differing on a custom route is
                   the case worth being able to see.
                 */}
-                  {e.wire_model_id && e.wire_model_id !== e.model_id ? (
+                  {!pricedAs && e.wire_model_id && e.wire_model_id !== e.model_id ? (
                     <p className="mt-0.5 font-mono text-xs text-muted-foreground">
                       priced as {e.wire_model_id}
                     </p>
@@ -743,6 +752,25 @@ export function UsageSection({
       </SectionBody>
     </Section>
   );
+}
+
+/**
+ * The route → price mapping, when every row shares one that differs.
+ *
+ * `null` when any row was priced as its own id, or rows disagree: then the
+ * per-row line is the honest form, because the rows are not all the same.
+ */
+export function sharedPricing(
+  rows: { model_id?: string | null; wire_model_id?: string | null }[],
+): { model: string; wire: string } | null {
+  const first = rows[0];
+  if (!first?.wire_model_id || !first.model_id || first.wire_model_id === first.model_id) {
+    return null;
+  }
+  const same = rows.every(
+    (r) => r.model_id === first.model_id && r.wire_model_id === first.wire_model_id,
+  );
+  return same ? { model: first.model_id, wire: first.wire_model_id } : null;
 }
 
 /** The window the harness answered for, in whole days, for a label. */

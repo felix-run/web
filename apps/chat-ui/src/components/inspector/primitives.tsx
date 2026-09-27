@@ -5,7 +5,7 @@ import { Skeleton } from '@felix/ui/skeleton';
 import { ChevronRightIcon, CircleAlertIcon } from 'lucide-react';
 import { createContext, type ReactNode, useContext, useEffect } from 'react';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
-import { PageHeader } from '@/components/harness/panel';
+import { PageHeader, READING_MEASURE } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
 
 /**
@@ -149,7 +149,11 @@ export function Section({
   // section heading under a tab strip that already names the same thing is the
   // label repeated, and it costs a row on every screen. The value still reaches
   // that heading, through `SectionMetaSink`.
-  if (chrome === 'bare') return <>{children}</>;
+  //
+  // The measure is applied here rather than by each half, so the loading, empty
+  // and error states take it too: the halves used to measure only their rows,
+  // and a failed poll's slab ran the full width of the pane.
+  if (chrome === 'bare') return <div className={READING_MEASURE}>{children}</div>;
 
   // A page does not disclose: there is nothing else on it to collapse *to*, and a
   // header that hides the only content on screen is a control whose best outcome
@@ -169,7 +173,11 @@ export function Section({
           valueTone={metaTone}
           headingId={headingId}
         />
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+        {/* Held to the reading measure like every `/harness` page. A section is
+            never a full-bleed page, so it takes the constant rather than asking. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className={cn('p-4', READING_MEASURE)}>{children}</div>
+        </div>
       </section>
     );
   }

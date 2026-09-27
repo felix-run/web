@@ -1,6 +1,6 @@
 import { describeError } from '@felix/client';
 import { Button } from '@felix/ui/button';
-import { BrainIcon } from 'lucide-react';
+import { BrainIcon, PlusIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { addMemory, forgetMemory, listMemories, memoriesAsOf, searchMemories } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -113,30 +113,48 @@ export function MemorySection({
         behave like one. `aria-pressed` on buttons in a named group promises only
         what this actually is.
       */}
-      <div className="mb-2 flex gap-1" role="group" aria-label="Memory view">
-        {(
-          [
-            ['recent', 'Recent'],
-            ['search', 'Search'],
-            ['asOf', 'As of'],
-            ['add', 'Add'],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={mode === id}
-            onClick={() => setMode(id)}
-            className={cn(
-              'rounded px-2 py-1 text-xs transition-colors',
-              mode === id
-                ? 'bg-accent text-foreground'
-                : 'text-muted-foreground hover:bg-accent/50',
-            )}
-          >
-            {label}
-          </button>
-        ))}
+      {/* The three reads are one group; Add is apart from it. It is a write — an
+          injection ingress, as its form says — and sitting fourth in a strip of
+          views made it read as a fourth way of *looking*. */}
+      <div className="mb-2 flex items-center gap-1">
+        <div className="flex gap-1" role="group" aria-label="Memory view">
+          {(
+            [
+              ['recent', 'Recent'],
+              ['search', 'Search'],
+              ['asOf', 'As of'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={mode === id}
+              onClick={() => setMode(id)}
+              className={cn(
+                'rounded px-2 py-1 text-xs transition-colors',
+                mode === id
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          aria-expanded={mode === 'add'}
+          onClick={() => setMode(mode === 'add' ? 'recent' : 'add')}
+          className={cn(
+            'ml-auto flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors',
+            mode === 'add'
+              ? 'bg-accent text-foreground'
+              : 'text-muted-foreground hover:bg-accent/50',
+          )}
+        >
+          <PlusIcon aria-hidden className="size-3" />
+          Add memory
+        </button>
       </div>
 
       {mode === 'add' && (

@@ -319,7 +319,7 @@ describe('when the line cannot see', () => {
     await settle();
     expect(status()).not.toMatch(/nothing waiting/i);
     expect(status()).toMatch(/can't reach approvals/i);
-    expect(screen.getByText('not checked yet')).toBeTruthy();
+    expect(screen.getByText('no answer yet')).toBeTruthy();
   });
 
   it('says how old its answer is once a good poll is followed by a failed one', async () => {
@@ -332,7 +332,7 @@ describe('when the line cannot see', () => {
     answer({ status: 429 });
     await tick();
     expect(status()).not.toMatch(/nothing waiting/i);
-    expect(screen.getByText(/^last checked /)).toBeTruthy();
+    expect(screen.getByText(/^last answered /)).toBeTruthy();
   });
 
   it('keeps the last known count, in the past tense, when the poll starts failing', async () => {
@@ -358,7 +358,7 @@ describe('when the line cannot see', () => {
     answer({ status: 200, rows: [] });
     await tick();
     expect(status()).toMatch(/nothing waiting/i);
-    expect(screen.queryByText(/last checked|not checked yet/)).toBeNull();
+    expect(screen.queryByText(/last answered|no answer yet/)).toBeNull();
   });
 
   /** Idle is not on the ramp: green claims a finished state this line has no evidence of. */

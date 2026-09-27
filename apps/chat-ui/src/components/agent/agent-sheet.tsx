@@ -1,17 +1,22 @@
 import { Badge } from '@felix/ui/badge';
-import { ScrollArea } from '@felix/ui/scroll-area';
 import { BotIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
-import { PageHeader, Panel } from '@/components/harness/panel';
+import { Fact, Facts, PageHeader, PageSection, Panel, PanelBody } from '@/components/harness/panel';
+import { SectionBody } from '@/components/inspector/primitives';
 import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
 
 /**
  * Agent spec panel — "what is this agent". Shows the resolved manifest spec for
- * the *selected* agent (pattern, model, tools, skills, memory, governance) and,
- * below it, the orchestrator's A2A discovery card (the peer-facing document for
- * the default manifest). Read-only; reflects what the harness compiled.
+ * the *selected* agent and, below it, the orchestrator's A2A discovery card (the
+ * peer-facing document for the default manifest). Read-only; reflects what the
+ * harness compiled.
+ *
+ * The parts are ranked by the question an operator opens this page with — what
+ * can it do, what can it reach, and what stops it — before how it is configured
+ * to think. Governance used to sit fifth, below the loop pattern and the
+ * temperature, at the same weight as both.
  */
 export function AgentSheet({ manifest }: { manifest: string }) {
   const [resolved, setResolved] = useState<ResolvedManifest | null>(null);
@@ -45,6 +50,8 @@ export function AgentSheet({ manifest }: { manifest: string }) {
 
   const spec = (resolved?.manifest as ManifestLike | undefined)?.spec;
   const meta = (resolved?.manifest as ManifestLike | undefined)?.metadata;
+  const reach = spec ? connections(spec) : [];
+  const provenance = resolved ? resolvedFrom(resolved) : null;
 
   return (
     <Panel>
@@ -53,166 +60,271 @@ export function AgentSheet({ manifest }: { manifest: string }) {
           below the old title restated in a sentence. */}
       <PageHeader icon={<BotIcon />} title="Agent" value={manifest} valueMono />
 
-      <ScrollArea className="min-h-0 flex-1">
-        {/* The spec rows are rows, not captions. This container set `text-xs` so the
-              whole panel — every label, value and description — inherited the 11px
-              caption step and nothing ranked. Section headings and badges stay at xs. */}
-        <div className="space-y-4 p-4 text-sm">
-          {error != null && <ErrorNotice error={error} doing="load the agent spec" />}
-          {!resolved && !error && <p className="text-muted-foreground">Loading…</p>}
-
+      <PanelBody>
+        {/* The same loading and failure grammar as every section page, rather
+            than a bare "Loading…" line only this page drew. */}
+        <SectionBody
+          loading={!resolved && error == null}
+          error={error}
+          doing="load the agent spec"
+          emptyText=""
+        >
           {resolved && spec && (
             <>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge variant="secondary" className="font-mono">
-                  {resolved.source}
-                  {resolved.version != null ? ` v${resolved.version}` : ''}
-                </Badge>
-                {meta?.version && (
-                  <span className="text-muted-foreground">spec {meta.version}</span>
-                )}
-              </div>
-              {meta?.description && <p className="text-muted-foreground">{meta.description}</p>}
-
-              <Section title="Loop">
-                <Row label="Pattern" value={spec.pattern} />
-                <Row label="Runs" value={runsAs(spec.execution?.mode)} />
-                <Row label="History" value={historyAs(spec.session?.strategy)} />
-              </Section>
-
-              <Section title="Model">
-                <Row label="Model" value={modelField(spec.model, 'id')} />
-                <Row label="Temperature" value={modelField(spec.model, 'temperature')} />
-                <Row label="Reply limit" value={modelField(spec.model, 'max_tokens')} />
-                {asArray(spec.model?.fallbacks).length > 0 && (
-                  <Chips label="Falls back to" items={asArray(spec.model?.fallbacks).map(String)} />
-                )}
-                {spec.model?.cache ? <Row label="Prompt cache" value="on" /> : null}
-                {spec.model?.thinking_budget ? (
-                  <Row
-                    label="Thinking budget"
-                    value={`${String(spec.model.thinking_budget)} tok`}
-                  />
-                ) : null}
-              </Section>
-
-              <Section title="Tools & skills">
-                <Chips label="Tools" items={asArray(spec.tools).map(String)} />
-                <Chips
-                  label="Skills"
-                  items={asArray(spec.skills).map(
-                    (s) => (s as { name?: string })?.name ?? String(s),
+              {(provenance || meta?.version || meta?.description) && (
+                <div className="mb-5 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                    {/* Only what the harness answered. This drew `resolved.source`,
+                        a field the route has never sent, so every visit opened on
+                        an empty pill. */}
+                    {provenance && (
+                      <Badge variant="secondary" className="font-mono">
+                        {provenance}
+                      </Badge>
+                    )}
+                    {meta?.version && (
+                      <span className="text-muted-foreground">spec {meta.version}</span>
+                    )}
+                  </div>
+                  {meta?.description && (
+                    <p className="text-sm text-muted-foreground">{meta.description}</p>
                   )}
-                />
-              </Section>
+                </div>
+              )}
 
-              <Section title="Memory">
-                <Row label="Conversation state" value={spec.memory?.checkpointer ?? 'none'} />
-                <Row label="Long-term store" value={spec.memory?.store ?? 'none'} />
-              </Section>
+              <PageSection title="Tools & skills">
+                <Facts>
+                  <Fact label="Tools">
+                    {asArray(spec.tools).length > 0 ? (
+                      <Chips items={asArray(spec.tools).map(String)} />
+                    ) : null}
+                  </Fact>
+                  <Fact label="Skills">
+                    {asArray(spec.skills).length > 0 ? (
+                      <Chips
+                        items={asArray(spec.skills).map(
+                          (sk) => (sk as { name?: string })?.name ?? String(sk),
+                        )}
+                      />
+                    ) : null}
+                  </Fact>
+                </Facts>
+              </PageSection>
+
+              {/*
+                  Only the connections that exist, and one line when none do. On a
+                  typical manifest every one of these was `—`, which spent a panel
+                  saying "no" row by row.
+
+                  It also said "no" when the answer was yes. The resolved manifest
+                  is serialised by field name, so MCP servers arrive as `mcp` and
+                  peers as top-level `peers` — this read `mcp_servers` and
+                  `a2a.peers`, the YAML spellings, and told an agent publishing
+                  through GitHub MCP that it reached nothing outside the harness.
+                  Six more kinds of tool (shell, HTTP, search, document search,
+                  client, sub-agent) were never read at all.
+                */}
+              <PageSection
+                title="Reaches"
+                meta={reach.length === 0 ? 'nothing outside the harness' : undefined}
+              >
+                {reach.length > 0 ? (
+                  <Facts>
+                    {reach.map(({ label, names }) => (
+                      <Fact key={label} label={label}>
+                        <Chips items={names} />
+                      </Fact>
+                    ))}
+                  </Facts>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No MCP servers, peers, sub-agents, containers, queues, sandboxes, or shell,
+                    browser, HTTP, search, document or client tools.
+                  </p>
+                )}
+              </PageSection>
 
               {(asArray(spec.guardrails?.judges).length > 0 ||
                 asArray(spec.approvals).length > 0 ||
                 asArray(spec.policies).length > 0 ||
                 spec.limits) && (
-                <Section title="Governance">
-                  {asArray(spec.guardrails?.judges).map((j, i) => {
-                    const judge = j as { name?: string; threshold?: number };
-                    return (
-                      <Row
+                <PageSection title="Governance">
+                  <Facts>
+                    {asArray(spec.approvals).map((a, i) => {
+                      const ap = a as { id?: string; tools?: string[] };
+                      return (
                         // static read-only manifest list, never reordered
-                        key={`judge-${i}`}
-                        label={`judge: ${judge.name ?? i}`}
-                        value={`≥ ${judge.threshold ?? '—'}`}
-                      />
-                    );
-                  })}
-                  {asArray(spec.approvals).map((a, i) => {
-                    const ap = a as { id?: string; tools?: string[] };
-                    return (
-                      <Row
+                        <Fact
+                          key={`appr-${i}`}
+                          label={
+                            <>
+                              Approval <span className="font-mono">{ap.id ?? i}</span>
+                            </>
+                          }
+                        >
+                          {asArray(ap.tools).length > 0 ? (
+                            <Chips items={asArray(ap.tools).map(String)} />
+                          ) : null}
+                        </Fact>
+                      );
+                    })}
+                    {asArray(spec.guardrails?.judges).map((j, i) => {
+                      const judge = j as { name?: string; threshold?: number };
+                      return (
                         // static read-only manifest list, never reordered
-                        key={`appr-${i}`}
-                        label={`approval: ${ap.id ?? i}`}
-                        value={asArray(ap.tools).join(', ')}
-                      />
-                    );
-                  })}
-                  {asArray(spec.policies).map((p, i) => {
-                    const pol = p as { id?: string };
-                    // static read-only manifest list, never reordered
-                    return <Row key={`pol-${i}`} label="Policy" value={pol.id ?? String(i)} />;
-                  })}
-                  {spec.limits &&
-                    Object.entries(spec.limits).map(([k, v]) => (
-                      <Row key={`lim-${k}`} label={k} value={String(v)} />
-                    ))}
-                </Section>
+                        <Fact
+                          key={`judge-${i}`}
+                          label={
+                            <>
+                              Judge <span className="font-mono">{judge.name ?? i}</span>
+                            </>
+                          }
+                        >
+                          {`passes at ≥ ${judge.threshold ?? '—'}`}
+                        </Fact>
+                      );
+                    })}
+                    {asArray(spec.policies).map((p, i) => {
+                      const pol = p as { id?: string };
+                      return (
+                        // static read-only manifest list, never reordered
+                        <Fact key={`pol-${i}`} label="Policy" mono>
+                          {pol.id ?? String(i)}
+                        </Fact>
+                      );
+                    })}
+                    {spec.limits &&
+                      Object.entries(spec.limits).map(([k, v]) => {
+                        const limit = limitAs(k, v);
+                        return (
+                          <Fact key={`lim-${k}`} label={limit.label} mono={limit.mono}>
+                            {limit.value}
+                          </Fact>
+                        );
+                      })}
+                  </Facts>
+                </PageSection>
               )}
 
-              {/*
-                  Only the connections that exist, and nothing at all when none
-                  do. On a typical manifest every one of these six was `—`, which
-                  spent a bordered panel — at the same visual weight as
-                  Governance — saying "no". An absence is worth a row when the
-                  reader is choosing between present and absent; here they are
-                  all absent, and the useful statement is the one line below.
-                */}
-              {connections(spec).length > 0 ? (
-                <Section title="Connectivity">
-                  {connections(spec).map(([label, count]) => (
-                    <Row key={label} label={label} value={count} />
-                  ))}
-                </Section>
-              ) : (
-                <Section title="Connectivity">
-                  <span className="text-muted-foreground">
-                    Nothing outside the harness — no MCP servers, peers, containers, queues,
-                    sandboxes or browser tools.
-                  </span>
-                </Section>
-              )}
+              <PageSection title="Model">
+                <Facts>
+                  {/* `id` is optional in the schema: unset, the harness routes to its
+                      configured default, which a bare dash did not say. */}
+                  <Fact label="Model" mono absent="harness default">
+                    {modelField(spec.model, 'id')}
+                  </Fact>
+                  <Fact label="Temperature" mono>
+                    {modelField(spec.model, 'temperature')}
+                  </Fact>
+                  <Fact label="Reply limit" mono absent="not set">
+                    {modelField(spec.model, 'max_tokens')}
+                  </Fact>
+                  {asArray(spec.model?.fallbacks).length > 0 && (
+                    <Fact label="Falls back to">
+                      <Chips items={asArray(spec.model?.fallbacks).map(String)} />
+                    </Fact>
+                  )}
+                  {spec.model?.cache ? <Fact label="Prompt cache">on</Fact> : null}
+                  {spec.model?.thinking_budget ? (
+                    <Fact label="Thinking budget" mono>
+                      {`${String(spec.model.thinking_budget)} tok`}
+                    </Fact>
+                  ) : null}
+                </Facts>
+              </PageSection>
 
-              <Section title="Inbound auth">
-                <Row
-                  label="Anonymous callers"
-                  value={spec.auth?.inbound?.allow_anonymous ? 'allowed' : 'denied'}
-                />
-                {asArray(spec.auth?.inbound?.required_scopes).length > 0 && (
-                  <Chips
-                    label="scopes"
-                    items={asArray(spec.auth?.inbound?.required_scopes).map(String)}
-                  />
-                )}
-              </Section>
+              <PageSection title="Loop">
+                <Facts>
+                  <Fact label="Pattern" mono>
+                    {spec.pattern}
+                  </Fact>
+                  <Fact label="Runs">{runsAs(spec.execution?.mode)}</Fact>
+                  <Fact label="History">{historyAs(spec.session?.strategy)}</Fact>
+                </Facts>
+              </PageSection>
+
+              <PageSection title="Memory">
+                <Facts>
+                  <Fact label="Conversation state" mono absent="none">
+                    {spec.memory?.checkpointer}
+                  </Fact>
+                  <Fact label="Long-term store" mono absent="none">
+                    {spec.memory?.store}
+                  </Fact>
+                </Facts>
+              </PageSection>
+
+              <PageSection title="Inbound auth">
+                <Facts>
+                  <Fact label="Anonymous callers">
+                    {spec.auth?.inbound?.allow_anonymous ? 'allowed' : 'denied'}
+                  </Fact>
+                  {asArray(spec.auth?.inbound?.required_scopes).length > 0 && (
+                    <Fact label="Required scopes">
+                      <Chips items={asArray(spec.auth?.inbound?.required_scopes).map(String)} />
+                    </Fact>
+                  )}
+                </Facts>
+              </PageSection>
             </>
           )}
+        </SectionBody>
 
-          {card && !card.error && (
-            <Section title="A2A discovery card (default agent)">
-              <Row label="name" value={card.name} />
-              <Row label="version" value={card.version} />
-              <Row label="url" value={card.url} />
-              <Chips label="capabilities" items={capabilityChips(card.capabilities)} />
-              <Chips label="Skills" items={skillChips(card.skills)} />
-              {card.transparencyNotice && <Row label="transparency" value="disclosed to peers" />}
-            </Section>
-          )}
-
-          {/*
-              The route answers 200 with `{error, name}` when the default manifest is
-              missing, and 404 when the agent has `spec.a2a.publish` unset. Neither is
-              a fault in this panel, and both are worth saying out loud: an operator
-              looking for the discovery card wants to know it is deliberately absent.
-            */}
-          {card?.error && (
-            <Section title="A2A discovery card (default agent)">
-              <Row label="unavailable" value={card.error} />
-            </Section>
-          )}
-          {cardError != null && <ErrorNotice error={cardError} doing="load the discovery card" />}
-        </div>
-      </ScrollArea>
+        {/* Outside the spec's body on purpose: the card is a second request, and
+            a spec that failed to load is no reason to hide one that did. */}
+        {(card || cardError != null) && (
+          <PageSection
+            title="A2A discovery card"
+            meta={card && !card.error ? 'published for the default agent' : undefined}
+          >
+            {/* The card is the *default* agent's, which need not be the one this
+                  page describes — say so where the two names would otherwise sit
+                  side by side and read as a contradiction. */}
+            {card && !card.error && card.name && card.name !== manifest && (
+              <p className="mb-2 text-sm text-muted-foreground">
+                Peers discover <span className="font-mono">{card.name}</span>, the default agent,
+                not <span className="font-mono">{manifest}</span>.
+              </p>
+            )}
+            {card && !card.error && (
+              <Facts>
+                <Fact label="Name" mono>
+                  {card.name}
+                </Fact>
+                <Fact label="Version" mono>
+                  {card.version}
+                </Fact>
+                <Fact label="URL" mono>
+                  {card.url}
+                </Fact>
+                <Fact label="Capabilities">
+                  {capabilityChips(card.capabilities).length > 0 ? (
+                    <Chips items={capabilityChips(card.capabilities)} />
+                  ) : null}
+                </Fact>
+                <Fact label="Skills">
+                  {skillChips(card.skills).length > 0 ? (
+                    <Chips items={skillChips(card.skills)} />
+                  ) : null}
+                </Fact>
+                {card.transparencyNotice && <Fact label="Transparency">disclosed to peers</Fact>}
+              </Facts>
+            )}
+            {/*
+                  The route answers 200 with `{error, name}` when the default manifest is
+                  missing, and 404 when the agent has `spec.a2a.publish` unset. Neither is
+                  a fault in this panel, and both are worth saying out loud: an operator
+                  looking for the discovery card wants to know it is deliberately absent.
+                */}
+            {card?.error && (
+              <p className="text-sm text-muted-foreground">
+                Not published: <span className="font-mono">{card.error}</span>
+              </p>
+            )}
+            {cardError != null && <ErrorNotice error={cardError} doing="load the discovery card" />}
+          </PageSection>
+        )}
+      </PanelBody>
     </Panel>
   );
 }
@@ -236,13 +348,33 @@ interface ManifestLike {
       inbound?: { allow_anonymous?: boolean; required_scopes?: string[]; schemes?: string[] };
     };
     execution?: { mode?: string };
-    mcp_servers?: unknown[];
-    a2a?: { peers?: unknown[] };
-    containers?: unknown[];
-    queues?: unknown[];
-    sandboxes?: unknown[];
-    browser_tools?: unknown[];
-  };
+  } & Connectable;
+}
+
+/**
+ * The connection fields, as the resolved manifest carries them.
+ *
+ * `GET /manifests/{name}/resolved` serialises with `model_dump(mode="json")`,
+ * which writes field *names*, not aliases: MCP servers are `mcp` there, though a
+ * YAML manifest may spell them `mcp_servers`, and peers are top-level. Both
+ * spellings are read, because a stored-version read returns the manifest as it
+ * was written and so may carry the alias.
+ */
+interface Connectable {
+  mcp?: unknown[];
+  mcp_servers?: unknown[];
+  peers?: unknown[];
+  a2a?: { peers?: unknown[] };
+  sub_agents?: unknown[];
+  containers?: unknown[];
+  queues?: unknown[];
+  sandboxes?: unknown[];
+  shell_tools?: unknown[];
+  browser_tools?: unknown[];
+  http_tools?: unknown[];
+  search_tools?: unknown[];
+  document_tools?: unknown[];
+  client_tools?: unknown[];
 }
 
 function asArray(v: unknown): unknown[] {
@@ -282,6 +414,81 @@ function modelField(
   return typeof v === 'string' || typeof v === 'number' ? v : undefined;
 }
 
+/** The connections this manifest actually has, by name, so absences do not fill a panel. */
+function connections(spec: Connectable): Array<{ label: string; names: string[] }> {
+  const all: Array<[string, unknown]> = [
+    ['MCP servers', spec.mcp ?? spec.mcp_servers],
+    ['A2A peers', spec.peers ?? spec.a2a?.peers],
+    ['Sub-agents', spec.sub_agents],
+    ['Containers', spec.containers],
+    ['Queues', spec.queues],
+    ['Sandboxes', spec.sandboxes],
+    ['Shell tools', spec.shell_tools],
+    ['Browser tools', spec.browser_tools],
+    ['HTTP tools', spec.http_tools],
+    ['Search tools', spec.search_tools],
+    ['Document tools', spec.document_tools],
+    ['Client tools', spec.client_tools],
+  ];
+  return all
+    .map(([label, v]) => ({
+      label,
+      names: asArray(v).map((ref, i) =>
+        typeof ref === 'string' ? ref : ((ref as { name?: string })?.name ?? `#${i + 1}`),
+      ),
+    }))
+    .filter(({ names }) => names.length > 0);
+}
+
+/**
+ * Where the resolved manifest came from, as far as the route says.
+ *
+ * The route answers `version` (a stored tenant version, or `null` for a file or
+ * a bundled manifest) and `variant` (`canary` when this thread hashed onto the
+ * rollout). `source` is read when present — the type allows it — but no harness
+ * sends it today, which is why this is not simply that field.
+ */
+function resolvedFrom(r: ResolvedManifest): string | null {
+  const parts = [
+    r.source ?? null,
+    r.version != null ? `v${r.version}` : null,
+    r.variant === 'canary' ? 'canary' : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * A governance limit, as a label and a reading rather than a schema key.
+ *
+ * `max_peer_hops null` in a Governance panel is the field name and the JSON
+ * value, and it reads as "the peer-hop limit is broken" when it means there is
+ * none. Unknown keys pass through as they came: a harness that gains a limit
+ * should render it, not hide it.
+ */
+export function limitAs(
+  key: string,
+  value: unknown,
+): { label: string; value: string; mono: boolean } {
+  const labels: Record<string, string> = {
+    max_tool_calls: 'Tool calls',
+    max_wall_clock_seconds: 'Wall clock',
+    max_peer_hops: 'Peer hops',
+    max_input_tokens: 'Input tokens',
+    max_output_tokens: 'Output tokens',
+    max_cost_usd: 'Spend',
+    precount: 'Count tokens first',
+  };
+  const label = labels[key] ?? key;
+  if (value === null || value === undefined) return { label, value: 'no limit', mono: false };
+  if (typeof value === 'boolean') return { label, value: value ? 'yes' : 'no', mono: false };
+  if (typeof value === 'number') {
+    if (key === 'max_wall_clock_seconds') return { label, value: `${value}s`, mono: true };
+    if (key === 'max_cost_usd') return { label, value: `$${value}`, mono: true };
+    return { label, value: value.toLocaleString(), mono: true };
+  }
+  return { label, value: String(value), mono: true };
+}
+
 /**
  * Values are wire spellings too.
  *
@@ -290,28 +497,6 @@ function modelField(
  * as `max_tokens` did in the label column. Unknown strategies fall through
  * unchanged: a harness that gains one should render it, not hide it.
  */
-/** The connections this manifest actually has, so absences do not fill a panel. */
-function connections(spec: {
-  mcp_servers?: unknown[];
-  a2a?: { peers?: unknown[] };
-  containers?: unknown[];
-  queues?: unknown[];
-  sandboxes?: unknown[];
-  browser_tools?: unknown[];
-}): Array<[string, number]> {
-  const all: Array<[string, unknown]> = [
-    ['MCP servers', spec.mcp_servers],
-    ['A2A peers', spec.a2a?.peers],
-    ['Containers', spec.containers],
-    ['Queues', spec.queues],
-    ['Sandboxes', spec.sandboxes],
-    ['Browser tools', spec.browser_tools],
-  ];
-  return all
-    .map(([label, v]) => [label, asArray(v).length] as [string, number])
-    .filter(([, n]) => n > 0);
-}
-
 function historyAs(strategy: string | undefined): string {
   switch (strategy ?? 'full_replay') {
     case 'full_replay':
@@ -336,47 +521,14 @@ function runsAs(mode: string | undefined): string {
   }
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Chips({ items }: { items: string[] }) {
   return (
-    <div className="space-y-1 rounded-md border bg-card/40 p-2.5">
-      <div className="text-xs font-medium text-muted-foreground">{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string | number | undefined }) {
-  if (value === undefined || value === '' || value === '—') {
-    return (
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-mono text-muted-foreground">—</span>
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="break-all text-right font-mono">{value}</span>
-    </div>
-  );
-}
-
-function Chips({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <div className="flex flex-wrap justify-end gap-1">
-        {items.length === 0 ? (
-          <span className="font-mono text-muted-foreground">—</span>
-        ) : (
-          items.map((it) => (
-            <Badge key={it} variant="secondary" className="py-0 font-mono text-xs">
-              {it}
-            </Badge>
-          ))
-        )}
-      </div>
-    </div>
+    <span className="flex flex-wrap gap-1">
+      {items.map((it) => (
+        <Badge key={it} variant="secondary" className="py-0 font-mono text-xs">
+          {it}
+        </Badge>
+      ))}
+    </span>
   );
 }

@@ -3,9 +3,8 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
-import { ScrollArea } from '@felix/ui/scroll-area';
 import { Textarea } from '@felix/ui/textarea';
-import { GitBranchIcon, RotateCcwIcon, SaveIcon } from 'lucide-react';
+import { GitBranchIcon, PencilIcon, RotateCcwIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   activateManifestVersion,
@@ -17,7 +16,7 @@ import {
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
-import { PageHeader, Panel, plural } from '@/components/harness/panel';
+import { PageHeader, PageSection, Panel, PanelBody, plural } from '@/components/harness/panel';
 import {
   type KnownVersion,
   knownVersions,
@@ -27,7 +26,7 @@ import {
 import type { ManifestSummary } from '@/types';
 
 /**
- * Manifest lifecycle workbench — the `/manifests` surface as a slide-over.
+ * Manifest lifecycle workbench — the `/manifests` surface as a `/harness` page.
  * Tenant-managed manifests are an append-only version log with an active
  * pointer and an optional weighted canary pointer. Here you can import the
  * current agent into the tenant version log, append edited versions, flip the
@@ -86,7 +85,11 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
       const created = await createManifestVersion(
         name,
         resolved.manifest,
-        `imported from ${resolved.source}`,
+        // `source` is typed but never sent, so this recorded "imported from
+        // undefined" on every import. The version is what the route answers.
+        resolved.version != null
+          ? `imported from v${resolved.version}`
+          : 'imported from its resolved spec',
       );
       recordVersion(name, {
         version: created.version,
@@ -126,17 +129,24 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
         }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+      <PanelBody>
         {failure && (
-          <ErrorNotice
-            error={failure.err}
-            doing={failure.doing}
-            action={
-              <Button size="sm" variant="outline" className="self-start text-xs" onClick={refresh}>
-                Try again
-              </Button>
-            }
-          />
+          <div className="mb-4">
+            <ErrorNotice
+              error={failure.err}
+              doing={failure.doing}
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="self-start text-xs"
+                  onClick={refresh}
+                >
+                  Try again
+                </Button>
+              }
+            />
+          </div>
         )}
 
         {/*
@@ -145,58 +155,43 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
             — the control growing until the thing it controls is unreachable.
             Read from the code rather than measured: the local harness has one.
           */}
-        <div className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto">
-          {rows.map((r) => (
-            <Button
-              key={r.name}
-              size="sm"
-              variant={selected === r.name ? 'secondary' : 'ghost'}
-              className="gap-1 font-mono text-sm"
-              // Selection was carried by the `secondary` fill alone, which is colour
-              // as the only channel and inaudible to a screen reader.
-              aria-pressed={selected === r.name}
-              onClick={() => setSelected(r.name)}
-            >
-              {r.name}
-              {r.canary_version != null && (r.canary_weight ?? 0) > 0 && (
-                // The numbers, not a diamond that only a mouse could decode.
-                // The version and the weight were in a `title` — invisible to
-                // touch and to a keyboard — while the `aria-label` said only
-                // "has a canary rollout", so the two facts that decide whether
-                // to care reached nobody who was not hovering. They are short
-                // enough to render, and `v3 · 10%` is the whole message.
-                <span className="font-mono text-xs text-foreground">
-                  v{r.canary_version} · {r.canary_weight}%
-                </span>
-              )}
-            </Button>
-          ))}
-          {rows.length === 0 && (
-            <span className="text-sm text-muted-foreground">
-              No tenant-managed manifests yet. Import one below to start a version log.
-            </span>
-          )}
-        </div>
-
-        <div className="flex gap-2">
-          <Input
-            id="manifest-import-name"
-            aria-label="Manifest name to import"
-            value={importName}
-            onChange={(e) => setImportName(e.target.value)}
-            placeholder="manifest name to import"
-            className="h-8 font-mono text-sm"
-            onKeyDown={(e) => e.key === 'Enter' && importManifest()}
-          />
-          <Button
-            size="sm"
-            className="whitespace-nowrap"
-            disabled={busy || !importName.trim()}
-            onClick={importManifest}
+        {rows.length > 0 ? (
+          <div
+            role="group"
+            aria-label="Tenant manifests"
+            className="mb-5 flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto"
           >
-            Import as version
-          </Button>
-        </div>
+            {rows.map((r) => (
+              <Button
+                key={r.name}
+                size="sm"
+                variant={selected === r.name ? 'secondary' : 'ghost'}
+                className="gap-1 font-mono text-sm"
+                // Selection was carried by the `secondary` fill alone, which is colour
+                // as the only channel and inaudible to a screen reader.
+                aria-pressed={selected === r.name}
+                onClick={() => setSelected(r.name)}
+              >
+                {r.name}
+                {r.canary_version != null && (r.canary_weight ?? 0) > 0 && (
+                  // The numbers, not a diamond that only a mouse could decode.
+                  // The version and the weight were in a `title` — invisible to
+                  // touch and to a keyboard — while the `aria-label` said only
+                  // "has a canary rollout", so the two facts that decide whether
+                  // to care reached nobody who was not hovering. They are short
+                  // enough to render, and `v3 · 10%` is the whole message.
+                  <span className="font-mono text-xs text-foreground">
+                    v{r.canary_version} · {r.canary_weight}%
+                  </span>
+                )}
+              </Button>
+            ))}
+          </div>
+        ) : loaded ? (
+          <p className="mb-5 text-sm text-muted-foreground">
+            No tenant-managed manifests yet. Importing one starts its version log.
+          </p>
+        ) : null}
 
         {selectedRow ? (
           <VersionsPanel
@@ -206,7 +201,47 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
             onError={(err, doing) => setFailure({ err, doing })}
           />
         ) : null}
-      </div>
+
+        {/*
+            Last, and outline rather than filled. It led the page as its heaviest
+            control — a filled button ~1100px from its label at a desktop width —
+            while being the action taken least: once per manifest, ever. And it is
+            the one write here with no confirmation, though for a name the tenant
+            does not yet manage it is not a quiet one: the harness makes a first
+            version active, so from then on the name resolves to the tenant copy
+            instead of the file.
+          */}
+        <PageSection title="Import">
+          <p className="mb-2 text-sm text-muted-foreground">
+            Copy a manifest the harness resolves from a file into this tenant's version log.
+          </p>
+          <div className="flex max-w-md flex-wrap items-center gap-2">
+            <Input
+              id="manifest-import-name"
+              aria-label="Manifest name to import"
+              value={importName}
+              onChange={(e) => setImportName(e.target.value)}
+              placeholder="manifest name"
+              className="h-8 min-w-0 flex-1 font-mono text-sm"
+            />
+            <ConfirmButton
+              size="sm"
+              variant="outline"
+              className="whitespace-nowrap"
+              disabled={busy || !importName.trim()}
+              question={
+                rows.some((r) => r.name === importName.trim())
+                  ? `Appends ${importName.trim()} as a new version. The active version does not change.`
+                  : `${importName.trim()} becomes tenant-managed, and its v1 is what the name resolves to from now on.`
+              }
+              confirmLabel={`Import ${importName.trim()}`}
+              onConfirm={importManifest}
+            >
+              Import as version
+            </ConfirmButton>
+          </div>
+        </PageSection>
+      </PanelBody>
     </Panel>
   );
 }
@@ -364,28 +399,28 @@ function VersionsPanel({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      {/* Active pointer */}
-      <div className="rounded-md border bg-card/40 p-2.5 text-sm">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span className="font-medium">Active</span>
-          {activeV != null ? (
+    <>
+      <PageSection
+        title="Active"
+        meta={
+          // Who moved this pointer and when. Both are on the wire and neither was
+          // rendered — it is the first thing worth knowing before moving it again.
+          summary.updated_at != null
+            ? `changed ${relativeTime(summary.updated_at)}${
+                summary.updated_by ? ` by ${summary.updated_by}` : ''
+              }`
+            : undefined
+        }
+        actions={
+          activeV != null ? (
             <Badge variant="secondary" className="py-0 font-mono text-xs">
               v{activeV}
             </Badge>
           ) : (
             <span className="text-xs text-muted-foreground">no tenant version</span>
-          )}
-          {/* Who moved this pointer and when. Both are on the wire and neither was
-              rendered — it is the first thing worth knowing before moving it again. */}
-          {summary.updated_at != null && (
-            <span className="text-xs text-muted-foreground">
-              changed {relativeTime(summary.updated_at)}
-              {summary.updated_by ? ` by ${summary.updated_by}` : ''}
-            </span>
-          )}
-        </div>
-
+          )
+        }
+      >
         <VersionChips
           known={known}
           activeV={activeV}
@@ -394,14 +429,14 @@ function VersionsPanel({
         />
         {/* wraps so an armed confirmation gets its own line instead of squeezing the
             version field it is echoing */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex max-w-md flex-wrap items-center gap-2">
           <Input
             aria-label={`Version to activate for ${name}`}
             value={targetVersion}
             onChange={(e) => setTargetVersion(e.target.value)}
             inputMode="numeric"
             placeholder="version number"
-            className="flex-1 font-mono text-sm"
+            className="h-8 min-w-0 flex-1 font-mono text-sm"
           />
           <ConfirmButton
             size="sm"
@@ -420,21 +455,20 @@ function VersionsPanel({
           </ConfirmButton>
         </div>
         {targetReason() && <p className="mt-1 text-xs text-muted-foreground">{targetReason()}</p>}
-      </div>
+      </PageSection>
 
-      {/* Canary control */}
-      <div className="rounded-md border bg-card/40 p-2.5 text-sm">
-        <div className="mb-2 flex items-center gap-2">
-          <span className="font-medium">Canary</span>
-          {/*
+      <PageSection
+        title="Canary"
+        actions={
+          /*
             Three states, not two. Reading "in flight" as `version && weight > 0`
             here while the Clear button reads it as `version != null` meant a
             canary pinned at 0% reported itself absent *and* offered a button to
             clear it. Naming the middle state fixes the contradiction without
             having to pick which of the two readings was right — both were, about
             different things: one about traffic, one about what is set.
-          */}
-          {liveCanaryV == null ? (
+          */
+          liveCanaryV == null ? (
             <span className="text-xs text-muted-foreground">none set</span>
           ) : liveWeight > 0 ? (
             <Badge className="py-0 text-xs">
@@ -444,16 +478,17 @@ function VersionsPanel({
             <Badge variant="secondary" className="py-0 text-xs">
               v{liveCanaryV} · no traffic
             </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
+          )
+        }
+      >
+        <div className="flex max-w-md items-center gap-2">
           <Input
             aria-label={`Canary version for ${name}`}
             value={canaryVersion}
             onChange={(e) => setCanaryVersion(e.target.value)}
             inputMode="numeric"
             placeholder="version"
-            className="h-7 w-24 font-mono text-sm"
+            className="h-8 w-24 font-mono text-sm"
           />
           {/* This slider decides what share of live traffic moves to the canary, and
               announced as "slider, 25" — no name at all. `aria-valuetext` makes the
@@ -466,14 +501,13 @@ function VersionsPanel({
             aria-label={`Canary traffic weight for ${name}`}
             aria-valuetext={`${weight} percent`}
             onChange={(e) => setWeight(Number(e.target.value))}
-            className="h-6 flex-1 accent-primary"
+            className="h-6 min-w-0 flex-1 accent-primary"
           />
-          <span className="w-9 text-right font-mono">{weight}%</span>
+          <span className="w-9 text-right font-mono text-sm">{weight}%</span>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <ConfirmButton
             size="sm"
-            className="flex-1"
             disabled={busy || !canaryValid}
             question={`v${canaryN} will take ${weight}% of traffic for ${name}.`}
             confirmLabel={`Send ${weight}% to v${canaryN}`}
@@ -509,74 +543,84 @@ function VersionsPanel({
           </Button>
         </div>
         {canaryReason() && <p className="mt-1 text-xs text-muted-foreground">{canaryReason()}</p>}
-        <p className="mt-2 text-sm leading-snug text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground">
           Routing is a deterministic hash of tenant, thread and both versions, so a thread stays on
           one side for the whole rollout.
         </p>
-      </div>
+      </PageSection>
 
-      {/* Editor */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">New version</span>
-        <Button size="sm" variant="outline" className="ml-auto gap-1" onClick={openEditor}>
-          <SaveIcon className="size-3.5" /> Edit current
-        </Button>
-      </div>
-
-      {editor != null && (
-        <div className="space-y-1.5 rounded-md border border-dashed p-2">
-          <Label htmlFor="manifest-version-comment">Change comment</Label>
-          <Input
-            id="manifest-version-comment"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="what changed, e.g. raised max_tool_calls"
-            className="h-7 text-sm"
-          />
-          {/* This carried `aria-describedby` while having no accessible name to
-              describe: a description is not a name. */}
-          <Label htmlFor="manifest-editor">Manifest JSON for {name}</Label>
-          <Textarea
-            id="manifest-editor"
-            value={editor}
-            onChange={(e) => setEditor(e.target.value)}
-            spellCheck={false}
-            rows={12}
-            aria-invalid={editorError != null}
-            aria-describedby={editorError != null ? 'manifest-editor-error' : undefined}
-            className="resize-y bg-transparent p-2 font-mono text-sm leading-snug shadow-none aria-invalid:border-state-failed"
-          />
-          {editorError && (
-            <p id="manifest-editor-error" role="alert" className="text-sm text-state-failed">
-              Not valid JSON: {editorError}
-            </p>
-          )}
-          <div className="flex gap-2">
-            <Button size="sm" className="flex-1" disabled={busy} onClick={saveVersion}>
-              Save new version
+      <PageSection
+        title="New version"
+        actions={
+          editor == null ? (
+            <Button size="sm" variant="outline" className="gap-1" onClick={openEditor}>
+              <PencilIcon className="size-3.5" /> Edit current
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setEditor(null);
-                setEditorError(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {editor == null && (
-        <ScrollArea className="min-h-0 flex-1">
-          <p className="pr-3 text-sm text-muted-foreground">
-            Publishing appends a new version and activates it. The harness does not expose a version
-            history endpoint, so activate an earlier version by number above.
+          ) : null
+        }
+      >
+        {/*
+            Said as the harness does it. This read "Publishing appends a new
+            version and activates it", which is true exactly once: `put_version`
+            points the name at the new version only when nothing is active yet,
+            and leaves the pointer alone every time after.
+          */}
+        {editor == null && (
+          <p className="text-sm text-muted-foreground">
+            Saving appends a version and leaves the active one where it is. There is no version
+            history route, so activate it by number under Active.
           </p>
-        </ScrollArea>
-      )}
-    </div>
+        )}
+        {editor != null && (
+          <div className="space-y-2">
+            <div>
+              <Label htmlFor="manifest-version-comment">Change comment</Label>
+              <Input
+                id="manifest-version-comment"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="what changed, e.g. raised max_tool_calls"
+                className="mt-1 h-8 text-sm"
+              />
+            </div>
+            <div>
+              {/* This carried `aria-describedby` while having no accessible name to
+                  describe: a description is not a name. */}
+              <Label htmlFor="manifest-editor">Manifest JSON for {name}</Label>
+              <Textarea
+                id="manifest-editor"
+                value={editor}
+                onChange={(e) => setEditor(e.target.value)}
+                spellCheck={false}
+                rows={16}
+                aria-invalid={editorError != null}
+                aria-describedby={editorError != null ? 'manifest-editor-error' : undefined}
+                className="mt-1 resize-y bg-transparent p-2 font-mono text-sm leading-snug shadow-none aria-invalid:border-state-failed"
+              />
+            </div>
+            {editorError && (
+              <p id="manifest-editor-error" role="alert" className="text-sm text-state-failed">
+                Not valid JSON: {editorError}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button size="sm" disabled={busy} onClick={saveVersion}>
+                Save new version
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setEditor(null);
+                  setEditorError(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </PageSection>
+    </>
   );
 }
