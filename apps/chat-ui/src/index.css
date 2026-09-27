@@ -172,6 +172,14 @@
      tint behind it: the approval panes sat on `bg-state-blocked/5` and came out faintly
      amber, so a diff was coloured by the state of the banner around it. */
   --code-surface: oklch(0.98 0.001 286.375);
+  /* The dot grid's strength: how much `--foreground` each dot carries at its centre,
+     where the fade mask is fully open. It is per theme because what it costs is not.
+     Text crosses the dots, and 11px `--muted-foreground` is the text with least
+     margin: at 16% a light dot composites to #d8d8d8 and muted text over it measures
+     3.70:1, under AA. 7% composites to #eeeeee and measures 4.56:1 (5.30:1 on bare
+     page). Dark keeps 16%, where muted text over a dot measures 5.04:1.
+     `tests/dot-grid-contrast.test.ts` recomputes both from this file. */
+  --dot-grid-alpha: 7%;
 }
 
 .dark {
@@ -203,6 +211,7 @@
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 30%), 0 4px 16px oklch(0 0 0 / 35%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 35%), 0 8px 28px oklch(0 0 0 / 45%);
   --code-surface: oklch(0.205 0.006 285.885);
+  --dot-grid-alpha: 16%;
 }
 
 @layer base {
@@ -248,8 +257,12 @@
 /* A dot grid behind the transcript that fades out as it falls toward the composer.
    Painted on a pseudo-element under `isolate`, so it sits above the zone's own
    background and below every child without a z-index on any of them. The dot is
-   drawn from `--foreground`, which is what keeps it faint in both themes rather
-   than needing a second value for dark. */
+   drawn from `--foreground`, so it inverts with the theme; its strength is
+   `--dot-grid-alpha`, which differs per theme because the contrast it costs does.
+
+   This is the app's one decorative texture (DESIGN.md, "The One Texture Rule"): it
+   lives on the transcript's `<main>` and nowhere else — not behind the workspace,
+   the instrument, `/harness` or any panel, where rows are scanned rather than read. */
 @layer components {
   .bg-dots::before {
     content: "";
@@ -257,10 +270,14 @@
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    background-image: radial-gradient(
-      color-mix(in oklch, var(--foreground) 16%, transparent) 1px,
-      transparent 1.5px
-    );
+    background-image: radial-gradient(var(--foreground) 1px, transparent 1.5px);
+    /* The strength goes on the layer, not into the colour. A `color-mix()` over
+       `var(--foreground)` cannot be resolved at build time, so the compiler emits a
+       plain `var(--foreground)` fallback for browsers without `color-mix` — full-
+       strength dots, with muted text over them at 3.75:1 light and 2.52:1 dark.
+       Layer opacity composites the same single colour over the page to the same
+       pixel, and needs no fallback. */
+    opacity: var(--dot-grid-alpha);
     background-size: 18px 18px;
     background-position: center top;
     mask-image: linear-gradient(to bottom, black 0%, transparent 65%);
