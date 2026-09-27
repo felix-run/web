@@ -48,6 +48,8 @@ export function Workbench() {
     setManifest,
     manifestOptions,
     manifestEntries,
+    threads,
+    threadId,
     verbose,
     harnessReachable,
     historyOpen,
@@ -78,6 +80,15 @@ export function Workbench() {
     const provider = new Map(manifestEntries.map((m) => [m.id, m.providerModel]));
     return manifestOptions.map((id) => ({ id, label: id, description: provider.get(id) }));
   }, [manifestOptions, manifestEntries]);
+
+  // Which agent this thread's turns last ran on, for the line under the composer.
+  // Only the local index knows (the harness keeps no manifest per thread), and a
+  // thread with turns but no row there — first seen from another browser — is
+  // `null`, said as unknown rather than filled in with the current selection.
+  const threadAgent =
+    turns.length === 0
+      ? undefined
+      : (threads.find((t) => t.id === threadId)?.manifest ?? '').trim() || null;
 
   return (
     <>
@@ -155,6 +166,7 @@ export function Workbench() {
               models={modelOptions}
               modelId={manifest}
               onModelChange={setManifest}
+              threadAgent={threadAgent}
               placeholder={
                 streaming
                   ? 'Type to steer the run…'

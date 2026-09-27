@@ -100,6 +100,13 @@ export type MultimodalInputProps = {
   models?: ReadonlyArray<ModelOption>;
   modelId?: string;
   onModelChange?: (modelId: string) => void;
+  /**
+   * The agent this thread's turns last ran on, as the local index recorded it.
+   * `undefined` when there is nothing earlier to compare (an empty thread),
+   * `null` when the thread has turns and no record — the harness keeps none,
+   * so a thread first seen from another browser has no known agent.
+   */
+  threadAgent?: string | null;
   placeholder?: string;
   className?: string;
 };
@@ -124,6 +131,7 @@ function MultimodalInputInner({
   models,
   modelId,
   onModelChange,
+  threadAgent,
   placeholder = 'Message Felix…',
   className,
 }: MultimodalInputProps) {
@@ -519,6 +527,12 @@ function MultimodalInputInner({
         </PromptInput>
       </div>
 
+      {models && models.length > 0 && (
+        <AgentNote
+          next={(models.find((o) => o.id === modelId) ?? models[0])?.label}
+          earlier={threadAgent}
+        />
+      )}
       <KeyboardHint isBusy={isBusy} />
     </div>
   );
@@ -822,6 +836,42 @@ function DropOverlay() {
  * both say so. This hint used to keep saying "to send" underneath them, putting
  * three statements about one key on screen at once, two of which disagreed.
  */
+/**
+ * One line under the composer, drawn only when the agent the next message goes
+ * to is not the one this thread is known to have run on — or when the thread
+ * has turns and no record of any.
+ *
+ * Changing the picker mid-thread was silent, and a thread first seen from
+ * another browser drew the tab's current agent as though it were the thread's.
+ * The line is said where the change is made, not in a toast or a modal: it is a
+ * fact about the next send, and it lasts exactly as long as it is true. Once a
+ * message goes, the index records the new agent and the line goes with it.
+ *
+ * `role="status"` so a picker change is announced once, politely. The names are
+ * mono because they are the harness's identifiers.
+ */
+function AgentNote({
+  next,
+  earlier,
+}: {
+  next: string | undefined;
+  earlier: string | null | undefined;
+}) {
+  if (earlier === undefined || !next || earlier === next) return null;
+  return (
+    <p role="status" className="mt-2 px-1 text-center text-xs text-muted-foreground">
+      Next message goes to <span className="font-mono text-foreground">{next}</span>
+      {earlier === null ? (
+        <>; this thread&apos;s earlier agent was not recorded.</>
+      ) : (
+        <>
+          ; this thread last ran on <span className="font-mono text-foreground">{earlier}</span>.
+        </>
+      )}
+    </p>
+  );
+}
+
 function KeyboardHint({ isBusy }: { isBusy: boolean }) {
   return (
     <p className="mt-2 text-center text-xs text-muted-foreground">
@@ -907,6 +957,7 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.placeholder !== next.placeholder) return false;
   if (prev.modelId !== next.modelId) return false;
   if (prev.models !== next.models) return false;
+  if (prev.threadAgent !== next.threadAgent) return false;
   if (!equal(prev.className, next.className)) return false;
   return true;
 });

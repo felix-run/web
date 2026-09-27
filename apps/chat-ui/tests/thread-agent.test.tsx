@@ -172,3 +172,59 @@ describe("a thread's agent", () => {
     await waitFor(async () => expect((await trigger()).textContent).toBe('research'));
   });
 });
+
+describe('the line under the composer', () => {
+  const agentNote = () =>
+    [...document.querySelectorAll('[role="status"]')]
+      .map((el) => el.textContent ?? '')
+      .find((text) => text.startsWith('Next message goes to')) ?? null;
+
+  it('says the agent changed, where it was changed, when the operator picks another mid-thread', async () => {
+    seedThread('thread-c', 'cowork', 'asked cowork');
+    mount('/t/thread-c');
+    await listApplied();
+    // Agreeing agents need no line.
+    expect(agentNote()).toBeNull();
+
+    const user = userEvent.setup({ delay: null });
+    (await trigger()).focus();
+    await user.keyboard('{Enter}');
+    await user.click(await screen.findByRole('option', { name: 'research' }));
+
+    await waitFor(() =>
+      expect(agentNote()).toBe('Next message goes to research; this thread last ran on cowork.'),
+    );
+
+    // Sending records the new agent, and the line lasts only as long as it is true.
+    await user.type(screen.getByRole('textbox', { name: 'Message Felix' }), 'now you{Enter}');
+    await waitFor(() => expect(agentNote()).toBeNull());
+  });
+
+  it('says the agent is unknown on a thread with turns and no record', async () => {
+    localStorage.setItem('felix.turns:thread-x', JSON.stringify([turn('from elsewhere')]));
+    mount('/t/thread-x');
+    await listApplied();
+    await waitFor(() =>
+      expect(agentNote()).toBe(
+        "Next message goes to cowork; this thread's earlier agent was not recorded.",
+      ),
+    );
+  });
+
+  it('says so when the recorded agent is one this harness no longer lists', async () => {
+    seedThread('thread-gone', 'retired-agent', 'asked a retired agent');
+    mount('/t/thread-gone');
+    await listApplied();
+    await waitFor(() =>
+      expect(agentNote()).toBe(
+        'Next message goes to cowork; this thread last ran on retired-agent.',
+      ),
+    );
+  });
+
+  it('draws nothing on an empty thread, where there is nothing earlier to differ from', async () => {
+    mount('/t/fresh-thread');
+    await listApplied();
+    expect(agentNote()).toBeNull();
+  });
+});

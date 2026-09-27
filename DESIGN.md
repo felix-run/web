@@ -555,7 +555,18 @@ The picker's value is where the next message goes, so it follows the thread: mov
 thread this browser has sent to restores the agent the local index recorded for it. The
 harness keeps no manifest per thread, so that record is the only one. A recorded agent this
 harness no longer lists is not restored, and a thread with no record keeps the current
-selection. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
+selection.
+
+**A change of agent is said where it is made.** When a thread has turns and the next message is
+going somewhere other than the agent it last ran on, one 11px line under the composer reads
+*Next message goes to `research`; this thread last ran on `cowork`.* On a thread with turns and
+no record it reads *…; this thread's earlier agent was not recorded.* It is a polite status, not
+a toast or a modal, and it lasts only while it is true: sending records the new agent and the
+line goes. Agent names in it are mono foreground; the sentence is ours and stays muted.
+
+The picker carries no capability line. `GET /v1/models` says nothing per agent beyond the
+provider model and a context window that is known to be wrong, so describing what an agent can
+do needs a field the harness does not send yet. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
 the manifest *name*, so for most manifests it is the catalog's 128k fallback rather than the
 model's real window, and printing it would be exact-looking and wrong.
 
