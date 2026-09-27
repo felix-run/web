@@ -1,0 +1,33 @@
+name: API reference freshness
+
+# docs.felix.run/reference/ renders the spec of the felix release api.felix.run
+# ran when the docs were last deployed. The deploy is manual (`pnpm docs:deploy`),
+# so a production upgrade leaves the reference one version behind until someone
+# redeploys — and nothing else would say so. This compares the two and fails
+# with the fix. It also downloads the release's spec, so a release published
+# without openapi.json fails here before the next deploy trips on it.
+
+on:
+  schedule:
+    - cron: '17 14 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Deployed reference matches production
+        run: |
+          set -euo pipefail
+          live=$(curl -fsS --max-time 20 https://api.felix.run/health | jq -r .version)
+          docs=$(curl -fsS --max-time 20 https://docs.felix.run/api-version.txt | tr -d '[:space:]')
+          echo "api.felix.run runs v$live; docs.felix.run/reference/ shows v$docs"
+          curl -fsSL --max-time 20 -o /dev/null \
+            "https://github.com/felix-run/felix/releases/download/v${live}/openapi.json" || {
+            echo "::error::the felix v$live release has no openapi.json, so the docs build cannot render it"; exit 1; }
+          test "$live" = "$docs" || {
+            echo "::error::docs.felix.run/reference/ is v$docs, production is v$live — run \`pnpm docs:deploy\`"; exit 1; }

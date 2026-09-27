@@ -5,6 +5,9 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      // Read by apps/docs/scripts/fetch-api-spec.mjs. Strict env mode drops any
+      // variable not named here before the build sees it.
+      "env": ["FELIX_OPENAPI_SPEC", "FELIX_ORIGIN"],
       "outputs": ["dist/**"]
     },
     "lint": {

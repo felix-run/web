@@ -1,0 +1,70 @@
+---
+/*
+ * Public API reference — Scalar over `/openapi.json`, which
+ * `scripts/fetch-api-spec.mjs` downloads at build time from the felix release
+ * that `api.felix.run/health` reports. The harness serves the same UI at its own
+ * `/docs`, but behind its credential, so a browser following a link gets a 401.
+ *
+ * A page of its own rather than a Starlight route: Scalar owns the viewport
+ * (sidebar, search, request panel), and Starlight's chrome around it would be a
+ * second sidebar. The config mirrors felix `apps/api/src/felix_api/docs.py` —
+ * same pinned bundle and SRI hash, which move together on an upgrade:
+ *   curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A
+ */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// Biome parses only the frontmatter, so constants used in the markup read as dead.
+// biome-ignore lint/correctness/noUnusedVariables: used in the <script> below
+const SCALAR_JS_URL =
+  'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.67.0/dist/browser/standalone.js';
+// biome-ignore lint/correctness/noUnusedVariables: used in the <script> below
+const SCALAR_JS_SRI = 'sha384-6c7Vmx+i0yi8gBbltn0x1cavD+zsMGw2xmXXVyacPJLIGBxwaVimW5TW0WiW17Ir';
+
+let version = '';
+try {
+  version = readFileSync(join(process.cwd(), 'public/api-version.txt'), 'utf8').trim();
+} catch {
+  // `dev --soft` without a spec; Scalar shows its own load error.
+}
+const origin = (process.env.FELIX_ORIGIN || 'https://api.felix.run').replace(/\/+$/, '');
+const title = version ? `Felix API reference · v${version}` : 'Felix API reference';
+
+// biome-ignore lint/correctness/noUnusedVariables: passed to the page via define:vars
+const config = {
+  url: '/openapi.json',
+  // Curl first because every Felix guide shows curl. The spec has no `servers`
+  // block (Felix is self-hosted), so name the public deployment — otherwise
+  // every snippet is a bare path.
+  layout: 'modern',
+  defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
+  servers: [{ url: origin, description: 'Felix (hosted)' }],
+  // Scalar's hosted add-ons: "Ask AI" hands the reader to Scalar's agent, and
+  // "Generate MCP" builds a Scalar-hosted MCP server for an API that serves MCP
+  // itself (`/mcp`). Neither is Felix's to offer from its own docs.
+  agent: { disabled: true },
+  mcp: { disabled: true },
+  metaData: { title },
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta
+      name="description"
+      content="REST, OpenAI-compatible, A2A and MCP endpoints of the Felix agents harness."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script is:inline src={SCALAR_JS_URL} integrity={SCALAR_JS_SRI} crossorigin="anonymous"></script>
+    <script is:inline define:vars={{ config }}>
+      Scalar.createApiReference('#app', config);
+    </script>
+  </body>
+</html>

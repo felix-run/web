@@ -72,9 +72,14 @@ jobs:
         run: pnpm check-payload-shapes
 
       # turbo builds every package with a build script: chat-ui and docs.
+      # The docs build normally downloads the spec of the release api.felix.run
+      # runs; a PR build uses the committed snapshot so it does not hang on the
+      # network. The real download is what reference-freshness.yml checks.
       - name: Build
         if: ${{ !cancelled() }}
         run: pnpm build
+        env:
+          FELIX_OPENAPI_SPEC: ${{ github.workspace }}/apps/chat-ui/harness-openapi.json
 
       - name: Test
         if: ${{ !cancelled() }}

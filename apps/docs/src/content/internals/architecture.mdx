@@ -44,9 +44,10 @@ Felix is plain CPython in containers you run. There is no serverless or edge run
 | Management | `/audit`, `/approvals`, `/plans`, `/jobs`, `/manifests`, `/eval`, `/usage`, `/memory`, `/documents`, `/artifacts` |
 | Internal | `POST /internal/*` (consumer secret when auth ≠ none) |
 
-Interactive OpenAPI UI: a running harness serves Scalar at `/docs` (hosted:
-[api.felix.run/docs](https://api.felix.run/docs)). Swagger and ReDoc are both off, so there is one
-reference surface under one CSP — and it is authenticated unless `FELIX_DOCS_PUBLIC=true`.
+Interactive OpenAPI UI: a running harness serves Scalar at `/docs`. Swagger and ReDoc are both off,
+so there is one reference surface under one CSP — and it is authenticated unless
+`FELIX_DOCS_PUBLIC=true`. The public copy is this site's [/reference/](/reference/), built from the
+`openapi.json` attached to the release production runs.
 
 The manifest **write** verbs (`PUT`, canary, rollback, clear-canary) are not registered at all under
 `FELIX_MANIFEST_SOURCE=bundled`, so they are absent from the OpenAPI document rather than present

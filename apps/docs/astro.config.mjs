@@ -57,9 +57,9 @@ export default defineConfig({
             { label: 'Plugins', slug: 'internals/plugins' },
           ],
         },
-        // Live OpenAPI UI (Scalar) from a running harness — hosted at api.felix.run;
-        // locally: http://localhost:8080/docs over /openapi.json.
-        { label: 'API reference ↗', link: 'https://api.felix.run/docs' },
+        // Scalar over the spec of the release api.felix.run runs (src/pages/reference.astro).
+        // The harness's own /docs needs its credential, so a link there is a 401.
+        { label: 'API reference', link: '/reference/' },
       ],
     }),
   ],

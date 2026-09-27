@@ -19,6 +19,9 @@ wrangler.jsonc
 
 # Astro / Starlight build cache
 apps/docs/.astro/
+# Fetched at build time from the felix release production runs (fetch-api-spec.mjs)
+apps/docs/public/openapi.json
+apps/docs/public/api-version.txt
 
 # Claude Code local audit trail (subagent-log hook)
 .claude/logs/

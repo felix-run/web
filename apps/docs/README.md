@@ -18,3 +18,8 @@ pnpm --filter @felix/docs deploy
 ```
 
 Root shortcuts: `pnpm docs:dev` / `docs:build` / `docs:deploy`.
+
+`/reference/` (`src/pages/reference.astro`) is Scalar over `public/openapi.json`, which
+`scripts/fetch-api-spec.mjs` downloads before every build from the felix release that
+`api.felix.run/health` reports. Set `FELIX_OPENAPI_SPEC=<file>` to build offline, or `FELIX_ORIGIN`
+to render another harness's version.
