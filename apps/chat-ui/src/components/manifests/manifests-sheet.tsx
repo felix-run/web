@@ -25,6 +25,7 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
+import { ReadFailure, withAge } from '@/components/inspector/primitives';
 import {
   type KnownVersion,
   knownVersions,
@@ -63,6 +64,11 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
   // bare error rendered with one hardcoded phrase, so a failed *activation* — the
   // highest-stakes action here — reported "Could not reach the manifest registry".
   const [failure, setFailure] = useState<{ err: unknown; doing: string } | null>(null);
+  // The list's own read, apart from the actions. Sharing one slot meant a failed
+  // reload was drawn exactly like a failed activation, and a failed activation
+  // offered "Try again" that only reloaded the list.
+  const [listError, setListError] = useState<unknown>(null);
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -70,10 +76,13 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
       for (const row of r) recordFromPointer(row.name, row);
       setRows(r);
       setLoaded(true);
-      setFailure(null);
+      setListError(null);
+      setLastOkAt(Date.now());
       setSelected((cur) => cur ?? r[0]?.name ?? null);
     } catch (err) {
-      setFailure({ err, doing: 'list tenant manifests' });
+      // `rows` is left as it was: the last list the harness answered stays on
+      // screen, under a line saying how old it is.
+      setListError(err);
     }
   }, []);
 
@@ -133,7 +142,8 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
       <PageHeader
         icon={<GitBranchIcon />}
         title="Manifests"
-        value={
+        // Aged when the latest read failed: the count is the last list's.
+        value={withAge(
           loaded
             ? // *Tenant* manifests: "0 manifests" beside an Agent page running
               // `cowork` read as a contradiction, when it counts only the ones
@@ -144,8 +154,9 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
               ]
                 .filter(Boolean)
                 .join(' · ')
-            : undefined
-        }
+            : undefined,
+          listError != null ? lastOkAt : undefined,
+        )}
         controls={
           <CreateToggle
             open={importing}
@@ -158,22 +169,20 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
       />
 
       <PanelBody>
+        {listError != null && (
+          <ReadFailure
+            error={listError}
+            doing="list tenant manifests"
+            lastOkAt={lastOkAt}
+            onRetry={() => void refresh()}
+          />
+        )}
+        {/* An action's failure: no retry, because re-running a write is not
+            something to offer with one click — the form it came from is still
+            there to do it again deliberately. */}
         {failure && (
           <div className="mb-4">
-            <ErrorNotice
-              error={failure.err}
-              doing={failure.doing}
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="self-start text-xs"
-                  onClick={refresh}
-                >
-                  Try again
-                </Button>
-              }
-            />
+            <ErrorNotice error={failure.err} doing={failure.doing} />
           </div>
         )}
 
