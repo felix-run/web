@@ -40,7 +40,7 @@ export function ErrorNotice({
     <div
       role="alert"
       className={cn(
-        'flex flex-col gap-2 rounded-lg border border-state-failed/30 bg-state-failed/10 px-2.5 py-2 text-xs text-state-failed',
+        'flex flex-col gap-2 rounded-lg border border-state-failed/30 bg-state-failed/10 px-2.5 py-2 text-sm text-state-failed',
         className,
       )}
     >
@@ -50,7 +50,7 @@ export function ErrorNotice({
           <p className="break-words">{described.message}</p>
           {/* The mono face separates the raw status from the sentence; dimming it
               further would put it under the contrast floor. */}
-          <p className="mt-0.5 font-mono break-words">{described.detail}</p>
+          <p className="mt-0.5 font-mono text-xs break-words">{described.detail}</p>
         </div>
       </div>
       {action}

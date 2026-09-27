@@ -279,6 +279,33 @@ export function CreateToggle({
 }
 
 /**
+ * Names the harness gave — tools, skills, servers — as a mono list, the same on
+ * every page that shows them. Agent drew these as plain text and Skills drew the
+ * same skills as pills, one page apart. A pill says "tag" or "filter", neither of
+ * which these are, and seventeen of them made the densest part of a page its
+ * loudest.
+ *
+ * `quiet` names are drawn muted: a declared skill that is not active is still a
+ * name worth listing, just not the one the eye should land on.
+ */
+export function NameList({ names, quiet = [] }: { names: string[]; quiet?: string[] }) {
+  return (
+    <ul className="flex flex-wrap gap-x-1 font-mono text-sm">
+      {names.map((n, i) => (
+        <li key={n} className={quiet.includes(n) ? 'text-muted-foreground' : undefined}>
+          {n}
+          {i < names.length - 1 && (
+            <span aria-hidden className="text-muted-foreground">
+              ,
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
  * A count for a header value: `plural(1, 'job')` → `1 job`.
  *
  * `cap` is the fetch's `limit`. A list that came back exactly that long is a

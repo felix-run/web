@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -358,15 +358,60 @@ describe('the harness address', () => {
     );
   });
 
-  it('is one tab stop: only the current page’s link takes Tab', async () => {
+  it('makes every nav link a Tab stop, as links are, with the arrows as an extra', async () => {
+    // One roving stop hid seven pages from anyone tabbing, with nothing to say
+    // the arrows existed; a list of links is not a composite widget.
     mount('/harness/jobs');
     await waitFor(() =>
       expect(document.querySelector('nav[aria-label="Harness"] a')).not.toBeNull(),
     );
-    const stops = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Harness"] a')]
-      .filter((a) => a.tabIndex === 0)
-      .map((a) => a.textContent);
-    expect(stops).toEqual(['Jobs']);
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Harness"] a')];
+    expect(links.length).toBe(8);
+    expect(links.every((a) => a.tabIndex === 0)).toBe(true);
+  });
+
+  it('carries failing jobs on the rail, counted as the Jobs page counts them', async () => {
+    const base = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/jobs')) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              { name: 'digest', schedule: '0 9 * * *', manifest_id: 'quick', last_status: 'ok' },
+              { name: 'triage', schedule: '', manifest_id: 'quick', last_error: 'boom' },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return base ? base(input) : new Response('{}');
+    });
+    mount('/harness/memory');
+    await waitFor(() => {
+      const jobs = [...document.querySelectorAll('nav[aria-label="Harness"] a')].find((a) =>
+        a.getAttribute('href')?.startsWith('/harness/jobs'),
+      );
+      expect(jobs?.textContent).toBe('Jobs, 1 failing');
+    });
+  });
+
+  it('puts the agent picker only on the pages it scopes', async () => {
+    // It headed the nav, where it read as filtering the Ledger and Memory too.
+    for (const [path, scoped] of [
+      ['skills', true],
+      ['eval', true],
+      ['agent', true],
+      ['ledger', false],
+      ['memory', false],
+      ['jobs', false],
+    ] as const) {
+      mount(`/harness/${path}`);
+      await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
+      expect(!!document.querySelector('main header #harness-agent')).toBe(scoped);
+      expect(document.querySelector('nav[aria-label="Harness"] #harness-agent')).toBeNull();
+      cleanup();
+    }
   });
 
   it('walks the nav with the arrow keys, wrapping at either end', async () => {

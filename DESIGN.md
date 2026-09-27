@@ -446,12 +446,16 @@ opt-out, and no page takes it today. The rule under the header stays full width;
 header from the pane. Below the header a page is divided into `PageSection`s — a hairline rule and
 an `h3` title (Title, 13px 600), never a bordered box — and label/value pairs are a `Facts` grid
 with the value a gutter from its label rather than right-aligned across the pane. Lists are rows
-between hairlines, as the Ledger's are. The nav opens with the **agent picker** — `/harness` looks at its
-own agent, `?agent=` in the address, defaulting to the one Chat is talking to and never writing
-back to it; every link and every page that writes its own view keeps it — then two runs under
-visible 11px labels that name their lists: Records (Memory, Corpus, Skills, Ledger, Agent) and
-Workbenches (Manifests, Jobs, Eval), split by full-strength `border` rules. The nav is one tab
-stop (the current page's link) walked by the arrow keys, and carries no glance values. Every page header row is `min-h-8`, so the
+between hairlines, as the Ledger's are. `/harness` looks at its own agent — `?agent=` in the address,
+defaulting to the one Chat is talking to and never writing back to it — and the **picker lives
+only in the headers of the pages it scopes** (Skills, Eval, Agent); a control belongs on the
+things it changes, and at the top of the nav it read as filtering tenant-wide pages it does not.
+Every link and every page that writes its own view keeps `?agent=`. The nav is two runs under
+visible 11px labels that name their lists — Records (Memory, Corpus, Skills, Ledger, Agent) and
+Workbenches (Manifests, Jobs, Eval) — split by a full-strength `border` rule. Every link is a Tab
+stop, with the arrow keys as an extra. The rail carries exactly two glances, in `state-failed`
+and only when non-zero: `Jobs · N failing` and `Ledger · N failed`, counted as those pages'
+headers count them. Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
 controls — New chat and the session menu — and keeps the door back to Chat. Two controls have
@@ -464,7 +468,10 @@ help that must survive typing goes under the field, never in a placeholder. A he
 mixes a window with a state draws the window neutral and only the state in its chip
 (`last 60 events ·` then `3 failed`, `3 jobs ·` then `1 failing`), and a list puts its failures
 where the eye lands — failing jobs first, a failed Activity row's subject in `state-failed`.
-**Amber is only for a person being asked to act now**: a denial in the feed is an outlined
+A routine `OK` status is a muted word and dot; colour is kept for what went wrong. A page whose
+latest read failed after a good one keeps the good rows under one line saying so, and its
+header value says how old it is (`0 documents · as of 2m ago`) — it never trades what it last
+knew for an error box. **Amber is only for a person being asked to act now**: a denial in the feed is an outlined
 badge, a rubric that can never reject is foreground text, a forgotten memory is not red. Names
 the harness gave in bulk (tools, skills) are a mono list, not a pill each. `/harness` opens on
 the Ledger. Narrow, the way back to the list

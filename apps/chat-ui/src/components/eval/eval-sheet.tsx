@@ -5,7 +5,7 @@ import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
 import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
-import { type ComponentProps, useCallback, useEffect, useState } from 'react';
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useState } from 'react';
 import {
   addEvalItem,
   compareEvalRuns,
@@ -49,8 +49,11 @@ import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } fr
 export function EvalSheet({
   manifest,
   manifestOptions = [],
+  picker,
 }: {
   manifest: string;
+  /** The agent picker, drawn in this page's header because it scopes it. */
+  picker?: ReactNode;
   /** Agents the harness knows, for picking a comparison baseline. */
   manifestOptions?: string[];
 }) {
@@ -111,13 +114,16 @@ export function EvalSheet({
         title="Eval"
         value={loaded ? plural(datasets.length, 'dataset') : undefined}
         controls={
-          <CreateToggle
-            open={naming}
-            onToggle={() => setNaming((v) => !v)}
-            controls="eval-new-dataset-form"
-          >
-            New dataset
-          </CreateToggle>
+          <>
+            {picker}
+            <CreateToggle
+              open={naming}
+              onToggle={() => setNaming((v) => !v)}
+              controls="eval-new-dataset-form"
+            >
+              New dataset
+            </CreateToggle>
+          </>
         }
       />
 
@@ -125,11 +131,13 @@ export function EvalSheet({
         {/* Which agent a run replays against is the one sentence here that
             changes what pressing Run does, so it left the header's subline for
             the body rather than being dropped with it. */}
-        <p className="mb-3 text-sm text-muted-foreground">
+        {/* `max-w-prose`: a sentence, held to a line length that reads as one
+            — the page measure is for rows and let it run to 113 characters. */}
+        <p className="mb-3 max-w-prose text-sm text-muted-foreground">
           {/* Not "the active agent": *active* is Manifests' word for a version. */}
           Golden datasets, replayed and judged per item against{' '}
-          <span className="font-mono text-foreground">{manifest}</span>, the agent chosen above the
-          nav.
+          <span className="font-mono text-foreground">{manifest}</span>, the agent picked in the
+          header.
         </p>
         {failure && (
           <div className="mb-3">
@@ -207,7 +215,9 @@ export function EvalSheet({
               </Button>
             ))}
           </div>
-        ) : loaded && !naming ? (
+        ) : // Not while the list failed to load: "No datasets yet" under an error
+        // says the tenant has none *and* that nobody could check.
+        loaded && !naming && !failure ? (
           <p className="mb-5 text-sm text-muted-foreground">No datasets yet.</p>
         ) : null}
 

@@ -113,6 +113,7 @@ export function DocumentsSection({
             ? plural(found.data.length, 'passage', 'passages', SEARCH_LIMIT)
             : undefined
       }
+      metaAsOf={active.error ? active.lastOkAt : undefined}
       open={open}
       onToggle={onToggle}
       controls={
@@ -154,6 +155,7 @@ export function DocumentsSection({
 
       <SectionBody
         onRetry={active.refresh}
+        lastOkAt={active.lastOkAt}
         doing="read the document corpus"
         loading={active.loading && !active.data}
         error={active.error}

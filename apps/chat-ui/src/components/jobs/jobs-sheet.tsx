@@ -18,7 +18,7 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { isFailure, StatusDot } from '@/components/inspector/primitives';
+import { isFailure, StatusDot, withAge } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import type { JobRun } from '@/types';
 
@@ -32,7 +32,7 @@ import type { JobRun } from '@/types';
  * triggered — expand a job to see its recent runs.
  */
 /** A job whose last run did not succeed. */
-function failing(j: { last_status?: string | null; last_error?: string | null }): boolean {
+export function failing(j: { last_status?: string | null; last_error?: string | null }): boolean {
   return Boolean(j.last_error) || (j.last_status != null && isFailure(j.last_status));
 }
 
@@ -46,7 +46,7 @@ export function JobsSheet({
   // `usePoll` rather than a bare interval: this was the one poll in the app that
   // never moved onto it, so a backgrounded tab with the sheet open kept hitting the
   // harness every four seconds forever.
-  const { data, error: listError, refresh } = usePoll(listJobs, { intervalMs: 4000 });
+  const { data, error: listError, lastOkAt, refresh } = usePoll(listJobs, { intervalMs: 4000 });
   // Kept apart from `data` so the header can tell "no jobs" from "not loaded yet".
   // Failing first: someone coming back wants the exception before the list.
   // Stable otherwise, so the harness's own order holds among the healthy ones.
@@ -146,13 +146,16 @@ export function JobsSheet({
         // The count, then how many are failing in the failed chip — the one
         // number here an operator acts on, which the header never said.
         valueLead={data && failingCount > 0 ? `${plural(jobs.length, 'job')} ·` : undefined}
-        value={
+        // Aged when the latest read failed: the list below is the last good
+        // one, and the count above it should not claim to be current.
+        value={withAge(
           data
             ? failingCount > 0
               ? `${failingCount} failing`
               : plural(jobs.length, 'job')
-            : undefined
-        }
+            : undefined,
+          listError ? lastOkAt : undefined,
+        )}
         valueTone={failingCount > 0 ? 'failed' : 'default'}
         controls={
           <CreateToggle
