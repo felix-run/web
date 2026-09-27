@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectToolCallPaths } from '../src/tool-call-paths';
+import { collectToolCallPaths, collectTouchedPaths } from '../src/tool-call-paths';
 
 /**
  * A hint's whole value is carrying the directory a message never mentions, so
@@ -62,5 +62,63 @@ describe('collectToolCallPaths', () => {
       Array.from({ length: 200 }, (_, i) => [`k${i}`, `dir${i}/file${i}.ts`]),
     );
     expect(collectToolCallPaths(wide).length).toBeLessThanOrEqual(24);
+  });
+});
+
+/**
+ * "Touched" is what a workspace tool's path argument named — never a path that
+ * happens to appear in some other argument's text. The case that motivated it:
+ * a pull request's body listing the files it changed, which the walker above
+ * reported as files the agent had touched.
+ */
+describe('collectTouchedPaths', () => {
+  it('ignores paths written into the text of a tool that touches no files', () => {
+    const body = 'Changes:\n- ./scripts/test.sh\n- tests/unit/test_audit_deny_control.py\n';
+    expect(
+      collectTouchedPaths('github__create_pull_request', {
+        title: 'Deny control',
+        head: 'fix/deny',
+        body,
+      }),
+    ).toEqual([]);
+  });
+
+  it("does not take a remote tool's own path argument for a workspace path", () => {
+    expect(
+      collectTouchedPaths('github__create_or_update_file', { path: 'src/remote.ts', content: '' }),
+    ).toEqual([]);
+  });
+
+  it("takes a workspace tool's path verbatim, bare names included", () => {
+    expect(collectTouchedPaths('write_file', { path: 'notes.txt', content: 'see a/b.md' })).toEqual(
+      ['notes.txt'],
+    );
+    expect(
+      collectTouchedPaths('edit_file', { path: ' src/api.ts ', old_string: 'x/y.ts' }),
+    ).toEqual(['src/api.ts']);
+  });
+
+  it('never reads a search query or a shell command as a path', () => {
+    expect(collectTouchedPaths('search_files', { query: 'lib/foo.ts', path: 'src' })).toEqual([
+      'src',
+    ]);
+    expect(collectTouchedPaths('local_shell', { command: 'cat notes/todo.md' })).toEqual([]);
+    expect(collectTouchedPaths('client · local_shell', { command: 'ls', cwd: 'notes' })).toEqual([
+      'notes',
+    ]);
+  });
+
+  it('skips the workspace root and URLs', () => {
+    expect(collectTouchedPaths('list_dir', { path: '.' })).toEqual([]);
+    expect(collectTouchedPaths('local_open', { target: 'https://example.com/a/b.md' })).toEqual([]);
+    expect(collectTouchedPaths('client · local_open', { target: 'docs/readme.md' })).toEqual([
+      'docs/readme.md',
+    ]);
+  });
+
+  it('survives arguments that are not an object', () => {
+    expect(collectTouchedPaths('write_file', null)).toEqual([]);
+    expect(collectTouchedPaths('write_file', 'Write notes.txt (4 chars)')).toEqual([]);
+    expect(collectTouchedPaths('write_file', ['a/b.md'])).toEqual([]);
   });
 });

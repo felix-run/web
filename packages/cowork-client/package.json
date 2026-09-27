@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./vfs": "./src/vfs.ts",
     "./fs-mount": "./src/fs-mount.ts",
-    "./client-tools": "./src/client-tools.ts"
+    "./client-tools": "./src/client-tools.ts",
+    "./tool-call-paths": "./src/tool-call-paths.ts"
   },
   "dependencies": {
     "@felix/client": "workspace:*"

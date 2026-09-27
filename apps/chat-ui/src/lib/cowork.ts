@@ -4,7 +4,7 @@
 import type { ClientToolRequest } from '@felix/client';
 import {
   clearMount,
-  collectToolCallPaths,
+  collectTouchedPaths,
   executeClientTool as exec,
   getMountLabel,
   getVfs,
@@ -29,7 +29,7 @@ export async function readWorkspaceFile(path: string): Promise<string | null> {
 
 export {
   clearMount,
-  collectToolCallPaths,
+  collectTouchedPaths,
   getMountLabel,
   hasMount,
   mountTree,

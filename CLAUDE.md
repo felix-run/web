@@ -287,8 +287,14 @@ reading — and the count that matters is in the attention line, tenant-wide. Th
 inspector's old "approvals always polls while the panel is open" exception is gone: the attention
 line took that job.
 
-**`Touched this session` is empty during a durable run, and that is the run loop.** The zone derives
-it from `Turn.tools[].input` via `collectToolCallPaths`, but a durable manifest's stream carries
+**`Touched on this thread` is a workspace tool's path argument, and nothing else.** The zone derives
+it from `Turn.tools[]` via `collectTouchedPaths` in `@felix/cowork-client`: `path` for the harness's
+five workspace tools, `cwd` for `local_shell`, `target` for `local_open`, by an allowlist of names.
+It used to run `collectToolCallPaths` — the mention heuristic, which walks *every* string — and so
+listed the files a `github__create_pull_request` body mentioned as files the agent had touched. That
+walker still exists for what it was written for, resolving a prose mention; a shell command's text
+no longer counts, because what a command touched is not something its text can say. It is also
+empty during a durable run, and that is the run loop: the zone reads the transcript, but a durable manifest's stream carries
 `run_accepted` → `run_status` → `final` and **no tool frames at all**, so the calls only arrive when
 the thread is next hydrated from the snapshot. Measured against `cowork`: `write_file` was invisible
 until a reload, then appeared with its arguments intact. The same gap hides the tool *cards* from

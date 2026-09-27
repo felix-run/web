@@ -21,7 +21,7 @@ import { ShellProvider, type ShellValue } from '../src/shell-context';
  * economy that justified tabs is only real if the other two are not running.
  */
 
-vi.mock('../src/lib/cowork', () => ({
+vi.mock('../src/lib/cowork', async () => ({
   getMountLabel: () => null,
   hasMount: () => false,
   mountTree: async () => [],
@@ -34,10 +34,12 @@ vi.mock('../src/lib/cowork', () => ({
   executeClientTool: async () => ({}),
   readWorkspaceFile: async () => null,
   supportsDirectoryPicker: () => false,
-  collectToolCallPaths: (args: unknown) => {
-    const path = (args as { path?: string } | null)?.path;
-    return path?.includes('/') ? [path] : [];
-  },
+  // The real one: which arguments count as "touched" is the rule under test.
+  collectTouchedPaths: (
+    await vi.importActual<typeof import('@felix/cowork-client/tool-call-paths')>(
+      '@felix/cowork-client/tool-call-paths',
+    )
+  ).collectTouchedPaths,
 }));
 
 const thread = (id: string, title: string) => ({
@@ -174,7 +176,7 @@ describe('the workspace zone', () => {
     expect(current?.textContent).not.toContain('Waiting on you');
   });
 
-  it('lists what this session touched, from the tool calls themselves', async () => {
+  it('lists what this thread touched, from the tool calls themselves', async () => {
     mountZone({
       turns: [
         {
@@ -191,24 +193,36 @@ describe('the workspace zone', () => {
             { name: 'write_file', input: { path: 'bare.md' }, done: true },
             // Not a path, and nothing should invent one from it.
             { name: 'local_shell', input: { command: 'echo hi' }, done: true },
+            // A tool that touches no workspace file, whose *text* names some. On
+            // `self-pr-306` these were listed as touched.
+            {
+              name: 'github__create_pull_request',
+              input: {
+                title: 'Deny control',
+                body: 'Changes:\n- ./scripts/test.sh\n- tests/unit/test_audit_deny_control.py',
+              },
+              done: true,
+            },
           ],
         },
       ] as ShellValue['turns'],
     });
 
-    await waitFor(() => expect(screen.getByText('Touched this session')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Touched on this thread')).toBeTruthy());
     expect(screen.getByText('notes/one.md')).toBeTruthy();
     expect(screen.getByText('src/two.ts')).toBeTruthy();
     expect(screen.getByText('bare.md')).toBeTruthy();
     expect(screen.queryByText('echo hi')).toBeNull();
     // Deduped, not listed once per call.
     expect(screen.getAllByText('notes/one.md')).toHaveLength(1);
+    expect(screen.queryByText('./scripts/test.sh')).toBeNull();
+    expect(screen.queryByText('tests/unit/test_audit_deny_control.py')).toBeNull();
   });
 
   it('says nothing about touched files when no tool has run', async () => {
     mountZone();
     await waitFor(() => expect(screen.getByText('Files')).toBeTruthy());
-    expect(screen.queryByText('Touched this session')).toBeNull();
+    expect(screen.queryByText('Touched on this thread')).toBeNull();
   });
 });
 

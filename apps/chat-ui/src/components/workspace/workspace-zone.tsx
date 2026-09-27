@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { ThreadList } from '@/components/chat/thread-list';
 import {
   clearMount,
-  collectToolCallPaths,
+  collectTouchedPaths,
   getMountLabel,
   hasMount,
   mountTree,
@@ -93,12 +93,22 @@ export function WorkspaceZone({ className }: { className?: string }) {
   }, [streaming, refresh]);
 
   /**
-   * What this session's tool calls named.
+   * What this thread's tool calls touched.
    *
    * Derived from the transcript rather than tracked separately: the tool calls
    * are already the record of what the agent touched, and a second list would be
-   * a second thing to keep true. Newest first, deduped, and only paths — a bare
-   * filename tells the operator nothing the tree does not already say.
+   * a second thing to keep true. Newest first, deduped.
+   *
+   * "Touched" means a workspace tool's *path argument* — `collectTouchedPaths`,
+   * not the mention heuristic. The heuristic walks every string a call carries,
+   * so a `github__create_pull_request` whose body listed the files it changed put
+   * `./scripts/test.sh` here as though the agent had opened it. A bare name still
+   * counts: `notes.txt` at the root of the workspace is exactly the write this
+   * exists to report.
+   *
+   * It covers the whole thread as hydrated, not this tab's visit to it — which is
+   * why the heading says "this thread": on a thread from two days ago "this
+   * session" read as "since I opened the tab", and the list is older than that.
    *
    * **It is empty during a durable run, and that is the run loop, not this list.**
    * A durable manifest's stream carries `run_accepted` → `run_status` → `final`
@@ -113,17 +123,7 @@ export function WorkspaceZone({ className }: { className?: string }) {
     const seen = new Set<string>();
     for (let i = turns.length - 1; i >= 0; i--) {
       for (const tool of turns[i]?.tools ?? []) {
-        // A file tool's own `path` argument is a path *by construction*, so it needs
-        // no heuristic and must not be filtered by one. `collectToolCallPaths` keeps
-        // only strings containing a `/`, which is right for its own job — telling a
-        // prose mention of `foo.md` apart from the three other `foo.md` — and wrong
-        // here, where it dropped every write to the root of a flat workspace. The
-        // agent writing `notes.txt` is exactly what this panel exists to report.
-        const path = (tool.input as { path?: unknown } | null | undefined)?.path;
-        if (typeof path === 'string' && path.trim()) seen.add(path.trim());
-        // Everything else a call names — a shell command's `notes/todo.md` — still
-        // goes through the heuristic, which is the only thing that can judge those.
-        for (const found of collectToolCallPaths(tool.input)) seen.add(found);
+        for (const path of collectTouchedPaths(tool.name, tool.input)) seen.add(path);
       }
     }
     return [...seen];
@@ -363,7 +363,7 @@ export function WorkspaceZone({ className }: { className?: string }) {
                 id="workspace-touched-heading"
                 className="mb-1.5 text-xs font-semibold text-muted-foreground"
               >
-                Touched this session
+                Touched on this thread
               </h3>
               <ul className="space-y-0.5">
                 {touched.slice(0, TOUCHED_VISIBLE).map((path) => (
