@@ -18,7 +18,12 @@ import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { DocumentsSection } from '@/components/harness/corpus';
 import { HarnessAgentPicker, keepAgent, useHarnessAgent } from '@/components/harness/harness-agent';
-import { ACTIVITY_FETCH, ActivitySection, UsageSection } from '@/components/harness/ledger';
+import {
+  ACTIVITY_FETCH,
+  ActivitySection,
+  AUDIT_POLL_KEY,
+  UsageSection,
+} from '@/components/harness/ledger';
 import { MemorySection } from '@/components/harness/memory';
 import { PageBack, PageHeader, Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';
@@ -29,10 +34,10 @@ import {
   SectionMetaSink,
   withAge,
 } from '@/components/inspector/primitives';
-import { failing, JobsSheet } from '@/components/jobs/jobs-sheet';
+import { failing, JOBS_POLL_KEY, JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { usePoll } from '@/hooks/usePoll';
+import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { setPresencePlace } from '@/lib/presence';
 import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
@@ -374,8 +379,12 @@ function glanceOf(
 }
 
 function useNavGlances(): Record<string, Glance | undefined> {
-  const jobs = usePoll(listJobs, { intervalMs: 30_000 });
-  const audit = usePoll(() => listAudit({ limit: ACTIVITY_FETCH }), { intervalMs: 30_000 });
+  // Shared reads: on the Jobs page or the Ledger these ride the page's own
+  // faster poll rather than sending the same request a second time.
+  const jobs = useSharedPoll(JOBS_POLL_KEY, listJobs, { intervalMs: 30_000 });
+  const audit = useSharedPoll(AUDIT_POLL_KEY, () => listAudit({ limit: ACTIVITY_FETCH }), {
+    intervalMs: 30_000,
+  });
   const failingJobs = (jobs.data ?? []).filter(failing).length;
   const failedEvents = (audit.data ?? []).filter((e) => isFailure(e.status)).length;
   return {

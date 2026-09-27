@@ -20,7 +20,7 @@ import {
   plural,
 } from '@/components/harness/panel';
 import { isFailure, StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
-import { usePoll } from '@/hooks/usePoll';
+import { useSharedPoll } from '@/hooks/useSharedPoll';
 import type { JobRun } from '@/types';
 
 /**
@@ -33,6 +33,9 @@ import type { JobRun } from '@/types';
  * triggered — expand a job to see its recent runs.
  */
 /** A job whose last run did not succeed. */
+/** The key the Jobs page and the rail's glance share their `listJobs` read under. */
+export const JOBS_POLL_KEY = 'jobs';
+
 export function failing(j: { last_status?: string | null; last_error?: string | null }): boolean {
   return Boolean(j.last_error) || (j.last_status != null && isFailure(j.last_status));
 }
@@ -44,10 +47,16 @@ export function JobsSheet({
   manifest: string;
   manifestOptions: string[];
 }) {
-  // `usePoll` rather than a bare interval: this was the one poll in the app that
-  // never moved onto it, so a backgrounded tab with the sheet open kept hitting the
-  // harness every four seconds forever.
-  const { data, error: listError, lastOkAt, refresh } = usePoll(listJobs, { intervalMs: 4000 });
+  // A managed poll rather than a bare interval: this was the one poll in the app
+  // that never moved onto one, so a backgrounded tab with the sheet open kept
+  // hitting the harness every four seconds forever. Shared with the rail's `Jobs · N failing` glance: one request, and the two
+  // can never disagree about the count.
+  const {
+    data,
+    error: listError,
+    lastOkAt,
+    refresh,
+  } = useSharedPoll(JOBS_POLL_KEY, listJobs, { intervalMs: 4000 });
   // Kept apart from `data` so the header can tell "no jobs" from "not loaded yet".
   // Failing first: someone coming back wants the exception before the list.
   // Stable otherwise, so the harness's own order holds among the healthy ones.
