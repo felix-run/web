@@ -1337,6 +1337,17 @@ export function AppShell() {
                 <ServerIcon className="size-4" aria-hidden />
               )}
               <span className="hidden sm:inline">{onHarness ? 'Chat' : 'Harness'}</span>
+              {/* From `/harness` the transcript is off screen, and a run still in
+                  it is the one thing worth going back for. The attention line
+                  says "Working" too, but it is a sentence across the page; this
+                  is on the door itself. A word, not the dot alone, and not only
+                  at `sm` and up, since the word is the state. */}
+              {onHarness && streaming && (
+                <span className="flex items-center gap-1 text-xs font-normal text-state-running">
+                  <span aria-hidden className="size-1.5 rounded-full bg-state-running" />
+                  running
+                </span>
+              )}
             </Link>
           </Button>
           <ThemeToggle />

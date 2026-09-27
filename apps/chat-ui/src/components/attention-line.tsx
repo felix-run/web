@@ -133,8 +133,10 @@ export function AttentionLine({
   // reader re-reading the sentence for a clock would bury the change that matters.
   const age = stale
     ? lastOkAt === null
-      ? 'not checked yet'
-      : `last checked ${relativeTime(lastOkAt)}`
+      ? // Not "not checked yet": the check ran, which is how it failed. What has
+        // not happened is an answer, and that is the thing to say.
+        'no answer yet'
+      : `last answered ${relativeTime(lastOkAt)}`
     : null;
 
   /**

@@ -3,7 +3,6 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
-import { ScrollArea } from '@felix/ui/scroll-area';
 import { Textarea } from '@felix/ui/textarea';
 import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { type ComponentProps, useCallback, useEffect, useState } from 'react';
@@ -17,12 +16,12 @@ import {
   runEvalDataset,
 } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
-import { PageHeader, Panel, plural } from '@/components/harness/panel';
+import { PageHeader, PageSection, Panel, PanelBody, plural } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
 import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } from '@/types';
 
 /**
- * Eval workbench — the `/eval` offline-benchmark surface as a slide-over.
+ * Eval workbench — the `/eval` offline-benchmark surface as a `/harness` page.
  * Create a golden dataset, append items with a rubric the scorer reads, replay
  * the dataset against the currently-selected manifest, and read back per-item
  * scores with the rule that decided each. Tenant-scoped.
@@ -95,59 +94,72 @@ export function EvalSheet({ manifest }: { manifest: string }) {
         value={loaded ? plural(datasets.length, 'dataset') : undefined}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+      <PanelBody>
         {/* Which agent a run replays against is the one sentence here that
             changes what pressing Run does, so it left the header's subline for
             the body rather than being dropped with it. */}
-        <p className="max-w-prose text-sm text-muted-foreground">
+        <p className="mb-3 text-sm text-muted-foreground">
           Golden datasets, replayed and judged per item against the active{' '}
           <span className="font-mono text-foreground">{manifest}</span> agent.
         </p>
-        {failure && <ErrorNotice error={failure.err} doing={failure.doing} />}
+        {failure && (
+          <div className="mb-3">
+            <ErrorNotice error={failure.err} doing={failure.doing} />
+          </div>
+        )}
 
-        {/* Dataset picker + create */}
         {/*
+            The picker, then the one way to add to it, on one line: a new dataset
+            is a sibling of the ones listed, so it sits with them rather than in a
+            full-width row of its own with its button at the far edge.
+
             Capped and scrollable. It wrapped without a height, so twenty of
             these pushed the panel they select *for* off the bottom of the sheet
             — the control growing until the thing it controls is unreachable.
             Read from the code rather than measured: the local harness has one.
           */}
-        <div className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto">
-          {datasets.map((d) => (
-            <Button
-              key={d.name}
-              size="sm"
-              variant={selected === d.name ? 'secondary' : 'ghost'}
-              className="font-mono text-sm"
-              aria-pressed={selected === d.name}
-              onClick={() => setSelected(d.name)}
+        <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2">
+          {datasets.length > 0 ? (
+            <div
+              role="group"
+              aria-label="Datasets"
+              className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto"
             >
-              {d.name}
+              {datasets.map((d) => (
+                <Button
+                  key={d.name}
+                  size="sm"
+                  variant={selected === d.name ? 'secondary' : 'ghost'}
+                  className="font-mono text-sm"
+                  aria-pressed={selected === d.name}
+                  onClick={() => setSelected(d.name)}
+                >
+                  {d.name}
+                </Button>
+              ))}
+            </div>
+          ) : loaded ? (
+            <span className="text-sm text-muted-foreground">No datasets yet.</span>
+          ) : null}
+          <div className="flex w-full max-w-xs items-center gap-2 sm:w-auto">
+            <Input
+              aria-label="New dataset name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="new-dataset-name"
+              className="h-8 min-w-0 flex-1 font-mono text-sm"
+              onKeyDown={(e) => e.key === 'Enter' && create()}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              disabled={creating || !newName.trim()}
+              onClick={create}
+            >
+              <PlusIcon className="size-3.5" /> New
             </Button>
-          ))}
-          {datasets.length === 0 && (
-            <span className="text-sm text-muted-foreground">
-              No datasets yet. Create one below.
-            </span>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Input
-            aria-label="New dataset name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="new-dataset-name"
-            className="h-8 font-mono text-sm"
-            onKeyDown={(e) => e.key === 'Enter' && create()}
-          />
-          <Button
-            size="sm"
-            className="gap-1"
-            disabled={creating || !newName.trim()}
-            onClick={create}
-          >
-            <PlusIcon className="size-3.5" /> New
-          </Button>
+          </div>
         </div>
 
         {selected ? (
@@ -158,7 +170,7 @@ export function EvalSheet({ manifest }: { manifest: string }) {
             onError={(err, doing) => setFailure({ err, doing })}
           />
         ) : null}
-      </div>
+      </PanelBody>
     </Panel>
   );
 }
@@ -203,75 +215,85 @@ function DatasetPanel({
     }
   }
 
+  // Runs first: reading how the last one went is why this page is opened, far
+  // more often than to edit the items it replays. The form that led the old
+  // layout sat above both.
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          {items.length} item{items.length === 1 ? '' : 's'}
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto"
-          disabled={items.length === 0}
-          onClick={() => setComparing((c) => !c)}
-        >
-          {comparing ? 'Hide compare' : 'Compare…'}
-        </Button>
-        <Button
-          size="sm"
-          className="gap-1"
-          disabled={running || items.length === 0}
-          onClick={run}
-          title={items.length === 0 ? undefined : `Replay against ${manifest}`}
-        >
-          <PlayIcon className="size-3.5" />
-          {running ? 'Running…' : `Run vs ${manifest}`}
-        </Button>
-      </div>
-      {/*
-        Inline, not a `title`. The reason this button is unavailable used to live
-        in a tooltip on the button itself — and a `title` fires on hover, which
-        disabled elements do not emit. So the one message that said how to
-        proceed existed only in the state where nothing could read it.
-      */}
-      {items.length === 0 && (
-        <p className="text-xs text-muted-foreground">
-          Add an item before running: a dataset with nothing in it has nothing to score.
-        </p>
-      )}
+    <>
+      <PageSection
+        title="Runs"
+        meta={runs.length > 0 ? plural(runs.length, 'run') : undefined}
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={items.length === 0}
+              aria-expanded={comparing}
+              onClick={() => setComparing((c) => !c)}
+            >
+              {comparing ? 'Hide compare' : 'Compare…'}
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1"
+              disabled={running || items.length === 0}
+              onClick={run}
+              title={items.length === 0 ? undefined : `Replay against ${manifest}`}
+            >
+              <PlayIcon className="size-3.5" />
+              {running ? 'Running…' : `Run vs ${manifest}`}
+            </Button>
+          </>
+        }
+      >
+        {/*
+          Inline, not a `title`. The reason this button is unavailable used to live
+          in a tooltip on the button itself — and a `title` fires on hover, which
+          disabled elements do not emit. So the one message that said how to
+          proceed existed only in the state where nothing could read it.
+        */}
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Add an item before running: a dataset with nothing in it has nothing to score.
+          </p>
+        ) : runs.length === 0 && !comparing ? (
+          <p className="text-sm text-muted-foreground">Not run yet.</p>
+        ) : null}
 
-      {comparing && (
-        <ComparePanel dataset={dataset} manifest={manifest} onDone={refresh} onError={onError} />
-      )}
+        {comparing && (
+          <ComparePanel dataset={dataset} manifest={manifest} onDone={refresh} onError={onError} />
+        )}
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-3 pr-3">
-          <AddItemForm dataset={dataset} onAdded={refresh} onError={onError} />
+        {runs.length > 0 && (
+          <ol>
+            {runs.map((r) => (
+              <RunCard key={r.id} run={r} />
+            ))}
+          </ol>
+        )}
+      </PageSection>
 
-          {items.length > 0 && (
-            <section className="space-y-1.5">
-              <Heading>Items</Heading>
-              {items.map((it) => (
-                <div key={it.item_id} className="rounded-md border bg-background p-2 text-sm">
-                  <div className="font-medium">{it.user_input}</div>
-                  <RubricSummary rubric={it.rubric} />
-                </div>
-              ))}
-            </section>
-          )}
+      <PageSection title="Items" meta={plural(items.length, 'item')}>
+        {items.length > 0 && (
+          <ul>
+            {items.map((it) => (
+              <li
+                key={it.item_id}
+                className="border-b border-border/60 py-2 text-sm first:border-t"
+              >
+                <div className="font-medium">{it.user_input}</div>
+                <RubricSummary rubric={it.rubric} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </PageSection>
 
-          {runs.length > 0 && (
-            <section className="space-y-2">
-              <Heading>Runs</Heading>
-              {runs.map((r) => (
-                <RunCard key={r.id} run={r} />
-              ))}
-            </section>
-          )}
-        </div>
-      </ScrollArea>
-    </div>
+      <PageSection title="Add item">
+        <AddItemForm dataset={dataset} onAdded={refresh} onError={onError} />
+      </PageSection>
+    </>
   );
 }
 
@@ -327,7 +349,9 @@ function ComparePanel({
   }
 
   return (
-    <section className="space-y-2 rounded-md border bg-background p-2.5 text-sm">
+    // A tonal step, not a border: it is a tool opened *inside* Runs, and a second
+    // box drawn in the section would read as a second section.
+    <div className="mb-3 space-y-2 rounded-md bg-muted/50 p-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         {/*
           `htmlFor`/`id` rather than wrapping, now that the control is a
@@ -408,7 +432,7 @@ function ComparePanel({
           </tbody>
         </table>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -552,8 +576,7 @@ function AddItemForm({
   );
 
   return (
-    <section className="space-y-2 rounded-md border border-dashed p-2.5">
-      <Heading>Add item</Heading>
+    <div className="space-y-3">
       <div>
         <Label htmlFor="eval-item-input">User input</Label>
         <Textarea
@@ -616,7 +639,7 @@ function AddItemForm({
       <Button size="sm" className="gap-1" disabled={busy || !input.trim()} onClick={add}>
         <PlusIcon className="size-3.5" /> Add
       </Button>
-    </section>
+    </div>
   );
 }
 
@@ -683,7 +706,7 @@ function RunCard({ run }: { run: EvalRun }) {
   const at = new Date(run.started_at);
   const startedAt = Number.isFinite(at.getTime()) ? at : null;
   return (
-    <div className="rounded-md border bg-background p-2.5 text-sm">
+    <li className="border-b border-border/60 py-2.5 text-sm first:border-t">
       <div className="flex flex-wrap items-center gap-2">
         {/*
           Read against the state palette rather than by swapping two variants.
@@ -739,7 +762,7 @@ function RunCard({ run }: { run: EvalRun }) {
           ))}
         </ul>
       )}
-    </div>
+    </li>
   );
 }
 

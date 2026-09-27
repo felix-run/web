@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
-import { READING_MEASURE } from '../src/components/harness/panel';
+import { PageHeader, Panel, PanelBody, READING_MEASURE } from '../src/components/harness/panel';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { HARNESS_DESTINATIONS } from '../src/routes/harness';
 
@@ -178,20 +178,76 @@ describe('the harness address', () => {
     });
   });
 
-  it("holds the Ledger header's switch to the rows' measure, and leaves full-width pages alone", async () => {
-    // The Activity/Usage switch sat at the far edge of the pane while the rows it
-    // switches stopped at the reading measure. The header row and the rows now
-    // read one constant; a page whose rows run full width keeps its controls at
-    // the edge those rows reach.
-    const row = () => document.querySelector('main header')?.firstElementChild;
+  it.each(
+    HARNESS_DESTINATIONS.map((d) => [d.path] as const),
+  )('holds /harness/%s to the reading measure, header row and body alike', async (path) => {
+    // The measure is the default, not an opt-in. The Ledger opted in and the
+    // four workbenches did not, so their labels sat ~1200px from their values —
+    // the fault the constant was written to fix, on every page that forgot it.
+    mount(`/harness/${path}`);
+    await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
+    const header = document.querySelector('main header') as HTMLElement;
+    expect(header.firstElementChild?.className).toContain(READING_MEASURE);
+    // The Ledger's halves measure themselves inside their tab panels, once their
+    // first poll has answered; every other page's body carries it under the
+    // scroller from the first render.
+    await waitFor(() =>
+      expect(header.nextElementSibling?.querySelector(`.${READING_MEASURE}`)).not.toBeNull(),
+    );
+  });
+
+  it("keeps the Ledger's switch inside the measured header row", async () => {
     mount('/harness/ledger');
     await waitFor(() => expect(document.querySelector('main [role="tablist"]')).not.toBeNull());
-    expect(row()?.className).toContain(READING_MEASURE);
-    expect(row()?.contains(document.querySelector('main [role="tablist"]'))).toBe(true);
-    cleanup();
-    mount('/harness/manifests');
-    await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
-    expect(row()?.className).not.toContain(READING_MEASURE);
+    const row = document.querySelector('main header')?.firstElementChild;
+    expect(row?.contains(document.querySelector('main [role="tablist"]'))).toBe(true);
+  });
+
+  it('lets a page opt out with fullBleed, and only then', () => {
+    render(
+      <MemoryRouter>
+        <Panel fullBleed>
+          <PageHeader icon={<span />} title="Wide" />
+          <PanelBody>rows</PanelBody>
+        </Panel>
+      </MemoryRouter>,
+    );
+    expect(document.querySelector('header')?.firstElementChild?.className).not.toContain(
+      READING_MEASURE,
+    );
+    expect(document.querySelector(`.${READING_MEASURE}`)).toBeNull();
+  });
+
+  it('groups the nav into records and workbenches', async () => {
+    mount('/harness/memory');
+    await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
+    const groups = [...document.querySelectorAll('nav[aria-label="Harness"] ul')];
+    expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual(['Records', 'Workbenches']);
+    const inGroup = (i: number) =>
+      // The label is the link's first span; a glance value may follow it.
+      [...(groups[i]?.querySelectorAll('a') ?? [])].map(
+        (a) => a.querySelector('span')?.textContent,
+      );
+    expect(inGroup(0)).toEqual(['Memory', 'Corpus', 'Skills', 'Ledger']);
+    expect(inGroup(1)).toEqual(['Manifests', 'Jobs', 'Eval', 'Agent']);
+  });
+
+  it('walks the nav with the arrow keys, wrapping at either end', async () => {
+    mount('/harness/memory');
+    await waitFor(() =>
+      expect(document.querySelector('nav[aria-label="Harness"] a')).not.toBeNull(),
+    );
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Harness"] a')];
+    const nav = document.querySelector('nav[aria-label="Harness"]') as HTMLElement;
+    links[0]?.focus();
+    fireEvent.keyDown(nav, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(links[1]);
+    fireEvent.keyDown(nav, { key: 'End' });
+    expect(document.activeElement).toBe(links[links.length - 1]);
+    fireEvent.keyDown(nav, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(links[0]);
+    fireEvent.keyDown(nav, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(links[links.length - 1]);
   });
 
   /**

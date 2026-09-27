@@ -1,25 +1,23 @@
-import { Button } from '@felix/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import {
   ActivityIcon,
   BookOpenIcon,
   BotIcon,
   BrainIcon,
-  ChevronLeftIcon,
   ClockIcon,
   FlaskConicalIcon,
   GitBranchIcon,
   type LucideIcon,
   SparklesIcon,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link, Navigate, NavLink, Outlet, useMatch } from 'react-router';
+import { Fragment, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { Navigate, NavLink, Outlet, useMatch } from 'react-router';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { DocumentsSection } from '@/components/harness/corpus';
 import { ActivitySection, UsageSection } from '@/components/harness/ledger';
 import { MemorySection } from '@/components/harness/memory';
-import { PageHeader, Panel } from '@/components/harness/panel';
+import { PageBack, PageHeader, Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';
 import {
   PanelModeProvider,
@@ -29,6 +27,7 @@ import {
 import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 
@@ -69,10 +68,24 @@ function CorpusPanel() {
 }
 
 function SkillsPanel() {
-  const { skills, send, streaming } = useShell();
+  const { skills, send, streaming, threads, threadId } = useShell();
+  // Named, because from here the thread is not on screen. In the inspector "this
+  // chat" is the transcript beside it; on `/harness` it is whichever thread the
+  // tab was last on, and a button that posts to a conversation should say which.
+  const target = useMemo(() => {
+    const meta = threads.find((t) => t.id === threadId);
+    return meta ? threadLabel(meta) : { text: threadId, isId: true };
+  }, [threads, threadId]);
   return (
     <AsPanel>
-      <SkillsSection open onToggle={() => {}} skills={skills} onSuggest={send} busy={streaming} />
+      <SkillsSection
+        open
+        onToggle={() => {}}
+        skills={skills}
+        onSuggest={send}
+        busy={streaming}
+        target={target}
+      />
     </AsPanel>
   );
 }
@@ -109,9 +122,6 @@ function LedgerPanel() {
           title="Ledger"
           value={meta.meta}
           valueTone={meta.metaTone}
-          // The halves hold their rows to the reading measure, so the switch
-          // between them ends where those rows end rather than at the pane's edge.
-          measured
           controls={
             <TabsList aria-label="Ledger view" className="w-auto">
               <TabsTrigger value="activity" className="px-2.5 text-xs">
@@ -168,22 +178,89 @@ function AgentPanel() {
  * The nav and the route table are built from this same list, because a nav entry
  * with no route is a dead link and a route with no nav entry is a page nobody can
  * reach — and both of those are silent.
+ *
+ * `group` is the split this file's own header describes and the nav used to
+ * hide: four *records* of what the tenant has accumulated, read far more often
+ * than changed, and four *workbenches* where the operator changes what the next
+ * run does. Eight equal rows made the reader sort them on every visit; two runs
+ * of four, with a rule between, have already been sorted.
  */
 export const HARNESS_DESTINATIONS: {
   path: string;
   label: string;
   icon: LucideIcon;
+  group: 'records' | 'workbenches';
   element: React.ReactNode;
 }[] = [
-  { path: 'memory', label: 'Memory', icon: BrainIcon, element: <MemoryPanel /> },
-  { path: 'corpus', label: 'Corpus', icon: BookOpenIcon, element: <CorpusPanel /> },
-  { path: 'skills', label: 'Skills', icon: SparklesIcon, element: <SkillsPanel /> },
-  { path: 'ledger', label: 'Ledger', icon: ActivityIcon, element: <LedgerPanel /> },
-  { path: 'manifests', label: 'Manifests', icon: GitBranchIcon, element: <ManifestsPanel /> },
-  { path: 'jobs', label: 'Jobs', icon: ClockIcon, element: <JobsPanel /> },
-  { path: 'eval', label: 'Eval', icon: FlaskConicalIcon, element: <EvalPanel /> },
-  { path: 'agent', label: 'Agent', icon: BotIcon, element: <AgentPanel /> },
+  { path: 'memory', label: 'Memory', icon: BrainIcon, group: 'records', element: <MemoryPanel /> },
+  {
+    path: 'corpus',
+    label: 'Corpus',
+    icon: BookOpenIcon,
+    group: 'records',
+    element: <CorpusPanel />,
+  },
+  {
+    path: 'skills',
+    label: 'Skills',
+    icon: SparklesIcon,
+    group: 'records',
+    element: <SkillsPanel />,
+  },
+  {
+    path: 'ledger',
+    label: 'Ledger',
+    icon: ActivityIcon,
+    group: 'records',
+    element: <LedgerPanel />,
+  },
+  {
+    path: 'manifests',
+    label: 'Manifests',
+    icon: GitBranchIcon,
+    group: 'workbenches',
+    element: <ManifestsPanel />,
+  },
+  { path: 'jobs', label: 'Jobs', icon: ClockIcon, group: 'workbenches', element: <JobsPanel /> },
+  {
+    path: 'eval',
+    label: 'Eval',
+    icon: FlaskConicalIcon,
+    group: 'workbenches',
+    element: <EvalPanel />,
+  },
+  { path: 'agent', label: 'Agent', icon: BotIcon, group: 'workbenches', element: <AgentPanel /> },
 ];
+
+const GROUPS = [
+  { key: 'records', label: 'Records' },
+  { key: 'workbenches', label: 'Workbenches' },
+] as const;
+
+/**
+ * Up and down move between the nav's links, Home and End to either end.
+ *
+ * No global destination keys: every free `Mod+<key>` is already spent
+ * (`lib/shortcuts.ts` says which and why), and a bare letter would type into
+ * Memory's search box. What an operator can have is a list that behaves like
+ * one once it has focus — Tab reaches it, the arrows walk it — rather than eight
+ * separate tab stops between them and the page.
+ */
+function walkNav(event: KeyboardEvent<HTMLElement>) {
+  const moves: Record<string, (i: number, n: number) => number> = {
+    ArrowDown: (i, n) => (i + 1) % n,
+    ArrowUp: (i, n) => (i - 1 + n) % n,
+    Home: () => 0,
+    End: (_i, n) => n - 1,
+  };
+  const move = moves[event.key];
+  if (!move) return;
+  const links = Array.from(event.currentTarget.querySelectorAll<HTMLAnchorElement>('a[href]'));
+  const at = links.indexOf(document.activeElement as HTMLAnchorElement);
+  if (at === -1) return;
+  event.preventDefault();
+  links[move(at, links.length)]?.focus();
+}
 
 function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; className?: string }) {
   const { skills, manifest } = useShell();
@@ -191,44 +268,61 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
   // number comes from its own fetch, which runs only while that page is the
   // address — putting those here would mean eight polls behind a list of links,
   // each paid for a label nobody opened the page to read.
+  //
+  // Spelled exactly as the page's own header spells it. The nav said `2 active`
+  // while the page said `2 of 5 active`, which is two readings of one fact.
   const glance: Record<string, { text: string; mono?: boolean } | undefined> = {
-    skills: skills ? { text: `${skills.active.length} active` } : undefined,
+    skills: skills
+      ? { text: `${skills.active.length} of ${skills.declared.length} active` }
+      : undefined,
     agent: manifest ? { text: manifest, mono: true } : undefined,
   };
   return (
-    <nav aria-label="Harness" className={cn('flex flex-col gap-0.5 p-2', className)}>
-      {HARNESS_DESTINATIONS.map(({ path, label, icon: Icon }) => (
-        <NavLink
-          key={path}
-          to={path}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            cn(
-              'flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isActive
-                ? 'bg-accent font-medium text-accent-foreground'
-                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-            )
-          }
-        >
-          <Icon className="size-4 shrink-0" />
-          <span className="truncate">{label}</span>
-          {glance[path] && (
-            <span
-              className={cn(
-                'ml-auto min-w-0 truncate pl-2 text-xs font-normal tabular-nums text-muted-foreground',
-                glance[path]?.mono && 'font-mono',
-              )}
-            >
-              {glance[path]?.text}
-            </span>
-          )}
-        </NavLink>
+    <nav aria-label="Harness" className={cn('p-2', className)} onKeyDown={walkNav}>
+      {GROUPS.map(({ key, label }, gi) => (
+        <Fragment key={key}>
+          {gi > 0 && <hr aria-hidden className="mx-2.5 my-2 border-border/60" />}
+          <ul aria-label={label} className="flex flex-col gap-0.5">
+            {HARNESS_DESTINATIONS.filter((d) => d.group === key).map(
+              ({ path, label: name, icon: Icon }) => (
+                <li key={path}>
+                  <NavLink
+                    to={path}
+                    onClick={onNavigate}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
+                        'focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
+                        isActive
+                          ? 'bg-accent font-medium text-accent-foreground'
+                          : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                      )
+                    }
+                  >
+                    <Icon className="size-4 shrink-0" />
+                    <span className="truncate">{name}</span>
+                    {glance[path] && (
+                      <span
+                        className={cn(
+                          'ml-auto min-w-0 truncate pl-2 text-xs font-normal tabular-nums text-muted-foreground',
+                          glance[path]?.mono && 'font-mono',
+                        )}
+                      >
+                        {glance[path]?.text}
+                      </span>
+                    )}
+                  </NavLink>
+                </li>
+              ),
+            )}
+          </ul>
+        </Fragment>
       ))}
     </nav>
   );
 }
+
+const BACK_TO_LIST = { to: '/harness', label: 'Back to Harness' };
 
 /**
  * Layout route for `/harness`.
@@ -266,20 +360,14 @@ export function HarnessLayout() {
         </main>
       );
     }
+    // The way back lives in the destination's own header, in the icon's place,
+    // rather than in a row of its own above it: see `PageBack`.
     return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 border-b border-border/60 px-2 py-1.5">
-          <Button asChild variant="ghost" size="sm" className="gap-1.5">
-            <Link to="/harness">
-              <ChevronLeftIcon className="size-4" />
-              Harness
-            </Link>
-          </Button>
-        </div>
+      <PageBack.Provider value={BACK_TO_LIST}>
         <main className="flex min-h-0 flex-1 flex-col">
           <Outlet />
         </main>
-      </div>
+      </PageBack.Provider>
     );
   }
 

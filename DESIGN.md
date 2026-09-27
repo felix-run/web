@@ -352,41 +352,7 @@ control, drop hint, notice pill).
 
 The access-key gate follows the tonal model too: its form card is flat — a full-strength
 `border` hairline at `rounded-lg`, no shadow — and its side panel is flat `muted`, where it was
-once a muted-to-page wash. No surface in the app is filled with a gradient.
-
-### The dot grid
-
-One texture, and one only: a grid of 1px dots on an 18px pitch behind the transcript, fading out
-over the top 65% of the column so the composer sits on plain page (`.bg-dots` in `index.css`, a
-`::before` under `isolate` on the transcript's `<main>`). It is drawn with `radial-gradient` and
-masked with a `linear-gradient`, and it is not what the first anti-reference means by "a gradient
-somewhere": that is a colour wash standing in for design. The grid carries no hue — each dot is
-`--foreground` on a layer at `opacity: var(--dot-grid-alpha)`, so it inverts with the theme — and
-it gives the one surface that is *read* rather than scanned a ground distinct from the
-instruments around it. The strength is layer opacity rather than a `color-mix()`: a mix over
-`var(--foreground)` cannot be resolved at build time, so the compiler shipped a plain
-`var(--foreground)` fallback for browsers without `color-mix`, which meant full-strength dots
-there, with muted text over them at 3.75:1 light and 2.52:1 dark.
-
-Its strength is per theme because what it costs is. Text crosses the dots, and the worst pixel is
-a dot's centre with the mask fully open. Composited in sRGB over the page:
-
-| | Dot alpha | Dot composite | Muted 11px on page → over dot | Foreground → over dot |
-|---|---|---|---|---|
-| Light | **7%** | `#eeeeee` on `#ffffff` (1.16:1) | 5.30:1 → **4.56:1** | 19.89:1 → 17.40:1 |
-| Dark | 16% | `#303031` on `#09090b` (1.50:1) | 7.56:1 → **5.04:1** | 19.05:1 → 12.69:1 |
-
-The grid shipped at 16% in both themes. In light that composites to `#d8d8d8`, and muted text over
-it measured **3.70:1**, under AA, so light dropped to 7%: the largest whole percent that clears
-4.5:1 (8% gives 4.46:1). 13px and 16px text uses `--foreground` or `--muted-foreground`, so the
-same figures cover every size; the state ramp's text colours clear 6.1:1 in light and 5.4:1 in
-dark over a dot. `tests/dot-grid-contrast.test.ts` recomputes the muted and foreground cases from
-the stylesheet, so changing the alpha or a neutral token fails there instead of shipping.
-
-**The One Texture Rule.** Decoration is permitted as this texture and nowhere else. It lives
-behind the transcript only: never behind the workspace, the instrument, `/harness`, a panel or
-a card, where rows are scanned at 11–13px and a pattern competes with the data. It never takes a
-hue, never animates, and any change to its strength is measured against 11px muted text first.
+the app's one gradient. There is no gradient anywhere in the app.
 
 **Where the system and the code disagree.** The vendored primitives in `packages/ui/src` are shadcn defaults and still carry theirs —
 `shadow-2xl` on overlays, `shadow-lg` on dialog-class surfaces, `shadow-xs` on outline buttons.
@@ -473,20 +439,19 @@ icon, the title the nav uses, then the value **with its unit** (`0 memories`, `l
 wrapping to a second row when the pane is narrow. A page whose value would need a request of its
 own shows none; a list that came back at its fetch cap reads `50+`, not a total. A section drawn
 bare still computes its value and reports it to the host's header, which is how the Ledger's one
-header carries whichever half is on screen. Rows that are read across — the Ledger's and Jobs' — are held
-to `READING_MEASURE` (`max-w-3xl`), so a status is read with its name rather than found 1300px
-away, and those pages' header rows are held to the same constant (`PageHeader measured`) so the
-Ledger's Activity/Usage switch and Jobs' New job end where the rows they act on end. The rule under the header stays full
-width; it separates the header from the pane. A page whose rows run full width leaves its
-controls at the pane's edge. An id that has to distinguish rows is cut from the **middle**, not
+header carries whichever half is on screen. Every page's body **and** its header row are held to
+`READING_MEASURE` (`max-w-3xl`) by default, so a status is read with its name rather than found
+1300px away and a page's controls end where the rows they act on end; `<Panel fullBleed>` is the
+opt-out, and no page takes it today. The rule under the header stays full width; it separates the
+header from the pane. Below the header a page is divided into `PageSection`s — a hairline rule and
+an `h3` title (Title, 13px 600), never a bordered box — and label/value pairs are a `Facts` grid
+with the value a gutter from its label rather than right-aligned across the pane. Lists are rows
+between hairlines, as the Ledger's are. The nav is two runs of four under one rule, records
+(Memory, Corpus, Skills, Ledger) above workbenches (Manifests, Jobs, Eval, Agent), and a glance
+value in it is spelled exactly as that page's header spells it. Narrow, the way back to the list
+takes the header's icon slot rather than a row of its own. An id that has to distinguish rows is cut from the **middle**, not
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
-The same rule holds wherever a thread id is drawn — an untitled row in the thread list, the
-threads trigger, the header menu's `Thread` item — through `middleTruncate` in `src/lib/format.ts`
-and `CutId`, which keeps the whole id in the accessible name. `slice(0, 8)` read `self-pr-` for
-every `self-pr-*` thread. The object those ids name has one noun, **thread** — the list's heading, its
-search, its empty state, the trigger's tooltip and its label for a thread not yet indexed all say
-it. "New chat" is the action that starts one, a verb phrase rather than a second noun.
 
 The workspace zone's header follows the same grammar: folder or drive icon, **Workspace**, then
 the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the
@@ -498,12 +463,8 @@ the close button shares.
 
 ### Run readout
 
-The top of the instrument, above its tabs, and the only thing the rail's "This run" headline
-heads: what the run is doing, derived from state the shell already holds, so it costs no request.
-The tabs below are tenant-wide — no route they read takes a thread filter — so they carry a
-title-size heading of their own, **Harness · all threads**, and each tab's first line states only
-its window (`Newest 25`, `Last 60 minutes`) rather than repeating the scope. A headline claiming
-one scope over three bodies that each disclaimed it was the heading lying. A 6px dot and a **state word** at 13px medium in the ramp
+The top of the instrument, above its tabs: what the run is doing, derived from state the shell
+already holds, so it costs no request. A 6px dot and a **state word** at 13px medium in the ramp
 colour — *Waiting on you*, *Running*, *Rejoining thread*, *Failed*, *Idle* — then a stopwatch
 (`for 3:07` live, `last run 42s` at rest) in tabular mono — or, on a thread this tab never ran,
 `last activity 2d ago` from the thread index, since no duration is derivable from history. Beneath, an 11px definition list:
@@ -591,26 +552,8 @@ hover — never a `title`, which a keyboard user does not see.
 
 **The agent picker lists manifests in the harness's order**, each name over the provider model
 it runs on in 11px mono — `felix.providerModel` from `GET /v1/models`, shown only when it
-differs from the name, because it is a quotation of the harness. The names are mono too, in
-the list and on the trigger: a manifest name is the identifier a send carries, not a label we
-wrote. Type-ahead matches the name alone (`textValue`). The trigger shows the name alone.
-
-The picker's value is where the next message goes, so it follows the thread: moving to a
-thread this browser has sent to restores the agent the local index recorded for it. The
-harness keeps no manifest per thread, so that record is the only one. A recorded agent this
-harness no longer lists is not restored, and a thread with no record keeps the current
-selection.
-
-**A change of agent is said where it is made.** When a thread has turns and the next message is
-going somewhere other than the agent it last ran on, one 11px line under the composer reads
-*Next message goes to `research`; this thread last ran on `cowork`.* On a thread with turns and
-no record it reads *…; this thread's earlier agent was not recorded.* It is a polite status, not
-a toast or a modal, and it lasts only while it is true: sending records the new agent and the
-line goes. Agent names in it are mono foreground; the sentence is ours and stays muted.
-
-The picker carries no capability line. `GET /v1/models` says nothing per agent beyond the
-provider model and a context window that is known to be wrong, so describing what an agent can
-do needs a field the harness does not send yet. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
+differs from the name, because it is a quotation of the harness. The trigger shows the name
+alone. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
 the manifest *name*, so for most manifests it is the catalog's 128k fallback rather than the
 model's real window, and printing it would be exact-looking and wrong.
 
@@ -652,7 +595,5 @@ no reduced-alpha focus indicator left in the app.
 - **Don't** edit the frozen hex in `packages/design/src/tokens.ts` to resolve a palette
   mismatch. The stylesheet is authored, the hex is derived.
 - **Don't** drop below 11px to gain density.
-- **Don't** add a second texture, or put the dot grid behind anything but the transcript. It
-  is the one piece of decoration, and it was measured for the text that crosses it.
 - **Don't** add motion that competes with streaming text, and honour
   `prefers-reduced-motion`.
