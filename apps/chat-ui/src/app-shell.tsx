@@ -2,6 +2,7 @@ import {
   type ChatEngine,
   createChatEngine,
   eventsToTurns,
+  type ManifestEntry,
   mergeSessions,
   snapshotToEvents,
   type ThreadMeta,
@@ -31,7 +32,7 @@ import {
   PlusIcon,
   ServerIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, Outlet, useMatch, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
@@ -47,7 +48,7 @@ import {
   getResolvedManifest,
   getSessionSnapshot,
   getThreadHistory,
-  listManifests,
+  listManifestEntries,
   listSessions,
   listTenantManifests,
   releaseSessionLease,
@@ -123,7 +124,8 @@ function readBool(key: string, fallback: boolean): boolean {
 }
 
 export function AppShell() {
-  const [manifests, setManifests] = useState<string[]>([]);
+  const [manifestEntries, setManifestEntries] = useState<ManifestEntry[]>([]);
+  const manifests = useMemo(() => manifestEntries.map((m) => m.id), [manifestEntries]);
   const [manifest, setManifest] = useState(() => {
     const stored = localStorage.getItem(MANIFEST_KEY)?.trim();
     return stored || DEFAULT_MANIFEST;
@@ -338,10 +340,11 @@ export function AppShell() {
 
   useEffect(() => {
     const ctrl = new AbortController();
-    listManifests(ctrl.signal)
-      .then((names) => {
-        if (!names.length) return;
-        setManifests(names);
+    listManifestEntries(ctrl.signal)
+      .then((entries) => {
+        if (!entries.length) return;
+        const names = entries.map((m) => m.id);
+        setManifestEntries(entries);
         // Drop stale localStorage (e.g. chat-ui-demo) that isn't on this harness.
         setManifest((cur) =>
           names.includes(cur)
@@ -1202,6 +1205,7 @@ export function AppShell() {
     manifest,
     setManifest,
     manifestOptions: options,
+    manifestEntries,
     refreshCanary: () => void refreshCanary(),
     verbose,
     harnessReachable,

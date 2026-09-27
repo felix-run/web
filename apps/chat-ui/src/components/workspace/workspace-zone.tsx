@@ -176,47 +176,110 @@ export function WorkspaceZone({ className }: { className?: string }) {
 
   return (
     <aside
-      aria-labelledby="workspace-heading"
+      aria-labelledby="workspace-heading workspace-mount"
       className={cn(
         'flex h-full w-72 shrink-0 flex-col border-r border-border/60 bg-card/40',
         className,
       )}
     >
       <div className="shrink-0 border-b border-border/60 px-3 py-2.5">
-        <div className="flex items-center gap-2">
+        {/*
+          Icon · title · one value, like every other header. The value is what is
+          mounted, which is the question this header exists to answer; it used to
+          hold the Mount *action*, so the header said what to do rather than what
+          is, and in the narrow drawer that button sat against the close X. The
+          actions are a row of their own below.
+        */}
+        <div className="flex min-w-0 items-center gap-2">
           {mountLabel ? (
-            <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
+            <FolderIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           ) : (
-            <HardDriveIcon className="size-4 shrink-0 text-muted-foreground" />
+            <HardDriveIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           )}
-          <h2 id="workspace-heading" className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {mountLabel ?? 'In-tab workspace'}
+          <h2 id="workspace-heading" className="shrink-0 text-sm font-semibold">
+            Workspace
           </h2>
-          {canMount ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              className="shrink-0 text-xs"
-              onClick={() => {
-                if (mountLabel) {
-                  clearMount();
-                  setMountLabel(null);
-                  setReconnectName(null);
-                  void refresh();
-                } else {
-                  void onMount();
-                }
-              }}
-            >
-              {mountLabel ? 'Unmount' : 'Mount'}
-            </Button>
-          ) : null}
+          {/* Mono for a folder name, because it is the filesystem's word; the
+              in-tab state is ours. A folder waiting on a reconnect is not mounted
+              yet, so until it is, the honest value is where tools run now. */}
+          <span
+            id="workspace-mount"
+            className={cn(
+              'min-w-0 truncate text-xs text-muted-foreground',
+              mountLabel && 'font-mono',
+            )}
+            title={mountLabel ?? undefined}
+          >
+            {mountLabel ?? 'in-tab'}
+          </span>
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {mountLabel ? 'Client tools run against this folder' : 'Client tools run in this tab'}
         </p>
 
-        {!mountLabel && reconnectName ? (
+        {canMount ? (
+          <div className="mt-2 flex gap-2">
+            {mountLabel ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 min-w-0 flex-1 text-xs"
+                  onClick={() => void onMount()}
+                >
+                  Change folder
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 min-w-0 flex-1 text-xs"
+                  onClick={() => {
+                    clearMount();
+                    setMountLabel(null);
+                    setReconnectName(null);
+                    void refresh();
+                  }}
+                >
+                  Disconnect
+                </Button>
+              </>
+            ) : reconnectName ? (
+              <>
+                {/* A folder mounted last session, waiting on a grant only a click
+                    can ask for. The name is the one thing that says which. */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 min-w-0 flex-1 text-xs"
+                  onClick={() => void onReconnect()}
+                >
+                  <span className="truncate">
+                    Reconnect <span className="font-mono">{reconnectName}</span>
+                  </span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 text-xs"
+                  onClick={() => void onMount()}
+                >
+                  Other folder
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 w-full text-xs"
+                onClick={() => void onMount()}
+              >
+                Mount a folder
+              </Button>
+            )}
+          </div>
+        ) : !mountLabel && reconnectName ? (
+          // Unreachable in practice — a stored mount implies the API — but the
+          // reconnect path must never depend on a second feature check.
           <Button
             variant="outline"
             size="sm"

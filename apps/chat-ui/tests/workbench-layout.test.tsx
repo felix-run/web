@@ -86,6 +86,7 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     manifest: 'cowork',
     setManifest: () => {},
     manifestOptions: ['cowork'],
+    manifestEntries: [],
     refreshCanary: () => {},
     verbose: false,
     harnessReachable: true,

@@ -74,6 +74,20 @@ export interface ApprovalDecisionProps {
 }
 
 /**
+ * Approve and Deny share one class string, so equal weight is one fact rather
+ * than two that agree. The primitive is `whitespace-nowrap` with an automatic
+ * minimum width, which is right for every toolbar and wrong here: Approve names
+ * its tool, and `Approve github__create_pull_request_review_comment` is wider
+ * than the whole card at phone width, so the button pushed out of it and took
+ * the row with it. Overridden here only, not in `@felix/ui`: `min-w-0` lets
+ * `flex-1` share the row equally whatever the label, and `wrap-anywhere` breaks
+ * a name with no spaces in it (underscores offer no break) onto a second line
+ * rather than clipping it — the name stays on screen *and* in the accessible
+ * name, where an ellipsis would keep only the second.
+ */
+const DECISION_BUTTON = 'h-auto min-h-8 min-w-0 flex-1 py-1.5 whitespace-normal wrap-anywhere';
+
+/**
  * The one place a gated tool call is approved or denied.
  *
  * There were two of these: a banner under the transcript and a section in the
@@ -168,7 +182,13 @@ export function ApprovalDecision({
       className={cn('rounded-xl border border-state-blocked/40 bg-state-blocked/5 p-3', className)}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="secondary" className="py-0 font-mono text-xs">
+        {/* The primitive's badge is nowrap and clips its overflow, which is a
+            silent loss of the one word this card is about once a tool name is
+            wider than the card. Same override as DECISION_BUTTON, scoped here. */}
+        <Badge
+          variant="secondary"
+          className="max-w-full py-0 font-mono text-xs whitespace-normal wrap-anywhere"
+        >
           {toolName}
         </Badge>
         {context && <span className="truncate text-xs text-muted-foreground">{context}</span>}
@@ -246,7 +266,7 @@ export function ApprovalDecision({
           as footer prose under the buttons it was the quietest line on the card
           and read, if at all, after the click. */}
       {!lapsed && (
-        <p className="mt-3 text-sm text-foreground/85">
+        <p className="mt-3 text-sm wrap-anywhere text-foreground/85">
           Approving also allows every identical <span className="font-mono">{toolName}</span> call{' '}
           {left !== null ? 'until the deadline' : 'until the grant expires'}, not just this one.
         </p>
@@ -258,7 +278,7 @@ export function ApprovalDecision({
         <Button
           size="sm"
           variant="outline"
-          className="h-8 flex-1"
+          className={DECISION_BUTTON}
           disabled={deciding !== null || lapsed || edit?.status === 'invalid'}
           onClick={() => void decide('approved')}
         >
@@ -271,7 +291,7 @@ export function ApprovalDecision({
         <Button
           size="sm"
           variant="outline"
-          className="h-8 flex-1"
+          className={DECISION_BUTTON}
           disabled={deciding !== null || lapsed}
           onClick={() => void decide('denied')}
         >
