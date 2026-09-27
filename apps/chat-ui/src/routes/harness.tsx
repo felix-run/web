@@ -156,6 +156,7 @@ function LedgerPanel() {
           icon={<ActivityIcon />}
           title="Ledger"
           value={meta.meta}
+          valueLead={meta.metaLead}
           valueTone={meta.metaTone}
           controls={
             // Held to the header's row height, so the Ledger's rule sits where
@@ -398,7 +399,10 @@ export function HarnessLayout() {
   }, [place]);
   useEffect(() => () => setPresencePlace(null), []);
 
-  if (atIndex && wide) return <Navigate to="memory" replace />;
+  // The Ledger, not the first entry in the list. `/harness` is where an operator
+  // comes back to, and the Ledger is the page that answers "what happened while
+  // I was away"; Memory — first in the list — is empty for most tenants.
+  if (atIndex && wide) return <Navigate to="ledger" replace />;
 
   // Every shape below puts the destination in a `<main>`. The layout had a header
   // and a nav and no main, so a screen reader's landmark list offered every way

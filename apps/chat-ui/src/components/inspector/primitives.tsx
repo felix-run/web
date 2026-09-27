@@ -89,6 +89,7 @@ const PanelMode = createContext<SectionChrome>('disclosure');
 /** A section's header value, as `Section` would have drawn it. */
 export interface SectionMeta {
   meta: string | undefined;
+  metaLead?: string | undefined;
   metaTone: 'default' | 'attention' | 'failed' | undefined;
 }
 
@@ -117,14 +118,18 @@ export function Section({
   icon,
   title,
   meta,
+  metaLead,
   metaTone,
   open,
   onToggle,
+  controls,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   meta?: string;
+  /** The neutral lead-in to a toned `meta`; see `PageHeader`'s `valueLead`. */
+  metaLead?: string;
   /**
    * `attention` is amber: something is waiting on a person. `failed` is red:
    * something already went wrong and nobody is being asked to act. Collapsing the
@@ -134,6 +139,12 @@ export function Section({
   metaTone?: 'default' | 'attention' | 'failed';
   open: boolean;
   onToggle: () => void;
+  /**
+   * A page's own controls — its view switch, its create toggle. On a page they
+   * sit in the header, where every `/harness` page keeps them; in a disclosure
+   * row there is no header to hold them, so they lead the body instead.
+   */
+  controls?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const chrome = useContext(PanelMode);
@@ -142,8 +153,8 @@ export function Section({
   // Before the early returns: a hook after a conditional return is a hook that
   // runs on some renders and not others.
   useEffect(() => {
-    if (chrome === 'bare') sink?.({ meta, metaTone });
-  }, [chrome, sink, meta, metaTone]);
+    if (chrome === 'bare') sink?.({ meta, metaLead, metaTone });
+  }, [chrome, sink, meta, metaLead, metaTone]);
 
   // The Ledger draws one heading for two halves, so its halves draw none: a
   // section heading under a tab strip that already names the same thing is the
@@ -170,8 +181,10 @@ export function Section({
           icon={icon}
           title={title}
           value={meta}
+          valueLead={metaLead}
           valueTone={metaTone}
           headingId={headingId}
+          controls={controls}
         />
         {/* Held to the reading measure like every `/harness` page. A section is
             never a full-bleed page, so it takes the constant rather than asking. */}
@@ -191,6 +204,9 @@ export function Section({
         />
         <span className="shrink-0 text-muted-foreground">{icon}</span>
         <span className="flex-1 truncate text-sm font-semibold">{title}</span>
+        {meta && metaLead ? (
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{metaLead}</span>
+        ) : null}
         {meta ? (
           <span
             className={cn(
@@ -206,7 +222,10 @@ export function Section({
           </span>
         ) : null}
       </CollapsibleTrigger>
-      <CollapsibleContent className="px-3 pb-3">{children}</CollapsibleContent>
+      <CollapsibleContent className="px-3 pb-3">
+        {controls ? <div className="mb-2 flex flex-wrap items-center gap-2">{controls}</div> : null}
+        {children}
+      </CollapsibleContent>
     </Collapsible>
   );
 }

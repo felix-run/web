@@ -1,4 +1,5 @@
 import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
 import { BotIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
@@ -30,9 +31,7 @@ export function AgentSheet({ manifest }: { manifest: string }) {
     // `window.open` — always truthy, and a condition that reads as a gate while
     // gating nothing.
     setResolved(null);
-    setCard(null);
     setError(null);
-    setCardError(null);
     let live = true;
     getResolvedManifest(manifest)
       .then((r) => live && setResolved(r))
@@ -40,17 +39,35 @@ export function AgentSheet({ manifest }: { manifest: string }) {
     // The card used to be fetched with `.catch(() => {})`, which inverted the
     // failure: a card that failed to load was silent, while a card that loaded
     // successfully crashed the app on the next render. It reports both now.
+    return () => {
+      live = false;
+    };
+  }, [manifest]);
+
+  // Its own effect, so a failed card can be asked for again without re-reading
+  // the spec — the one error on this page that offered no way to retry.
+  const [cardTry, setCardTry] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setCardError(null);
     getAgentCard()
       .then((c) => live && setCard(c))
       .catch((e) => live && setCardError(e));
     return () => {
       live = false;
     };
-  }, [manifest]);
+  }, [cardTry]);
 
   const spec = (resolved?.manifest as ManifestLike | undefined)?.spec;
   const meta = (resolved?.manifest as ManifestLike | undefined)?.metadata;
   const reach = spec ? connections(spec) : [];
+  const limits = Object.entries(spec?.limits ?? {}).map(([key, v]) => ({
+    key,
+    unset: v === null || v === undefined,
+    ...limitAs(key, v),
+  }));
+  const bounded = limits.filter((l) => !l.unset);
+  const unbounded = limits.filter((l) => l.unset).map((l) => l.label.toLowerCase());
   const provenance = resolved ? resolvedFrom(resolved) : null;
 
   return (
@@ -148,7 +165,14 @@ export function AgentSheet({ manifest }: { manifest: string }) {
                 asArray(spec.approvals).length > 0 ||
                 asArray(spec.policies).length > 0 ||
                 spec.limits) && (
-                <PageSection title="Governance">
+                <PageSection
+                  title="Governance"
+                  // The limit an operator acts on is the one that is *not* set, so
+                  // it is said at the heading rather than found as the fourth of
+                  // nine equal rows reading "no limit". Words, not colour: an
+                  // unset limit is configuration, not a run state.
+                  meta={unbounded.length > 0 ? `no limit on ${unbounded.join(', ')}` : undefined}
+                >
                   <Facts>
                     {asArray(spec.approvals).map((a, i) => {
                       const ap = a as { id?: string; tools?: string[] };
@@ -193,15 +217,13 @@ export function AgentSheet({ manifest }: { manifest: string }) {
                         </Fact>
                       );
                     })}
-                    {spec.limits &&
-                      Object.entries(spec.limits).map(([k, v]) => {
-                        const limit = limitAs(k, v);
-                        return (
-                          <Fact key={`lim-${k}`} label={limit.label} mono={limit.mono}>
-                            {limit.value}
-                          </Fact>
-                        );
-                      })}
+                    {/* Only the limits that bound something get a row; the rest
+                        are named once, in the heading's value. */}
+                    {bounded.map(({ key, label, value, mono }) => (
+                      <Fact key={`lim-${key}`} label={label} mono={mono}>
+                        {value}
+                      </Fact>
+                    ))}
                   </Facts>
                 </PageSection>
               )}
@@ -321,7 +343,22 @@ export function AgentSheet({ manifest }: { manifest: string }) {
                 Not published: <span className="font-mono">{card.error}</span>
               </p>
             )}
-            {cardError != null && <ErrorNotice error={cardError} doing="load the discovery card" />}
+            {cardError != null && (
+              <ErrorNotice
+                error={cardError}
+                doing="load the discovery card"
+                action={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="self-start text-xs"
+                    onClick={() => setCardTry((n) => n + 1)}
+                  >
+                    Try again
+                  </Button>
+                }
+              />
+            )}
           </PageSection>
         )}
       </PanelBody>

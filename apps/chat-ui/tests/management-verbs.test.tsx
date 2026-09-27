@@ -1,5 +1,7 @@
 /** @vitest-environment happy-dom */
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -150,7 +152,12 @@ describe('the memory panel', () => {
     }));
     const { MemorySection } = await import('../src/components/harness/memory');
 
-    render(<MemorySection enabled open onToggle={() => {}} />);
+    // In a router: the view lives in the address now.
+    render(
+      <MemoryRouter>
+        <MemorySection enabled open onToggle={() => {}} />
+      </MemoryRouter>,
+    );
     // A toggle button, not a tab: these modes switch the input above a list all
     // three share, so there is no panel per mode and the tab roles were a promise
     // the widget did not keep.

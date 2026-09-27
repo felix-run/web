@@ -9,7 +9,15 @@ import { useState } from 'react';
 import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
-import { PageHeader, PageSection, Panel, PanelBody, plural } from '@/components/harness/panel';
+import {
+  CreateToggle,
+  PageHeader,
+  PageSection,
+  Panel,
+  PanelBody,
+  plural,
+} from '@/components/harness/panel';
+import { StatusDot } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import type { JobRun } from '@/types';
 
@@ -128,16 +136,13 @@ export function JobsSheet({
         title="Jobs"
         value={data ? plural(jobs.length, 'job') : undefined}
         controls={
-          <Button
-            size="sm"
-            variant={creating ? 'secondary' : 'outline'}
-            className="gap-1"
-            aria-expanded={creating}
-            aria-controls="job-create"
-            onClick={() => setCreating((v) => !v)}
+          <CreateToggle
+            open={creating}
+            onToggle={() => setCreating((v) => !v)}
+            controls="job-create"
           >
-            <PlusIcon className="size-3.5" /> New job
-          </Button>
+            New job
+          </CreateToggle>
         }
       />
 
@@ -232,24 +237,30 @@ export function JobsSheet({
                 {/* A native checkbox: the shared primitives have no switch, and a `<button
               aria-pressed>` for a yes/no that is submitted with a form promises a
               toggle rather than a field. */}
-                <label
-                  htmlFor="job-fresh-thread"
-                  className="flex items-start gap-2 text-xs text-muted-foreground"
-                >
-                  <input
-                    id="job-fresh-thread"
-                    type="checkbox"
-                    checked={freshThread}
-                    onChange={(e) => setFreshThread(e.target.checked)}
-                    className="mt-0.5 size-3.5 shrink-0 accent-primary"
-                  />
-                  <span>
-                    Fresh thread each run. By default every run shares one thread named after the
-                    job, so a digest remembers last week; set this for a job that works something
-                    different each time, so one run's transcript never sits in the next run's
-                    context.
-                  </span>
-                </label>
+                {/* The label is the choice; the reasoning is help under it. It was one
+                    three-line 11px paragraph wrapped round the box, so the thing
+                    being chosen was the first clause of a sentence. */}
+                <div>
+                  <label htmlFor="job-fresh-thread" className="flex items-center gap-2 text-sm">
+                    <input
+                      id="job-fresh-thread"
+                      type="checkbox"
+                      checked={freshThread}
+                      onChange={(e) => setFreshThread(e.target.checked)}
+                      aria-describedby="job-fresh-thread-help"
+                      className="size-3.5 shrink-0 accent-primary"
+                    />
+                    Fresh thread each run
+                  </label>
+                  <p
+                    id="job-fresh-thread-help"
+                    className="mt-1 ml-5.5 text-xs text-muted-foreground"
+                  >
+                    Off, every run shares one thread named after the job, so a digest remembers last
+                    week. On, each run starts clean — for a job that works something different each
+                    time.
+                  </p>
+                </div>
                 <div className="flex gap-2">
                   <Button
                     size="sm"
@@ -292,7 +303,10 @@ export function JobsSheet({
                 <Badge variant="secondary" className="py-0 font-mono text-xs">
                   {j.schedule || 'manual'}
                 </Badge>
-                <span className="text-muted-foreground">{j.manifest_id || '—'}</span>
+                {/* Mono: the harness named it (the Provenance Rule). */}
+                <span className="font-mono text-xs text-muted-foreground">
+                  {j.manifest_id || '—'}
+                </span>
                 <Button
                   size="xs"
                   variant="ghost"
@@ -331,7 +345,13 @@ export function JobsSheet({
                     “{j.payload.prompt}”
                   </span>
                 )}
-                {j.last_status && <span>last: {j.last_status}</span>}
+                {/* The status as the Ledger draws one — word and dot — rather
+                    than plain muted text that read the same whether it passed. */}
+                {j.last_status && (
+                  <span className="inline-flex items-center gap-1">
+                    last <StatusDot status={j.last_status} />
+                  </span>
+                )}
                 {j.last_run_at && <span>ran {relativeTime(j.last_run_at)}</span>}
                 {j.next_run_at && <span>next {relativeTime(j.next_run_at)}</span>}
                 {j.last_error && <span className="text-state-failed">{j.last_error}</span>}
@@ -350,7 +370,7 @@ export function JobsSheet({
                         key={r.run_id ?? `${j.name}-${i}`}
                         className="flex items-center gap-2 text-xs text-muted-foreground"
                       >
-                        <span className="font-mono">{r.status ?? '—'}</span>
+                        {r.status ? <StatusDot status={r.status} /> : <span>—</span>}
                         {r.started_at && <span>{relativeTime(r.started_at)}</span>}
                         {r.error && <span className="text-state-failed">{r.error}</span>}
                       </div>

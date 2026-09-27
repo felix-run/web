@@ -178,7 +178,8 @@ describe('the harness address', () => {
     await waitFor(() => {
       const header = document.querySelector('main header');
       expect(header?.textContent).toContain('Ledger');
-      expect(header?.textContent).toContain('0 events · 0 failed');
+      expect(header?.textContent).toContain('0 events ·');
+      expect(header?.textContent).toContain('0 failed');
     });
   });
 
@@ -276,6 +277,48 @@ describe('the harness address', () => {
     await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
     expect(document.querySelector('header [aria-label="New chat"]')).toBeNull();
     expect(document.querySelector('header [aria-label="More tools"]')).toBeNull();
+  });
+
+  it('lands on the Ledger when wide, and stays the list when narrow', async () => {
+    // The Ledger answers "what happened while I was away"; Memory, first in the
+    // list, is empty for most tenants.
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('min-width: 768px'),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    mount('/harness');
+    await waitFor(() => expect(address).toBe('/harness/ledger'));
+  });
+
+  it("reads Memory's view and turn from the address, so a turn can be linked", async () => {
+    mount('/harness/memory?view=asof&turn=12');
+    await waitFor(() =>
+      expect((document.getElementById('memory-as-of') as HTMLInputElement | null)?.value).toBe(
+        '12',
+      ),
+    );
+    expect(
+      document.querySelector('[role="group"][aria-label="Memory view"] [aria-pressed="true"]')
+        ?.textContent,
+    ).toBe('As of');
+  });
+
+  it.each([
+    ['memory', 'Add memory'],
+    ['corpus', 'Add document'],
+    ['jobs', 'New job'],
+    ['eval', 'New dataset'],
+    ['manifests', 'Import'],
+  ])('puts /harness/%s create in the header, as one toggle', async (path, name) => {
+    // One place for "add" on every page: it lived in four.
+    mount(`/harness/${path}`);
+    await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
+    const toggle = [...document.querySelectorAll('main header button[aria-expanded]')].find(
+      (b) => b.textContent?.trim() === name,
+    );
+    expect(toggle).toBeTruthy();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('walks the nav with the arrow keys, wrapping at either end', async () => {
