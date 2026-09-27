@@ -392,7 +392,27 @@ describe('the harness address', () => {
       const jobs = [...document.querySelectorAll('nav[aria-label="Harness"] a')].find((a) =>
         a.getAttribute('href')?.startsWith('/harness/jobs'),
       );
-      expect(jobs?.textContent).toBe('Jobs, 1 failing');
+      // Shown short; spoken in full, with the label and the count kept apart.
+      expect(jobs?.querySelector('[aria-hidden="true"]:not(svg)')?.textContent).toBe('1 failing');
+      expect(jobs?.querySelector('.sr-only')?.textContent).toBe(', 1 failing');
+    });
+  });
+
+  it("says it couldn't check, rather than going blank, when a glance's read fails", async () => {
+    // Blank is this rail's all-clear; a failed read must not look like one.
+    const base = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      if (String(input).includes('/api/jobs')) {
+        return new Response('{"error":"rate_limited"}', { status: 429 });
+      }
+      return base ? base(input) : new Response('{}');
+    });
+    mount('/harness/memory');
+    await waitFor(() => {
+      const jobs = [...document.querySelectorAll('nav[aria-label="Harness"] a')].find((a) =>
+        a.getAttribute('href')?.startsWith('/harness/jobs'),
+      );
+      expect(jobs?.querySelector('.sr-only')?.textContent).toBe(", Couldn't check jobs");
     });
   });
 

@@ -279,23 +279,9 @@ export function SectionBody({
   // operator coming back would most want — and made a transient 429 look like
   // an empty store. The attention line already worked this way.
   if (error && !empty && lastOkAt != null) {
-    const described = describeError(error, doing);
     return (
       <>
-        <div
-          role="alert"
-          className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-state-failed"
-        >
-          <CircleAlertIcon aria-hidden className="size-3.5 shrink-0" />
-          <span>
-            {described.message} Showing what it said {relativeTime(lastOkAt)}.
-          </span>
-          {onRetry && (
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onRetry}>
-              Try again
-            </Button>
-          )}
-        </div>
+        <StaleNotice error={error} doing={doing} lastOkAt={lastOkAt} onRetry={onRetry} />
         {children}
       </>
     );
@@ -344,6 +330,42 @@ export function SectionBody({
       {!loading && empty && <p className="text-sm text-muted-foreground">{emptyText}</p>}
       {!loading && !empty && children}
     </>
+  );
+}
+
+/**
+ * The one line a page shows above rows it could not refresh: what failed, how
+ * old the rows are, and a way to try again. Shared, so every polled page keeps
+ * what it last knew the same way — Jobs drew a full error box over its kept rows
+ * while Memory, Corpus and the Ledger drew this.
+ */
+export function StaleNotice({
+  error,
+  doing,
+  lastOkAt,
+  onRetry,
+}: {
+  error: unknown;
+  doing: string;
+  lastOkAt: number;
+  onRetry?: () => void;
+}) {
+  const described = describeError(error, doing);
+  return (
+    <div
+      role="alert"
+      className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-state-failed"
+    >
+      <CircleAlertIcon aria-hidden className="size-3.5 shrink-0" />
+      <span>
+        {described.message} Showing what it said {relativeTime(lastOkAt)}.
+      </span>
+      {onRetry && (
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onRetry}>
+          Try again
+        </Button>
+      )}
+    </div>
   );
 }
 
