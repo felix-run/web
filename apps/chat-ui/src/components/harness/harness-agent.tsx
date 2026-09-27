@@ -57,25 +57,36 @@ export function keepAgent(
   return out;
 }
 
-/** The picker, at the top of the nav so it reads as governing every page below it. */
-export function HarnessAgentPicker() {
+/**
+ * The picker, in the header of each page it scopes — Skills, Eval, Agent — and
+ * nowhere else.
+ *
+ * It headed the whole nav, where it read as filtering every page below it;
+ * Memory, Corpus, the Ledger and the Manifests and Jobs lists are tenant-wide
+ * and ignored it, so Usage listed every agent's spend under a picker reading
+ * `cowork`. A control belongs on the things it changes.
+ *
+ * `labelledBy` names it by the page heading where the heading already says
+ * "Agent" — a second visible "Agent" beside it would be the same word twice.
+ */
+export function HarnessAgentPicker({ labelledBy }: { labelledBy?: string }) {
   const { manifestOptions } = useShell();
   const { agent, isChatAgent, setAgent } = useHarnessAgent();
   const options = manifestOptions.includes(agent) ? manifestOptions : [agent, ...manifestOptions];
   return (
-    <div className="px-2.5 pt-1 pb-2">
-      <label
-        htmlFor="harness-agent"
-        className="mb-1 block text-xs font-medium text-muted-foreground"
-      >
-        Agent
-      </label>
+    <div className="flex items-center gap-2">
+      {!labelledBy && (
+        <label htmlFor="harness-agent" className="text-xs font-medium text-muted-foreground">
+          Agent
+        </label>
+      )}
       <Select value={agent} onValueChange={setAgent}>
         <SelectTrigger
           id="harness-agent"
           size="sm"
+          aria-labelledby={labelledBy}
           aria-describedby="harness-agent-help"
-          className="h-8 w-full font-mono text-sm"
+          className="h-8 w-40 font-mono text-sm"
         >
           <SelectValue />
         </SelectTrigger>
@@ -87,10 +98,14 @@ export function HarnessAgentPicker() {
           ))}
         </SelectContent>
       </Select>
-      {/* Said, because the two can differ and only one of them is the chat's. */}
-      <p id="harness-agent-help" className="mt-1 text-xs text-muted-foreground">
-        {isChatAgent ? 'The one Chat is talking to.' : 'Not the one Chat is talking to.'}
-      </p>
+      {/* Said, because the two can differ and only one of them is the chat's.
+          Visible only when they do; the sentence is always there for a reader. */}
+      <span
+        id="harness-agent-help"
+        className={isChatAgent ? 'sr-only' : 'text-xs text-muted-foreground'}
+      >
+        {isChatAgent ? 'The agent Chat is talking to.' : 'not Chat’s'}
+      </span>
     </div>
   );
 }

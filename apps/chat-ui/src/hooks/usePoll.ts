@@ -17,7 +17,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export function usePoll<T>(
   fetcher: () => Promise<T>,
   { enabled = true, intervalMs = 3000 }: { enabled?: boolean; intervalMs?: number } = {},
-): { data: T | undefined; error: unknown; loading: boolean; refresh: () => void } {
+): {
+  data: T | undefined;
+  error: unknown;
+  loading: boolean;
+  /**
+   * When the last successful answer arrived, or `null` before one has. With
+   * `error` set, `data` is that older answer — kept, so a page can go on showing
+   * it and say how old it is rather than trading it for an error box.
+   */
+  lastOkAt: number | null;
+  refresh: () => void;
+} {
   const [data, setData] = useState<T>();
   // The error is kept **raw**, not stringified. `describeError` identifies an
   // unreachable harness by the `TypeError` that `fetch` rejects with, and
@@ -26,6 +37,7 @@ export function usePoll<T>(
   // in its own docblock; this hook was the caller that could not honour it.
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
@@ -34,6 +46,7 @@ export function usePoll<T>(
     try {
       setData(await fetcherRef.current());
       setError(null);
+      setLastOkAt(Date.now());
     } catch (err) {
       setError(err);
     } finally {
@@ -62,5 +75,5 @@ export function usePoll<T>(
     };
   }, [enabled, intervalMs, run]);
 
-  return { data, error, loading, refresh: run };
+  return { data, error, loading, lastOkAt, refresh: run };
 }

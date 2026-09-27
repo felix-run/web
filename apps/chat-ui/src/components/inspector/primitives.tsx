@@ -1,4 +1,4 @@
-import { describeError } from '@felix/client';
+import { describeError, relativeTime } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Skeleton } from '@felix/ui/skeleton';
@@ -90,6 +90,7 @@ const PanelMode = createContext<SectionChrome>('disclosure');
 export interface SectionMeta {
   meta: string | undefined;
   metaLead?: string | undefined;
+  metaAsOf?: number | null | undefined;
   metaTone: 'default' | 'attention' | 'failed' | undefined;
 }
 
@@ -119,6 +120,7 @@ export function Section({
   title,
   meta,
   metaLead,
+  metaAsOf,
   metaTone,
   open,
   onToggle,
@@ -130,6 +132,13 @@ export function Section({
   meta?: string;
   /** The neutral lead-in to a toned `meta`; see `PageHeader`'s `valueLead`. */
   metaLead?: string;
+  /**
+   * Set when the latest read failed: when `meta`'s figures were last true. The
+   * header keeps the value and says its age, rather than presenting a count the
+   * page can no longer vouch for as if it were current — Corpus read "0
+   * documents" over a failed read, which is "empty" and "broken" at once.
+   */
+  metaAsOf?: number | null;
   /**
    * `attention` is amber: something is waiting on a person. `failed` is red:
    * something already went wrong and nobody is being asked to act. Collapsing the
@@ -153,8 +162,8 @@ export function Section({
   // Before the early returns: a hook after a conditional return is a hook that
   // runs on some renders and not others.
   useEffect(() => {
-    if (chrome === 'bare') sink?.({ meta, metaLead, metaTone });
-  }, [chrome, sink, meta, metaLead, metaTone]);
+    if (chrome === 'bare') sink?.({ meta, metaLead, metaAsOf, metaTone });
+  }, [chrome, sink, meta, metaLead, metaAsOf, metaTone]);
 
   // The Ledger draws one heading for two halves, so its halves draw none: a
   // section heading under a tab strip that already names the same thing is the
@@ -180,7 +189,7 @@ export function Section({
         <PageHeader
           icon={icon}
           title={title}
-          value={meta}
+          value={withAge(meta, metaAsOf)}
           valueLead={metaLead}
           valueTone={metaTone}
           headingId={headingId}
@@ -245,6 +254,7 @@ export function SectionBody({
   emptyText,
   status,
   onRetry,
+  lastOkAt,
   children,
 }: {
   loading: boolean;
@@ -257,10 +267,41 @@ export function SectionBody({
   status?: string;
   /** Re-runs this section's fetch. Without it a failed poll is a dead end. */
   onRetry?: () => void;
+  /**
+   * When the rows on screen were last true, for a poll whose latest read failed
+   * after an earlier one succeeded. The rows stay, under one line saying so.
+   */
+  lastOkAt?: number | null;
   children: React.ReactNode;
 }) {
-  // A failed fetch leaves no data, which also reads as "empty". Showing both at once
-  // says the harness is idle *and* unreachable; the error is the true one.
+  // A failed read *after* a good one keeps the good one. Swapping the list for
+  // an error box threw away the last thing the harness said — the thing an
+  // operator coming back would most want — and made a transient 429 look like
+  // an empty store. The attention line already worked this way.
+  if (error && !empty && lastOkAt != null) {
+    const described = describeError(error, doing);
+    return (
+      <>
+        <div
+          role="alert"
+          className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-state-failed"
+        >
+          <CircleAlertIcon aria-hidden className="size-3.5 shrink-0" />
+          <span>
+            {described.message} Showing what it said {relativeTime(lastOkAt)}.
+          </span>
+          {onRetry && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onRetry}>
+              Try again
+            </Button>
+          )}
+        </div>
+        {children}
+      </>
+    );
+  }
+  // A failed fetch with nothing earlier to show also reads as "empty". Showing both
+  // at once says the harness is idle *and* unreachable; the error is the true one.
   if (error) {
     const described = describeError(error, doing);
     // No sr-only status line here: `role="alert"` is already a live region, and
@@ -268,7 +309,8 @@ export function SectionBody({
     return (
       <div
         role="alert"
-        className="flex flex-col gap-2 rounded-lg border border-state-failed/30 bg-state-failed/10 px-2.5 py-2 text-xs text-state-failed"
+        // 13px: this is a sentence the operator has to read, not a label.
+        className="flex flex-col gap-2 rounded-lg border border-state-failed/30 bg-state-failed/10 px-2.5 py-2 text-sm text-state-failed"
       >
         <div className="flex items-start gap-2">
           <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -276,7 +318,7 @@ export function SectionBody({
             <p className="break-words">{described.message}</p>
             {/* The mono face separates the raw status from the sentence; dimming it
                 further would put it under the contrast floor. */}
-            <p className="mt-0.5 font-mono break-words">{described.detail}</p>
+            <p className="mt-0.5 font-mono text-xs break-words">{described.detail}</p>
           </div>
         </div>
         {onRetry && (
@@ -303,6 +345,12 @@ export function SectionBody({
       {!loading && !empty && children}
     </>
   );
+}
+
+/** A header value, and how old it is when the latest read failed. */
+export function withAge(value: string | undefined, asOf: number | null | undefined) {
+  if (!value || asOf == null) return value;
+  return `${value} · as of ${relativeTime(asOf)}`;
 }
 
 /** Footer that names what a render cap left out, so the list never lies by omission. */
@@ -349,27 +397,26 @@ export function Field({ label, value, mono }: { label: string; value: string; mo
  * the same thing read differently if the harness ever varied its spelling.
  */
 export function StatusDot({ status }: { status: string }) {
-  const ok = status === 'ok' || status === 'success' || status === 'completed';
   const bad = status === 'error' || status === 'failed' || status === 'denied';
+  // OK is the routine majority, so it is a muted word with a muted dot. A feed of
+  // eleven green dots and one red made the red slower to find — the badging-the-
+  // majority fault the Ledger's own tone rule was written against. Colour is
+  // kept for what went wrong: failed or denied.
   return (
     <span
       title={status}
       className={cn(
         'inline-flex items-center gap-1 text-xs',
-        ok && 'text-state-done',
-        bad && 'text-state-failed',
-        !ok && !bad && 'text-muted-foreground',
+        bad ? 'text-state-failed' : 'text-muted-foreground',
       )}
     >
       <span
         aria-hidden
         className={cn(
           'size-1.5 rounded-full',
-          ok && 'bg-state-done',
           // `--state-failed` is the text-weight red; `--destructive` is tuned to carry
           // white on a solid fill and was measurably the wrong one for a 6px dot.
-          bad && 'bg-state-failed',
-          !ok && !bad && 'bg-muted-foreground/50',
+          bad ? 'bg-state-failed' : 'bg-muted-foreground/50',
         )}
       />
       {STATUS_LABEL[status] ?? status}

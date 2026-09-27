@@ -12,23 +12,26 @@ import {
 } from 'lucide-react';
 import { Fragment, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { Navigate, NavLink, Outlet, useMatch, useSearchParams } from 'react-router';
-import { getResolvedManifest } from '@/api';
+import { getResolvedManifest, listAudit, listJobs } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { DocumentsSection } from '@/components/harness/corpus';
 import { HarnessAgentPicker, keepAgent, useHarnessAgent } from '@/components/harness/harness-agent';
-import { ActivitySection, UsageSection } from '@/components/harness/ledger';
+import { ACTIVITY_FETCH, ActivitySection, UsageSection } from '@/components/harness/ledger';
 import { MemorySection } from '@/components/harness/memory';
 import { PageBack, PageHeader, Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';
 import {
+  isFailure,
   PanelModeProvider,
   type SectionMeta,
   SectionMetaSink,
+  withAge,
 } from '@/components/inspector/primitives';
-import { JobsSheet } from '@/components/jobs/jobs-sheet';
+import { failing, JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { usePoll } from '@/hooks/usePoll';
 import { setPresencePlace } from '@/lib/presence';
 import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
@@ -77,9 +80,15 @@ function SkillsPanel() {
   // the agent has been asked. One read per visit — the spec does not change
   // under a page that is open.
   const [specSkills, setSpecSkills] = useState<string[] | undefined>(undefined);
+  // Kept, not swallowed. `.catch(() => {})` left a page that could not read the
+  // spec looking exactly like one whose spec declares nothing.
+  const [specError, setSpecError] = useState<unknown>(null);
+  const [specTry, setSpecTry] = useState(0);
   useEffect(() => {
     let live = true;
     setSpecSkills(undefined);
+    setSpecError(null);
+    void specTry;
     getResolvedManifest(agent)
       .then((r) => {
         const declared = (r.manifest as { spec?: { skills?: unknown[] } } | undefined)?.spec
@@ -91,13 +100,11 @@ function SkillsPanel() {
           ),
         );
       })
-      // A failed read leaves the page saying what is unknown. Not worth an
-      // error slab of its own.
-      .catch(() => {});
+      .catch((e) => live && setSpecError(e));
     return () => {
       live = false;
     };
-  }, [agent]);
+  }, [agent, specTry]);
   // The conversation the active list came from, named the way the thread list
   // names it — a link to it, rather than a button that wrote into it from here.
   const thread = useMemo(() => {
@@ -116,6 +123,9 @@ function SkillsPanel() {
         agent={agent}
         thread={{ ...thread, to: `/t/${threadId}` }}
         isChatAgent={isChatAgent}
+        specError={specError}
+        onRetrySpec={() => setSpecTry((n) => n + 1)}
+        controls={<HarnessAgentPicker />}
       />
     </AsPanel>
   );
@@ -158,7 +168,7 @@ function LedgerPanel() {
         <PageHeader
           icon={<ActivityIcon />}
           title="Ledger"
-          value={meta.meta}
+          value={withAge(meta.meta, meta.metaAsOf)}
           valueLead={meta.metaLead}
           valueTone={meta.metaTone}
           controls={
@@ -211,12 +221,16 @@ function JobsPanel() {
 function EvalPanel() {
   const { manifestOptions } = useShell();
   const { agent } = useHarnessAgent();
-  return <EvalSheet manifest={agent} manifestOptions={manifestOptions} />;
+  return (
+    <EvalSheet manifest={agent} manifestOptions={manifestOptions} picker={<HarnessAgentPicker />} />
+  );
 }
 
 function AgentPanel() {
   const { agent } = useHarnessAgent();
-  return <AgentSheet manifest={agent} />;
+  return (
+    <AgentSheet manifest={agent} picker={<HarnessAgentPicker labelledBy="agent-page-heading" />} />
+  );
 }
 
 /**
@@ -310,26 +324,39 @@ function walkNav(event: KeyboardEvent<HTMLElement>) {
   links[move(at, links.length)]?.focus();
 }
 
+/**
+ * The two states on the rail worth a glance: jobs that are failing, and failures
+ * in the Ledger's window — counted exactly as those pages' headers count them,
+ * from the same reads. They poll behind two links, which the rail used to avoid
+ * on purpose; the trade is that someone coming back sees where to go first
+ * without opening eight pages, which is what "legible on return" asks.
+ */
+function useNavGlances(): Record<string, string | undefined> {
+  const jobs = usePoll(listJobs, { intervalMs: 30_000 });
+  const audit = usePoll(() => listAudit({ limit: ACTIVITY_FETCH }), { intervalMs: 30_000 });
+  const failingJobs = (jobs.data ?? []).filter(failing).length;
+  const failedEvents = (audit.data ?? []).filter((e) => isFailure(e.status)).length;
+  return {
+    jobs: failingJobs > 0 ? `${failingJobs} failing` : undefined,
+    ledger: failedEvents > 0 ? `${failedEvents} failed` : undefined,
+  };
+}
+
 function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; className?: string }) {
   const { search } = useHarnessAgent();
-  const at = useMatch('/harness/:destination')?.params.destination;
-  // One tab stop, not eight: the current page's link (or the first, on the list
-  // itself) is reachable by Tab and the arrows walk the rest. `walkNav` said so
-  // while every link kept `tabIndex 0`, so a keyboard user tabbed through all
-  // eight anyway.
-  const stop = HARNESS_DESTINATIONS.some((d) => d.path === at) ? at : HARNESS_DESTINATIONS[0]?.path;
+  const glance = useNavGlances();
   return (
-    // The glance values are gone: Agent's is the picker above now, and Skills'
-    // could only ever be the chat's `list_skills` — which disagreed with the
-    // page's own header whenever that header had read the spec instead.
+    // Every link a Tab stop, as links are; the arrow keys are an extra on top.
+    // A single roving stop made seven pages undiscoverable to anyone tabbing,
+    // with nothing to say the arrows existed — roving focus is a pattern for
+    // composite widgets, and a list of links is not one.
     <nav aria-label="Harness" className={cn('p-2', className)} onKeyDown={walkNav}>
-      <HarnessAgentPicker />
-      {GROUPS.map(({ key, label }) => (
+      {GROUPS.map(({ key, label }, gi) => (
         <Fragment key={key}>
           {/* Shown, not only announced. The labels were `aria-label`s and the rule
               between the runs was `border/60` — about 6% white in dark — so a
               screen reader heard two groups and everyone else saw eight rows. */}
-          <hr aria-hidden className="mx-2.5 my-2 border-border" />
+          {gi > 0 && <hr aria-hidden className="mx-2.5 my-2 border-border" />}
           <p
             id={`harness-nav-${key}`}
             className="px-2.5 pt-1 pb-1 text-xs font-medium text-muted-foreground"
@@ -345,7 +372,6 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                   <NavLink
                     to={{ pathname: path, search }}
                     onClick={onNavigate}
-                    tabIndex={path === stop ? 0 : -1}
                     className={({ isActive }) =>
                       cn(
                         'flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
@@ -358,6 +384,14 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                   >
                     <Icon className="size-4 shrink-0" />
                     <span className="truncate">{name}</span>
+                    {glance[path] && (
+                      <span className="ml-auto shrink-0 pl-2 text-xs font-medium text-state-failed tabular-nums">
+                        {/* For the accessible name, which would otherwise run
+                            "Jobs1 failing" together. */}
+                        <span className="sr-only">, </span>
+                        {glance[path]}
+                      </span>
+                    )}
                   </NavLink>
                 </li>
               ),

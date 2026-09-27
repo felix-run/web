@@ -144,6 +144,7 @@ export function MemorySection({
               ? `${plural(past.data.length, 'memory', 'memories', AS_OF_LIMIT)} at turn ${seq}`
               : undefined
       }
+      metaAsOf={active.error ? active.lastOkAt : undefined}
       open={open}
       onToggle={onToggle}
       controls={
@@ -206,6 +207,7 @@ export function MemorySection({
 
       <SectionBody
         onRetry={active.refresh}
+        lastOkAt={active.lastOkAt}
         doing="read stored memory"
         loading={active.loading && !active.data}
         error={active.error}
@@ -288,7 +290,10 @@ export function MemorySection({
                 {/* At the row's end, as Jobs puts its delete, rather than on a line
                     of its own under every fact. Forgetting a superseded row changes
                     nothing the agent can recall, so it offers nothing there. */}
-                {record?.status !== 'forgotten' && (
+                {/* The guard now does what the comment above always said: a
+                    superseded row is already out of recall, so forgetting it
+                    changes nothing and it offers nothing. */}
+                {record?.status !== 'forgotten' && !record?.superseded_by && (
                   <ConfirmButton
                     size="xs"
                     variant="ghost"

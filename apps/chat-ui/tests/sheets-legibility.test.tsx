@@ -198,3 +198,55 @@ describe('Skills before the agent has been asked', () => {
     expect(screen.getByText('deep-research')).toBeTruthy();
   });
 });
+
+describe('Skills when the spec cannot be read', () => {
+  it('says so and offers a retry, rather than looking like a manifest that declares nothing', async () => {
+    const { SkillsSection } = await import('../src/components/harness/skills');
+    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
+    const retry = vi.fn();
+    render(
+      <MemoryRouter>
+        <PanelModeProvider>
+          <SkillsSection
+            open
+            onToggle={() => {}}
+            skills={null}
+            agent="contributor"
+            isChatAgent={false}
+            specError={new Error('manifests /contributor: 429 {"error":"rate_limited"}')}
+            onRetrySpec={retry}
+          />
+        </PanelModeProvider>
+      </MemoryRouter>,
+    );
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(retry).toHaveBeenCalledOnce();
+  });
+});
+
+describe('a failed poll keeps what it last knew', () => {
+  it('draws the last good rows under one line, not an error box in their place', async () => {
+    const { SectionBody } = await import('../src/components/inspector/primitives');
+    render(
+      <SectionBody
+        loading={false}
+        error={new Error('memory: 429')}
+        doing="read stored memory"
+        empty={false}
+        emptyText="none"
+        lastOkAt={Date.now() - 120_000}
+        onRetry={() => {}}
+      >
+        <p>a fact</p>
+      </SectionBody>,
+    );
+    expect(screen.getByText('a fact')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toMatch(/Showing what it said/);
+  });
+
+  it('ages a header value whose latest read failed', async () => {
+    const { withAge } = await import('../src/components/inspector/primitives');
+    expect(withAge('0 documents', Date.now() - 120_000)).toMatch(/^0 documents · as of /);
+    expect(withAge('0 documents', undefined)).toBe('0 documents');
+  });
+});

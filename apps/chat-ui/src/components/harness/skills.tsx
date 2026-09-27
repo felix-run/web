@@ -1,6 +1,9 @@
-import { Badge } from '@felix/ui/badge';
-import { CheckCircle2Icon, SparklesIcon } from 'lucide-react';
+import { Button } from '@felix/ui/button';
+import { SparklesIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
+import { ErrorNotice } from '@/components/error-notice';
+import { NameList } from '@/components/harness/panel';
 import { Section, type SkillState } from '@/components/inspector/primitives';
 import { middleTruncate } from '@/lib/format';
 
@@ -25,6 +28,9 @@ export function SkillsSection({
   agent,
   thread,
   isChatAgent = true,
+  specError,
+  onRetrySpec,
+  controls,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -40,6 +46,11 @@ export function SkillsSection({
   /** The conversation a `list_skills` report would come from. */
   thread?: { text: string; isId: boolean; to: string };
   isChatAgent?: boolean;
+  /** Why the spec could not be read, when it could not. */
+  specError?: unknown;
+  onRetrySpec?: () => void;
+  /** Header controls — the agent picker, on `/harness`. */
+  controls?: ReactNode;
 }) {
   const meta = skills
     ? // `2/5` asked the reader to know which number was which; the words cost
@@ -55,6 +66,7 @@ export function SkillsSection({
       meta={meta}
       open={open}
       onToggle={onToggle}
+      controls={controls}
     >
       <div className="space-y-3">
         {skills ? (
@@ -88,9 +100,28 @@ export function SkillsSection({
                 </>
               )}
             </p>
-            {specSkills && (
+            {specError != null ? (
+              // Said, and retryable. The page used to fall silent here, which
+              // read exactly like a manifest that declares no skills.
+              <ErrorNotice
+                error={specError}
+                doing={`read ${agent ?? 'the agent'}'s manifest`}
+                action={
+                  onRetrySpec ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="self-start text-xs"
+                      onClick={onRetrySpec}
+                    >
+                      Try again
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : specSkills ? (
               <SkillList label="Declared by the manifest" names={specSkills} kind="declared" />
-            )}
+            ) : null}
           </>
         )}
         {thread && isChatAgent && (
@@ -134,23 +165,17 @@ function SkillList({
     <div>
       <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
       {names.length === 0 ? (
-        <p className="text-xs text-muted-foreground">None</p>
+        <p className="text-sm text-muted-foreground">None</p>
       ) : (
-        <div className="flex flex-wrap gap-1">
-          {names.map((n) => {
-            const isActive = kind === 'active' || active.includes(n);
-            return (
-              <Badge
-                key={n}
-                variant={isActive && kind === 'active' ? 'default' : 'secondary'}
-                className="gap-1 font-mono text-xs"
-              >
-                {kind === 'active' && <CheckCircle2Icon className="size-3" />}
-                {n}
-              </Badge>
-            );
-          })}
-        </div>
+        // The mono list Agent uses for the same data. In the declared list the
+        // ones that are active stay in foreground and the rest go quiet, which
+        // says what the check-mark pills said without a pill each.
+        <NameList
+          names={names}
+          quiet={
+            kind === 'declared' && active.length > 0 ? names.filter((n) => !active.includes(n)) : []
+          }
+        />
       )}
     </div>
   );

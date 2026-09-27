@@ -167,7 +167,7 @@ const ACTIVITY_VISIBLE = 12;
  * honest phrasing is "the last 60" rather than a number that looks like a census.
  * Upstream allows up to 500.
  */
-const ACTIVITY_FETCH = 60;
+export const ACTIVITY_FETCH = 60;
 
 export function ActivitySection({
   enabled,
@@ -190,9 +190,12 @@ export function ActivitySection({
   // finished, so there is nothing to miss by holding still. `usePoll` refetches on
   // the `enabled` false→true edge, so closing the row brings the list back current
   // with no extra wiring.
-  const { data, error, loading, refresh } = usePoll(() => listAudit({ limit: ACTIVITY_FETCH }), {
-    enabled: enabled && open && openId === null,
-  });
+  const { data, error, loading, lastOkAt, refresh } = usePoll(
+    () => listAudit({ limit: ACTIVITY_FETCH }),
+    {
+      enabled: enabled && open && openId === null,
+    },
+  );
 
   // Close the drill-down when the list it belongs to changes underneath it. Without
   // this, filtering or collapsing the section unmounts the open row while `openId`
@@ -245,11 +248,13 @@ export function ActivitySection({
       }
       meta={data ? `${failed.length} failed` : undefined}
       metaTone={failed.length > 0 ? 'failed' : 'default'}
+      metaAsOf={error ? lastOkAt : undefined}
       open={open}
       onToggle={onToggle}
     >
       <SectionBody
         onRetry={refresh}
+        lastOkAt={lastOkAt}
         doing="load recent activity"
         loading={loading && !data}
         error={error}
@@ -673,7 +678,7 @@ export function UsageSection({
    * One `usePoll` rather than two, so the section still costs one tick — the
    * economy the Ledger's tabs exist for.
    */
-  const { data, error, loading, refresh } = usePoll(
+  const { data, error, loading, lastOkAt, refresh } = usePoll(
     async () => {
       const [summary, page] = await Promise.all([
         getUsageSummary(),
@@ -689,7 +694,7 @@ export function UsageSection({
   // ever on screen once the window really is empty.
   const totals = summary
     ? summarizeWindow(summary)
-    : { in: 0, out: 0, cost: 0, calls: 0, unpriced: 0 };
+    : { in: 0, out: 0, cache: 0, cost: 0, calls: 0, unpriced: 0 };
   const days = summary ? windowDays(summary) : SUMMARY_DEFAULT_DAYS;
   const rows = data?.rows ?? [];
   const pricedAs = sharedPricing(rows);
@@ -702,11 +707,13 @@ export function UsageSection({
       // The window rides with the total: "12.4k tokens" alone does not say over
       // what, and the header is read without the body under it.
       meta={summary ? `${compact(totals.in + totals.out)} tokens · last ${days} days` : undefined}
+      metaAsOf={error ? lastOkAt : undefined}
       open={open}
       onToggle={onToggle}
     >
       <SectionBody
         onRetry={refresh}
+        lastOkAt={lastOkAt}
         doing="load token usage"
         loading={loading && !data}
         error={error}
@@ -736,6 +743,15 @@ export function UsageSection({
                 {totals.out.toLocaleString()}
               </dd>
             </div>
+            {/* Cache reads are on every row below, so they are counted up here
+                too — a row showing "20,913 cache" under totals that never
+                mentioned cache read as if those tokens were missing. */}
+            <div>
+              <dt className="text-xs text-muted-foreground">Cache read</dt>
+              <dd className="mt-0.5 tabular-nums font-mono text-sm">
+                {totals.cache.toLocaleString()}
+              </dd>
+            </div>
             <div>
               <dt className="text-xs text-muted-foreground">
                 {/*
@@ -752,7 +768,11 @@ export function UsageSection({
             </div>
           </dl>
           {totals.unpriced > 0 && (
-            <p className="mb-2.5 text-xs text-state-failed">
+            // Foreground at 13px, not red: an unpriced model is a gap in the
+            // pricing catalog, not something that failed. It is still said in
+            // full, because the consequence — a spending cap that fails open — is
+            // one an operator acts on.
+            <p className="mb-2.5 text-sm text-foreground">
               {totals.unpriced} {totals.unpriced === 1 ? 'turn is' : 'turns are'} metered but
               unpriced — the model has no entry in the pricing catalog, so its spend counts as zero
               and <code className="font-mono">limits.max_cost_usd</code> fails open for it.
@@ -793,11 +813,7 @@ export function UsageSection({
                     </td>
                     <td className="py-1 text-right font-mono tabular-nums">{compact(b.tokens)}</td>
                     <td className="py-1 text-right font-mono tabular-nums">
-                      {b.unpriced ? (
-                        <span className="text-state-failed">unpriced</span>
-                      ) : (
-                        usd(b.cost)
-                      )}
+                      {b.unpriced ? <span className="text-foreground">unpriced</span> : usd(b.cost)}
                     </td>
                   </tr>
                 ))}
@@ -808,7 +824,8 @@ export function UsageSection({
               under each of them: repeated eight times it is texture, and the
               row that *differs* — the thing this exists to show — is lost in it. */}
           {pricedAs && (
-            <p className="mb-1 text-xs text-muted-foreground">
+            // 13px: a sentence to read, not a count.
+            <p className="mb-1 text-sm text-muted-foreground">
               {rows.length === 1 ? 'The turn' : `All ${rows.length} turns`} below routed{' '}
               <span className="font-mono">{pricedAs.model}</span>, priced as{' '}
               <span className="font-mono">{pricedAs.wire}</span>.
@@ -858,7 +875,7 @@ export function UsageSection({
           the totals above it are measuring different things.
         */}
           {rows.length > 0 && (
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-2 text-sm text-muted-foreground">
               The {rows.length} most recent {rows.length === 1 ? 'turn' : 'turns'}; the totals above
               cover the window.
             </p>
@@ -944,6 +961,7 @@ export function windowDays(summary: UsageSummary): number {
 export function summarizeWindow(summary: UsageSummary): {
   in: number;
   out: number;
+  cache: number;
   cost: number;
   calls: number;
   unpriced: number;
@@ -955,6 +973,7 @@ export function summarizeWindow(summary: UsageSummary): {
   return {
     in: summary.totals.tokens_input,
     out: summary.totals.tokens_output,
+    cache: summary.totals.cache_read ?? 0,
     cost: summary.totals.cost_usd,
     calls: summary.totals.calls,
     unpriced,

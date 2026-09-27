@@ -1,10 +1,18 @@
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { BotIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
-import { Fact, Facts, PageHeader, PageSection, Panel, PanelBody } from '@/components/harness/panel';
+import {
+  Fact,
+  Facts,
+  NameList,
+  PageHeader,
+  PageSection,
+  Panel,
+  PanelBody,
+} from '@/components/harness/panel';
 import { SectionBody } from '@/components/inspector/primitives';
 import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
 
@@ -19,7 +27,7 @@ import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
  * to think. Governance used to sit fifth, below the loop pattern and the
  * temperature, at the same weight as both.
  */
-export function AgentSheet({ manifest }: { manifest: string }) {
+export function AgentSheet({ manifest, picker }: { manifest: string; picker?: ReactNode }) {
   const [resolved, setResolved] = useState<ResolvedManifest | null>(null);
   const [card, setCard] = useState<AgentCard | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -75,7 +83,16 @@ export function AgentSheet({ manifest }: { manifest: string }) {
       {/* The value is the manifest id, in mono because the harness named it —
           and it is the whole answer to "which agent is this", which the subline
           below the old title restated in a sentence. */}
-      <PageHeader icon={<BotIcon />} title="Agent" value={manifest} valueMono />
+      {/* The picker *is* the value: which agent this is, and the way to look at
+          another. Labelled by the heading, which already says "Agent". */}
+      <PageHeader
+        icon={<BotIcon />}
+        title="Agent"
+        headingId="agent-page-heading"
+        value={picker ? undefined : manifest}
+        valueMono
+        controls={picker}
+      />
 
       <PanelBody>
         {/* The same loading and failure grammar as every section page, rather
@@ -558,25 +575,7 @@ function runsAs(mode: string | undefined): string {
   }
 }
 
-/**
- * A list of names the harness gave — tools, skills, servers — as mono text
- * rather than a pill each. Seventeen grey pills made the densest part of the
- * page its loudest, and a pill says "tag" or "filter", neither of which these
- * are. A list is what they are.
- */
+/** The shared list, under the name this file already uses at every call site. */
 function Chips({ items }: { items: string[] }) {
-  return (
-    <ul className="flex flex-wrap gap-x-1 font-mono text-sm">
-      {items.map((it, i) => (
-        <li key={it}>
-          {it}
-          {i < items.length - 1 && (
-            <span aria-hidden className="text-muted-foreground">
-              ,
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
+  return <NameList names={items} />;
 }
