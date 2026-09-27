@@ -224,13 +224,16 @@ export function ActivitySection({
       // `ACTIVITY_FETCH` rows — it read "60" forever and answered nothing. What is
       // worth knowing at a glance is whether anything in the window went wrong, and
       // the window is there as that number's denominator, labelled as a window.
-      meta={
+      // Two parts, so only the part that is a state takes its colour: the
+      // window is the denominator, and red on it read as the window failing.
+      metaLead={
         data
           ? `${data.length >= ACTIVITY_FETCH ? `last ${ACTIVITY_FETCH}` : data.length} ${
               data.length === 1 ? 'event' : 'events'
-            } · ${failed.length} failed`
+            } ·`
           : undefined
       }
+      meta={data ? `${failed.length} failed` : undefined}
       metaTone={failed.length > 0 ? 'failed' : 'default'}
       open={open}
       onToggle={onToggle}
@@ -708,7 +711,7 @@ export function UsageSection({
               <li key={e.id} className="flex items-start gap-2 py-1.5 text-xs">
                 <div className="min-w-0 flex-1">
                   <div className="truncate">
-                    {e.manifest_id || '—'}
+                    <span className="font-mono">{e.manifest_id || '—'}</span>
                     {e.model_id ? (
                       <span className="ml-1 font-mono text-xs text-muted-foreground">
                         {e.model_id}

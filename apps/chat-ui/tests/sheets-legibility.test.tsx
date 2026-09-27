@@ -106,12 +106,15 @@ describe('Connectivity is not a panel of absences', () => {
 });
 
 describe('governance limits read as limits', () => {
-  it('names each limit and says "no limit" rather than null', async () => {
-    await sheet({ limits: { max_tool_calls: 200, max_peer_hops: null, precount: false } });
+  it('names each limit, and says which are unset at the heading rather than as rows', async () => {
+    await sheet({
+      limits: { max_tool_calls: 200, max_peer_hops: null, max_cost_usd: null, precount: false },
+    });
     expect(screen.getByText('Tool calls')).toBeTruthy();
     expect(screen.getByText('200')).toBeTruthy();
-    expect(screen.getByText('Peer hops')).toBeTruthy();
-    expect(screen.getByText('no limit')).toBeTruthy();
+    // The limits nobody set are the ones an operator acts on: named once, up top.
+    expect(screen.getByText('no limit on peer hops, spend')).toBeTruthy();
+    expect(screen.queryByText('Peer hops')).toBeNull();
     expect(screen.queryByText('max_peer_hops')).toBeNull();
     expect(screen.queryByText('null')).toBeNull();
   });

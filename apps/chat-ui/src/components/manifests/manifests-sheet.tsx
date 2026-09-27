@@ -16,7 +16,15 @@ import {
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
-import { PageHeader, PageSection, Panel, PanelBody, plural } from '@/components/harness/panel';
+import {
+  CREATE_FORM,
+  CreateToggle,
+  PageHeader,
+  PageSection,
+  Panel,
+  PanelBody,
+  plural,
+} from '@/components/harness/panel';
 import {
   type KnownVersion,
   knownVersions,
@@ -49,6 +57,7 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
   // away from making `cowork` tenant-managed — the heaviest consequence here,
   // staged by default on every visit.
   const [importName, setImportName] = useState('');
+  const [importing, setImporting] = useState(false);
   const [busy, setBusy] = useState(false);
   // The error and the verb that produced it travel together. This slot used to be a
   // bare error rendered with one hardcoded phrase, so a failed *activation* — the
@@ -101,6 +110,7 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
       });
       await refresh();
       setSelected(name);
+      setImporting(false);
     } catch (err) {
       setFailure({ err, doing: `import ${name} as a new version` });
     } finally {
@@ -136,6 +146,15 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
                 .join(' · ')
             : undefined
         }
+        controls={
+          <CreateToggle
+            open={importing}
+            onToggle={() => setImporting((v) => !v)}
+            controls="manifest-import"
+          >
+            Import
+          </CreateToggle>
+        }
       />
 
       <PanelBody>
@@ -155,6 +174,52 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
                 </Button>
               }
             />
+          </div>
+        )}
+
+        {/*
+            Behind the header's toggle, and opening as the page's first section,
+            as every page's create does. It led the page as its heaviest control
+            once — a filled button ~1100px from its label — while being the action
+            taken least: once per manifest, ever. And for a name the tenant does
+            not yet manage it is not a quiet write: the harness makes a first
+            version active, so from then on the name resolves to the tenant copy
+            instead of the file. Hence the confirmation that says which case.
+          */}
+        {importing && (
+          <div id="manifest-import" className={CREATE_FORM}>
+            <PageSection title="Import">
+              <p className="mb-2 text-sm text-muted-foreground">
+                Copy a manifest the harness resolves from a file into this tenant's version log.
+              </p>
+              <div className="flex max-w-md items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <Label htmlFor="manifest-import-name">Manifest name</Label>
+                  <Input
+                    id="manifest-import-name"
+                    value={importName}
+                    onChange={(e) => setImportName(e.target.value)}
+                    placeholder={`e.g. ${manifest}`}
+                    className="mt-1 h-8 font-mono text-sm placeholder:font-sans"
+                  />
+                </div>
+                <ConfirmButton
+                  size="sm"
+                  variant="outline"
+                  className="whitespace-nowrap"
+                  disabled={busy || !importName.trim()}
+                  question={
+                    rows.some((r) => r.name === importName.trim())
+                      ? `Appends ${importName.trim()} as a new version. The active version does not change.`
+                      : `${importName.trim()} becomes tenant-managed, and its v1 is what the name resolves to from now on.`
+                  }
+                  confirmLabel={`Import ${importName.trim()}`}
+                  onConfirm={importManifest}
+                >
+                  Import as version
+                </ConfirmButton>
+              </div>
+            </PageSection>
           </div>
         )}
 
@@ -198,7 +263,7 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
           </div>
         ) : loaded ? (
           <p className="mb-5 text-sm text-muted-foreground">
-            No tenant-managed manifests yet. Importing one starts its version log.
+            No tenant-managed manifests yet. Import one to start its version log.
           </p>
         ) : null}
 
@@ -210,46 +275,6 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
             onError={(err, doing) => setFailure({ err, doing })}
           />
         ) : null}
-
-        {/*
-            Last, and outline rather than filled. It led the page as its heaviest
-            control — a filled button ~1100px from its label at a desktop width —
-            while being the action taken least: once per manifest, ever. And it is
-            the one write here with no confirmation, though for a name the tenant
-            does not yet manage it is not a quiet one: the harness makes a first
-            version active, so from then on the name resolves to the tenant copy
-            instead of the file.
-          */}
-        <PageSection title="Import">
-          <p className="mb-2 text-sm text-muted-foreground">
-            Copy a manifest the harness resolves from a file into this tenant's version log.
-          </p>
-          <div className="flex max-w-md flex-wrap items-center gap-2">
-            <Input
-              id="manifest-import-name"
-              aria-label="Manifest name to import"
-              value={importName}
-              onChange={(e) => setImportName(e.target.value)}
-              placeholder={`manifest name, e.g. ${manifest}`}
-              className="h-8 min-w-0 flex-1 font-mono text-sm"
-            />
-            <ConfirmButton
-              size="sm"
-              variant="outline"
-              className="whitespace-nowrap"
-              disabled={busy || !importName.trim()}
-              question={
-                rows.some((r) => r.name === importName.trim())
-                  ? `Appends ${importName.trim()} as a new version. The active version does not change.`
-                  : `${importName.trim()} becomes tenant-managed, and its v1 is what the name resolves to from now on.`
-              }
-              confirmLabel={`Import ${importName.trim()}`}
-              onConfirm={importManifest}
-            >
-              Import as version
-            </ConfirmButton>
-          </div>
-        </PageSection>
       </PanelBody>
     </Panel>
   );

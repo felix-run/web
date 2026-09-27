@@ -73,16 +73,16 @@ describe('a failing run is not the quieter thing', () => {
   it('carries the failed state colour when something failed', async () => {
     await sheet({ runs: [run({ pass_count: 1, fail_count: 2 })] });
     const badge = await waitFor(() => screen.getByText(/1\/3 pass/));
-    // The *fill*, not the word: the base Badge class carries
-    // `aria-invalid:border-destructive` whatever the variant, so matching
-    // /destructive/ alone would pass for both and prove nothing.
-    expect(badge.className).toMatch(/\bbg-destructive\b/);
+    // The state chip every failure count uses, not `destructive`'s solid fill.
+    expect(badge.className).toMatch(/\bbg-state-failed\/15\b/);
+    expect(badge.className).toMatch(/\btext-state-failed\b/);
+    expect(badge.className).not.toMatch(/\bbg-destructive\b/);
   });
 
   it('does not shout about a clean one', async () => {
     await sheet({ runs: [run({ pass_count: 3, fail_count: 0 })] });
     const badge = await waitFor(() => screen.getByText(/3\/3 pass/));
-    expect(badge.className).not.toMatch(/\bbg-destructive\b/);
+    expect(badge.className).not.toMatch(/state-failed/);
     // Still legible as a pass, via the state palette rather than a loud fill.
     expect(badge.className).toMatch(/text-state-done/);
   });

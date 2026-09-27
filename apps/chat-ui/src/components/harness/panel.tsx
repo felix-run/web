@@ -1,4 +1,5 @@
-import { ChevronLeftIcon, TriangleAlertIcon } from 'lucide-react';
+import { Button } from '@felix/ui/button';
+import { ChevronLeftIcon, PlusIcon, TriangleAlertIcon, XIcon } from 'lucide-react';
 import { createContext, type ReactNode, useContext, useId } from 'react';
 import { Link } from 'react-router';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
@@ -104,6 +105,7 @@ export function PageHeader({
   icon,
   title,
   value,
+  valueLead,
   valueTone = 'default',
   valueMono,
   headingId,
@@ -112,6 +114,12 @@ export function PageHeader({
   icon: ReactNode;
   title: string;
   value?: string | undefined;
+  /**
+   * The neutral part of a toned value, drawn before its chip. The Ledger's
+   * `last 60 events · 3 failed` was one red pill, so the window — a denominator,
+   * not a fault — was coloured as alarm too.
+   */
+  valueLead?: string | undefined;
   /**
    * `attention` is amber — something waits on a person; `failed` is red —
    * something already went wrong and nobody is being asked. Kept apart for the
@@ -151,6 +159,11 @@ export function PageHeader({
         <h2 id={headingId} className="truncate text-sm font-semibold">
           {title}
         </h2>
+        {value && valueLead ? (
+          <span className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">
+            {valueLead}
+          </span>
+        ) : null}
         {value ? (
           <span
             className={cn(
@@ -169,6 +182,99 @@ export function PageHeader({
         {controls ? <div className="ml-auto flex items-center gap-2">{controls}</div> : null}
       </div>
     </header>
+  );
+}
+
+/**
+ * A page's view switch, drawn in its header.
+ *
+ * It looks like the Ledger's Activity/Usage switch because it sits in the same
+ * place and does a comparable job, but it is a toggle group rather than tabs:
+ * Memory's and Corpus's views change the *input* above one shared list, so
+ * there is no panel per view for a `tabpanel` to name. `aria-pressed` in a
+ * named group promises only what this is. It lived in the page body while the
+ * Ledger's lived in the header — two places for one kind of control.
+ */
+export function ViewSwitch<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: ReadonlyArray<readonly [T, string]>;
+  onChange: (next: T) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="inline-flex h-8 items-center rounded-lg bg-muted p-[3px] text-muted-foreground"
+    >
+      {options.map(([id, text]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={value === id}
+          onClick={() => onChange(id)}
+          className={cn(
+            'h-full rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors',
+            'focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
+            value === id
+              ? 'bg-background text-foreground shadow-sm dark:bg-input/30'
+              : 'hover:text-foreground',
+          )}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The wrapper for the form a `CreateToggle` opens. A rule under it, because the
+ * page goes on below — the list, a view's own input — and without one Memory's
+ * "Remember it" sat against the As-of field as if they were one form.
+ */
+export const CREATE_FORM = 'mb-5 border-b border-border/60 pb-5';
+
+/**
+ * The one way a `/harness` page offers to create something: a header toggle
+ * whose form opens as the page's first section.
+ *
+ * There were four — a header toggle on Jobs, an "Add" in Memory's and Corpus's
+ * view strips, an always-open row on Eval, a section at the foot of Manifests —
+ * so the operator relearned where "add" lived on every page.
+ *
+ * Open is more than a fill change: the plus becomes a cross, so the same button
+ * visibly reads as the way to close what it opened.
+ */
+export function CreateToggle({
+  open,
+  onToggle,
+  controls,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  /** The id of the form this opens, for `aria-controls`. */
+  controls: string;
+  children: ReactNode;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant={open ? 'secondary' : 'outline'}
+      className="gap-1"
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={onToggle}
+    >
+      {open ? <XIcon className="size-3.5" /> : <PlusIcon className="size-3.5" />}
+      {children}
+    </Button>
   );
 }
 

@@ -1,33 +1,23 @@
 import { describeError } from '@felix/client';
 import { Button } from '@felix/ui/button';
-import { BrainIcon, PlusIcon } from 'lucide-react';
+import { Input } from '@felix/ui/input';
+import { Label } from '@felix/ui/label';
+import { Textarea } from '@felix/ui/textarea';
+import { BrainIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { addMemory, forgetMemory, listMemories, memoriesAsOf, searchMemories } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
-import { plural } from '@/components/harness/panel';
+import {
+  CREATE_FORM,
+  CreateToggle,
+  PageSection,
+  plural,
+  ViewSwitch,
+} from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
-import { cn } from '@/lib/utils';
 import type { MemoryHit, MemoryRecord } from '@/types';
-
-/**
- * The view-strip buttons Memory and Corpus share. The focus ring is explicit:
- * these relied on the browser's own outline, which is the one control on either
- * page that did not look like the rest when reached by Tab.
- */
-export const VIEW_BUTTON =
-  'rounded px-2 py-1 text-xs transition-colors focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none';
-export const VIEW_ON = 'bg-accent text-foreground';
-export const VIEW_OFF = 'text-muted-foreground hover:bg-accent/50';
-
-/**
- * Memory: what the agent has stored across sessions.
- *
- * Surfaced so a stale or hostile fact can be found and removed without a database
- * console. `DELETE` is **soft** — the row becomes `forgotten` and drops out of
- * recall rather than being erased — which is why the control says "forget", and
- * the Add tab is an injection ingress by design, which is why the form says so.
- */
 
 /**
  * What the agent has stored across sessions, and how to get rid of it.
@@ -42,6 +32,9 @@ export const VIEW_OFF = 'text-muted-foreground hover:bg-accent/50';
  * *that*" is usually answered by the channel rather than the text. "As of"
  * replays what was believed at a past turn, superseded facts included.
  *
+ * The view, the query and the turn live in the address (`?view=asof&turn=12`),
+ * so "what it believed at turn 12" is a link rather than three steps to redo.
+ *
  * Forgetting is soft on the harness side: the row moves to `forgotten` and drops
  * out of recall rather than being erased. The UI says "forget" rather than
  * "delete" so it does not promise more than that.
@@ -50,6 +43,19 @@ export const VIEW_OFF = 'text-muted-foreground hover:bg-accent/50';
 const RECENT_LIMIT = 50;
 const SEARCH_LIMIT = 12;
 const AS_OF_LIMIT = 100;
+
+type MemoryView = 'recent' | 'search' | 'asOf';
+const VIEWS = [
+  ['recent', 'Recent'],
+  ['search', 'Search'],
+  ['asOf', 'As of'],
+] as const;
+
+/** The view in the address. `asof` is the spelling in the URL; anything else is Recent. */
+export function readView(params: URLSearchParams): MemoryView {
+  const v = params.get('view');
+  return v === 'search' ? 'search' : v === 'asof' ? 'asOf' : 'recent';
+}
 
 export function MemorySection({
   enabled,
@@ -60,16 +66,37 @@ export function MemorySection({
   open: boolean;
   onToggle: () => void;
 }) {
-  const [mode, setMode] = useState<'recent' | 'search' | 'asOf' | 'add'>('recent');
-  const [query, setQuery] = useState('');
-  const [asOfSeq, setAsOfSeq] = useState('');
+  const [params, setParams] = useSearchParams();
+  const mode = readView(params);
+  const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState(() => params.get('q') ?? '');
+  const [asOfSeq, setAsOfSeq] = useState(() => params.get('turn') ?? '');
   /** Debounced so a poll is not issued per keystroke. */
-  const [committedQuery, setCommittedQuery] = useState('');
+  const [committedQuery, setCommittedQuery] = useState(() => (params.get('q') ?? '').trim());
 
   useEffect(() => {
     const t = window.setTimeout(() => setCommittedQuery(query.trim()), 300);
     return () => window.clearTimeout(t);
   }, [query]);
+
+  // Written back with `replace`: refining a query or a turn is not a place Back
+  // should step through, and each keystroke would otherwise be one.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (mode === 'search') {
+      next.set('view', 'search');
+      if (committedQuery) next.set('q', committedQuery);
+    } else if (mode === 'asOf') {
+      next.set('view', 'asof');
+      if (asOfSeq.trim()) next.set('turn', asOfSeq.trim());
+    }
+    if (next.toString() !== params.toString()) setParams(next, { replace: true });
+  }, [mode, committedQuery, asOfSeq, params, setParams]);
+
+  const setMode = (next: MemoryView) =>
+    setParams(next === 'search' ? { view: 'search' } : next === 'asOf' ? { view: 'asof' } : {}, {
+      replace: true,
+    });
 
   const seq = Number.parseInt(asOfSeq, 10);
   const asOfReady = mode === 'asOf' && Number.isFinite(seq) && seq >= 0;
@@ -100,7 +127,8 @@ export function MemorySection({
       title="Memory"
       // The value follows the view, because each view is a different question:
       // what is held, what a query recalls, what was believed at a turn. Nothing
-      // while a view's first fetch is in flight — `0` then would be a claim.
+      // while a view's first fetch is in flight — `0` then would be a claim. It
+      // stays while the Add form is open, since the list stays too.
       meta={
         mode === 'recent' && recent.data
           ? plural(recent.data.length, 'memory', 'memories', RECENT_LIMIT)
@@ -112,122 +140,103 @@ export function MemorySection({
       }
       open={open}
       onToggle={onToggle}
+      controls={
+        <>
+          <ViewSwitch label="Memory view" value={mode} options={VIEWS} onChange={setMode} />
+          <CreateToggle open={adding} onToggle={() => setAdding((a) => !a)} controls="memory-add">
+            Add memory
+          </CreateToggle>
+        </>
+      }
     >
-      {/*
-        A toggle group, not tabs — and deliberately not the `@felix/ui/tabs` the
-        Ledger and the run instrument use. Those switch between independent
-        panels; these switch the *input* above a list all three modes share, so
-        there is no panel per mode to point an `aria-controls` at. It previously
-        carried `role="tablist"`/`role="tab"`/`aria-selected` with no `tabpanel`
-        and no arrow-key roving focus, which announces a widget and then does not
-        behave like one. `aria-pressed` on buttons in a named group promises only
-        what this actually is.
-      */}
-      {/* The three reads are one group; Add is apart from it. It is a write — an
-          injection ingress, as its form says — and sitting fourth in a strip of
-          views made it read as a fourth way of *looking*. */}
-      <div className="mb-2 flex items-center gap-1">
-        <div className="flex gap-1" role="group" aria-label="Memory view">
-          {(
-            [
-              ['recent', 'Recent'],
-              ['search', 'Search'],
-              ['asOf', 'As of'],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={mode === id}
-              onClick={() => setMode(id)}
-              className={cn(VIEW_BUTTON, mode === id ? VIEW_ON : VIEW_OFF)}
-            >
-              {label}
-            </button>
-          ))}
+      {adding && (
+        <div id="memory-add" className={CREATE_FORM}>
+          <PageSection title="Add memory">
+            <AddMemoryForm
+              onAdded={() => {
+                setAdding(false);
+                setMode('recent');
+                recent.refresh();
+              }}
+            />
+          </PageSection>
         </div>
-        <button
-          type="button"
-          aria-expanded={mode === 'add'}
-          onClick={() => setMode(mode === 'add' ? 'recent' : 'add')}
-          className={cn(
-            VIEW_BUTTON,
-            'ml-auto flex items-center gap-1',
-            mode === 'add' ? VIEW_ON : VIEW_OFF,
-          )}
-        >
-          <PlusIcon aria-hidden className="size-3" />
-          Add memory
-        </button>
-      </div>
-
-      {mode === 'add' && (
-        <AddMemoryForm
-          onAdded={() => {
-            setMode('recent');
-            recent.refresh();
-          }}
-        />
       )}
 
+      {/* The input each view needs, with a label that stays on screen. */}
       {mode === 'search' && (
-        <input
-          type="search"
-          aria-label="Search memory"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="What would it recall?"
-          className="mb-2 h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-        />
+        <div className="mb-3">
+          <Label htmlFor="memory-search">What would it recall?</Label>
+          <Input
+            id="memory-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="mt-1 h-8 max-w-md text-sm"
+          />
+        </div>
       )}
       {mode === 'asOf' && (
-        <input
-          type="number"
-          min={0}
-          aria-label="Turn sequence"
-          value={asOfSeq}
-          onChange={(e) => setAsOfSeq(e.target.value)}
-          // The numbers to type are the `origin_seq` values shown on the rows
-          // themselves, which is what makes this usable without a separate lookup.
-          placeholder="Turn sequence, e.g. 12"
-          className="mb-2 h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-        />
+        <div className="mb-3">
+          <Label htmlFor="memory-as-of">Turn sequence</Label>
+          <Input
+            id="memory-as-of"
+            type="number"
+            min={0}
+            value={asOfSeq}
+            onChange={(e) => setAsOfSeq(e.target.value)}
+            aria-describedby="memory-as-of-help"
+            className="mt-1 h-8 w-32 font-mono text-sm"
+          />
+          {/* The numbers to type are the `seq` values on the rows themselves,
+              which is what makes this usable without a separate lookup. */}
+          <p id="memory-as-of-help" className="mt-1 text-xs text-muted-foreground">
+            The <span className="font-mono">seq</span> on any row below.
+          </p>
+        </div>
       )}
 
-      {mode === 'add' ? null : (
-        <SectionBody
-          onRetry={active.refresh}
-          doing="read stored memory"
-          loading={active.loading && !active.data}
-          error={active.error}
-          empty={
-            (mode === 'search' && !searchReady) || (mode === 'asOf' && !asOfReady)
-              ? true
-              : rows.length === 0
-          }
-          emptyText={
-            mode === 'search'
-              ? searchReady
-                ? 'Nothing recalled for that.'
-                : 'Type to reproduce what the agent would recall.'
-              : mode === 'asOf'
-                ? asOfReady
-                  ? 'Nothing was held at that turn.'
-                  : 'Enter a turn sequence to see what was believed then.'
-                : 'Nothing stored yet. Memory accumulates as the agent works.'
-          }
-          status={
-            rows.length ? `${rows.length} ${rows.length === 1 ? 'memory' : 'memories'}` : undefined
-          }
-        >
-          <ul className="space-y-2">
-            {rows.map((m) => {
-              const hit = mode === 'search' ? (m as MemoryHit) : null;
-              const record = mode === 'search' ? null : (m as MemoryRecord);
-              return (
-                <li key={m.id} className="rounded-lg border border-border/60 px-2.5 py-2 text-xs">
-                  <p className="leading-snug break-words">{m.content}</p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-muted-foreground">
+      <SectionBody
+        onRetry={active.refresh}
+        doing="read stored memory"
+        loading={active.loading && !active.data}
+        error={active.error}
+        empty={
+          (mode === 'search' && !searchReady) || (mode === 'asOf' && !asOfReady)
+            ? true
+            : rows.length === 0
+        }
+        emptyText={
+          mode === 'search'
+            ? searchReady
+              ? 'Nothing recalled for that.'
+              : 'Type to reproduce what the agent would recall.'
+            : mode === 'asOf'
+              ? asOfReady
+                ? 'Nothing was held at that turn.'
+                : 'Enter a turn sequence to see what was believed then.'
+              : 'Nothing stored yet. Memory accumulates as the agent works.'
+        }
+        status={
+          rows.length ? `${rows.length} ${rows.length === 1 ? 'memory' : 'memories'}` : undefined
+        }
+      >
+        {/* Rows between hairlines, as the Ledger's are. Each was a bordered box
+            at 11px — the generated default this product names as its nearest
+            anti-reference, on the page `/harness` used to open to — with the
+            fact itself, the thing being read, at the smallest size on the page. */}
+        <ul>
+          {rows.map((m) => {
+            const hit = mode === 'search' ? (m as MemoryHit) : null;
+            const record = mode === 'search' ? null : (m as MemoryRecord);
+            return (
+              <li
+                key={m.id}
+                className="flex items-start gap-3 border-b border-border/60 py-2.5 first:border-t"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm leading-snug break-words">{m.content}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-xs text-muted-foreground">
                     <span>{m.kind}</span>
                     {m.topic_key && <span>· {m.topic_key}</span>}
                     {typeof m.importance === 'number' && (
@@ -264,27 +273,28 @@ export function MemorySection({
                       </span>
                     ) : null}
                   </div>
-                  {/* Forgetting a superseded row changes nothing the agent can recall. */}
-                  {record?.status !== 'forgotten' && (
-                    <div className="mt-1.5">
-                      <ConfirmButton
-                        size="sm"
-                        variant="ghost"
-                        destructive
-                        question={`"${m.content.slice(0, 80)}" will stop being recalled.`}
-                        confirmLabel="Forget it"
-                        onConfirm={() => forget(m.id)}
-                      >
-                        Forget
-                      </ConfirmButton>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </SectionBody>
-      )}
+                </div>
+                {/* At the row's end, as Jobs puts its delete, rather than on a line
+                    of its own under every fact. Forgetting a superseded row changes
+                    nothing the agent can recall, so it offers nothing there. */}
+                {record?.status !== 'forgotten' && (
+                  <ConfirmButton
+                    size="xs"
+                    variant="ghost"
+                    className="shrink-0 text-muted-foreground hover:text-state-failed"
+                    destructive
+                    question={`"${m.content.slice(0, 80)}" will stop being recalled.`}
+                    confirmLabel="Forget it"
+                    onConfirm={() => forget(m.id)}
+                  >
+                    Forget
+                  </ConfirmButton>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </SectionBody>
     </Section>
   );
 }
@@ -335,50 +345,65 @@ function AddMemoryForm({ onAdded }: { onAdded: () => void }) {
     }
   };
 
+  // The shared primitives at the body size, with labels that stay on screen.
+  // These were hand-rolled at 11px with a `border/60` edge — about 6% white in
+  // dark, well under the 3:1 a field's boundary owes — a 1px focus ring where
+  // the system's is 3px, and an importance field that was a bare `0.5` box.
   return (
-    <div className="space-y-2 text-xs">
-      <p className="text-muted-foreground">
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
         Stored as a fact the agent can recall. It becomes model input in later sessions, so write it
         the way you would write an instruction.
       </p>
-      <textarea
-        aria-label="What to remember"
-        value={content}
-        maxLength={MEMORY_CONTENT_MAX}
-        rows={3}
-        onChange={(e) => setContent(e.target.value)}
-        placeholder="The staging harness runs on :8081, not :8080."
-        className="w-full resize-y rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-      />
-      <div className="flex gap-2">
-        <input
-          aria-label="Topic key"
-          value={topicKey}
-          maxLength={MEMORY_TOPIC_MAX}
-          onChange={(e) => setTopicKey(e.target.value)}
-          placeholder="Topic (optional)"
-          className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+      <div>
+        <Label htmlFor="memory-content">What to remember</Label>
+        <Textarea
+          id="memory-content"
+          value={content}
+          maxLength={MEMORY_CONTENT_MAX}
+          rows={3}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="The staging harness runs on :8081, not :8080."
+          aria-describedby="memory-content-count"
+          className="mt-1 resize-y text-sm"
         />
-        <input
-          aria-label="Importance"
-          type="number"
-          min={0}
-          max={1}
-          step={0.1}
-          value={importance}
-          onChange={(e) => setImportance(e.target.value)}
-          className="h-8 w-20 rounded-md border border-border/60 bg-background px-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <Button size="sm" disabled={!ready || busy} onClick={() => void submit()}>
-          {busy ? 'Storing…' : 'Remember it'}
-        </Button>
-        <span className="text-muted-foreground tabular-nums">
+        <p id="memory-content-count" className="mt-1 text-xs text-muted-foreground tabular-nums">
           {value.length}/{MEMORY_CONTENT_MAX}
-        </span>
+        </p>
       </div>
-      {error ? <p className="text-destructive">{error}</p> : null}
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+        <div>
+          <Label htmlFor="memory-topic">Topic (optional)</Label>
+          <Input
+            id="memory-topic"
+            value={topicKey}
+            maxLength={MEMORY_TOPIC_MAX}
+            onChange={(e) => setTopicKey(e.target.value)}
+            className="mt-1 h-8 font-mono text-sm"
+          />
+        </div>
+        <div>
+          <Label htmlFor="memory-importance">Importance (0–1)</Label>
+          <Input
+            id="memory-importance"
+            type="number"
+            min={0}
+            max={1}
+            step={0.1}
+            value={importance}
+            onChange={(e) => setImportance(e.target.value)}
+            className="mt-1 h-8 font-mono text-sm"
+          />
+        </div>
+      </div>
+      <Button size="sm" disabled={!ready || busy} onClick={() => void submit()}>
+        {busy ? 'Storing…' : 'Remember it'}
+      </Button>
+      {error ? (
+        <p role="alert" className="text-sm text-state-failed">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

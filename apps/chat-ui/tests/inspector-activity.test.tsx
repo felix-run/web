@@ -307,7 +307,9 @@ describe('the row and the window, read at a glance', () => {
     stubHarness(events);
     renderInspector();
 
-    expect(await screen.findByText('13 events · 1 failed')).toBeTruthy();
+    // The window and the failures are two spans, so only the failures take red.
+    expect(await screen.findByText('13 events ·')).toBeTruthy();
+    expect(screen.getByText('1 failed')).toBeTruthy();
     expect(
       screen.getByText('Newest 12 of the last 13 events. The filters search all 13.'),
     ).toBeTruthy();
@@ -329,7 +331,8 @@ describe('the row and the window, read at a glance', () => {
     const user = userEvent.setup();
     const drawn = () => screen.getAllByRole('button', { name: /read_file/ }).length;
 
-    expect(await screen.findByText('last 60 events · 3 failed')).toBeTruthy();
+    expect(await screen.findByText('last 60 events ·')).toBeTruthy();
+    expect(screen.getByText('3 failed')).toBeTruthy();
     expect(drawn()).toBe(12);
 
     await user.click(screen.getByRole('button', { name: 'Show all 60' }));

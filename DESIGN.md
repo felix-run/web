@@ -452,7 +452,15 @@ between hairlines, as the Ledger's are. The nav is two runs of four, each under 
 is spelled exactly as that page's header spells it. Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
-controls — New chat and the session menu — and keeps the door back to Chat. Narrow, the way back to the list
+controls — New chat and the session menu — and keeps the door back to Chat. Two controls have
+one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Ledger's
+tabs) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
+sit in the header, and the form a create toggle opens is the page's first section, with the list
+still under it. A view that can be linked is in the address (`?view=usage`,
+`?view=asof&turn=12`). Fields are the shared `Input`/`Textarea` at 13px with a visible `Label`;
+help that must survive typing goes under the field, never in a placeholder. A header value that
+mixes a window with a state draws the window neutral and only the state in its chip
+(`last 60 events ·` then `3 failed`). `/harness` opens on the Ledger. Narrow, the way back to the list
 takes the header's icon slot rather than a row of its own. An id that has to distinguish rows is cut from the **middle**, not
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.

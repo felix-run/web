@@ -1,4 +1,3 @@
-import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Input } from '@felix/ui/input';
@@ -16,7 +15,15 @@ import {
   runEvalDataset,
 } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
-import { PageHeader, PageSection, Panel, PanelBody, plural } from '@/components/harness/panel';
+import {
+  CREATE_FORM,
+  CreateToggle,
+  PageHeader,
+  PageSection,
+  Panel,
+  PanelBody,
+  plural,
+} from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
 import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } from '@/types';
 
@@ -48,6 +55,8 @@ export function EvalSheet({ manifest }: { manifest: string }) {
   const [failure, setFailure] = useState<{ err: unknown; doing: string } | null>(null);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
+  /** Whether the new-dataset form is open; `creating` is the request in flight. */
+  const [naming, setNaming] = useState(false);
 
   const refreshDatasets = useCallback(async () => {
     try {
@@ -77,6 +86,7 @@ export function EvalSheet({ manifest }: { manifest: string }) {
     try {
       await putEvalDataset(name);
       setNewName('');
+      setNaming(false);
       await refreshDatasets();
       setSelected(name);
     } catch (err) {
@@ -92,6 +102,15 @@ export function EvalSheet({ manifest }: { manifest: string }) {
         icon={<FlaskConicalIcon />}
         title="Eval"
         value={loaded ? plural(datasets.length, 'dataset') : undefined}
+        controls={
+          <CreateToggle
+            open={naming}
+            onToggle={() => setNaming((v) => !v)}
+            controls="eval-new-dataset-form"
+          >
+            New dataset
+          </CreateToggle>
+        }
       />
 
       <PanelBody>
@@ -104,68 +123,83 @@ export function EvalSheet({ manifest }: { manifest: string }) {
         </p>
         {failure && (
           <div className="mb-3">
-            <ErrorNotice error={failure.err} doing={failure.doing} />
+            {/* Reload re-reads the lists, which is always safe to repeat; it does
+                not re-run whatever failed, which may not be. */}
+            <ErrorNotice
+              error={failure.err}
+              doing={failure.doing}
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="self-start text-xs"
+                  onClick={() => void refreshDatasets()}
+                >
+                  Reload
+                </Button>
+              }
+            />
+          </div>
+        )}
+
+        {/* Behind the header's toggle, as every page's create is, and opening as
+            the page's first section. It was an always-visible row beside the
+            picker — one of four different places "add" lived under /harness. */}
+        {naming && (
+          <div id="eval-new-dataset-form" className={CREATE_FORM}>
+            <PageSection title="New dataset">
+              <div className="flex max-w-md items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <Label htmlFor="eval-new-dataset">Name</Label>
+                  <Input
+                    id="eval-new-dataset"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="mt-1 h-8 font-mono text-sm"
+                    onKeyDown={(e) => e.key === 'Enter' && create()}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  disabled={creating || !newName.trim()}
+                  onClick={create}
+                >
+                  <PlusIcon className="size-3.5" /> Create
+                </Button>
+              </div>
+            </PageSection>
           </div>
         )}
 
         {/*
-            The picker, then the one way to add to it, on one line: a new dataset
-            is a sibling of the ones listed, so it sits with them rather than in a
-            full-width row of its own with its button at the far edge.
-
             Capped and scrollable. It wrapped without a height, so twenty of
             these pushed the panel they select *for* off the bottom of the sheet
             — the control growing until the thing it controls is unreachable.
             Read from the code rather than measured: the local harness has one.
           */}
-        <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2">
-          {datasets.length > 0 ? (
-            <div
-              role="group"
-              aria-label="Datasets"
-              className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto"
-            >
-              {datasets.map((d) => (
-                <Button
-                  key={d.name}
-                  size="sm"
-                  variant={selected === d.name ? 'secondary' : 'ghost'}
-                  className="font-mono text-sm"
-                  aria-pressed={selected === d.name}
-                  onClick={() => setSelected(d.name)}
-                >
-                  {d.name}
-                </Button>
-              ))}
-            </div>
-          ) : loaded ? (
-            <span className="text-sm text-muted-foreground">No datasets yet.</span>
-          ) : null}
-          <div className="flex w-full max-w-sm items-center gap-2 sm:w-auto">
-            {/* A visible label, and a placeholder that does not look typed: in
-                mono, `new-dataset-name` read as a value already entered. */}
-            <Label htmlFor="eval-new-dataset" className="shrink-0 text-xs text-muted-foreground">
-              New dataset
-            </Label>
-            <Input
-              id="eval-new-dataset"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="name"
-              className="h-8 min-w-0 flex-1 font-mono text-sm placeholder:font-sans"
-              onKeyDown={(e) => e.key === 'Enter' && create()}
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1"
-              disabled={creating || !newName.trim()}
-              onClick={create}
-            >
-              <PlusIcon className="size-3.5" /> New
-            </Button>
+        {datasets.length > 0 ? (
+          <div
+            role="group"
+            aria-label="Datasets"
+            className="mb-5 flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto"
+          >
+            {datasets.map((d) => (
+              <Button
+                key={d.name}
+                size="sm"
+                variant={selected === d.name ? 'secondary' : 'ghost'}
+                className="font-mono text-sm"
+                aria-pressed={selected === d.name}
+                onClick={() => setSelected(d.name)}
+              >
+                {d.name}
+              </Button>
+            ))}
           </div>
-        </div>
+        ) : loaded && !naming ? (
+          <p className="mb-5 text-sm text-muted-foreground">No datasets yet.</p>
+        ) : null}
 
         {selected ? (
           <DatasetPanel
@@ -719,12 +753,19 @@ function RunCard({ run }: { run: EvalRun }) {
           run shouted and a failing one whispered — backwards, and inconsistent
           with the score rows below, which already use the state colours.
         */}
-        <Badge
-          variant={run.fail_count === 0 ? 'secondary' : 'destructive'}
-          className={cn('py-0', run.fail_count === 0 && 'text-state-done')}
+        {/* The state chip every failure count uses — `state-*` at `/15` —
+            rather than `destructive`'s solid red, which is tuned to carry white
+            and shouted louder than any other failure under /harness. */}
+        <span
+          className={cn(
+            'rounded-full px-1.5 py-0.5 text-xs font-medium tabular-nums',
+            run.fail_count === 0
+              ? 'bg-state-done/15 text-state-done'
+              : 'bg-state-failed/15 text-state-failed',
+          )}
         >
           {run.pass_count}/{total} pass · {rate}%
-        </Badge>
+        </span>
         <span className="font-mono text-xs text-muted-foreground">{run.candidate_manifest}</span>
         <span className="ml-auto text-xs text-muted-foreground">{run.status}</span>
       </div>
