@@ -439,10 +439,10 @@ icon, the title the nav uses, then the value **with its unit** (`0 memories`, `l
 wrapping to a second row when the pane is narrow. A page whose value would need a request of its
 own shows none; a list that came back at its fetch cap reads `50+`, not a total. A section drawn
 bare still computes its value and reports it to the host's header, which is how the Ledger's one
-header carries whichever half is on screen. Rows that are read across — the Ledger's — are held
+header carries whichever half is on screen. Rows that are read across — the Ledger's and Jobs' — are held
 to `READING_MEASURE` (`max-w-3xl`), so a status is read with its name rather than found 1300px
-away, and that page's header row is held to the same constant (`PageHeader measured`) so its
-Activity/Usage switch ends where the rows it switches end. The rule under the header stays full
+away, and those pages' header rows are held to the same constant (`PageHeader measured`) so the
+Ledger's Activity/Usage switch and Jobs' New job end where the rows they act on end. The rule under the header stays full
 width; it separates the header from the pane. A page whose rows run full width leaves its
 controls at the pane's edge. An id that has to distinguish rows is cut from the **middle**, not
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because

@@ -169,9 +169,29 @@ describe('the harness address', () => {
     expect(row()?.className).toContain(READING_MEASURE);
     expect(row()?.contains(document.querySelector('main [role="tablist"]'))).toBe(true);
     cleanup();
-    mount('/harness/jobs');
+    mount('/harness/manifests');
     await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
     expect(row()?.className).not.toContain(READING_MEASURE);
+  });
+
+  /**
+   * Jobs' rows are read across too — name, schedule, manifest, Runs at the far
+   * end — and its New job button sat ~1200px from the empty-state sentence that
+   * names it. The page holds header and rows to one measure now, like the Ledger.
+   */
+  it('holds Jobs to the reading measure, header and rows alike', async () => {
+    mount('/harness/jobs');
+    const header = () => document.querySelector('main header')?.firstElementChild;
+    await waitFor(() => expect(header()?.textContent).toContain('New job'));
+    expect(header()?.className).toContain(READING_MEASURE);
+    const empty = await waitFor(() => {
+      const p = [...document.querySelectorAll('main p')].find((el) =>
+        el.textContent?.startsWith('No jobs yet'),
+      );
+      expect(p).toBeTruthy();
+      return p as HTMLElement;
+    });
+    expect(empty.closest(`.${READING_MEASURE}`)).not.toBeNull();
   });
 
   it('puts the destination in a main landmark, outside the nav', async () => {
