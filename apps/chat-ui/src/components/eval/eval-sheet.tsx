@@ -25,6 +25,7 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
+import { ReadFailure, withAge } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
 import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } from '@/types';
 
@@ -69,17 +70,34 @@ export function EvalSheet({
   /** Whether the new-dataset form is open; `creating` is the request in flight. */
   const [naming, setNaming] = useState(false);
 
+  // The list's own read, apart from the actions' `failure` — so a failed
+  // reload keeps the datasets it last had, under a line saying how old they are.
+  const [listError, setListError] = useState<unknown>(null);
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+
   const refreshDatasets = useCallback(async () => {
     try {
       const ds = await listEvalDatasets();
       setDatasets(ds);
       setLoaded(true);
-      setFailure(null);
+      setListError(null);
+      setLastOkAt(Date.now());
       setSelected((cur) => cur ?? ds[0]?.name ?? null);
     } catch (err) {
-      setFailure({ err, doing: 'list eval datasets' });
+      setListError(err);
     }
   }, []);
+
+  // Stable, so the dataset panel's read does not re-run on every render of
+  // this page. It was an inline arrow in that read's dependencies, so each
+  // re-render — a failure message, a keystroke in the new-dataset field —
+  // fetched the items and runs again, and on a 429 the failure re-rendered the
+  // page, which fetched again: a loop, against the one harness that was
+  // already saying slow down.
+  const reportFailure = useCallback(
+    (err: unknown, doing: string) => setFailure({ err, doing }),
+    [],
+  );
 
   useEffect(() => {
     // No `open` guard: a route mounts this only while it is the address, so being
@@ -112,7 +130,10 @@ export function EvalSheet({
       <PageHeader
         icon={<FlaskConicalIcon />}
         title="Eval"
-        value={loaded ? plural(datasets.length, 'dataset') : undefined}
+        value={withAge(
+          loaded ? plural(datasets.length, 'dataset') : undefined,
+          listError != null ? lastOkAt : undefined,
+        )}
         controls={
           <>
             {picker}
@@ -139,24 +160,19 @@ export function EvalSheet({
           <span className="font-mono text-foreground">{manifest}</span>, the agent picked in the
           header.
         </p>
+        {listError != null && (
+          <ReadFailure
+            error={listError}
+            doing="list eval datasets"
+            lastOkAt={lastOkAt}
+            onRetry={() => void refreshDatasets()}
+          />
+        )}
+        {/* An action's failure — a create, a run, a compare. No retry: re-running
+            one is a deliberate act, and its control is still on the page. */}
         {failure && (
           <div className="mb-3">
-            {/* Reload re-reads the lists, which is always safe to repeat; it does
-                not re-run whatever failed, which may not be. */}
-            <ErrorNotice
-              error={failure.err}
-              doing={failure.doing}
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="self-start text-xs"
-                  onClick={() => void refreshDatasets()}
-                >
-                  Reload
-                </Button>
-              }
-            />
+            <ErrorNotice error={failure.err} doing={failure.doing} />
           </div>
         )}
 
@@ -215,9 +231,10 @@ export function EvalSheet({
               </Button>
             ))}
           </div>
-        ) : // Not while the list failed to load: "No datasets yet" under an error
-        // says the tenant has none *and* that nobody could check.
-        loaded && !naming && !failure ? (
+        ) : // Only once a list has answered: "No datasets yet" under a first read
+        // that failed says the tenant has none *and* that nobody could check.
+        // After a good read it is the last answer, and the line above says so.
+        loaded && !naming ? (
           <p className="mb-5 text-sm text-muted-foreground">No datasets yet.</p>
         ) : null}
 
@@ -227,7 +244,7 @@ export function EvalSheet({
             dataset={selected}
             manifest={manifest}
             manifestOptions={manifestOptions}
-            onError={(err, doing) => setFailure({ err, doing })}
+            onError={reportFailure}
           />
         ) : null}
       </PanelBody>
@@ -252,15 +269,22 @@ function DatasetPanel({
   const [running, setRunning] = useState(false);
   const [comparing, setComparing] = useState(false);
 
+  // Its own read, drawn here beside the rows it keeps rather than sent up to
+  // the page's action slot as if loading a dataset were something that failed
+  // to *happen*.
+  const [readError, setReadError] = useState<unknown>(null);
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
   const refresh = useCallback(async () => {
     try {
       const [its, rns] = await Promise.all([listEvalItems(dataset), listEvalRuns(dataset)]);
       setItems(its);
       setRuns(rns);
+      setReadError(null);
+      setLastOkAt(Date.now());
     } catch (err) {
-      onError(err, `load the dataset ${dataset}`);
+      setReadError(err);
     }
-  }, [dataset, onError]);
+  }, [dataset]);
 
   useEffect(() => {
     void refresh();
@@ -281,8 +305,29 @@ function DatasetPanel({
   // Runs first: reading how the last one went is why this page is opened, far
   // more often than to edit the items it replays. The form that led the old
   // layout sat above both.
+  // A first read that failed has nothing to keep, and the sections below would
+  // say "Add an item before running" about a dataset nobody could read.
+  if (readError != null && lastOkAt == null) {
+    return (
+      <ReadFailure
+        error={readError}
+        doing={`load the dataset ${dataset}`}
+        lastOkAt={null}
+        onRetry={() => void refresh()}
+      />
+    );
+  }
+
   return (
     <>
+      {readError != null && (
+        <ReadFailure
+          error={readError}
+          doing={`load the dataset ${dataset}`}
+          lastOkAt={lastOkAt}
+          onRetry={() => void refresh()}
+        />
+      )}
       <PageSection
         title="Runs"
         meta={runs.length > 0 ? plural(runs.length, 'run') : undefined}

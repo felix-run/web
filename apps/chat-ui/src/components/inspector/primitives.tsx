@@ -5,6 +5,7 @@ import { Skeleton } from '@felix/ui/skeleton';
 import { ChevronRightIcon, CircleAlertIcon } from 'lucide-react';
 import { createContext, type ReactNode, useContext, useEffect } from 'react';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
+import { ErrorNotice } from '@/components/error-notice';
 import { PageHeader, READING_MEASURE } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
 
@@ -366,6 +367,44 @@ export function StaleNotice({
         </Button>
       )}
     </div>
+  );
+}
+
+/**
+ * A failed *read*, on a page that loads by hand rather than through a poll —
+ * Manifests' list, Eval's datasets and a dataset's items and runs.
+ *
+ * With an earlier good answer it is the one line every polled page draws, over
+ * rows the page kept; with none it is the full box, since there is nothing to
+ * keep. Either way it can be retried. An *action* that failed — an activation,
+ * an import, a run — is not this: it has no rows to keep, and it stays a box of
+ * its own, so a failed reload can no longer wear the words of a failed write.
+ */
+export function ReadFailure({
+  error,
+  doing,
+  lastOkAt,
+  onRetry,
+}: {
+  error: unknown;
+  doing: string;
+  lastOkAt: number | null;
+  onRetry: () => void;
+}) {
+  if (lastOkAt != null) {
+    return <StaleNotice error={error} doing={doing} lastOkAt={lastOkAt} onRetry={onRetry} />;
+  }
+  return (
+    <ErrorNotice
+      error={error}
+      doing={doing}
+      className="mb-3"
+      action={
+        <Button size="sm" variant="outline" className="self-start text-xs" onClick={onRetry}>
+          Try again
+        </Button>
+      }
+    />
   );
 }
 
