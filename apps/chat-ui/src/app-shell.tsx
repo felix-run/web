@@ -1310,17 +1310,24 @@ export function AppShell() {
         </div>
 
         <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={newThread}
-            disabled={streaming}
-            className="gap-1.5"
-            aria-label="New chat"
-          >
-            <PlusIcon className="size-4" aria-hidden />
-            <span className="hidden sm:inline">New chat</span>
-          </Button>
+          {/* Conversation controls stay with the conversation. On `/harness` —
+              whose premise is what outlives every run — New chat, Thinking and
+              Continue run act on a transcript that is not on screen, and were
+              four global options above a page that uses none of them. The door
+              back to Chat is the one way to them, and it says when a run is live. */}
+          {!onHarness && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={newThread}
+              disabled={streaming}
+              className="gap-1.5"
+              aria-label="New chat"
+            >
+              <PlusIcon className="size-4" aria-hidden />
+              <span className="hidden sm:inline">New chat</span>
+            </Button>
+          )}
           {/*
             The second top-level address, and a real control rather than a menu
             item: the four workbenches behind the ellipsis were not hard to find,
@@ -1336,7 +1343,10 @@ export function AppShell() {
               ) : (
                 <ServerIcon className="size-4" aria-hidden />
               )}
-              <span className="hidden sm:inline">{onHarness ? 'Chat' : 'Harness'}</span>
+              {/* `sr-only`, not `hidden`, below `sm`: the icon is `aria-hidden`, so
+                  hiding the word too left the only route between the app's two
+                  addresses with no accessible name on a phone. */}
+              <span className="sr-only sm:not-sr-only">{onHarness ? 'Chat' : 'Harness'}</span>
               {/* From `/harness` the transcript is off screen, and a run still in
                   it is the one thing worth going back for. The attention line
                   says "Working" too, but it is a sentence across the page; this
@@ -1364,58 +1374,60 @@ export function AppShell() {
               <PanelRightIcon className="size-4" />
             </Button>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="More tools">
-                <EllipsisIcon className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>View</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem
-                checked={verbose}
-                onCheckedChange={(checked) => {
-                  setVerbose(checked);
-                  if (checked) setInspectorOpen(true);
-                }}
-              >
-                Verbose tools
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Session</DropdownMenuLabel>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>Thinking: {thinkingLevel}</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-40">
-                  <DropdownMenuRadioGroup
-                    value={thinkingLevel}
-                    onValueChange={(v) => chooseThinking(v as ThinkingLevel)}
-                  >
-                    {THINKING_LEVELS.map((level) => (
-                      <DropdownMenuRadioItem key={level} value={level}>
-                        {level}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuItem disabled={streaming} onSelect={() => continueRun()}>
-                Continue run
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
+          {!onHarness && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="More tools">
+                  <EllipsisIcon className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>View</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={verbose}
+                  onCheckedChange={(checked) => {
+                    setVerbose(checked);
+                    if (checked) setInspectorOpen(true);
+                  }}
+                >
+                  Verbose tools
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Session</DropdownMenuLabel>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>Thinking: {thinkingLevel}</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-40">
+                    <DropdownMenuRadioGroup
+                      value={thinkingLevel}
+                      onValueChange={(v) => chooseThinking(v as ThinkingLevel)}
+                    >
+                      {THINKING_LEVELS.map((level) => (
+                        <DropdownMenuRadioItem key={level} value={level}>
+                          {level}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuItem disabled={streaming} onSelect={() => continueRun()}>
+                  Continue run
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
                   `self-pr-` for every `self-pr-*` thread, and was the item's whole
                   accessible name. The id is whole in `title` and to a reader. */}
-              <DropdownMenuItem
-                disabled
-                title={threadId}
-                aria-label={`Thread ${threadId}`}
-                className="gap-1.5 text-xs text-muted-foreground data-disabled:opacity-100"
-              >
-                Thread
-                <span className="min-w-0 truncate font-mono">{middleTruncate(threadId, 22)}</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuItem
+                  disabled
+                  title={threadId}
+                  aria-label={`Thread ${threadId}`}
+                  className="gap-1.5 text-xs text-muted-foreground data-disabled:opacity-100"
+                >
+                  Thread
+                  <span className="min-w-0 truncate font-mono">{middleTruncate(threadId, 22)}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </header>
 

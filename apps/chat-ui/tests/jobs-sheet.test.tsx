@@ -46,7 +46,7 @@ async function sheet(jobs: unknown[] = []) {
 /** The form is behind a disclosure now; open it the way an operator would. */
 async function openForm() {
   fireEvent.click(await screen.findByRole('button', { name: /New job/ }));
-  return waitFor(() => screen.getByLabelText(/Job name/));
+  return waitFor(() => screen.getByLabelText('Name'));
 }
 
 describe('the page reads as a list first', () => {
@@ -59,7 +59,7 @@ describe('the page reads as a list first', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByLabelText(/Job name/)).toBeTruthy();
+    expect(screen.getByLabelText('Name')).toBeTruthy();
   });
 });
 
@@ -68,7 +68,7 @@ describe('creating a job', () => {
     const { upsertJob } = await sheet();
     const name = await openForm();
     fireEvent.change(name, { target: { value: 'triage' } });
-    fireEvent.change(screen.getByLabelText(/Prompt sent on each run/), {
+    fireEvent.change(screen.getByLabelText('Prompt'), {
       target: { value: 'Take the next ticket.' },
     });
     fireEvent.click(screen.getByLabelText(/Fresh thread each run/));

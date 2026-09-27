@@ -126,7 +126,11 @@ export function PageHeader({
   const back = useContext(PageBack);
   return (
     <header className="shrink-0 border-b border-border/60 px-4 py-3">
-      <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-2', measure)}>
+      {/* `min-h-8`: the height of the tallest control a header carries, so the
+          rule under it sits on one line across all eight pages. It moved by a few
+          pixels whenever a page had controls, which the eye reads as the page
+          jumping on navigation. */}
+      <div className={cn('flex min-h-8 flex-wrap items-center gap-x-2 gap-y-2', measure)}>
         {back ? (
           // Pulled left by its own padding so the chevron sits on the column the
           // icon would have, and the title does not move between widths.
@@ -255,9 +259,15 @@ export function PageSection({
  */
 export function Facts({ children }: { children: ReactNode }) {
   return (
-    <dl className="grid grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
-      {children}
-    </dl>
+    // A container query, not a breakpoint: the pane is what is narrow, and a
+    // label column of up to 11rem took half of a phone's width and stacked nine
+    // tool chips one per line beside it. Under ~28rem each value goes under its
+    // label instead.
+    <div className="@container">
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-0.5 text-sm @md:grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)] @md:gap-y-1.5">
+        {children}
+      </dl>
+    </div>
   );
 }
 
@@ -280,7 +290,7 @@ export function Fact({
   const empty = children === undefined || children === null || children === '';
   return (
     <>
-      <dt className="min-w-0 text-muted-foreground">{label}</dt>
+      <dt className="mt-1.5 min-w-0 text-muted-foreground first:mt-0 @md:mt-0">{label}</dt>
       <dd
         className={cn('min-w-0 break-words', empty ? 'text-muted-foreground' : mono && 'font-mono')}
       >

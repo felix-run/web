@@ -11,7 +11,8 @@ import {
   SparklesIcon,
 } from 'lucide-react';
 import { Fragment, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
-import { Navigate, NavLink, Outlet, useMatch } from 'react-router';
+import { Navigate, NavLink, Outlet, useMatch, useSearchParams } from 'react-router';
+import { getResolvedManifest } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { DocumentsSection } from '@/components/harness/corpus';
@@ -27,6 +28,7 @@ import {
 import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { setPresencePlace } from '@/lib/presence';
 import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
@@ -68,7 +70,32 @@ function CorpusPanel() {
 }
 
 function SkillsPanel() {
-  const { skills, send, streaming, threads, threadId } = useShell();
+  const { skills, send, streaming, threads, threadId, manifest } = useShell();
+  // What the manifest declares, so the page has something true to show before
+  // the agent has been asked. One read per visit — the spec does not change
+  // under a page that is open.
+  const [specSkills, setSpecSkills] = useState<string[] | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    setSpecSkills(undefined);
+    getResolvedManifest(manifest)
+      .then((r) => {
+        const declared = (r.manifest as { spec?: { skills?: unknown[] } } | undefined)?.spec
+          ?.skills;
+        if (!live || !Array.isArray(declared)) return;
+        setSpecSkills(
+          declared.map((sk) =>
+            typeof sk === 'string' ? sk : ((sk as { name?: string })?.name ?? String(sk)),
+          ),
+        );
+      })
+      // A failed read leaves the page as it was before this existed: the ask,
+      // and the sentence saying what is unknown. Not worth an error slab of its own.
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [manifest]);
   // Named, because from here the thread is not on screen. In the inspector "this
   // chat" is the transcript beside it; on `/harness` it is whichever thread the
   // tab was last on, and a button that posts to a conversation should say which.
@@ -82,6 +109,7 @@ function SkillsPanel() {
         open
         onToggle={() => {}}
         skills={skills}
+        specSkills={specSkills}
         onSuggest={send}
         busy={streaming}
         target={target}
@@ -100,7 +128,14 @@ function SkillsPanel() {
  * doing — so they are one place.
  */
 function LedgerPanel() {
-  const [half, setHalf] = useState<'activity' | 'usage'>('activity');
+  // In the address, not in state: a half kept in `useState` could not be linked
+  // to and reset to Activity on every visit, so "the Usage page" was two clicks
+  // away from every link that meant it. `replace`, because switching halves is a
+  // view change rather than a place Back should step through.
+  const [params, setParams] = useSearchParams();
+  const half: 'activity' | 'usage' = params.get('view') === 'usage' ? 'usage' : 'activity';
+  const setHalf = (next: 'activity' | 'usage') =>
+    setParams(next === 'usage' ? { view: 'usage' } : {}, { replace: true });
   // The visible half's header value, reported up by its `bare` section. Only the
   // visible half is mounted, so only it reports — the header describes the half
   // being read, from the one poll already running.
@@ -123,7 +158,12 @@ function LedgerPanel() {
           value={meta.meta}
           valueTone={meta.metaTone}
           controls={
-            <TabsList aria-label="Ledger view" className="w-auto">
+            // Held to the header's row height, so the Ledger's rule sits where
+            // every other page's does.
+            <TabsList
+              aria-label="Ledger view"
+              className="w-auto group-data-[orientation=horizontal]/tabs:h-8"
+            >
               <TabsTrigger value="activity" className="px-2.5 text-xs">
                 Activity
               </TabsTrigger>
@@ -281,8 +321,17 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
     <nav aria-label="Harness" className={cn('p-2', className)} onKeyDown={walkNav}>
       {GROUPS.map(({ key, label }, gi) => (
         <Fragment key={key}>
-          {gi > 0 && <hr aria-hidden className="mx-2.5 my-2 border-border/60" />}
-          <ul aria-label={label} className="flex flex-col gap-0.5">
+          {/* Shown, not only announced. The labels were `aria-label`s and the rule
+              between the runs was `border/60` — about 6% white in dark — so a
+              screen reader heard two groups and everyone else saw eight rows. */}
+          {gi > 0 && <hr aria-hidden className="mx-2.5 my-2 border-border" />}
+          <p
+            id={`harness-nav-${key}`}
+            className="px-2.5 pt-1 pb-1 text-xs font-medium text-muted-foreground"
+          >
+            {label}
+          </p>
+          <ul aria-labelledby={`harness-nav-${key}`} className="flex flex-col gap-0.5">
             {HARNESS_DESTINATIONS.filter((d) => d.group === key).map(
               ({ path, label: name, icon: Icon }) => (
                 <li key={path}>
@@ -303,11 +352,14 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                     <span className="truncate">{name}</span>
                     {glance[path] && (
                       <span
+                        // The separator is for the accessible name, which ran the
+                        // label and the value together as "Agentcowork".
                         className={cn(
                           'ml-auto min-w-0 truncate pl-2 text-xs font-normal tabular-nums text-muted-foreground',
                           glance[path]?.mono && 'font-mono',
                         )}
                       >
+                        <span className="sr-only">, </span>
                         {glance[path]?.text}
                       </span>
                     )}
@@ -335,6 +387,16 @@ const BACK_TO_LIST = { to: '/harness', label: 'Back to Harness' };
 export function HarnessLayout() {
   const wide = useMediaQuery('(min-width: 768px)');
   const atIndex = !!useMatch('/harness');
+  const at = useMatch('/harness/:destination')?.params.destination;
+  const place = HARNESS_DESTINATIONS.find((d) => d.path === at)?.label ?? 'Harness';
+
+  // The tab strip names the page: eight open destinations all read "Felix chat".
+  // Cleared on the way out, so the conversation's tab goes back to naming only
+  // the run.
+  useEffect(() => {
+    setPresencePlace(place);
+  }, [place]);
+  useEffect(() => () => setPresencePlace(null), []);
 
   if (atIndex && wide) return <Navigate to="memory" replace />;
 

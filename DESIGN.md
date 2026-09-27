@@ -446,9 +446,13 @@ opt-out, and no page takes it today. The rule under the header stays full width;
 header from the pane. Below the header a page is divided into `PageSection`s — a hairline rule and
 an `h3` title (Title, 13px 600), never a bordered box — and label/value pairs are a `Facts` grid
 with the value a gutter from its label rather than right-aligned across the pane. Lists are rows
-between hairlines, as the Ledger's are. The nav is two runs of four under one rule, records
-(Memory, Corpus, Skills, Ledger) above workbenches (Manifests, Jobs, Eval, Agent), and a glance
-value in it is spelled exactly as that page's header spells it. Narrow, the way back to the list
+between hairlines, as the Ledger's are. The nav is two runs of four, each under a visible
+11px label that also names its list — Records (Memory, Corpus, Skills, Ledger) above Workbenches
+(Manifests, Jobs, Eval, Agent) — split by a full-strength `border` rule, and a glance value in it
+is spelled exactly as that page's header spells it. Every page header row is `min-h-8`, so the
+rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
+Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
+controls — New chat and the session menu — and keeps the door back to Chat. Narrow, the way back to the list
 takes the header's icon slot rather than a row of its own. An id that has to distinguish rows is cut from the **middle**, not
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.

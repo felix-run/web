@@ -140,3 +140,28 @@ describe('every part of the page is a heading', () => {
     );
   });
 });
+
+describe('Skills before the agent has been asked', () => {
+  it('shows what the manifest declares, and says what is unknown', async () => {
+    const { SkillsSection } = await import('../src/components/harness/skills');
+    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
+    render(
+      <PanelModeProvider>
+        <SkillsSection
+          open
+          onToggle={() => {}}
+          skills={null}
+          specSkills={['calculator-help']}
+          onSuggest={() => {}}
+          target={{ text: '72d69cb1-1ea6-4d6f-949b-fcfd326bccdf', isId: true }}
+        />
+      </PanelModeProvider>,
+    );
+    expect(screen.getByText('1 declared')).toBeTruthy();
+    expect(screen.getByText('calculator-help')).toBeTruthy();
+    expect(screen.getByText(/unknown until the agent calls/)).toBeTruthy();
+    // An untitled thread is said to be one, with its id cut from the middle.
+    expect(screen.getByText(/the untitled thread/)).toBeTruthy();
+    expect(screen.queryByText('72d69cb1-1ea6-4d6f-949b-fcfd326bccdf')).toBeNull();
+  });
+});

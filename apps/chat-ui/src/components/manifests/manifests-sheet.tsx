@@ -45,7 +45,10 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
   /** Whether `rows` is an answer yet: `0 manifests` before the first list is a claim. */
   const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [importName, setImportName] = useState(manifest);
+  // Empty, not the active agent's name. Prefilled, the page opened one confirm
+  // away from making `cowork` tenant-managed — the heaviest consequence here,
+  // staged by default on every visit.
+  const [importName, setImportName] = useState('');
   const [busy, setBusy] = useState(false);
   // The error and the verb that produced it travel together. This slot used to be a
   // bare error rendered with one hardcoded phrase, so a failed *activation* — the
@@ -122,7 +125,13 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
         title="Manifests"
         value={
           loaded
-            ? [plural(rows.length, 'manifest'), canaries > 0 ? `${canaries} in canary` : null]
+            ? // *Tenant* manifests: "0 manifests" beside an Agent page running
+              // `cowork` read as a contradiction, when it counts only the ones
+              // with a version log here.
+              [
+                plural(rows.length, 'tenant manifest'),
+                canaries > 0 ? `${canaries} in canary` : null,
+              ]
                 .filter(Boolean)
                 .join(' · ')
             : undefined
@@ -221,7 +230,7 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
               aria-label="Manifest name to import"
               value={importName}
               onChange={(e) => setImportName(e.target.value)}
-              placeholder="manifest name"
+              placeholder={`manifest name, e.g. ${manifest}`}
               className="h-8 min-w-0 flex-1 font-mono text-sm"
             />
             <ConfirmButton

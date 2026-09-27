@@ -160,60 +160,75 @@ export function JobsSheet({
           // the page while it is open, and a heading is what names a part.
           <div id="job-create" className="pb-1">
             <PageSection title="New job">
-              <div className="space-y-1.5">
-                <Label htmlFor="job-name" className="sr-only">
-                  Job name
-                </Label>
-                <Input
-                  id="job-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="job name, e.g. nightly-digest"
-                  className="h-8 font-mono text-sm"
-                  onKeyDown={(e) => e.key === 'Enter' && create()}
-                />
-                <div className="flex gap-2">
-                  <Label htmlFor="job-schedule" className="sr-only">
-                    Schedule, as 5-field cron in UTC. Leave empty to never run automatically.
-                  </Label>
+              {/* Visible labels, with the format under the field it describes. The
+                  labels were `sr-only` and the cron grammar lived in a placeholder,
+                  so the one hint the schedule field needs vanished on the first
+                  keystroke — and a half-typed `0 9 * *` has nothing to check it
+                  against. */}
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+                  <div>
+                    <Label htmlFor="job-name">Name</Label>
+                    <Input
+                      id="job-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="nightly-digest"
+                      className="mt-1 h-8 text-sm"
+                      onKeyDown={(e) => e.key === 'Enter' && create()}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="job-manifest">Agent</Label>
+                    {/* The shared primitive, not a bare `<select>`: a native one draws
+                        its option list with the OS, which ignores the app's theme. */}
+                    <Select value={manifestId} onValueChange={setManifestId}>
+                      <SelectTrigger
+                        id="job-manifest"
+                        size="sm"
+                        className="mt-1 h-8 w-full font-mono text-sm"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
+                          <SelectItem key={m} value={m} className="font-mono text-sm">
+                            {m}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="job-schedule">Schedule</Label>
                   <Input
                     id="job-schedule"
                     value={schedule}
                     onChange={(e) => setSchedule(e.target.value)}
-                    placeholder="cron (m h dom mon dow); leave empty to never run"
-                    className="h-8 font-mono text-sm"
+                    aria-describedby="job-schedule-help"
+                    className="mt-1 h-8 max-w-xs font-mono text-sm"
                     onKeyDown={(e) => e.key === 'Enter' && create()}
                   />
-                  {/* The shared primitive, not a bare `<select>`: a native one draws its
-                  option list with the OS, which ignores the app's theme entirely. */}
-                  <Select value={manifestId} onValueChange={setManifestId}>
-                    <SelectTrigger
-                      size="sm"
-                      className="h-8 w-40 font-mono text-sm"
-                      aria-label="Manifest for this job"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
-                        <SelectItem key={m} value={m} className="font-mono text-sm">
-                          {m}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <p id="job-schedule-help" className="mt-1 text-xs text-muted-foreground">
+                    Five-field cron in UTC: minute hour day month weekday. Empty never runs on its
+                    own.
+                  </p>
                 </div>
-                <Label htmlFor="job-prompt" className="sr-only">
-                  Prompt sent on each run
-                </Label>
-                <Input
-                  id="job-prompt"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="prompt sent each run; empty sends “ping”"
-                  className="h-8 text-sm"
-                  onKeyDown={(e) => e.key === 'Enter' && create()}
-                />
+                <div>
+                  <Label htmlFor="job-prompt">Prompt</Label>
+                  <Input
+                    id="job-prompt"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    aria-describedby="job-prompt-help"
+                    className="mt-1 h-8 text-sm"
+                    onKeyDown={(e) => e.key === 'Enter' && create()}
+                  />
+                  <p id="job-prompt-help" className="mt-1 text-xs text-muted-foreground">
+                    Sent as the turn on each run. Empty sends “ping”.
+                  </p>
+                </div>
                 {/* A native checkbox: the shared primitives have no switch, and a `<button
               aria-pressed>` for a yes/no that is submitted with a form promises a
               toggle rather than a field. */}
@@ -261,8 +276,8 @@ export function JobsSheet({
                 header lost its subline, and a page with jobs on it explains itself. */}
           {data && jobs.length === 0 && (
             <p className="max-w-prose text-sm text-muted-foreground">
-              No jobs yet. A job is an agent run the worker starts on a cron schedule, with its
-              recent runs under Runs. New job creates one.
+              No jobs yet. A job is an agent run the worker starts on a cron schedule; once one
+              exists, its recent runs are a click away on its row.
             </p>
           )}
           {jobs.map((j) => (

@@ -1,9 +1,10 @@
 import { describeError } from '@felix/client';
 import { Button } from '@felix/ui/button';
-import { BookOpenIcon } from 'lucide-react';
+import { BookOpenIcon, PlusIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { addDocument, deleteDocument, listDocuments, searchDocuments } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
+import { VIEW_BUTTON, VIEW_OFF, VIEW_ON } from '@/components/harness/memory';
 import { plural } from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
@@ -105,29 +106,41 @@ export function DocumentsSection({
         behave like one. `aria-pressed` on buttons in a named group promises only
         what this actually is.
       */}
-      <div className="mb-2 flex gap-1" role="group" aria-label="Corpus view">
-        {(
-          [
-            ['recent', 'Documents'],
-            ['search', 'Search'],
-            ['add', 'Add'],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={mode === id}
-            onClick={() => setMode(id)}
-            className={cn(
-              'rounded px-2 py-1 text-xs transition-colors',
-              mode === id
-                ? 'bg-accent text-foreground'
-                : 'text-muted-foreground hover:bg-accent/50',
-            )}
-          >
-            {label}
-          </button>
-        ))}
+      {/* The two reads are one group; Add is apart from it, as on Memory. Ingest
+          writes to what the agent retrieves from, and fourth-in-a-strip made it
+          read as another way of looking. */}
+      <div className="mb-2 flex items-center gap-1">
+        <div className="flex gap-1" role="group" aria-label="Corpus view">
+          {(
+            [
+              ['recent', 'Documents'],
+              ['search', 'Search'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={mode === id}
+              onClick={() => setMode(id)}
+              className={cn(VIEW_BUTTON, mode === id ? VIEW_ON : VIEW_OFF)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          aria-expanded={mode === 'add'}
+          onClick={() => setMode(mode === 'add' ? 'recent' : 'add')}
+          className={cn(
+            VIEW_BUTTON,
+            'ml-auto flex items-center gap-1',
+            mode === 'add' ? VIEW_ON : VIEW_OFF,
+          )}
+        >
+          <PlusIcon aria-hidden className="size-3" />
+          Add document
+        </button>
       </div>
 
       {mode === 'add' && (
