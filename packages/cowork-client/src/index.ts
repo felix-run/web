@@ -25,5 +25,5 @@ export {
   reconnectMount,
   restoreMount,
 } from './fs-mount';
-export { collectToolCallPaths } from './tool-call-paths';
+export { collectToolCallPaths, collectTouchedPaths } from './tool-call-paths';
 export { getVfs, VirtualFs } from './vfs';

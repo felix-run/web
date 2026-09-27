@@ -34,7 +34,7 @@ vi.mock('../src/lib/cowork', () => ({
   pickDirectory: fs.pick,
   clearMount: fs.clear,
   supportsDirectoryPicker: () => true,
-  collectToolCallPaths: () => [],
+  collectTouchedPaths: () => [],
 }));
 
 function mount() {

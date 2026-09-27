@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -13,7 +14,7 @@ import {
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
- * The right rail is headed "This run", and two things keep that heading true.
+ * The right rail's readout is headed "This run", and two things keep that heading true.
  *
  * The readout above the tabs is derived from the shell alone, so it must state
  * the run's state in words (never colour alone), say so at rest, and never
@@ -133,10 +134,39 @@ describe('the approvals tab', () => {
     expect(screen.getByText('Confirm writes to the workspace')).toBeTruthy();
   });
 
-  it('says every tab is tenant-wide, because no route takes a thread filter', async () => {
+  /**
+   * Two scopes, two headings. "This run" heads the readout; the tabs are
+   * tenant-wide — no route takes a thread filter — so they sit under a heading
+   * of their own rather than borrowing the run's and disclaiming it per tab.
+   */
+  it('heads the tabs as the whole harness, apart from the run above them', async () => {
     stub([]);
     mount();
-    expect(await screen.findByText('All threads')).toBeTruthy();
+    const harness = screen.getByRole('region', { name: 'Harness · all threads' });
+    expect(within(harness).getByRole('tablist')).toBeTruthy();
+    expect(harness.contains(readout())).toBe(false);
+    expect(screen.getByRole('heading', { name: 'This run' })).toBeTruthy();
+    // The per-tab line no longer repeats the scope the heading states.
+    expect(screen.queryByText(/^All threads/)).toBeNull();
+  });
+
+  it('says why the tool metrics are empty on a thread that has run tools', async () => {
+    stub([]);
+    mount({
+      turns: [
+        {
+          id: 't1',
+          role: 'assistant',
+          content: 'done',
+          tools: [{ name: 'read_file', input: { path: 'a.md' }, done: true }],
+        },
+      ] as ShellValue['turns'],
+    });
+    await userEvent.click(screen.getByRole('tab', { name: 'Tools' }));
+    expect(
+      await screen.findByText('No tool calls on any thread in the last 60 minutes.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Ask the agent to use a tool/)).toBeNull();
   });
 });
 

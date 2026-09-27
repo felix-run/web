@@ -22,15 +22,17 @@ import type { Plan, Turn } from '@/types';
 type SectionId = 'approvals' | 'plans' | 'metrics';
 
 /**
- * Right-hand inspector: a readout of **this run**, then approvals, plans and tool
- * metrics.
+ * Right-hand inspector: a readout of **this run**, then the harness's approvals,
+ * plans and tool metrics.
  *
- * Only the readout is run-scoped. It is derived from the engine the shell already
- * holds, so it costs no request. The three tabs are not: `/approvals`, `/plans`
- * and `/audit/metrics` take no thread filter, so each lists the whole tenant and
- * says so on its first line. A rail headed "This run" whose every row was
- * tenant-wide was the heading lying; the readout is what makes it true, and the
- * scope line is what keeps the tabs from borrowing that claim.
+ * Two scopes, and each has its own heading. The readout is run-scoped: it is
+ * derived from the engine the shell already holds, so it costs no request, and
+ * "This run" heads it. The three tabs are not: `/approvals`, `/plans` and
+ * `/audit/metrics` take no thread filter, so each lists the whole tenant. They
+ * used to sit under "This run" too, each with an "All threads" line underneath —
+ * a heading claiming one scope over three bodies disclaiming it. Now they sit
+ * under a sub-heading of their own, "Harness · all threads", and the per-tab line
+ * is left saying only what the heading does not: the window a tab covers.
  *
  * It used to hold eight sections, which is what made it an accordion — six tab
  * destinations did not fit the rail's 22rem. The other five were tenant-durable
@@ -38,17 +40,19 @@ type SectionId = 'approvals' | 'plans' | 'metrics';
  * questions about the harness rather than about what is on screen, so they are
  * `/harness` now and this is the three that actually belong beside a transcript.
  *
- * Each section fetches only while it is expanded, so the panel costs one poll per
- * open section rather than three. Approvals is the exception and always polls while
- * the inspector is open: it is the channel a paused run is waiting on, so its count
- * has to be true before anyone thinks to look at it.
+ * Only the visible tab fetches. The count that must be true before anyone looks
+ * is the attention line's, which polls on its own.
  */
-/** The three sections, declared once so the strip and the panel cannot disagree. */
+/**
+ * The three sections, declared once so the strip and the panel cannot disagree.
+ * `window` is what the tab covers beyond "every thread" — the heading already
+ * says that — and is absent where the list is simply everything pending.
+ */
 const SECTIONS = [
-  { id: 'approvals', label: 'Approvals', scope: 'All threads' },
-  { id: 'plans', label: 'Plans', scope: 'All threads · newest 25' },
-  { id: 'metrics', label: 'Tools', scope: 'All threads · last 60 minutes' },
-] as const satisfies readonly { id: SectionId; label: string; scope: string }[];
+  { id: 'approvals', label: 'Approvals' },
+  { id: 'plans', label: 'Plans', window: 'Newest 25' },
+  { id: 'metrics', label: 'Tools', window: 'Last 60 minutes' },
+] as const satisfies readonly { id: SectionId; label: string; window?: string }[];
 
 export function Inspector({
   open,
@@ -84,6 +88,20 @@ export function Inspector({
       <RunReadout />
 
       {/*
+        The tabs' own heading. They are tenant-wide — no route here takes a thread
+        filter — so they must not sit under "This run" as though they were its
+        detail. Title size, not headline: this is a section of the rail, and the
+        rail's one headline is the run above it.
+      */}
+      <section aria-labelledby="inspector-harness-heading" className="flex min-h-0 flex-1 flex-col">
+        <h3
+          id="inspector-harness-heading"
+          className="flex shrink-0 items-baseline gap-1.5 px-3 pt-2.5 text-sm font-semibold"
+        >
+          Harness
+          <span className="text-xs font-normal text-muted-foreground">· all threads</span>
+        </h3>
+        {/*
         Tabs, not a stacked accordion. Three sections fit a 22rem strip where the
         original eight did not, and one on screen is one poll rather than one per
         expanded section.
@@ -98,26 +116,28 @@ export function Inspector({
         roving focus announces a widget and then does not behave like one, which
         is worse than plain buttons. The primitive owns that contract.
       */}
-      <Tabs
-        value={active}
-        onValueChange={(v) => setActive(v as SectionId)}
-        className="min-h-0 flex-1 gap-0"
-      >
-        <TabsList className="mx-2 mt-1.5 w-auto shrink-0">
-          {SECTIONS.map(({ id, label }) => (
-            <TabsTrigger key={id} value={id} className="text-xs">
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {SECTIONS.map(({ id, label, scope }) => (
-          <TabsContent key={id} value={id} className="min-h-0">
-            <ScrollArea className="h-full">
-              <div className="p-3">
-                {/* None of these routes takes a thread filter, so the scope is
-                    stated rather than left to be inferred from the heading. */}
-                <p className="mb-2 text-xs text-muted-foreground">{scope}</p>
-                {/*
+        <Tabs
+          value={active}
+          onValueChange={(v) => setActive(v as SectionId)}
+          className="min-h-0 flex-1 gap-0"
+        >
+          <TabsList className="mx-2 mt-1.5 w-auto shrink-0">
+            {SECTIONS.map(({ id, label }) => (
+              <TabsTrigger key={id} value={id} className="text-xs">
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {SECTIONS.map((section) => (
+            <TabsContent key={section.id} value={section.id} className="min-h-0">
+              <ScrollArea className="h-full">
+                <div className="p-3">
+                  {/* The heading above says "all threads"; this says the window,
+                    where there is one. */}
+                  {'window' in section && (
+                    <p className="mb-2 text-xs text-muted-foreground">{section.window}</p>
+                  )}
+                  {/*
                   `bare` chrome: the tab is the heading, so the section draws none
                   of its own.
 
@@ -129,25 +149,30 @@ export function Inspector({
                   That is the one-section-one-poll economy tabs were chosen for,
                   and `forceMount` would silently undo it by mounting all three.
                 */}
-                <PanelModeProvider chrome="bare">
-                  <SectionBoundary title={label}>
-                    {id === 'approvals' && (
-                      <ApprovalsSection
-                        enabled={open}
-                        open
-                        onToggle={() => {}}
-                        onPending={() => {}}
-                      />
-                    )}
-                    {id === 'plans' && <PlansSection enabled={open} open onToggle={() => {}} />}
-                    {id === 'metrics' && <MetricsSection enabled={open} open onToggle={() => {}} />}
-                  </SectionBoundary>
-                </PanelModeProvider>
-              </div>
-            </ScrollArea>
-          </TabsContent>
-        ))}
-      </Tabs>
+                  <PanelModeProvider chrome="bare">
+                    <SectionBoundary title={section.label}>
+                      {section.id === 'approvals' && (
+                        <ApprovalsSection
+                          enabled={open}
+                          open
+                          onToggle={() => {}}
+                          onPending={() => {}}
+                        />
+                      )}
+                      {section.id === 'plans' && (
+                        <PlansSection enabled={open} open onToggle={() => {}} />
+                      )}
+                      {section.id === 'metrics' && (
+                        <MetricsSection enabled={open} open onToggle={() => {}} />
+                      )}
+                    </SectionBoundary>
+                  </PanelModeProvider>
+                </div>
+              </ScrollArea>
+            </TabsContent>
+          ))}
+        </Tabs>
+      </section>
     </aside>
   );
 }
@@ -528,7 +553,7 @@ function ApprovalsSection({
                       to={`/t/${a.thread_id}`}
                       className="underline underline-offset-2 hover:text-foreground"
                     >
-                      {threads.find((t) => t.id === a.thread_id)?.title ?? 'another conversation'}
+                      {threads.find((t) => t.id === a.thread_id)?.title ?? 'another thread'}
                     </Link>
                   </p>
                 ) : null}
@@ -713,8 +738,12 @@ function MetricsSection({
         loading={loading && !data}
         error={error}
         empty={tools.length === 0}
-        emptyText="Ask the agent to use a tool. Rollups cover the last hour."
-        status={data ? `${tools.length} tools called in the last hour` : undefined}
+        // Tenant-wide over a window, so a thread that visibly ran tools yesterday
+        // is not a contradiction of an empty list — the copy has to say why.
+        emptyText="No tool calls on any thread in the last 60 minutes."
+        status={
+          data ? `${tools.length} tools called on all threads in the last 60 minutes` : undefined
+        }
       >
         <ol className="space-y-2">
           {tools.map((t) => (

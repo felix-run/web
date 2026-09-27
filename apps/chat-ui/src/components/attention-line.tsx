@@ -220,7 +220,7 @@ export function AttentionLine({
             triage row that omitted it would be the most dangerous control here.
 
             A row names its originating thread (`thread_id`, since
-            felix-run/felix@f679310), so one blocking another conversation links
+            felix-run/felix@f679310), so one blocking another thread links
             there. A row with none is unattributed rather than "here", which is
             why the summary keeps "across the harness" unless every row is
             provably this thread.
@@ -243,7 +243,7 @@ export function AttentionLine({
                     to={`/t/${a.thread_id}`}
                     className="underline underline-offset-2 hover:text-foreground"
                   >
-                    {threads.find((t) => t.id === a.thread_id)?.title ?? 'another conversation'}
+                    {threads.find((t) => t.id === a.thread_id)?.title ?? 'another thread'}
                   </Link>
                 </p>
               ) : null}

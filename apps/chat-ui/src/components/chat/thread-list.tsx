@@ -7,7 +7,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
-import { ScrollArea } from '@felix/ui/scroll-area';
 import {
   DownloadIcon,
   GitBranchIcon,
@@ -20,13 +19,26 @@ import {
 } from 'lucide-react';
 import { type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { searchSessions } from '@/api';
+import { CutId } from '@/components/cut-id';
 import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 
 const NO_BLOCKED: ReadonlySet<string> = new Set();
 
 /**
- * Left rail listing past conversations.
+ * Characters of an id a row draws. A UUID is 36; this keeps eleven of its head
+ * and twelve of its tail, which is where two of them differ.
+ */
+const ID_CHARS = 24;
+
+/**
+ * Every thread this client can reach, as the list inside the workspace's
+ * threads popover.
+ *
+ * One noun: **thread**. This list was headed "History", searched "sessions" and
+ * deleted "conversations" while its trigger said "Threads" — four names for the
+ * object a returning operator is trying to find. "New chat" stays as the action's
+ * name, because it is a verb phrase for starting one rather than a second noun.
  *
  * The list is `GET /chat/sessions` merged over the localStorage index, so a
  * thread started in another browser shows up here — see `mergeSessions`. A row
@@ -187,7 +199,7 @@ export function ThreadList({
     >
       <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
         <h2 id="history-heading" className="text-base font-semibold">
-          History
+          Threads
         </h2>
         <Button variant="ghost" size="sm" className="h-7 gap-1" disabled={disabled} onClick={onNew}>
           <PlusIcon className="size-3.5" /> New chat
@@ -199,20 +211,27 @@ export function ThreadList({
           <input
             ref={searchRef}
             type="search"
-            aria-label="Search sessions"
+            aria-label="Search threads"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search sessions…"
+            placeholder="Search threads…"
             className="h-8 w-full rounded-md border border-border/60 bg-background pr-2 pl-7 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
           />
         </label>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      {/*
+        A native scroller, not `ScrollArea`: the list is as tall as its rows up to
+        whatever height the host allows (the popover gives it the viewport below
+        its trigger), and Radix's viewport is `h-full`, which resolves against
+        nothing inside a container that has only a max-height. The scrollbar is
+        themed globally in `index.css`.
+      */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-0.5 p-2">
           {localFiltered.length === 0 && remoteOnly.length === 0 && (
             <div className="px-2 py-8 text-center">
               <p className="text-sm text-muted-foreground">
-                {query.trim() ? (searching ? 'Searching…' : 'No matches') : 'No chats yet'}
+                {query.trim() ? (searching ? 'Searching…' : 'No matches') : 'No threads yet'}
               </p>
               {!query.trim() && (
                 // Points at the button in this list's own header: the list lives in a
@@ -239,7 +258,7 @@ export function ThreadList({
                     // moves here via a stable callback ref rather than `autoFocus`,
                     // which only reads as helpful because the user just asked for it.
                     ref={renameInputRef}
-                    aria-label="Conversation name"
+                    aria-label="Thread name"
                     value={renaming.draft}
                     onChange={(e) => setRenaming({ id: t.id, draft: e.target.value })}
                     onBlur={() => {
@@ -270,9 +289,16 @@ export function ThreadList({
                     title={label.text}
                     onClick={() => onSelect(t.id)}
                   >
-                    <span className={cn('block truncate font-medium', label.isId && 'font-mono')}>
-                      {label.text}
-                    </span>
+                    {label.isId ? (
+                      // An untitled thread is listed by its id, cut from the middle:
+                      // ids that differ differ at the end, and an end-cut kept only
+                      // the half they share. Whole in `title` and to a reader.
+                      <span className="block truncate font-mono font-medium">
+                        <CutId id={label.text} max={ID_CHARS} />
+                      </span>
+                    ) : (
+                      <span className="block truncate font-medium">{label.text}</span>
+                    )}
                     <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
                       {/*
                       First, because it is the one fact on the row that asks
@@ -365,7 +391,7 @@ export function ThreadList({
                 )}
                 <button
                   type="button"
-                  aria-label="Delete conversation"
+                  aria-label="Delete thread"
                   className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-state-failed focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                   onClick={() => onDelete(t.id)}
                 >
@@ -389,8 +415,11 @@ export function ThreadList({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{t.snippet.slice(0, 48)}</span>
-                    <span className="block truncate font-mono text-xs text-muted-foreground">
-                      {t.id.slice(0, 8)}
+                    <span
+                      className="block truncate font-mono text-xs text-muted-foreground"
+                      title={t.id}
+                    >
+                      <CutId id={t.id} max={ID_CHARS} />
                     </span>
                   </span>
                 </button>
@@ -398,7 +427,7 @@ export function ThreadList({
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </aside>
   );
 }

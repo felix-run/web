@@ -439,14 +439,20 @@ icon, the title the nav uses, then the value **with its unit** (`0 memories`, `l
 wrapping to a second row when the pane is narrow. A page whose value would need a request of its
 own shows none; a list that came back at its fetch cap reads `50+`, not a total. A section drawn
 bare still computes its value and reports it to the host's header, which is how the Ledger's one
-header carries whichever half is on screen. Rows that are read across — the Ledger's — are held
+header carries whichever half is on screen. Rows that are read across — the Ledger's and Jobs' — are held
 to `READING_MEASURE` (`max-w-3xl`), so a status is read with its name rather than found 1300px
-away, and that page's header row is held to the same constant (`PageHeader measured`) so its
-Activity/Usage switch ends where the rows it switches end. The rule under the header stays full
+away, and those pages' header rows are held to the same constant (`PageHeader measured`) so the
+Ledger's Activity/Usage switch and Jobs' New job end where the rows they act on end. The rule under the header stays full
 width; it separates the header from the pane. A page whose rows run full width leaves its
 controls at the pane's edge. An id that has to distinguish rows is cut from the **middle**, not
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
+The same rule holds wherever a thread id is drawn — an untitled row in the thread list, the
+threads trigger, the header menu's `Thread` item — through `middleTruncate` in `src/lib/format.ts`
+and `CutId`, which keeps the whole id in the accessible name. `slice(0, 8)` read `self-pr-` for
+every `self-pr-*` thread. The object those ids name has one noun, **thread** — the list's heading, its
+search, its empty state, the trigger's tooltip and its label for a thread not yet indexed all say
+it. "New chat" is the action that starts one, a verb phrase rather than a second noun.
 
 The workspace zone's header follows the same grammar: folder or drive icon, **Workspace**, then
 the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the
@@ -458,8 +464,12 @@ the close button shares.
 
 ### Run readout
 
-The top of the instrument, above its tabs: what the run is doing, derived from state the shell
-already holds, so it costs no request. A 6px dot and a **state word** at 13px medium in the ramp
+The top of the instrument, above its tabs, and the only thing the rail's "This run" headline
+heads: what the run is doing, derived from state the shell already holds, so it costs no request.
+The tabs below are tenant-wide — no route they read takes a thread filter — so they carry a
+title-size heading of their own, **Harness · all threads**, and each tab's first line states only
+its window (`Newest 25`, `Last 60 minutes`) rather than repeating the scope. A headline claiming
+one scope over three bodies that each disclaimed it was the heading lying. A 6px dot and a **state word** at 13px medium in the ramp
 colour — *Waiting on you*, *Running*, *Rejoining thread*, *Failed*, *Idle* — then a stopwatch
 (`for 3:07` live, `last run 42s` at rest) in tabular mono — or, on a thread this tab never ran,
 `last activity 2d ago` from the thread index, since no duration is derivable from history. Beneath, an 11px definition list:

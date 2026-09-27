@@ -3,16 +3,35 @@ import { ArrowDownIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import { cn } from '@/lib/utils';
+import { useShell } from '@/shell-context';
 
 /**
  * Auto-scrolling transcript. Sticks to the bottom while streaming; a jump
  * button appears when the user scrolls up.
+ *
+ * **One scroller per thread.** The route does not remount on `/t/a` → `/t/b`,
+ * so this used to be one `StickToBottom` for the life of the tab — and its lock
+ * outlived the thread it was about. Scroll up in one thread, open another, and
+ * the library's "the reader escaped" flag was still set: every resize as the new
+ * transcript arrived was told not to follow, so the thread opened at whatever
+ * offset the last one was left at — mid-prompt, above the outcome. Keyed on the
+ * thread, each one opens with a fresh lock and lands at its end.
+ *
+ * `initial="instant"` for the same reason: opening a thread should put its
+ * outcome on screen, not animate down to it through everything before. The
+ * spring stays for `resize`, where it follows a reply being written. Both run on
+ * `requestAnimationFrame`, so in a hidden tab — which is what an automated
+ * browser reports — neither moves until the tab is shown. A driver reading
+ * `scrollTop` there is reading a scroll that has not happened yet.
  */
 export function Conversation({ children, className }: { children: ReactNode; className?: string }) {
+  const { threadId } = useShell();
   return (
     <StickToBottom
+      key={threadId}
+      data-slot="conversation"
       className={cn('relative min-h-0 flex-1 overflow-hidden', className)}
-      initial="smooth"
+      initial="instant"
       resize="smooth"
     >
       {/* `min-h-full` gives a `flex-1` child (the empty-state greeting) the whole

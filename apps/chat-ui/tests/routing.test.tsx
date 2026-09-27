@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,6 +73,7 @@ const seed = (threadId: string, turns: Turn[]) =>
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   stubFetch();
 });
 afterEach(() => {
@@ -146,5 +148,71 @@ describe('the address is the thread', () => {
     expect(document.body.textContent).not.toContain('yesterday');
     expect(loadTurns(minted)).toEqual([]);
     expect(loadTurns('thread-from-yesterday').map((t) => t.content)).toEqual(['yesterday']);
+  });
+
+  /**
+   * The tab remembers its last thread so a reload on `/harness` can return to it
+   * (`src/lib/tab-thread.ts`). That memory must not become the chooser the old
+   * `felix.threadId` key was: `/` asks for a new thread, and gets one.
+   */
+  it('does not let the tab-scoped memory choose the thread / mints', async () => {
+    sessionStorage.setItem('felix.tabThread', 'thread-this-tab-left');
+    seed('thread-this-tab-left', [turn('left behind')]);
+    const fetched = vi.mocked(fetch);
+
+    mount('/');
+    await waitFor(() => expect(address).toMatch(/^\/t\//));
+    const minted = address.replace('/t/', '');
+
+    expect(minted).not.toBe('thread-this-tab-left');
+    expect(document.body.textContent).not.toContain('left behind');
+    expect(loadTurns(minted)).toEqual([]);
+    // Not even for a render: holding it would take its lease and hydrate it, and
+    // a lease is how another tab on that thread learns it has been displaced.
+    const touched = fetched.mock.calls.filter(([input, init]) =>
+      `${String(input)} ${String(init?.body ?? '')}`.includes('thread-this-tab-left'),
+    );
+    expect(touched).toEqual([]);
+  });
+});
+
+/**
+ * Opening a thread lands at its outcome. The route does not remount between
+ * threads, and the transcript's stick-to-bottom lock used to outlive the thread
+ * it described: scrolled up in one, the next opened at the same offset, which on
+ * a longer transcript is mid-prompt. happy-dom has no layout to scroll, so what
+ * is pinned is the mechanism — each thread gets its own scroller, and so its own
+ * lock — rather than a `scrollTop`.
+ */
+describe('the transcript on a thread change', () => {
+  it("gives each thread a fresh scroller rather than the last thread's lock", async () => {
+    seed('thread-a', [turn('belongs to A')]);
+    seed('thread-b', [turn('belongs to B')]);
+    mount('/t/thread-a');
+    await waitFor(() => expect(document.body.textContent).toContain('belongs to A'));
+    const before = document.querySelector('[data-slot="conversation"]');
+    expect(before).not.toBeNull();
+
+    await act(async () => {
+      go('/t/thread-b');
+    });
+    await waitFor(() => expect(document.body.textContent).toContain('belongs to B'));
+    expect(document.querySelector('[data-slot="conversation"]')).not.toBe(before);
+  });
+});
+
+/**
+ * The header's overflow menu names the thread by its id. It drew
+ * `threadId.slice(0, 8)` — `self-pr-` for every `self-pr-*` thread, and that
+ * fragment was the item's entire accessible name.
+ */
+describe('the header names the thread', () => {
+  it('keeps the end of the id, where ids differ, and the whole id for a reader', async () => {
+    mount('/t/self-pr-306');
+    await waitFor(() => expect(address).toBe('/t/self-pr-306'));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'More tools' }));
+    const item = await screen.findByRole('menuitem', { name: 'Thread self-pr-306' });
+    expect(item.textContent).toContain('self-pr-306');
   });
 });
