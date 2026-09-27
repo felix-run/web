@@ -644,9 +644,12 @@ function InlinePicker({
       onValueChange={(id) => onChange?.(id)}
       disabled={disabled || !onChange}
     >
+      {/* Mono, trigger and list alike: a manifest name is the harness's identifier
+          for an agent (the `manifest` field a send carries), not a label we wrote,
+          so the Provenance Rule sets it as a quotation. */}
       <SelectTrigger
         size="sm"
-        className="h-8 max-w-[10rem] gap-1.5 rounded-full border-border/40 bg-muted/40 px-2.5 text-xs font-medium text-foreground/80 shadow-none hover:bg-muted hover:text-foreground"
+        className="h-8 max-w-[10rem] gap-1.5 rounded-full border-border/40 bg-muted/40 px-2.5 font-mono text-xs text-foreground/80 shadow-none hover:bg-muted hover:text-foreground"
         aria-label={ariaLabel}
       >
         {/* SelectValue's default would render the SelectItem's full children
@@ -659,7 +662,7 @@ function InlinePicker({
           // provider model too, and a match should not depend on it.
           <SelectItem key={o.id} value={o.id} textValue={o.label} className="text-sm">
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="font-medium">{o.label}</span>
+              <span className="font-mono font-medium">{o.label}</span>
               {/* Mono because it is a quotation: the harness's own model id. */}
               {o.description && (
                 <span className="font-mono text-xs wrap-anywhere text-muted-foreground">

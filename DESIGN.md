@@ -547,8 +547,9 @@ hover — never a `title`, which a keyboard user does not see.
 
 **The agent picker lists manifests in the harness's order**, each name over the provider model
 it runs on in 11px mono — `felix.providerModel` from `GET /v1/models`, shown only when it
-differs from the name, because it is a quotation of the harness. The trigger shows the name
-alone. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
+differs from the name, because it is a quotation of the harness. The names are mono too, in
+the list and on the trigger: a manifest name is the identifier a send carries, not a label we
+wrote. Type-ahead matches the name alone (`textValue`). The trigger shows the name alone. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
 the manifest *name*, so for most manifests it is the catalog's 128k fallback rather than the
 model's real window, and printing it would be exact-looking and wrong.
 
