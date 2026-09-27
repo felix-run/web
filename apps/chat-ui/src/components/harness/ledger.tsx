@@ -4,7 +4,7 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { ActivityIcon, ChevronRightIcon, CoinsIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { getUsageSummary, listAudit, listUsage } from '@/api';
 import {
@@ -18,6 +18,7 @@ import {
   tsToMs,
 } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
+import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, UsageSummary } from '@/types';
@@ -168,6 +169,8 @@ const ACTIVITY_VISIBLE = 12;
  * Upstream allows up to 500.
  */
 export const ACTIVITY_FETCH = 60;
+/** The key Activity and the rail's glance share their audit read under. */
+export const AUDIT_POLL_KEY = `audit:${ACTIVITY_FETCH}`;
 
 export function ActivitySection({
   enabled,
@@ -190,12 +193,26 @@ export function ActivitySection({
   // finished, so there is nothing to miss by holding still. `usePoll` refetches on
   // the `enabled` false→true edge, so closing the row brings the list back current
   // with no extra wiring.
-  const { data, error, loading, lastOkAt, refresh } = usePoll(
-    () => listAudit({ limit: ACTIVITY_FETCH }),
-    {
-      enabled: enabled && open && openId === null,
-    },
-  );
+  // Shared with the rail's `Ledger · N failed` glance, so the page and the rail
+  // make one request between them and count the same rows.
+  //
+  // The poll can no longer stop while a row is open — the rail is still asking —
+  // so the *view* holds instead: the rows on screen stay put until the row is
+  // closed, which is what pausing was for, and closing it shows the latest.
+  const poll = useSharedPoll(AUDIT_POLL_KEY, () => listAudit({ limit: ACTIVITY_FETCH }), {
+    enabled: enabled && open,
+  });
+  const { error, loading, lastOkAt, refresh } = poll;
+  const [held, setHeld] = useState(poll.data);
+  if (openId === null && held !== poll.data) setHeld(poll.data);
+  const data = openId === null ? poll.data : held;
+  // Closing a row asks again rather than showing whatever the shared poll last
+  // had — the refetch-on-close that pausing the poll used to give for free.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (openId === null && wasOpen.current) refresh();
+    wasOpen.current = openId !== null;
+  }, [openId, refresh]);
 
   // Close the drill-down when the list it belongs to changes underneath it. Without
   // this, filtering or collapsing the section unmounts the open row while `openId`

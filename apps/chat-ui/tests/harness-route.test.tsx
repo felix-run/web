@@ -416,6 +416,21 @@ describe('the harness address', () => {
     });
   });
 
+  it('reads jobs once for the page and its glance, not once each', async () => {
+    // The rail's `Jobs · N failing` and the Jobs page share one poll.
+    mount('/harness/jobs');
+    await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
+    await waitFor(() =>
+      expect(vi.mocked(fetch).mock.calls.some((c) => String(c[0]).includes('/api/jobs'))).toBe(
+        true,
+      ),
+    );
+    const jobReads = vi
+      .mocked(fetch)
+      .mock.calls.filter((c) => /\/api\/jobs(\?|$)/.test(String(c[0]))).length;
+    expect(jobReads).toBe(1);
+  });
+
   it('puts the agent picker only on the pages it scopes', async () => {
     // It headed the nav, where it read as filtering the Ledger and Memory too.
     for (const [path, scoped] of [

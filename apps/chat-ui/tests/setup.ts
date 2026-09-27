@@ -17,3 +17,15 @@ if (typeof globalThis.localStorage === 'undefined') {
     setItem: (k: string, v: string) => void store.set(k, String(v)),
   } as Storage;
 }
+
+/**
+ * Shared polls are module state: a key's last answer would otherwise carry from
+ * one test into the next, so a test expecting a failed read would see the
+ * previous test's success. Every test starts with no reads in flight or cached.
+ */
+import { afterEach } from 'vitest';
+import { resetSharedPolls } from '../src/hooks/useSharedPoll';
+
+afterEach(() => {
+  resetSharedPolls();
+});
