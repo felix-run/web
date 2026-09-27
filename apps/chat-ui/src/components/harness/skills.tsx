@@ -30,6 +30,7 @@ export function SkillsSection({
   isChatAgent = true,
   specError,
   onRetrySpec,
+  chatTo,
   controls,
 }: {
   open: boolean;
@@ -46,6 +47,8 @@ export function SkillsSection({
   /** The conversation a `list_skills` report would come from. */
   thread?: { text: string; isId: boolean; to: string };
   isChatAgent?: boolean;
+  /** Where Chat is, for when there is no known thread to name. */
+  chatTo?: string;
   /** Why the spec could not be read, when it could not. */
   specError?: unknown;
   onRetrySpec?: () => void;
@@ -121,7 +124,13 @@ export function SkillsSection({
               />
             ) : specSkills ? (
               <SkillList label="Declared by the manifest" names={specSkills} kind="declared" />
-            ) : null}
+            ) : (
+              // Said, so an in-flight read is not the same picture as a manifest
+              // that declares none — which now answers `[]` and reads "None".
+              <p role="status" className="text-sm text-muted-foreground">
+                Reading the manifest…
+              </p>
+            )}
           </>
         )}
         {thread && isChatAgent && (
@@ -143,6 +152,17 @@ export function SkillsSection({
               )}
             </Link>
             {skills ? '.' : ', where asking it is one message.'}
+          </p>
+        )}
+        {!thread && isChatAgent && !skills && chatTo && (
+          <p className="text-sm text-muted-foreground">
+            <Link
+              to={chatTo}
+              className="text-foreground underline underline-offset-2 hover:no-underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              Ask it in Chat
+            </Link>{' '}
+            to see which are active.
           </p>
         )}
       </div>

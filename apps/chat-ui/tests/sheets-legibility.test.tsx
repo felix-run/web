@@ -250,3 +250,56 @@ describe('a failed poll keeps what it last knew', () => {
     expect(withAge('0 documents', undefined)).toBe('0 documents');
   });
 });
+
+describe('Skills tells loading from none, and names only a real thread', () => {
+  it('says it is reading while the spec is in flight', async () => {
+    const { SkillsSection } = await import('../src/components/harness/skills');
+    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
+    render(
+      <MemoryRouter>
+        <PanelModeProvider>
+          <SkillsSection open onToggle={() => {}} skills={null} agent="cowork" />
+        </PanelModeProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Reading the manifest…')).toBeTruthy();
+  });
+
+  it('reads "None" for a manifest that declares no skills', async () => {
+    const { SkillsSection } = await import('../src/components/harness/skills');
+    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
+    render(
+      <MemoryRouter>
+        <PanelModeProvider>
+          <SkillsSection open onToggle={() => {}} skills={null} specSkills={[]} agent="cowork" />
+        </PanelModeProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('0 declared')).toBeTruthy();
+    expect(screen.getByText('None')).toBeTruthy();
+    expect(screen.queryByText('Reading the manifest…')).toBeNull();
+  });
+
+  it('offers Chat, not a made-up thread, when the thread is not one the index knows', async () => {
+    const { SkillsSection } = await import('../src/components/harness/skills');
+    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
+    render(
+      <MemoryRouter>
+        <PanelModeProvider>
+          <SkillsSection
+            open
+            onToggle={() => {}}
+            skills={null}
+            specSkills={['a']}
+            agent="cowork"
+            chatTo="/t/fresh"
+          />
+        </PanelModeProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/untitled thread/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Ask it in Chat' }).getAttribute('href')).toBe(
+      '/t/fresh',
+    );
+  });
+});

@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -111,5 +111,32 @@ describe('a stored job says how it runs', () => {
     await sheet([job()]);
     await waitFor(() => expect(screen.getByText('nightly-digest')).toBeTruthy());
     expect(screen.queryByText(/fresh thread each run/)).toBeNull();
+  });
+});
+
+describe('a failed read after a good one', () => {
+  it('keeps the jobs under one line, as every polled page does, not an error box', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const listJobs = vi
+      .fn()
+      .mockResolvedValueOnce([job({ name: 'digest' })])
+      .mockRejectedValue(new Error('jobs : 429 {"error":"rate_limited"}'));
+    vi.doMock('../src/api', () => ({
+      listJobs,
+      listJobRuns: vi.fn().mockResolvedValue([]),
+      upsertJob: vi.fn(),
+      deleteJob: vi.fn(),
+    }));
+    const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
+    render(<JobsSheet manifest="quick" manifestOptions={['quick']} />);
+    await waitFor(() => expect(screen.getByText('digest')).toBeTruthy());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4100);
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toMatch(/Showing what it said/),
+    );
+    expect(screen.getByText('digest')).toBeTruthy();
+    vi.useRealTimers();
   });
 });

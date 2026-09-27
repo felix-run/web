@@ -32,6 +32,9 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
   const [card, setCard] = useState<AgentCard | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [cardError, setCardError] = useState<unknown>(null);
+  // The spec's own retry. The card beside it had one and the spec did not, so a
+  // 429 on the page's main read left a box with nowhere to go but a reload.
+  const [specTry, setSpecTry] = useState(0);
 
   useEffect(() => {
     // No `open` guard: a route mounts this only while it is the address, so being
@@ -41,6 +44,7 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
     setResolved(null);
     setError(null);
     let live = true;
+    void specTry;
     getResolvedManifest(manifest)
       .then((r) => live && setResolved(r))
       .catch((e) => live && setError(e));
@@ -50,7 +54,7 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
     return () => {
       live = false;
     };
-  }, [manifest]);
+  }, [manifest, specTry]);
 
   // Its own effect, so a failed card can be asked for again without re-reading
   // the spec — the one error on this page that offered no way to retry.
@@ -101,6 +105,7 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
           loading={!resolved && error == null}
           error={error}
           doing="load the agent spec"
+          onRetry={() => setSpecTry((n) => n + 1)}
           emptyText=""
         >
           {resolved && spec && (

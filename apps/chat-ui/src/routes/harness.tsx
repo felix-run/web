@@ -1,3 +1,4 @@
+import { relativeTime } from '@felix/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import {
   ActivityIcon,
@@ -93,7 +94,13 @@ function SkillsPanel() {
       .then((r) => {
         const declared = (r.manifest as { spec?: { skills?: unknown[] } } | undefined)?.spec
           ?.skills;
-        if (!live || !Array.isArray(declared)) return;
+        if (!live) return;
+        // A spec that declares none is an answer — `[]` — not the silence that
+        // reads as still loading.
+        if (!Array.isArray(declared)) {
+          setSpecSkills([]);
+          return;
+        }
         setSpecSkills(
           declared.map((sk) =>
             typeof sk === 'string' ? sk : ((sk as { name?: string })?.name ?? String(sk)),
@@ -107,9 +114,12 @@ function SkillsPanel() {
   }, [agent, specTry]);
   // The conversation the active list came from, named the way the thread list
   // names it — a link to it, rather than a button that wrote into it from here.
+  // Only a thread the index knows. A tab opened straight onto `/harness` mints a
+  // fresh id on every load, and naming that as where the list came from pointed
+  // at a conversation that had never happened.
   const thread = useMemo(() => {
     const meta = threads.find((t) => t.id === threadId);
-    return meta ? threadLabel(meta) : { text: threadId, isId: true };
+    return meta ? threadLabel(meta) : null;
   }, [threads, threadId]);
   return (
     <AsPanel>
@@ -121,7 +131,8 @@ function SkillsPanel() {
         skills={isChatAgent ? skills : null}
         specSkills={specSkills}
         agent={agent}
-        thread={{ ...thread, to: `/t/${threadId}` }}
+        thread={thread ? { ...thread, to: `/t/${threadId}` } : undefined}
+        chatTo={`/t/${threadId}`}
         isChatAgent={isChatAgent}
         specError={specError}
         onRetrySpec={() => setSpecTry((n) => n + 1)}
@@ -304,9 +315,9 @@ const GROUPS = [
  *
  * No global destination keys: every free `Mod+<key>` is already spent
  * (`lib/shortcuts.ts` says which and why), and a bare letter would type into
- * Memory's search box. What an operator can have is a list that behaves like
- * one once it has focus — Tab reaches it, the arrows walk it — rather than eight
- * separate tab stops between them and the page.
+ * Memory's search box. What an operator gets instead is arrows on top of the
+ * Tab stops: every link is still one, as links are, and once focus is in the
+ * list the arrows move through it faster.
  */
 function walkNav(event: KeyboardEvent<HTMLElement>) {
   const moves: Record<string, (i: number, n: number) => number> = {
@@ -331,14 +342,45 @@ function walkNav(event: KeyboardEvent<HTMLElement>) {
  * on purpose; the trade is that someone coming back sees where to go first
  * without opening eight pages, which is what "legible on return" asks.
  */
-function useNavGlances(): Record<string, string | undefined> {
+interface Glance {
+  text: string;
+  /** Spoken and shown on hover: what the text stands for, and how old it is. */
+  title: string;
+  /** A count of failures, or an honest "could not check". */
+  tone: 'failed' | 'unknown';
+}
+
+/**
+ * One glance from one poll.
+ *
+ * Absence is this rail's all-clear, so it may only be absent when the read
+ * *answered* nothing. A failed read with nothing earlier is a muted `?`, not a
+ * blank — the attention line's rule, that it never says the all-clear on a list
+ * it could not refresh — and a failed read after a good one keeps the count and
+ * says its age.
+ */
+function glanceOf(
+  poll: { data: unknown[] | undefined; error: unknown; lastOkAt: number | null },
+  count: number,
+  word: string,
+  noun: string,
+): Glance | undefined {
+  if (poll.error && poll.data === undefined) {
+    return { text: '?', title: `Couldn't check ${noun}`, tone: 'unknown' };
+  }
+  if (count === 0) return undefined;
+  const stale = poll.error && poll.lastOkAt != null ? `, as of ${relativeTime(poll.lastOkAt)}` : '';
+  return { text: `${count} ${word}`, title: `${count} ${word}${stale}`, tone: 'failed' };
+}
+
+function useNavGlances(): Record<string, Glance | undefined> {
   const jobs = usePoll(listJobs, { intervalMs: 30_000 });
   const audit = usePoll(() => listAudit({ limit: ACTIVITY_FETCH }), { intervalMs: 30_000 });
   const failingJobs = (jobs.data ?? []).filter(failing).length;
   const failedEvents = (audit.data ?? []).filter((e) => isFailure(e.status)).length;
   return {
-    jobs: failingJobs > 0 ? `${failingJobs} failing` : undefined,
-    ledger: failedEvents > 0 ? `${failedEvents} failed` : undefined,
+    jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
+    ledger: glanceOf(audit, failedEvents, 'failed', 'the ledger'),
   };
 }
 
@@ -385,11 +427,20 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                     <Icon className="size-4 shrink-0" />
                     <span className="truncate">{name}</span>
                     {glance[path] && (
-                      <span className="ml-auto shrink-0 pl-2 text-xs font-medium text-state-failed tabular-nums">
+                      <span
+                        title={glance[path]?.title}
+                        className={cn(
+                          'ml-auto shrink-0 pl-2 text-xs font-medium tabular-nums',
+                          glance[path]?.tone === 'failed'
+                            ? 'text-state-failed'
+                            : 'text-muted-foreground',
+                        )}
+                      >
                         {/* For the accessible name, which would otherwise run
-                            "Jobs1 failing" together. */}
-                        <span className="sr-only">, </span>
-                        {glance[path]}
+                            "Jobs1 failing" together — and carries the age or the
+                            "couldn't check" that the short text abbreviates. */}
+                        <span className="sr-only">, {glance[path]?.title}</span>
+                        <span aria-hidden>{glance[path]?.text}</span>
                       </span>
                     )}
                   </NavLink>

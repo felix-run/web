@@ -11,6 +11,7 @@ import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import {
+  CREATE_FORM,
   CreateToggle,
   PageHeader,
   PageSection,
@@ -18,7 +19,7 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { isFailure, StatusDot, withAge } from '@/components/inspector/primitives';
+import { isFailure, StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import type { JobRun } from '@/types';
 
@@ -169,7 +170,17 @@ export function JobsSheet({
       />
 
       <PanelBody className="space-y-4">
-        {listError ? (
+        {/* A failed read after a good one keeps the rows under one line, as every
+            polled page does; the box is only for a failure with nothing earlier
+            to show. Jobs polls every few seconds, so it meets a 429 first. */}
+        {listError && data && lastOkAt != null ? (
+          <StaleNotice
+            error={listError}
+            doing="list scheduled jobs"
+            lastOkAt={lastOkAt}
+            onRetry={refresh}
+          />
+        ) : listError ? (
           <ErrorNotice
             error={listError}
             doing="list scheduled jobs"
@@ -185,7 +196,7 @@ export function JobsSheet({
         {creating && (
           // A section with a heading, not a dashed box: the form is a part of
           // the page while it is open, and a heading is what names a part.
-          <div id="job-create" className="pb-1">
+          <div id="job-create" className={CREATE_FORM}>
             <PageSection title="Job to schedule">
               {/* Visible labels, with the format under the field it describes. The
                   labels were `sr-only` and the cron grammar lived in a placeholder,
