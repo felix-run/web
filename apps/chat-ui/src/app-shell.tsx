@@ -1081,7 +1081,11 @@ export function AppShell() {
       if (!uiPrompt) return;
       setUiResolving(true);
       try {
-        await respondUiRequest({ requestId: uiPrompt.requestId, value });
+        await respondUiRequest({
+          requestId: uiPrompt.requestId,
+          threadId: uiPrompt.threadId,
+          value,
+        });
         engine.clearUiPrompt();
       } catch (err) {
         toastError(err, 'send that answer');
@@ -1098,6 +1102,7 @@ export function AppShell() {
     try {
       await respondUiRequest({
         requestId: uiPrompt.requestId,
+        threadId: uiPrompt.threadId,
         cancelled: true,
         note: 'cancelled',
       });

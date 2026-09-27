@@ -380,6 +380,7 @@ describe('the approval deadline', () => {
 describe('the agent question', () => {
   const select: PendingUiRequest = {
     requestId: 'ui-1',
+    threadId: 't1',
     kind: 'select',
     prompt: 'Which worker should I look at?',
     options: [
@@ -462,6 +463,7 @@ describe('the agent question', () => {
         theme: testTheme,
         pending: {
           requestId: 'ui-2',
+          threadId: 't1',
           kind: 'confirm',
           prompt: 'Deploy to production?',
           options: [],
@@ -495,6 +497,7 @@ describe('the agent question', () => {
         theme: testTheme,
         pending: {
           requestId: 'ui-3',
+          threadId: 't1',
           // `input`, not `text` — the wire spells the free-text kind this way,
           // and `UiPrompt` reaches it by falling past the other two.
           kind: 'input',

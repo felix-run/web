@@ -579,6 +579,9 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         set({
           uiPrompt: {
             requestId: data.request_id,
+            // Captured now, not at answer time: the user may switch threads before answering,
+            // and the answer must go to the thread that asked.
+            threadId: ports.threadId(),
             kind: data.kind,
             prompt: data.prompt,
             options,

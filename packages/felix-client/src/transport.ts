@@ -576,6 +576,8 @@ export function createFelixClient(opts: FelixClientOptions) {
     /** POST /chat/ui — answer a select/confirm/input prompt. */
     async respondUiRequest(args: {
       requestId: string;
+      /** The thread the prompt was asked on (`PendingUiRequest.threadId`). */
+      threadId: string;
       value?: unknown;
       cancelled?: boolean;
       note?: string;
@@ -584,6 +586,7 @@ export function createFelixClient(opts: FelixClientOptions) {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          thread_id: args.threadId,
           request_id: args.requestId,
           value: args.value,
           cancelled: args.cancelled ?? false,
