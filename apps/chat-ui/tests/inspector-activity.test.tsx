@@ -314,6 +314,35 @@ describe('the row and the window, read at a glance', () => {
     // The phrasing it replaced said "recent" twice and nothing about the rest.
     expect(document.body.textContent).not.toMatch(/recent events/);
   });
+
+  /**
+   * The header counted "3 failed" over twelve drawn rows holding one, and the
+   * footer said the rest existed without a way to draw them. Both are one click
+   * now: the whole window, or the failures the count was about.
+   */
+  it('draws the rest of the window, and the failures the header counts, on request', async () => {
+    const events = Array.from({ length: 60 }, (_, i) =>
+      auditRow({ id: `e${i}`, status: i % 20 === 0 ? 'error' : 'ok' }),
+    );
+    stubHarness(events);
+    renderInspector();
+    const user = userEvent.setup();
+    const drawn = () => screen.getAllByRole('button', { name: /read_file/ }).length;
+
+    expect(await screen.findByText('last 60 events · 3 failed')).toBeTruthy();
+    expect(drawn()).toBe(12);
+
+    await user.click(screen.getByRole('button', { name: 'Show all 60' }));
+    expect(drawn()).toBe(60);
+    await user.click(screen.getByRole('button', { name: 'Show newest 12' }));
+    expect(drawn()).toBe(12);
+
+    await user.click(screen.getByRole('button', { name: 'Show the 3 failed' }));
+    expect(screen.getByRole('button', { name: 'Failures only' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(drawn()).toBe(3);
+  });
 });
 
 describe('middleTruncate', () => {

@@ -177,6 +177,8 @@ export function ActivitySection({
   const [failuresOnly, setFailuresOnly] = useState(false);
   const [layer, setLayer] = useState<string>('any');
   const [openId, setOpenId] = useState<string | null>(null);
+  /** Draw the whole filtered window rather than its newest `ACTIVITY_VISIBLE`. */
+  const [showAll, setShowAll] = useState(false);
 
   // Polling stops while a row is open. The feed repaints every 3s and a new event
   // pushes every row below it down, which moves the pane out from under whoever is
@@ -204,7 +206,15 @@ export function ActivitySection({
   // payload, and `/audit` filters on columns.
   const failed = data?.filter((e) => isFailure(e.status)) ?? [];
   const visible = filterActivity(data ?? [], { failuresOnly, layer });
-  const rows = visible.slice(0, ACTIVITY_VISIBLE);
+  const rows = showAll ? visible : visible.slice(0, ACTIVITY_VISIBLE);
+  /**
+   * Failures in the window that the drawn rows do not include. The header said
+   * "3 failed" over twelve rows holding one, with no way to see the other two
+   * short of guessing that the filter above was the way — so the footer offers it
+   * by name.
+   */
+  const shownIds = new Set(rows.map((e) => e.id));
+  const failedHidden = failuresOnly ? 0 : failed.filter((e) => !shownIds.has(e.id)).length;
   const layerLabel = layer === 'any' ? null : (CONTROL_LABEL[layer] ?? layer);
 
   return (
@@ -315,6 +325,28 @@ export function ActivitySection({
                   ? `Newest ${rows.length} of ${visible.length} failed events in the last ${data.length}.`
                   : `Newest ${rows.length} of the last ${data.length} events. The filters search all ${data.length}.`}
             </p>
+          )}
+          {(visible.length > ACTIVITY_VISIBLE || failedHidden > 0) && (
+            <div className="mt-1 flex flex-wrap gap-x-3 text-xs">
+              {visible.length > ACTIVITY_VISIBLE && (
+                <button
+                  type="button"
+                  className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  onClick={() => setShowAll((v) => !v)}
+                >
+                  {showAll ? `Show newest ${ACTIVITY_VISIBLE}` : `Show all ${visible.length}`}
+                </button>
+              )}
+              {failedHidden > 0 && (
+                <button
+                  type="button"
+                  className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  onClick={() => setFailuresOnly(true)}
+                >
+                  {`Show the ${failed.length} failed`}
+                </button>
+              )}
+            </div>
           )}
           {openId !== null && (
             // A list that has quietly stopped updating looks exactly like a harness that
