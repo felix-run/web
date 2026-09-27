@@ -458,8 +458,12 @@ the close button shares.
 
 ### Run readout
 
-The top of the instrument, above its tabs: what the run is doing, derived from state the shell
-already holds, so it costs no request. A 6px dot and a **state word** at 13px medium in the ramp
+The top of the instrument, above its tabs, and the only thing the rail's "This run" headline
+heads: what the run is doing, derived from state the shell already holds, so it costs no request.
+The tabs below are tenant-wide — no route they read takes a thread filter — so they carry a
+title-size heading of their own, **Harness · all threads**, and each tab's first line states only
+its window (`Newest 25`, `Last 60 minutes`) rather than repeating the scope. A headline claiming
+one scope over three bodies that each disclaimed it was the heading lying. A 6px dot and a **state word** at 13px medium in the ramp
 colour — *Waiting on you*, *Running*, *Rejoining thread*, *Failed*, *Idle* — then a stopwatch
 (`for 3:07` live, `last run 42s` at rest) in tabular mono — or, on a thread this tab never ran,
 `last activity 2d ago` from the thread index, since no duration is derivable from history. Beneath, an 11px definition list:
