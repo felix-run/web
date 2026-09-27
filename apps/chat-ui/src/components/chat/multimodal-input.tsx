@@ -641,7 +641,14 @@ function InlinePicker({
   return (
     <Select
       value={current?.id}
-      onValueChange={(id) => onChange?.(id)}
+      // An empty value is never a choice. Radix mirrors the value into a hidden
+      // native `<select>`, and when `value` moves to an option that is not in the
+      // list yet — the shell restoring a thread's agent before `/v1/models` has
+      // answered, while the options are still just the old selection — that
+      // select reports `""`, which would clear the agent the send carries.
+      onValueChange={(id) => {
+        if (id) onChange?.(id);
+      }}
       disabled={disabled || !onChange}
     >
       {/* Mono, trigger and list alike: a manifest name is the harness's identifier
