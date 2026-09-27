@@ -258,6 +258,41 @@ The worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the swe
 sweep, memory consolidation or fiber resume ever fires.
 :::
 
+## Completion webhooks
+
+A durable run can announce its end to endpoints its manifest names in `spec.execution.webhooks`.
+The manifest carries only ids; the operator registers what each id means:
+
+```bash
+FELIX_WEBHOOK_ENDPOINTS='{
+  "ops":   {"url": "https://hooks.example.com/felix", "secret": "secret:OPS_WEBHOOK", "tenants": ["acme"]},
+  "audit": {"url": "http://audit.internal:8080/runs", "secret": "whsec_...", "tenants": "*", "private": true}
+}'
+```
+
+| Key | Required | Notes |
+|---|---|---|
+| `url` | yes | Absolute `https`. `http` only with `FELIX_ENVIRONMENT=development` and `FELIX_ALLOW_INSECURE=true`. No `user:pass@`. |
+| `secret` | yes | Signs every delivery. A `whsec_…` base64 key (what Standard Webhooks libraries generate), any other string, or `secret:NAME` resolved through `FELIX_SECRETS_BACKEND`. Masked in audit, session and tool output in every process. |
+| `tenants` | yes | Tenant ids that may name the endpoint, or `"*"` for all. There is no default: an endpoint open to every tenant lets any tenant's run arrive signed with its secret, so it has to be written out — and that receiver must check `tenant_id`. |
+| `private` | no | `true` exempts this URL from the egress guard so it may resolve to a private address. Operator-only; redirects are still refused. |
+
+A malformed registry fails the boot. A run naming an id that is unregistered or not allowed for its
+tenant is refused at enqueue with the same `422 unknown webhook endpoint: <id>` either way, so the
+answer does not reveal what other tenants have registered. Removing or narrowing an endpoint later
+marks pending deliveries to it `dead` rather than sending them.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_WEBHOOK_ENDPOINTS` | empty | The registry above, as JSON. |
+| `FELIX_WEBHOOK_MAX_ATTEMPTS` | `8` | Tries per endpoint before `dead`; backoff 1m doubling to 1h. |
+| `FELIX_WEBHOOK_TIMEOUT_SECONDS` | `10` | Whole-attempt bound, including a receiver that answers slowly. |
+
+Delivery runs in the worker's `webhook_delivery` cron, so it needs `felix-scheduler` like every
+other periodic task. Each attempt increments `felix_webhook_delivery{endpoint, outcome}` with
+`outcome` one of `delivered`, `retry`, `dead`. The payload and how to verify it:
+[REST API → Completion webhooks](/guide/rest-api/#completion-webhooks).
+
 ## Model routes
 
 `FELIX_DEFAULT_MODEL_ID` (default `claude-sonnet`) picks the model a manifest gets when it does not

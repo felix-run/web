@@ -243,14 +243,14 @@ extracts facts from each turn into `memory_vectors` (pgvector, HNSW) under kinds
 By default a run lives and dies with the request. With `spec.execution.mode: durable`, `POST /chat`
 enqueues a **fiber** and returns `202` with a `resume_token`; the fiber checkpoints into Postgres and
 the worker's `fiber_scheduler` cron resumes it, so a process restart does not lose the run. Poll
-`GET /chat/runs/{resume_token}` for the result.
+`GET /chat/runs/{resume_token}` for the result, or name endpoints in `spec.execution.webhooks` and
+the worker POSTs the finished run to them, signed.
 
 Setting `FELIX_DURABILITY=temporal` additionally drives a Temporal workflow on the `felix-fibers`
 task queue, falling back to the fiber scheduler if that fails.
 
-:::caution
-`POST /chat/stream` ignores `execution.mode: durable` and always runs inline.
-:::
+`POST /chat/stream` on a durable manifest streams the run — `run_accepted`, `run_status`, `final` —
+and a dropped client reattaches with the resume token rather than losing the run.
 
 ## Steering
 
