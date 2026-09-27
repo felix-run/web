@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { addDocument, deleteDocument, listDocuments, searchDocuments } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
+import { keepAgent } from '@/components/harness/harness-agent';
 import {
   CREATE_FORM,
   CreateToggle,
@@ -69,7 +70,7 @@ export function DocumentsSection({
 
   // `replace`, as on Memory: a refined query is not a place Back steps through.
   useEffect(() => {
-    const next = new URLSearchParams();
+    const next = keepAgent(params, {});
     if (mode === 'search') {
       next.set('view', 'search');
       if (committedQuery) next.set('q', committedQuery);
@@ -78,7 +79,7 @@ export function DocumentsSection({
   }, [mode, committedQuery, params, setParams]);
 
   const setMode = (next: 'recent' | 'search') =>
-    setParams(next === 'search' ? { view: 'search' } : {}, { replace: true });
+    setParams(keepAgent(params, next === 'search' ? { view: 'search' } : {}), { replace: true });
 
   const searchReady = mode === 'search' && committedQuery.length > 0;
 
@@ -125,8 +126,9 @@ export function DocumentsSection({
     >
       {adding && (
         <div id="corpus-add" className={CREATE_FORM}>
-          <PageSection title="Add document">
+          <PageSection title="New document">
             <AddDocumentForm
+              onCancel={() => setAdding(false)}
               onAdded={() => {
                 setAdding(false);
                 setMode('recent');
@@ -252,7 +254,7 @@ export function DocumentsSection({
  * a *second* document rather than correcting the first. The form says that where
  * the decision is made rather than in a doc nobody opens.
  */
-function AddDocumentForm({ onAdded }: { onAdded: () => void }) {
+function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel: () => void }) {
   const [title, setTitle] = useState('');
   const [source, setSource] = useState('');
   const [text, setText] = useState('');
@@ -338,9 +340,14 @@ function AddDocumentForm({ onAdded }: { onAdded: () => void }) {
           {textValue.length.toLocaleString()} / {DOCUMENT_LIMITS.text.toLocaleString()}
         </p>
       </div>
-      <Button size="sm" disabled={!ready || busy} onClick={submit}>
-        {busy ? 'Adding…' : 'Add document'}
-      </Button>
+      <div className="flex gap-2">
+        <Button size="sm" disabled={!ready || busy} onClick={submit}>
+          {busy ? 'Adding…' : 'Add document'}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
       {error && (
         <p role="alert" className="text-sm text-state-failed">
           {error}

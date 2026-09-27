@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { addMemory, forgetMemory, listMemories, memoriesAsOf, searchMemories } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
+import { keepAgent } from '@/components/harness/harness-agent';
 import {
   CREATE_FORM,
   CreateToggle,
@@ -81,8 +82,9 @@ export function MemorySection({
 
   // Written back with `replace`: refining a query or a turn is not a place Back
   // should step through, and each keystroke would otherwise be one.
+  // Built on top of `?agent=`, which this page does not own and must not drop.
   useEffect(() => {
-    const next = new URLSearchParams();
+    const next = keepAgent(params, {});
     if (mode === 'search') {
       next.set('view', 'search');
       if (committedQuery) next.set('q', committedQuery);
@@ -94,9 +96,13 @@ export function MemorySection({
   }, [mode, committedQuery, asOfSeq, params, setParams]);
 
   const setMode = (next: MemoryView) =>
-    setParams(next === 'search' ? { view: 'search' } : next === 'asOf' ? { view: 'asof' } : {}, {
-      replace: true,
-    });
+    setParams(
+      keepAgent(
+        params,
+        next === 'search' ? { view: 'search' } : next === 'asOf' ? { view: 'asof' } : {},
+      ),
+      { replace: true },
+    );
 
   const seq = Number.parseInt(asOfSeq, 10);
   const asOfReady = mode === 'asOf' && Number.isFinite(seq) && seq >= 0;
@@ -151,8 +157,10 @@ export function MemorySection({
     >
       {adding && (
         <div id="memory-add" className={CREATE_FORM}>
-          <PageSection title="Add memory">
+          {/* Titled for what it makes, not for the button that opened it. */}
+          <PageSection title="New memory">
             <AddMemoryForm
+              onCancel={() => setAdding(false)}
               onAdded={() => {
                 setAdding(false);
                 setMode('recent');
@@ -191,7 +199,7 @@ export function MemorySection({
           {/* The numbers to type are the `seq` values on the rows themselves,
               which is what makes this usable without a separate lookup. */}
           <p id="memory-as-of-help" className="mt-1 text-xs text-muted-foreground">
-            The <span className="font-mono">seq</span> on any row below.
+            The <span className="font-mono">seq</span> shown on each row under Recent.
           </p>
         </div>
       )}
@@ -249,7 +257,10 @@ export function MemorySection({
                       <span>· seq {record.origin_seq}</span>
                     )}
                     {record?.status && record.status !== 'active' && (
-                      <span className="text-state-failed">· {record.status}</span>
+                      // Foreground against the muted line, not red: `forgotten` is a
+                      // deliberate soft delete, and the failed colour is for
+                      // something that went wrong.
+                      <span className="text-foreground">· {record.status}</span>
                     )}
                     {record?.superseded_by && <span>· superseded</span>}
                     {/*
@@ -313,7 +324,7 @@ const MEMORY_TOPIC_MAX = 200;
  * worth having — a correction the agent keeps needing, a standing instruction —
  * so the panel says what it is rather than dressing it as a notes field.
  */
-function AddMemoryForm({ onAdded }: { onAdded: () => void }) {
+function AddMemoryForm({ onAdded, onCancel }: { onAdded: () => void; onCancel: () => void }) {
   const [content, setContent] = useState('');
   const [topicKey, setTopicKey] = useState('');
   const [importance, setImportance] = useState('0.5');
@@ -396,9 +407,16 @@ function AddMemoryForm({ onAdded }: { onAdded: () => void }) {
           />
         </div>
       </div>
-      <Button size="sm" disabled={!ready || busy} onClick={() => void submit()}>
-        {busy ? 'Storing…' : 'Remember it'}
-      </Button>
+      {/* A Cancel beside it, as Jobs has: the header toggle was the only way out,
+          and it is not where anyone looks when a form is in front of them. */}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={!ready || busy} onClick={() => void submit()}>
+          {busy ? 'Storing…' : 'Remember it'}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
       {error ? (
         <p role="alert" className="text-sm text-state-failed">
           {error}

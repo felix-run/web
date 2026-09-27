@@ -1,6 +1,8 @@
 /** @vitest-environment happy-dom */
+
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivitySection } from '../src/components/harness/ledger';
 import { middleTruncate } from '../src/lib/format';
@@ -49,7 +51,12 @@ function renderInspector() {
   // The feed is a `/harness/ledger` half now rather than an inspector row, so this
   // mounts the section itself. `open` is the disclosure state it still carries for
   // the inspector's sake; the keyboard path under test is the same either way.
-  return render(<ActivitySection enabled open onToggle={() => {}} />);
+  // In a router: a row's thread is a link now.
+  return render(
+    <MemoryRouter>
+      <ActivitySection enabled open onToggle={() => {}} />
+    </MemoryRouter>,
+  );
 }
 
 /** The audit calls only — Approvals polls on its own schedule and would skew a count. */

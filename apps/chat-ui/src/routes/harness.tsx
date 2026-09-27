@@ -16,6 +16,7 @@ import { getResolvedManifest } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { DocumentsSection } from '@/components/harness/corpus';
+import { HarnessAgentPicker, keepAgent, useHarnessAgent } from '@/components/harness/harness-agent';
 import { ActivitySection, UsageSection } from '@/components/harness/ledger';
 import { MemorySection } from '@/components/harness/memory';
 import { PageBack, PageHeader, Panel } from '@/components/harness/panel';
@@ -70,7 +71,8 @@ function CorpusPanel() {
 }
 
 function SkillsPanel() {
-  const { skills, send, streaming, threads, threadId, manifest } = useShell();
+  const { skills, threads, threadId } = useShell();
+  const { agent, isChatAgent } = useHarnessAgent();
   // What the manifest declares, so the page has something true to show before
   // the agent has been asked. One read per visit — the spec does not change
   // under a page that is open.
@@ -78,7 +80,7 @@ function SkillsPanel() {
   useEffect(() => {
     let live = true;
     setSpecSkills(undefined);
-    getResolvedManifest(manifest)
+    getResolvedManifest(agent)
       .then((r) => {
         const declared = (r.manifest as { spec?: { skills?: unknown[] } } | undefined)?.spec
           ?.skills;
@@ -89,17 +91,16 @@ function SkillsPanel() {
           ),
         );
       })
-      // A failed read leaves the page as it was before this existed: the ask,
-      // and the sentence saying what is unknown. Not worth an error slab of its own.
+      // A failed read leaves the page saying what is unknown. Not worth an
+      // error slab of its own.
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [manifest]);
-  // Named, because from here the thread is not on screen. In the inspector "this
-  // chat" is the transcript beside it; on `/harness` it is whichever thread the
-  // tab was last on, and a button that posts to a conversation should say which.
-  const target = useMemo(() => {
+  }, [agent]);
+  // The conversation the active list came from, named the way the thread list
+  // names it — a link to it, rather than a button that wrote into it from here.
+  const thread = useMemo(() => {
     const meta = threads.find((t) => t.id === threadId);
     return meta ? threadLabel(meta) : { text: threadId, isId: true };
   }, [threads, threadId]);
@@ -108,11 +109,13 @@ function SkillsPanel() {
       <SkillsSection
         open
         onToggle={() => {}}
-        skills={skills}
+        // A thread's `list_skills` describes the chat's agent. Shown for another
+        // one it would be an answer to a question nobody asked about it.
+        skills={isChatAgent ? skills : null}
         specSkills={specSkills}
-        onSuggest={send}
-        busy={streaming}
-        target={target}
+        agent={agent}
+        thread={{ ...thread, to: `/t/${threadId}` }}
+        isChatAgent={isChatAgent}
       />
     </AsPanel>
   );
@@ -135,7 +138,7 @@ function LedgerPanel() {
   const [params, setParams] = useSearchParams();
   const half: 'activity' | 'usage' = params.get('view') === 'usage' ? 'usage' : 'activity';
   const setHalf = (next: 'activity' | 'usage') =>
-    setParams(next === 'usage' ? { view: 'usage' } : {}, { replace: true });
+    setParams(keepAgent(params, next === 'usage' ? { view: 'usage' } : {}), { replace: true });
   // The visible half's header value, reported up by its `bare` section. Only the
   // visible half is mounted, so only it reports — the header describes the half
   // being read, from the one poll already running.
@@ -190,27 +193,30 @@ function LedgerPanel() {
 }
 
 function ManifestsPanel() {
-  const { manifest, refreshCanary } = useShell();
+  const { refreshCanary } = useShell();
+  const { agent } = useHarnessAgent();
   // The header badge reports the rollout this panel can change, so leaving is
   // what re-reads it. As a sheet this hung off `onOpenChange`; the route
   // equivalent of closing is unmounting.
   useEffect(() => refreshCanary, [refreshCanary]);
-  return <ManifestsSheet manifest={manifest} />;
+  return <ManifestsSheet manifest={agent} />;
 }
 
 function JobsPanel() {
-  const { manifest, manifestOptions } = useShell();
-  return <JobsSheet manifest={manifest} manifestOptions={manifestOptions} />;
+  const { manifestOptions } = useShell();
+  const { agent } = useHarnessAgent();
+  return <JobsSheet manifest={agent} manifestOptions={manifestOptions} />;
 }
 
 function EvalPanel() {
-  const { manifest } = useShell();
-  return <EvalSheet manifest={manifest} />;
+  const { manifestOptions } = useShell();
+  const { agent } = useHarnessAgent();
+  return <EvalSheet manifest={agent} manifestOptions={manifestOptions} />;
 }
 
 function AgentPanel() {
-  const { manifest } = useShell();
-  return <AgentSheet manifest={manifest} />;
+  const { agent } = useHarnessAgent();
+  return <AgentSheet manifest={agent} />;
 }
 
 /**
@@ -221,10 +227,10 @@ function AgentPanel() {
  * reach — and both of those are silent.
  *
  * `group` is the split this file's own header describes and the nav used to
- * hide: four *records* of what the tenant has accumulated, read far more often
- * than changed, and four *workbenches* where the operator changes what the next
- * run does. Eight equal rows made the reader sort them on every visit; two runs
- * of four, with a rule between, have already been sorted.
+ * hide: *records*, read far more often than changed — including Agent, which
+ * reads the resolved spec and changes nothing — and *workbenches*, where the
+ * operator changes what the next run does. Eight equal rows made the reader sort
+ * them on every visit; two labelled runs have already been sorted.
  */
 export const HARNESS_DESTINATIONS: {
   path: string;
@@ -255,6 +261,8 @@ export const HARNESS_DESTINATIONS: {
     group: 'records',
     element: <LedgerPanel />,
   },
+  // A record, not a workbench: it reads the resolved spec and changes nothing.
+  { path: 'agent', label: 'Agent', icon: BotIcon, group: 'records', element: <AgentPanel /> },
   {
     path: 'manifests',
     label: 'Manifests',
@@ -270,7 +278,6 @@ export const HARNESS_DESTINATIONS: {
     group: 'workbenches',
     element: <EvalPanel />,
   },
-  { path: 'agent', label: 'Agent', icon: BotIcon, group: 'workbenches', element: <AgentPanel /> },
 ];
 
 const GROUPS = [
@@ -304,28 +311,25 @@ function walkNav(event: KeyboardEvent<HTMLElement>) {
 }
 
 function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; className?: string }) {
-  const { skills, manifest } = useShell();
-  // A value only where the shell already holds it. Every other destination's
-  // number comes from its own fetch, which runs only while that page is the
-  // address — putting those here would mean eight polls behind a list of links,
-  // each paid for a label nobody opened the page to read.
-  //
-  // Spelled exactly as the page's own header spells it. The nav said `2 active`
-  // while the page said `2 of 5 active`, which is two readings of one fact.
-  const glance: Record<string, { text: string; mono?: boolean } | undefined> = {
-    skills: skills
-      ? { text: `${skills.active.length} of ${skills.declared.length} active` }
-      : undefined,
-    agent: manifest ? { text: manifest, mono: true } : undefined,
-  };
+  const { search } = useHarnessAgent();
+  const at = useMatch('/harness/:destination')?.params.destination;
+  // One tab stop, not eight: the current page's link (or the first, on the list
+  // itself) is reachable by Tab and the arrows walk the rest. `walkNav` said so
+  // while every link kept `tabIndex 0`, so a keyboard user tabbed through all
+  // eight anyway.
+  const stop = HARNESS_DESTINATIONS.some((d) => d.path === at) ? at : HARNESS_DESTINATIONS[0]?.path;
   return (
+    // The glance values are gone: Agent's is the picker above now, and Skills'
+    // could only ever be the chat's `list_skills` — which disagreed with the
+    // page's own header whenever that header had read the spec instead.
     <nav aria-label="Harness" className={cn('p-2', className)} onKeyDown={walkNav}>
-      {GROUPS.map(({ key, label }, gi) => (
+      <HarnessAgentPicker />
+      {GROUPS.map(({ key, label }) => (
         <Fragment key={key}>
           {/* Shown, not only announced. The labels were `aria-label`s and the rule
               between the runs was `border/60` — about 6% white in dark — so a
               screen reader heard two groups and everyone else saw eight rows. */}
-          {gi > 0 && <hr aria-hidden className="mx-2.5 my-2 border-border" />}
+          <hr aria-hidden className="mx-2.5 my-2 border-border" />
           <p
             id={`harness-nav-${key}`}
             className="px-2.5 pt-1 pb-1 text-xs font-medium text-muted-foreground"
@@ -336,9 +340,12 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
             {HARNESS_DESTINATIONS.filter((d) => d.group === key).map(
               ({ path, label: name, icon: Icon }) => (
                 <li key={path}>
+                  {/* The agent rides along: moving between pages keeps looking at
+                      the same one. */}
                   <NavLink
-                    to={path}
+                    to={{ pathname: path, search }}
                     onClick={onNavigate}
+                    tabIndex={path === stop ? 0 : -1}
                     className={({ isActive }) =>
                       cn(
                         'flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
@@ -351,19 +358,6 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                   >
                     <Icon className="size-4 shrink-0" />
                     <span className="truncate">{name}</span>
-                    {glance[path] && (
-                      <span
-                        // The separator is for the accessible name, which ran the
-                        // label and the value together as "Agentcowork".
-                        className={cn(
-                          'ml-auto min-w-0 truncate pl-2 text-xs font-normal tabular-nums text-muted-foreground',
-                          glance[path]?.mono && 'font-mono',
-                        )}
-                      >
-                        <span className="sr-only">, </span>
-                        {glance[path]?.text}
-                      </span>
-                    )}
                   </NavLink>
                 </li>
               ),
@@ -374,8 +368,6 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
     </nav>
   );
 }
-
-const BACK_TO_LIST = { to: '/harness', label: 'Back to Harness' };
 
 /**
  * Layout route for `/harness`.
@@ -390,6 +382,7 @@ export function HarnessLayout() {
   const atIndex = !!useMatch('/harness');
   const at = useMatch('/harness/:destination')?.params.destination;
   const place = HARNESS_DESTINATIONS.find((d) => d.path === at)?.label ?? 'Harness';
+  const { search } = useHarnessAgent();
 
   // The tab strip names the page: eight open destinations all read "Felix chat".
   // Cleared on the way out, so the conversation's tab goes back to naming only
@@ -402,7 +395,7 @@ export function HarnessLayout() {
   // The Ledger, not the first entry in the list. `/harness` is where an operator
   // comes back to, and the Ledger is the page that answers "what happened while
   // I was away"; Memory — first in the list — is empty for most tenants.
-  if (atIndex && wide) return <Navigate to="ledger" replace />;
+  if (atIndex && wide) return <Navigate to={{ pathname: 'ledger', search }} replace />;
 
   // Every shape below puts the destination in a `<main>`. The layout had a header
   // and a nav and no main, so a screen reader's landmark list offered every way
@@ -429,7 +422,7 @@ export function HarnessLayout() {
     // The way back lives in the destination's own header, in the icon's place,
     // rather than in a row of its own above it: see `PageBack`.
     return (
-      <PageBack.Provider value={BACK_TO_LIST}>
+      <PageBack.Provider value={{ to: `/harness${search}`, label: 'Back to Harness' }}>
         <main className="flex min-h-0 flex-1 flex-col">
           <Outlet />
         </main>

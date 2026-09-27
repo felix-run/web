@@ -1,41 +1,45 @@
 import { Badge } from '@felix/ui/badge';
-import { Button } from '@felix/ui/button';
 import { CheckCircle2Icon, SparklesIcon } from 'lucide-react';
+import { Link } from 'react-router';
 import { Section, type SkillState } from '@/components/inspector/primitives';
 import { middleTruncate } from '@/lib/format';
 
 /**
- * Skills: what the active manifest has given the agent to work with.
+ * Skills: what an agent's manifest has given it to work with.
  *
  * Two sources, and the page says which it is reading. The agent's own last
- * `list_skills` report knows what is *active*; the manifest knows only what is
- * *declared*. The page used to show the first or nothing — so until the agent had
- * been asked in this session, a Record page was empty except for a full-width
- * button that posted to a thread the operator could not see. The declared list
- * comes from the spec, which is always there, and the button is a small action
- * under it rather than the heaviest thing on the page.
+ * `list_skills` report knows what is *active*, but that report came from a
+ * conversation, so it describes the chat's agent and nothing else; the manifest
+ * knows only what is *declared*, for whichever agent the harness is looking at.
+ *
+ * There is no write here. A button used to post "list your skills" into the
+ * chat's thread from this page, so its answer landed in a conversation that was
+ * not on screen, addressed to an agent that might not be the one on this page.
+ * It is a link to that conversation now: asking is something done in Chat.
  */
 export function SkillsSection({
   open,
   onToggle,
   skills,
   specSkills,
-  onSuggest,
-  busy,
-  target,
+  agent,
+  thread,
+  isChatAgent = true,
 }: {
   open: boolean;
   onToggle: () => void;
+  /** The chat's last `list_skills` report, or `null` when there is none to show. */
   skills: SkillState | null;
   /**
    * The skills the manifest declares, read from its resolved spec: `undefined`
    * while that read is in flight or when the host does not provide one.
    */
   specSkills?: string[];
-  onSuggest: (text: string) => void;
-  busy?: boolean;
-  /** The thread the ask posts to, since from here it is not on screen. */
-  target?: { text: string; isId: boolean };
+  /** The agent the page describes, named where it matters. */
+  agent?: string;
+  /** The conversation a `list_skills` report would come from. */
+  thread?: { text: string; isId: boolean; to: string };
+  isChatAgent?: boolean;
 }) {
   const meta = skills
     ? // `2/5` asked the reader to know which number was which; the words cost
@@ -71,59 +75,47 @@ export function SkillsSection({
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Which are active is unknown until the agent calls{' '}
-              <code className="font-mono">list_skills</code>.
+              {isChatAgent ? (
+                <>
+                  Which are active is unknown until the agent calls{' '}
+                  <code className="font-mono">list_skills</code> in a conversation.
+                </>
+              ) : (
+                <>
+                  Which are active is only known for the agent Chat is talking to; this is{' '}
+                  <span className="font-mono text-foreground">{agent}</span>, as its manifest
+                  declares it.
+                </>
+              )}
             </p>
             {specSkills && (
               <SkillList label="Declared by the manifest" names={specSkills} kind="declared" />
             )}
           </>
         )}
-        {/* It posts to the thread, so it says which one, and it stands down
-            mid-run: `send` steers an in-flight run rather than starting a turn, so
-            firing this during a stream would inject an unrelated instruction into
-            whatever the agent is currently doing. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7"
-            disabled={busy}
-            onClick={() => onSuggest('List your skills: which are declared, and which are active?')}
-          >
-            Ask the agent
-          </Button>
-          <span className="min-w-0">
-            {busy ? (
-              'Available once the current run finishes.'
-            ) : (
-              <>
-                Posts "list your skills" to <Target target={target} />.
-              </>
-            )}
-          </span>
-        </div>
+        {thread && isChatAgent && (
+          <p className="text-sm text-muted-foreground">
+            From{' '}
+            <Link
+              to={thread.to}
+              className="text-foreground underline underline-offset-2 hover:no-underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              {thread.isId ? (
+                <>
+                  the untitled thread{' '}
+                  <span className="font-mono" title={thread.text}>
+                    {middleTruncate(thread.text, 16)}
+                  </span>
+                </>
+              ) : (
+                thread.text
+              )}
+            </Link>
+            {skills ? '.' : ', where asking it is one message.'}
+          </p>
+        )}
       </div>
     </Section>
-  );
-}
-
-/**
- * The thread the ask lands in, named the way the thread list names it. An
- * untitled thread's only name is its id, which is 36 characters of UUID in a
- * sentence — so it says *untitled* and keeps both ends of the id, the way every
- * other place a thread id is drawn does.
- */
-function Target({ target }: { target?: { text: string; isId: boolean } }) {
-  if (!target) return <>this chat</>;
-  if (!target.isId) return <span className="text-foreground">{target.text}</span>;
-  return (
-    <>
-      the untitled thread{' '}
-      <span className="font-mono" title={target.text}>
-        {middleTruncate(target.text, 16)}
-      </span>
-    </>
   );
 }
 

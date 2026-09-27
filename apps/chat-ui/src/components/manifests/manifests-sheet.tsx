@@ -4,7 +4,7 @@ import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { Textarea } from '@felix/ui/textarea';
-import { GitBranchIcon, PencilIcon, RotateCcwIcon } from 'lucide-react';
+import { GitBranchIcon, PencilIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   activateManifestVersion,
@@ -188,7 +188,7 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
           */}
         {importing && (
           <div id="manifest-import" className={CREATE_FORM}>
-            <PageSection title="Import">
+            <PageSection title="From a file">
               <p className="mb-2 text-sm text-muted-foreground">
                 Copy a manifest the harness resolves from a file into this tenant's version log.
               </p>
@@ -463,13 +463,17 @@ function VersionsPanel({
         />
         {/* wraps so an armed confirmation gets its own line instead of squeezing the
             version field it is echoing */}
-        <div className="flex max-w-md flex-wrap items-center gap-2">
+        {/* A visible label, and the reason the field is a number: this moves every
+            request for the manifest, and a placeholder that vanished on the first
+            digit was its only name. */}
+        <Label htmlFor={`manifest-activate-${name}`}>Version to activate</Label>
+        <div className="mt-1 flex max-w-md flex-wrap items-center gap-2">
           <Input
-            aria-label={`Version to activate for ${name}`}
+            id={`manifest-activate-${name}`}
             value={targetVersion}
             onChange={(e) => setTargetVersion(e.target.value)}
             inputMode="numeric"
-            placeholder="version number"
+            aria-describedby={`manifest-activate-help-${name}`}
             className="h-8 min-w-0 flex-1 font-mono text-sm"
           />
           <ConfirmButton
@@ -485,10 +489,15 @@ function VersionsPanel({
               }, `activate v${targetN} of ${name}`)
             }
           >
-            <RotateCcwIcon className="size-3.5" /> Activate
+            {/* No icon: it was a rollback arrow, on a control that as often
+                moves forward. */}
+            Activate
           </ConfirmButton>
         </div>
-        {targetReason() && <p className="mt-1 text-xs text-muted-foreground">{targetReason()}</p>}
+        <p id={`manifest-activate-help-${name}`} className="mt-1 text-xs text-muted-foreground">
+          {targetReason() ??
+            'The harness does not list versions, so this takes a number; the chips above are the ones this browser has seen.'}
+        </p>
       </PageSection>
 
       <PageSection
@@ -515,15 +524,17 @@ function VersionsPanel({
           )
         }
       >
-        <div className="flex max-w-md items-center gap-2">
-          <Input
-            aria-label={`Canary version for ${name}`}
-            value={canaryVersion}
-            onChange={(e) => setCanaryVersion(e.target.value)}
-            inputMode="numeric"
-            placeholder="version"
-            className="h-8 w-24 font-mono text-sm"
-          />
+        <div className="flex max-w-md items-end gap-2">
+          <div>
+            <Label htmlFor={`manifest-canary-${name}`}>Version</Label>
+            <Input
+              id={`manifest-canary-${name}`}
+              value={canaryVersion}
+              onChange={(e) => setCanaryVersion(e.target.value)}
+              inputMode="numeric"
+              className="mt-1 h-8 w-24 font-mono text-sm"
+            />
+          </div>
           {/* This slider decides what share of live traffic moves to the canary, and
               announced as "slider, 25" — no name at all. `aria-valuetext` makes the
               value a percentage rather than a bare number. */}

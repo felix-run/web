@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/c
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { ActivityIcon, ChevronRightIcon, CoinsIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import { getUsageSummary, listAudit, listUsage } from '@/api';
 import {
   Field,
@@ -86,7 +87,11 @@ const EVENT_HELP: Record<string, string> = {
  * still stands out — through its status, which is the channel for that.
  */
 const EVENT_TONE: Record<string, string> = {
-  policy_deny: 'bg-state-blocked/15 text-state-blocked',
+  // An outline, not amber. Amber is "a person is being asked to act", and a
+  // denial in the feed is history — the run already moved on. The row's status
+  // dot says "Denied" in red, so the badge only has to say *what kind* of row
+  // this is; colouring it too put two state colours on one row.
+  policy_deny: 'border border-border bg-transparent text-foreground',
 };
 
 /**
@@ -206,6 +211,11 @@ export function ActivitySection({
   const failed = data?.filter((e) => isFailure(e.status)) ?? [];
   const visible = filterActivity(data ?? [], { failuresOnly, layer });
   const rows = showAll ? visible : visible.slice(0, ACTIVITY_VISIBLE);
+  const firstThread = rows[0] ? threadOf(rows[0]) : null;
+  const sharedThread =
+    firstThread && rows.length > 1 && rows.every((r) => threadOf(r) === firstThread)
+      ? firstThread
+      : null;
   /**
    * Failures in the window that the drawn rows do not include. The header said
    * "3 failed" over twelve rows holding one, with no way to see the other two
@@ -275,7 +285,7 @@ export function ActivitySection({
             <Select value={layer} onValueChange={setLayer}>
               <SelectTrigger
                 size="sm"
-                className="h-6 w-auto gap-1 px-2 text-xs"
+                className="h-8 w-auto gap-1 px-2 text-xs"
                 aria-label="Blocked by which layer"
               >
                 <SelectValue />
@@ -297,18 +307,36 @@ export function ActivitySection({
             <Button
               size="sm"
               variant={failuresOnly ? 'secondary' : 'outline'}
-              className="h-6 px-2 text-xs"
+              // The select's height: two heights in one toolbar read as uneven.
+              className="h-8 px-2 text-xs"
               aria-pressed={failuresOnly}
               onClick={() => setFailuresOnly((v) => !v)}
             >
               Failures only
             </Button>
           </div>
+          {/* Said once when every drawn row shares it — nine copies of one id were
+              texture, not information — and as a link, which a row cannot hold
+              (it is itself a button). */}
+          {sharedThread && (
+            <p className="mb-1 text-sm text-muted-foreground">
+              {rows.length === 1 ? 'From' : `All ${rows.length} from`} thread{' '}
+              <Link
+                to={`/t/${sharedThread}`}
+                title={`Thread ${sharedThread}`}
+                className={cn(TEXT_BUTTON, 'font-mono text-xs')}
+              >
+                {middleTruncate(sharedThread, THREAD_CHARS)}
+              </Link>
+              .
+            </p>
+          )}
           <ol className="divide-y divide-border/40">
             {rows.map((e) => (
               <ActivityRow
                 key={e.id}
                 event={e}
+                hideThread={sharedThread !== null}
                 open={openId === e.id}
                 onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
               />
@@ -320,7 +348,9 @@ export function ActivitySection({
             only the newest rows are drawn — "Showing 12 of the last 60 recent
             events" said "recent" twice and not how to reach the other 48. */}
           {visible.length > rows.length && data && (
-            <p className="mt-2 text-xs text-muted-foreground">
+            // Body size: it is an instruction (how to reach the rest), and DESIGN.md
+            // sets instructional copy at 13px; 11px is for counts and labels.
+            <p className="mt-2 text-sm text-muted-foreground">
               {layerLabel
                 ? `Newest ${rows.length} of ${visible.length} denials by ${layerLabel} in the last ${data.length} events.`
                 : failuresOnly
@@ -329,22 +359,14 @@ export function ActivitySection({
             </p>
           )}
           {(visible.length > ACTIVITY_VISIBLE || failedHidden > 0) && (
-            <div className="mt-1 flex flex-wrap gap-x-3 text-xs">
+            <div className="mt-1 flex flex-wrap gap-x-3 text-sm">
               {visible.length > ACTIVITY_VISIBLE && (
-                <button
-                  type="button"
-                  className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                  onClick={() => setShowAll((v) => !v)}
-                >
+                <button type="button" className={TEXT_BUTTON} onClick={() => setShowAll((v) => !v)}>
                   {showAll ? `Show newest ${ACTIVITY_VISIBLE}` : `Show all ${visible.length}`}
                 </button>
               )}
               {failedHidden > 0 && (
-                <button
-                  type="button"
-                  className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                  onClick={() => setFailuresOnly(true)}
-                >
+                <button type="button" className={TEXT_BUTTON} onClick={() => setFailuresOnly(true)}>
                   {`Show the ${failed.length} failed`}
                 </button>
               )}
@@ -361,6 +383,19 @@ export function ActivitySection({
   );
 }
 
+/** The thread an event belongs to, as the suffix every client holds, or `null`. */
+function threadOf(e: AuditEvent): string | null {
+  const raw = e.payload?.thread_id;
+  return typeof raw === 'string' && raw ? threadSuffix(raw) : null;
+}
+
+/**
+ * A text-weight button or link: underlined, and with the system's focus ring — the
+ * Ledger's "Show all" and "Show the 3 failed" had none of their own.
+ */
+const TEXT_BUTTON =
+  'rounded-sm text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none';
+
 /**
  * One event, as a disclosure.
  *
@@ -376,10 +411,13 @@ export function ActivitySection({
  */
 function ActivityRow({
   event: e,
+  hideThread = false,
   open,
   onToggle,
 }: {
   event: AuditEvent;
+  /** The list already said which thread every row is from. */
+  hideThread?: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -387,8 +425,8 @@ function ActivityRow({
   const label = EVENT_LABEL[e.event_type] ?? e.event_type;
   const subject = subjectOf(e);
   const tool = typeof e.payload?.tool === 'string' && e.payload.tool !== '';
-  const rawThread = e.payload?.thread_id;
-  const thread = typeof rawThread === 'string' && rawThread ? threadSuffix(rawThread) : null;
+  const thread = hideThread ? null : threadOf(e);
+  const failedRow = isFailure(e.status);
   const text = summary(e);
   const control = e.event_type === 'policy_deny' ? controlOf(e) : undefined;
 
@@ -436,7 +474,16 @@ function ActivityRow({
               )}
               {/* A tool name is a quotation of the harness, so it is mono (the
                   Provenance Rule); a turn boundary is our own label and is not. */}
-              <span className={cn('truncate font-medium', tool && 'font-mono text-xs')}>
+              {/* A failed row's subject takes the failed colour, so the three rows the
+                  header counts are found by eye rather than by a filter click. The
+                  status word beside it still says why. */}
+              <span
+                className={cn(
+                  'truncate font-medium',
+                  tool && 'font-mono text-xs',
+                  failedRow && 'text-state-failed',
+                )}
+              >
                 {subject}
               </span>
               {control && (
@@ -514,8 +561,22 @@ function ActivityRow({
  */
 function ActivityDetail({ event: e }: { event: AuditEvent }) {
   const payload = Object.entries(e.payload ?? {});
+  const thread = threadOf(e);
   return (
     <div className="mt-1 mb-2 ml-5 rounded-md bg-background px-2.5 py-2 text-xs">
+      {/* What the event type means, on screen. It lived only in a `title`, which
+          a keyboard or a touch screen never shows. */}
+      {EVENT_HELP[e.event_type] && (
+        <p className="mb-1.5 text-sm text-muted-foreground">{EVENT_HELP[e.event_type]}</p>
+      )}
+      {thread && (
+        <p className="mb-1.5 text-sm">
+          <Link to={`/t/${thread}`} className={cn(TEXT_BUTTON, 'text-foreground')}>
+            Open thread{' '}
+            <span className="font-mono text-xs">{middleTruncate(thread, THREAD_CHARS)}</span>
+          </Link>
+        </p>
+      )}
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         <Field label="Event" value={e.event_type} mono />
         <Field label="Status" value={e.status} mono />
@@ -632,6 +693,7 @@ export function UsageSection({
   const days = summary ? windowDays(summary) : SUMMARY_DEFAULT_DAYS;
   const rows = data?.rows ?? [];
   const pricedAs = sharedPricing(rows);
+  const buckets = summary ? byModel(summary) : [];
 
   return (
     <Section
@@ -695,6 +757,52 @@ export function UsageSection({
               unpriced — the model has no entry in the pricing catalog, so its spend counts as zero
               and <code className="font-mono">limits.max_cost_usd</code> fails open for it.
             </p>
+          )}
+          {/* Where the window's spend went. The summary was fetched grouped by
+              agent and model and used only to count unpriced turns, so the page
+              had a total and eight recent rows and no answer to "what cost that".
+              Sorted by cost, so the answer is the first row. */}
+          {buckets.length > 1 && (
+            <table className="mb-3 w-full text-xs">
+              <caption className="sr-only">Spend by agent and model, most first</caption>
+              <thead className="text-muted-foreground">
+                <tr className="border-b border-border/60">
+                  <th scope="col" className="py-1 text-left font-medium">
+                    Agent · model
+                  </th>
+                  <th scope="col" className="py-1 text-right font-medium">
+                    Turns
+                  </th>
+                  <th scope="col" className="py-1 text-right font-medium">
+                    Tokens
+                  </th>
+                  <th scope="col" className="py-1 text-right font-medium">
+                    Cost
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {buckets.map((b) => (
+                  <tr key={`${b.manifest_id}:${b.model_id}`} className="border-b border-border/40">
+                    <td className="py-1 font-mono">
+                      {b.manifest_id || '—'}{' '}
+                      <span className="text-muted-foreground">{b.model_id}</span>
+                    </td>
+                    <td className="py-1 text-right font-mono tabular-nums">
+                      {b.calls.toLocaleString()}
+                    </td>
+                    <td className="py-1 text-right font-mono tabular-nums">{compact(b.tokens)}</td>
+                    <td className="py-1 text-right font-mono tabular-nums">
+                      {b.unpriced ? (
+                        <span className="text-state-failed">unpriced</span>
+                      ) : (
+                        usd(b.cost)
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
           {/* One line for a mapping every row shares, rather than the same line
               under each of them: repeated eight times it is texture, and the
@@ -778,6 +886,43 @@ export function sharedPricing(
     (r) => r.model_id === first.model_id && r.wire_model_id === first.wire_model_id,
   );
   return same ? { model: first.model_id, wire: first.wire_model_id } : null;
+}
+
+/**
+ * The window's buckets folded to one row per agent and model, most expensive
+ * first. The harness groups by day as well; across a window the day is noise
+ * for the question this answers.
+ */
+export function byModel(summary: UsageSummary): Array<{
+  manifest_id: string;
+  model_id: string;
+  calls: number;
+  tokens: number;
+  cost: number;
+  /** Metered with tokens but priced at 0: an unpriced model, not a free one. */
+  unpriced: boolean;
+}> {
+  const rows = new Map<
+    string,
+    { manifest_id: string; model_id: string; calls: number; tokens: number; cost: number }
+  >();
+  for (const item of summary.items) {
+    const key = `${item.manifest_id}\u0000${item.model_id}`;
+    const row = rows.get(key) ?? {
+      manifest_id: item.manifest_id,
+      model_id: item.model_id,
+      calls: 0,
+      tokens: 0,
+      cost: 0,
+    };
+    row.calls += item.calls;
+    row.tokens += item.tokens_input + item.tokens_output;
+    row.cost += item.cost_usd;
+    rows.set(key, row);
+  }
+  return [...rows.values()]
+    .map((r) => ({ ...r, unpriced: r.cost === 0 && r.tokens > 0 }))
+    .sort((a, b) => b.cost - a.cost || b.tokens - a.tokens);
 }
 
 /** The window the harness answered for, in whole days, for a label. */

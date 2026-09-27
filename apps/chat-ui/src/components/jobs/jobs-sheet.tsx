@@ -4,7 +4,8 @@ import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
-import { ClockIcon, HistoryIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { Textarea } from '@felix/ui/textarea';
+import { ClockIcon, HistoryIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -17,7 +18,7 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { StatusDot } from '@/components/inspector/primitives';
+import { isFailure, StatusDot } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import type { JobRun } from '@/types';
 
@@ -30,6 +31,11 @@ import type { JobRun } from '@/types';
  * is no run-now route on the harness, so runs are observed rather than
  * triggered — expand a job to see its recent runs.
  */
+/** A job whose last run did not succeed. */
+function failing(j: { last_status?: string | null; last_error?: string | null }): boolean {
+  return Boolean(j.last_error) || (j.last_status != null && isFailure(j.last_status));
+}
+
 export function JobsSheet({
   manifest,
   manifestOptions,
@@ -42,7 +48,10 @@ export function JobsSheet({
   // harness every four seconds forever.
   const { data, error: listError, refresh } = usePoll(listJobs, { intervalMs: 4000 });
   // Kept apart from `data` so the header can tell "no jobs" from "not loaded yet".
-  const jobs = data ?? [];
+  // Failing first: someone coming back wants the exception before the list.
+  // Stable otherwise, so the harness's own order holds among the healthy ones.
+  const jobs = [...(data ?? [])].sort((a, b) => Number(failing(b)) - Number(failing(a)));
+  const failingCount = jobs.filter(failing).length;
 
   const [actionError, setActionError] = useState<unknown>(null);
   // The form sits behind a button. It led the page, so what an operator comes
@@ -134,7 +143,17 @@ export function JobsSheet({
       <PageHeader
         icon={<ClockIcon />}
         title="Jobs"
-        value={data ? plural(jobs.length, 'job') : undefined}
+        // The count, then how many are failing in the failed chip — the one
+        // number here an operator acts on, which the header never said.
+        valueLead={data && failingCount > 0 ? `${plural(jobs.length, 'job')} ·` : undefined}
+        value={
+          data
+            ? failingCount > 0
+              ? `${failingCount} failing`
+              : plural(jobs.length, 'job')
+            : undefined
+        }
+        valueTone={failingCount > 0 ? 'failed' : 'default'}
         controls={
           <CreateToggle
             open={creating}
@@ -164,7 +183,7 @@ export function JobsSheet({
           // A section with a heading, not a dashed box: the form is a part of
           // the page while it is open, and a heading is what names a part.
           <div id="job-create" className="pb-1">
-            <PageSection title="New job">
+            <PageSection title="Job to schedule">
               {/* Visible labels, with the format under the field it describes. The
                   labels were `sr-only` and the cron grammar lived in a placeholder,
                   so the one hint the schedule field needs vanished on the first
@@ -178,7 +197,6 @@ export function JobsSheet({
                       id="job-name"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="nightly-digest"
                       className="mt-1 h-8 text-sm"
                       onKeyDown={(e) => e.key === 'Enter' && create()}
                     />
@@ -222,13 +240,15 @@ export function JobsSheet({
                 </div>
                 <div>
                   <Label htmlFor="job-prompt">Prompt</Label>
-                  <Input
+                  {/* A textarea: the prompt is a whole instruction, and one line of
+                      input showed a sliver of it while it was being written. */}
+                  <Textarea
                     id="job-prompt"
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     aria-describedby="job-prompt-help"
-                    className="mt-1 h-8 text-sm"
-                    onKeyDown={(e) => e.key === 'Enter' && create()}
+                    rows={3}
+                    className="mt-1 resize-y text-sm"
                   />
                   <p id="job-prompt-help" className="mt-1 text-xs text-muted-foreground">
                     Sent as the turn on each run. Empty sends “ping”.
@@ -268,7 +288,7 @@ export function JobsSheet({
                     disabled={busy || !name.trim()}
                     onClick={create}
                   >
-                    <PlusIcon className="size-3.5" /> Create
+                    Create
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setCreating(false)}>
                     Cancel

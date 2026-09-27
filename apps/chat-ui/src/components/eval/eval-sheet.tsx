@@ -2,6 +2,7 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
 import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { type ComponentProps, useCallback, useEffect, useState } from 'react';
@@ -45,7 +46,14 @@ import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } fr
  * rubric is free-form on the wire and the scores are nested inside the run row,
  * so `check-payload-shapes` sees neither. The docs' rubric table is the contract.
  */
-export function EvalSheet({ manifest }: { manifest: string }) {
+export function EvalSheet({
+  manifest,
+  manifestOptions = [],
+}: {
+  manifest: string;
+  /** Agents the harness knows, for picking a comparison baseline. */
+  manifestOptions?: string[];
+}) {
   const [datasets, setDatasets] = useState<EvalDataset[]>([]);
   /** Whether `datasets` is an answer yet: `0 datasets` before the first list is a claim. */
   const [loaded, setLoaded] = useState(false);
@@ -118,8 +126,10 @@ export function EvalSheet({ manifest }: { manifest: string }) {
             changes what pressing Run does, so it left the header's subline for
             the body rather than being dropped with it. */}
         <p className="mb-3 text-sm text-muted-foreground">
-          Golden datasets, replayed and judged per item against the active{' '}
-          <span className="font-mono text-foreground">{manifest}</span> agent.
+          {/* Not "the active agent": *active* is Manifests' word for a version. */}
+          Golden datasets, replayed and judged per item against{' '}
+          <span className="font-mono text-foreground">{manifest}</span>, the agent chosen above the
+          nav.
         </p>
         {failure && (
           <div className="mb-3">
@@ -206,6 +216,7 @@ export function EvalSheet({ manifest }: { manifest: string }) {
             key={selected}
             dataset={selected}
             manifest={manifest}
+            manifestOptions={manifestOptions}
             onError={(err, doing) => setFailure({ err, doing })}
           />
         ) : null}
@@ -217,12 +228,15 @@ export function EvalSheet({ manifest }: { manifest: string }) {
 function DatasetPanel({
   dataset,
   manifest,
+  manifestOptions,
   onError,
 }: {
   dataset: string;
   manifest: string;
+  manifestOptions: string[];
   onError: (err: unknown, doing: string) => void;
 }) {
+  const [addingItem, setAddingItem] = useState(false);
   const [items, setItems] = useState<EvalDatasetItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
   const [running, setRunning] = useState(false);
@@ -301,7 +315,13 @@ function DatasetPanel({
         ) : null}
 
         {comparing && (
-          <ComparePanel dataset={dataset} manifest={manifest} onDone={refresh} onError={onError} />
+          <ComparePanel
+            dataset={dataset}
+            manifest={manifest}
+            manifestOptions={manifestOptions}
+            onDone={refresh}
+            onError={onError}
+          />
         )}
 
         {runs.length > 0 && (
@@ -313,7 +333,33 @@ function DatasetPanel({
         )}
       </PageSection>
 
-      <PageSection title="Items" meta={plural(items.length, 'item')}>
+      {/* Adding an item is a create like any other, so it sits behind a toggle on
+          its section rather than as nine fields always open under the list. */}
+      <PageSection
+        title="Items"
+        meta={plural(items.length, 'item')}
+        actions={
+          <CreateToggle
+            open={addingItem}
+            onToggle={() => setAddingItem((v) => !v)}
+            controls="eval-add-item"
+          >
+            Add item
+          </CreateToggle>
+        }
+      >
+        {addingItem && (
+          <div id="eval-add-item" className={CREATE_FORM}>
+            <AddItemForm
+              dataset={dataset}
+              onAdded={() => {
+                setAddingItem(false);
+                void refresh();
+              }}
+              onError={onError}
+            />
+          </div>
+        )}
         {items.length > 0 && (
           <ul>
             {items.map((it) => (
@@ -327,10 +373,6 @@ function DatasetPanel({
             ))}
           </ul>
         )}
-      </PageSection>
-
-      <PageSection title="Add item">
-        <AddItemForm dataset={dataset} onAdded={refresh} onError={onError} />
       </PageSection>
     </>
   );
@@ -351,11 +393,13 @@ function DatasetPanel({
 function ComparePanel({
   dataset,
   manifest,
+  manifestOptions,
   onDone,
   onError,
 }: {
   dataset: string;
   manifest: string;
+  manifestOptions: string[];
   onDone: () => Promise<void> | void;
   onError: (err: unknown, doing: string) => void;
 }) {
@@ -398,18 +442,32 @@ function ComparePanel({
           structure, and the linter can only see that structure when the input is
           a DOM element it recognises.
         */}
-        <label
-          htmlFor="eval-compare-baseline"
-          className="flex items-center gap-1.5 text-xs text-muted-foreground"
-        >
-          Baseline
-          <Input
-            id="eval-compare-baseline"
-            value={baseline}
-            onChange={(e) => setBaseline(e.target.value)}
-            className="h-8 w-32 px-2 text-xs"
-          />
-        </label>
+        {/* A select, as Jobs' agent is: the baseline is one of the agents the
+            harness knows, and typing it was a way to compare against a typo. */}
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="eval-compare-baseline" className="text-xs text-muted-foreground">
+            Baseline
+          </Label>
+          <Select value={baseline} onValueChange={setBaseline}>
+            <SelectTrigger
+              id="eval-compare-baseline"
+              size="sm"
+              className="h-8 w-36 font-mono text-sm"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(manifestOptions.includes(manifest)
+                ? manifestOptions
+                : [manifest, ...manifestOptions]
+              ).map((m) => (
+                <SelectItem key={m} value={m} className="font-mono text-sm">
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <label
           htmlFor="eval-compare-candidates"
           className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground"
@@ -508,7 +566,9 @@ function RubricSummary({ rubric }: { rubric: Rubric }) {
   if (rules.length === 0) {
     return (
       // The harness's own warning, on the item, where the decision to fix it is made.
-      <div className="mt-1 text-xs text-state-blocked">
+      // Foreground, not amber: amber means a person is being asked to act, and
+      // this is a dataset that needs editing, not a run that is waiting.
+      <div className="mt-1 text-xs text-foreground">
         No rule: any non-empty answer passes, so this item gates nothing.
       </div>
     );
@@ -662,13 +722,13 @@ function AddItemForm({
 
       {/* The reading the scorer will have, before the item is stored — the same
           function that labels stored items, so the two cannot disagree. */}
-      <p className={cn('text-xs', reading.length ? 'text-muted-foreground' : 'text-state-blocked')}>
+      <p className={cn('text-xs', reading.length ? 'text-muted-foreground' : 'text-foreground')}>
         {reading.length
           ? `Will score: ${reading.join(' · ')}`
           : 'No rule yet: this item would pass any non-empty answer.'}
       </p>
       {warnings.length > 0 && (
-        <ul className="space-y-0.5 text-xs text-state-blocked">
+        <ul className="space-y-0.5 text-xs text-foreground">
           {warnings.map((w) => (
             <li key={w}>{w}</li>
           ))}
@@ -817,9 +877,9 @@ function RunCard({ run }: { run: EvalRun }) {
  *
  * The rule **is** the output of an eval — it is the thing that says why a case
  * failed — so it sits on the collapsed row, verbatim, in the harness's own word.
- * `invalid_rubric` gets the blocked colour rather than failed: nothing about the
- * run was wrong, the rubric could never have said no, and the fix is to the
- * dataset. An item that never reached the scorer carries `error` instead of a
+ * `invalid_rubric` is drawn in plain foreground rather than failed: nothing about
+ * the run was wrong, the rubric could never have said no, and the fix is to the
+ * dataset. Not amber either — that means someone is being asked to act *now*. An item that never reached the scorer carries `error` instead of a
  * verdict and is drawn as its own third state.
  *
  * Expanding is the only way to the answer and the reason. Collapsed by default
@@ -852,7 +912,7 @@ function ScoreRow({ score }: { score: EvalRun['scores'][number] }) {
             <span
               className={cn(
                 'mt-0.5 shrink-0 font-mono text-xs',
-                invalid ? 'text-state-blocked' : 'text-muted-foreground',
+                invalid ? 'text-foreground' : 'text-muted-foreground',
               )}
               title={RULE_TEXT[score.rule]}
             >
@@ -873,7 +933,7 @@ function ScoreRow({ score }: { score: EvalRun['scores'][number] }) {
         </CollapsibleTrigger>
         <CollapsibleContent className="ml-5 space-y-1.5 pt-1 pb-1.5">
           {score.rule && RULE_TEXT[score.rule] && (
-            <p className={cn('text-xs', invalid ? 'text-state-blocked' : 'text-muted-foreground')}>
+            <p className={cn('text-xs', invalid ? 'text-foreground' : 'text-muted-foreground')}>
               {RULE_TEXT[score.rule]}
             </p>
           )}
