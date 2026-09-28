@@ -1,4 +1,3 @@
-import { relativeTime } from '@felix/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import {
   ActivityIcon,
@@ -30,6 +29,7 @@ import { SkillsSection } from '@/components/harness/skills';
 import {
   isFailure,
   PanelModeProvider,
+  relTime,
   type SectionMeta,
   SectionMetaSink,
   withAge,
@@ -349,7 +349,13 @@ function walkNav(event: KeyboardEvent<HTMLElement>) {
  */
 interface Glance {
   text: string;
-  /** Spoken and shown on hover: what the text stands for, and how old it is. */
+  /**
+   * How old a kept count is, drawn beside it — `2m` — when the latest read
+   * failed. On screen, not only in `title`: a count that cannot vouch for itself
+   * looked exactly like a current one.
+   */
+  age?: string;
+  /** Spoken, and shown on hover: the full reading the short text abbreviates. */
   title: string;
   /** A count of failures, or an honest "could not check". */
   tone: 'failed' | 'unknown';
@@ -364,18 +370,38 @@ interface Glance {
  * it could not refresh — and a failed read after a good one keeps the count and
  * says its age.
  */
-function glanceOf(
+export function glanceOf(
   poll: { data: unknown[] | undefined; error: unknown; lastOkAt: number | null },
   count: number,
   word: string,
   noun: string,
 ): Glance | undefined {
-  if (poll.error && poll.data === undefined) {
-    return { text: '?', title: `Couldn't check ${noun}`, tone: 'unknown' };
+  if (poll.error) {
+    const since = poll.lastOkAt != null ? relTime(poll.lastOkAt) : null;
+    const ago = since === 'now' ? 'just now' : `${since} ago`;
+    // A failed read whose last answer was zero is still a failed read. This
+    // returned nothing when the earlier count was 0 — the rail's all-clear, over
+    // a list it could not refresh, which is the one thing the docblock forbids.
+    if (count === 0 || poll.data === undefined) {
+      return {
+        // A word, not `?`: its meaning was only in a hover title, which a
+        // keyboard, a touch screen or the phone-width list never shows.
+        text: 'unchecked',
+        title: since
+          ? `Couldn't check ${noun}; last answered ${ago} with none`
+          : `Couldn't check ${noun}`,
+        tone: 'unknown',
+      };
+    }
+    return {
+      text: `${count} ${word}`,
+      age: since ?? undefined,
+      title: `${count} ${word}, as of ${ago} — the latest check failed`,
+      tone: 'failed',
+    };
   }
   if (count === 0) return undefined;
-  const stale = poll.error && poll.lastOkAt != null ? `, as of ${relativeTime(poll.lastOkAt)}` : '';
-  return { text: `${count} ${word}`, title: `${count} ${word}${stale}`, tone: 'failed' };
+  return { text: `${count} ${word}`, title: `${count} ${word}`, tone: 'failed' };
 }
 
 function useNavGlances(): Record<string, Glance | undefined> {
@@ -450,6 +476,12 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                             "couldn't check" that the short text abbreviates. */}
                         <span className="sr-only">, {glance[path]?.title}</span>
                         <span aria-hidden>{glance[path]?.text}</span>
+                        {glance[path]?.age && (
+                          <span aria-hidden className="font-normal text-muted-foreground">
+                            {' · '}
+                            {glance[path]?.age}
+                          </span>
+                        )}
                       </span>
                     )}
                   </NavLink>

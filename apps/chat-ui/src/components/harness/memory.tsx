@@ -200,7 +200,10 @@ export function MemorySection({
           {/* The numbers to type are the `seq` values on the rows themselves,
               which is what makes this usable without a separate lookup. */}
           <p id="memory-as-of-help" className="mt-1 text-xs text-muted-foreground">
-            The <span className="font-mono">seq</span> shown on each row under Recent.
+            {/* Not "the seq on each row": on an empty store there are no rows,
+                and the help pointed at a column nobody could see. */}
+            A turn's number in its session. Each stored memory shows the{' '}
+            <span className="font-mono">seq</span> it was written at, under Recent.
           </p>
         </div>
       )}

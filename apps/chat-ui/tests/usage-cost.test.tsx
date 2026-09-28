@@ -175,7 +175,7 @@ describe('byModel', () => {
 describe('usageHeader', () => {
   it('leads with what it cost, then how much, then over what', () => {
     expect(usageHeader({ in: 24_470_680, out: 196_558, cost: 79.5, unpriced: 0 }, 30)).toBe(
-      '$79.50 · 24.7m tokens · last 30 days',
+      '$79.50 · 24.7M tokens · last 30 days',
     );
   });
 
