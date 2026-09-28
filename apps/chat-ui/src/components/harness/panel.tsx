@@ -68,13 +68,15 @@ export const READING_MEASURE = 'max-w-3xl';
  * floating in a void — the page read as unfinished rather than as empty. The
  * frame takes the measure's full width and a list's worth of height, so the
  * sentence sits in the space the rows will occupy and says that is what it is.
- * Dashed, because a solid border is how this app draws a thing that exists.
+ * Dashed, because a solid border is how this app draws a thing that exists —
+ * and on `muted-foreground/30` rather than `border`, which in dark is so close
+ * to the page that the dashes did not read and the frame looked like a smudge.
  */
 export function PageEmpty({ children }: { children: ReactNode }) {
   return (
     <div
       data-page-empty
-      className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-border px-6 py-10"
+      className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-muted-foreground/30 px-6 py-10"
     >
       <p className="max-w-prose text-center text-sm text-muted-foreground">{children}</p>
     </div>
