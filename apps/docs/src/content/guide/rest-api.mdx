@@ -509,6 +509,13 @@ curl -s -X POST "$BASE_URL/chat/steer" \
 the run goes idle. Drain behaviour is `session.steering_mode` / `follow_up_mode` (`all` or
 `one-at-a-time`). The queues are Redis lists, so this works across replicas.
 
+A steer sent while no run is going is **held for the next run** on that thread and delivered at
+its start, right after that run's own user turn — so "prefer metric units" shapes the next answer
+rather than being lost. Every held steer is delivered then, whatever `steering_mode` says, and it
+does not cancel that run's tools. A steer or follow-up that arrives just after a run's last check
+is kept for the next run the same way. `queuedSteerCount` on `GET /chat/sessions/{thread_id}`
+counts what is waiting.
+
 ## Abort, continue, thinking, compact
 
 | Method | Path | Body | Notes |
