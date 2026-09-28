@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventHelp, recentFailures } from '../src/components/harness/ledger';
+import { errorCodeOf, eventHelp, recentFailures } from '../src/components/harness/ledger';
 import { glanceOf } from '../src/routes/harness';
 
 /**
@@ -112,10 +112,37 @@ describe('recentFailures', () => {
  * as a call that worked. The audit row records which call failed and not why.
  */
 describe('eventHelp', () => {
-  it('says where the reason lives for a failed call, and not for a good one', () => {
-    expect(eventHelp({ event_type: 'tool_call', status: 'error' })).toMatch(
+  it('says where the reason lives when the harness recorded no error code', () => {
+    expect(eventHelp({ event_type: 'tool_call', status: 'error', payload: {} })).toMatch(
       /keeps which call failed, not why/,
     );
-    expect(eventHelp({ event_type: 'tool_call', status: 'ok' })).toBe('The agent called a tool.');
+    expect(eventHelp({ event_type: 'tool_call', status: 'ok', payload: {} })).toBe(
+      'The agent called a tool.',
+    );
+  });
+
+  it('says which kind of failure it was when the harness recorded the code', () => {
+    const help = eventHelp({
+      event_type: 'tool_call',
+      status: 'error',
+      payload: { error_code: 'permission_denied' },
+    });
+    expect(help).toMatch(/refused for lack of permission/);
+    expect(help).toMatch(/full message is on the call's card/);
+  });
+
+  it('shows a code it does not know as the harness spelled it', () => {
+    expect(
+      eventHelp({ event_type: 'tool_call', status: 'error', payload: { error_code: 'quota' } }),
+    ).toMatch(/failed with `quota`/);
+  });
+});
+
+describe('errorCodeOf', () => {
+  it('reads a non-empty string and nothing else', () => {
+    expect(errorCodeOf({ payload: { error_code: 'timeout' } })).toBe('timeout');
+    expect(errorCodeOf({ payload: { error_code: '' } })).toBeUndefined();
+    expect(errorCodeOf({ payload: { error_code: 3 } })).toBeUndefined();
+    expect(errorCodeOf({ payload: {} })).toBeUndefined();
   });
 });

@@ -74,6 +74,19 @@ afterEach(() => {
 });
 
 describe('Activity rows', () => {
+  it("names a failed call's error class beside it, as a denial names its layer", async () => {
+    stubHarness([
+      auditRow({
+        status: 'error',
+        payload_json: { tool: 'write_file', tool_call_id: 'tc1', error_code: 'permission_denied' },
+      }),
+    ]);
+    renderInspector();
+
+    const row = await screen.findByRole('button', { name: /write_file/ });
+    expect(row.textContent).toContain('permission denied');
+  });
+
   it('puts every row in the tab order as a real button', async () => {
     stubHarness([auditRow(), auditRow({ id: 'a2', payload_json: { tool: 'shell' } })]);
     renderInspector();
