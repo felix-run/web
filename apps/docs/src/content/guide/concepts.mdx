@@ -255,7 +255,8 @@ and a dropped client reattaches with the resume token rather than losing the run
 ## Steering
 
 A run is not a black box once it starts. `POST /chat/steer` with `kind: "steer"` interrupts the
-remaining tool batch mid-run; `kind: "follow_up"` queues a message delivered once the run goes idle.
+remaining tool batch mid-run — or, sent while the thread is idle, is held and delivered at the start
+of its next run; `kind: "follow_up"` queues a message delivered once the run goes idle.
 `POST /chat/abort` stops it, and `POST /chat/continue` picks it back up with no new user message. The
 queues are Redis lists, so any replica can accept the steer.
 
