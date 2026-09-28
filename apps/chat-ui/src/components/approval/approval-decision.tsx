@@ -70,6 +70,13 @@ export interface ApprovalDecisionProps {
    * in-flight guard and both toasts so every caller gets the same behaviour.
    */
   onDecide: (status: 'approved' | 'denied', editedArgs?: Record<string, unknown>) => Promise<void>;
+  /**
+   * Take the card down once it has lapsed. The harness has already denied the
+   * call, so there is nothing left to decide — only a card to clear. The caller
+   * re-syncs past the deadline and drops it by itself; this is for when that
+   * poll cannot reach the harness. Omitted, a lapsed card offers no way out.
+   */
+  onDismiss?: () => void;
   className?: string;
 }
 
@@ -121,6 +128,7 @@ export function ApprovalDecision({
   queueLength,
   runAborted,
   onDecide,
+  onDismiss,
   className,
 }: ApprovalDecisionProps) {
   // A ref, not the state below: React batches, so a burst of clicks in one tick
@@ -272,46 +280,56 @@ export function ApprovalDecision({
         </p>
       )}
 
-      <div className="mt-2.5 flex flex-wrap gap-2">
-        {/* Same variant, same width, as Deny: see (3) above. The label carries the
+      {lapsed && onDismiss ? (
+        // Two disabled answers to a question already answered read as a card
+        // that is broken rather than one that is over.
+        <div className="mt-2.5 flex">
+          <Button size="sm" variant="outline" className={DECISION_BUTTON} onClick={onDismiss}>
+            Dismiss
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {/* Same variant, same width, as Deny: see (3) above. The label carries the
             difference, so neither button is the one the eye lands on first. */}
-        <Button
-          size="sm"
-          variant="outline"
-          className={DECISION_BUTTON}
-          disabled={deciding !== null || lapsed || edit?.status === 'invalid'}
-          onClick={() => void decide('approved')}
-        >
-          {deciding === 'approved'
-            ? 'Approving…'
-            : edit?.status === 'edited'
-              ? `Approve ${toolName} with edits`
-              : `Approve ${toolName}`}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className={DECISION_BUTTON}
-          disabled={deciding !== null || lapsed}
-          onClick={() => void decide('denied')}
-        >
-          {deciding === 'denied' ? 'Denying…' : 'Deny'}
-        </Button>
-        {/* Not offered for a write: that has a before/after pane rather than an
-            arguments blob, and editing a whole file body in a textarea inside a
-            banner is not the affordance anyone wants. */}
-        {!isWrite && (
           <Button
             size="sm"
-            variant="ghost"
-            className="h-8"
-            disabled={deciding !== null || lapsed}
-            onClick={() => setDraft(editing ? null : formatArgsForEditing(args))}
+            variant="outline"
+            className={DECISION_BUTTON}
+            disabled={deciding !== null || lapsed || edit?.status === 'invalid'}
+            onClick={() => void decide('approved')}
           >
-            {editing ? 'Cancel edit' : 'Edit arguments'}
+            {deciding === 'approved'
+              ? 'Approving…'
+              : edit?.status === 'edited'
+                ? `Approve ${toolName} with edits`
+                : `Approve ${toolName}`}
           </Button>
-        )}
-      </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className={DECISION_BUTTON}
+            disabled={deciding !== null || lapsed}
+            onClick={() => void decide('denied')}
+          >
+            {deciding === 'denied' ? 'Denying…' : 'Deny'}
+          </Button>
+          {/* Not offered for a write: that has a before/after pane rather than an
+            arguments blob, and editing a whole file body in a textarea inside a
+            banner is not the affordance anyone wants. */}
+          {!isWrite && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8"
+              disabled={deciding !== null || lapsed}
+              onClick={() => setDraft(editing ? null : formatArgsForEditing(args))}
+            >
+              {editing ? 'Cancel edit' : 'Edit arguments'}
+            </Button>
+          )}
+        </div>
+      )}
 
       <p className="mt-2 text-xs leading-snug text-muted-foreground">
         {lapsed ? (

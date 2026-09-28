@@ -105,6 +105,8 @@ const THINKING_LEVELS: ThinkingLevel[] = [
 ];
 /** How often to ask the harness for approvals while a run is in flight. */
 const APPROVAL_POLL_MS = 2_500;
+/** How long past an approval's deadline to re-ask, so the harness has denied it by then. */
+const LAPSE_GRACE_MS = 2_000;
 
 function tabHolderId(): string {
   try {
@@ -749,6 +751,9 @@ export function AppShell() {
 
   // Deliberately bare: `ApprovalDecision` owns the in-flight guard and both
   // toasts, so this does the work and lets a failure propagate to it.
+  // The harness already decided a lapsed approval; this only takes the card down.
+  const onDismiss = useCallback(() => engine.shiftApproval(), [engine]);
+
   const onDecide = useCallback(
     async (status: 'approved' | 'denied', editedArgs?: Record<string, unknown>) => {
       if (!pending) return;
@@ -797,6 +802,24 @@ export function AppShell() {
     const timer = window.setInterval(() => void syncApprovals(), APPROVAL_POLL_MS);
     return () => window.clearInterval(timer);
   }, [streaming, syncApprovals]);
+
+  /**
+   * Re-ask once the head approval's deadline has passed.
+   *
+   * The harness denies a lapsed approval itself, and the sync drops what it no
+   * longer lists — but the poll above runs only mid-stream, and a timeout lets
+   * the run finish, so without this a lapsed card stayed on screen for the life
+   * of the tab. The grace covers the harness's own wait returning.
+   */
+  const headDeadline = pending?.expiresAt ?? null;
+  useEffect(() => {
+    if (headDeadline == null) return;
+    const timer = window.setTimeout(
+      () => void syncApprovals(),
+      Math.max(0, headDeadline - Date.now()) + LAPSE_GRACE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [headDeadline, syncApprovals]);
 
   /**
    * Presence, for the runs nobody is watching.
@@ -1210,6 +1233,7 @@ export function AppShell() {
     tenantApprovals,
     runClock,
     onDecide,
+    onDismiss,
     uiPrompt,
     uiResolving,
     onUiRespond: (value) => void onUiRespond(value),

@@ -101,7 +101,7 @@ describe('backfilling an approval that arrived as a frame', () => {
 
   /** An unreachable endpoint must not look like "everything expired". */
   it('reports nothing at all when the poll fails', async () => {
-    const { added, deadlines } = await syncApprovals({
+    const { added, deadlines, listed } = await syncApprovals({
       listPending: async () => {
         throw new Error('offline');
       },
@@ -109,6 +109,7 @@ describe('backfilling an approval that arrived as a frame', () => {
     });
     expect(added).toEqual([]);
     expect(deadlines.size).toBe(0);
+    expect(listed).toBe(false);
   });
 });
 

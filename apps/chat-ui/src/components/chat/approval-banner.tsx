@@ -15,6 +15,7 @@ export function ApprovalBanner({
   queueLength,
   runAborted,
   onDecide,
+  onDismiss,
 }: {
   pending: PendingApproval;
   queueLength: number;
@@ -22,6 +23,8 @@ export function ApprovalBanner({
   runAborted?: boolean;
   /** Performs the decision and advances the queue. Should throw on failure. */
   onDecide: (status: 'approved' | 'denied', editedArgs?: Record<string, unknown>) => Promise<void>;
+  /** Takes the card down once its deadline has lapsed. */
+  onDismiss?: () => void;
 }) {
   return (
     // The inset matches the composer and the transcript column so the card's visible
@@ -61,6 +64,7 @@ export function ApprovalBanner({
           queueLength={queueLength}
           runAborted={runAborted}
           onDecide={onDecide}
+          onDismiss={onDismiss}
         />
       </div>
     </div>
