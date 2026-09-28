@@ -324,6 +324,20 @@ function deadlineOf(item: ApprovalRequest): number {
   return item.expires_at ?? item.created_at + DEFAULT_APPROVAL_TTL_MS;
 }
 
+/**
+ * A `pending` row whose deadline has passed — one nobody can answer any more.
+ *
+ * The harness does not always close these. A durable run's wait lives in its
+ * worker, and a worker that ends mid-wait never writes the timeout back, so the
+ * row reads `pending` indefinitely: on 2026-09-29 production listed a
+ * `write_file` twenty-nine hours past its ten-minute deadline, and the
+ * attention line offered it with both buttons disabled and no way to clear it.
+ * Whatever the harness still says, past this point the only outcome is `denied`.
+ */
+export function isLapsedApproval(item: ApprovalRequest, now = Date.now()): boolean {
+  return item.status === 'pending' && deadlineOf(item) <= now;
+}
+
 export async function syncApprovals(opts: ApprovalSyncOptions): Promise<ApprovalSync> {
   let items: ApprovalRequest[];
   try {
