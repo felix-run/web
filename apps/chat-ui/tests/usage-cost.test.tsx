@@ -2,7 +2,13 @@
 
 import type { UsageSummary } from '@felix/client';
 import { describe, expect, it } from 'vitest';
-import { byModel, summarizeWindow, usd, windowDays } from '../src/components/harness/ledger';
+import {
+  byModel,
+  summarizeWindow,
+  usageHeader,
+  usd,
+  windowDays,
+} from '../src/components/harness/ledger';
 
 /**
  * What a usage total is allowed to claim.
@@ -163,5 +169,17 @@ describe('byModel', () => {
       items: [item({ cost_usd: 0 })],
     } as never);
     expect(row?.unpriced).toBe(true);
+  });
+});
+
+describe('usageHeader', () => {
+  it('leads with what it cost, then how much, then over what', () => {
+    expect(usageHeader({ in: 24_470_680, out: 196_558, cost: 79.5, unpriced: 0 }, 30)).toBe(
+      '$79.50 · 24.7m tokens · last 30 days',
+    );
+  });
+
+  it('marks a floor as a floor when any turn was unpriced', () => {
+    expect(usageHeader({ in: 1000, out: 0, cost: 2, unpriced: 3 }, 7)).toMatch(/^≥ \$2\.00 · /);
   });
 });
