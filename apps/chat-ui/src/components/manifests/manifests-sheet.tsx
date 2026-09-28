@@ -3,6 +3,7 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
 import { GitBranchIcon, PencilIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -49,7 +50,20 @@ import type { ManifestSummary } from '@/types';
  * Writes need the `manifests:write` scope; with FELIX_AUTH_MODE=none the harness
  * skips scope checks, so the whole flow is drivable unauthenticated locally.
  */
-export function ManifestsSheet({ manifest }: { manifest: string }) {
+/** The Select value that swaps the pick list for a typed name. */
+const OTHER = '__other__';
+
+export function ManifestsSheet({
+  manifest,
+  bundled = [],
+}: {
+  manifest: string;
+  /**
+   * The manifests the harness ships as files (`/v1/models` lists `list_bundled()`),
+   * which is what Import copies into the tenant's version log.
+   */
+  bundled?: string[];
+}) {
   const [rows, setRows] = useState<ManifestSummary[]>([]);
   /** Whether `rows` is an answer yet: `0 manifests` before the first list is a claim. */
   const [loaded, setLoaded] = useState(false);
@@ -59,6 +73,9 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
   // staged by default on every visit.
   const [importName, setImportName] = useState('');
   const [importing, setImporting] = useState(false);
+  // Typing is the fallback, not the default: a manifest can also resolve from an
+  // object store the harness does not list, and that one still has to be named.
+  const [typing, setTyping] = useState(false);
   const [busy, setBusy] = useState(false);
   // The error and the verb that produced it travel together. This slot used to be a
   // bare error rendered with one hardcoded phrase, so a failed *activation* — the
@@ -128,6 +145,9 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
   }
 
   const selectedRow = rows.find((r) => r.name === selected) ?? null;
+  // What Import can copy: the bundled manifests this tenant does not manage yet.
+  const managed = new Set(rows.map((r) => r.name));
+  const candidates = bundled.filter((m) => !managed.has(m));
   // The same test the picker uses to draw `v3 · 10%`, so the header and the
   // buttons below it never disagree about what is rolling out.
   const canaries = rows.filter(
@@ -201,16 +221,55 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
               <p className="mb-2 text-sm text-muted-foreground">
                 Copy a manifest the harness resolves from a file into this tenant's version log.
               </p>
+              {/*
+                  A pick list of what can be imported, rather than a name typed
+                  from memory: this is the heaviest write on the page, and a typo
+                  here was a failed request at best — at worst, one letter off a
+                  real name, an import of the wrong manifest. The list is the
+                  bundled manifests not already tenant-managed; anything else is
+                  still reachable by name.
+                */}
               <div className="flex max-w-md items-end gap-2">
                 <div className="min-w-0 flex-1">
-                  <Label htmlFor="manifest-import-name">Manifest name</Label>
-                  <Input
-                    id="manifest-import-name"
-                    value={importName}
-                    onChange={(e) => setImportName(e.target.value)}
-                    placeholder={`e.g. ${manifest}`}
-                    className="mt-1 h-8 font-mono text-sm placeholder:font-sans"
-                  />
+                  <Label htmlFor="manifest-import-name">Manifest</Label>
+                  {candidates.length > 0 && !typing ? (
+                    <Select
+                      value={importName || undefined}
+                      onValueChange={(v) => {
+                        if (v === OTHER) {
+                          setTyping(true);
+                          setImportName('');
+                        } else setImportName(v);
+                      }}
+                    >
+                      <SelectTrigger
+                        id="manifest-import-name"
+                        size="sm"
+                        className="mt-1 h-8 w-full font-mono text-sm data-[placeholder]:font-sans"
+                      >
+                        <SelectValue placeholder="Choose a manifest" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {candidates.map((m) => (
+                          <SelectItem key={m} value={m} className="font-mono text-sm">
+                            {m}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value={OTHER} className="text-sm">
+                          Another name…
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="manifest-import-name"
+                      value={importName}
+                      onChange={(e) => setImportName(e.target.value)}
+                      aria-describedby="manifest-import-help"
+                      placeholder={`e.g. ${manifest}`}
+                      className="mt-1 h-8 font-mono text-sm placeholder:font-sans"
+                    />
+                  )}
                 </div>
                 <ConfirmButton
                   size="sm"
@@ -228,6 +287,28 @@ export function ManifestsSheet({ manifest }: { manifest: string }) {
                   Import as version
                 </ConfirmButton>
               </div>
+              {/* Said, so an empty list or a typed name is not a mystery. */}
+              {(typing || candidates.length === 0) && (
+                <p id="manifest-import-help" className="mt-1 text-xs text-muted-foreground">
+                  {candidates.length === 0
+                    ? bundled.length > 0
+                      ? 'Every manifest the harness ships is already tenant-managed. Name another one it can resolve.'
+                      : 'Name a manifest the harness can resolve.'
+                    : 'A manifest the harness resolves but does not list, by name. '}
+                  {typing && candidates.length > 0 && (
+                    <button
+                      type="button"
+                      className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                      onClick={() => {
+                        setTyping(false);
+                        setImportName('');
+                      }}
+                    >
+                      Back to the list
+                    </button>
+                  )}
+                </p>
+              )}
             </PageSection>
           </div>
         )}
