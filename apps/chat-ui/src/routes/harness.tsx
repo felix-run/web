@@ -219,13 +219,13 @@ function LedgerPanel() {
 }
 
 function ManifestsPanel() {
-  const { refreshCanary } = useShell();
+  const { refreshCanary, manifestOptions } = useShell();
   const { agent } = useHarnessAgent();
   // The header badge reports the rollout this panel can change, so leaving is
   // what re-reads it. As a sheet this hung off `onOpenChange`; the route
   // equivalent of closing is unmounting.
   useEffect(() => refreshCanary, [refreshCanary]);
-  return <ManifestsSheet manifest={agent} />;
+  return <ManifestsSheet manifest={agent} bundled={manifestOptions} />;
 }
 
 function JobsPanel() {
