@@ -721,9 +721,7 @@ export function UsageSection({
     <Section
       icon={<CoinsIcon className="size-3.5" />}
       title="Usage"
-      // The window rides with the total: "12.4k tokens" alone does not say over
-      // what, and the header is read without the body under it.
-      meta={summary ? `${compact(totals.in + totals.out)} tokens · last ${days} days` : undefined}
+      meta={summary ? usageHeader(totals, days) : undefined}
       metaAsOf={error ? lastOkAt : undefined}
       open={open}
       onToggle={onToggle}
@@ -957,6 +955,24 @@ export function byModel(summary: UsageSummary): Array<{
   return [...rows.values()]
     .map((r) => ({ ...r, unpriced: r.cost === 0 && r.tokens > 0 }))
     .sort((a, b) => b.cost - a.cost || b.tokens - a.tokens);
+}
+
+/**
+ * The Usage header's value: what it cost, then how much, then over what.
+ *
+ * Cost leads because it is the question PRODUCT.md names — "what did it cost" —
+ * and the header is read without the body under it; it led with tokens, so the
+ * dollar figure was only in the body's third column. The window still rides with
+ * the total, since "$79.50" alone does not say over what. A floor stays a floor:
+ * when any turn in the window was unpriced the cost is marked `≥`, as the body's
+ * "Cost (floor)" is, rather than presented as the total.
+ */
+export function usageHeader(
+  totals: { in: number; out: number; cost: number; unpriced: number },
+  days: number,
+): string {
+  const cost = `${totals.unpriced > 0 ? '≥ ' : ''}${usd(totals.cost)}`;
+  return `${cost} · ${compact(totals.in + totals.out)} tokens · last ${days} days`;
 }
 
 /** The window the harness answered for, in whole days, for a label. */
