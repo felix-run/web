@@ -24,7 +24,7 @@ import {
   UsageSection,
 } from '@/components/harness/ledger';
 import { MemorySection } from '@/components/harness/memory';
-import { PageBack, PageHeader, Panel } from '@/components/harness/panel';
+import { DOCS_ORIGIN, PageBack, PageDocs, PageHeader, Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';
 import {
   isFailure,
@@ -184,6 +184,9 @@ function LedgerPanel() {
         <PageHeader
           icon={<ActivityIcon />}
           title="Ledger"
+          // The half being read decides the reference: Activity is `/audit`,
+          // Usage is `/usage`, and they are separate sections of the docs.
+          docs={LEDGER_DOCS[half]}
           value={withAge(meta.meta, meta.metaAsOf)}
           valueLead={meta.metaLead}
           valueTone={meta.metaTone}
@@ -262,16 +265,35 @@ function AgentPanel() {
  * operator changes what the next run does. Eight equal rows made the reader sort
  * them on every visit; two labelled runs have already been sorted.
  */
+const MANAGEMENT_API = `${DOCS_ORIGIN}/guide/management-api/`;
+const MANIFEST_REFERENCE = `${DOCS_ORIGIN}/guide/manifest-reference/`;
+
+/** The Ledger's two halves read different routes, documented in different sections. */
+export const LEDGER_DOCS = {
+  activity: `${MANAGEMENT_API}#audit`,
+  usage: `${MANAGEMENT_API}#usage`,
+} as const;
+
 export const HARNESS_DESTINATIONS: {
   path: string;
   label: string;
   icon: LucideIcon;
   group: 'records' | 'workbenches';
+  /** The reference for what this page shows; `tests/docs-links.test.ts` checks it exists. */
+  docs: string;
   element: React.ReactNode;
 }[] = [
-  { path: 'memory', label: 'Memory', icon: BrainIcon, group: 'records', element: <MemoryPanel /> },
+  {
+    path: 'memory',
+    docs: `${MANAGEMENT_API}#memory`,
+    label: 'Memory',
+    icon: BrainIcon,
+    group: 'records',
+    element: <MemoryPanel />,
+  },
   {
     path: 'corpus',
+    docs: `${MANAGEMENT_API}#documents`,
     label: 'Corpus',
     icon: BookOpenIcon,
     group: 'records',
@@ -279,6 +301,7 @@ export const HARNESS_DESTINATIONS: {
   },
   {
     path: 'skills',
+    docs: `${MANAGEMENT_API}#skills`,
     label: 'Skills',
     icon: SparklesIcon,
     group: 'records',
@@ -286,23 +309,40 @@ export const HARNESS_DESTINATIONS: {
   },
   {
     path: 'ledger',
+    docs: `${MANAGEMENT_API}#audit`,
     label: 'Ledger',
     icon: ActivityIcon,
     group: 'records',
     element: <LedgerPanel />,
   },
   // A record, not a workbench: it reads the resolved spec and changes nothing.
-  { path: 'agent', label: 'Agent', icon: BotIcon, group: 'records', element: <AgentPanel /> },
+  {
+    path: 'agent',
+    docs: `${MANIFEST_REFERENCE}`,
+    label: 'Agent',
+    icon: BotIcon,
+    group: 'records',
+    element: <AgentPanel />,
+  },
   {
     path: 'manifests',
+    docs: `${MANAGEMENT_API}#manifests`,
     label: 'Manifests',
     icon: GitBranchIcon,
     group: 'workbenches',
     element: <ManifestsPanel />,
   },
-  { path: 'jobs', label: 'Jobs', icon: ClockIcon, group: 'workbenches', element: <JobsPanel /> },
+  {
+    path: 'jobs',
+    docs: `${MANAGEMENT_API}#jobs`,
+    label: 'Jobs',
+    icon: ClockIcon,
+    group: 'workbenches',
+    element: <JobsPanel />,
+  },
   {
     path: 'eval',
+    docs: `${MANAGEMENT_API}#eval`,
     label: 'Eval',
     icon: FlaskConicalIcon,
     group: 'workbenches',
@@ -507,7 +547,8 @@ export function HarnessLayout() {
   const wide = useMediaQuery('(min-width: 768px)');
   const atIndex = !!useMatch('/harness');
   const at = useMatch('/harness/:destination')?.params.destination;
-  const place = HARNESS_DESTINATIONS.find((d) => d.path === at)?.label ?? 'Harness';
+  const destination = HARNESS_DESTINATIONS.find((d) => d.path === at);
+  const place = destination?.label ?? 'Harness';
   const { search } = useHarnessAgent();
 
   // The tab strip names the page: eight open destinations all read "Felix chat".
@@ -550,7 +591,9 @@ export function HarnessLayout() {
     return (
       <PageBack.Provider value={{ to: `/harness${search}`, label: 'Back to Harness' }}>
         <main className="flex min-h-0 flex-1 flex-col">
-          <Outlet />
+          <PageDocs.Provider value={destination?.docs ?? null}>
+            <Outlet />
+          </PageDocs.Provider>
         </main>
       </PageBack.Provider>
     );
@@ -562,7 +605,9 @@ export function HarnessLayout() {
         <HarnessNav />
       </div>
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <Outlet />
+        <PageDocs.Provider value={destination?.docs ?? null}>
+          <Outlet />
+        </PageDocs.Provider>
       </main>
     </div>
   );
