@@ -241,7 +241,10 @@ describe('a failed poll keeps what it last knew', () => {
       </SectionBody>,
     );
     expect(screen.getByText('a fact')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toMatch(/Showing what it said/);
+    const alert = screen.getByRole('alert');
+    expect(alert.parentElement?.textContent).toMatch(/Showing what it said/);
+    // The age ticks every minute; inside the alert, each tick was re-announced.
+    expect(alert.textContent).not.toMatch(/Showing what it said/);
   });
 
   it('ages a header value whose latest read failed', async () => {

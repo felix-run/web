@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { glanceOf, recentFailures } from '../src/routes/harness';
+import { eventHelp, recentFailures } from '../src/components/harness/ledger';
+import { glanceOf } from '../src/routes/harness';
 
 /**
  * The rail's glances. Absence is the rail's all-clear, so every way a read can
@@ -103,5 +104,18 @@ describe('recentFailures', () => {
 
   it('clears once the last failure ages out, with nothing newer', () => {
     expect(recentFailures([{ status: 'error', ts: hours(24.1) }], now)).toBe(0);
+  });
+});
+
+/**
+ * A failed call's detail used to read "The agent called a tool." — the same line
+ * as a call that worked. The audit row records which call failed and not why.
+ */
+describe('eventHelp', () => {
+  it('says where the reason lives for a failed call, and not for a good one', () => {
+    expect(eventHelp({ event_type: 'tool_call', status: 'error' })).toMatch(
+      /keeps which call failed, not why/,
+    );
+    expect(eventHelp({ event_type: 'tool_call', status: 'ok' })).toBe('The agent called a tool.');
   });
 });

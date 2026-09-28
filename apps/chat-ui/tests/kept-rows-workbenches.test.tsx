@@ -41,7 +41,7 @@ describe('Manifests', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear canary' }));
 
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/Showing what it said/),
+      expect(screen.getByRole('alert').parentElement?.textContent).toMatch(/Showing what it said/),
     );
     // The list it last had is still on screen, and the header says how old it is.
     expect(screen.getByRole('button', { name: /quick/, pressed: true })).toBeTruthy();
@@ -126,7 +126,9 @@ describe('Eval', () => {
 
     await waitFor(() =>
       expect(
-        screen.getAllByRole('alert').some((a) => /Showing what it said/.test(a.textContent ?? '')),
+        screen
+          .getAllByRole('alert')
+          .some((a) => /Showing what it said/.test(a.parentElement?.textContent ?? '')),
       ).toBe(true),
     );
     expect(screen.getByRole('button', { name: 'golden' })).toBeTruthy();

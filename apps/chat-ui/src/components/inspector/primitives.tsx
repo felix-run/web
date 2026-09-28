@@ -198,8 +198,8 @@ export function Section({
         />
         {/* Held to the reading measure like every `/harness` page. A section is
             never a full-bleed page, so it takes the constant rather than asking. */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className={cn('p-4', READING_MEASURE)}>{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className={READING_MEASURE}>{children}</div>
         </div>
       </section>
     );
@@ -361,13 +361,13 @@ export function StaleNotice({
 }) {
   const described = describeError(error, doing);
   return (
-    <div
-      role="alert"
-      className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-state-failed"
-    >
+    <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-state-failed">
       <CircleAlertIcon aria-hidden className="size-3.5 shrink-0" />
+      {/* Only the failure is the alert. The age sat inside it, and an alert whose
+          text changes every minute is re-announced every minute — an assertive
+          interruption per tick for as long as the poll kept failing. */}
       <span>
-        {described.message} Showing what it said {relativeTime(lastOkAt)}.
+        <span role="alert">{described.message}</span> Showing what it said {relativeTime(lastOkAt)}.
       </span>
       {onRetry && (
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onRetry}>

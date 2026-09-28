@@ -398,8 +398,11 @@ export function plural(n: number, one: string, many = `${one}s`, cap?: number): 
 export function PanelBody({ children, className }: { children: ReactNode; className?: string }) {
   const measure = useMeasure();
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className={cn('p-4', measure, className)}>{children}</div>
+    // Padding outside the measure, as `PageHeader` has it: inside, the rows
+    // came out 32px narrower than the header row and ended short of the
+    // controls that act on them. The Ledger's tabs were the one page right.
+    <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className={cn(measure, className)}>{children}</div>
     </div>
   );
 }
