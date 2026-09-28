@@ -291,6 +291,57 @@ describe('approvals', () => {
     expect(engine.state.approvals).toEqual([]);
   });
 
+  /**
+   * Production listed a `write_file` as pending twenty-nine hours past its
+   * ten-minute deadline — a durable worker that ended mid-wait never wrote the
+   * timeout back. A row nobody can answer must not be offered or counted.
+   */
+  it('never adopts a pending row whose deadline has passed', async () => {
+    const now = Date.now();
+    stubFetch((url) =>
+      url.includes('/approvals')
+        ? new Response(
+            JSON.stringify({
+              requests: [
+                {
+                  id: 'stale',
+                  status: 'pending',
+                  tool_name: 'write_file',
+                  args: { path: 'a.txt' },
+                  created_at: now - 30 * 3_600_000,
+                  expires_at: now - 29 * 3_600_000,
+                },
+                {
+                  id: 'untimed',
+                  status: 'pending',
+                  tool_name: 'local_shell',
+                  args: { command: 'ls' },
+                  created_at: now - 600_000, // past the harness's five-minute default
+                  expires_at: null,
+                },
+                {
+                  id: 'live',
+                  status: 'pending',
+                  tool_name: 'local_shell',
+                  args: { command: 'ls' },
+                  created_at: now,
+                  expires_at: now + 60_000,
+                },
+              ],
+            }),
+          )
+        : new Response('{}'),
+    );
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+    });
+
+    await engine.syncApprovals();
+
+    expect(engine.state.approvals.map((a) => a.approvalId)).toEqual(['live']);
+  });
+
   it('keeps the queue when the poll itself fails', async () => {
     let fail = false;
     stubFetch((url) =>
@@ -433,14 +484,14 @@ describe('a durable run', () => {
                   args: { path: 'notes/todo.md', content: 'do the thing' },
                   principal_subj: 'fiber',
                   status: 'pending',
-                  created_at: 1,
+                  created_at: Date.now(),
                   decided_at: null,
                   decided_by: '',
                   decision_note: '',
                   edited_args: null,
                   rule_id: 'workspace-write',
                   ttl_seconds: 600,
-                  expires_at: 600_001,
+                  expires_at: Date.now() + 600_000,
                   consumed_at: null,
                   thread_id: 'default:t1',
                 },
@@ -513,14 +564,14 @@ describe('a durable run', () => {
                   args: { command: 'ls' },
                   principal_subj: 'fiber',
                   status: 'pending',
-                  created_at: 1,
+                  created_at: Date.now(),
                   decided_at: null,
                   decided_by: '',
                   decision_note: '',
                   edited_args: null,
                   rule_id: 'client-shell',
                   ttl_seconds: 600,
-                  expires_at: 600_001,
+                  expires_at: Date.now() + 600_000,
                   consumed_at: null,
                 },
               ],

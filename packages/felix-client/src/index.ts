@@ -18,6 +18,7 @@ export {
   describeRefusal,
   formatArgsForEditing,
   formatCountdown,
+  isLapsedApproval,
   msUntilDecision,
   type PendingApproval,
   parseApprovalOutcome,

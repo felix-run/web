@@ -23,7 +23,7 @@ import {
   type ThinkingLevel,
   type ThreadHistory,
 } from '@felix/protocol';
-import type { ApprovalRequest } from './approvals';
+import { type ApprovalRequest, isLapsedApproval } from './approvals';
 import { createHttp, type FelixClientOptions } from './http';
 import { createManagementClient } from './management';
 import type { SessionSummary } from './session-log';
@@ -660,9 +660,12 @@ export function createFelixClient(opts: FelixClientOptions) {
       // spells them `{tenant}:{suffix}` and clients send and store the suffix.
       // Left raw, a caller building `/t/{thread_id}` would produce an address the
       // harness rejects for containing a colon.
-      return (body.requests ?? []).map((row) =>
-        row.thread_id ? { ...row, thread_id: threadSuffix(row.thread_id) } : row,
-      );
+      // A pending row past its deadline is dropped here, where both the engine
+      // and the attention line read it — see `isLapsedApproval`.
+      const now = Date.now();
+      return (body.requests ?? [])
+        .filter((row) => !isLapsedApproval(row, now))
+        .map((row) => (row.thread_id ? { ...row, thread_id: threadSuffix(row.thread_id) } : row));
     },
 
     /** POST /approvals/:id/decide → approve or deny a gated tool call. */
