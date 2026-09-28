@@ -1032,5 +1032,7 @@ export function usd(n: number): string {
 function compact(n: number): string {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
-  return `${(n / 1_000_000).toFixed(1)}m`;
+  // `M`, not `m`: lowercase is the SI prefix for milli, and "24.7m tokens"
+  // read as a fraction of one on the one page that has to be exact about size.
+  return `${(n / 1_000_000).toFixed(1)}M`;
 }

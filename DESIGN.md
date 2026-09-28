@@ -455,7 +455,9 @@ visible 11px labels that name their lists — Records (Memory, Corpus, Skills, L
 Workbenches (Manifests, Jobs, Eval) — split by a full-strength `border` rule. Every link is a Tab
 stop, with the arrow keys as an extra. The rail carries exactly two glances, in `state-failed`
 and only when non-zero: `Jobs · N failing` and `Ledger · N failed`, counted as those pages'
-headers count them. Every page header row is `min-h-8`, so the
+headers count them. Absence is the rail's all-clear, so it is drawn only for a read that
+answered: a failed read shows a muted `unchecked` (a word, not a hover-only `?`), and a count
+kept from an earlier read carries its age on screen (`3 failed · 2m`). Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
 controls — New chat and the session menu — and keeps the door back to Chat. Two controls have

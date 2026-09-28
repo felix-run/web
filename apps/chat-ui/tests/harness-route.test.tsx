@@ -413,6 +413,8 @@ describe('the harness address', () => {
         a.getAttribute('href')?.startsWith('/harness/jobs'),
       );
       expect(jobs?.querySelector('.sr-only')?.textContent).toBe(", Couldn't check jobs");
+      // Shown as a word, not a bare `?` whose meaning lived only in a hover title.
+      expect(jobs?.textContent).toContain('unchecked');
     });
   });
 
