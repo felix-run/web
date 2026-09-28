@@ -457,7 +457,11 @@ stop, with the arrow keys as an extra. The rail carries exactly two glances, in 
 and only when non-zero: `Jobs · N failing` and `Ledger · N failed`, counted as those pages'
 headers count them. Absence is the rail's all-clear, so it is drawn only for a read that
 answered: a failed read shows a muted `unchecked` (a word, not a hover-only `?`), and a count
-kept from an earlier read carries its age on screen (`3 failed · 2m`). Every page header row is `min-h-8`, so the
+kept from an earlier read carries its age on screen (`3 failed · 2m`). Every page header ends in a quiet
+`Docs ↗` text link to that page's reference on docs.felix.run (a new tab; the Ledger's follows
+its half), declared beside the destination and checked against the docs source by
+`tests/docs-links.test.ts`, so a renamed heading fails rather than landing at the top of a page.
+Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
 controls — New chat and the session menu — and keeps the door back to Chat. Two controls have

@@ -1,5 +1,11 @@
 import { Button } from '@felix/ui/button';
-import { ChevronLeftIcon, PlusIcon, TriangleAlertIcon, XIcon } from 'lucide-react';
+import {
+  ChevronLeftIcon,
+  ExternalLinkIcon,
+  PlusIcon,
+  TriangleAlertIcon,
+  XIcon,
+} from 'lucide-react';
 import { createContext, type ReactNode, useContext, useId } from 'react';
 import { Link } from 'react-router';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
@@ -73,6 +79,18 @@ export function useMeasure(): string {
  */
 export const PageBack = createContext<{ to: string; label: string } | null>(null);
 
+/** Where the docs site lives. Public, so one origin serves every deployment. */
+export const DOCS_ORIGIN = 'https://docs.felix.run';
+
+/**
+ * The docs page for whatever `/harness` destination is on screen, which its
+ * header links to. A context, set by the layout from the destination's own
+ * entry, so no page has to thread a URL through to the header it draws; a page
+ * whose reference depends on its own state (the Ledger's two halves) passes
+ * `docs` to `PageHeader` instead.
+ */
+export const PageDocs = createContext<string | null>(null);
+
 /**
  * The one header every `/harness` destination draws: icon · title · one
  * at-a-glance value, with any controls to the right — or on a second row when
@@ -110,6 +128,7 @@ export function PageHeader({
   valueMono,
   headingId,
   controls,
+  docs,
 }: {
   icon: ReactNode;
   title: string;
@@ -129,9 +148,15 @@ export function PageHeader({
   valueMono?: boolean;
   headingId?: string;
   controls?: ReactNode;
+  /** A docs URL, overriding the destination's own (`PageDocs`). */
+  docs?: string;
 }) {
   const measure = useMeasure();
   const back = useContext(PageBack);
+  // Read unconditionally: `docs ?? useContext(...)` would call the hook on
+  // some renders and not others.
+  const destinationDocs = useContext(PageDocs);
+  const docsHref = docs ?? destinationDocs;
   return (
     <header className="shrink-0 border-b border-border/60 px-4 py-3">
       {/* `min-h-8`: the height of the tallest control a header carries, so the
@@ -179,7 +204,32 @@ export function PageHeader({
             {value}
           </span>
         ) : null}
-        {controls ? <div className="ml-auto flex items-center gap-2">{controls}</div> : null}
+        {controls || docsHref ? (
+          <div className="ml-auto flex items-center gap-2">
+            {controls}
+            {/*
+              Last, and quiet: the reference for what this page shows — which
+              route it reads, what its fields mean. The operator configured the
+              harness and does not need it daily, which is why it is a text link
+              at the end rather than anything louder; but a page that says
+              "metered but unpriced" or "soft forget" should say where that is
+              written down. A new tab, because this page is an instrument that is
+              often mid-read.
+            */}
+            {docsHref && (
+              <a
+                href={docsHref}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`${title} in the docs (opens in a new tab)`}
+                className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              >
+                Docs
+                <ExternalLinkIcon aria-hidden className="size-3" />
+              </a>
+            )}
+          </div>
+        ) : null}
       </div>
     </header>
   );
