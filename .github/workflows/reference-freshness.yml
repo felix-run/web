@@ -24,7 +24,14 @@ jobs:
         run: |
           set -euo pipefail
           live=$(curl -fsS --max-time 20 https://api.felix.run/health | jq -r .version)
-          docs=$(curl -fsS --max-time 20 https://docs.felix.run/api-version.txt | tr -d '[:space:]')
+          # A 404 is a docs deploy that predates /reference/, not an outage: say
+          # what fixes it rather than dying on curl's exit code under `set -e`.
+          status=$(curl -sS --max-time 20 -o version.txt -w '%{http_code}' https://docs.felix.run/api-version.txt)
+          case "$status" in
+            200) docs=$(tr -d '[:space:]' < version.txt) ;;
+            404) echo "::error::docs.felix.run has no API reference deployed (api-version.txt is 404), production is v$live — run \`pnpm docs:deploy\`"; exit 1 ;;
+            *) echo "::error::docs.felix.run/api-version.txt answered $status"; exit 1 ;;
+          esac
           echo "api.felix.run runs v$live; docs.felix.run/reference/ shows v$docs"
           curl -fsSL --max-time 20 -o /dev/null \
             "https://github.com/felix-run/felix/releases/download/v${live}/openapi.json" || {
