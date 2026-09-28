@@ -16,7 +16,12 @@ import { getResolvedManifest, listAudit, listJobs } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { DocumentsSection } from '@/components/harness/corpus';
-import { HarnessAgentPicker, keepAgent, useHarnessAgent } from '@/components/harness/harness-agent';
+import {
+  HarnessAgentPicker,
+  keepAgent,
+  modelsById,
+  useHarnessAgent,
+} from '@/components/harness/harness-agent';
 import {
   ACTIVITY_FETCH,
   ActivitySection,
@@ -222,13 +227,19 @@ function LedgerPanel() {
 }
 
 function ManifestsPanel() {
-  const { refreshCanary, manifestOptions } = useShell();
+  const { refreshCanary, manifestOptions, manifestEntries } = useShell();
   const { agent } = useHarnessAgent();
   // The header badge reports the rollout this panel can change, so leaving is
   // what re-reads it. As a sheet this hung off `onOpenChange`; the route
   // equivalent of closing is unmounting.
   useEffect(() => refreshCanary, [refreshCanary]);
-  return <ManifestsSheet manifest={agent} bundled={manifestOptions} />;
+  return (
+    <ManifestsSheet
+      manifest={agent}
+      bundled={manifestOptions}
+      providerModels={modelsById(manifestEntries)}
+    />
+  );
 }
 
 function JobsPanel() {
