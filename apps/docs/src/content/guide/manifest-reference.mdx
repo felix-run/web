@@ -983,12 +983,26 @@ Screens tool **output** for prompt injection before the model sees it.
 | `tools` | string[] | `[]` | Screened **in addition to** every untrusted tool — anything not executing in-process: MCP, peers, browser, sandbox, container, queue, fetch, any plugin transport — which is always screened. |
 | `on_flag` | `quarantine` \| `block` | `quarantine` | Applies to output that is flagged **and** to output that could not be screened. |
 | `decider` | bool | `false` | Also ask [`spec.decider`](#specdecider): injection, jailbreak and exfiltration in one call. |
+| `model_tools` | string[] (globs) | `[]` | Which screened tools get the **paid** scoring — `model` and `decider`. Empty = every screened tool. Needs `model` or `decider: true`. |
 
 `decider` is **additive**: the markers run first, `model` runs beside it, either one flagging flags,
 and either one unable to run leaves the text unscreened rather than cleared. A decider is not
 adversarially robust, so it is an extra net, never a replacement for the model screener. The model
 screener and the decider read tool output and user turns window by window across the whole text;
 output longer than eight windows (32,000 characters) is reported unavailable, so `on_flag` decides.
+
+`model_tools` is a cost lever, not an exemption. The model screener and the decider cost a call
+per window, so a manifest binding twenty MCP tools pays twenty a turn; `model_tools` names the
+ones worth paying for. The marker scan still runs on **every** screened tool, so an untrusted tool
+left out of `model_tools` is screened by markers alone — never unscreened. A pattern matching no
+bound tool is counted as `felix_rule_targets_nothing`.
+
+```yaml
+content_screening:
+  enabled: true
+  decider: true
+  model_tools: ["github__get_*", "browser__*"]
+```
 
 Inbound user turns are screened on `/chat`, `/v1` and `/a2a` as well.
 
