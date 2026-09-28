@@ -3,6 +3,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/c
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
+import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
 import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useCallback, useEffect, useState } from 'react';
@@ -19,6 +20,7 @@ import { ErrorNotice } from '@/components/error-notice';
 import {
   CREATE_FORM,
   CreateToggle,
+  PageEmpty,
   PageHeader,
   PageSection,
   Panel,
@@ -234,9 +236,20 @@ export function EvalSheet({
         ) : // Only once a list has answered: "No datasets yet" under a first read
         // that failed says the tenant has none *and* that nobody could check.
         // After a good read it is the last answer, and the line above says so.
-        loaded && !naming ? (
-          <p className="mb-5 text-sm text-muted-foreground">No datasets yet.</p>
-        ) : null}
+        loaded ? (
+          naming ? null : (
+            <div className="mb-5">
+              <PageEmpty>
+                No datasets yet. A dataset is a set of prompts with rules; New dataset starts one.
+              </PageEmpty>
+            </div>
+          )
+        ) : listError ? null : (
+          <div className="mb-5 space-y-1.5">
+            <Skeleton className="h-8 w-full rounded-md" />
+            <Skeleton className="h-8 w-full rounded-md" />
+          </div>
+        )}
 
         {selected ? (
           <DatasetPanel

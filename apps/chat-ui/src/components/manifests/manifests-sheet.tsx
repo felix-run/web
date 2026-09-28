@@ -4,6 +4,7 @@ import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
+import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
 import { GitBranchIcon, PencilIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -21,6 +22,7 @@ import { ManifestItem } from '@/components/harness/harness-agent';
 import {
   CREATE_FORM,
   CreateToggle,
+  PageEmpty,
   PageHeader,
   PageSection,
   Panel,
@@ -357,10 +359,32 @@ export function ManifestsSheet({
             ))}
           </div>
         ) : loaded ? (
-          <p className="mb-5 text-sm text-muted-foreground">
-            No tenant-managed manifests yet. Import one to start its version log.
-          </p>
-        ) : null}
+          // Names what is running anyway. "0 manifests" beside a chat plainly
+          // running `contributor` read as the agents having gone missing; they
+          // are bundled files, which this page does not version until imported.
+          <div className="mb-5">
+            <PageEmpty>
+              No tenant-managed manifests yet.{' '}
+              {candidates.length > 0 ? (
+                <>
+                  <span className="font-mono">{candidates.join(', ')}</span>{' '}
+                  {candidates.length === 1 ? 'serves' : 'serve'} chat as bundled{' '}
+                  {candidates.length === 1 ? 'file' : 'files'}; import one to start its version log.
+                </>
+              ) : (
+                'Import one to start its version log.'
+              )}
+            </PageEmpty>
+          </div>
+        ) : listError ? null : (
+          // It drew nothing at all until the first read answered. A first read
+          // that failed has its own line above, and a skeleton under it would
+          // say the answer is still coming.
+          <div className="mb-5 space-y-1.5">
+            <Skeleton className="h-8 w-full rounded-md" />
+            <Skeleton className="h-8 w-full rounded-md" />
+          </div>
+        )}
 
         {selectedRow ? (
           <VersionsPanel

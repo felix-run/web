@@ -134,7 +134,7 @@ describe('a failed read after a good one', () => {
       await vi.advanceTimersByTimeAsync(4100);
     });
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/Showing what it said/),
+      expect(screen.getByRole('alert').parentElement?.textContent).toMatch(/Showing what it said/),
     );
     expect(screen.getByText('digest')).toBeTruthy();
     vi.useRealTimers();

@@ -26,18 +26,18 @@ import {
   ACTIVITY_FETCH,
   ActivitySection,
   AUDIT_POLL_KEY,
+  LEDGER_GLANCE_SPAN,
+  recentFailures,
   UsageSection,
 } from '@/components/harness/ledger';
 import { MemorySection } from '@/components/harness/memory';
 import { DOCS_ORIGIN, PageBack, PageDocs, PageHeader, Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';
 import {
-  isFailure,
   PanelModeProvider,
   relTime,
   type SectionMeta,
   SectionMetaSink,
-  tsToMs,
   withAge,
 } from '@/components/inspector/primitives';
 import { failing, JOBS_POLL_KEY, JobsSheet } from '@/components/jobs/jobs-sheet';
@@ -407,8 +407,6 @@ function walkNav(event: KeyboardEvent<HTMLElement>) {
  * no bound — "failing" is each job's current state, and it clears when a run
  * succeeds.
  */
-const LEDGER_GLANCE_MS = 24 * 60 * 60 * 1000;
-const LEDGER_GLANCE_SPAN = '24h';
 
 interface Glance {
   text: string;
@@ -472,12 +470,6 @@ export function glanceOf(
   }
   if (count === 0) return undefined;
   return { text: `${count} ${word}`, span, title: `${count} ${word}${within}`, tone: 'failed' };
-}
-
-/** Failures in the Ledger glance's window, which ends at `now`. */
-export function recentFailures(events: { status: string; ts: number }[], now: number): number {
-  const since = now - LEDGER_GLANCE_MS;
-  return events.filter((e) => isFailure(e.status) && e.ts != null && tsToMs(e.ts) >= since).length;
 }
 
 function useNavGlances(): Record<string, Glance | undefined> {

@@ -72,6 +72,24 @@ const EVENT_HELP: Record<string, string> = {
 };
 
 /**
+ * The help line for one event, which for a failed call has to say something the
+ * type's line cannot.
+ *
+ * A red row invites a click, and it used to answer "The agent called a tool." —
+ * the same words as a call that worked, at the one moment the operator leaned in.
+ * The harness computes the call's error code and records none of it: a
+ * `tool_call` row carries `tool`, `tool_call_id` and `thread_id`
+ * (`patterns/tool_runner.py`), so the honest answer is where the reason lives,
+ * not a guess at it.
+ */
+export function eventHelp(e: Pick<AuditEvent, 'event_type' | 'status'>): string | undefined {
+  if (e.event_type === 'tool_call' && e.status === 'error') {
+    return "The tool returned an error. The audit record keeps which call failed, not why; the tool's result is on its card in the thread.";
+  }
+  return EVENT_HELP[e.event_type];
+}
+
+/**
  * Tone for the one event worth interrupting a scan for.
  *
  * Colour here means run state, not event category. An earlier version gave each of six
@@ -169,6 +187,21 @@ const ACTIVITY_VISIBLE = 12;
  * Upstream allows up to 500.
  */
 export const ACTIVITY_FETCH = 60;
+/**
+ * The rail's Ledger glance counts failures in this window, where the page counts
+ * them over its last `ACTIVITY_FETCH` events — on a quiet tenant those span weeks,
+ * and one old failure kept the rail red for all of them. The header states both
+ * so the two numbers cannot read as a contradiction.
+ */
+export const LEDGER_GLANCE_MS = 24 * 60 * 60 * 1000;
+export const LEDGER_GLANCE_SPAN = '24h';
+
+/** Failures in the Ledger glance's window, which ends at `now`. */
+export function recentFailures(events: { status: string; ts: number }[], now: number): number {
+  const since = now - LEDGER_GLANCE_MS;
+  return events.filter((e) => isFailure(e.status) && e.ts != null && tsToMs(e.ts) >= since).length;
+}
+
 /** The key Activity and the rail's glance share their audit read under. */
 export const AUDIT_POLL_KEY = `audit:${ACTIVITY_FETCH}`;
 
@@ -229,6 +262,7 @@ export function ActivitySection({
   // The layer filter is client-side for a plainer reason: `control` lives inside the
   // payload, and `/audit` filters on columns.
   const failed = data?.filter((e) => isFailure(e.status)) ?? [];
+  const recent = recentFailures(data ?? [], Date.now());
   const visible = filterActivity(data ?? [], { failuresOnly, layer });
   const rows = showAll ? visible : visible.slice(0, ACTIVITY_VISIBLE);
   const firstThread = rows[0] ? threadOf(rows[0]) : null;
@@ -263,7 +297,16 @@ export function ActivitySection({
             } ·`
           : undefined
       }
-      meta={data ? `${failed.length} failed` : undefined}
+      // The window the rail counts in, beside the one this page counts in: "3
+      // failed" here over a rail showing nothing read as one of them being wrong.
+      // Said only when there are failures; "0 failed" needs no qualifier.
+      meta={
+        data
+          ? failed.length > 0
+            ? `${failed.length} failed · ${recent > 0 ? recent : 'none'} in ${LEDGER_GLANCE_SPAN}`
+            : '0 failed'
+          : undefined
+      }
       metaTone={failed.length > 0 ? 'failed' : 'default'}
       metaAsOf={error ? lastOkAt : undefined}
       open={open}
@@ -596,9 +639,7 @@ function ActivityDetail({ event: e }: { event: AuditEvent }) {
     <div className="mt-1 mb-2 ml-5 rounded-md bg-background px-2.5 py-2 text-xs">
       {/* What the event type means, on screen. It lived only in a `title`, which
           a keyboard or a touch screen never shows. */}
-      {EVENT_HELP[e.event_type] && (
-        <p className="mb-1.5 text-sm text-muted-foreground">{EVENT_HELP[e.event_type]}</p>
-      )}
+      {eventHelp(e) && <p className="mb-1.5 text-sm text-muted-foreground">{eventHelp(e)}</p>}
       {thread && (
         <p className="mb-1.5 text-sm">
           <Link to={`/t/${thread}`} className={cn(TEXT_BUTTON, 'text-foreground')}>
