@@ -72,18 +72,61 @@ const EVENT_HELP: Record<string, string> = {
 };
 
 /**
+ * What each `ToolErrorCode` means, for a failed call's row and its detail.
+ *
+ * The harness records the code on a failed `tool_call` row as `payload.error_code`
+ * (felix-run/felix#348) — the class of failure, never the message, which is the
+ * tool's own text and stays on its card in the thread. An older harness records
+ * none, and a code this table does not know is shown as the harness spelled it.
+ */
+const ERROR_CODE_LABEL: Record<string, string> = {
+  invalid_arguments: 'bad arguments',
+  transport_unavailable: 'unreachable',
+  provider_error: 'provider error',
+  timeout: 'timed out',
+  user_aborted: 'aborted',
+  rate_limited: 'rate-limited',
+  permission_denied: 'permission denied',
+  internal: 'internal error',
+};
+
+const ERROR_CODE_HELP: Record<string, string> = {
+  invalid_arguments: 'The tool rejected the arguments the model sent.',
+  transport_unavailable: "The tool's server or transport could not be reached.",
+  provider_error: 'The service behind the tool returned an error.',
+  timeout: 'The call ran past its deadline.',
+  user_aborted: 'The run was stopped while the call was in flight.',
+  rate_limited: 'The service behind the tool refused the call as over its rate limit.',
+  permission_denied:
+    'The call was refused for lack of permission — by the filesystem or by the service behind the tool.',
+  internal: 'The tool failed in an unexpected way.',
+};
+
+/** The harness's error class for a failed call, when it recorded one. */
+export function errorCodeOf(e: Pick<AuditEvent, 'payload'>): string | undefined {
+  const code = e.payload?.error_code;
+  return typeof code === 'string' && code !== '' ? code : undefined;
+}
+
+/**
  * The help line for one event, which for a failed call has to say something the
  * type's line cannot.
  *
  * A red row invites a click, and it used to answer "The agent called a tool." —
  * the same words as a call that worked, at the one moment the operator leaned in.
- * The harness computes the call's error code and records none of it: a
- * `tool_call` row carries `tool`, `tool_call_id` and `thread_id`
- * (`patterns/tool_runner.py`), so the honest answer is where the reason lives,
- * not a guess at it.
+ * With the harness's error class it says which kind of failure this was; without
+ * one (a harness older than felix-run/felix#348) it says where the reason lives
+ * rather than guessing at it. Either way the message itself is on the tool card.
  */
-export function eventHelp(e: Pick<AuditEvent, 'event_type' | 'status'>): string | undefined {
+export function eventHelp(
+  e: Pick<AuditEvent, 'event_type' | 'status' | 'payload'>,
+): string | undefined {
   if (e.event_type === 'tool_call' && e.status === 'error') {
+    const code = errorCodeOf(e);
+    const known = code ? ERROR_CODE_HELP[code] : undefined;
+    if (known) return `${known} The full message is on the call's card in the thread.`;
+    if (code)
+      return `The tool failed with \`${code}\`. The full message is on the call's card in the thread.`;
     return "The tool returned an error. The audit record keeps which call failed, not why; the tool's result is on its card in the thread.";
   }
   return EVENT_HELP[e.event_type];
@@ -494,6 +537,7 @@ function ActivityRow({
   const failedRow = isFailure(e.status);
   const text = summary(e);
   const control = e.event_type === 'policy_deny' ? controlOf(e) : undefined;
+  const errorCode = e.event_type === 'tool_call' && failedRow ? errorCodeOf(e) : undefined;
 
   return (
     <li>
@@ -565,6 +609,13 @@ function ActivityRow({
                 // guess.
                 <span className="shrink-0 text-xs text-muted-foreground">
                   by {CONTROL_LABEL[control] ?? control}
+                </span>
+              )}
+              {errorCode && (
+                // Why it failed, next to what failed — the same place a denial says
+                // which layer refused. The class only; the message is on the card.
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {ERROR_CODE_LABEL[errorCode] ?? errorCode}
                 </span>
               )}
               {thread && (
