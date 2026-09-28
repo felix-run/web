@@ -13,6 +13,7 @@ import { ErrorNotice } from '@/components/error-notice';
 import {
   CREATE_FORM,
   CreateToggle,
+  PageEmpty,
   PageHeader,
   PageSection,
   Panel,
@@ -329,10 +330,10 @@ export function JobsSheet({
           {/* The page's one explanation lives here now, where it is needed: the
                 header lost its subline, and a page with jobs on it explains itself. */}
           {data && jobs.length === 0 && (
-            <p className="max-w-prose text-sm text-muted-foreground">
+            <PageEmpty>
               No jobs yet. A job is an agent run the worker starts on a cron schedule; once one
               exists, its recent runs are a click away on its row.
-            </p>
+            </PageEmpty>
           )}
           {jobs.map((j) => (
             <div

@@ -22,6 +22,12 @@ export interface PendingApprovals {
   pending: ApprovalRequest[];
   error: unknown;
   lastOkAt: number | null;
+  /**
+   * Failed ticks in a row since the last good one. One is usually the harness
+   * shedding a burst (a 429) and the next tick answers; a consumer that turns
+   * red on the first cried wolf every time. Two is a failure worth a colour.
+   */
+  failures: number;
   refresh: () => void;
 }
 
@@ -41,12 +47,14 @@ export function usePendingApprovals(): PendingApprovals {
   const [pending, setPending] = useState<ApprovalRequest[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  const [failures, setFailures] = useState(0);
 
   const refresh = useCallback(() => {
     void listApprovals('pending')
       .then((rows) => {
         setPending(rows);
         setError(null);
+        setFailures(0);
         setLastOkAt(Date.now());
       })
       // No toast: the harness being unreachable is already reported by the
@@ -54,7 +62,10 @@ export function usePendingApprovals(): PendingApprovals {
       // purpose, and a toast per failed background tick would be a second,
       // louder channel for something they did not ask for. Not silent, though —
       // the failure is state, and the line says it in words.
-      .catch((err: unknown) => setError(err ?? new Error('approvals poll failed')));
+      .catch((err: unknown) => {
+        setError(err ?? new Error('approvals poll failed'));
+        setFailures((n) => n + 1);
+      });
   }, []);
 
   useEffect(() => {
@@ -63,5 +74,5 @@ export function usePendingApprovals(): PendingApprovals {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  return { pending, error, lastOkAt, refresh };
+  return { pending, error, lastOkAt, failures, refresh };
 }

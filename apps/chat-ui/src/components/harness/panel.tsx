@@ -60,6 +60,27 @@ export function Panel({
  */
 export const READING_MEASURE = 'max-w-3xl';
 
+/**
+ * What a `/harness` page draws where its rows would be, when there are none.
+ *
+ * It was one muted sentence at the top-left of the measure, which in a
+ * disclosure row is right and on a page three times that wide is a line
+ * floating in a void — the page read as unfinished rather than as empty. The
+ * frame takes the measure's full width and a list's worth of height, so the
+ * sentence sits in the space the rows will occupy and says that is what it is.
+ * Dashed, because a solid border is how this app draws a thing that exists.
+ */
+export function PageEmpty({ children }: { children: ReactNode }) {
+  return (
+    <div
+      data-page-empty
+      className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-border px-6 py-10"
+    >
+      <p className="max-w-prose text-center text-sm text-muted-foreground">{children}</p>
+    </div>
+  );
+}
+
 const FullBleed = createContext(false);
 
 /** The measure this page's rows take: `READING_MEASURE`, unless it opted out. */

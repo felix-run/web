@@ -37,6 +37,7 @@ import {
   relTime,
   type SectionMeta,
   SectionMetaSink,
+  tsToMs,
   withAge,
 } from '@/components/inspector/primitives';
 import { failing, JOBS_POLL_KEY, JobsSheet } from '@/components/jobs/jobs-sheet';
@@ -392,12 +393,23 @@ function walkNav(event: KeyboardEvent<HTMLElement>) {
 }
 
 /**
- * The two states on the rail worth a glance: jobs that are failing, and failures
- * in the Ledger's window — counted exactly as those pages' headers count them,
- * from the same reads. They poll behind two links, which the rail used to avoid
- * on purpose; the trade is that someone coming back sees where to go first
- * without opening eight pages, which is what "legible on return" asks.
+ * The two states on the rail worth a glance: jobs that are failing, and recent
+ * failures in the Ledger — from the same reads those pages make. They poll
+ * behind two links, which the rail used to avoid on purpose; the trade is that
+ * someone coming back sees where to go first without opening eight pages, which
+ * is what "legible on return" asks.
+ *
+ * The Ledger's is bounded by time, where its page's header is bounded by count.
+ * The page counts failures in its last `ACTIVITY_FETCH` events, which is right
+ * for a page you are reading and wrong for a marker that means "go look": on a
+ * quiet tenant sixty events can span weeks, so one failure from last month kept
+ * the rail red indefinitely and the marker stopped meaning anything. Jobs need
+ * no bound — "failing" is each job's current state, and it clears when a run
+ * succeeds.
  */
+const LEDGER_GLANCE_MS = 24 * 60 * 60 * 1000;
+const LEDGER_GLANCE_SPAN = '24h';
+
 interface Glance {
   text: string;
   /**
@@ -406,6 +418,11 @@ interface Glance {
    * looked exactly like a current one.
    */
   age?: string;
+  /**
+   * The window a count covers, drawn beside it — `24h` — so the rail's number
+   * does not read as a contradiction of the page's, which counts a longer one.
+   */
+  span?: string;
   /** Spoken, and shown on hover: the full reading the short text abbreviates. */
   title: string;
   /** A count of failures, or an honest "could not check". */
@@ -426,7 +443,9 @@ export function glanceOf(
   count: number,
   word: string,
   noun: string,
+  span?: string,
 ): Glance | undefined {
+  const within = span ? ` in the last ${span}` : '';
   if (poll.error) {
     const since = poll.lastOkAt != null ? relTime(poll.lastOkAt) : null;
     const ago = since === 'now' ? 'just now' : `${since} ago`;
@@ -439,7 +458,7 @@ export function glanceOf(
         // keyboard, a touch screen or the phone-width list never shows.
         text: 'unchecked',
         title: since
-          ? `Couldn't check ${noun}; last answered ${ago} with none`
+          ? `Couldn't check ${noun}; last answered ${ago} with none${within}`
           : `Couldn't check ${noun}`,
         tone: 'unknown',
       };
@@ -447,12 +466,18 @@ export function glanceOf(
     return {
       text: `${count} ${word}`,
       age: since ?? undefined,
-      title: `${count} ${word}, as of ${ago} — the latest check failed`,
+      title: `${count} ${word}${within}, as of ${ago} — the latest check failed`,
       tone: 'failed',
     };
   }
   if (count === 0) return undefined;
-  return { text: `${count} ${word}`, title: `${count} ${word}`, tone: 'failed' };
+  return { text: `${count} ${word}`, span, title: `${count} ${word}${within}`, tone: 'failed' };
+}
+
+/** Failures in the Ledger glance's window, which ends at `now`. */
+export function recentFailures(events: { status: string; ts: number }[], now: number): number {
+  const since = now - LEDGER_GLANCE_MS;
+  return events.filter((e) => isFailure(e.status) && e.ts != null && tsToMs(e.ts) >= since).length;
 }
 
 function useNavGlances(): Record<string, Glance | undefined> {
@@ -463,10 +488,12 @@ function useNavGlances(): Record<string, Glance | undefined> {
     intervalMs: 30_000,
   });
   const failingJobs = (jobs.data ?? []).filter(failing).length;
-  const failedEvents = (audit.data ?? []).filter((e) => isFailure(e.status)).length;
+  // Measured against the clock at render, which the 30s poll re-runs, so a
+  // failure ages out within a tick of turning 24 hours old.
+  const failedEvents = recentFailures(audit.data ?? [], Date.now());
   return {
     jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
-    ledger: glanceOf(audit, failedEvents, 'failed', 'the ledger'),
+    ledger: glanceOf(audit, failedEvents, 'failed', 'the ledger', LEDGER_GLANCE_SPAN),
   };
 }
 
@@ -527,6 +554,12 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                             "couldn't check" that the short text abbreviates. */}
                         <span className="sr-only">, {glance[path]?.title}</span>
                         <span aria-hidden>{glance[path]?.text}</span>
+                        {glance[path]?.span && !glance[path]?.age && (
+                          <span aria-hidden className="font-normal text-muted-foreground">
+                            {' · '}
+                            {glance[path]?.span}
+                          </span>
+                        )}
                         {glance[path]?.age && (
                           <span aria-hidden className="font-normal text-muted-foreground">
                             {' · '}

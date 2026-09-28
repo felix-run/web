@@ -828,7 +828,9 @@ tab is the case this exists for. The shell's other approvals poll (`syncApproval
 **It never says the all-clear on a list it could not refresh.** The hook keeps the last list on a
 failed tick and reports `error` and `lastOkAt`; the line says *Checking approvals…* before the first
 answer and *Can't reach approvals* plus the answer's age after a failed one, keeping the last known
-count. Its failures used to be swallowed, and it read "Nothing waiting on you." with a green dot for
+count. A **single** failure straight after an answer reads *Rechecking approvals…* in neutral rather
+than red — one 429 is the harness shedding a burst, and red on every one taught the operator to
+ignore red — so the hook counts `failures` in a row and the line turns red on the second. Its failures used to be swallowed, and it read "Nothing waiting on you." with a green dot for
 as long as the harness answered the route with 429. The resting dot is neutral, not `state-done`.
 
 Two pieces of its copy are load-bearing. **"across the harness"** must not be edited out: a row
