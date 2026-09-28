@@ -495,14 +495,22 @@ function ActivityRow({
                 )
               )}
               {/* A tool name is a quotation of the harness, so it is mono (the
-                  Provenance Rule); a turn boundary is our own label and is not. */}
-              {/* A failed row's subject takes the failed colour, so the three rows the
+                  Provenance Rule); a turn boundary is our own label and is not.
+
+                  Ranked by what the row is. Turn boundaries — "Assistant reply",
+                  "User message" — are the routine frame of every run, so they
+                  recede: regular weight, muted. Tool calls are the mechanism this
+                  page exists to show, so they carry the row at body size. They
+                  were the other way round — turns at 13px medium, tools at 11px
+                  mono — which made the frame the loudest thing in the feed and
+                  the one failed call the smallest text on its own line. */}
+              {/* A failed row's subject takes the failed colour, so the rows the
                   header counts are found by eye rather than by a filter click. The
                   status word beside it still says why. */}
               <span
                 className={cn(
-                  'truncate font-medium',
-                  tool && 'font-mono text-xs',
+                  'truncate',
+                  tool ? 'font-mono font-medium' : 'text-muted-foreground',
                   failedRow && 'text-state-failed',
                 )}
               >

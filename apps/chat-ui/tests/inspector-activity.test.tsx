@@ -368,3 +368,23 @@ describe('middleTruncate', () => {
     expect(cut.endsWith('c3d4e5f6')).toBe(true);
   });
 });
+
+describe('the feed ranks the mechanism above the frame', () => {
+  it('sets a tool call at body size and lets a turn boundary recede', async () => {
+    // Turns were 13px medium and tool names 11px mono, so the routine frame was
+    // the loudest thing in the feed and a failed call the smallest text on its line.
+    stubHarness([
+      auditRow({ id: 't1', event_type: 'final_response', payload_json: {} }),
+      auditRow({ id: 't2', status: 'error', payload_json: { tool: 'run' } }),
+    ]);
+    renderInspector();
+    const turn = await screen.findByText('Assistant reply');
+    const tool = screen.getByText('run');
+    expect(turn.className).toMatch(/text-muted-foreground/);
+    expect(turn.className).not.toMatch(/font-medium/);
+    expect(tool.className).toMatch(/font-mono/);
+    expect(tool.className).not.toMatch(/text-xs/);
+    // A failed call keeps its colour over the ranking.
+    expect(tool.className).toMatch(/text-state-failed/);
+  });
+});
