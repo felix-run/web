@@ -16,7 +16,11 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-async function open(bundled: string[], managed: string[] = []) {
+async function open(
+  bundled: string[],
+  managed: string[] = [],
+  providerModels?: Map<string, string | undefined>,
+) {
   vi.doMock('../src/api', () => ({
     listTenantManifests: vi
       .fn()
@@ -28,7 +32,7 @@ async function open(bundled: string[], managed: string[] = []) {
     clearManifestCanary: vi.fn(),
   }));
   const { ManifestsSheet } = await import('../src/components/manifests/manifests-sheet');
-  render(<ManifestsSheet manifest="quick" bundled={bundled} />);
+  render(<ManifestsSheet manifest="quick" bundled={bundled} providerModels={providerModels} />);
   await waitFor(() => expect(document.querySelector('header')?.textContent).toMatch(/tenant/));
   fireEvent.click(screen.getByRole('button', { name: 'Import', expanded: false }));
 }
@@ -88,5 +92,30 @@ describe('importing a manifest', () => {
     expect(
       screen.getByText(/Every manifest the harness ships is already tenant-managed/),
     ).toBeTruthy();
+  });
+
+  it('says what each would run on, and keeps the trigger to the name', async () => {
+    // The provider model is what tells `cowork` from `cowork-fast`; `/v1/models`
+    // sends none when the model is the name, and then there is no second line.
+    await open(
+      ['cowork', 'claude-opus-4'],
+      [],
+      new Map([
+        ['cowork', 'claude-sonnet-4-5'],
+        ['claude-opus-4', undefined],
+      ]),
+    );
+    const user = userEvent.setup({ delay: null });
+    const trigger = screen.getByRole('combobox', { name: 'Manifest' });
+    await waitFor(async () => {
+      trigger.focus();
+      await user.keyboard('{Enter}');
+      expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
+    });
+    const [cowork, opus] = screen.getAllByRole('option');
+    expect(cowork?.textContent).toBe('coworkclaude-sonnet-4-5');
+    expect(opus?.textContent).toBe('claude-opus-4');
+    await user.click(screen.getByRole('option', { name: /cowork/ }));
+    expect(trigger.textContent).toBe('cowork');
   });
 });

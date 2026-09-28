@@ -17,6 +17,7 @@ import {
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
+import { ManifestItem } from '@/components/harness/harness-agent';
 import {
   CREATE_FORM,
   CreateToggle,
@@ -56,6 +57,7 @@ const OTHER = '__other__';
 export function ManifestsSheet({
   manifest,
   bundled = [],
+  providerModels,
 }: {
   manifest: string;
   /**
@@ -63,6 +65,8 @@ export function ManifestsSheet({
    * which is what Import copies into the tenant's version log.
    */
   bundled?: string[];
+  /** Provider model by name, so the list can say what each would run on. */
+  providerModels?: Map<string, string | undefined>;
 }) {
   const [rows, setRows] = useState<ManifestSummary[]>([]);
   /** Whether `rows` is an answer yet: `0 manifests` before the first list is a claim. */
@@ -247,13 +251,14 @@ export function ManifestsSheet({
                         size="sm"
                         className="mt-1 h-8 w-full font-mono text-sm data-[placeholder]:font-sans"
                       >
-                        <SelectValue placeholder="Choose a manifest" />
+                        {/* The name alone once chosen; the item carries the model too. */}
+                        <SelectValue placeholder="Choose a manifest">
+                          {importName || undefined}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {candidates.map((m) => (
-                          <SelectItem key={m} value={m} className="font-mono text-sm">
-                            {m}
-                          </SelectItem>
+                          <ManifestItem key={m} id={m} providerModel={providerModels?.get(m)} />
                         ))}
                         <SelectItem value={OTHER} className="text-sm">
                           Another name…
