@@ -22,7 +22,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `audit:read` | `/audit`, `/audit/metrics` |
 | `approvals:read` / `approvals:write` | read requests / decide them |
 | `plans:read` / `plans:write` | read plans / upsert and delete |
-| `jobs:read` / `jobs:write` | read jobs and runs / upsert and delete |
+| `jobs:read` / `jobs:write` | read jobs and runs / upsert, delete and run now |
 | `manifests:read` / `manifests:write` | read manifests / publish, canary, rollback |
 | `eval:read` / `eval:write` | read datasets and runs / write and run them |
 | `usage:read` | `/usage` |
@@ -429,6 +429,7 @@ means **`felix-scheduler` must be running alongside `felix-worker`**, or nothing
 | `GET` | `/jobs/{name}/runs` | `jobs:read` |
 | `PUT` | `/jobs/{name}` | `jobs:write` |
 | `DELETE` | `/jobs/{name}` | `jobs:write` |
+| `POST` | `/jobs/{name}/run` | `jobs:write` |
 
 ```bash
 curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
@@ -452,6 +453,28 @@ context. Both are fields on the web UI's job form, and a stored job's row says w
 in.
 
 Schedules use standard five-field cron — see [Deploy](/guide/deploy/#cron-schedules).
+
+### Run a job now
+
+`POST /jobs/{name}/run` runs the job immediately, without waiting for its schedule, and answers
+with the finished run — so a new job can be tried before it is left to cron:
+
+```bash
+curl -s -X POST "$BASE_URL/jobs/nightly-digest/run" -H "authorization: Bearer $FELIX_KEY" | jq
+```
+
+```json
+{ "tenant_id": "default", "job_name": "nightly-digest", "run_id": "3f2a…", "status": "ok", "error": "",
+  "started_at": 1790000000000, "finished_at": 1790000004210,
+  "result": { "status": "ok", "answer": "…", "trigger": "manual", "requested_by": "ops" } }
+```
+
+It runs exactly as a scheduled firing does: as the principal `cron` with no scopes — not as the
+caller — on the job's own thread, with its prompt screened like any user turn. Only the run record
+differs: `trigger` is `manual` (a scheduled run says `schedule`) and `requested_by` is the caller's
+subject. The schedule is not moved, and a **disabled job runs** when asked, since the call is
+explicit. It needs `jobs:write`, because whoever may rewrite a job's prompt may already make it
+run. An unknown job is `404`. The call is synchronous and lasts as long as the job's turn does.
 
 ## Manifests
 
@@ -479,6 +502,27 @@ curl -s "$BASE_URL/manifests/support?version=3" -H "authorization: Bearer $FELIX
 
 `GET /manifests/{name}` returns `{name, version, variant, manifest}`, where `variant` is `stable` or
 `canary`.
+
+`GET /manifests/{name}/versions` lists the stored versions — what a rollback can go back to —
+newest first, **without their bodies**:
+
+```bash
+curl -s "$BASE_URL/manifests/support/versions?limit=20" -H "authorization: Bearer $FELIX_KEY" | jq
+```
+
+```json
+{ "items": [
+    { "tenant_id": "default", "name": "support", "version": 8, "created_at": 1790000000000,
+      "created_by": "ops", "comment": "tighten the refund prompt", "active": false, "canary": true },
+    { "tenant_id": "default", "name": "support", "version": 7, "created_at": 1789000000000,
+      "created_by": "ops", "comment": "", "active": true, "canary": false } ],
+  "next_before": 7 }
+```
+
+`limit` is 1–200, default 50. Pass `before=<next_before>` for the next page; `next_before` is
+`null` on the last one. `active` and `canary` mark the versions the pointer currently names. Fetch a
+body with `?version=N`. Under `FELIX_MANIFEST_SOURCE=bundled` there are no stored versions and the
+list is empty.
 
 :::caution[Not always mounted]
 Under `FELIX_MANIFEST_SOURCE=bundled` the four write routes below — `PUT`, canary, rollback and
