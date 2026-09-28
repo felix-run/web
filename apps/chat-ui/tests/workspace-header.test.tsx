@@ -50,7 +50,13 @@ function mount() {
     forkThread: () => {},
     compactThread: () => {},
     exportThread: () => {},
-    tenantApprovals: { pending: [], error: null, lastOkAt: Date.now(), refresh: () => {} },
+    tenantApprovals: {
+      pending: [],
+      error: null,
+      lastOkAt: Date.now(),
+      failures: 0,
+      refresh: () => {},
+    },
   } as unknown as ShellValue;
   return render(
     <TooltipProvider>

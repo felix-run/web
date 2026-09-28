@@ -342,7 +342,40 @@ describe('when the line cannot see', () => {
     answer({ status: 429 });
     await tick();
     expect(status()).not.toMatch(/nothing waiting/i);
+    await tick();
+    expect(status()).toMatch(/approvals rate-limited/i);
     expect(screen.getByText(/^last answered /)).toBeTruthy();
+  });
+
+  /**
+   * One failed tick after an answer is a burst being shed, and the next tick
+   * nearly always answers. Red on it was a false alarm every time; the line says
+   * it is rechecking — never the all-clear — and turns red on a second failure.
+   */
+  it('rechecks, in neutral, on a single failure after an answer', async () => {
+    vi.useFakeTimers();
+    const answer = switchable({ status: 200, rows: [] });
+    const { container } = mount();
+    await settle();
+
+    answer({ status: 429 });
+    await tick();
+    expect(status()).toMatch(/rechecking approvals/i);
+    expect(status()).not.toMatch(/nothing waiting/i);
+    const dot = () => container.querySelector('[data-attention-dot]')?.className ?? '';
+    expect(dot()).not.toMatch(/state-failed/);
+    expect(screen.queryByText(/^last answered /)).toBeNull();
+
+    answer({ status: 200, rows: [] });
+    await tick();
+    expect(status()).toMatch(/nothing waiting/i);
+
+    // The count resets on an answer: one more failure is a recheck again, not red.
+    answer({ status: 429 });
+    await tick();
+    expect(status()).toMatch(/rechecking approvals/i);
+    await tick();
+    expect(dot()).toMatch(/state-failed/);
   });
 
   it('keeps the last known count, in the past tense, when the poll starts failing', async () => {
@@ -353,6 +386,8 @@ describe('when the line cannot see', () => {
     expect(status()).toContain('2 calls are waiting on you across the harness');
 
     answer({ status: 503 });
+    await tick();
+    expect(status()).toContain('2 calls were waiting on you across the harness · rechecking');
     await tick();
     expect(status()).toContain("Can't reach approvals");
     expect(status()).toContain('2 calls were waiting on you across the harness');

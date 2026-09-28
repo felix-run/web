@@ -6,7 +6,7 @@ import { ChevronRightIcon, CircleAlertIcon } from 'lucide-react';
 import { createContext, type ReactNode, useContext, useEffect } from 'react';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { ErrorNotice } from '@/components/error-notice';
-import { PageHeader, READING_MEASURE } from '@/components/harness/panel';
+import { PageEmpty, PageHeader, READING_MEASURE } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
 
 /**
@@ -275,6 +275,7 @@ export function SectionBody({
   lastOkAt?: number | null;
   children: React.ReactNode;
 }) {
+  const chrome = useContext(PanelMode);
   // A failed read *after* a good one keeps the good one. Swapping the list for
   // an error box threw away the last thing the harness said — the thing an
   // operator coming back would most want — and made a transient 429 look like
@@ -328,7 +329,14 @@ export function SectionBody({
           <Skeleton className="h-8 w-full rounded-md" />
         </div>
       )}
-      {!loading && empty && <p className="text-sm text-muted-foreground">{emptyText}</p>}
+      {/* A page frames its empty state; a disclosure row keeps it to a line. */}
+      {!loading &&
+        empty &&
+        (chrome === 'disclosure' ? (
+          <p className="text-sm text-muted-foreground">{emptyText}</p>
+        ) : (
+          <PageEmpty>{emptyText}</PageEmpty>
+        ))}
       {!loading && !empty && children}
     </>
   );

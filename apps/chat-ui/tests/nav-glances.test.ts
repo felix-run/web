@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { glanceOf } from '../src/routes/harness';
+import { glanceOf, recentFailures } from '../src/routes/harness';
 
 /**
  * The rail's glances. Absence is the rail's all-clear, so every way a read can
@@ -56,6 +56,22 @@ describe('glanceOf', () => {
     expect(g).toEqual({ text: '1 failing', title: '1 failing', tone: 'failed' });
   });
 
+  it('names the window a bounded count covers, beside it and in its title', () => {
+    const g = glanceOf(
+      { data: [1], error: null, lastOkAt: ago(1000) },
+      1,
+      'failed',
+      'the ledger',
+      '24h',
+    );
+    expect(g).toEqual({
+      text: '1 failed',
+      span: '24h',
+      title: '1 failed in the last 24h',
+      tone: 'failed',
+    });
+  });
+
   it('reads "just now", not "now ago", for an answer seconds old', () => {
     const g = glanceOf(
       { data: [], error: RATE_LIMITED, lastOkAt: ago(1000) },
@@ -64,5 +80,28 @@ describe('glanceOf', () => {
       'jobs',
     );
     expect(g?.title).toMatch(/last answered just now/);
+  });
+});
+
+/**
+ * The Ledger's glance is bounded by time. Counted over the page's last sixty
+ * events instead, one failure on a quiet tenant kept the rail red for weeks.
+ */
+describe('recentFailures', () => {
+  const now = Date.UTC(2026, 8, 27, 12);
+  const hours = (h: number) => (now - h * 3_600_000) / 1000; // the harness sends seconds
+
+  it('counts failures and denials inside the last 24 hours only', () => {
+    const events = [
+      { status: 'error', ts: hours(1) },
+      { status: 'denied', ts: hours(23) },
+      { status: 'ok', ts: hours(2) },
+      { status: 'error', ts: hours(25) },
+    ];
+    expect(recentFailures(events, now)).toBe(2);
+  });
+
+  it('clears once the last failure ages out, with nothing newer', () => {
+    expect(recentFailures([{ status: 'error', ts: hours(24.1) }], now)).toBe(0);
   });
 });

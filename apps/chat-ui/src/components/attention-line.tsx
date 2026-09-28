@@ -65,7 +65,7 @@ export function AttentionLine({
   /** The thread index, for naming an approval's thread rather than showing an id. */
   threads: ThreadMeta[];
 }) {
-  const { pending, error, lastOkAt, refresh } = approvals;
+  const { pending, error, lastOkAt, failures, refresh } = approvals;
   const [open, setOpen] = useState(() => {
     try {
       return localStorage.getItem(OPEN_KEY) === '1';
@@ -116,6 +116,14 @@ export function AttentionLine({
    */
   const stale = error != null;
   const unchecked = !stale && lastOkAt === null;
+  /**
+   * One failed tick right after an answer. Not the all-clear — the line still
+   * will not say "nothing waiting" over it — but not red either: a single 429
+   * is the harness shedding a burst, the next tick nearly always answers, and a
+   * line that flashed red on every one taught the operator to ignore the red.
+   * A second failure in a row, or a failure with no answer ever, is red.
+   */
+  const rechecking = stale && failures < 2 && lastOkAt !== null;
   const where = allOnThisThread ? 'on this thread' : 'across the harness';
   const calls = `${count} ${count === 1 ? 'call' : 'calls'}`;
   // A 429 is the harness answering, just not with the list. "Can't reach"
@@ -124,26 +132,31 @@ export function AttentionLine({
   // line cannot vouch that nothing is waiting.
   const limited = stale && /:\s*429\b/.test(String((error as Error)?.message ?? error));
   const failure = limited ? 'Approvals rate-limited' : "Can't reach approvals";
-  const summary = stale
+  const summary = rechecking
     ? waiting
-      ? `${failure} · ${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where}`
-      : failure
-    : unchecked
-      ? 'Checking approvals…'
-      : waiting
-        ? `${calls} ${count === 1 ? 'is' : 'are'} waiting on you ${where}`
-        : streaming
-          ? 'Working. Nothing waiting on you.'
-          : 'Nothing waiting on you.';
+      ? `${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where} · rechecking`
+      : 'Rechecking approvals…'
+    : stale
+      ? waiting
+        ? `${failure} · ${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where}`
+        : failure
+      : unchecked
+        ? 'Checking approvals…'
+        : waiting
+          ? `${calls} ${count === 1 ? 'is' : 'are'} waiting on you ${where}`
+          : streaming
+            ? 'Working. Nothing waiting on you.'
+            : 'Nothing waiting on you.';
   // Outside the live region: it changes on every failed tick, and a screen
   // reader re-reading the sentence for a clock would bury the change that matters.
-  const age = stale
-    ? lastOkAt === null
-      ? // Not "not checked yet": the check ran, which is how it failed. What has
-        // not happened is an answer, and that is the thing to say.
-        'no answer yet'
-      : `last answered ${relativeTime(lastOkAt)}`
-    : null;
+  const age =
+    stale && !rechecking
+      ? lastOkAt === null
+        ? // Not "not checked yet": the check ran, which is how it failed. What has
+          // not happened is an answer, and that is the thing to say.
+          'no answer yet'
+        : `last answered ${relativeTime(lastOkAt)}`
+      : null;
 
   /**
    * The dot follows the meaning, and the words always say it too. A known
@@ -155,7 +168,7 @@ export function AttentionLine({
    */
   const dot = waiting
     ? 'bg-state-blocked'
-    : stale
+    : stale && !rechecking
       ? 'bg-state-failed'
       : streaming
         ? 'bg-state-running'
@@ -184,8 +197,14 @@ export function AttentionLine({
           role="status"
           aria-live="polite"
           className={cn(
-            'min-w-0 flex-1 truncate',
-            waiting ? 'text-state-blocked' : stale ? 'text-state-failed' : 'text-muted-foreground',
+            // Not `flex-1`: the age belongs beside the sentence it qualifies,
+            // and a growing paragraph pushed it to the far edge of the window.
+            'min-w-0 truncate',
+            waiting
+              ? 'text-state-blocked'
+              : stale && !rechecking
+                ? 'text-state-failed'
+                : 'text-muted-foreground',
           )}
         >
           {summary}
@@ -202,7 +221,7 @@ export function AttentionLine({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 shrink-0 gap-1 px-2 text-xs"
+            className="ml-auto h-6 shrink-0 gap-1 px-2 text-xs"
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
             // The keyboard layer clicks this to expand the queue before focusing
