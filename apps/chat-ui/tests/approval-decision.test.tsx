@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApprovalDecision } from '../src/components/approval/approval-decision';
 
@@ -146,5 +146,29 @@ describe('ApprovalDecision', () => {
     for (const name of [/Approve/, 'Deny', 'Edit arguments']) {
       expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
     }
+  });
+
+  /**
+   * The banner passes `onDismiss`; without it a lapsed card at the head of the
+   * queue had nothing to click at all, and stayed there.
+   */
+  it('once lapsed, offers only a way to clear the card when given one', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(2_000_000);
+    const onDismiss = vi.fn();
+    const onDecide = vi.fn();
+    render(
+      <ApprovalDecision
+        toolName="local_shell"
+        args={{ command: 'ls' }}
+        expiresAt={1_000_000}
+        onDecide={onDecide}
+        onDismiss={onDismiss}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onDecide).not.toHaveBeenCalled();
   });
 });

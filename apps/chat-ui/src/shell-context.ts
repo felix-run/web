@@ -60,6 +60,8 @@ export interface ShellValue {
   /** When this tab saw the current or last run start and stop. */
   runClock: RunClock;
   onDecide(status: 'approved' | 'denied', editedArgs?: Record<string, unknown>): Promise<void>;
+  /** Take down a lapsed approval the harness has already denied. */
+  onDismiss(): void;
   uiPrompt: EngineState['uiPrompt'];
   uiResolving: boolean;
   onUiRespond(value: unknown): void;

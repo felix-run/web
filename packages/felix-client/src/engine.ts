@@ -771,7 +771,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     send,
     applyEvent,
     async syncApprovals() {
-      const { added, deadlines } = await syncApprovals({
+      // Taken before the request, so an approval a frame queues while it is in
+      // flight is not judged against a list read before its row existed.
+      const queued = new Set(state.approvals.map((pending) => pending.approvalId));
+      const { added, deadlines, listed } = await syncApprovals({
         listPending: () => ports.client.listApprovals('pending'),
         threadId: ports.threadId(),
         seen: seenApprovals,
@@ -781,15 +784,26 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       // none — so the poll backfills it. Without this the banner for a *watched*
       // run is the one that never learns when the harness gives up.
       let patched = false;
-      const known = state.approvals.map((pending) => {
+      // An approval the harness no longer lists was decided without this card:
+      // by its own timeout, or from another tab or the terminal. Left queued it
+      // sat at the head as `Denied · timed out` with both buttons disabled —
+      // hiding every approval behind it and holding the tab at `blocked` — since
+      // `shiftApproval` only ever runs after a decision made here.
+      const live = listed
+        ? state.approvals.filter(
+            (pending) => !queued.has(pending.approvalId) || deadlines.has(pending.approvalId),
+          )
+        : state.approvals;
+      const pruned = live.length !== state.approvals.length;
+      const known = live.map((pending) => {
         if (pending.expiresAt != null) return pending;
         const deadline = deadlines.get(pending.approvalId);
         if (deadline === undefined) return pending;
         patched = true;
         return { ...pending, expiresAt: deadline };
       });
-      if (added.length || patched) set({ approvals: [...known, ...added] });
-      if (added.length) refreshStatus();
+      if (added.length || patched || pruned) set({ approvals: [...known, ...added] });
+      if (added.length || pruned) refreshStatus();
     },
     shiftApproval() {
       set({ approvals: state.approvals.slice(1) });

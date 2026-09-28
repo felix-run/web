@@ -310,6 +310,13 @@ export interface ApprovalSync {
   added: PendingApproval[];
   /** Deadline by approval id, epoch ms, for everything still pending. */
   deadlines: Map<string, number>;
+  /**
+   * Whether the harness actually answered. `deadlines` doubles as the set of
+   * ids still pending, and an empty map from a failed request is not the
+   * harness saying nothing is — pruning on it would drop every live approval
+   * the first time the route 429s.
+   */
+  listed: boolean;
 }
 
 /** When the harness gives up on this row, whether or not its rule set a TTL. */
@@ -323,7 +330,7 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
     items = await opts.listPending();
   } catch {
     // Endpoint unavailable; the frame path may still deliver.
-    return { added: [], deadlines: new Map() };
+    return { added: [], deadlines: new Map(), listed: false };
   }
   const deadlines = new Map(items.map((item) => [item.id, deadlineOf(item)]));
   /**
@@ -345,7 +352,7 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
     (item) => !item.thread_id || !opts.threadId || item.thread_id === opts.threadId,
   );
   const fresh = mine.filter((item) => !opts.seen.has(item.id));
-  if (!fresh.length) return { added: [], deadlines };
+  if (!fresh.length) return { added: [], deadlines, listed: true };
 
   const entries: PendingApproval[] = [];
   for (const item of fresh) {
@@ -364,7 +371,7 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
       expiresAt: deadlineOf(item),
     });
   }
-  return { added: entries, deadlines };
+  return { added: entries, deadlines, listed: true };
 }
 
 /**

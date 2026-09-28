@@ -263,6 +263,58 @@ describe('approvals', () => {
 
     expect(engine.state.approvals.map((a) => a.approvalId)).toEqual(['ap_2']);
   });
+
+  /**
+   * The harness times an approval out and denies it itself. Nothing ever
+   * shifted it off the queue, so the card sat at the head as `Denied · timed
+   * out` with both buttons disabled for the life of the tab.
+   */
+  it('drops an approval the harness stopped listing as pending', async () => {
+    let listed = [{ id: 'ap_3', tool_name: 'local_shell', args: { command: 'ls' } }];
+    stubFetch((url) =>
+      url.includes('/approvals')
+        ? new Response(JSON.stringify({ requests: listed }))
+        : new Response('{}'),
+    );
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+    });
+
+    await engine.syncApprovals();
+    expect(engine.state.approvals).toHaveLength(1);
+
+    listed = [];
+    await engine.syncApprovals();
+    expect(engine.state.approvals).toEqual([]);
+    await engine.syncApprovals(); // and an id already seen does not come back
+    expect(engine.state.approvals).toEqual([]);
+  });
+
+  it('keeps the queue when the poll itself fails', async () => {
+    let fail = false;
+    stubFetch((url) =>
+      url.includes('/approvals')
+        ? fail
+          ? new Response('slow down', { status: 429 })
+          : new Response(
+              JSON.stringify({
+                requests: [{ id: 'ap_4', tool_name: 'local_shell', args: { command: 'ls' } }],
+              }),
+            )
+        : new Response('{}'),
+    );
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+    });
+
+    await engine.syncApprovals();
+    fail = true;
+    await engine.syncApprovals();
+
+    expect(engine.state.approvals.map((a) => a.approvalId)).toEqual(['ap_4']);
+  });
 });
 
 describe('a durable run', () => {

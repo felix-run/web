@@ -33,6 +33,7 @@ export function Workbench() {
     pending,
     queueLength,
     onDecide,
+    onDismiss,
     uiPrompt,
     uiResolving,
     onUiRespond,
@@ -145,6 +146,7 @@ export function Workbench() {
                 queueLength={queueLength}
                 runAborted={sessionPhase === 'aborted'}
                 onDecide={onDecide}
+                onDismiss={onDismiss}
               />
             ) : null}
             {uiPrompt ? (
