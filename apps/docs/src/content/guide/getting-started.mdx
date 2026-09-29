@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
 
 Stand up **Felix** locally and send your first request. Felix is a self-hostable
 **managed agents harness**: YAML manifests (`apiVersion: felix/v1`) compile into
@@ -59,8 +59,19 @@ deploy shape, see [Deploy](/guide/deploy/).
 
    ```bash
    curl -s http://localhost:8080/health | jq
+   curl -s http://localhost:8080/ready | jq
    make doctor   # from a uv-synced checkout, or: docker compose exec api felix doctor
    ```
+
+   `/health` says the process is up, and nothing more — it does no I/O, so it reads `ok` even with
+   the database down. `/ready` is the one that probes the dependencies:
+
+   ```json
+   { "status": "ok", "env": "…", "version": "…", "multi_region": false, "federation": null }
+   { "status": "ready", "checks": { "database": { "ok": true, "duration_ms": 3 }, "redis": { … }, "object_store": { … } } }
+   ```
+
+   A `503` from `/ready` with `"status": "not_ready"` names the failing check.
 
 5. **Export your local API key**
 
@@ -92,6 +103,25 @@ curl -s -X POST http://localhost:8080/chat \
     "messages": [{ "role": "user", "content": "What is 7 * 6?" }]
   }' | jq
 ```
+
+The reply is the `final` message. The response also carries the full `messages` list, the
+`thread_id` and `model` the turn ran on, the thread's `leaf_id`, and any `approvals` the run raised:
+
+```bash
+curl -s … | jq 'keys'
+# ["approvals", "final", "leaf_id", "messages", "model", "thread_id"]
+```
+
+:::note[If it fails]
+- **`401` with `"reason": "missing_credentials"`** — no key was sent. `$FELIX_KEY` is empty in
+  this shell; re-run the `export` in step 5.
+- **`401` with `"reason": "invalid_api_key"`** — the key is not one the running harness loaded.
+  Export it again from the `.env` of the stack you started.
+- **`/health` is `ok` but requests fail** — check `/ready`. A dependency can be down while the
+  process is up, and `/ready` names which one.
+- **`make up` cannot bind `:8080`** — something else is listening on it. Stop that process, then
+  run `make up` again.
+:::
 
 Pass `thread_id` as a **suffix** (no `:` / `#`); the server prefixes the tenant id:
 
@@ -129,7 +159,17 @@ curl -s -X POST http://localhost:8080/v1/chat/completions \
   }' | jq
 ```
 
-## Chat UI (optional)
+## Where to next
+
+- [Concepts](/guide/concepts/) — manifests, tenants, threads, patterns
+- [Manifest reference](/guide/manifest-reference/) — every field, with defaults
+- [Route index](/guide/routes/) — every route, and where each is explained
+- [Deploy](/guide/deploy/) — Compose, Helm, AWS and GCP notes
+
+## Optional
+
+<details>
+<summary>Run the chat UI against this harness</summary>
 
 From [felix-run/web](https://github.com/felix-run/web), with Compose Felix already on `:8080`:
 
@@ -139,7 +179,10 @@ pnpm install
 pnpm chat:dev     # Vite :5173, proxies /api → http://127.0.0.1:8080
 ```
 
-## Offline eval (CI / no API keys)
+</details>
+
+<details>
+<summary>Run an offline eval (CI, no API keys)</summary>
 
 ```bash
 uv sync --dev
@@ -147,11 +190,4 @@ FELIX_DATABASE_URL=memory://local FELIX_OBJECT_STORE=memory FELIX_ALLOW_INSECURE
   uv run felix eval -d smoke -m quick -f fixtures/eval/smoke.json --mock
 ```
 
-## Where to next
-
-<CardGrid>
-  <LinkCard title="Concepts" href="/guide/concepts/" description="Manifests, tenants, threads, patterns." />
-  <LinkCard title="Manifest Reference" href="/guide/manifest-reference/" description="Every field with defaults." />
-  <LinkCard title="REST API" href="/guide/rest-api/" description="Public endpoints with curl examples." />
-  <LinkCard title="Deploy" href="/guide/deploy/" description="Compose, Helm, AWS/GCP notes." />
-</CardGrid>
+</details>

@@ -25,7 +25,11 @@ export default defineConfig({
       // reference" link rides an override of the one slot-bearing component in
       // the header's right group; it renders Starlight's own icons after it.
       // See the component for why this beats forking `Header`.
-      components: { SocialIcons: './src/components/SocialIcons.astro' },
+      components: {
+        SocialIcons: './src/components/SocialIcons.astro',
+        // The home hero carries RunTrace in place of an image; see the component.
+        Hero: './src/components/Hero.astro',
+      },
       // Palette from @felix/design (checked-in src/styles/theme.css).
       // theme.css is generated (see @felix/design); brand.css is hand-written.
       customCss: ['./src/styles/theme.css', './src/styles/brand.css'],
@@ -57,12 +61,17 @@ export default defineConfig({
         {
           label: 'Reference',
           items: [
+            // Every route, one line each, linking to where it is explained — the
+            // way into the three below when you know the route but not the page.
+            { label: 'Route index', slug: 'guide/routes' },
             { label: 'Manifest reference', slug: 'guide/manifest-reference' },
             { label: 'REST API', slug: 'guide/rest-api' },
             { label: 'Management API', slug: 'guide/management-api' },
             // Scalar over the spec of the release api.felix.run runs (src/pages/reference.astro).
             // The harness's own /docs needs its credential, so a link there is a 401.
-            { label: 'API reference', link: '/reference/' },
+            // Named for what it is: it has request schemas and a request builder, and
+            // no response shapes, so "API reference" promised more than it holds.
+            { label: 'OpenAPI explorer', link: '/reference/' },
           ],
         },
         {

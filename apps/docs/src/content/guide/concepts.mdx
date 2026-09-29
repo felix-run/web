@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
 
 Felix is a **managed agents harness** you run yourself. You describe an agent declaratively; Felix
 compiles that description into a governed, observable, resumable runtime and serves it over several
@@ -13,12 +13,6 @@ protocols at once.
 
 The through-line is: *the manifest is the program, and everything else is machinery that enforces
 it.*
-
-## Three seams
-
-- **Session** — append-only events with pluggable strategies (`full_replay` / windowed / summarizing / semantic / compacting).
-- **Pattern / model registries** — open registration for loops (`react`, `deep`, …) and providers (`anthropic`, `openai`, `ollama`, `workers_ai`, `groq`, …), with the model layer in its own package that cannot import the harness.
-- **ToolExecutor** — `local` / `mcp` / `a2a` / `container` / `queue` / `sandbox` / `browser` / `client`, wrapped by governance.
 
 ## Manifest
 
@@ -313,6 +307,12 @@ flushes too, not only the worker. Optional OTLP tracing with `FELIX_OTEL_ENABLED
 append-only analytics spill (`FELIX_WAREHOUSE`: DuckDB, ClickHouse or Doris).
 
 See [Observability](/internals/observability/).
+
+## Three seams
+
+- **Session** — append-only events with pluggable strategies (`full_replay` / windowed / summarizing / semantic / compacting).
+- **Pattern / model registries** — open registration for loops (`react`, `deep`, …) and providers (`anthropic`, `openai`, `ollama`, `workers_ai`, `groq`, …), with the model layer in its own package that cannot import the harness.
+- **ToolExecutor** — `local` / `mcp` / `a2a` / `container` / `queue` / `sandbox` / `browser` / `client`, wrapped by governance.
 
 ## Request lifecycle
 

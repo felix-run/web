@@ -63,7 +63,10 @@ const rows: Row[] = [
 </figure>
 
 <style>
+  /* Lays out by the width it is given, not the viewport's: it is a column in
+     the home hero and could be full width anywhere else. */
   .run-trace {
+    container-type: inline-size;
     margin-block: 1.5rem 2.5rem;
   }
 
@@ -86,7 +89,7 @@ const rows: Row[] = [
   .row {
     --hue: var(--felix-state-running);
     display: grid;
-    grid-template-columns: 1.5rem minmax(12rem, 16rem) 1fr;
+    grid-template-columns: 1.5rem minmax(11rem, 15rem) 1fr;
     align-items: baseline;
     gap: 0 0.75rem;
     padding-block: 0.4rem;
@@ -168,7 +171,7 @@ const rows: Row[] = [
   }
 
   /* Narrow: the description drops under the event rather than squeezing it. */
-  @media (max-width: 40rem) {
+  @container (max-width: 32rem) {
     .row {
       grid-template-columns: 1.5rem 1fr;
     }

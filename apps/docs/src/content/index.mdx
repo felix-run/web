@@ -16,18 +16,9 @@ hero:
       link: /guide/concepts/
       variant: secondary
     - text: Look up a route
-      link: /guide/rest-api/
+      link: /guide/routes/
       variant: minimal
 ---
-
-import RunTrace from '../components/RunTrace.astro';
-
-## One run, as the harness reports it
-
-A turn arrives as a stream of named events: the model's output, each tool call, the approval a
-gated call waits on, and what the turn cost.
-
-<RunTrace />
 
 ## Surfaces
 
@@ -38,20 +29,41 @@ One manifest is served over four protocols:
 - **MCP HTTP JSON-RPC** at `/mcp`
 - **Direct REST/SSE** at `/chat`
 
-Management surfaces (`/audit`, `/plans`, `/jobs`, `/approvals`, `/manifests`, `/eval`, `/usage`,
-`/memory`, `/documents`, `/artifacts`) cover observability, HITL, canary manifests, and offline
-eval. They are documented in the [Management API](/guide/management-api/).
+Around them sit the management surfaces — audit, approvals, plans, jobs, manifests, eval, usage,
+memory, documents and artifacts — covering observability, human approval, canary manifests and
+offline eval. The [Route index](/guide/routes/) lists every route.
 
-A running deployment also answers:
+The harness is [felix-run/felix](https://github.com/felix-run/felix) (CPython; Compose or Helm).
+The chat UI and this site are [felix-run/web](https://github.com/felix-run/web).
 
-- `GET /health` — liveness, unauthenticated
-- `GET /.well-known/agent-card.json` — A2A discovery, unauthenticated
-- `GET /openapi.json` and `GET /docs` — the spec and interactive API docs, behind the same auth as
-  every other route unless `FELIX_DOCS_PUBLIC=true`. The public spec is browsable at
-  [API reference](/reference/).
+## Where next
 
-## Source
-
-Runtime: [felix-run/felix](https://github.com/felix-run/felix) (CPython, Compose / Helm).
-Chat UI and this docs site: [felix-run/web](https://github.com/felix-run/web) (Cloudflare Workers
-frontends).
+<nav class="where-next not-content" aria-label="Documentation">
+  <div>
+    <h3>Start</h3>
+    <ul>
+      <li><a href="/guide/getting-started/">Getting Started</a></li>
+      <li><a href="/guide/concepts/">Concepts</a></li>
+      <li><a href="/guide/deploy/">Deploy</a></li>
+      <li><a href="/guide/terminal/">Terminal client</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3>Reference</h3>
+    <ul>
+      <li><a href="/guide/routes/">Route index</a></li>
+      <li><a href="/guide/manifest-reference/">Manifest reference</a></li>
+      <li><a href="/guide/rest-api/">REST API</a></li>
+      <li><a href="/guide/management-api/">Management API</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3>Internals</h3>
+    <ul>
+      <li><a href="/internals/architecture/">Architecture</a></li>
+      <li><a href="/internals/governance/">Governance</a></li>
+      <li><a href="/internals/persistence/">Persistence</a></li>
+      <li><a href="/internals/plugins/">Plugins</a></li>
+    </ul>
+  </div>
+</nav>

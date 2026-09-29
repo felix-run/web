@@ -1,0 +1,277 @@
+---
+/*
+ * Every route the harness serves, one row each, linking to where it is
+ * explained. Built at build time from two sources, so it cannot drift from
+ * either:
+ *
+ * - The routes: `public/openapi.json`, the release spec `/reference/` renders
+ *   (fetched by `scripts/fetch-api-spec.mjs` before dev and build). Grouped by
+ *   the spec's tags, the same grouping Scalar shows.
+ * - The explanation: the guides' own source. A route is "documented" where a
+ *   guide gives it a heading (`## \`POST /chat\``) or a table row
+ *   (`| \`GET\` | \`/plans/{plan_id}\` | …`); the link goes to the heading
+ *   that section sits under. Anchors are GitHub-style slugs, which is what
+ *   Starlight generates — the same function `apps/chat-ui/tests/docs-links.test.ts`
+ *   checks chat-ui's links with.
+ *
+ * A route no guide covers still gets a row, linking to its operation in the
+ * explorer. Path parameters are compared by position, not name, because the
+ * guides and the spec do not always spell them alike (`{id}` vs `{thread_id}`).
+ */
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+interface Op {
+  method: string;
+  path: string;
+  summary: string;
+  tag: string;
+}
+interface Doc {
+  page: string;
+  label: string;
+  anchor: string;
+  section: string;
+}
+
+const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
+const root = process.cwd();
+const specPath = join(root, 'public/openapi.json');
+
+// biome-ignore lint/suspicious/noExplicitAny: the spec is untyped JSON
+let spec: any = null;
+if (existsSync(specPath)) spec = JSON.parse(readFileSync(specPath, 'utf8'));
+
+const ops: Op[] = [];
+for (const [path, item] of Object.entries(spec?.paths ?? {})) {
+  // biome-ignore lint/suspicious/noExplicitAny: the spec is untyped JSON
+  for (const [method, op] of Object.entries(item as Record<string, any>)) {
+    if (!METHODS.includes(method)) continue;
+    // A trailing-slash twin (`/a2a/` beside `/a2a`) is the same route.
+    if (path.length > 1 && path.endsWith('/') && spec.paths[path.slice(0, -1)]) continue;
+    ops.push({
+      method: method.toUpperCase(),
+      path,
+      summary: op.summary ?? '',
+      tag: op.tags?.[0] ?? 'Other',
+    });
+  }
+}
+
+/** GitHub-style heading slug — Starlight's, and docs-links.test.ts's. */
+function slug(heading: string): string {
+  return heading
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s/g, '-');
+}
+
+/** `/plans/{plan_id}?limit=` and `/plans/{id}` both become `/plans/{}`. */
+function shape(path: string): string {
+  return (
+    path
+      .split('?')[0]
+      .replace(/\{[^}]*\}/g, '{}')
+      .replace(/\/$/, '') || '/'
+  );
+}
+
+const GUIDES: Record<string, string> = {
+  'rest-api': 'REST API',
+  'management-api': 'Management API',
+};
+const guideDir = join(root, 'src/content/guide');
+const documented = new Map<string, Doc>();
+for (const file of readdirSync(guideDir)) {
+  const page = file.replace(/\.mdx?$/, '');
+  if (!(page in GUIDES)) continue;
+  let anchor = '';
+  let section = '';
+  let inFence = false;
+  for (const line of readFileSync(join(guideDir, file), 'utf8').split('\n')) {
+    if (line.startsWith('```')) inFence = !inFence;
+    if (inFence) continue;
+    const heading = line.match(/^#{2,4}\s+(.*)$/);
+    if (heading) {
+      section = heading[1].replace(/`/g, '');
+      anchor = slug(heading[1]);
+    }
+    const route =
+      line.match(/^#{2,4}\s+`(GET|POST|PUT|PATCH|DELETE) ([^`]+)`/) ??
+      line.match(/^\|\s*`?(GET|POST|PUT|PATCH|DELETE)`?\s*\|\s*`([^`]+)`/);
+    if (!route) continue;
+    const key = `${route[1]} ${shape(route[2])}`;
+    // First mention wins: a route's own heading comes before later passing mentions.
+    if (!documented.has(key)) documented.set(key, { page, label: GUIDES[page], anchor, section });
+  }
+}
+
+const groups = new Map<string, Op[]>();
+for (const op of ops) {
+  const list = groups.get(op.tag) ?? [];
+  list.push(op);
+  groups.set(op.tag, list);
+}
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const sorted = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const explorer = (op: Op) => `/reference/#tag/${op.tag.toLowerCase()}/${op.method}${op.path}`;
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const docFor = (op: Op) => documented.get(`${op.method} ${shape(op.path)}`);
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.path)}`)).length;
+---
+
+{
+  ops.length === 0 ? (
+    <p>
+      The route list is built from <code>public/openapi.json</code>, which is not present in this
+      build. Run <code>node scripts/fetch-api-spec.mjs</code> in <code>apps/docs</code>, or browse
+      the <a href="/reference/">OpenAPI explorer</a>.
+    </p>
+  ) : (
+    <>
+      <p class="route-count">
+        {ops.length} routes. {coveredCount} are explained in a guide; the rest link to their entry in
+        the <a href="/reference/">OpenAPI explorer</a>.
+      </p>
+      <nav class="route-tags" aria-label="Route groups">
+        <ul>
+          {sorted.map(([tag, list]) => (
+            <li>
+              <a href={`#${slug(tag)}`}>{tag}</a> <span>{list.length}</span>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      {sorted.map(([tag, list]) => (
+        <section class="route-group">
+          <h2 id={slug(tag)}>{tag}</h2>
+          <ul class="route-list">
+            {list.map((op) => {
+              const doc = docFor(op);
+              return (
+                <li>
+                  <code class="route">
+                    <span class="verb">{op.method}</span> {op.path}
+                  </code>
+                  <span class="summary">{op.summary}</span>
+                  {doc ? (
+                    <a
+                      class="where"
+                      href={`/guide/${doc.page}/#${doc.anchor}`}
+                      title={`${doc.label} → ${doc.section}`}
+                    >
+                      {doc.label}
+                    </a>
+                  ) : (
+                    <a class="where where--spec" href={explorer(op)}>
+                      Explorer
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+    </>
+  )
+}
+
+<style>
+  .route-count {
+    color: var(--sl-color-gray-3);
+  }
+
+  /* The page's own contents: Starlight's TOC reads only MDX headings, and these
+     are rendered here. */
+  .route-tags ul {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    font-size: var(--sl-text-sm);
+  }
+  .route-tags li {
+    margin: 0;
+  }
+  .route-tags a {
+    color: var(--sl-color-white);
+    text-underline-offset: 0.2em;
+  }
+  .route-tags span {
+    color: var(--sl-color-gray-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .route-group h2 {
+    scroll-margin-top: calc(var(--sl-nav-height) + 1rem);
+  }
+
+  .route-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+  }
+
+  /*
+   * A row is route · summary · where. Wide, the three sit on one line with the
+   * route column sized to the longest path; narrow, the route takes its own
+   * line and the other two sit under it. Rows are hairline-separated, like
+   * every other list here.
+   */
+  .route-list li {
+    display: grid;
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr) minmax(0, 9rem);
+    gap: 0.25rem 1rem;
+    align-items: baseline;
+    padding-block: 0.45rem;
+    border-bottom: 1px solid var(--sl-color-hairline);
+    margin: 0;
+  }
+
+  .route {
+    font-size: var(--sl-text-sm);
+    background: none;
+    padding: 0;
+    color: var(--sl-color-white);
+    overflow-wrap: anywhere;
+  }
+
+  .verb {
+    display: inline-block;
+    min-width: 3.25rem;
+    color: var(--sl-color-gray-3);
+  }
+
+  .summary {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+
+  .where {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-white);
+    text-underline-offset: 0.2em;
+  }
+
+  .where--spec {
+    color: var(--sl-color-gray-3);
+  }
+
+  @media (max-width: 50rem) {
+    .route-list li {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .route {
+      grid-column: 1 / -1;
+    }
+    .where {
+      text-align: end;
+    }
+  }
+</style>

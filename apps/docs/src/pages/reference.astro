@@ -73,6 +73,12 @@ const config = {
   .scalar-app, .light-mode, .dark-mode {
     --scalar-font: ${SYSTEM_SANS};
     --scalar-font-code: ${SYSTEM_MONO};
+  }
+  /* The sidebar's method badges are 10px; 11px is this site's floor for text.
+     Scalar's rule is scoped (.sidebar-heading-type[data-v-…], two classes'
+     worth), so this one repeats the class to outrank it. */
+  .sidebar-heading-type.sidebar-heading-type.sidebar-heading-type {
+    font-size: 11px;
   }`,
   metaData: { title },
 };
@@ -183,9 +189,10 @@ body {
   <body>
     <header class="ref-header">
       <a class="ref-wordmark" href="/">Felix</a>
-      <a href="/guide/getting-started/">Guides</a>
+      <a href="/guide/getting-started/">Start</a>
+      <a href="/guide/routes/">Route index</a>
       <p class="ref-note">
-        Response bodies are documented in <a href="/guide/rest-api/">REST API</a> and
+        Response bodies are documented in <a href="/guide/rest-api/">REST API</a> and{' '}
         <a href="/guide/management-api/">Management API</a>.
       </p>
     </header>

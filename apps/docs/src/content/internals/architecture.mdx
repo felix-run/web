@@ -5,8 +5,6 @@ sidebar:
   order: 1
 ---
 
-import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
-
 How a request flows through Felix end-to-end. Source of truth: [felix-run/felix](https://github.com/felix-run/felix).
 
 ## Process topology
@@ -19,6 +17,10 @@ Client → Ingress (Caddy / Traefik / nginx / CDN)
                   │
      Postgres+pgvector · Valkey · object store (fs | s3 | gcs | memory)
 ```
+
+In words: requests reach an ingress (Caddy, Traefik, nginx or a CDN), behind which run three
+processes — `felix-api`, `felix-worker` and `felix-scheduler`. State lives in Postgres with
+pgvector, Valkey, and an object store (`fs`, `s3`, `gcs` or `memory`).
 
 | Process | Role |
 |---|---|
