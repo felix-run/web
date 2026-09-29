@@ -10,9 +10,25 @@
  * second sidebar. The config mirrors felix `apps/api/src/felix_api/docs.py` —
  * same pinned bundle and SRI hash, which move together on an upgrade:
  *   curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A
+ *
+ * What it keeps from the docs site, so it reads as the same site rather than a
+ * different product that happens to share a domain:
+ * - A slim header with the wordmark and a way back. Scalar reserves room for it
+ *   through `--scalar-custom-header-height`, so its sticky sidebar sits below.
+ * - The palette, from `scalarThemeCss()` in @felix/design — the same tokens
+ *   theme.css is generated from — and the system font stack instead of Inter.
+ * - The reader's theme. Starlight stores it as `starlight-theme` in
+ *   localStorage ('light', 'dark', or absent for auto); the inline script below
+ *   resolves it before first paint, so a dark reader gets no white flash, and
+ *   Scalar's own toggle is hidden because a second, unsynced switch was the
+ *   bug. Changing theme is done from any docs page.
+ * - A pointer to the response shapes. Every harness route returns a bare dict,
+ *   so the spec documents every response as `additionalProperties: true`; the
+ *   shapes live in the REST and Management guides, and the header says so.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DARK, LIGHT, scalarThemeCss } from '@felix/design/tokens';
 
 // Biome parses only the frontmatter, so constants used in the markup read as dead.
 // biome-ignore lint/correctness/noUnusedVariables: used in the <script> below
@@ -30,6 +46,10 @@ try {
 const origin = (process.env.FELIX_ORIGIN || 'https://api.felix.run').replace(/\/+$/, '');
 const title = version ? `Felix API reference · v${version}` : 'Felix API reference';
 
+const SYSTEM_SANS =
+  "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
+const SYSTEM_MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace";
+
 // biome-ignore lint/correctness/noUnusedVariables: passed to the page via define:vars
 const config = {
   url: '/openapi.json',
@@ -41,11 +61,94 @@ const config = {
   servers: [{ url: origin, description: 'Felix (hosted)' }],
   // Scalar's hosted add-ons: "Ask AI" hands the reader to Scalar's agent, and
   // "Generate MCP" builds a Scalar-hosted MCP server for an API that serves MCP
-  // itself (`/mcp`). Neither is Felix's to offer from its own docs.
+  // itself (`/mcp`). Neither is Felix's to offer from its own docs. The
+  // developer toolbar defaults to showing on localhost, which is how it
+  // surfaced in review; it has nothing for a reader anywhere.
   agent: { disabled: true },
   mcp: { disabled: true },
+  showDeveloperTools: 'never',
+  hideDarkModeToggle: true,
+  withDefaultFonts: false,
+  customCss: `${scalarThemeCss()}
+  .scalar-app, .light-mode, .dark-mode {
+    --scalar-font: ${SYSTEM_SANS};
+    --scalar-font-code: ${SYSTEM_MONO};
+  }`,
   metaData: { title },
 };
+
+// The header and page ground, from the same tokens as the docs theme.
+// biome-ignore lint/correctness/noUnusedVariables: used in the markup below
+const headerCss = `
+:root {
+  --bg: ${DARK.bg};
+  --border: ${DARK.border};
+  --text: ${DARK.text};
+  --muted: ${DARK.textFaint};
+  --scalar-custom-header-height: 3.5rem;
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  --bg: ${LIGHT.bg};
+  --border: ${LIGHT.border};
+  --text: ${LIGHT.text};
+  --muted: ${LIGHT.textFaint};
+  color-scheme: light;
+}
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+}
+.ref-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-sizing: border-box;
+  height: var(--scalar-custom-header-height);
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding-inline: 1.5rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-family: ${SYSTEM_SANS};
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.ref-header a {
+  color: var(--text);
+  text-decoration: none;
+}
+.ref-header a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.ref-header a:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* The same wordmark treatment as the docs' .site-title (brand.css). */
+.ref-wordmark {
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.ref-note {
+  margin-inline-start: auto;
+}
+.ref-note a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+@media (max-width: 50rem) {
+  .ref-note {
+    display: none;
+  }
+}
+`;
 ---
 
 <!doctype html>
@@ -59,12 +162,40 @@ const config = {
       content="REST, OpenAI-compatible, A2A and MCP endpoints of the Felix agents harness."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Before anything paints: resolve the reader's docs theme onto <html>. -->
+    <script is:inline>
+      (() => {
+        let stored = '';
+        try {
+          stored = localStorage.getItem('starlight-theme') || '';
+        } catch {}
+        const theme =
+          stored === 'light' || stored === 'dark'
+            ? stored
+            : matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <style is:inline set:html={headerCss}></style>
   </head>
   <body>
+    <header class="ref-header">
+      <a class="ref-wordmark" href="/">Felix</a>
+      <a href="/guide/getting-started/">Guides</a>
+      <p class="ref-note">
+        Response bodies are documented in <a href="/guide/rest-api/">REST API</a> and
+        <a href="/guide/management-api/">Management API</a>.
+      </p>
+    </header>
     <div id="app"></div>
     <script is:inline src={SCALAR_JS_URL} integrity={SCALAR_JS_SRI} crossorigin="anonymous"></script>
     <script is:inline define:vars={{ config }}>
-      Scalar.createApiReference('#app', config);
+      Scalar.createApiReference('#app', {
+        ...config,
+        forceDarkModeState: document.documentElement.dataset.theme,
+      });
     </script>
   </body>
 </html>

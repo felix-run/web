@@ -1,0 +1,179 @@
+---
+/*
+ * One run, drawn as the frames the harness actually sends — the home page's
+ * picture of the mechanism. Every row is a real `POST /chat/stream` event
+ * from the Events table in guide/rest-api.mdx, in the order a turn whose tool
+ * call needs approval emits them, abridged (`tool_execution_update` and the
+ * `session_progress` delta pairs are left out). If an event is renamed there,
+ * rename it here.
+ *
+ * The hue on each row is the state ramp, the same one the asides use, and
+ * never the only signal: the blocked row says "waiting on you" in words, and
+ * the one row that is a request rather than a frame is marked as yours.
+ */
+interface Row {
+  event: string;
+  state: 'running' | 'blocked' | 'done' | 'request';
+  text: string;
+}
+
+// Biome parses only the frontmatter, so a constant used in the markup reads as dead.
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const rows: Row[] = [
+  { event: 'session_progress', state: 'running', text: 'A turn starts on the thread.' },
+  { event: 'text_delta', state: 'running', text: 'The model streams its reply, token by token.' },
+  { event: 'tool_start', state: 'running', text: 'It calls write_file.' },
+  {
+    event: 'approval_required',
+    state: 'blocked',
+    text: 'The call is gated by a manifest rule. The run waits.',
+  },
+  {
+    event: 'POST /approvals/{id}/decide',
+    state: 'request',
+    text: 'You approve, deny, or approve with edited arguments.',
+  },
+  { event: 'tool_end', state: 'done', text: 'The tool returns its output.' },
+  { event: 'on_chain_end', state: 'done', text: "Carries the turn's token usage." },
+  { event: 'done', state: 'done', text: 'Final message and stop_reason.' },
+];
+---
+
+<figure class="run-trace not-content">
+  <ol>
+    {
+      rows.map((row) => (
+        <li class:list={['row', `row--${row.state}`]}>
+          <span class="dot" aria-hidden="true" />
+          <code class="event">{row.event}</code>
+          <span class="text">
+            {row.state === 'blocked' && <strong class="flag">Waiting on you</strong>}
+            {row.state === 'request' && <strong class="flag">Your request</strong>}
+            {row.text}
+          </span>
+        </li>
+      ))
+    }
+  </ol>
+  <figcaption>
+    One turn over <code>POST /chat/stream</code>, abridged: every line is a frame the harness sends,
+    except the decision, which is yours. The full list is in{' '}
+    <a href="/guide/rest-api/#events">REST API → Events</a>.
+  </figcaption>
+</figure>
+
+<style>
+  .run-trace {
+    margin-block: 1.5rem 2.5rem;
+  }
+
+  ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: relative;
+  }
+
+  /* The rail the dots sit on: one hairline down the whole run. */
+  ol::before {
+    content: '';
+    position: absolute;
+    inset-block: 0.9rem;
+    inset-inline-start: calc(0.75rem - 0.5px);
+    border-inline-start: 1px solid var(--sl-color-hairline);
+  }
+
+  .row {
+    --hue: var(--felix-state-running);
+    display: grid;
+    grid-template-columns: 1.5rem minmax(12rem, 16rem) 1fr;
+    align-items: baseline;
+    gap: 0 0.75rem;
+    padding-block: 0.4rem;
+    padding-inline-end: 0.75rem;
+    position: relative;
+  }
+
+  .row--done {
+    --hue: var(--felix-state-done);
+  }
+
+  .row--blocked {
+    --hue: var(--felix-state-blocked);
+    background-color: color-mix(in srgb, var(--hue) 7%, var(--sl-color-black));
+    border-radius: 0.375rem;
+  }
+
+  .dot {
+    justify-self: center;
+    align-self: center;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background-color: var(--hue);
+    /* Punches the rail out behind the dot, so the line reads as joining them. */
+    box-shadow: 0 0 0 3px var(--sl-color-black);
+  }
+
+  .row--blocked .dot {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hue) 7%, var(--sl-color-black));
+  }
+
+  /* The decision is not a frame: a hollow dot, set in from the rail. */
+  .row--request .dot {
+    background-color: var(--sl-color-black);
+    border: 1px solid var(--sl-color-gray-3);
+  }
+
+  .event {
+    font-family: var(--__sl-font-mono);
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-white);
+    overflow-wrap: anywhere;
+  }
+
+  .row--request .event {
+    color: var(--sl-color-gray-2);
+  }
+
+  .text {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+
+  .flag {
+    color: var(--hue);
+    font-weight: 600;
+    margin-inline-end: 0.5ch;
+  }
+
+  .row--request .flag {
+    color: var(--sl-color-white);
+  }
+
+  figcaption {
+    margin-top: 0.75rem;
+    padding-inline-start: 2.25rem;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+    max-inline-size: 40rem;
+  }
+
+  figcaption code {
+    font-size: inherit;
+  }
+
+  figcaption a {
+    color: var(--sl-color-white);
+  }
+
+  /* Narrow: the description drops under the event rather than squeezing it. */
+  @media (max-width: 40rem) {
+    .row {
+      grid-template-columns: 1.5rem 1fr;
+    }
+    .text {
+      grid-column: 2;
+    }
+  }
+</style>

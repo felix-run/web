@@ -116,7 +116,7 @@ readable text goes on the frame — a stored thinking block's `signature`, and a
 block's opaque `data`, exist to be replayed back to the model provider, not shown, and stay in the
 log. The key is omitted entirely when a turn has nothing readable to show.
 
-:::caution[On a harness older than `felix-run/felix#238`, a warm reattach loses its tool calls]
+:::note[On a harness older than `felix-run/felix#238`, a warm reattach loses its tool calls]
 Before it, `session_event` carried neither `tool_calls` nor `tool_call_id`, so an assistant turn that
 called a tool replayed as an empty message and its result had nothing to attach to. The `snapshot`
 frame has always carried both, so a *cold* reattach was unaffected — which is why this looked like a
@@ -353,27 +353,27 @@ present, else `data.text` or `data.delta`, else `""`.
 
 ### Events
 
-| `event` | `data` | When |
+| `event` | When | `data` |
 |---|---|---|
-| `session_progress` | `{"phase":"turn"}` | A turn started on a thread |
-| `session_progress` | `{"phase":"compaction","reason":"after_turn"}` | Compaction fired mid-loop |
-| `session_progress` | `{"progress":{"type":"assistant_delta","kind":"text","delta":str}}` | Paired with each `text_delta` |
-| `text_delta` | `{"chunk":{"content":str},"delta":str}` | A model token chunk |
-| `on_chat_model_stream` | `{"chunk":{"content":str}}` | Composite patterns only (`deep`, `router`, `parallel`, `groupchat`, `reflect`, `plan_execute`) |
-| `tool_start` | `{"name":str,"input":dict,"id":str}` | Before a tool runs |
-| `tool_execution_update` | `{"name":str,"id":str,"status":"running"}` | Right after `tool_start` |
-| `tool_end` | `{"name":str,"output":str,"id":str}` | A tool returned |
-| `tool_execution_update` | `{"name":str,"id":str,"status":"complete"}` | Right after `tool_end` |
-| `tool_request` | `{"id","name","args","thread_id","transport":"client"}` | **The client must run this tool** |
-| `approval_required` | `{"approval_id","tool_name","args","rule_id","reason"?,"thread_id","tool_call_id"}` | A gated tool is waiting on a human |
-| `ui_request` | `{"request_id","kind","prompt","default","thread_id","options":[…],"metadata":{}}` | The agent is asking the user something |
-| `steer` | `{"content":str}` | A queued steer was drained into the loop |
-| `follow_up` | `{"content":str}` | A queued follow-up was drained after idle |
-| `max_turns` | `{"limit":int}` | A `react` loop ran out of `spec.recursion_limit` steps with tool calls still pending. The session is recorded `truncated` and `done` says `stop_reason: max_turns`; this frame is the one that carries the limit |
-| `aborted` | `{"thread_id":str}` | `POST /chat/abort` was observed |
-| `on_error` | `{"message":str}` | The run failed mid-stream. Not terminal — the stream still ends with `done`/`[DONE]`, so a client that ignores it reports success |
-| `on_chain_end` | `{"output": InvokeOutput}` | Penultimate frame; carries per-turn `usage` |
-| `done` | `{"final": ChatMessage, "messages":[…], "stop_reason": str}` | Final frame before `[DONE]`. `stop_reason` is how the run ended — `end_turn`, `tool_use`, `max_tokens`, `max_turns`, `stop_sequence`, `pause_turn`, `refusal`, `unknown` — and is what `/v1` maps to `finish_reason` |
+| `session_progress` | A turn started on a thread | `{"phase":"turn"}` |
+| `session_progress` | Compaction fired mid-loop | `{"phase":"compaction","reason":"after_turn"}` |
+| `session_progress` | Paired with each `text_delta` | `{"progress":{"type":"assistant_delta","kind":"text","delta":str}}` |
+| `text_delta` | A model token chunk | `{"chunk":{"content":str},"delta":str}` |
+| `on_chat_model_stream` | Composite patterns only (`deep`, `router`, `parallel`, `groupchat`, `reflect`, `plan_execute`) | `{"chunk":{"content":str}}` |
+| `tool_start` | Before a tool runs | `{"name":str,"input":dict,"id":str}` |
+| `tool_execution_update` | Right after `tool_start` | `{"name":str,"id":str,"status":"running"}` |
+| `tool_end` | A tool returned | `{"name":str,"output":str,"id":str}` |
+| `tool_execution_update` | Right after `tool_end` | `{"name":str,"id":str,"status":"complete"}` |
+| `tool_request` | **The client must run this tool** | `{"id","name","args","thread_id","transport":"client"}` |
+| `approval_required` | A gated tool is waiting on a human | `{"approval_id","tool_name","args","rule_id","reason"?,"thread_id","tool_call_id"}` |
+| `ui_request` | The agent is asking the user something | `{"request_id","kind","prompt","default","thread_id","options":[…],"metadata":{}}` |
+| `steer` | A queued steer was drained into the loop | `{"content":str}` |
+| `follow_up` | A queued follow-up was drained after idle | `{"content":str}` |
+| `max_turns` | A `react` loop ran out of `spec.recursion_limit` steps with tool calls still pending. The session is recorded `truncated` and `done` says `stop_reason: max_turns`; this frame is the one that carries the limit | `{"limit":int}` |
+| `aborted` | `POST /chat/abort` was observed | `{"thread_id":str}` |
+| `on_error` | The run failed mid-stream. Not terminal — the stream still ends with `done`/`[DONE]`, so a client that ignores it reports success | `{"message":str}` |
+| `on_chain_end` | Penultimate frame; carries per-turn `usage` | `{"output": InvokeOutput}` |
+| `done` | Final frame before `[DONE]`. `stop_reason` is how the run ended — `end_turn`, `tool_use`, `max_tokens`, `max_turns`, `stop_sequence`, `pause_turn`, `refusal`, `unknown` — and is what `/v1` maps to `finish_reason` | `{"final": ChatMessage, "messages":[…], "stop_reason": str}` |
 
 :::note
 `tool_request`, `approval_required` and `ui_request` are **side-channel** frames: the blocked tool

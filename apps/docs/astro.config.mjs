@@ -15,6 +15,11 @@ export default defineConfig({
       // lives one level up (see content.config.ts), so without this every aside
       // rendered as a bare paragraph and no heading was linkable.
       markdown: { processedDirs: ['./src/content'] },
+      // Code blocks take the plain editor frame, which draws a header only when
+      // a block has a title. The default picks a macOS terminal window for
+      // shell languages — three dots and an empty title bar on every curl, and
+      // an sr-only "Terminal window" read out before each one.
+      expressiveCode: { defaultProps: { frame: 'code' } },
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/felix-run/felix' }],
       // Header nav. Starlight has no config for header links, so the "API
       // reference" link rides an override of the one slot-bearing component in
@@ -34,37 +39,68 @@ export default defineConfig({
         },
       ],
       // Explicit sidebar (Starlight autogenerate expects src/content/docs/).
+      // Grouped by what the reader is doing, not by where the page lives: the
+      // path to a first run, then the pages you look things up in, then how it
+      // works. Starlight's prev/next follows this order, so Start reads as a
+      // sequence. Slugs are unchanged — chat-ui links into these pages and
+      // `apps/chat-ui/tests/docs-links.test.ts` checks every one.
       sidebar: [
         {
-          label: 'Guide',
+          label: 'Start',
           items: [
             { label: 'Getting Started', slug: 'guide/getting-started' },
             { label: 'Concepts', slug: 'guide/concepts' },
-            { label: 'Manifest reference', slug: 'guide/manifest-reference' },
-            { label: 'REST API', slug: 'guide/rest-api' },
-            { label: 'Management API', slug: 'guide/management-api' },
             { label: 'Deploy', slug: 'guide/deploy' },
             { label: 'Terminal client', slug: 'guide/terminal' },
           ],
         },
         {
-          label: 'Internals',
+          label: 'Reference',
           items: [
-            { label: 'Architecture', slug: 'internals/architecture' },
-            { label: 'Manifest pipeline', slug: 'internals/manifest-pipeline' },
-            { label: 'Patterns', slug: 'internals/patterns' },
-            { label: 'Model client', slug: 'internals/model-client' },
-            { label: 'Persistence', slug: 'internals/persistence' },
-            { label: 'Governance', slug: 'internals/governance' },
-            { label: 'Auth', slug: 'internals/auth' },
-            { label: 'Observability', slug: 'internals/observability' },
-            { label: 'Testing', slug: 'internals/testing' },
-            { label: 'Plugins', slug: 'internals/plugins' },
+            { label: 'Manifest reference', slug: 'guide/manifest-reference' },
+            { label: 'REST API', slug: 'guide/rest-api' },
+            { label: 'Management API', slug: 'guide/management-api' },
+            // Scalar over the spec of the release api.felix.run runs (src/pages/reference.astro).
+            // The harness's own /docs needs its credential, so a link there is a 401.
+            { label: 'API reference', link: '/reference/' },
           ],
         },
-        // Scalar over the spec of the release api.felix.run runs (src/pages/reference.astro).
-        // The harness's own /docs needs its credential, so a link there is a 401.
-        { label: 'API reference', link: '/reference/' },
+        {
+          label: 'Internals',
+          collapsed: true,
+          items: [
+            {
+              label: 'Runtime',
+              items: [
+                { label: 'Architecture', slug: 'internals/architecture' },
+                { label: 'Manifest pipeline', slug: 'internals/manifest-pipeline' },
+                { label: 'Patterns', slug: 'internals/patterns' },
+                { label: 'Model client', slug: 'internals/model-client' },
+              ],
+            },
+            {
+              label: 'Data',
+              items: [
+                { label: 'Persistence', slug: 'internals/persistence' },
+                { label: 'Observability', slug: 'internals/observability' },
+              ],
+            },
+            {
+              label: 'Control',
+              items: [
+                { label: 'Governance', slug: 'internals/governance' },
+                { label: 'Auth', slug: 'internals/auth' },
+              ],
+            },
+            {
+              label: 'Extending',
+              items: [
+                { label: 'Plugins', slug: 'internals/plugins' },
+                { label: 'Testing', slug: 'internals/testing' },
+              ],
+            },
+          ],
+        },
       ],
     }),
   ],

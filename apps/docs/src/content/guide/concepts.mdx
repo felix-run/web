@@ -14,6 +14,12 @@ protocols at once.
 The through-line is: *the manifest is the program, and everything else is machinery that enforces
 it.*
 
+## Three seams
+
+- **Session** — append-only events with pluggable strategies (`full_replay` / windowed / summarizing / semantic / compacting).
+- **Pattern / model registries** — open registration for loops (`react`, `deep`, …) and providers (`anthropic`, `openai`, `ollama`, `workers_ai`, `groq`, …), with the model layer in its own package that cannot import the harness.
+- **ToolExecutor** — `local` / `mcp` / `a2a` / `container` / `queue` / `sandbox` / `browser` / `client`, wrapped by governance.
+
 ## Manifest
 
 A YAML or JSON document with `apiVersion: felix/v1` and `kind: Agent`. The schema is Pydantic v2 with
