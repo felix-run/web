@@ -83,10 +83,11 @@ export interface ManifestEntry {
    */
   providerModel?: string;
   /**
-   * `felix.contextWindow`, when sent. Read with care: the harness computes it
-   * from the manifest *name*, not the provider model, so unless the manifest
-   * sets `spec.session.context_window_tokens` it is the catalog's fallback
-   * (128k) for any manifest whose name is not itself a model id.
+   * `felix.contextWindow`, when sent: the window compaction uses — the
+   * manifest's `spec.session.context_window_tokens`, else the provider model's
+   * own. A harness older than `felix-run/felix@3c12f56` computed it from the
+   * manifest *name* instead, so it read 128k for any manifest whose name was
+   * not itself a model id; do not trust it against one.
    */
   contextWindow?: number;
 }
