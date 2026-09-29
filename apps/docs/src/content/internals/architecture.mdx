@@ -97,7 +97,7 @@ Names are the actual callables: `felix.runtime` owns `resolve_tenant_manifest` a
 
 ## Durability
 
-Default durability backend is **fibers** (Postgres-backed sleep/step/resume; worker resumes due fibers). Set `spec.execution.mode: durable` to enqueue and return `202` with a `resume_token`. Optional **Temporal** (`FELIX_DURABILITY` + `felix temporal-worker` on queue `felix-fibers`) for external durable execution.
+Default durability backend is **fibers** (Postgres-backed sleep/step/resume; each worker polls for due fibers every second and advances up to eight at once, with a once-a-minute cron sweep as the backstop). Set `spec.execution.mode: durable` to enqueue and return `202` with a `resume_token`. Optional **Temporal** (`FELIX_DURABILITY` + `felix temporal-worker` on queue `felix-fibers`) for external durable execution.
 
 ## Background work
 
