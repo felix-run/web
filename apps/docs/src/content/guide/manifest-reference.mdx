@@ -127,6 +127,7 @@ spec:
 | `files` | string[] | `[]` | Keys loaded after base/inline and appended. |
 | `system_md` | string \| null | `null` | Key loaded as a **full replacement** (`SYSTEM.md` semantics). |
 | `append_system_md` | string \| null | `null` | Key appended after the composed prompt. |
+| `include_tool_guidance` | bool | `true` | Append the [tool guidance](#spectool_guidance) section. `false` for a prompt that must be exactly what was written. |
 
 <Aside type="caution">
   All three resolve **only** under `workspace/{tenant}/` — in the object store and,
@@ -192,6 +193,27 @@ and any traversal that escapes the root. With the variable unset they fail with
 
 Patterns contribute their own tools: `plan_create` / `plan_update_step` / `plan_get` (`deep`), and
 `remember_procedure` when procedural memory is on.
+
+## `spec.tool_guidance`
+
+One line of advice per tool, keyed by tool name or glob, appended to the system prompt under a
+**Tool guidance** heading — only for tools the agent actually has once the manifest compiles.
+
+```yaml
+spec:
+  tool_guidance:
+    search: Use `search` to find sources; a result is a title, URL and snippet, not the page.
+    fetch: Use `fetch` to read a page before relying on it, and quote what the page says.
+    "github__*": Read an issue's comments before proposing a change to it.
+```
+
+Advice written into `system_prompt` about a tool outlives the tool: remove `fetch` and the prompt
+goes on recommending it. Keyed by tool, the advice goes with the binding. It works for any tool the
+manifest binds — built-ins, integration tools, MCP tools by `server__tool` name or glob. Each line
+is at most 500 characters; identical lines appear once. A key that matches no bound tool is counted
+as `felix_rule_targets_nothing`, like the other tool lists. Tools defined in code (plugins) can
+carry their own line, which is listed alongside. Set `system_prompt.include_tool_guidance: false`
+to leave the section out.
 
 ## `spec.skills`
 
