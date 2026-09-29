@@ -695,3 +695,29 @@ describe('a banner under a long conversation', () => {
     }
   });
 });
+
+describe('the diff in the approval banner', () => {
+  it('leaves no empty rows under a one-line file', async () => {
+    const ui = await mount(
+      createElement(ApprovalPrompt, {
+        theme: testTheme,
+        pending: {
+          approvalId: 'ap-new',
+          toolName: 'write_file',
+          args: { path: 'notes.txt', content: 'hello' },
+          before: null,
+        },
+        onDecide: () => {},
+      }),
+      { width: 74, height: 16 },
+    );
+    try {
+      const rows = lines(ui.frame());
+      const added = rows.findIndex((row) => row.includes('+ hello'));
+      expect(added).toBeGreaterThan(-1);
+      expect(rows[added + 1]).toContain('y approve · n deny');
+    } finally {
+      ui.stop();
+    }
+  });
+});

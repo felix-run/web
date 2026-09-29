@@ -94,6 +94,19 @@ function retitle(hunk: Hunk, lines: string[]): string {
 }
 
 /**
+ * How many rows the diff renderer draws for these patch lines.
+ *
+ * Not the line count: `DiffRenderable` draws neither a hunk's `@@` header nor a
+ * `\ No newline at end of file` marker, and puts nothing between two hunks — the
+ * line numbers jump instead. Counting those lines sized the box past its content,
+ * so a new one-line file left two empty rows under `+ hello` in every approval,
+ * and they were charged against `DIFF_ROWS`, which cut real lines to pay for them.
+ */
+function drawnRows(lines: string[]): number {
+  return lines.filter((line) => !line.startsWith('@@') && !line.startsWith('\\')).length;
+}
+
+/**
  * The patch a write approval should show, or `null` when there is nothing to
  * diff — a tool that is not a write, or one whose new content is not text.
  */
@@ -120,7 +133,7 @@ export function writeDiff(pending: PendingApproval, rows = DIFF_ROWS): WriteDiff
   let omitted = 0;
 
   for (const hunk of hunks) {
-    const cost = hunk.lines.length + 1;
+    const cost = drawnRows(hunk.lines);
     if (used + cost <= rows) {
       kept.push(hunk.header, ...hunk.lines);
       used += cost;
@@ -128,23 +141,24 @@ export function writeDiff(pending: PendingApproval, rows = DIFF_ROWS): WriteDiff
     }
     // Room for part of this one, and only if it is the first — a later hunk cut
     // short would sit under complete ones and read as though the file ends there.
-    const room = rows - used - 1;
+    const room = rows - used;
     if (kept.length === 0 && room > 0) {
       const part = hunk.lines.slice(0, room);
       kept.push(retitle(hunk, part), ...part);
-      used += part.length + 1;
-      omitted += hunk.lines.length - part.length;
+      used += drawnRows(part);
+      omitted += cost - drawnRows(part);
       continue;
     }
-    omitted += hunk.lines.length;
+    omitted += cost;
   }
 
   return {
     patch: [...head, ...kept].join('\n'),
     path,
     // Sized to what the patch needs rather than to the cap, or a two-line edit
-    // reserves sixteen rows and the banner is mostly empty box.
-    rows: Math.max(1, Math.min(kept.length, rows)),
+    // reserves sixteen rows and the banner is mostly empty box — and counted in
+    // rows the renderer draws, not lines of patch text (see `drawnRows`).
+    rows: Math.max(1, used),
     omitted,
     isNew: pending.before === null,
   };
