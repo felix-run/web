@@ -39,7 +39,7 @@
     ul,
     ol:not(.sl-steps),
     blockquote,
-    dl,
+    dl:not(.event-list),
     h2,
     h3,
     h4,
@@ -52,20 +52,25 @@
 }
 
 /*
- * A table cell's code may break anywhere. Without it the widest JSON shape in
- * a column sets the table's minimum width, and the column that gets clipped
- * off the right edge is whichever comes last — on the REST Events table, the
- * one saying what each event means. Numbers in tables line up.
+ * Steps are a list of prose with code between the paragraphs. The list itself
+ * takes the column so its code blocks do; the prose inside each step gets the
+ * same measure as any other paragraph.
  */
-.sl-markdown-content td code {
-  overflow-wrap: anywhere;
+.sl-markdown-content .sl-steps > li > :where(p, ul, ol, .starlight-aside) {
+  max-inline-size: var(--felix-measure);
 }
-/* ...except the first column, which is the row's key (an event, a field, a
-   route) and is read as one token. */
-.sl-markdown-content td:first-child code {
-  overflow-wrap: normal;
-  white-space: nowrap;
+
+/*
+ * Tables keep their code whole and scroll inside their own box when they must.
+ * An earlier rule let table code break anywhere so no column could clip; it
+ * shredded JSON mid-token and split `GET` from its path, which is worse than a
+ * sideways scroll. The one table whose last column mattered most — the stream
+ * events — is a stacked list now instead (`.event-list` below).
+ */
+.sl-markdown-content td {
+  font-variant-numeric: tabular-nums;
 }
+
 .sl-markdown-content td {
   font-variant-numeric: tabular-nums;
 }
@@ -128,7 +133,12 @@
  * and none of them meant anything here. The ramp is the one closed set of hues
  * Felix allows, generated into theme.css from @felix/design:
  *
- *   note → running · tip → done · caution → blocked · danger → failed
+ *   note → neutral · tip → done · caution → blocked · danger → failed
+ *
+ * A note is information, not a state, so it takes the text colour: a grey
+ * border and tint, a full-strength title. Hue then appears only where there is
+ * something to do or know — it used to draw notes in "running", the live,
+ * in-flight colour, on text that is neither.
  *
  * Drawn the way chat-ui draws a state (`border-state-blocked/40` over
  * `bg-state-blocked/5`): a hairline border all the way round in the hue at
@@ -141,7 +151,7 @@
  * harness did is a note, or the amber stops meaning anything.
  */
 .starlight-aside {
-  --felix-aside-hue: var(--felix-state-running);
+  --felix-aside-hue: var(--sl-color-white);
   --sl-color-asides-text-accent: var(--felix-aside-hue);
   --sl-color-asides-border: color-mix(in srgb, var(--felix-aside-hue) 40%, var(--sl-color-black));
   background-color: color-mix(in srgb, var(--felix-aside-hue) 6%, var(--sl-color-black));
@@ -159,6 +169,8 @@
 }
 .starlight-aside__title {
   color: var(--felix-aside-hue);
+  /* Starlight sets headings' 1.2; a title that wraps to a second line needs more. */
+  line-height: 1.35;
 }
 
 /*
@@ -203,4 +215,103 @@
 }
 .sl-markdown-content a {
   text-underline-offset: 0.2em;
+}
+
+/*
+ * The splash home has no sidebar and no table of contents, so its column can
+ * be wider than a docs page's: the hero sets copy beside the run figure, and
+ * both need room. Prose on it is still held to the measure above.
+ */
+:root[data-has-hero] {
+  --sl-content-width: 72rem;
+}
+/* Starlight leaves the splash container flush left once it is narrower than
+   the viewport; centre it. */
+:root[data-has-hero] .sl-container {
+  margin-inline: auto;
+}
+
+/*
+ * Buttons are chat-ui's shape — `rounded-md`, 8px — not Starlight's pill.
+ * The docs and the app are one product; a pill here and a rounded rectangle
+ * there read as two design systems.
+ */
+.sl-link-button {
+  border-radius: 0.5rem;
+}
+
+/*
+ * The home page ends on where to go next: the sidebar's three groups, as
+ * plain lists. It is also the home page's navigation on a phone, where the
+ * splash layout has no sidebar and so no menu button.
+ */
+.where-next {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1.5rem 2rem;
+  margin-top: 1rem;
+}
+.where-next h3 {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  color: var(--sl-color-gray-3);
+  margin: 0 0 0.5rem;
+}
+.where-next ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.where-next li {
+  margin: 0;
+  padding-block: 0.3rem;
+  border-top: 1px solid var(--sl-color-hairline);
+}
+.where-next a {
+  color: var(--sl-color-white);
+  text-decoration: none;
+}
+.where-next a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/*
+ * The stream events, stacked: the event name, what it means, then its `data`
+ * shape on a line of its own that may be as wide as the column. Nothing is
+ * clipped at any width, because nothing sits beside the JSON.
+ */
+.sl-markdown-content .event-list {
+  margin-top: 1rem;
+}
+.sl-markdown-content .event-list dt {
+  margin-top: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--sl-color-hairline);
+  font-weight: 400;
+}
+.sl-markdown-content .event-list dt:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.sl-markdown-content .event-list dt code {
+  background: none;
+  padding: 0;
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  color: var(--sl-color-white);
+}
+.sl-markdown-content .event-list dd {
+  margin: 0.25rem 0 0;
+  padding: 0;
+  max-inline-size: var(--felix-measure);
+}
+.sl-markdown-content .event-list .event-data {
+  max-inline-size: none;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+}
+.sl-markdown-content .event-list .event-data code {
+  white-space: pre;
+  font-size: var(--sl-text-xs);
 }

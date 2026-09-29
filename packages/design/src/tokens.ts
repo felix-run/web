@@ -119,9 +119,22 @@ export const STATE_DARK: StatePalette = {
   danger: '#ff6467',
 };
 
-/** Map one palette onto Scalar's CSS variables. */
-function scalarVars(p: ThemePalette): string {
+/**
+ * Map one palette onto Scalar's CSS variables.
+ *
+ * Scalar colours HTTP methods from its own blue/green/orange/yellow/red, and
+ * its light-mode defaults put `GET` at 3.78:1 — under AA, on 10px text. Those
+ * slots take the state ramp instead, which is tuned for contrast in both modes:
+ * GET running, POST done, PUT and PATCH blocked, DELETE failed. The mapping is
+ * by hue family, not by meaning; nothing here claims a POST is "done".
+ */
+function scalarVars(p: ThemePalette, s: StatePalette): string {
   return `
+    --scalar-color-blue: ${s.running};
+    --scalar-color-green: ${s.done};
+    --scalar-color-orange: ${s.blocked};
+    --scalar-color-yellow: ${s.blocked};
+    --scalar-color-red: ${s.failed};
     --scalar-background-1: ${p.bg};
     --scalar-background-2: ${p.bgSubtle};
     --scalar-background-3: ${p.bgMuted};
@@ -152,9 +165,9 @@ function scalarVars(p: ThemePalette): string {
  */
 export function scalarThemeCss(): string {
   return `
-  .light-mode {${scalarVars(LIGHT)}
+  .light-mode {${scalarVars(LIGHT, STATE_LIGHT)}
   }
-  .dark-mode {${scalarVars(DARK)}
+  .dark-mode {${scalarVars(DARK, STATE_DARK)}
   }
 `;
 }

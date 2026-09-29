@@ -1,0 +1,16 @@
+---
+title: "Route index"
+description: "Every route the Felix harness serves, grouped as the OpenAPI spec groups them, each linked to the guide section that explains it."
+tableOfContents: false
+---
+
+import RouteIndex from '../../components/RouteIndex.astro';
+
+Every route in the spec of the release [api.felix.run](https://api.felix.run) runs, one line each.
+A route a guide explains links to that section; the rest link to their operation in the
+[OpenAPI explorer](/reference/), which has the request schema and a request builder but not the
+response shape — every harness route returns a plain object, so the spec cannot describe one. The
+[REST API](/guide/rest-api/) and [Management API](/guide/management-api/) guides are where those
+shapes are written down.
+
+<RouteIndex />

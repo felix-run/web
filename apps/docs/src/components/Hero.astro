@@ -1,0 +1,104 @@
+---
+/*
+ * The home page's hero, overriding Starlight's (wired in astro.config.mjs).
+ *
+ * Starlight's hero puts an image beside the copy. Felix's picture is not an
+ * image: it is one run, drawn as the frames the harness sends (RunTrace), and
+ * it belongs where a stranger looks first rather than below the fold. So this
+ * renders the same title, tagline and actions from the page's `hero`
+ * frontmatter, and RunTrace in the second column.
+ *
+ * Two departures from the original, both deliberate. The copy stays
+ * left-aligned at every width — Starlight centres it on narrow screens and
+ * left-aligns it wide, so the same page changed alignment halfway down. And
+ * RunTrace sits under the actions on narrow screens rather than above the
+ * title, because the title says what the figure is of.
+ *
+ * Only the home page has `hero` frontmatter, so this renders nowhere else.
+ */
+// Biome parses only an .astro file's frontmatter, so imports used in the markup read as dead.
+// biome-ignore lint/correctness/noUnusedImports: rendered below
+import { LinkButton } from '@astrojs/starlight/components';
+// biome-ignore lint/correctness/noUnusedImports: rendered below
+import RunTrace from './RunTrace.astro';
+
+const { data } = Astro.locals.starlightRoute.entry;
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const { title = data.title, tagline, actions = [] } = data.hero || {};
+---
+
+<div class="hero">
+  <div class="stack">
+    <h1 id="_top" data-page-title set:html={title} />
+    {tagline && <p class="tagline" set:html={tagline} />}
+    {
+      actions.length > 0 && (
+        <div class="actions">
+          {actions.map(({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }) => (
+            <LinkButton {href} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+              {text}
+            </LinkButton>
+          ))}
+        </div>
+      )
+    }
+  </div>
+  <div class="figure">
+    <RunTrace />
+  </div>
+</div>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+    padding-block: 1.5rem 1rem;
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+
+  h1 {
+    font-size: clamp(var(--sl-text-3xl), calc(0.5rem + 3.5vw), var(--sl-text-5xl));
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    color: var(--sl-color-white);
+    max-width: 16ch;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .tagline {
+    font-size: var(--sl-text-lg);
+    color: var(--sl-color-gray-2);
+    max-width: 34rem;
+    margin: 0;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
+  .figure :global(.run-trace) {
+    margin: 0;
+  }
+
+  @media (min-width: 64rem) {
+    .hero {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+      gap: 4rem;
+      align-items: center;
+      padding-block: clamp(2.5rem, calc(1rem + 8vmin), 6rem);
+    }
+  }
+</style>

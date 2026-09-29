@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-import { Aside, Steps, Tabs, TabItem, CardGrid, LinkCard, Badge, Card } from '@astrojs/starlight/components';
+import { Aside } from '@astrojs/starlight/components';
 
 The public surface of a running harness. Management endpoints (`/audit`, `/approvals`, `/plans`,
 `/jobs`, `/manifests`, `/eval`, `/usage`, `/memory`, `/documents`, `/artifacts`) are in the
@@ -353,27 +353,65 @@ present, else `data.text` or `data.delta`, else `""`.
 
 ### Events
 
-| `event` | When | `data` |
-|---|---|---|
-| `session_progress` | A turn started on a thread | `{"phase":"turn"}` |
-| `session_progress` | Compaction fired mid-loop | `{"phase":"compaction","reason":"after_turn"}` |
-| `session_progress` | Paired with each `text_delta` | `{"progress":{"type":"assistant_delta","kind":"text","delta":str}}` |
-| `text_delta` | A model token chunk | `{"chunk":{"content":str},"delta":str}` |
-| `on_chat_model_stream` | Composite patterns only (`deep`, `router`, `parallel`, `groupchat`, `reflect`, `plan_execute`) | `{"chunk":{"content":str}}` |
-| `tool_start` | Before a tool runs | `{"name":str,"input":dict,"id":str}` |
-| `tool_execution_update` | Right after `tool_start` | `{"name":str,"id":str,"status":"running"}` |
-| `tool_end` | A tool returned | `{"name":str,"output":str,"id":str}` |
-| `tool_execution_update` | Right after `tool_end` | `{"name":str,"id":str,"status":"complete"}` |
-| `tool_request` | **The client must run this tool** | `{"id","name","args","thread_id","transport":"client"}` |
-| `approval_required` | A gated tool is waiting on a human | `{"approval_id","tool_name","args","rule_id","reason"?,"thread_id","tool_call_id"}` |
-| `ui_request` | The agent is asking the user something | `{"request_id","kind","prompt","default","thread_id","options":[…],"metadata":{}}` |
-| `steer` | A queued steer was drained into the loop | `{"content":str}` |
-| `follow_up` | A queued follow-up was drained after idle | `{"content":str}` |
-| `max_turns` | A `react` loop ran out of `spec.recursion_limit` steps with tool calls still pending. The session is recorded `truncated` and `done` says `stop_reason: max_turns`; this frame is the one that carries the limit | `{"limit":int}` |
-| `aborted` | `POST /chat/abort` was observed | `{"thread_id":str}` |
-| `on_error` | The run failed mid-stream. Not terminal — the stream still ends with `done`/`[DONE]`, so a client that ignores it reports success | `{"message":str}` |
-| `on_chain_end` | Penultimate frame; carries per-turn `usage` | `{"output": InvokeOutput}` |
-| `done` | Final frame before `[DONE]`. `stop_reason` is how the run ended — `end_turn`, `tool_use`, `max_tokens`, `max_turns`, `stop_sequence`, `pause_turn`, `refusal`, `unknown` — and is what `/v1` maps to `finish_reason` | `{"final": ChatMessage, "messages":[…], "stop_reason": str}` |
+<dl class="event-list">
+  <dt>`session_progress`</dt>
+  <dd>A turn started on a thread</dd>
+  <dd class="event-data">`{"phase":"turn"}`</dd>
+  <dt>`session_progress`</dt>
+  <dd>Compaction fired mid-loop</dd>
+  <dd class="event-data">`{"phase":"compaction","reason":"after_turn"}`</dd>
+  <dt>`session_progress`</dt>
+  <dd>Paired with each `text_delta`</dd>
+  <dd class="event-data">`{"progress":{"type":"assistant_delta","kind":"text","delta":str}}`</dd>
+  <dt>`text_delta`</dt>
+  <dd>A model token chunk</dd>
+  <dd class="event-data">`{"chunk":{"content":str},"delta":str}`</dd>
+  <dt>`on_chat_model_stream`</dt>
+  <dd>Composite patterns only (`deep`, `router`, `parallel`, `groupchat`, `reflect`, `plan_execute`)</dd>
+  <dd class="event-data">`{"chunk":{"content":str}}`</dd>
+  <dt>`tool_start`</dt>
+  <dd>Before a tool runs</dd>
+  <dd class="event-data">`{"name":str,"input":dict,"id":str}`</dd>
+  <dt>`tool_execution_update`</dt>
+  <dd>Right after `tool_start`</dd>
+  <dd class="event-data">`{"name":str,"id":str,"status":"running"}`</dd>
+  <dt>`tool_end`</dt>
+  <dd>A tool returned</dd>
+  <dd class="event-data">`{"name":str,"output":str,"id":str}`</dd>
+  <dt>`tool_execution_update`</dt>
+  <dd>Right after `tool_end`</dd>
+  <dd class="event-data">`{"name":str,"id":str,"status":"complete"}`</dd>
+  <dt>`tool_request`</dt>
+  <dd>**The client must run this tool**</dd>
+  <dd class="event-data">`{"id","name","args","thread_id","transport":"client"}`</dd>
+  <dt>`approval_required`</dt>
+  <dd>A gated tool is waiting on a human</dd>
+  <dd class="event-data">`{"approval_id","tool_name","args","rule_id","reason"?,"thread_id","tool_call_id"}`</dd>
+  <dt>`ui_request`</dt>
+  <dd>The agent is asking the user something</dd>
+  <dd class="event-data">`{"request_id","kind","prompt","default","thread_id","options":[…],"metadata":{}}`</dd>
+  <dt>`steer`</dt>
+  <dd>A queued steer was drained into the loop</dd>
+  <dd class="event-data">`{"content":str}`</dd>
+  <dt>`follow_up`</dt>
+  <dd>A queued follow-up was drained after idle</dd>
+  <dd class="event-data">`{"content":str}`</dd>
+  <dt>`max_turns`</dt>
+  <dd>A `react` loop ran out of `spec.recursion_limit` steps with tool calls still pending. The session is recorded `truncated` and `done` says `stop_reason: max_turns`; this frame is the one that carries the limit</dd>
+  <dd class="event-data">`{"limit":int}`</dd>
+  <dt>`aborted`</dt>
+  <dd>`POST /chat/abort` was observed</dd>
+  <dd class="event-data">`{"thread_id":str}`</dd>
+  <dt>`on_error`</dt>
+  <dd>The run failed mid-stream. Not terminal — the stream still ends with `done`/`[DONE]`, so a client that ignores it reports success</dd>
+  <dd class="event-data">`{"message":str}`</dd>
+  <dt>`on_chain_end`</dt>
+  <dd>Penultimate frame; carries per-turn `usage`</dd>
+  <dd class="event-data">`{"output": InvokeOutput}`</dd>
+  <dt>`done`</dt>
+  <dd>Final frame before `[DONE]`. `stop_reason` is how the run ended — `end_turn`, `tool_use`, `max_tokens`, `max_turns`, `stop_sequence`, `pause_turn`, `refusal`, `unknown` — and is what `/v1` maps to `finish_reason`</dd>
+  <dd class="event-data">`{"final": ChatMessage, "messages":[…], "stop_reason": str}`</dd>
+</dl>
 
 :::note
 `tool_request`, `approval_required` and `ui_request` are **side-channel** frames: the blocked tool

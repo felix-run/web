@@ -1,7 +1,8 @@
 ---
 /*
  * Header nav — the top-level link a site with a marketing homepage would put
- * in its header. Starlight has no config for header links, and its `Header`
+ * in its header. It goes to the route index, which is where a returning reader
+ * looking something up wants to land; the explorer is one click on from there. Starlight has no config for header links, and its `Header`
  * has one slot-bearing component on the right of the bar, so the link is added
  * by overriding `SocialIcons` (wired in `astro.config.mjs`) rather than by
  * forking `Header` itself. Forking `Header` would mean owning its grid
@@ -14,7 +15,7 @@
  * divider rule Starlight draws after this group still lands in the right spot.
  *
  * The right group is `md:sl-flex`, so this is hidden below 50rem. The sidebar
- * keeps its own "API reference" entry, which is what small screens get.
+ * keeps its own "Route index" entry, which is what small screens get.
  */
 // Biome parses only an .astro file's frontmatter, never the markup, so every
 // component import here reads as dead to it.
@@ -22,7 +23,7 @@
 import Default from '@astrojs/starlight/components/SocialIcons.astro';
 ---
 
-<a class="header-link" href="/reference/">API reference</a>
+<a class="header-link" href="/guide/routes/">Routes</a>
 <Default><slot /></Default>
 
 <style>
