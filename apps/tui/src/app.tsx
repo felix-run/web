@@ -149,6 +149,8 @@ export function App({
 
   const engineRef = useRef<ChatEngine | null>(null);
   const clientRef = useRef<ReturnType<typeof createFelixClient> | null>(null);
+  // Filled once `hydrate` exists, which is after the engine it hydrates.
+  const hydrateRef = useRef<(id: string) => Promise<void>>(async () => {});
   if (!engineRef.current) {
     // No proxy Worker and no shared key: this process reaches the harness
     // itself, so the credential is a bearer token it holds.
@@ -173,6 +175,13 @@ export function App({
       // The engine parses a `list_skills` result and hands it over; without this
       // port that capture goes nowhere, which is why the panel could not exist.
       onSkills: setSkills,
+      // A durable run's answer lands twice without this: once in the session log
+      // the engine tails while the run works, and again from `final` into the
+      // status turn. Re-reading the snapshot is what makes the transcript
+      // authoritative again, as chat-ui has done all along — and it is safe
+      // *because* a durable stream carries no deltas, so there is no local
+      // detail for the rebuild to throw away.
+      onDurableComplete: () => void hydrateRef.current(threadIdRef.current),
       clientTools: createWorkspace({
         root,
         // `--yes` is a confirm that always agrees, not an absent one: a
@@ -224,6 +233,7 @@ export function App({
     },
     [client, engine],
   );
+  hydrateRef.current = hydrate;
 
   useEffect(() => {
     void refreshThreads();

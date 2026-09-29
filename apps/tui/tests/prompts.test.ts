@@ -3,6 +3,7 @@ import type { PendingApproval } from '@felix/client';
 import type { PendingUiRequest } from '@felix/protocol';
 import { createElement } from 'react';
 import { ApprovalPrompt, UiPrompt, WritePrompt } from '../src/ui/prompts';
+import { Transcript } from '../src/ui/transcript';
 import { lines, mount, shows, testTheme } from './render';
 
 /**
@@ -613,6 +614,82 @@ describe('the local write prompt', () => {
       await ui.keys.typeText('y');
       await ui.settle();
       expect(answers).toEqual([false, true]);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+/**
+ * A banner is laid out under the transcript, and the transcript is what yields.
+ *
+ * The prompts sat in `App`'s column without `flexShrink={0}`, so under a
+ * conversation long enough to want the whole screen the banner gave up rows
+ * instead — and its lines were drawn over each other rather than dropped:
+ * `approving also allows this exact call until then` and the key row shared one
+ * line and read as `approving alsodallowsethistexact calltuntilithenn 9:09`, on
+ * the one prompt that authorises a write. Seen against the reference harness on
+ * a durable `cowork` run. Each component is correct alone, which is why this
+ * mounts them the way `App` does.
+ */
+describe('a banner under a long conversation', () => {
+  const longTranscript = () =>
+    createElement(
+      'box',
+      { flexDirection: 'column', flexGrow: 1, flexShrink: 1, minHeight: 0 },
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: Array.from({ length: 40 }, (_, i) => ({
+          id: `t${i}`,
+          role: 'user' as const,
+          content: `message ${i}`,
+        })),
+      }),
+    );
+
+  it('keeps every row of the approval banner', async () => {
+    const ui = await mount(
+      createElement(
+        'box',
+        { flexDirection: 'column', height: 24 },
+        longTranscript(),
+        createElement(ApprovalPrompt, {
+          theme: testTheme,
+          pending: { ...approval, ruleId: 'workspace-write', expiresAt: Date.now() + 540_000 },
+          onDecide: () => {},
+        }),
+      ),
+      { width: 90, height: 24 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'approval · write_file · workspace-write')).toBe(true);
+      expect(shows(frame, 'changes apps/tui/src/app.tsx')).toBe(true);
+      expect(shows(frame, 'y approve · n deny')).toBe(true);
+      expect(shows(frame, 'approving also allows this exact call until then')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('keeps every row of the local write prompt', async () => {
+    const ui = await mount(
+      createElement(
+        'box',
+        { flexDirection: 'column', height: 24 },
+        longTranscript(),
+        createElement(WritePrompt, {
+          theme: testTheme,
+          summary: 'write /Users/someone/project/src/notes.txt',
+          onAnswer: () => {},
+        }),
+      ),
+      { width: 90, height: 24 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, '/Users/someone/project/src/notes.txt')).toBe(true);
+      expect(shows(frame, 'allow')).toBe(true);
     } finally {
       ui.stop();
     }
