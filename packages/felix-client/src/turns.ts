@@ -208,3 +208,12 @@ export function interleaveTurn(
   if (cursor < content.length) segments.push({ kind: 'text', text: content.slice(cursor) });
   return segments;
 }
+
+/**
+ * How much reasoning a block holds, in words — the one measure a block rebuilt
+ * from history still has, since the snapshot records no duration for it.
+ */
+export function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}

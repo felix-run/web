@@ -474,6 +474,101 @@ describe('reasoning', () => {
   });
 });
 
+describe('reasoning while it is written', () => {
+  const thinking = (text: string): Turn =>
+    ({ id: 'a6', role: 'assistant', content: '', tools: [], reasoning: [{ text, at: 0 }] }) as Turn;
+
+  /**
+   * A line of the thought's first words sat still for as long as the model thought, and
+   * looked the same as a stream that had stopped. Live, the row says it is thinking and
+   * shows the newest words — the end of the text, not the start.
+   */
+  it('says it is thinking and shows the newest words', async () => {
+    const early = 'first I will read the config and the catalog. ';
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        streaming: true,
+        turns: [thinking(`${early.repeat(4)}then the newest idea arrives`)],
+      }),
+      { width: 80, height: 8 },
+    );
+    try {
+      expect(shows(ui.frame(), 'thinking')).toBe(true);
+      expect(shows(ui.frame(), '41 words')).toBe(true);
+      expect(shows(ui.frame(), 'the newest idea arrives')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('settles to the measure once the turn is done', async () => {
+    const ui = await mount(
+      createElement(Transcript, { theme: testTheme, turns: [thinking('weighing the options')] }),
+      { width: 80, height: 8 },
+    );
+    try {
+      // Never watched live here, so there is no duration to quote.
+      expect(shows(ui.frame(), 'reasoning · 3 words')).toBe(true);
+      expect(shows(ui.frame(), 'thinking')).toBe(false);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+/**
+ * A durable stream carries no deltas, so until `final` the engine's status line is the whole
+ * turn. It is drawn in the state colour it reports, not as a reply.
+ */
+describe('a durable run in flight', () => {
+  const rgb = (c: unknown) =>
+    (c as { toInts(): number[] }).toInts().slice(0, 3) as [number, number, number];
+  const status = (content: string, runStatus: 'running' | 'blocked'): Turn => ({
+    id: 'a7',
+    role: 'assistant',
+    content,
+    tools: [],
+    runStatus,
+  });
+
+  it('draws the status line in the running colour', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        streaming: true,
+        turns: [status('Background · running…', 'running')],
+      }),
+      { width: 80, height: 6 },
+    );
+    try {
+      const style = styleOf(ui.spans(), 'Background · running…');
+      expect(style?.fg).toEqual(rgb(testTheme.running));
+      expect(shows(ui.frame(), 'for 0s')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('holds still in the blocked colour while it waits on a person', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        streaming: true,
+        turns: [status('Waiting on your approval · Write notes.txt', 'blocked')],
+      }),
+      { width: 80, height: 6 },
+    );
+    try {
+      const style = styleOf(ui.spans(), 'Waiting on your approval');
+      expect(style?.fg).toEqual(rgb(testTheme.blocked));
+      expect(shows(ui.frame(), '● Waiting on your approval')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
 describe('a refused gate on the tool card', () => {
   it('says nobody approved it rather than drawing the marker', async () => {
     const turn: Turn = {

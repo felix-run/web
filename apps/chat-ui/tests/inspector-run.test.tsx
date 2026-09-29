@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+
+import { formatElapsed } from '@felix/client';
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -10,7 +12,6 @@ import {
   runState,
   threadTokens,
 } from '../src/components/inspector/inspector';
-import { formatElapsed } from '../src/lib/format';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
