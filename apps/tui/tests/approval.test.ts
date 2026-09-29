@@ -145,3 +145,38 @@ describe('the patch stays a patch at any size', () => {
     expect(small?.omitted).toBeGreaterThan(0);
   });
 });
+
+/**
+ * `rows` is the height of the box the diff is drawn in, so it has to count what the renderer
+ * draws — which is not every line of the patch. `DiffRenderable` skips a hunk's `@@` header and a
+ * `\ No newline at end of file` marker, and draws nothing between hunks. Counting them left two
+ * empty rows under `+ hello` on a new one-line file, and spent the budget on rows nobody sees.
+ */
+describe('writeDiff rows', () => {
+  it('is one row for a new one-line file', () => {
+    const diff = writeDiff(write({ args: { path: 'notes.txt', content: 'hello' }, before: null }));
+    expect(diff?.patch).toContain('\\ No newline at end of file');
+    expect(diff?.rows).toBe(1);
+  });
+
+  it('counts the lines drawn across two hunks, and no headers', () => {
+    const before = `${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}\n`;
+    const after = before.replace('line 2\n', 'line two\n').replace('line 25\n', 'line 25b\n');
+    const diff = writeDiff(write({ args: { path: 'f.txt', content: after }, before }), 40);
+    // A one-line change with three lines of context either side is 8 drawn lines — 7 for the
+    // first, which sits two lines from the top of the file and has only two above it.
+    expect(diff?.rows).toBe(15);
+  });
+
+  it('keeps both hunks when their drawn lines fit the budget exactly', () => {
+    const before = `${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}\n`;
+    const after = before.replace('line 2\n', 'line two\n').replace('line 25\n', 'line 25b\n');
+    const exact = writeDiff(write({ args: { path: 'f.txt', content: after }, before }), 15);
+    expect(exact?.patch).toContain('+line 25b');
+    expect(exact?.omitted).toBe(0);
+    // One row short, the second hunk is dropped whole rather than cut.
+    const short = writeDiff(write({ args: { path: 'f.txt', content: after }, before }), 14);
+    expect(short?.patch).not.toContain('line 25b');
+    expect(short?.omitted).toBe(8);
+  });
+});
