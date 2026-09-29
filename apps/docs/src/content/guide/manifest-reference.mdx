@@ -610,8 +610,10 @@ off by default — turn it on where stored memory is acted on rather than merely
 
 The pass can only **remove**. Its verdict selects from the proposals; it never supplies a memory of
 its own, and it cannot alter a kept memory's `kind`, `topic_key` or `importance`. That matters
-because the excerpt it reads is untrusted transcript, and `topic_key` drives supersession — a
-verdict that could set one could delete an unrelated stored fact.
+because the excerpt it reads is untrusted transcript. A captured `topic_key` cannot retire anything
+— only an operator retires a memory by its key, and a captured value is stored beside the one it
+contradicts — but a verdict that could set a key could still make its own memory the one the
+prelude shows as current.
 
 It fails open on anything it cannot read, on the grounds that a broken verifier is not evidence the
 facts were wrong:
@@ -1106,14 +1108,16 @@ spec:
 
 `when_args` exists because a tool can be harmless in one shape and a privileged
 operation in another. `remember` is ordinary capture until it carries a `topic_key`, at
-which point it retires whatever else holds that key — the same outcome `forget` is
-gated for. Gating the whole tool would put an approval in front of every memory write:
+which point its value becomes the one the model is shown as current for that topic. It no
+longer retires what else holds the key — only an operator does that — but a human seeing a
+key-changing write is still worth an approval. Gating the whole tool would put one in front
+of every memory write:
 
 ```yaml
 spec:
   approvals:
     - id: memory-retopic
-      description: Confirm replacing the current value of a remembered topic
+      description: Confirm a new current value for a remembered topic
       tools: [remember]
       when_args: [topic_key]
 ```
