@@ -1,5 +1,5 @@
+import { formatElapsed } from '@felix/client';
 import { useElapsed } from '@/hooks/use-elapsed';
-import { formatElapsed } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Turn } from '@/types';
 

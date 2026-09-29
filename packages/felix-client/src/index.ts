@@ -84,7 +84,7 @@ export {
   titleFromText,
   UNTITLED_THREAD_TITLE,
 } from './session-log';
-export { relativeTime } from './time';
+export { formatElapsed, relativeTime } from './time';
 export { classifyToolResult, type ToolResultIssue } from './tool-results';
 export {
   createFelixClient,
@@ -96,6 +96,7 @@ export {
 } from './transport';
 export {
   closeTool,
+  countWords,
   findOpenTool,
   interleaveTurn,
   markToolPhase,
