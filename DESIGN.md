@@ -529,7 +529,8 @@ every second is noise.
   terminal client draws both with the same states — spinner for the dot, `●` for blocked.
   Measured on page in light at 375px: `state-running` text 7.51:1, `state-blocked` 7.09:1, the
   muted stopwatch, count and reasoning tail 5.27:1; the longest approval line wraps inside the
-  column with its stopwatch still on screen, and nothing scrolls sideways. Dark is unmeasured.
+  column with its stopwatch still on screen, and nothing scrolls sideways. In dark, loaded as
+  dark rather than toggled: `state-running` 11.94:1, `state-blocked` 13.75:1, muted 7.59:1.
 - **Long tokens wrap; wide blocks scroll in place.** Nothing in a turn may widen the column.
   Plain text — the operator's turn, a note, reasoning — wraps with `wrap-anywhere`, so a
   commit hash or an absolute path breaks rather than giving the transcript a sideways scroll
