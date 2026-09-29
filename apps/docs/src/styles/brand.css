@@ -71,10 +71,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.sl-markdown-content td {
-  font-variant-numeric: tabular-nums;
-}
-
 /*
  * The dot grid, carried over from chat-ui's transcript (`.bg-dots` in
  * apps/chat-ui/src/index.css) so the two surfaces share one texture: a

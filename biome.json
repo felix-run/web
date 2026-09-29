@@ -15,7 +15,8 @@
       "!apps/chat-ui/harness-openapi.json",
       "!scripts/harness-events.json",
       "!scripts/harness-payloads.json",
-      "!.impeccable/design.json"
+      "!.impeccable/design.json",
+      "!apps/docs/.impeccable/design.json"
     ]
   },
   "formatter": {

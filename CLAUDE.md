@@ -895,6 +895,15 @@ generated from `@felix/design`'s `starlightThemeCss()` — change the tokens in
 `packages/design/src/tokens.ts` and run `pnpm sync:theme`. Hand edits to the CSS are blocked by a
 hook, because the next regeneration would silently revert them.
 
+The docs have their **own `apps/docs/DESIGN.md`** ("The Operator's Manual"), a sibling of the root
+one, which is chat-ui's. Impeccable treats a directory with a DESIGN.md as its project root, so
+`/impeccable` targeted at `apps/docs` reads that file, and its detector stops judging the docs
+against chat-ui's type ramp. The docs' surface brief lives at
+`apps/docs/.impeccable/surfaces/src.md`, keyed to `src` and a few paths under it: a brief's
+targets are **relative to that app root** and matched exactly, so `apps/docs` itself is rejected
+as a target (`invalid-target`) — name `apps/docs/src` or a registered path. The sidecar
+`apps/docs/.impeccable/design.json` is generated, so it is excluded from Biome like the root one.
+
 ## Claude Code toolkit
 
 `.claude/` carries project agents, skills, rules, and hooks. **`.claude/README.md` is the index**;
