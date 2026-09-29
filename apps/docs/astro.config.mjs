@@ -10,6 +10,11 @@ export default defineConfig({
       title: 'Felix',
       description:
         'Felix — self-hostable managed agents harness: manifests, patterns, sessions, and governance.',
+      // Starlight runs its Markdown transforms (`:::note` asides, heading anchor
+      // links) only on files under src/content/docs/ unless told otherwise. Prose
+      // lives one level up (see content.config.ts), so without this every aside
+      // rendered as a bare paragraph and no heading was linkable.
+      markdown: { processedDirs: ['./src/content'] },
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/felix-run/felix' }],
       // Header nav. Starlight has no config for header links, so the "API
       // reference" link rides an override of the one slot-bearing component in
