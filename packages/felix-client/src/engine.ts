@@ -142,6 +142,12 @@ const IDLE: EngineState = {
   uiPrompt: null,
 };
 
+/** The status turn, now carrying the run's answer — no longer a status line. */
+function answered(t: Turn, content: string): Turn {
+  const { runStatus: _, ...rest } = t;
+  return { ...rest, content };
+}
+
 export function createChatEngine(ports: EnginePorts): ChatEngine {
   const newId = ports.newId ?? (() => crypto.randomUUID());
   let state: EngineState = { ...IDLE };
@@ -264,16 +270,23 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     return status === ACCEPTED ? 'Durable run accepted…' : `Background · ${status}…`;
   };
 
+  /** The status turn, saying `status` — marked as a status so it is not drawn as a reply. */
+  const sayStatus = (t: Turn, status: string): Turn => ({
+    ...t,
+    content: statusLine(status),
+    runStatus: state.approvals.length > 0 ? 'blocked' : 'running',
+  });
+
   /** Re-say the status when what is waiting has changed, and only mid-run. */
   const refreshStatus = () => {
     if (durableStatus === null) return;
-    const line = statusLine(durableStatus);
-    patch((t) => ({ ...t, content: line }));
+    const status = durableStatus;
+    patch((t) => sayStatus(t, status));
   };
 
   const tick = (status: string) => {
     durableStatus = status;
-    patch((t) => ({ ...t, content: statusLine(status) }));
+    patch((t) => sayStatus(t, status));
   };
 
   const renderDurable = () => {
@@ -474,7 +487,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         if (data.resume_token) resumeToken = data.resume_token;
         set({ phase: 'durable' });
         durableStatus = ACCEPTED;
-        patch((t) => ({ ...t, content: t.content || 'Durable run accepted…' }));
+        patch((t) => (t.content ? t : sayStatus(t, ACCEPTED)));
         // Everything before the in-flight turn. The user message is dropped from
         // the prefix on purpose: the harness captured its cursor *before* the run
         // was enqueued, so the log re-supplies that message and keeping the local
@@ -502,7 +515,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         durableStatus = null;
         durablePrefix = null;
         durableEvents = [];
-        patch((t) => ({ ...t, content: content || t.content }));
+        patch((t) => answered(t, content || t.content));
         // The tail above is progressive rendering, not a substitute for hydration:
         // it starts at the cursor, so it never carries the thread's earlier turns,
         // and a dropped stream can have missed the end of it. Re-reading the
@@ -612,7 +625,9 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     const run = async () => {
       if (mode === 'background') {
         durableStatus = 'queued';
-        patch((t) => ({ ...t, content: t.content || 'Queued durable job…' }));
+        patch((t) =>
+          t.content ? t : { ...t, content: 'Queued durable job…', runStatus: 'running' },
+        );
         const started = await ports.client.startChat({
           manifest: args.manifest,
           messages: args.messages,
@@ -621,7 +636,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         });
         if (started.kind === 'done') {
           durableStatus = null;
-          patch((t) => ({ ...t, content: started.final.content }));
+          patch((t) => answered(t, started.final.content));
           // Same shape as the `final` frame: an answer with no tool calls behind it.
           ports.onDurableComplete?.();
           return;
@@ -635,10 +650,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           set({ error: runResult.error });
           return;
         }
-        patch((t) => ({
-          ...t,
-          content: finalOf(runResult) || `(${runResult.status || 'completed'})`,
-        }));
+        patch((t) => answered(t, finalOf(runResult) || `(${runResult.status || 'completed'})`));
         return;
       }
 
@@ -659,10 +671,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           set({ error: rejoined.error });
           return;
         }
-        patch((t) => ({
-          ...t,
-          content: finalOf(rejoined) || `(${rejoined.status || 'completed'})`,
-        }));
+        patch((t) => answered(t, finalOf(rejoined) || `(${rejoined.status || 'completed'})`));
         ports.onDurableComplete?.();
       };
 

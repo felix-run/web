@@ -3,6 +3,7 @@ import type { Turn } from '@/types';
 import { MessageActions } from './message-actions';
 import { Reasoning } from './reasoning';
 import { Response } from './response';
+import { RunStatusLine } from './run-status';
 import { Tool } from './tool';
 
 /**
@@ -120,7 +121,9 @@ export function Message({
     <div className="group flex w-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">Felix</span>
-        {streaming && !empty && <span className="text-xs text-muted-foreground">streaming</span>}
+        {streaming && !empty && !turn.runStatus && (
+          <span className="text-xs text-muted-foreground">streaming</span>
+        )}
         {verbose && toolCount > 0 && (
           <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
             {toolCount} tool{toolCount === 1 ? '' : 's'}
@@ -140,6 +143,18 @@ export function Message({
           const last = i === arr.length - 1;
           return (
             <Reasoning key={`segment-${i}`} text={segment.text} streaming={streaming && last} />
+          );
+        }
+        // A durable run's status line is the engine talking, not the agent: drawn as
+        // prose it read as the reply, so it takes the run readout's grammar instead.
+        if (turn.runStatus) {
+          return (
+            <RunStatusLine
+              key={`segment-${i}`}
+              text={segment.text}
+              tone={turn.runStatus}
+              live={!!streaming}
+            />
           );
         }
         return (

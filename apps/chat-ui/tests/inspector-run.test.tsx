@@ -5,12 +5,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  formatElapsed,
   Inspector,
   inFlightTool,
   runState,
   threadTokens,
 } from '../src/components/inspector/inspector';
+import { formatElapsed } from '../src/lib/format';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**

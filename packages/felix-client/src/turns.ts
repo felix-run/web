@@ -70,6 +70,17 @@ export interface Turn {
   tools?: ToolCall[];
   /** Reasoning the model streamed, if the harness is new enough to name it. */
   reasoning?: ReasoningBlock[];
+  /**
+   * Set while `content` is the engine's status line for a durable run in flight —
+   * `Durable run accepted…`, `Background · running…`, `Waiting on your approval · …` —
+   * rather than anything the model said, and which state of the ramp that line reports.
+   *
+   * A durable stream carries no deltas, so until `final` the status line is the only
+   * thing in the turn, and without this a renderer cannot tell it from an answer: it
+   * was drawn as the reply, at reading size, under the agent's name. Cleared when the
+   * answer replaces it.
+   */
+  runStatus?: 'running' | 'blocked';
   /** Image attachments on a user turn (rendered as thumbnails). */
   attachments?: ImageAttachment[];
   /** Set on assistant turns from the terminal `on_chain_end` usage payload. */
