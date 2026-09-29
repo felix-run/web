@@ -248,7 +248,8 @@ extracts facts from each turn into `memory_vectors` (pgvector, HNSW) under kinds
 
 By default a run lives and dies with the request. With `spec.execution.mode: durable`, `POST /chat`
 enqueues a **fiber** and returns `202` with a `resume_token`; the fiber checkpoints into Postgres and
-the worker's `fiber_scheduler` cron resumes it, so a process restart does not lose the run. Poll
+a worker picks it up within about a second and resumes it after any restart, so a process restart
+does not lose the run. Poll
 `GET /chat/runs/{resume_token}` for the result, or name endpoints in `spec.execution.webhooks` and
 the worker POSTs the finished run to them, signed.
 

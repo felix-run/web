@@ -255,8 +255,21 @@ Scheduled jobs (`PUT /jobs/{name}`) use standard **five-field** cron, evaluated 
 :::note
 The worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the sweep is *enqueued* by
 `felix-scheduler`. Run all three containers — API, worker **and** scheduler — or no job, retention
-sweep, memory consolidation or fiber resume ever fires.
+sweep or memory consolidation ever fires. Durable runs are the exception: each worker polls for them
+itself (below), and the scheduler's once-a-minute `fiber_scheduler` sweep is only the backstop.
 :::
+
+## Durable runs
+
+A durable run is a `pending` fiber until a worker claims it, and nothing tells the worker when one
+is submitted — so each worker polls. The claim is the same lease plus `FOR UPDATE SKIP LOCKED` the
+cron sweep takes, so any number of workers, polling or sweeping, never run one fiber twice.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_FIBER_POLL_SECONDS` | `1.0` | How often each worker checks for due fibers. `0` turns the poll off and leaves only the once-a-minute sweep, which is how durable runs were started before 0.5.0 — each waited up to a minute before its first model call. |
+| `FELIX_FIBER_CONCURRENCY` | `8` | Fibers one worker advances at once. A run parked on an approval holds its slot until someone answers, so this bounds how many such waits can pile up before a new run waits for a slot. A full worker leaves further runs unclaimed for another worker. |
+| `FELIX_FIBER_MAX_ATTEMPTS` | `5` | Consecutive failed steps before a fiber is `dead`; retries back off 1m doubling to 1h. |
 
 ## Completion webhooks
 

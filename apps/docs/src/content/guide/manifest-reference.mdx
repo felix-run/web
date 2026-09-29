@@ -717,8 +717,9 @@ spec:
 | `webhooks` | string[] (≤ 8) | `[]` | Endpoint **ids** announced to when the run ends. Needs `mode: durable`. Each must match `^[a-z0-9][a-z0-9_-]{0,63}$` and be registered in `FELIX_WEBHOOK_ENDPOINTS` for the caller's tenant, or the run is refused with `422 unknown webhook endpoint: <id>`. |
 
 A durable `POST /chat` returns **`202`** with `{status, resume_token, fiber_id, expires_at,
-thread_id}`; poll `GET /chat/runs/{resume_token}`. Fibers checkpoint in Postgres and are resumed by
-the worker's `fiber_scheduler` cron. Setting `FELIX_DURABILITY=temporal` additionally starts a
+thread_id}`; poll `GET /chat/runs/{resume_token}`. Fibers checkpoint in Postgres and are picked up
+by the worker within about a second (`FELIX_FIBER_POLL_SECONDS`, see
+[Deploy → Durable runs](/guide/deploy/#durable-runs)). Setting `FELIX_DURABILITY=temporal` additionally starts a
 Temporal workflow on the `felix-fibers` task queue, falling back to the fiber scheduler if that
 fails.
 
