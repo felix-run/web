@@ -159,12 +159,24 @@ export function scalarThemeCss(): string {
 `;
 }
 
+/** The state ramp as `--felix-state-*`, which the docs' asides read. */
+function stateVars(s: StatePalette): string {
+  return `
+  --felix-state-blocked: ${s.blocked};
+  --felix-state-done: ${s.done};
+  --felix-state-running: ${s.running};
+  --felix-state-failed: ${s.failed};`;
+}
+
 /**
  * Starlight custom stylesheet: overrides the `--sl-*` custom properties for
  * both schemes. Starlight is dark-first (`:root` is dark; light is
  * `:root[data-theme="light"]`), and its gray ramp is *semantic* — `white` is
  * "highest-contrast text" and `black` is "page background" in BOTH schemes,
  * so the light block re-fills the same slots with flipped values.
+ *
+ * The state ramp rides along so `brand.css` can colour asides with the hues
+ * chat-ui and the terminal use, instead of Starlight's own blue/purple/orange.
  */
 export function starlightThemeCss(): string {
   return `/* @generated from @felix/design/tokens — run the docs sync to refresh. */
@@ -181,7 +193,7 @@ export function starlightThemeCss(): string {
   --sl-color-gray-6: ${DARK.bgSubtle};
   --sl-color-black: ${DARK.bg};
   --sl-color-hairline: ${DARK.border};
-  --sl-color-bg-inline-code: ${DARK.bgMuted};
+  --sl-color-bg-inline-code: ${DARK.bgMuted};${stateVars(STATE_DARK)}
 }
 :root[data-theme="light"] {
   --sl-color-accent-low: ${LIGHT.bgMuted};
@@ -197,7 +209,7 @@ export function starlightThemeCss(): string {
   --sl-color-gray-7: ${LIGHT.bgSubtle};
   --sl-color-black: ${LIGHT.bg};
   --sl-color-hairline: ${LIGHT.border};
-  --sl-color-bg-inline-code: ${LIGHT.bgMuted};
+  --sl-color-bg-inline-code: ${LIGHT.bgMuted};${stateVars(STATE_LIGHT)}
 }
 `;
 }

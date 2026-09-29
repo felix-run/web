@@ -28,3 +28,89 @@
 :root {
   --sl-content-width: 58rem;
 }
+
+/*
+ * The dot grid, carried over from chat-ui's transcript (`.bg-dots` in
+ * apps/chat-ui/src/index.css) so the two surfaces share one texture: a
+ * foreground dot on an 18px grid, its strength set on the layer rather than in
+ * the colour, fading out as it falls down the page.
+ *
+ * Same placement rule as there, translated: behind the reading column and
+ * nowhere else. Not behind the sidebar or the table of contents, which are
+ * scanned rather than read — the TOC's faint text is also the text with least
+ * contrast margin, and it would sit on the dots for the whole page. And only
+ * as a band at the top of the page, a viewport tall at most, because a mask
+ * sized to a 400-screen reference page would never visibly fade.
+ *
+ * `--felix-dot-alpha` is chat-ui's `--dot-grid-alpha`, same values and same
+ * reason: what a dot costs the text crossing it differs by theme. At 7% light
+ * body text (#404040) over a dot's centre measures 8.9:1; at 16% dark, body
+ * text (#d4d4d4) measures 8.7:1 and faint text (#a3a3a3) 5.1:1.
+ */
+:root {
+  --felix-dot-alpha: 16%;
+}
+:root[data-theme="light"] {
+  --felix-dot-alpha: 7%;
+}
+
+.main-pane {
+  position: relative;
+  isolation: isolate;
+}
+
+.main-pane::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(100vh, 56rem);
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(var(--sl-color-white) 1px, transparent 1.5px);
+  background-size: 18px 18px;
+  background-position: center top;
+  opacity: var(--felix-dot-alpha);
+  mask-image: linear-gradient(to bottom, black 0%, transparent 65%);
+}
+
+/* Off where it can only cost something: a reader who asked for more contrast,
+   forced colours (the gradient would be dropped anyway), and print. */
+@media (prefers-contrast: more), (forced-colors: active), print {
+  .main-pane::before {
+    display: none;
+  }
+}
+
+/*
+ * Asides take chat-ui's state ramp instead of Starlight's blue/purple/orange/
+ * red, because on a monochrome site those four were the only hues on the page
+ * and none of them meant anything here. The ramp is the one closed set of hues
+ * Felix allows, generated into theme.css from @felix/design:
+ *
+ *   note → running · tip → done · caution → blocked · danger → failed
+ *
+ * Drawn the way chat-ui draws a state: the hue on a 2px left rule and on the
+ * title, a faint tint behind, body text left in the ordinary text colour. The
+ * tint is mixed into the page colour rather than laid on as an alpha, so it is
+ * a flat surface — the dots, or anything else behind it, cannot tint it (the
+ * Nesting Rule in DESIGN.md).
+ */
+.starlight-aside {
+  --felix-aside-hue: var(--felix-state-running);
+  --sl-color-asides-text-accent: var(--felix-aside-hue);
+  --sl-color-asides-border: var(--felix-aside-hue);
+  background-color: color-mix(in srgb, var(--felix-aside-hue) 6%, var(--sl-color-black));
+  border-inline-start-width: 2px;
+}
+.starlight-aside--tip {
+  --felix-aside-hue: var(--felix-state-done);
+}
+.starlight-aside--caution {
+  --felix-aside-hue: var(--felix-state-blocked);
+}
+.starlight-aside--danger {
+  --felix-aside-hue: var(--felix-state-failed);
+}
+.starlight-aside__title {
+  color: var(--felix-aside-hue);
+}
