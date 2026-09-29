@@ -280,7 +280,32 @@ const files = pythonFiles(join(checkout, 'apps'))
     path: f.slice(f.indexOf('/src/') + 5) || f,
     text: readFileSync(f, 'utf8'),
   }));
-const emitted = extractEvents(files.map((f) => f.text));
+const scanned = extractEvents(files.map((f) => f.text));
+
+// The harness records its own vocabulary in `schemas/sse-events.json` (felix-run/felix#354),
+// derived by an AST scan that *refuses* a frame name it cannot read rather than skipping it —
+// which the regexes above cannot do. Prefer it; the scan is the fallback for a checkout older than
+// that file, and a cross-check: two derivations of one vocabulary disagreeing is worth a warning.
+const contractPath = join(checkout, 'schemas/sse-events.json');
+let emitted = scanned;
+let eventsSource = 'regex scan of the checkout';
+if (existsSync(contractPath)) {
+  const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
+  emitted = [...new Set([...contract.events, contract.error_event])]
+    .filter((name) => !IGNORED.has(name))
+    .sort();
+  eventsSource = 'schemas/sse-events.json';
+  const onlyScan = scanned.filter((n) => !emitted.includes(n));
+  const onlyContract = emitted.filter((n) => !scanned.includes(n));
+  if (onlyScan.length || onlyContract.length) {
+    console.warn('! the regex scan and the harness contract disagree about SSE event names:');
+    if (onlyScan.length) console.warn(`  only the scan:     ${onlyScan.join(', ')}`);
+    if (onlyContract.length) console.warn(`  only the contract: ${onlyContract.join(', ')}`);
+    console.warn(
+      '  using the contract; check the regexes above if the scan is the one missing names',
+    );
+  }
+}
 
 const existing = existsSync(EVENTS_OUT) ? JSON.parse(readFileSync(EVENTS_OUT, 'utf8')) : {};
 writeFileSync(
@@ -294,6 +319,7 @@ writeFileSync(
         'in an open arm. Do not hand-edit: re-run the sync.',
       harnessCommit: head,
       harnessVersion: spec.info.version,
+      eventsSource,
       normalised: NORMALISED,
       // Kept by hand: names the harness has stopped emitting but older
       // self-hosted deployments still send, and the note saying why they are
@@ -310,7 +336,7 @@ writeFileSync(
 
 console.log(`harness ${head} (v${spec.info.version})`);
 console.log(`  ${Object.keys(trimmed.paths).length} paths  → ${OPENAPI_OUT.replace(REPO, '.')}`);
-console.log(`  ${emitted.length} events → ${EVENTS_OUT.replace(REPO, '.')}`);
+console.log(`  ${emitted.length} events (${eventsSource}) → ${EVENTS_OUT.replace(REPO, '.')}`);
 
 // --- payload shapes ---
 const { payloads, unreadable } = extractPayloads(files);
