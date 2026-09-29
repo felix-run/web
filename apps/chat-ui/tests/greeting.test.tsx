@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Greeting } from '../src/components/chat/greeting';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
@@ -12,17 +12,26 @@ import { ShellProvider, type ShellValue } from '../src/shell-context';
  * it says now is only what the client holds: the agent, the folder, the thread
  * and whether the harness answers. The last is pinned in words because a
  * harness that is down is the one fact here that changes what to do next.
+ *
+ * Under the readout sit starter prompts chosen by agent, which send on click.
  */
 
 afterEach(cleanup);
 
-function mount(over: Partial<ShellValue> = {}) {
-  const shell = { threadId: 'a1b2c3', harnessReachable: true, ...over } as ShellValue;
-  return render(
+function mount(over: Partial<ShellValue> = {}, manifest = 'cowork') {
+  const shell = {
+    threadId: 'a1b2c3',
+    harnessReachable: true,
+    streaming: false,
+    send: vi.fn(),
+    ...over,
+  } as ShellValue;
+  render(
     <ShellProvider value={shell}>
-      <Greeting manifest="cowork" />
+      <Greeting manifest={manifest} />
     </ShellProvider>,
   );
+  return shell;
 }
 
 describe('the empty thread', () => {
@@ -35,9 +44,25 @@ describe('the empty thread', () => {
     expect(screen.getByText('reachable')).toBeTruthy();
   });
 
-  it('offers no starter prompts', () => {
-    mount();
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  it("offers the agent's starter prompts and sends the full prompt on click", () => {
+    const shell = mount();
+    const button = screen.getByRole('button', { name: 'List the workspace' });
+    fireEvent.click(button);
+    expect(shell.send).toHaveBeenCalledWith(
+      'List the top-level files and folders in the workspace.',
+    );
+  });
+
+  it('falls back to a general set for an agent with none of its own', () => {
+    mount({}, 'router');
+    expect(screen.getByRole('button', { name: 'What can you do?' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'List the workspace' })).toBeNull();
+  });
+
+  it('disables the starters while a run is streaming', () => {
+    mount({ streaming: true });
+    for (const b of screen.getAllByRole('button'))
+      expect((b as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('says a send will fail while the harness is unreachable', () => {
