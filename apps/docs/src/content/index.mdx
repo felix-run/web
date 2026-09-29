@@ -1,12 +1,37 @@
 ---
 title: "Felix Documentation"
 description: "Felix is a self-hostable managed agents harness — manifests, patterns, sessions, and governance (Python)."
+template: splash
+hero:
+  title: "Felix runs the agents you describe."
+  tagline: >-
+    A self-hosted agents harness. You author an agent as a YAML manifest; Felix compiles it into a
+    runtime with governance and durable execution, served over OpenAI-compatible, A2A, MCP and REST
+    surfaces at once.
+  actions:
+    - text: Run it locally
+      link: /guide/getting-started/
+      icon: right-arrow
+    - text: Understand it
+      link: /guide/concepts/
+      variant: secondary
+    - text: Look up a route
+      link: /guide/rest-api/
+      variant: minimal
 ---
 
+import RunTrace from '../components/RunTrace.astro';
 
-**Felix** is a self-hostable **managed agents harness**. You author agents as YAML
-(`apiVersion: felix/v1`); Felix compiles them into runnable agents with governance,
-durable execution, and multi-protocol surfaces.
+## One run, as the harness reports it
+
+A turn arrives as a stream of named events: the model's output, each tool call, the approval a
+gated call waits on, and what the turn cost.
+
+<RunTrace />
+
+## Surfaces
+
+One manifest is served over four protocols:
 
 - **OpenAI-compatible** chat completions at `/v1/chat/completions` (sync + SSE)
 - **A2A JSON-RPC** at `/a2a`
@@ -15,30 +40,18 @@ durable execution, and multi-protocol surfaces.
 
 Management surfaces (`/audit`, `/plans`, `/jobs`, `/approvals`, `/manifests`, `/eval`, `/usage`,
 `/memory`, `/documents`, `/artifacts`) cover observability, HITL, canary manifests, and offline
-eval.
+eval. They are documented in the [Management API](/guide/management-api/).
 
-Runtime: [felix-run/felix](https://github.com/felix-run/felix) (CPython, Compose / Helm).  
-Chat UI + this docs site: [felix-run/web](https://github.com/felix-run/web) (Cloudflare Workers frontends).
+A running deployment also answers:
 
-## Three seams
+- `GET /health` — liveness, unauthenticated
+- `GET /.well-known/agent-card.json` — A2A discovery, unauthenticated
+- `GET /openapi.json` and `GET /docs` — the spec and interactive API docs, behind the same auth as
+  every other route unless `FELIX_DOCS_PUBLIC=true`. The public spec is browsable at
+  [API reference](/reference/).
 
-- **Session** — append-only events with pluggable strategies (`full_replay` / windowed / summarizing / semantic / compacting).
-- **Pattern / model registries** — open registration for loops (`react`, `deep`, …) and providers (`anthropic`, `openai`, `ollama`, `workers_ai`, `groq`, …), with the model layer in its own package that cannot import the harness.
-- **ToolExecutor** — `local` / `mcp` / `a2a` / `container` / `queue` / `sandbox` / `browser` / `client`, wrapped by governance.
+## Source
 
-## Live reference
-
-:::tip[Running deployment]
-A running Felix API exposes:
-
-- `GET /openapi.json` — OpenAPI 3.x
-- `GET /docs` — interactive API docs
-- `GET /health` — liveness
-- `GET /.well-known/agent-card.json` — A2A discovery
-:::
-
-## Where to start
-
-- [Getting Started](/guide/getting-started/) — Compose + first `/chat`
-- [Concepts](/guide/concepts/) — mental model
-- [Deploy](/guide/deploy/) — Helm / cloud notes
+Runtime: [felix-run/felix](https://github.com/felix-run/felix) (CPython, Compose / Helm).
+Chat UI and this docs site: [felix-run/web](https://github.com/felix-run/web) (Cloudflare Workers
+frontends).

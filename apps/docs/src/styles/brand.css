@@ -16,17 +16,58 @@
 }
 
 /*
- * Wider main column. Starlight's default `--sl-content-width` is 45rem, tuned
- * for pure prose; these pages carry wide tables, JSON manifests and REST
- * examples that were wrapping hard inside it. 58rem is ~29% more.
+ * One column, two measures. Starlight's default `--sl-content-width` is 45rem,
+ * tuned for prose; these pages also carry wide tables, JSON manifests and REST
+ * examples, which wrapped hard inside it. So the column is 58rem — but prose
+ * was then running 111-116 characters a line, well past what reads. Prose is
+ * held to 40rem (about 75-80 characters of body text) and the things that need
+ * width — tables, code, figures — take the whole column.
  *
- * Only this one variable needs setting: `TwoColumnContent` sizes the main pane
- * as a `min()` against the space left by the two sidebars, so the column grows
- * with the viewport and stops rather than pushing the on-this-page rail off
- * screen. Below 72rem the layout is single-column and this has no effect.
+ * `TwoColumnContent` sizes the main pane as a `min()` against the space left
+ * by the two sidebars, so the column still stops rather than pushing the
+ * on-this-page rail off screen. Below 72rem the layout is single-column and the
+ * column is the viewport; the prose cap only ever binds on a wide screen.
  */
 :root {
   --sl-content-width: 58rem;
+  --felix-measure: 40rem;
+}
+
+.sl-markdown-content
+  > :where(
+    p,
+    ul,
+    ol:not(.sl-steps),
+    blockquote,
+    dl,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    .starlight-aside,
+    details
+  ) {
+  max-inline-size: var(--felix-measure);
+}
+
+/*
+ * A table cell's code may break anywhere. Without it the widest JSON shape in
+ * a column sets the table's minimum width, and the column that gets clipped
+ * off the right edge is whichever comes last — on the REST Events table, the
+ * one saying what each event means. Numbers in tables line up.
+ */
+.sl-markdown-content td code {
+  overflow-wrap: anywhere;
+}
+/* ...except the first column, which is the row's key (an event, a field, a
+   route) and is read as one token. */
+.sl-markdown-content td:first-child code {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+.sl-markdown-content td {
+  font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -89,18 +130,23 @@
  *
  *   note → running · tip → done · caution → blocked · danger → failed
  *
- * Drawn the way chat-ui draws a state: the hue on a 2px left rule and on the
- * title, a faint tint behind, body text left in the ordinary text colour. The
- * tint is mixed into the page colour rather than laid on as an alpha, so it is
- * a flat surface — the dots, or anything else behind it, cannot tint it (the
- * Nesting Rule in DESIGN.md).
+ * Drawn the way chat-ui draws a state (`border-state-blocked/40` over
+ * `bg-state-blocked/5`): a hairline border all the way round in the hue at
+ * reduced strength, a faint tint behind, the hue on the title, and body text
+ * left in the ordinary text colour. Both are mixed into the page colour rather
+ * than laid on as alphas, so each is a flat colour — the dots, or anything else
+ * behind, cannot tint them (the Nesting Rule in DESIGN.md).
+ *
+ * Caution is for things that can hurt a deployment. A note about what an older
+ * harness did is a note, or the amber stops meaning anything.
  */
 .starlight-aside {
   --felix-aside-hue: var(--felix-state-running);
   --sl-color-asides-text-accent: var(--felix-aside-hue);
-  --sl-color-asides-border: var(--felix-aside-hue);
+  --sl-color-asides-border: color-mix(in srgb, var(--felix-aside-hue) 40%, var(--sl-color-black));
   background-color: color-mix(in srgb, var(--felix-aside-hue) 6%, var(--sl-color-black));
-  border-inline-start-width: 2px;
+  border: 1px solid var(--sl-color-asides-border);
+  border-radius: 0.5rem;
 }
 .starlight-aside--tip {
   --felix-aside-hue: var(--felix-state-done);
@@ -113,4 +159,48 @@
 }
 .starlight-aside__title {
   color: var(--felix-aside-hue);
+}
+
+/*
+ * The current page in the sidebar is a tonal step, not an inverted pill.
+ * Starlight fills it with the accent — white on a near-black sidebar — which
+ * made "where you are" the loudest object on every page. chat-ui marks an "on"
+ * state the same way: one step of surface and full-strength text.
+ */
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover,
+.sidebar-content a[aria-current="page"]:focus {
+  background-color: var(--sl-color-hairline);
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+
+/*
+ * A heading that is a route (`## POST /chat`) is set in the code face, not
+ * inside an inline-code chip — at h2 size the chip became a slab, heavier than
+ * every prose heading beside it.
+ */
+.sl-markdown-content :is(h2, h3, h4) code {
+  background: none;
+  padding: 0;
+  border: 0;
+  font-size: 0.9em;
+  color: inherit;
+}
+
+/*
+ * Browser surfaces, from the palette. Focus is a 2px ring in the text colour
+ * (the browser's default was a thin blue outline, the only blue on the site);
+ * selection is a neutral tint; underlines sit clear of descenders.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--sl-color-white);
+  outline-offset: 2px;
+}
+::selection {
+  background-color: color-mix(in srgb, var(--sl-color-white) 22%, var(--sl-color-black));
+  color: var(--sl-color-white);
+}
+.sl-markdown-content a {
+  text-underline-offset: 0.2em;
 }
