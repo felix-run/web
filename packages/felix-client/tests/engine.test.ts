@@ -618,14 +618,18 @@ describe('a durable run', () => {
 
     const waiting = 'Waiting on your approval · Write notes.txt (5 chars)';
     expect(turn()?.content).toBe(waiting);
+    // Marked as a status, in the ramp state it reports, so a renderer does not draw it as a reply.
+    expect(turn()?.runStatus).toBe('blocked');
     expect(turn()?.tools?.[0]).toMatchObject({ name: 'approval · write_file', at: waiting.length });
 
     engine.shiftApproval();
     expect(turn()?.content).toBe('Durable run accepted…');
+    expect(turn()?.runStatus).toBe('running');
 
     release();
     await finished;
     expect(turn()?.content).toBe('wrote it');
+    expect(turn()?.runStatus).toBeUndefined();
   });
 
   /** Outside a durable run these frames stay inert — `reattachThread` owns them. */

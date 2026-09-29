@@ -17,3 +17,13 @@ export function middleTruncate(s: string, max: number): string {
   const head = Math.floor(keep / 2);
   return `${s.slice(0, head)}…${s.slice(s.length - (keep - head))}`;
 }
+
+/** `42s`, `3:07`, `1:02:09` — a stopwatch, not a relative time. */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}

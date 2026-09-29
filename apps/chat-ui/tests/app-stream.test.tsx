@@ -80,7 +80,7 @@ const shown = () => document.body.textContent ?? '';
 /** The collapsed reasoning disclosures currently on screen. */
 const thoughtTriggers = () =>
   [...document.querySelectorAll('button')].filter((b) =>
-    /Thought for a moment|Thinking/.test(b.textContent ?? ''),
+    /Thought for|Reasoning|Thinking/.test(b.textContent ?? ''),
   );
 
 async function openThoughts() {
@@ -269,7 +269,8 @@ describe('reasoning', () => {
     await send();
     await seeText('the answer');
     // Collapsed by default — the summary is the affordance, the text is behind it.
-    await seeText('Thought for a moment');
+    // Watched live in this tab, so it says how long it took rather than guessing.
+    await seeText('Thought for');
     await openThoughts();
     await seeText('weighing the options');
   });

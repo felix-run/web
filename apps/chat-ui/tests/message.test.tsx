@@ -113,7 +113,9 @@ describe('Message reasoning', () => {
     );
 
     await waitFor(() => expect(container.textContent).toContain('the answer'));
-    expect(container.textContent).toContain('Thought for a moment');
+    // Rebuilt from history: no duration to quote, so it leads with the noun and the count.
+    expect(container.textContent).toContain('Reasoning· 3 words');
+    expect(container.textContent).not.toContain('Thought for');
     // Collapsed: reasoning read as the reply is worse than reasoning not shown.
     expect(container.textContent).not.toContain('my private notes');
   });
@@ -125,7 +127,7 @@ describe('Message reasoning', () => {
       />,
     );
 
-    fireEvent.click(getByRole('button', { name: /Thought for a moment/ }));
+    fireEvent.click(getByRole('button', { name: /Reasoning/ }));
     await waitFor(() => expect(container.textContent).toContain('my private notes'));
   });
 
@@ -135,7 +137,61 @@ describe('Message reasoning', () => {
     await waitFor(() => expect(container.textContent).toContain('Thinking'));
 
     rerender(<Message turn={turn} />);
-    expect(container.textContent).toContain('Thought for a moment');
+    // Watched from the start in this tab, so the settled row quotes a measured duration.
+    expect(container.textContent).toMatch(/Thought for\s*0s · 1 word\b/);
+  });
+
+  /**
+   * A static "Thinking…" looked the same at minute two as at second two, and the same as
+   * a stalled stream. The live row carries the newest reasoning — the words arriving, not
+   * the first ones — and drops it once the thought is done, when it would read as the reply.
+   */
+  it('shows the newest reasoning while thinking, and only then', async () => {
+    const early = 'first I will look at the config. ';
+    const turn = assistant({
+      content: '',
+      reasoning: [{ text: `${early}then the newest idea arrives`, at: 0 }],
+    });
+    const { container, rerender } = render(<Message turn={turn} streaming />);
+    await waitFor(() => expect(container.textContent).toContain('then the newest idea arrives'));
+    expect(container.textContent).toContain('12 words');
+
+    rerender(<Message turn={turn} />);
+    expect(container.textContent).not.toContain('newest idea');
+  });
+});
+
+/**
+ * A durable run's stream carries no deltas, so until `final` the engine's status line is the
+ * whole turn. Drawn through the markdown path it read as the agent replying "Durable run
+ * accepted…"; it is a status, and says so to assistive tech too.
+ */
+describe('a durable run in flight', () => {
+  it('draws the status line as a status, not as the reply', () => {
+    const { container, getByRole } = render(
+      <Message
+        turn={assistant({ content: 'Background · running…', runStatus: 'running' })}
+        streaming
+      />,
+    );
+    expect(getByRole('status').textContent).toBe('Background · running…');
+    // The header's "streaming" claims deltas are arriving, which a durable stream never sends.
+    expect(container.textContent).not.toContain('streaming');
+    expect(container.querySelector('.animate-pulse')).not.toBeNull();
+  });
+
+  it('holds still while it waits on a person', () => {
+    const { container, getByRole } = render(
+      <Message
+        turn={assistant({
+          content: 'Waiting on your approval · Write notes.txt',
+          runStatus: 'blocked',
+        })}
+        streaming
+      />,
+    );
+    expect(getByRole('status').className).toContain('text-state-blocked');
+    expect(container.querySelector('.animate-pulse')).toBeNull();
   });
 });
 
@@ -227,7 +283,7 @@ describe('long unbroken tokens', () => {
     const { container, getByRole } = render(
       <Message turn={assistant({ reasoning: [{ text: PATH, at: 0 }], content: 'ok' })} />,
     );
-    fireEvent.click(getByRole('button', { name: /thought/i }));
+    fireEvent.click(getByRole('button', { name: /reasoning/i }));
     await waitFor(() => expect(textNode(container, PATH)).toBeDefined());
     expect(textNode(container, PATH)?.className).toContain('wrap-anywhere');
   });
