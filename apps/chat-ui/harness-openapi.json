@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.3.0"
+    "version": "0.4.1"
   },
   "paths": {
     "/health": {
@@ -155,6 +155,9 @@
       "put": {},
       "delete": {}
     },
+    "/jobs/{name}/run": {
+      "post": {}
+    },
     "/jobs/{name}/runs": {
       "get": {}
     },
@@ -162,6 +165,9 @@
       "get": {}
     },
     "/manifests": {
+      "get": {}
+    },
+    "/manifests/{name}/versions": {
       "get": {}
     },
     "/manifests/{name}": {
