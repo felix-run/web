@@ -35,6 +35,8 @@ function harness(routes: Record<string, unknown> = {}) {
       body: init.body ? JSON.parse(String(init.body)) : undefined,
     });
     const hit = Object.entries(routes).find(([path]) => url.includes(path));
+    // A function answers with its own Response — how a route streams SSE.
+    if (typeof hit?.[1] === 'function') return (hit[1] as () => Response)();
     return new Response(JSON.stringify(hit ? hit[1] : {}), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -393,5 +395,46 @@ describe('the inspector', () => {
     expect(shows(ui.frame(), 'notes.md')).toBe(true);
     ui.stop();
     h.restore();
+  });
+});
+
+/**
+ * A durable run's answer arrives twice: in the session log the engine tails while the run works,
+ * and again from `final` into the status turn. chat-ui re-reads the session when the run settles,
+ * which is what makes the transcript authoritative again; the terminal never did, and showed the
+ * reply twice on a `cowork` run against the reference harness.
+ */
+describe('a durable run that finishes', () => {
+  const answer = 'the durable answer';
+  const sse = (frames: Array<{ event: string; data: unknown }>) =>
+    new Response(
+      `${frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join('')}data: [DONE]\n\n`,
+      { headers: { 'content-type': 'text/event-stream' } },
+    );
+
+  it('re-reads the session, so the answer is on screen once', async () => {
+    const message = { id: 'e2', seq: 2, kind: 'message', role: 'assistant', content: answer };
+    const { ui, h, frame } = await run('go', {
+      routes: {
+        '/chat/stream': () =>
+          sse([
+            { event: 'run_accepted', data: { resume_token: 'fib_1' } },
+            { event: 'session_event', data: message },
+            { event: 'final', data: { content: answer } },
+          ]),
+        '/chat/sessions/': {
+          transcript: [{ id: 'e1', seq: 1, kind: 'message', role: 'user', content: 'go' }, message],
+        },
+      },
+    });
+    try {
+      await ui.until(() =>
+        h.to('/chat/sessions/').some((c) => c.method === 'GET' && !c.url.includes('lease')),
+      );
+      await ui.until(() => frame().split(answer).length - 1 === 1);
+    } finally {
+      ui.stop();
+      h.restore();
+    }
   });
 });

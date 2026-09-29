@@ -107,6 +107,10 @@ export function ApprovalPrompt({
   return (
     <box
       flexDirection="column"
+      // The transcript above yields rows, never this: squeezed, a banner draws its
+      // lines over each other rather than dropping one — the key row and the grant
+      // sentence on one line, on the prompt that authorises a write.
+      flexShrink={0}
       border
       borderStyle="rounded"
       borderColor={theme.blocked}
@@ -220,6 +224,7 @@ export function UiPrompt({
   return (
     <box
       flexDirection="column"
+      flexShrink={0}
       border
       borderStyle="rounded"
       borderColor={theme.blocked}
@@ -291,6 +296,7 @@ export function WritePrompt({
     // one prompt in this client that authorizes a write to your disk.
     <box
       flexDirection="column"
+      flexShrink={0}
       border
       borderStyle="rounded"
       borderColor={theme.danger}
