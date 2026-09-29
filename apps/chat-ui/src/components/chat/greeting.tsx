@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { getMountLabel } from '@/lib/cowork';
 import { useShell } from '@/shell-context';
+import { StarterPrompts } from './starter-prompts';
 
 /**
  * The empty thread, as a readout of what the first message will be sent to.
@@ -13,6 +14,10 @@ import { useShell } from '@/shell-context';
  * and only what the client actually holds; a fact it would have to guess at
  * (the manifest's tool list, which is not fetched until a run reports it) is
  * left out rather than approximated.
+ *
+ * Below the readout sit a few starter prompts for the selected agent — the
+ * cards came back as a compact row, without the haikus, because an empty
+ * thread with nothing to click left a new operator guessing what to ask.
  */
 export function Greeting({ manifest }: { manifest: string }) {
   const { threadId, harnessReachable } = useShell();
@@ -59,6 +64,7 @@ export function Greeting({ manifest }: { manifest: string }) {
         <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
           The first message starts the run. Tool calls and approvals appear here as they happen.
         </p>
+        <StarterPrompts manifest={manifest} />
       </div>
     </section>
   );
