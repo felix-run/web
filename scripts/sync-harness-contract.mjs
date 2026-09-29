@@ -301,7 +301,9 @@ if (existsSync(contractPath)) {
     console.warn('! the regex scan and the harness contract disagree about SSE event names:');
     if (onlyScan.length) console.warn(`  only the scan:     ${onlyScan.join(', ')}`);
     if (onlyContract.length) console.warn(`  only the contract: ${onlyContract.join(', ')}`);
-    console.warn('  using the contract; check the regexes above if the scan is the one missing names');
+    console.warn(
+      '  using the contract; check the regexes above if the scan is the one missing names',
+    );
   }
 }
 
