@@ -247,7 +247,10 @@ answers "why did it recall that". `as-of` is read-only and includes superseded r
 believed at a past turn, not what is believed now.
 
 `POST` takes `{content, kind, manifest_id, topic_key, importance}` — `content` up to 4000 chars,
-`topic_key` up to 200, `importance` in 0–1.
+`topic_key` up to 200, `importance` in 0–1. A `POST` with a `topic_key` retires every other active
+memory under that key: this route is the only writer that can. The agent's own writes — capture and
+the `remember` tool — are stored beside what already holds a key, so a topic can carry several
+active values; the model is shown the current one, and this is where you settle the rest.
 
 :::caution
 Writing here is a prompt-injection ingress by design: whatever you store is text the model will read
