@@ -510,6 +510,26 @@ every second is noise.
   message at 16px. No bubble, no fill, no avatar.
 - **Assistant turn:** a "Felix" label, then prose, reasoning and tool cards interleaved in the
   order they happened, then a mono usage line. Also no avatar.
+- **Reasoning:** a collapsed row, never prose — reasoning at the answer's weight reads as the
+  answer. While it streams the row borrows the run readout's grammar: the 6px `state-running`
+  dot pulsing, *Thinking* at 11px medium in `state-running`, then a stopwatch and a word count in
+  tabular mono (`· 7s · 88 words`), with one muted 13px line of the **newest** reasoning beneath
+  it on the reasoning's own left rule — cut from the front (`direction: rtl` on the line, the text
+  itself `ltr`), because the first words never change and a row that sits still reads as a stalled
+  stream. Settled, the dot becomes a brain icon, the tail goes, and the row states what was
+  measured: `Thought for 16s · 180 words`, or `Reasoning · 180 words` for a block rebuilt from
+  history, which carries no duration. The pulse is the transcript's one motion, and it runs only
+  while no answer text is arriving to compete with.
+- **Durable status:** a durable run's stream carries no deltas, so until `final` the turn holds
+  the engine's status line — *Durable run accepted…*, *Background · running…*, *Waiting on your
+  approval · Write notes.txt*. It is drawn as a status, not as the reply: the state dot, the line
+  at 13px medium in the ramp colour, and `for 0:42` muted beside it. `running` pulses; `blocked` is
+  amber and still, because nothing is working while a person is being asked; once the run has
+  ended the dot drops to the idle grey. The line is the live region, the stopwatch is not. The
+  terminal client draws both with the same states — spinner for the dot, `●` for blocked.
+  Measured on page in light at 375px: `state-running` text 7.51:1, `state-blocked` 7.09:1, the
+  muted stopwatch, count and reasoning tail 5.27:1; the longest approval line wraps inside the
+  column with its stopwatch still on screen, and nothing scrolls sideways. Dark is unmeasured.
 - **Long tokens wrap; wide blocks scroll in place.** Nothing in a turn may widen the column.
   Plain text — the operator's turn, a note, reasoning — wraps with `wrap-anywhere`, so a
   commit hash or an absolute path breaks rather than giving the transcript a sideways scroll
@@ -628,4 +648,5 @@ no reduced-alpha focus indicator left in the app.
   mismatch. The stylesheet is authored, the hex is derived.
 - **Don't** drop below 11px to gain density.
 - **Don't** add motion that competes with streaming text, and honour
-  `prefers-reduced-motion`.
+  `prefers-reduced-motion`. A "still working" pulse or spinner slows under reduced motion rather
+  than stopping: frozen, it reports a live run as a hung one.
