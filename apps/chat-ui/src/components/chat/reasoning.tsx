@@ -1,8 +1,8 @@
+import { countWords, formatElapsed } from '@felix/client';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { BrainIcon, ChevronDownIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useElapsed } from '@/hooks/use-elapsed';
-import { formatElapsed } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { StateDot } from './run-status';
 
@@ -72,11 +72,6 @@ export function Reasoning({ text, streaming = false }: { text: string; streaming
       </CollapsibleContent>
     </Collapsible>
   );
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed ? trimmed.split(/\s+/).length : 0;
 }
 
 /**

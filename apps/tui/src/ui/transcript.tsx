@@ -12,7 +12,7 @@
  */
 
 import type { ReasoningBlock, ToolCall, Turn } from '@felix/client';
-import { classifyToolResult, interleaveTurn } from '@felix/client';
+import { classifyToolResult, countWords, formatElapsed, interleaveTurn } from '@felix/client';
 import {
   BoxRenderable,
   type CodeRenderable,
@@ -23,7 +23,7 @@ import {
   type ScrollBoxRenderable,
 } from '@opentui/core';
 import { useTimeline } from '@opentui/react';
-import { type ReactNode, type RefObject, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { handlesByTool, type Spill, sizeLabel } from '../artifacts.js';
 import { syntaxStyle } from '../syntax.js';
 import { oneLine } from '../text.js';
@@ -226,8 +226,117 @@ function summarize(input: unknown): string {
   }
 }
 
-function Reasoning({ text }: { text: string }) {
-  return <text attributes={DIM_ITALIC}>{oneLine(text, TOOL_ARG_WIDTH)}</text>;
+/**
+ * How long something this client watched has been live, or ran for once it stopped.
+ *
+ * `null` when it was never live while mounted — a block rebuilt from the snapshot
+ * has no start or end, and a stand-in would be exact-looking and wrong. One tick a
+ * second while live, none after.
+ */
+function useElapsed(live: boolean): number | null {
+  const startedAt = useRef<number | null>(live ? Date.now() : null);
+  const endedAt = useRef<number | null>(null);
+  if (live && startedAt.current === null) startedAt.current = Date.now();
+  if (!live && startedAt.current !== null && endedAt.current === null) {
+    endedAt.current = Date.now();
+  }
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [live]);
+  if (startedAt.current === null) return null;
+  return (endedAt.current ?? now) - startedAt.current;
+}
+
+/**
+ * The end of `text` as one line, cut from the *front*.
+ *
+ * `oneLine` keeps the start, which is right for a tool argument and wrong for
+ * reasoning being written: the start never changes, so the row would sit still
+ * while the model thought, indistinguishable from a stream that had stopped.
+ */
+function tailLine(text: string, width: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (flat.length <= width) return flat;
+  return `…${flat.slice(flat.length - (width - 1))}`;
+}
+
+/**
+ * A stretch of the model's reasoning.
+ *
+ * While it is being written: the tool cards' spinner, `thinking`, a stopwatch
+ * and a word count on one line, and the newest words beneath it — so a thought
+ * that is progressing and one that has stalled look different, which a static
+ * line of its first words did not. Settled, one dim line says what was measured
+ * (`thought for 16s · 180 words`, or just the words for a block this client did
+ * not watch) followed by as much of the thought as fits. Quiet either way: it is
+ * the model talking to itself, not the reply.
+ */
+function Reasoning({ text, live, theme }: { text: string; live: boolean; theme: Theme }) {
+  const spinner = useSpinner(live);
+  const elapsed = useElapsed(live);
+  const words = countWords(text);
+  const count = `${words} word${words === 1 ? '' : 's'}`;
+
+  if (live) {
+    return (
+      <box flexDirection="column">
+        <text>
+          <span fg={theme.running}>{`${spinner} thinking`}</span>
+          <span attributes={DIM}>
+            {elapsed === null ? ` · ${count}` : ` · ${formatElapsed(elapsed)} · ${count}`}
+          </span>
+        </text>
+        <text attributes={DIM_ITALIC}>{`  ${tailLine(text, RESULT_WIDTH)}`}</text>
+      </box>
+    );
+  }
+
+  const measure =
+    elapsed === null ? `reasoning · ${count}` : `thought for ${formatElapsed(elapsed)} · ${count}`;
+  const room = TOOL_ARG_WIDTH - measure.length - 3;
+  return (
+    <text attributes={DIM}>
+      {measure}
+      {room > 8 ? <span attributes={DIM_ITALIC}>{` · ${oneLine(text, room)}`}</span> : null}
+    </text>
+  );
+}
+
+/**
+ * A durable run's status line, drawn as a status rather than as the reply.
+ *
+ * A durable stream carries no deltas, so until `final` the engine's line is the
+ * whole turn — and through `<markdown>` it read as the agent saying "Durable run
+ * accepted…". Spinner and the running colour while the run works; the blocked
+ * colour and no motion while it waits on a person, since nothing is working; dim
+ * once the run this client was watching has ended.
+ */
+function RunStatus({
+  text,
+  tone,
+  live,
+  theme,
+}: {
+  text: string;
+  tone: NonNullable<Turn['runStatus']>;
+  live: boolean;
+  theme: Theme;
+}) {
+  const spinner = useSpinner(live && tone === 'running');
+  const elapsed = useElapsed(live);
+  if (!live) return <text attributes={DIM}>{`  ${text}`}</text>;
+  return (
+    <text>
+      <span fg={tone === 'blocked' ? theme.blocked : theme.running}>
+        {`${tone === 'blocked' ? '●' : spinner} ${text}`}
+      </span>
+      {elapsed === null ? null : <span attributes={DIM}>{` for ${formatElapsed(elapsed)}`}</span>}
+    </text>
+  );
 }
 
 function AssistantTurn({
@@ -257,7 +366,20 @@ function AssistantTurn({
               {...(handles.get(segment.tool) ? { spill: handles.get(segment.tool) } : {})}
             />
           );
-        if (segment.kind === 'reasoning') return <Reasoning key={`r${i}`} text={segment.text} />;
+        if (segment.kind === 'reasoning')
+          return (
+            <Reasoning key={`r${i}`} text={segment.text} live={live && i === tail} theme={theme} />
+          );
+        if (turn.runStatus)
+          return (
+            <RunStatus
+              key={`s${i}`}
+              text={segment.text}
+              tone={turn.runStatus}
+              live={live}
+              theme={theme}
+            />
+          );
         return (
           <Prose key={`p${i}`} text={segment.text} streaming={live && i === tail} theme={theme} />
         );

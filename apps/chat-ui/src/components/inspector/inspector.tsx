@@ -1,4 +1,4 @@
-import { describeGate, relativeTime } from '@felix/client';
+import { describeGate, formatElapsed, relativeTime } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
@@ -15,7 +15,6 @@ import {
   SectionBoundary,
 } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
-import { formatElapsed } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { type ShellValue, useShell } from '@/shell-context';
 import type { Plan, Turn } from '@/types';
