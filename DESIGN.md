@@ -540,7 +540,14 @@ every second is noise.
   than crushing its columns to a letter each.
 - **Empty thread:** a readout, not a greeting — a left-ruled block anchored at the bottom where
   the first turn will land, headed "Empty thread" at title size, listing agent, folder, thread
-  and whether the harness is reachable (unreachable in `state-failed`, with the word).
+  and whether the harness is reachable (unreachable in `state-failed`, with the word). Under it,
+  a "Try" row of two to four starter prompts chosen by the selected agent (a general pair for
+  any agent without its own set), each sending its full prompt on click and showing it on
+  hover, disabled while a run streams. They are a wrapped row of 11px outline-style buttons
+  (`rounded-md`, hairline border, `hover:bg-accent`), not the grid of cards the anti-references
+  name, and they sit below the readout rather than replacing it. They are hand-rolled
+  `<button>`s rather than the `Button` primitive, so their focus ring is 2px, not the
+  primitive's 3px.
 
 ### Tool cards
 
