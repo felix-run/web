@@ -56,6 +56,7 @@ function mount() {
       lastOkAt: Date.now(),
       failures: 0,
       refresh: () => {},
+      markDecided: () => {},
     },
   } as unknown as ShellValue;
   return render(

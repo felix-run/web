@@ -842,6 +842,12 @@ carries no `before` to build one from. Deciding from the line would mean decidin
 in front of you. The expanded queue reuses `ApprovalDecision`, the same card the banner and the
 inspector use, rather than a third and smaller decision surface: approving grants every
 byte-identical call until the deadline, and that sentence has to be wherever the decision is made.
+The dedupe has a second half: the banner lets go of an approval the instant it is decided, while
+the line's list is up to a poll old, so for one tick the line used to open itself and offer
+Approve on a call already answered. Every decision this tab makes — banner, line, inspector —
+calls `markDecided` on the shell's poll first, which drops the row and keeps a lagging poll from
+putting it back, for `DECIDED_GRACE_MS` or until the harness stops listing it; bounded because
+`create_pending` can reuse an id for a genuinely new request.
 `tests/attention-line.test.tsx` pins the hidden-tab poll, the phrase and the dedupe.
 
 This was previously a second app (`apps/float`, removed 2026-08-23) that served the same operator at

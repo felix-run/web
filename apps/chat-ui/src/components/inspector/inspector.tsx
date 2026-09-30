@@ -479,7 +479,7 @@ function ApprovalsSection({
 }) {
   const { data, error, loading, refresh } = usePoll(() => listApprovals('pending'), { enabled });
   const count = data?.length ?? 0;
-  const { bannerOwned, approvalQueue, threadId, threads } = useShell();
+  const { bannerOwned, approvalQueue, threadId, threads, tenantApprovals } = useShell();
   const owned = new Set(bannerOwned);
 
   // A gated run is stalled until someone answers, so the section opens itself rather
@@ -495,6 +495,8 @@ function ApprovalsSection({
   // `ApprovalDecision` now, shared with the transcript banner.
   async function decide(id: string, status: 'approved' | 'denied') {
     await decideApproval(id, { status });
+    // The attention line reads the shell's poll, not this section's.
+    tenantApprovals.markDecided(id);
     refresh();
   }
 

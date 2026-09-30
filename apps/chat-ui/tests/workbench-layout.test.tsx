@@ -67,6 +67,7 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
       lastOkAt: Date.now(),
       failures: 0,
       refresh: () => {},
+      markDecided: () => {},
     },
     runClock: { startedAt: null, endedAt: null },
     onDecide: async () => {},

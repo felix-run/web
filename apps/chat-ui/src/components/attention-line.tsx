@@ -65,7 +65,7 @@ export function AttentionLine({
   /** The thread index, for naming an approval's thread rather than showing an id. */
   threads: ThreadMeta[];
 }) {
-  const { pending, error, lastOkAt, failures, refresh } = approvals;
+  const { pending, error, lastOkAt, failures, refresh, markDecided } = approvals;
   const [open, setOpen] = useState(() => {
     try {
       return localStorage.getItem(OPEN_KEY) === '1';
@@ -282,6 +282,7 @@ export function AttentionLine({
                 expiresAt={a.expires_at}
                 onDecide={async (status) => {
                   await decideApproval(a.id, { status });
+                  markDecided(a.id);
                   refresh();
                 }}
               />
