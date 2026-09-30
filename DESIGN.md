@@ -21,6 +21,11 @@ colors:
   destructive: "oklch(0.577 0.245 27.325)"
   recording: "oklch(0.5 0.2 25)"
 typography:
+  display:
+    fontFamily: "ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.75rem"
+    fontWeight: 600
+    lineHeight: 1.25
   headline:
     fontFamily: "ui-sans-serif, system-ui, sans-serif"
     fontSize: "1rem"
@@ -167,7 +172,11 @@ icon on every row, a gradient somewhere: recognisable as generated rather than d
 **density without hierarchy**, the observability-dashboard failure where every panel is equally
 loud and the eye has nowhere to land. Then **consumer-chat warmth** — the inverted user bubble,
 the avatar, the headline asking what you want to work on over a grid of starter cards — which
-hides the mechanism and so inverts the product. Then **warm-neutral editorial** — cream, serif
+hides the mechanism and so inverts the product. One piece of that is shipped anyway, by choice:
+the empty thread's welcome headline and starter cards came back on 2026-09-30, because an empty
+thread that only listed facts left a new operator guessing what to ask. They are confined to the
+empty thread, keep the readout beside them, and are gone once the first message lands; the
+bubble and the avatar stay out. Then **warm-neutral editorial** — cream, serif
 display, marketing cadence — which is the wrong register entirely.
 
 **Key Characteristics:**
@@ -267,12 +276,14 @@ and panels, which are scanned; 16 for the transcript, which is read.
 - **Headline** (600, 16px, 1.6): the heading of a whole rail — the instrument's "This run", the
   thread list — the header wordmark, which alone is set uppercase with wide tracking, and the
   headings of the two screens that render instead of the app: the access gate and the crash
-  screen. There is no display tier: this surface has no hero.
+  screen.
+- **Display** (600, 24px → 28px at `md`, tight tracking): the empty thread's welcome headline,
+  and nothing else. It is the one hero on the surface and it exists only while a thread is
+  empty.
 - **Prose** (400, 16px, 1.6): transcript message bodies, both sides, and the composer's
   textarea — at the same size on purpose, so a message does not change size when it is sent.
   Held to a reading measure (`max-w-3xl`) rather than the full pane width.
-- **Title** (600, 13px, 1.5): panel and section headers, disclosure rows, the empty-thread
-  readout's heading.
+- **Title** (600, 13px, 1.5): panel and section headers, disclosure rows.
 - **Body** (400, 13px, 1.5): rows, controls, instructional copy, and the prose of a card —
   an approval's reason, its summary, and the grant sentence above its buttons.
 - **Label** (400–500, 11px, 1.45): metadata, timestamps, counts, chip text, keyboard hints, the
@@ -292,11 +303,11 @@ Density comes from tighter rows and fewer borders, never from shrinking type pas
 **Tabular numerals on anything that counts.** Token meters, durations, countdowns and queue
 counts change in place; proportional figures make them jitter and the eye reads motion as change.
 
-**Nothing is set above 16px.** The last three headings off the ramp — the access gate's panel
-heading at 24px and the gate form's and error boundary's `h1` at 18px — are headlines now, and
-the stylesheet's ramp comment no longer assigns 24px to a greeting that became a 13px readout.
-No element uses `text-lg`, `text-xl` or `text-2xl`; reaching for one is adding a display tier
-this surface does not have.
+**Nothing but the welcome is set above 16px.** The empty thread's headline is the single
+display-size element (`text-2xl`, 28px at `md`). The last three headings off the ramp — the
+access gate's panel heading at 24px and the gate form's and error boundary's `h1` at 18px — are
+headlines now. No other element uses `text-lg`, `text-xl` or `text-2xl`; reaching for one is
+adding a second display element, which this surface does not have.
 
 ## Layout
 
@@ -538,14 +549,15 @@ every second is noise.
   word the same way but keeps words whole when a box is *sized*: that is what lets a table or
   a code block keep its natural width and scroll inside its own `overflow-x-auto` box rather
   than crushing its columns to a letter each.
-- **Empty thread:** a readout, not a greeting — a left-ruled block anchored at the bottom where
-  the first turn will land, headed "Empty thread" at title size, listing agent, folder, thread
-  and whether the harness is reachable (unreachable in `state-failed`, with the word). Under it,
-  a "Try" row of two to four starter prompts chosen by the selected agent (a general pair for
-  any agent without its own set), each sending its full prompt on click and showing it on
-  hover, disabled while a run streams. They are the `Button` primitive at `outline` / `xs`
-  (24px, 11px, `rounded-md`) with its `shadow-xs` removed, in a wrapped row — not the grid of
-  cards the anti-references name — and they sit below the readout rather than replacing it.
+- **Empty thread:** a greeting, then the readout. Centred in the column at `max-w-3xl`: the
+  Display headline "What do you want to work on?", a 16px muted sentence naming the agent
+  ("You're chatting with **cowork**…"), then the agent's starter prompts as a two-column grid
+  of `rounded-xl` outline cards (`border-border/60`, `bg-card/40`, no shadow) — title in 13px
+  medium, the prompt it sends beneath in 11px muted, clamped to two lines with the full text on
+  hover. They come from the manifest's `metadata.starters` (`felix.starters` on `/v1/models`),
+  fall back to a built-in table for a harness that sends none, and are disabled while a run
+  streams. Under the cards the readout is one 11px muted line — agent, folder, thread,
+  harness — with unreachable in `state-failed`, with the word.
 
 ### Tool cards
 
@@ -559,8 +571,9 @@ tool shows its exit status, and a result the harness marked as an error or refus
 
 ### Cards
 
-Reserved. The only carded surfaces in the app are the ones that stop a run — approval and
-`ui_request` banners, `rounded-xl` at `state-blocked/5` with a `/40` border. Everything else in a
+Reserved. The carded surfaces in the app are the ones that stop a run — approval and
+`ui_request` banners, `rounded-xl` at `state-blocked/5` with a `/40` border — plus the empty
+thread's starter cards, which exist only until the first message. Everything else in a
 panel is a readout and gets a row. Outside the app, the access gate's form is a flat bordered
 card, because below `lg` nothing else on that page gives the form an edge. This is what keeps the app off its nearest anti-reference.
 
