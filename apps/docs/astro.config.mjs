@@ -46,6 +46,8 @@ export default defineConfig({
           tag: 'link',
           attrs: { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
         },
+        // Break points in code headings and stackable tables on phones; see the file.
+        { tag: 'script', attrs: { src: '/enhance.js', defer: true } },
       ],
       // Explicit sidebar (Starlight autogenerate expects src/content/docs/).
       // Grouped by what the reader is doing, not by where the page lives: the

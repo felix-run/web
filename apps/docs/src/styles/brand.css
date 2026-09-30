@@ -322,14 +322,75 @@
 }
 .sl-markdown-content .product-shot img {
   display: block;
-  width: 100%;
+  /* Shown at the capture's own size, never enlarged: a screenshot scaled to the
+     column was ~6px UI text. The crop is sized so its text reads at 1:1. */
+  width: auto;
+  max-width: 100%;
   height: auto;
   border: 1px solid var(--sl-color-hairline);
   border-radius: 0.5rem;
 }
 .sl-markdown-content .product-shot figcaption {
   margin-top: 0.75rem;
-  max-inline-size: var(--felix-measure);
+  /* 13px text in the 40rem prose measure ran ~98 characters a line; 30rem is ~75. */
+  max-inline-size: 30rem;
   font-size: var(--sl-text-xs);
   color: var(--sl-color-gray-3);
+}
+
+/*
+ * Captions carry inline code at the caption's faint colour on the code surface —
+ * #737373 on #f5f5f5, 4.3:1, under AA. Code in a caption takes the body colour.
+ */
+.sl-markdown-content figcaption code {
+  color: var(--sl-color-gray-2);
+}
+
+/*
+ * Phones. A route or field heading in the code face wraps between its segments
+ * (enhance.js adds the break points) and steps down a size, so it is two lines
+ * rather than a broken token. And a table of three or more columns stacks: each
+ * row a block, each cell under its column name — the events list's shape, for the
+ * tables whose last column (Notes, Purpose) was the one clipped off the edge.
+ */
+@media (max-width: 50rem) {
+  .sl-markdown-content :is(h2, h3) code {
+    font-size: 0.8em;
+  }
+
+  .sl-markdown-content table.felix-stack,
+  .sl-markdown-content table.felix-stack :is(tbody, tr, td) {
+    display: block;
+    width: auto;
+  }
+  .sl-markdown-content table.felix-stack {
+    overflow: visible;
+    border: 0;
+  }
+  .sl-markdown-content table.felix-stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .sl-markdown-content table.felix-stack tr {
+    padding-block: 0.6rem;
+    border-top: 1px solid var(--sl-color-hairline);
+  }
+  .sl-markdown-content table.felix-stack td {
+    border: 0;
+    padding: 0.1rem 0;
+  }
+  .sl-markdown-content table.felix-stack td:first-child {
+    font-weight: 600;
+    color: var(--sl-color-white);
+  }
+  .sl-markdown-content table.felix-stack td:not(:first-child)[data-label]::before {
+    content: attr(data-label) " ";
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+    margin-inline-end: 0.35rem;
+  }
 }

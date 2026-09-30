@@ -128,7 +128,8 @@ error reasons.
 It is a reading surface, so the rules are the ones reading needs. Prose is held to a measure;
 tables, code and figures take the full column because they are data, not prose. Reference is
 reached two ways — the sidebar for "what is this", the Route index for "where is this route" —
-and every page ends on where to go next rather than on a footer.
+and a page ends on a next step: the home page and Getting Started on an explicit list, every
+other page on Starlight's previous/next pair, which follows the sidebar's order.
 
 Most of the chrome is Starlight's, recoloured from `@felix/design` rather than redrawn. What is
 Felix's own is small and deliberate: the wordmark, the reading measure, the callouts on the state
@@ -147,6 +148,11 @@ reading column that the docs share with chat-ui's transcript.
 
 A neutral grey scale carries every surface and all text; four state hues are the only colour, and
 they appear on callouts, RunTrace and the explorer's method labels — never as decoration.
+
+**Where the system and the code disagree.** Code blocks are highlighted by Expressive Code's
+default themes — Night Owl in dark mode — and its cyans and violets are the only saturated colour
+on the site outside the state ramp. Left as it is on purpose for now: a code theme that reads well
+is its own job, and replacing it is a decision rather than a fix. It is the open colour question.
 
 The neutral hexes are canonical in `packages/design/src/tokens.ts` and reach the site through the
 generated `src/styles/theme.css` (`pnpm sync:theme`; hand edits are hook-blocked). The state hexes
@@ -206,7 +212,8 @@ same stacks.
 - **Headline** (600, 42px wide / 35px narrow, 1.2): a page's `h1` — Starlight's scale.
 - **Title** (600, 35px / 29px, 1.2): `h2`. `h3` and `h4` step down Starlight's scale.
 - **Body** (400, 16px, 1.75): prose, held to **40rem (~76 characters)**.
-- **Label** (600, 14px): buttons, the header link, the sidebar's current page.
+- **Label** (600, 14px): buttons, the header's Route index link (full ink, like the icon beside
+  it), the sidebar's current page.
 - **Code** (13px inline, measured; code blocks at Expressive Code's own size; 13px on the events
   list's `data` line).
 - **Wordmark** (650, 0.07em tracking, uppercase in CSS; Starlight's `--sl-text-h4`, 20px, and
@@ -247,9 +254,13 @@ the price of the contrast rule it carries, not an oversight.
 **The Two-Measure Rule.** Prose reads at 40rem; data takes the column. Never widen prose to fit a
 table, and never let a table's widest cell decide how prose wraps.
 
-**The Whole-Token Rule.** Code is never broken mid-token to make a table fit. A table that cannot
-fit scrolls inside its own box; a table whose last column matters most becomes a stacked list
-(the events list). An earlier rule broke table code anywhere and shredded JSON mid-key.
+**The Whole-Token Rule.** Code is never broken mid-token. A table that cannot fit stacks on a
+phone — each row a block, each cell under its column name (`public/enhance.js` marks tables of
+three or more columns; `brand.css` stacks them below 50rem) — and the events list is stacked at
+every width. A route or field in a heading wraps between its segments: the same script adds a
+break opportunity after each `/` and `.`, and such headings step down to 0.8em below 50rem.
+Route index paths break the same way, server-side. An earlier rule broke table code anywhere and
+shredded JSON mid-key; before that, headings split `{thread_id}` into `{thread_i` / `d}`.
 
 ## Elevation & Depth
 
@@ -302,17 +313,28 @@ line of its own that scrolls if it must. Nothing sits beside the JSON, so nothin
 
 ### Route index (`src/components/RouteIndex.astro`)
 
-Every route in the release spec, grouped by its tags, one hairline row each: verb and path in
-mono, the spec's summary, and where it is explained — the guide section (read from the guides'
-route headings and table rows) or its explorer entry. A jump list of tags replaces the table of
-contents, which cannot see headings a component renders.
+Every route in the release spec, grouped by its tags in the spec's own order (the explorer's),
+one hairline row each: verb and path in mono, what the route is for, and where it is explained —
+the guide section (read from the guides' route headings and table rows) or its explorer entry.
+"What it is for" is the guide's `Purpose` column where one exists, then the first sentence of the
+harness docstring, then the spec's generated title with its acronyms fixed. Every row has an
+anchor (`#get-chat-stream-thread_id`) so one route can be linked. A filter box narrows the rows as
+you type; a jump list of tags replaces the table of contents, which cannot see headings a
+component renders. Group headings are 18px — they label a list, not a page section.
 
-### Product screenshot (`.product-shot`, Concepts → Interrupts)
+Verbs stay neutral here although the explorer colours them: that colour is Scalar's convention,
+mapped onto the ramp only so it passes contrast, and the State-Only Hue Rule gives hue no job in a
+list of routes.
+
+### Product screenshot (`.product-shot`, top of Concepts)
 
 A real capture of chat-ui, never a mock: a `<figure>` through Astro's `Image` (passthrough
 service: shipped as authored, with its dimensions set), a 1px hairline frame at 8px so a dark capture keeps an edge on the dark page, the
-full column width, and a faint caption held to the measure that says what the image shows and
-where it came from. Alt text describes the state on screen, not the file.
+image shown at its own pixel size and never enlarged — a full window scaled to the column was
+~6px UI text, so the figure is a crop that reads at 1:1, linking the full capture — and a faint
+caption held to 30rem that says what the image shows and where it came from. Code in a caption
+takes the body colour (the faint colour on the code surface is 4.3:1). Alt text describes the
+state on screen, not the file.
 
 ### Sidebar current page
 
@@ -321,8 +343,11 @@ you are" the loudest object on the page.
 
 ### Where next (`.where-next`, home)
 
-The sidebar's three groups as plain lists under small faint labels, hairline-separated. It is also
-the home page's only navigation on a phone, where the splash layout has no menu.
+The sidebar's three groups, abridged — every Start and Reference page including the explorer, and
+four of the internals — as plain lists under small faint labels, hairline-separated. It is also
+the home page's only navigation on a phone, where the splash layout has no menu. The 404 page
+(`src/content/404.mdx`) uses the same component for its ways back in, and has no hero, so the
+home page's RunTrace cannot appear there.
 
 ### The explorer header (`src/pages/reference.astro`)
 
