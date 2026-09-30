@@ -311,3 +311,25 @@
   white-space: pre;
   font-size: var(--sl-text-xs);
 }
+
+/*
+ * A product screenshot is a real capture, shown whole: a hairline frame so a
+ * dark capture has an edge on the dark page, the image never wider than the
+ * column, and a caption that says what it shows and where it came from.
+ */
+.sl-markdown-content .product-shot {
+  margin-block: 1.5rem 2rem;
+}
+.sl-markdown-content .product-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.5rem;
+}
+.sl-markdown-content .product-shot figcaption {
+  margin-top: 0.75rem;
+  max-inline-size: var(--felix-measure);
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-3);
+}

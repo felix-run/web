@@ -1,10 +1,15 @@
 // Felix docs — Starlight over MDX in src/content/.
 // Static output only; deployed as a Workers static-assets site (wrangler.jsonc).
 import starlight from '@astrojs/starlight';
-import { defineConfig } from 'astro/config';
+import { defineConfig, passthroughImageService } from 'astro/config';
 
 export default defineConfig({
   site: 'https://docs.felix.run',
+  // Images ship as authored, without a transform step. The default service needs
+  // `sharp`, a native dependency the docs do not declare — it resolved locally by
+  // accident and failed in CI. The one image (a ~100 KB PNG screenshot) does not
+  // need it; `<Image>` still sets width and height, so it takes no layout shift.
+  image: { service: passthroughImageService() },
   integrations: [
     starlight({
       title: 'Felix',

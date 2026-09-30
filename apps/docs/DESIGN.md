@@ -307,6 +307,13 @@ mono, the spec's summary, and where it is explained — the guide section (read 
 route headings and table rows) or its explorer entry. A jump list of tags replaces the table of
 contents, which cannot see headings a component renders.
 
+### Product screenshot (`.product-shot`, Concepts → Interrupts)
+
+A real capture of chat-ui, never a mock: a `<figure>` through Astro's `Image` (passthrough
+service: shipped as authored, with its dimensions set), a 1px hairline frame at 8px so a dark capture keeps an edge on the dark page, the
+full column width, and a faint caption held to the measure that says what the image shows and
+where it came from. Alt text describes the state on screen, not the file.
+
 ### Sidebar current page
 
 A tonal step (hairline fill), ink text, 600 weight. Starlight's inverted white pill made "where
