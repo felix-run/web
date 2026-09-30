@@ -687,7 +687,7 @@ curl -s "$BASE_URL/v1/chat/completions" \
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/v1/models` | Bundled manifests as OpenAI model objects |
+| `GET` | `/v1/models` | Bundled and published manifests as OpenAI model objects, each with a `felix` block: `providerModel`, `contextWindow` and `starters` (always a list, empty when the manifest declares none) |
 | `POST` | `/v1/chat/completions` | `stream: true` emits `chat.completion.chunk` frames, a final chunk carrying `usage`, then `data: [DONE]` |
 
 The optional `user` field becomes the thread suffix (`{tenant}:{user}`). Errors come back in OpenAI
