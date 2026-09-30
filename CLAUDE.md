@@ -35,6 +35,7 @@ pnpm format            # biome format --write
 pnpm check-types       # turbo → tsc --noEmit
 pnpm test              # turbo → vitest (cowork-client, chat-ui); bun test (tui)
 pnpm check-api-drift   # client routes vs the committed harness OpenAPI snapshot
+pnpm check-api-drift:live [origin]  # …vs a running deployment (FELIX_API_KEY; not in CI)
 pnpm check-protocol-parity  # SSE events: every arm handled, every emitted event modelled
 pnpm check-tailwind-sources # every @source-covered tree still reaches the compiled CSS
 pnpm check-payload-shapes   # every required client field is one the harness actually sends
@@ -118,6 +119,16 @@ and sometimes just a duplicate. **An uncalled route is not evidence of a missing
 `POST /eval/datasets/{name}/run` — a second harness route whose docstring reads "Alias for chat-ui".
 A list built from call sites cannot tell the two apart, so check the harness for an alias before
 building anything it suggests.
+
+**`pnpm check-api-drift:live [origin]` asks the other question: not "does the client match the
+contract" but "does it match *this deployment*".** The record is only as current as the last sync,
+so a deployment older than it passes the default check while every call to a route it lacks 404s.
+It fetches `<origin>/openapi.json` (default `FELIX_ORIGIN`, then `http://localhost:8080`) with
+`FELIX_API_KEY` from the environment or `apps/chat-ui/.dev.vars`, fails on a client call the
+deployment does not serve, and lists — advisory — the recorded routes it lacks and the ones it has
+that the record does not, with both versions. Exit 2 means it could not ask (unreachable, or a key
+it refused). It never writes the record, for the reason below: a deployment is not the contract.
+It is not in CI, which has no harness to ask.
 
 `pnpm check-protocol-parity` covers the events, in **both** directions: every `StreamEvent` arm must
 have a handler in `packages/felix-client/src/engine.ts` — the one switch every client runs — and
