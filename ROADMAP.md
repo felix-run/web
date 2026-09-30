@@ -140,9 +140,16 @@ what it described.** It said the sheets were `w-full` below `sm` and so full-ble
 construction. By then the four sheets were `/harness` pages, and the only sheets left — the
 workspace and run-instrument drawers — carry fixed `w-[18rem]` / `w-[22rem]` with the primitive's
 cap lifted. At 320px the instrument hung 32px off the left edge. Capped with `max-w-full`, pinned
-in `tests/workbench-layout.test.tsx`. The eight `/harness` pages show no horizontal overflow at 320
-or 390px — but only in their error states, since `/api/*` was stubbed; a long table with real rows
-has not been seen at phone width.
+in `tests/workbench-layout.test.tsx`.
+
+**The eight `/harness` pages were measured with real data on 2026-09-30**, against a harness
+holding 60 audit events, 600 usage turns, two memories and a manifest, in a same-origin iframe
+(not a device). At 390px nothing overflowed — including the Ledger's full 60-row activity feed, an
+expanded refusal with its raw payload, and the Usage table. At 320px three did: Memory by 41px,
+Corpus by 29px and Eval by 72px, all from the page header's action group, which dropped onto its own
+row but could not wrap *within* it. It wraps now (`components/harness/panel.tsx`, the section header
+too), and all eight measure clean at 320 and 390. **Still unseen with real rows at phone width:**
+Corpus, Jobs, Eval and Manifests' version list, which were empty on that harness.
 
 The tooling limit that kept this open is specific to moving an OS window: a Playwright context
 created with a `viewport` of the target width does move `innerWidth` and engage the breakpoints.
