@@ -45,5 +45,5 @@ home page is a front door, not a landing page.
 
 ## Open
 
-- The architecture page's ASCII topology has an ambiguous `│` under `felix-scheduler`; redraw it
-  once someone confirms which processes use which stores.
+Nothing open as of 2026-09-30: the approval screenshot is in Concepts → Interrupts, and the
+architecture topology was redrawn from the harness Compose file, nginx config and Helm service.

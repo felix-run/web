@@ -11,16 +11,19 @@ How a request flows through Felix end-to-end. Source of truth: [felix-run/felix]
 
 ```
 Client → Ingress (Caddy / Traefik / nginx / CDN)
-           ├─ felix-api        (CPython 3.14, Granian, FastAPI)
-           ├─ felix-worker     (Taskiq consumer)
-           └─ felix-scheduler  (Taskiq cron enqueue)
-                  │
-     Postgres+pgvector · Valkey · object store (fs | s3 | gcs | memory)
+           │
+           ▼
+         felix-api        (CPython 3.14, Granian, FastAPI)  ─┐
+         felix-worker     (Taskiq consumer)                 ─┤  no ingress
+         felix-scheduler  (Taskiq cron enqueue)             ─┤  no ingress
+                                                             ▼
+         Postgres+pgvector · Valkey · object store (fs | s3 | gcs | memory)
 ```
 
-In words: requests reach an ingress (Caddy, Traefik, nginx or a CDN), behind which run three
-processes — `felix-api`, `felix-worker` and `felix-scheduler`. State lives in Postgres with
-pgvector, Valkey, and an object store (`fs`, `s3`, `gcs` or `memory`).
+In words: requests reach an ingress (Caddy, Traefik, nginx or a CDN), which routes to
+`felix-api` only. `felix-worker` and `felix-scheduler` run alongside it with no ingress of their
+own. All three connect to the same Postgres with pgvector, Valkey, and object store (`fs`, `s3`,
+`gcs` or `memory`).
 
 | Process | Role |
 |---|---|
