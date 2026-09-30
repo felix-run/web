@@ -1042,6 +1042,7 @@ Screens tool **output** for prompt injection before the model sees it.
 | `on_flag` | `quarantine` \| `block` | `quarantine` | Applies to output that is flagged **and** to output that could not be screened. |
 | `decider` | bool | `false` | Also ask [`spec.decider`](#specdecider): injection, jailbreak and exfiltration in one call. |
 | `model_tools` | string[] (globs) | `[]` | Which screened tools get the **paid** scoring — `model` and `decider`. Empty = every screened tool. Needs `model` or `decider: true`. |
+| `image_model` | string | `""` | A vision model that reads the text in each **user image**; the transcript is screened like typed text and `on_flag` applies per image. Empty = images are not screened. Needs `enabled: true`. |
 
 `decider` is **additive**: the markers run first, `model` runs beside it, either one flagging flags,
 and either one unable to run leaves the text unscreened rather than cleared. A decider is not
@@ -1063,6 +1064,43 @@ content_screening:
 ```
 
 Inbound user turns are screened on `/chat`, `/v1` and `/a2a` as well.
+
+### Images
+
+A turn's screeners read its text. Text drawn *inside* an image — a screenshot that says "ignore
+previous instructions" — is invisible to them unless `image_model` is set:
+
+```yaml
+content_screening:
+  enabled: true
+  image_model: claude-sonnet   # any vision-capable model id
+  on_flag: quarantine
+```
+
+Each user image is sent to that model to be transcribed, and the transcript goes through the same
+marker scan, `model` score and decider as the turn's own text. Under `quarantine` a flagged image
+is removed and the turn carries `[quarantined] image flagged as potentially hostile` in its place;
+the text and any clean images still reach the agent. Under `block` the turn is a `422`.
+
+- An uploaded image (`POST /files`, then a `file` content part) is read under your tenant before it
+  is transcribed, so the screener sees exactly the bytes the model will.
+- A remote `https://` image is **not** screened: the model provider downloads it separately, so
+  there is no way to know the screener and the model got the same picture. It is treated as a
+  screener outage — removed under `quarantine`, `503` under `block`. Send image bytes or upload
+  them when screening is on.
+- Each distinct image costs one vision call, with at most 8 per request across all its messages;
+  past that, `block` answers `422 too_many_images` and `quarantine` removes the rest. Transcripts
+  are cached per tenant by content, so a client that resends its conversation every request pays
+  once per image.
+- A transcript counts only if the transcriber finished normally. A refusal, a filtered or
+  truncated reply, or an empty one is treated as unscreened; `NO_TEXT` is the only answer that
+  means "no text".
+- **Only the incoming turn is screened.** An image already in the thread's history replays
+  without being screened again — including one admitted before `image_model` was set, or by a
+  different manifest in the same thread.
+- It screens for injection only: the input PII guardrail does not read image text.
+- The transcriber reads the image it is screening, and a crafted image can try to talk it out of
+  reporting its text. Treat this as one layer, like every model-based screener.
 
 A screener that cannot run has not cleared anything. If the model is unreachable — missing key,
 expired credential, 429, provider outage — or returns a score that cannot be parsed, the result is

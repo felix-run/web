@@ -45,6 +45,12 @@ A control that cannot run has not cleared anything, so unavailability is never t
   unscreened. A decider whose route no longer resolves counts as unavailable. Both read the whole
   text a window at a time; tool output longer than eight windows is reported unavailable rather than
   screened on its first window and admitted.
+- **The image screener** (`content_screening.image_model`) is held to the same rule per image. A
+  transcriber error, a transcript that did not finish normally (truncated, refused, filtered) or
+  came back empty, and any remote `http(s)` image —
+  which the provider fetches itself, so it cannot be screened as sent — are unavailable: `block`
+  answers `503`, `quarantine` removes the image. A transcriber error emits
+  `felix_control_unavailable{control="image_screening"}`.
 - **Decider judges** fall back to the model judge and then the heuristic on any failure, and do not
   judge text longer than 8,000 characters — a prefix judge would pass filler followed by a payload.
 - **The PII guardrail** falls back to three regexes (email, US SSN, card-like digit runs) when
