@@ -592,7 +592,14 @@ spec:
 | `checkpointer` | `postgres` \| `none`, or a registered name | `postgres` | Where the session log lives. `none` keeps no session state, so every turn starts from the messages it was given. Add your own with `register_checkpointer`. |
 | `store` | `pgvector` \| `memory` \| `none` (aliases `agentcore`, `vectorize` accepted but inert) | `pgvector` | Durable-fact vector store. |
 | `capture` | object | disabled | Extract durable facts from a turn. |
+| `recall` | object | tools off | How stored facts reach the model beyond the prelude. |
 | `consolidate` | object | disabled | **Inert today** — do not rely on it. |
+
+The bundled `assistant` manifest is the worked example: `capture` on `claude-haiku` with
+`max_facts: 3` and `min_chars: 200`, `recall.tools: true`, `content_screening` on, an approval
+(`memory-forget`) on `forget`, and `auth.inbound.allow_anonymous: false`. Memory is keyed by tenant
+and manifest, not by caller, so a manifest that captures on a deployment shared by more than one
+person puts one caller's facts in another's prompt.
 
 `capture`:
 
@@ -637,7 +644,20 @@ the fact.
 Facts land in `memory_vectors` (pgvector, HNSW) with one of four kinds: `fact`, `event`,
 `instruction`, `task`. The extractor asks the model to classify each fact, and **anything outside
 that set is silently rewritten to `fact`** rather than rejected — so a prompt that invents a kind
-degrades quietly instead of failing. Semantic recall needs the `embeddings` extra.
+degrades quietly instead of failing.
+
+Stored facts reach the model two ways. The **prelude** — the active facts, which the ReAct loop
+renders as a message directly after the system prompt on each run — is built whenever `store` is
+`pgvector` or `memory`; it is escaped but bypasses the governance stack. `recall`:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `tools` | bool | `false` | Bind `remember`, `recall`, `forget` and `list_memories`. They are bound before the governance stack, so recalled text passes through content screening, policies and approvals like any tool output. Not bound when `store: none`. |
+| `limit` | int, 1–50 | `5` | Default number of hits `recall` returns. |
+
+Recall is hybrid: full text, topic keys, and a vector channel when `FELIX_MEMORY_EMBEDDER` resolves
+to an embedder. The default, `auto`, uses the local model when `felix-harness[embeddings]` is
+installed and skips the vector channel otherwise — see [Embeddings](/guide/deploy/#embeddings).
 
 Procedural memory is a separate subsystem under `spec.procedural_memory`, not a kind in this table.
 

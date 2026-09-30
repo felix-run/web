@@ -282,7 +282,8 @@ so a document that got shorter does not keep its old tail.
 
 `search` is hybrid — a full-text channel and a vector channel fused with the same ranking Memory
 uses — and every hit reports the `channels` that surfaced it. `["lexical"]` alone means the vector
-channel did not run, which is usually `FELIX_MEMORY_EMBEDDER=none`, the default. That is the
+channel did not run — usually `FELIX_MEMORY_EMBEDDER=none`, or the default `auto` on an install
+without `felix-harness[embeddings]` (the default image is built without it). That is the
 difference between "the corpus disagreed with you" and "half the retrieval stack is switched off".
 
 Documents reuse `FELIX_MEMORY_EMBEDDER` rather than taking a second setting: one embedder per
