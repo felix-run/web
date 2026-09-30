@@ -706,6 +706,13 @@ browser cannot do rather than about the chat:
   directory, so restating them would make the first screen the densest. What it says instead is the
   fact that is nowhere else: the agent is pointed at a real working directory, reads it without
   asking, and asks before writing — or, under `--yes`, says in the danger colour that it does not.
+  Around that sentence, and only when the manifest declares them (`felix.greeting` /
+  `felix.starters` on `/v1/models`): its headline and subtitle above, its starters below as a
+  numbered list of **titles**. `/start <n>` puts the full prompt in the composer rather than
+  sending it — the greeting showed a title, and what reaches the model has to be what was read,
+  the rule a paste follows too. The composer's `prefill` is an effect keyed on a counter, because
+  the command runs inside `submit`, which clears the field after it. No fallback table here, unlike
+  chat-ui: an agent that declares nothing gets the screen as it was.
 - **The status line shortens before it cuts, and serves the state before the keys**, because cutting an absolute path takes the useful
   end and leaves `/Users/blake…`. Scheme stripped, path reduced to its last segment. The directory
   is what the model can write to, so it stays identifiable; the absolute path is shown in full on

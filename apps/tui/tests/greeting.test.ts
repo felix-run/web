@@ -88,4 +88,38 @@ describe('the empty thread', () => {
       ui.stop();
     }
   });
+
+  /**
+   * The manifest's own words and starters, from `/v1/models`. Titles only: the
+   * prompt is shown in the composer by `/start`, where it is read before Enter.
+   */
+  it("shows the manifest's headline and numbered starters above the invitation", async () => {
+    const ui = await mount(
+      createElement(Greeting, {
+        ...props,
+        manifest: 'cowork',
+        unattended: false,
+        greeting: { headline: 'What should we do in this folder?', subtitle: 'Reads freely.' },
+        starters: [
+          { title: 'List the workspace', prompt: 'List the top-level files.' },
+          { title: 'Find TODOs', prompt: 'Search for TODO.' },
+        ],
+      }),
+      { width: 78, height: 14 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'What should we do in this folder?')).toBe(true);
+      expect(shows(frame, 'Reads freely.')).toBe(true);
+      // The local bargain is still said: the manifest's words do not replace it.
+      expect(shows(frame, 'Reads it freely; asks before it writes')).toBe(true);
+      expect(shows(frame, '1  List the workspace')).toBe(true);
+      expect(shows(frame, '2  Find TODOs')).toBe(true);
+      expect(shows(frame, '/start 1–2 puts one in the composer')).toBe(true);
+      // Titles, not prompts.
+      expect(frame).not.toContain('List the top-level files.');
+    } finally {
+      ui.stop();
+    }
+  });
 });

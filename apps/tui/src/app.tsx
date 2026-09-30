@@ -15,6 +15,7 @@ import {
   createFelixClient,
   eventsToTurns,
   formatArgsForEditing,
+  type ManifestEntry,
   mergeSessions,
   msUntilDecision,
   type PendingApproval,
@@ -193,6 +194,26 @@ export function App({
   }
   const engine = engineRef.current;
   const client = clientRef.current as ReturnType<typeof createFelixClient>;
+  // What `/v1/models` says about each agent — here for the greeting's headline
+  // and starters. Fetched once, and again on a switch so a newly published
+  // manifest's words appear without a restart. A failed read leaves the list as
+  // it was: the greeting then says what it always did, which is correct for a
+  // harness that is down or predates the fields.
+  const [entries, setEntries] = useState<ManifestEntry[]>([]);
+  useEffect(() => {
+    let live = true;
+    client
+      .listManifestEntries()
+      .then((list) => live && setEntries(list))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [client, manifest]);
+  const entry = entries.find((e) => e.id === manifest);
+  /** `/start <n>` → the composer. `n` bumps so choosing one twice fills twice. */
+  const [prefill, setPrefill] = useState<{ text: string; n: number } | null>(null);
+  const fill = useCallback((text: string) => setPrefill((p) => ({ text, n: (p?.n ?? 0) + 1 })), []);
   const { turns, error, streaming, reattaching, approvals, uiPrompt, phase } = useSyncExternalStore(
     engine.subscribe,
     () => engine.state,
@@ -517,6 +538,8 @@ export function App({
           newThread,
           exit,
           spills: () => spills(turns),
+          starters: () => entry?.starters ?? [],
+          fill,
           show: showBody,
           fs: { exists: existsSync, write: writeFileSync },
         },
@@ -526,7 +549,9 @@ export function App({
       client,
       config,
       engine,
+      entry,
       exit,
+      fill,
       hydrate,
       manifest,
       newThread,
@@ -734,6 +759,8 @@ export function App({
               manifest={manifest}
               workspace={root.replace(/\/+$/, '').split('/').pop() || root}
               unattended={config.yes}
+              {...(entry?.greeting ? { greeting: entry.greeting } : {})}
+              {...(entry?.starters ? { starters: entry.starters } : {})}
               theme={theme}
             />
           }
@@ -844,6 +871,7 @@ export function App({
         onSubmit={submit}
         history={recent}
         onEdit={editPrompt}
+        prefill={prefill}
         hint={streaming ? 'steer the run…' : 'ask, /help, ctrl+e to open $EDITOR'}
         theme={theme}
       />
