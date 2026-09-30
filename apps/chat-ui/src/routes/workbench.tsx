@@ -7,11 +7,22 @@ import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { Inspector } from '@/components/inspector/inspector';
+import { RailPresence } from '@/components/rail-presence';
 import { WorkspaceZone } from '@/components/workspace/workspace-zone';
 import { INSTRUMENT_INLINE, WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
+import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
+
+/**
+ * The narrow-width drawers' motion, at the inline rails' speed (`RAIL_MS`).
+ * The primitive's own 500ms in / 300ms out, `ease-in-out`, made a zone that
+ * snaps open at one width crawl open at another. `ease-out` because the drawer
+ * answers a click: it should start fast and settle, not ramp up first.
+ */
+const DRAWER_MOTION =
+  'ease-out data-[state=closed]:duration-200 data-[state=open]:duration-200 motion-reduce:animate-none';
 
 /**
  * The workbench: the thread rail, the transcript and composer, and the
@@ -94,7 +105,11 @@ export function Workbench() {
   return (
     <>
       <div className="flex min-h-0 flex-1">
-        {historyOpen && workspaceInline && <WorkspaceZone />}
+        {workspaceInline && (
+          <RailPresence open={historyOpen} side="left">
+            <WorkspaceZone />
+          </RailPresence>
+        )}
         <main className="bg-dots relative isolate flex min-w-0 flex-1 flex-col">
           <Conversation>
             {turns.length === 0 && <Greeting manifest={manifest} />}
@@ -179,8 +194,10 @@ export function Workbench() {
             />
           </div>
         </main>
-        {inspectorOpen && instrumentInline && (
-          <Inspector open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
+        {instrumentInline && (
+          <RailPresence open={inspectorOpen} side="right">
+            <Inspector open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
+          </RailPresence>
         )}
       </div>
 
@@ -203,7 +220,7 @@ export function Workbench() {
           <SheetContent
             side="left"
             data-shortcut-surface="workspace"
-            className="w-[18rem] max-w-full gap-0 p-0 sm:max-w-none"
+            className={cn('w-[18rem] max-w-full gap-0 p-0 sm:max-w-none', DRAWER_MOTION)}
           >
             <SheetTitle className="sr-only">Workspace</SheetTitle>
             {/* The same zone, not a smaller stand-in: the threads popover, the
@@ -220,7 +237,7 @@ export function Workbench() {
             side="right"
             showCloseButton={false}
             data-shortcut-surface="instrument"
-            className="w-[22rem] max-w-full gap-0 p-0 sm:max-w-none"
+            className={cn('w-[22rem] max-w-full gap-0 p-0 sm:max-w-none', DRAWER_MOTION)}
           >
             {/* The dialog's name is the heading it shows. It read "Harness
                 inspector" — a name for a panel that no longer exists, announced
