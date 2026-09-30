@@ -62,7 +62,15 @@ interface RawModelEntry {
   felix?: {
     providerModel?: string | null;
     contextWindow?: number | null;
+    starters?: unknown;
   } | null;
+}
+
+/** One `metadata.starters` entry: a prompt a client may offer on an empty thread. */
+export interface ManifestStarter {
+  title: string;
+  /** Sent verbatim when chosen. */
+  prompt: string;
 }
 
 /**
@@ -90,6 +98,23 @@ export interface ManifestEntry {
    * not itself a model id; do not trust it against one.
    */
   contextWindow?: number;
+  /**
+   * `felix.starters`: the manifest's own starter prompts, in its order. The
+   * harness sends a list — empty when the manifest declares none — from
+   * `felix-run/felix#384`, so `undefined` here means a harness older than
+   * that, and `[]` means one that has nothing to offer for this agent.
+   * Entries without a non-empty `title` and `prompt` are dropped.
+   */
+  starters?: ManifestStarter[];
+}
+
+function toStarters(raw: unknown): ManifestStarter[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.flatMap((s) =>
+    s && typeof s.title === 'string' && s.title && typeof s.prompt === 'string' && s.prompt
+      ? [{ title: s.title, prompt: s.prompt }]
+      : [],
+  );
 }
 
 function toManifestEntry(raw: RawModelEntry): ManifestEntry {
@@ -100,6 +125,8 @@ function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   }
   const tokens = raw.felix?.contextWindow;
   if (typeof tokens === 'number' && tokens > 0) entry.contextWindow = tokens;
+  const starters = toStarters(raw.felix?.starters);
+  if (starters) entry.starters = starters;
   return entry;
 }
 

@@ -1,3 +1,4 @@
+import type { ManifestEntry, ManifestStarter } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { useShell } from '@/shell-context';
 
@@ -5,12 +6,14 @@ import { useShell } from '@/shell-context';
  * Starter prompts for the empty thread, chosen by the agent the first message
  * goes to so each one exercises something that manifest can actually do.
  *
- * Keyed by manifest name, which is the only thing the client knows about an
- * agent before a run reports its tools; an agent with no set of its own gets
- * the general one. Clicking sends the prompt as written — it is shown in full
- * on hover, so nothing reaches the model that the operator could not read.
+ * The manifest's own `metadata.starters`, from `/v1/models`, win. The table
+ * below is only for a harness older than `felix-run/felix#384`, which sends no
+ * `starters` key at all — it is keyed by name because that is all such a
+ * harness tells us. A manifest that declares none gets the general pair.
+ * Clicking sends the prompt as written — it is shown in full on hover, so
+ * nothing reaches the model that the operator could not read.
  */
-type Starter = { title: string; prompt: string };
+type Starter = ManifestStarter;
 
 const BY_MANIFEST: Record<string, Starter[]> = {
   cowork: [
@@ -98,13 +101,17 @@ const FALLBACK: Starter[] = [
   },
 ];
 
-export function startersFor(manifest: string): Starter[] {
+export function startersFor(manifest: string, entry?: ManifestEntry): Starter[] {
+  if (entry?.starters) return entry.starters.length ? entry.starters : FALLBACK;
   return BY_MANIFEST[manifest] ?? FALLBACK;
 }
 
 export function StarterPrompts({ manifest }: { manifest: string }) {
-  const { send, streaming } = useShell();
-  const starters = startersFor(manifest);
+  const { send, streaming, manifestEntries } = useShell();
+  const starters = startersFor(
+    manifest,
+    manifestEntries?.find((m) => m.id === manifest),
+  );
 
   return (
     <div className="mt-4">

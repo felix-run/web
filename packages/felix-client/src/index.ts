@@ -91,6 +91,7 @@ export {
   type FelixClient,
   type FelixClientOptions,
   type ManifestEntry,
+  type ManifestStarter,
   type StreamArgs,
   type StreamHandlers,
 } from './transport';

@@ -42,6 +42,36 @@ const MODELS = {
   ],
 };
 
+describe('starters', () => {
+  it("keeps the manifest's own starters, drops malformed ones, and tells none from unknown", async () => {
+    const { client } = serve({
+      object: 'list',
+      data: [
+        {
+          id: 'cowork',
+          felix: {
+            starters: [
+              { title: 'List files', prompt: 'List the top-level files.' },
+              { title: '', prompt: 'no title' },
+              { title: 'no prompt' },
+              'not an object',
+            ],
+          },
+        },
+        // A harness that lists starters, for a manifest that declares none.
+        { id: 'router', felix: { starters: [] } },
+        // A harness older than the key.
+        { id: 'quick', felix: {} },
+      ],
+    });
+    expect(await client.listManifestEntries()).toEqual([
+      { id: 'cowork', starters: [{ title: 'List files', prompt: 'List the top-level files.' }] },
+      { id: 'router', starters: [] },
+      { id: 'quick' },
+    ]);
+  });
+});
+
 describe('listManifestEntries', () => {
   it('keeps the provider model where it differs from the name, in the harness order', async () => {
     const { client, urls } = serve(MODELS);
