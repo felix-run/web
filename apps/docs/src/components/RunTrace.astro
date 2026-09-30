@@ -47,6 +47,9 @@ const rows: Row[] = [
           <span class="dot" aria-hidden="true" />
           <code class="event">{row.event}</code>
           <span class="text">
+            {/* The dot's hue says in flight or finished; say it in words too. */}
+            {row.state === 'running' && <span class="sr-only">In flight. </span>}
+            {row.state === 'done' && <span class="sr-only">Finished. </span>}
             {row.state === 'blocked' && <strong class="flag">Waiting on you</strong>}
             {row.state === 'request' && <strong class="flag">Your request</strong>}
             {row.text}

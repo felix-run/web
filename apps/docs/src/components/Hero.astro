@@ -14,7 +14,11 @@
  * RunTrace sits under the actions on narrow screens rather than above the
  * title, because the title says what the figure is of.
  *
- * Only the home page has `hero` frontmatter, so this renders nowhere else.
+ * RunTrace belongs to the home page only. Starlight renders this component for any
+ * entry with `hero` frontmatter, and its built-in 404 is one — a splash page with a
+ * hero — so an earlier version drew a run beside "Page not found". The site has its
+ * own `src/content/404.mdx` now, with no hero, and this checks the entry anyway: the
+ * figure is the home page's, not every splash page's.
  */
 // Biome parses only an .astro file's frontmatter, so imports used in the markup read as dead.
 // biome-ignore lint/correctness/noUnusedImports: rendered below
@@ -25,6 +29,8 @@ import RunTrace from './RunTrace.astro';
 const { data } = Astro.locals.starlightRoute.entry;
 // biome-ignore lint/correctness/noUnusedVariables: rendered below
 const { title = data.title, tagline, actions = [] } = data.hero || {};
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const isHome = Astro.locals.starlightRoute.entry.id === 'index';
 ---
 
 <div class="hero">
@@ -43,9 +49,13 @@ const { title = data.title, tagline, actions = [] } = data.hero || {};
       )
     }
   </div>
-  <div class="figure">
-    <RunTrace />
-  </div>
+  {
+    isHome && (
+      <div class="figure">
+        <RunTrace />
+      </div>
+    )
+  }
 </div>
 
 <style>

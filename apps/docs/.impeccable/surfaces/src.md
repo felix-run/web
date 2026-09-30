@@ -26,10 +26,12 @@ home page is a front door, not a landing page.
   to the guide section that explains it; the OpenAPI explorer is for request schemas and trying a
   call, not for response shapes (every harness route returns a bare dict).
 - **Show the mechanism.** RunTrace on the home page draws one approval-gated turn as real frames,
-  and Concepts → Interrupts shows the same pause as chat-ui draws it — a real capture from a local
-  harness, captioned with where it came from.
+  and the top of Concepts shows the same pause as chat-ui draws it — a real capture from a local
+  harness, cropped to read at 1:1, captioned with where it came from.
   Expected output in Getting Started is taken from harness source and says which file.
-- **Every page ends on a next step.** Home ends on Where next; guides end on Where to next.
+- **Every page ends on a next step.** Home ends on Where next and Getting Started on Where to
+  next; every other page ends on Starlight's previous/next, which follows the sidebar. A dead
+  address lands on a 404 with the ways back in, not on a decorated splash.
 - **Truth over tidiness.** Event names, routes and error reasons exactly as the harness sends them.
   A claim about harness behaviour that has not been read from source or measured is not written.
 
@@ -45,5 +47,7 @@ home page is a front door, not a landing page.
 
 ## Open
 
-Nothing open as of 2026-09-30: the approval screenshot is in Concepts → Interrupts, and the
-architecture topology was redrawn from the harness Compose file, nginx config and Helm service.
+- **Code highlighting.** Night Owl's cyans and violets are the only saturated colour outside the
+  state ramp (see DESIGN.md → Colors). Replacing the code theme is a decision, not yet made.
+- **The screenshot is 1x.** It is cropped from a 1387px capture; a 2x recapture needs the local
+  harness, and was not taken in this pass.

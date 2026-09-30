@@ -355,13 +355,11 @@ present, else `data.text` or `data.delta`, else `""`.
 
 <dl class="event-list">
   <dt>`session_progress`</dt>
-  <dd>A turn started on a thread</dd>
+  <dd>Three shapes. A turn started on a thread:</dd>
   <dd class="event-data">`{"phase":"turn"}`</dd>
-  <dt>`session_progress`</dt>
-  <dd>Compaction fired mid-loop</dd>
+  <dd>Compaction fired mid-loop:</dd>
   <dd class="event-data">`{"phase":"compaction","reason":"after_turn"}`</dd>
-  <dt>`session_progress`</dt>
-  <dd>Paired with each `text_delta`</dd>
+  <dd>Paired with each `text_delta`:</dd>
   <dd class="event-data">`{"progress":{"type":"assistant_delta","kind":"text","delta":str}}`</dd>
   <dt>`text_delta`</dt>
   <dd>A model token chunk</dd>

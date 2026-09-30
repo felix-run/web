@@ -25,6 +25,8 @@ interface Op {
   method: string;
   path: string;
   summary: string;
+  /** First sentence of the operation's docstring, when the harness wrote one. */
+  description: string;
   tag: string;
 }
 interface Doc {
@@ -32,6 +34,8 @@ interface Doc {
   label: string;
   anchor: string;
   section: string;
+  /** The guide's own words for the route, from a table's `Purpose` column. */
+  purpose: string;
 }
 
 const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
@@ -41,6 +45,22 @@ const specPath = join(root, 'public/openapi.json');
 // biome-ignore lint/suspicious/noExplicitAny: the spec is untyped JSON
 let spec: any = null;
 if (existsSync(specPath)) spec = JSON.parse(readFileSync(specPath, 'utf8'));
+
+/**
+ * The first sentence, on one line — or the first two when the first is only a label
+ * ("Readiness."), which names a route rather than saying what it does.
+ */
+function firstSentence(text: string): string {
+  const flat = text
+    .trim()
+    .split(/\n\s*\n/)[0]
+    .replace(/\s+/g, ' ');
+  const ends = [...flat.matchAll(/[.!?](?=\s|$)/g)].map((m) => (m.index ?? 0) + 1);
+  if (ends.length === 0) return flat;
+  if (ends[0] >= 25) return flat.slice(0, ends[0]);
+  // A label: keep the next sentence, or the rest when it ends without a stop.
+  return ends[1] ? flat.slice(0, ends[1]) : flat;
+}
 
 const ops: Op[] = [];
 for (const [path, item] of Object.entries(spec?.paths ?? {})) {
@@ -53,6 +73,7 @@ for (const [path, item] of Object.entries(spec?.paths ?? {})) {
       method: method.toUpperCase(),
       path,
       summary: op.summary ?? '',
+      description: firstSentence(op.description ?? ''),
       tag: op.tags?.[0] ?? 'Other',
     });
   }
@@ -77,6 +98,52 @@ function shape(path: string): string {
   );
 }
 
+/** A markdown table row's cells, not splitting inside backticks. */
+function cells(row: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let tick = false;
+  for (const ch of row.trim().replace(/^\||\|$/g, '')) {
+    if (ch === '`') tick = !tick;
+    if (ch === '|' && !tick) {
+      out.push(cur.trim());
+      cur = '';
+    } else cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+/** A guide cell as one plain sentence: links to their text, emphasis and code marks off. */
+function plain(text: string): string {
+  return firstSentence(
+    text
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/\*\*|`/g, '')
+      .trim(),
+  );
+}
+
+/**
+ * FastAPI titles an operation from its function name, so the spec says "A2A Rpc",
+ * "Mcp Info", "Jwks". Used only when neither a guide nor a docstring describes the
+ * route; the acronyms at least read as acronyms.
+ */
+const ACRONYMS: Record<string, string> = {
+  Rpc: 'RPC',
+  Mcp: 'MCP',
+  Jwks: 'JWKS',
+  Ui: 'UI',
+  Api: 'API',
+  Sse: 'SSE',
+  Id: 'ID',
+  Json: 'JSON',
+  Url: 'URL',
+};
+function fixAcronyms(summary: string): string {
+  return summary.replace(/\b[A-Z][a-z]+\b/g, (w) => ACRONYMS[w] ?? w);
+}
+
 const GUIDES: Record<string, string> = {
   'rest-api': 'REST API',
   'management-api': 'Management API',
@@ -89,6 +156,7 @@ for (const file of readdirSync(guideDir)) {
   let anchor = '';
   let section = '';
   let inFence = false;
+  let purposeColumn = -1;
   for (const line of readFileSync(join(guideDir, file), 'utf8').split('\n')) {
     if (line.startsWith('```')) inFence = !inFence;
     if (inFence) continue;
@@ -97,13 +165,26 @@ for (const file of readdirSync(guideDir)) {
       section = heading[1].replace(/`/g, '');
       anchor = slug(heading[1]);
     }
+    // A table header row: remember which column, if any, says what a route is for.
+    if (
+      /^\|/.test(line) &&
+      !/^\|\s*`?(GET|POST|PUT|PATCH|DELETE)/.test(line) &&
+      !/^\|\s*-/.test(line)
+    ) {
+      purposeColumn = cells(line).findIndex((c) => /^purpose$/i.test(c));
+    }
+    if (!/^\|/.test(line)) purposeColumn = -1;
     const route =
       line.match(/^#{2,4}\s+`(GET|POST|PUT|PATCH|DELETE) ([^`]+)`/) ??
       line.match(/^\|\s*`?(GET|POST|PUT|PATCH|DELETE)`?\s*\|\s*`([^`]+)`/);
     if (!route) continue;
     const key = `${route[1]} ${shape(route[2])}`;
     // First mention wins: a route's own heading comes before later passing mentions.
-    if (!documented.has(key)) documented.set(key, { page, label: GUIDES[page], anchor, section });
+    const purpose =
+      line.startsWith('|') && purposeColumn >= 0 ? (cells(line)[purposeColumn] ?? '') : '';
+    if (!documented.has(key)) {
+      documented.set(key, { page, label: GUIDES[page], anchor, section, purpose: plain(purpose) });
+    }
   }
 }
 
@@ -113,12 +194,30 @@ for (const op of ops) {
   list.push(op);
   groups.set(op.tag, list);
 }
+// The spec's own order — first appearance of each tag — which is the order the
+// explorer shows. Alphabetical put Threads after Audit here and not there.
 // biome-ignore lint/correctness/noUnusedVariables: rendered below
-const sorted = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+const sorted = [...groups.entries()];
 // biome-ignore lint/correctness/noUnusedVariables: rendered below
 const explorer = (op: Op) => `/reference/#tag/${op.tag.toLowerCase()}/${op.method}${op.path}`;
-// biome-ignore lint/correctness/noUnusedVariables: rendered below
 const docFor = (op: Op) => documented.get(`${op.method} ${shape(op.path)}`);
+/** What a row says a route is for: the guide's words, then the docstring, then the spec's title. */
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const describe = (op: Op) => docFor(op)?.purpose || op.description || fixAcronyms(op.summary);
+/**
+ * A stable anchor per row — `get-chat-stream-thread_id` — so one route can be
+ * linked from chat-ui, a search result or a message.
+ */
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const rowId = (op: Op) =>
+  `${op.method}${op.path}`
+    .toLowerCase()
+    .replace(/[{}]/g, '')
+    .replace(/[^a-z0-9_]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+/** The path split after each `/`, so it wraps between segments and never inside one. */
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const segments = (path: string) => path.split(/(?<=\/)/);
 // biome-ignore lint/correctness/noUnusedVariables: rendered below
 const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.path)}`)).length;
 ---
@@ -133,9 +232,19 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
   ) : (
     <>
       <p class="route-count">
-        {ops.length} routes. {coveredCount} are explained in a guide; the rest link to their entry in
-        the <a href="/reference/">OpenAPI explorer</a>.
+        {ops.length} routes, {coveredCount} of them explained in a guide.
       </p>
+      <div class="route-filter" data-route-filter hidden>
+        <label for="route-filter-input">Filter routes</label>
+        <input
+          id="route-filter-input"
+          type="search"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="/chat/stream, approvals, POST…"
+        />
+        <p class="route-filter-status" role="status" aria-live="polite"></p>
+      </div>
       <nav class="route-tags" aria-label="Route groups">
         <ul>
           {sorted.map(([tag, list]) => (
@@ -146,28 +255,33 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
         </ul>
       </nav>
       {sorted.map(([tag, list]) => (
-        <section class="route-group">
+        <section class="route-group" data-route-group>
           <h2 id={slug(tag)}>{tag}</h2>
           <ul class="route-list">
             {list.map((op) => {
               const doc = docFor(op);
+              const what = describe(op);
               return (
-                <li>
+                <li id={rowId(op)} data-route={`${op.method} ${op.path} ${what}`.toLowerCase()}>
                   <code class="route">
-                    <span class="verb">{op.method}</span> {op.path}
+                    <span class="verb">{op.method}</span>{' '}
+                    {segments(op.path).map((part, i) => (
+                      <>
+                        {i > 0 && <wbr />}
+                        {part}
+                      </>
+                    ))}
                   </code>
-                  <span class="summary">{op.summary}</span>
+                  <span class="summary">{what}</span>
                   {doc ? (
-                    <a
-                      class="where"
-                      href={`/guide/${doc.page}/#${doc.anchor}`}
-                      title={`${doc.label} → ${doc.section}`}
-                    >
+                    <a class="where" href={`/guide/${doc.page}/#${doc.anchor}`}>
                       {doc.label}
+                      <span class="sr-only">, {doc.section}</span>
                     </a>
                   ) : (
-                    <a class="where where--spec" href={explorer(op)}>
+                    <a class="where" href={explorer(op)}>
                       Explorer
+                      <span class="sr-only">, {op.method} {op.path}</span>
                     </a>
                   )}
                 </li>
@@ -208,8 +322,51 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
     font-variant-numeric: tabular-nums;
   }
 
+  /* A group heading labels a list; it is not a page section. At the page's h2
+     size a one-route group (A2A, Artifacts) outweighed everything around it. */
   .route-group h2 {
+    font-size: var(--sl-text-lg);
+    margin-top: 1.75rem;
     scroll-margin-top: calc(var(--sl-nav-height) + 1rem);
+  }
+
+  .route-list li {
+    scroll-margin-top: calc(var(--sl-nav-height) + 1rem);
+  }
+  .route-list li:target {
+    background-color: color-mix(in srgb, var(--sl-color-white) 6%, var(--sl-color-black));
+  }
+
+  .route-filter {
+    margin-top: 1rem;
+    max-inline-size: 24rem;
+  }
+  .route-filter label {
+    display: block;
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    color: var(--sl-color-white);
+    margin-bottom: 0.25rem;
+  }
+  .route-filter input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--sl-color-gray-4);
+    border-radius: 0.5rem;
+    background: var(--sl-color-black);
+    color: var(--sl-color-white);
+    font: inherit;
+    font-size: var(--sl-text-sm);
+  }
+  .route-filter input::placeholder {
+    color: var(--sl-color-gray-3);
+  }
+  .route-filter-status {
+    margin: 0.25rem 0 0;
+    min-height: 1.25rem;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
   }
 
   .route-list {
@@ -259,10 +416,6 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
     text-underline-offset: 0.2em;
   }
 
-  .where--spec {
-    color: var(--sl-color-gray-3);
-  }
-
   @media (max-width: 50rem) {
     .route-list li {
       grid-template-columns: minmax(0, 1fr) auto;
@@ -275,3 +428,33 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
     }
   }
 </style>
+
+<script>
+  // Progressive: without script the filter stays hidden and the page is the full list.
+  const box = document.querySelector<HTMLElement>('[data-route-filter]');
+  const input = box?.querySelector<HTMLInputElement>('input');
+  const status = box?.querySelector<HTMLElement>('.route-filter-status');
+  const rows = [...document.querySelectorAll<HTMLElement>('[data-route]')];
+  const groups = [...document.querySelectorAll<HTMLElement>('[data-route-group]')];
+  if (box && input && status) {
+    box.hidden = false;
+    input.addEventListener('input', () => {
+      const terms = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const row of rows) {
+        const hay = row.dataset.route ?? '';
+        const match = terms.every((t) => hay.includes(t));
+        row.hidden = !match;
+        if (match) shown++;
+      }
+      for (const group of groups) {
+        group.hidden = !group.querySelector('[data-route]:not([hidden])');
+      }
+      status.textContent = terms.length
+        ? shown === 0
+          ? 'No route matches.'
+          : `${shown} of ${rows.length} routes`
+        : '';
+    });
+  }
+</script>

@@ -23,12 +23,14 @@
 import Default from '@astrojs/starlight/components/SocialIcons.astro';
 ---
 
-<a class="header-link" href="/guide/routes/">Routes</a>
+<a class="header-link" href="/guide/routes/">Route index</a>
 <Default><slot /></Default>
 
 <style>
   .header-link {
-    color: var(--sl-color-gray-2);
+    /* Full strength, like the GitHub icon beside it: at gray-2 the one text link
+       in the header read as disabled next to an ink icon. */
+    color: var(--sl-color-white);
     font-size: var(--sl-text-sm);
     font-weight: 600;
     text-decoration: none;
@@ -38,6 +40,7 @@ import Default from '@astrojs/starlight/components/SocialIcons.astro';
   }
 
   .header-link:hover {
-    color: var(--sl-color-white);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
   }
 </style>
