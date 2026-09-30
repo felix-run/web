@@ -50,7 +50,7 @@ Manifests use `apiVersion: felix/v1`, `kind: Agent` (Pydantic v2, `extra=forbid`
 |---|---|
 | Checkpointer | `memory.checkpointer` → resolved through the checkpointer registry: `postgres` (default), `none`, or a plugin-registered store |
 | Strategy | `session.strategy` → `full_replay` / `windowed:N` / `summarizing:N` / `semantic:N` / `compacting` |
-| Long-term memory | `memory.store` ∈ `{pgvector, memory}` injects remember/recall tools |
+| Long-term memory | `memory.recall.tools` binds `remember` / `recall` / `forget` / `list_memories` (not under `store: none`); `memory.store` ∈ `{pgvector, memory}` builds the active-facts prelude |
 | Artifacts | Large tool outputs spill to the object store; `read_artifact` is bound so the model can page through them, limited to its own conversation's |
 
 ## Caching

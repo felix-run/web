@@ -49,8 +49,9 @@ The request-path resolver walks four layers and returns the first hit:
 4. **Bundled** — the YAML shipped in the image (`source: bundled`)
 
 So a tenant manifest named `quick` shadows the bundled `quick` for that tenant alone. Active pointers
-are cached for 30 seconds. Nine manifests ship in the box: `quick`, `deep`, `router`, `oss-only`,
-`hybrid-router`, `support`, `cowork`, `governed` and `contributor`.
+are cached for 30 seconds. Twelve manifests ship in the box: `quick`, `assistant`, `deep`, `router`,
+`oss-only`, `hybrid-router`, `support`, `decider-support`, `triage`, `cowork`, `governed` and
+`contributor`. `assistant` is `quick` with long-term memory — see [Memory](#memory).
 
 `FELIX_MANIFEST_SOURCE=bundled` collapses that to one layer: only the manifests baked into the
 image are served, no manifest store is constructed, and the write routes are not registered — so
@@ -236,9 +237,22 @@ Two independent things share the word.
 plus a strategy.
 
 **Durable memory** is facts that outlive a thread. With `spec.memory.capture.enabled`, a small model
-extracts facts from each turn into `memory_vectors` (pgvector, HNSW) under kinds `fact`,
-`preference`, `episode` and `procedural`. `spec.procedural_memory` recalls stored how-tos and adds a
-`remember_procedure` tool. Semantic recall and `tools_retrieval` need the `embeddings` extra.
+extracts facts from each turn into `memory_vectors` (pgvector, HNSW) under kinds `fact`, `event`,
+`instruction` and `task`. Stored facts reach a ReAct agent as a prelude at the start of each run, and
+`spec.memory.recall.tools` adds `remember`, `recall`, `forget` and `list_memories`.
+`spec.procedural_memory` recalls stored how-tos and adds a `remember_procedure` tool.
+
+Durable memory is keyed by **tenant and manifest, not by caller**: everyone who talks to one
+manifest in one tenant shares its facts. That is why `quick` stays stateless and the bundled
+`assistant` manifest — `quick` plus capture, recall tools, content screening and an approval on
+`forget` — sets `auth.inbound.allow_anonymous: false`. Under `FELIX_AUTH_MODE=none` every caller is
+anonymous, so `assistant` answers `401`; call it with an API key or JWT.
+
+Recall fuses a full-text channel, topic keys and a vector channel. The vector channel runs when
+`FELIX_MEMORY_EMBEDDER` resolves to an embedder: the default `auto` uses the local
+`bge-base-en-v1.5` model when `felix-harness[embeddings]` is installed and runs without the vector
+channel otherwise. See [Embeddings](/guide/deploy/#embeddings). Semantic session strategies and
+`tools_retrieval` also need the `embeddings` extra.
 
 ## Durable execution
 

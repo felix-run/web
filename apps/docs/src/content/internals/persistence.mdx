@@ -38,7 +38,7 @@ Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compact
 | `jobs` | Cron schedules; `(tenant_id, name)` PK |
 | `fibers` | Durable sleep/step/resume state |
 | `eval_*` | Datasets, items, runs. `put_dataset` upserts on `(tenant_id, dataset_name, item_id)` — it adds and updates items but never removes one, and re-writing an item leaves its `created_at` at first appearance |
-| `memory_vectors` | pgvector HNSW; kinds `fact` / `preference` / `episode` / `procedural` |
+| `memory_vectors` | pgvector HNSW, `vector(768)`; kinds `fact` / `event` / `instruction` / `task`, plus `procedure` rows from procedural memory |
 | `document_chunks` | Operator-ingested corpus; generated `content_tsv` (GIN) + **nullable** pgvector HNSW, so a deployment with no embedder still gets full-text retrieval |
 
 ## Object store
