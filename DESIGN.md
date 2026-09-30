@@ -326,6 +326,15 @@ The breakpoints are derived from what the content needs, not from device names.
 
 **The Yield Rule.** A rail never narrows the thing it describes; it leaves.
 
+**Zones move at one speed.** An inline rail opens and closes by animating its width —
+`RailPresence` interpolates a grid track between `0fr` and `1fr`, so the transcript beside it
+reflows over 200ms `ease-out` instead of jumping 18–30rem in one frame. The rail's content keeps
+its own width and is clipped rather than squeezed, so nothing inside rewraps mid-motion, and a
+closing rail is `inert` until it unmounts. The narrow-width drawers slide at the same 200ms
+`ease-out`, overriding the primitive's 500/300ms `ease-in-out`, so a zone moves the same whether
+it is a rail or an overlay. Both are off under `prefers-reduced-motion`: a panel appearing
+reports nothing about a run, so unlike the working pulse it has no reason to keep moving.
+
 **The Shrink-Floor Rule.** Anything below a scrolling region carries `flexShrink: 0`. A
 transcript longer than the screen will otherwise eat the composer's rows and leave a box you
 cannot type in, with nothing on screen to say why. Each component is correct alone; the failure
