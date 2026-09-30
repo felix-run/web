@@ -1,9 +1,20 @@
 import type { ApprovalRequest } from '@felix/client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { listApprovals } from '@/api';
 
 /** Slow: a TTL is minutes long, and this runs for the life of the tab. */
 export const PENDING_APPROVALS_POLL_MS = 10_000;
+
+/**
+ * How long a decision this tab made outranks a poll that still lists the row.
+ *
+ * Three ticks: long enough to cover a poll already in flight when the decision
+ * was posted and the harness's own write, short enough that a row the harness
+ * genuinely still holds — `create_pending` reuses one pending row for every
+ * byte-identical call, so an id can come back — is offered again within a tick
+ * or two rather than hidden for good.
+ */
+export const DECIDED_GRACE_MS = 30_000;
 
 /**
  * The tenant's pending approvals, as last seen, and whether that is still true.
@@ -29,6 +40,17 @@ export interface PendingApprovals {
    */
   failures: number;
   refresh: () => void;
+  /**
+   * Record that this tab just decided an approval, after the decision succeeded.
+   *
+   * The row leaves `pending` at once, and a poll that still lists it — one
+   * already in flight, or the next tick before the harness has written — does not
+   * put it back. Without this, deciding from the transcript banner handed the row
+   * to the attention line: the banner stopped owning it the moment it was
+   * decided, the line's list was up to a poll old, so the line opened itself and
+   * offered Approve on a call that had already been answered.
+   */
+  markDecided: (id: string) => void;
 }
 
 /**
@@ -48,11 +70,20 @@ export function usePendingApprovals(): PendingApprovals {
   const [error, setError] = useState<unknown>(null);
   const [lastOkAt, setLastOkAt] = useState<number | null>(null);
   const [failures, setFailures] = useState(0);
+  /** Approval id → when this tab decided it. See `markDecided`. */
+  const decided = useRef(new Map<string, number>());
 
   const refresh = useCallback(() => {
     void listApprovals('pending')
       .then((rows) => {
-        setPending(rows);
+        const now = Date.now();
+        for (const [id, at] of decided.current) {
+          // Gone from the harness's list, or past the grace: stop overriding it.
+          if (now - at >= DECIDED_GRACE_MS || !rows.some((r) => r.id === id)) {
+            decided.current.delete(id);
+          }
+        }
+        setPending(rows.filter((r) => !decided.current.has(r.id)));
         setError(null);
         setFailures(0);
         setLastOkAt(Date.now());
@@ -74,5 +105,10 @@ export function usePendingApprovals(): PendingApprovals {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  return { pending, error, lastOkAt, failures, refresh };
+  const markDecided = useCallback((id: string) => {
+    decided.current.set(id, Date.now());
+    setPending((rows) => rows.filter((r) => r.id !== id));
+  }, []);
+
+  return { pending, error, lastOkAt, failures, refresh, markDecided };
 }

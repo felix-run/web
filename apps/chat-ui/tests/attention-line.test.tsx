@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttentionLine } from '../src/components/attention-line';
-import { usePendingApprovals } from '../src/hooks/use-pending-approvals';
+import { DECIDED_GRACE_MS, usePendingApprovals } from '../src/hooks/use-pending-approvals';
 
 /**
  * The line that has to be true without being looked at.
@@ -282,6 +283,118 @@ describe('the attention line', () => {
  * whole time, because the poll's failures were swallowed and the list it kept
  * was the empty one it started with.
  */
+/**
+ * The banner lets go of an approval the moment it is decided — `shiftApproval`
+ * drops it from `bannerOwned` — but the line's list is up to a poll old. So for
+ * as long as that list still carried the row, the line treated it as unowned,
+ * opened itself on the transition, and offered Approve on a call the harness had
+ * already answered. `markDecided` is what the banner calls first.
+ */
+function DecidedFromBanner() {
+  const approvals = usePendingApprovals();
+  const [handled, setHandled] = useState(['a1']);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          approvals.markDecided('a1');
+          setHandled([]);
+        }}
+      >
+        decide in banner
+      </button>
+      <button type="button" onClick={() => approvals.refresh()}>
+        poll now
+      </button>
+      <AttentionLine
+        approvals={approvals}
+        streaming={false}
+        handled={handled}
+        threadId="here"
+        threads={THREADS}
+      />
+    </>
+  );
+}
+
+function mountDecided() {
+  return render(
+    <MemoryRouter>
+      <TooltipProvider>
+        <DecidedFromBanner />
+      </TooltipProvider>
+    </MemoryRouter>,
+  );
+}
+
+describe('an approval this tab just decided', () => {
+  it('is not re-offered while the poll still lists it', async () => {
+    // The harness has not caught up: every poll still returns the row.
+    stub([approval({ id: 'a1', thread_id: 'here' })]);
+    mountDecided();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('1 call is waiting on you'),
+    );
+
+    await act(async () => screen.getByRole('button', { name: 'decide in banner' }).click());
+    expect(screen.getByRole('status').textContent).toBe('Nothing waiting on you.');
+    expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
+
+    // A tick that still carries it must not put it back.
+    await act(async () => screen.getByRole('button', { name: 'poll now' }).click());
+    await act(async () => {});
+    expect(screen.getByRole('status').textContent).toBe('Nothing waiting on you.');
+    expect(screen.queryByRole('button', { name: /review/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
+  });
+
+  it('is offered again if the harness still holds it after the grace', async () => {
+    stub([approval({ id: 'a1', thread_id: 'here' })]);
+    mountDecided();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('1 call is waiting on you'),
+    );
+    await act(async () => screen.getByRole('button', { name: 'decide in banner' }).click());
+
+    const later = Date.now() + DECIDED_GRACE_MS + 1;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
+    await act(async () => screen.getByRole('button', { name: 'poll now' }).click());
+    // Once offered, the card brings its own status (the deadline); the line's
+    // sentence is the first.
+    await waitFor(() =>
+      expect(screen.getAllByRole('status')[0]?.textContent).toContain('1 call is waiting on you'),
+    );
+    expect(await screen.findByRole('button', { name: /approve/i })).toBeTruthy();
+  });
+
+  it('stops being suppressed once the harness drops it, so a reused id is offered', async () => {
+    const spy = stub([approval({ id: 'a1', thread_id: 'here' })]);
+    mountDecided();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('1 call is waiting on you'),
+    );
+    await act(async () => screen.getByRole('button', { name: 'decide in banner' }).click());
+
+    // The harness settles it...
+    spy.mockImplementation(
+      async () => new Response(JSON.stringify({ requests: [] }), { status: 200 }),
+    );
+    await act(async () => screen.getByRole('button', { name: 'poll now' }).click());
+    await act(async () => {});
+    // ...and then holds a row under the same id again (one pending row is shared
+    // by every byte-identical call). That is a new request, and it is offered.
+    spy.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ requests: [approval({ id: 'a1', thread_id: 'here' })] }), {
+          status: 200,
+        }),
+    );
+    await act(async () => screen.getByRole('button', { name: 'poll now' }).click());
+    expect(await screen.findByRole('button', { name: /approve/i })).toBeTruthy();
+  });
+});
+
 describe('when the line cannot see', () => {
   /** A fetch double whose `/approvals` answer can be switched mid-test. */
   function switchable(initial: { status: number; rows?: unknown[] }) {

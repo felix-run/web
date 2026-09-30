@@ -765,9 +765,13 @@ export function AppShell() {
         // one nobody asked for.
         ...(editedArgs ? { edited_args: editedArgs } : {}),
       });
+      // Before the banner lets go of it: the moment `shiftApproval` drops the id
+      // from `bannerOwned`, the attention line would otherwise re-offer it from a
+      // list up to one poll old.
+      tenantApprovals.markDecided(pending.approvalId);
       engine.shiftApproval();
     },
-    [engine, pending],
+    [engine, pending, tenantApprovals.markDecided],
   );
 
   /**
