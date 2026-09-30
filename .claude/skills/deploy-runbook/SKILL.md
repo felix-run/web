@@ -30,6 +30,14 @@ Each `*:deploy` script is `pnpm build && wrangler deploy` inside that package.
 - On a branch, with the change **merged to `main`** — `main` is the deploy source. Deploying an
   unmerged branch is a deliberate exception the user has to state.
 - `pnpm check-types && pnpm lint && pnpm build` clean (the `preflight` skill).
+- For chat-ui, the **production harness serves every route the client calls**. The default drift
+  check compares against the committed record, not against what `api.felix.run` actually runs, and
+  the two version independently:
+  ```bash
+  FELIX_API_KEY=<a key api.felix.run accepts> pnpm check-api-drift:live https://api.felix.run
+  ```
+  A failure names each call that would 404 in production — upgrade the harness first, or accept
+  that those surfaces fail there. Exit 2 is the key or the network, not drift.
 - The config file exists. **`apps/chat-ui/wrangler.jsonc` is gitignored**, so a fresh clone has
   none — copy the tracked example next to it:
   ```bash

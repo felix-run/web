@@ -9,6 +9,7 @@
  *
  * Usage:
  *   node scripts/check-api-drift.mjs <openapi.json> <api.ts...>
+ *   node scripts/check-api-drift.mjs --live [origin] <openapi.json> <api.ts...>
  *   node scripts/check-api-drift.mjs --self-test
  *
  * Refresh the snapshot from a harness *checkout*:
@@ -22,9 +23,23 @@
  *
  * The script also reports the reverse direction, which this one cannot fail on:
  * routes the harness serves that nothing here calls.
+ *
+ * `--live` answers the other question — not "does the client match the contract"
+ * but "does it match *this deployment*". The record is only as current as the last
+ * sync, and a deployment behind it passes the default check while every call to a
+ * route it lacks 404s: on 2026-09-30 the stack on :8080 was pinned to v0.5.0,
+ * 36 commits behind, and nothing said so. It fetches `<origin>/openapi.json`,
+ * checks the calls against *that*, and reports how the deployment differs from the
+ * record. A call the deployment does not serve fails; the rest is advisory. It is
+ * not a CI step — CI has no harness — and it never writes the record, for the
+ * reason above: a deployment is not the contract.
+ *
+ * The origin defaults to `FELIX_ORIGIN`, then `http://localhost:8080`. The spec
+ * needs a key: `FELIX_API_KEY` from the environment, else from
+ * `apps/chat-ui/.dev.vars` — the same place `vite dev` reads it.
  */
 import { readFileSync } from 'node:fs';
-import { argv, exit } from 'node:process';
+import { argv, env, exit } from 'node:process';
 
 /**
  * Call spellings in the client sources, mapped to the prefix each prepends.
@@ -206,9 +221,9 @@ export function extractCalls(src, file = '<src>') {
 }
 
 /** path template -> the set of methods the harness serves there. */
-function loadSpec(specPath) {
+function specFromJson(json) {
   const spec = new Map();
-  for (const [p, ops] of Object.entries(JSON.parse(readFileSync(specPath, 'utf8')).paths)) {
+  for (const [p, ops] of Object.entries(json.paths ?? {})) {
     const key = normalise(p).replace(/\{[^}]*\}/g, '{}');
     const methods = Object.keys(ops)
       .filter((m) => VERBS.includes(m))
@@ -216,6 +231,72 @@ function loadSpec(specPath) {
     spec.set(key, new Set([...(spec.get(key) ?? []), ...methods]));
   }
   return spec;
+}
+
+/**
+ * How a deployment's routes differ from the record: `behind` is what the record
+ * has and the deployment lacks, `ahead` the reverse. Each entry is `VERB /path`.
+ */
+export function compareSpecs(recorded, live) {
+  const flat = (spec) => new Set([...spec].flatMap(([p, ms]) => [...ms].map((m) => `${m} ${p}`)));
+  const r = flat(recorded);
+  const l = flat(live);
+  return {
+    behind: [...r].filter((x) => !l.has(x)).sort(),
+    ahead: [...l].filter((x) => !r.has(x)).sort(),
+  };
+}
+
+/** `KEY=value` lines, as `vite.config.ts` reads them. Missing file -> {}. */
+function devVars() {
+  try {
+    const raw = readFileSync(new URL('../apps/chat-ui/.dev.vars', import.meta.url), 'utf8');
+    const out = {};
+    for (const line of raw.split('\n')) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const eq = t.indexOf('=');
+      if (eq === -1) continue;
+      out[t.slice(0, eq).trim()] = t
+        .slice(eq + 1)
+        .trim()
+        .replace(/^["']|["']$/g, '');
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** The deployment's spec, or an exit with a reason. Never prints the key. */
+async function fetchLiveSpec(origin) {
+  const vars = devVars();
+  const key = env.FELIX_API_KEY || vars.FELIX_API_KEY || vars.FELIX_AUTH_API_KEYS || '';
+  const source = env.FELIX_API_KEY ? 'FELIX_API_KEY' : key ? 'apps/chat-ui/.dev.vars' : 'none';
+  if (key.trim().startsWith('{')) {
+    console.error('✗ the key looks like JSON — use the token inside it, not the object');
+    exit(2);
+  }
+  const url = `${origin.replace(/\/+$/, '')}/openapi.json`;
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: key ? { authorization: `Bearer ${key}` } : {},
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    console.error(`✗ could not reach ${url}: ${err?.cause?.code ?? err?.cause?.message ?? err?.message ?? err}`);
+    exit(2);
+  }
+  if (!res.ok) {
+    const hint =
+      res.status === 401 || res.status === 403
+        ? ` — key from ${source}; set FELIX_API_KEY to one this deployment accepts`
+        : '';
+    console.error(`✗ ${url} answered ${res.status}${hint}`);
+    exit(2);
+  }
+  return { json: await res.json(), source };
 }
 
 /**
@@ -309,6 +390,20 @@ function selfTest() {
     problems.push('lost the verb on a call that does pass one');
   }
 
+  // --live: a deployment missing a recorded route is behind; one with an extra is ahead.
+  const cmp = compareSpecs(
+    new Map([
+      ['/a', new Set(['GET', 'POST'])],
+      ['/b', new Set(['GET'])],
+    ]),
+    new Map([
+      ['/a', new Set(['GET'])],
+      ['/c', new Set(['GET'])],
+    ]),
+  );
+  if (cmp.behind.join() !== 'GET /b,POST /a') problems.push(`live: wrong "behind" ${cmp.behind}`);
+  if (cmp.ahead.join() !== 'GET /c') problems.push(`live: wrong "ahead" ${cmp.ahead}`);
+
   if (problems.length) {
     console.error('✗ self-test failed — the extractor is broken:\n');
     for (const p of problems) console.error(`  ${p}`);
@@ -317,28 +412,69 @@ function selfTest() {
   console.log('✓ self-test passed (extractor detects dead paths and wrong verbs)');
 }
 
-const [, , specPath, ...sources] = argv;
+const args = argv.slice(2);
+let liveOrigin = null;
+const liveAt = args.indexOf('--live');
+if (liveAt !== -1) {
+  args.splice(liveAt, 1);
+  // Anywhere in the list, not only after the flag: `pnpm check-api-drift:live <origin>`
+  // appends it after the source files. No source path starts with a scheme.
+  const originAt = args.findIndex((a) => /^https?:\/\//.test(a));
+  liveOrigin =
+    originAt === -1 ? env.FELIX_ORIGIN || 'http://localhost:8080' : args.splice(originAt, 1)[0];
+}
+const [specPath, ...sources] = args;
 
 if (specPath === '--self-test') {
   selfTest();
   exit(0);
 }
 if (!specPath || !sources.length) {
-  console.error('usage: check-api-drift.mjs <openapi.json> <api.ts...>  |  --self-test');
+  console.error(
+    'usage: check-api-drift.mjs [--live [origin]] <openapi.json> <api.ts...>  |  --self-test',
+  );
   exit(2);
 }
 
 selfTest();
 
-const spec = loadSpec(specPath);
+const recordedJson = JSON.parse(readFileSync(specPath, 'utf8'));
+const recorded = specFromJson(recordedJson);
+let spec = recorded;
+let against = 'harness paths';
+if (liveOrigin) {
+  const { json, source } = await fetchLiveSpec(liveOrigin);
+  spec = specFromJson(json);
+  against = `paths served by ${liveOrigin}`;
+  const liveVersion = json.info?.version ?? '?';
+  const recordVersion = recordedJson.info?.version ?? '?';
+  console.log(
+    `live: ${liveOrigin} reports ${liveVersion}; the record is ${recordVersion} (key from ${source})`,
+  );
+  const { behind, ahead } = compareSpecs(recorded, spec);
+  if (behind.length) {
+    console.log(`\n  ${behind.length} recorded route(s) this deployment does not serve:`);
+    for (const r of behind) console.log(`    ${r}`);
+    console.log('  (the deployment is older than the record, or runs with a feature off)');
+  }
+  if (ahead.length) {
+    console.log(`\n  ${ahead.length} route(s) this deployment serves that the record lacks:`);
+    for (const r of ahead) console.log(`    ${r}`);
+    console.log('  (the record is older than the deployment — re-sync from a checkout)');
+  }
+  if (!behind.length && !ahead.length) console.log('  same routes as the record');
+  console.log('');
+}
+
 const calls = sources.flatMap((f) => extractCalls(readFileSync(f, 'utf8'), f));
 const missing = diff(calls, spec);
 
-console.log(`checked ${calls.length} client call sites against ${spec.size} harness paths`);
+console.log(`checked ${calls.length} client call sites against ${spec.size} ${against}`);
 
 const unused = uncovered(calls, spec);
-if (unused.length) {
-  // stdout, not stderr: this is information, not a problem.
+if (unused.length && !liveOrigin) {
+  // stdout, not stderr: this is information, not a problem. Skipped under --live,
+  // where it would repeat the record's list with the deployment's gaps mixed in.
   console.log(`\n  ${unused.length} route(s) the harness serves and no client calls:`);
   for (const u of unused) console.log(`    ${u}`);
   console.log('  (advisory — machine-facing surfaces belong here, and so does anything unbuilt)');
@@ -348,9 +484,14 @@ if (!missing.length) {
   console.log('\n✓ no drift');
   exit(0);
 }
-console.error(`\n✗ ${missing.length} call(s) the harness does not serve:\n`);
+const who = liveOrigin ? `${liveOrigin} does` : 'the harness does';
+console.error(`\n✗ ${missing.length} call(s) ${who} not serve:\n`);
 for (const m of missing) {
   console.error(`  ${m.method} ${m.path}  — ${m.why}\n      ${m.file}:${m.line}`);
 }
-console.error('\nEither the harness changed, or the client calls a route that never existed.');
+console.error(
+  liveOrigin
+    ? '\nThis deployment is behind the client: upgrade it, or expect these calls to fail there.'
+    : '\nEither the harness changed, or the client calls a route that never existed.',
+);
 exit(1);
