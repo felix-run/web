@@ -10,8 +10,9 @@ import { useShell } from '@/shell-context';
  * below is only for a harness older than `felix-run/felix#384`, which sends no
  * `starters` key at all — it is keyed by name because that is all such a
  * harness tells us. A manifest that declares none gets the general pair.
- * Clicking sends the prompt as written — it is shown in full on hover, so
- * nothing reaches the model that the operator could not read.
+ * Clicking sends the prompt as written. Each card shows it under the title
+ * (two lines, the rest on hover), so nothing reaches the model that the
+ * operator could not read first.
  */
 type Starter = ManifestStarter;
 
@@ -114,28 +115,24 @@ export function StarterPrompts({ manifest }: { manifest: string }) {
   );
 
   return (
-    <div className="mt-4">
-      <h3 id="starter-prompts-title" className="text-xs text-muted-foreground">
-        Try
-      </h3>
-      <ul aria-labelledby="starter-prompts-title" className="mt-1.5 flex flex-wrap gap-1.5">
-        {starters.map((s) => (
-          <li key={`${manifest}-${s.title}`}>
-            {/* `shadow-none`: the outline variant's `shadow-xs` would float these,
-                and the only floating surface is the composer. */}
-            <Button
-              variant="outline"
-              size="xs"
-              title={s.prompt}
-              disabled={streaming}
-              onClick={() => send(s.prompt)}
-              className="font-normal shadow-none"
-            >
-              {s.title}
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul aria-label="Starter prompts" className="grid w-full gap-2 sm:grid-cols-2">
+      {starters.map((s) => (
+        <li key={`${manifest}-${s.title}`} className="flex">
+          <Button
+            variant="outline"
+            title={s.prompt}
+            disabled={streaming}
+            onClick={() => send(s.prompt)}
+            className="h-auto w-full flex-col items-start justify-start gap-0.5 whitespace-normal rounded-xl border-border/60 bg-card/40 px-4 py-3 text-left shadow-none hover:bg-accent/60"
+          >
+            <span className="text-sm font-medium text-foreground">{s.title}</span>
+            {/* The prompt itself, so what a click sends is on screen before it is sent. */}
+            <span className="line-clamp-2 text-xs font-normal text-muted-foreground">
+              {s.prompt}
+            </span>
+          </Button>
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -36,11 +36,12 @@
                 heading, the header wordmark, and the access gate's and crash
                 screen's headings
 
-   Nothing is set above 16px. `2xl` once listed "the greeting" at 24px; the
-   greeting became a 13px readout, and the last three headings off the ramp (the
-   gate's 24px panel heading and two 18px h1s) now sit on the headline step, so no
-   element uses `lg`, `xl` or `2xl`. They keep Tailwind's stock values and go
-   unused on purpose: this surface has no hero and no display tier.
+   One thing is set above 16px: the empty thread's welcome headline, `2xl` (24px)
+   rising to 28px at `md`. It was a 13px readout from 2026-09-26 and came back on
+   purpose; it is the only display type, and it is gone the moment a thread has a
+   message. Everything else stays on the ramp — the last three headings off it (the
+   gate's 24px panel heading and two 18px h1s) sit on the headline step, and no other
+   element uses `lg`, `xl` or `2xl`. They keep Tailwind's stock values.
 
    `xs` and `sm` are redefined rather than given new names so the existing ~80 uses
    across the app and `@felix/ui` land on the ramp without touching every call site.

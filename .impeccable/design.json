@@ -170,9 +170,13 @@
       }
     },
     "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The empty thread's welcome headline, and nothing else. 24px, 28px at md, semibold, tight tracking; gone once the thread has a message."
+      },
       "headline": {
         "displayName": "Headline",
-        "purpose": "A whole rail's heading (\"This run\", the thread list) and the uppercase header wordmark. 16px semibold; there is no display tier."
+        "purpose": "A whole rail's heading (\"This run\", the thread list) and the uppercase header wordmark. 16px semibold."
       },
       "prose": {
         "displayName": "Prose",
@@ -180,7 +184,7 @@
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Panel and section headers, disclosure rows, the empty-thread readout heading. 13px semibold."
+        "purpose": "Panel and section headers, disclosure rows. 13px semibold."
       },
       "body": {
         "displayName": "Body",
