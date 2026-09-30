@@ -18,8 +18,12 @@ import { StarterPrompts } from './starter-prompts';
  * rather than approximated.
  */
 export function Greeting({ manifest }: { manifest: string }) {
-  const { threadId, harnessReachable } = useShell();
+  const { threadId, harnessReachable, manifestEntries } = useShell();
   const folder = useMountLabel();
+  // The manifest's own words, when it has them (`metadata.greeting`); each half
+  // falls back on its own, so a manifest can change the headline and keep the
+  // sentence that names the agent.
+  const greeting = manifestEntries.find((m) => m.id === manifest)?.greeting;
 
   return (
     // `flex-1` + `justify-center`: the greeting is the only child of the transcript
@@ -35,11 +39,16 @@ export function Greeting({ manifest }: { manifest: string }) {
           id="empty-thread-title"
           className="text-balance text-2xl font-semibold tracking-tight md:text-[1.75rem]"
         >
-          What do you want to work on?
+          {greeting?.headline ?? 'What do you want to work on?'}
         </h2>
         <p className="max-w-prose text-pretty text-base text-muted-foreground">
-          You&apos;re chatting with <span className="font-medium text-foreground">{manifest}</span>.
-          Pick a starter or type below; you can switch agents anytime from the composer.
+          {greeting?.subtitle ?? (
+            <>
+              You&apos;re chatting with{' '}
+              <span className="font-medium text-foreground">{manifest}</span>. Pick a starter or
+              type below; you can switch agents anytime from the composer.
+            </>
+          )}
         </p>
       </div>
 

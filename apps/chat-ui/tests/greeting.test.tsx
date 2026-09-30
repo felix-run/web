@@ -75,6 +75,26 @@ describe('the empty thread', () => {
     expect(screen.queryByRole('button', { name: /^List the workspace/ })).toBeNull();
   });
 
+  it("uses the manifest's own headline and subtitle", () => {
+    mount({
+      manifestEntries: [
+        {
+          id: 'cowork',
+          greeting: { headline: 'What should we do in this folder?', subtitle: 'Reads freely.' },
+        },
+      ],
+    });
+    expect(screen.getByRole('heading', { name: 'What should we do in this folder?' })).toBeTruthy();
+    expect(screen.getByText('Reads freely.')).toBeTruthy();
+    expect(screen.queryByText(/You're chatting with/)).toBeNull();
+  });
+
+  it('keeps the sentence naming the agent when the manifest sets only a headline', () => {
+    mount({ manifestEntries: [{ id: 'cowork', greeting: { headline: 'Hello' } }] });
+    expect(screen.getByRole('heading', { name: 'Hello' })).toBeTruthy();
+    expect(screen.getByText(/You're chatting with/)).toBeTruthy();
+  });
+
   it('disables the starters while a run is streaming', () => {
     mount({ streaming: true });
     for (const b of screen.getAllByRole('button'))

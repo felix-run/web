@@ -63,7 +63,15 @@ interface RawModelEntry {
     providerModel?: string | null;
     contextWindow?: number | null;
     starters?: unknown;
+    greeting?: unknown;
   } | null;
+}
+
+/** `metadata.greeting`: what a client says on an empty thread. Plain text. */
+export interface ManifestGreeting {
+  headline: string;
+  /** Absent means the client says which agent this is itself. */
+  subtitle?: string;
 }
 
 /** One `metadata.starters` entry: a prompt a client may offer on an empty thread. */
@@ -106,6 +114,20 @@ export interface ManifestEntry {
    * Entries without a non-empty `title` and `prompt` are dropped.
    */
   starters?: ManifestStarter[];
+  /**
+   * `felix.greeting` (`felix-run/felix#386`): the manifest's own empty-thread
+   * headline and subtitle. Absent when the manifest declares none, the harness
+   * predates the key, or the value is malformed — in every case the client's
+   * default greeting stands, so the three need no telling apart.
+   */
+  greeting?: ManifestGreeting;
+}
+
+function toGreeting(raw: unknown): ManifestGreeting | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const { headline, subtitle } = raw as { headline?: unknown; subtitle?: unknown };
+  if (typeof headline !== 'string' || !headline) return undefined;
+  return typeof subtitle === 'string' && subtitle ? { headline, subtitle } : { headline };
 }
 
 function toStarters(raw: unknown): ManifestStarter[] | undefined {
@@ -127,6 +149,8 @@ function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   if (typeof tokens === 'number' && tokens > 0) entry.contextWindow = tokens;
   const starters = toStarters(raw.felix?.starters);
   if (starters) entry.starters = starters;
+  const greeting = toGreeting(raw.felix?.greeting);
+  if (greeting) entry.greeting = greeting;
   return entry;
 }
 
