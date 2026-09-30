@@ -309,8 +309,8 @@ contents, which cannot see headings a component renders.
 
 ### Product screenshot (`.product-shot`, Concepts → Interrupts)
 
-A real capture of chat-ui, never a mock: a `<figure>` through Astro's `Image` (so it ships as
-optimised WebP), a 1px hairline frame at 8px so a dark capture keeps an edge on the dark page, the
+A real capture of chat-ui, never a mock: a `<figure>` through Astro's `Image` (passthrough
+service: shipped as authored, with its dimensions set), a 1px hairline frame at 8px so a dark capture keeps an edge on the dark page, the
 full column width, and a faint caption held to the measure that says what the image shows and
 where it came from. Alt text describes the state on screen, not the file.
 
