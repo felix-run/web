@@ -19,7 +19,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 
 | Scope | Grants |
 |---|---|
-| `audit:read` | `/audit`, `/audit/metrics` |
+| `audit:read` | `/audit`, `/audit/export`, `/audit/metrics` |
 | `approvals:read` / `approvals:write` | read requests / decide them |
 | `plans:read` / `plans:write` | read plans / upsert and delete |
 | `jobs:read` / `jobs:write` | read jobs and runs / upsert, delete and run now |
@@ -69,6 +69,9 @@ shutdown. The agent loop runs in the API process, so the API flushes too — not
 | `cursor` | string | — |
 | `event_type` | string | — |
 | `status` | string | — |
+| `manifest_id` | string | — |
+| `since` | int (epoch ms, inclusive) | — |
+| `until` | int (epoch ms, exclusive) | — |
 
 ```bash
 curl -s "$BASE_URL/audit?limit=20&status=denied" \
@@ -106,6 +109,42 @@ field reads as plain `Blocked`. The Prometheus counters —
 the per-rule detail (which policy, which judge) the audit row does not.
 
 Secret values are masked out of payloads before they are written.
+
+### `GET /audit/export`
+
+<Badge text="audit:read" variant="note" />
+
+Every matching event as JSONL (`application/x-ndjson`), one per line, newest first, in the shape
+`GET /audit` lists. The export streams, so there is no row cap and no cursor: it is the whole
+range, not a page.
+
+| Query | Type | Default |
+|---|---|---|
+| `since` | int (epoch ms, inclusive) | — |
+| `until` | int (epoch ms, exclusive) | — |
+| `event_type` | string | — |
+| `status` | string | — |
+| `manifest_id` | string | — |
+
+```bash
+curl -s "$BASE_URL/audit/export?since=1782864000000&until=1790812800000" \
+  -H "authorization: Bearer $FELIX_KEY" -o audit-q3.jsonl
+```
+
+The range is half-open, so consecutive windows (`[a, b)`, then `[b, c)`) tile a history without
+repeating a row. An `until` at or before `since` is a `400` rather than an empty file, here and on `GET /audit`. The export
+reads flushed rows only, so an export whose `until` is in the past is stable, and one left
+open-ended can miss events emitted in the last flush interval.
+
+A store failure before the first row is an ordinary error status. One partway through cannot change
+a status that has already been sent, so the file ends with a line of its own instead — the rows
+above it are real, and it marks everything after them as missing:
+
+```json
+{"error": "export_incomplete", "detail": "…"}
+```
+
+Check the last line before treating an export as complete.
 
 ### `GET /audit/metrics`
 
