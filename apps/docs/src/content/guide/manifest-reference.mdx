@@ -39,10 +39,14 @@ uv run felix validate-manifest manifests/governed.yaml -e production   # applies
 | `description` | string | `""` | Surfaced on `GET /v1/models` and the agent card. |
 | `tags` | string[] | `[]` | Free-form labels. |
 | `starters` | `{title, prompt}[]`, at most 8 | `[]` | Prompts a client offers on an empty thread; `prompt` is sent verbatim when chosen. `title` is 1–60 chars, `prompt` 1–2000. Listed on `GET /v1/models` as `felix.starters`. Presentation only — nothing reads it to decide what a run may do. |
+| `greeting` | `{headline, subtitle?}` | none | What a client says on an empty thread, in place of its own default. `headline` is 1–80 chars, `subtitle` 1–300; both plain text, and written for any client rather than one UI. Listed on `GET /v1/models` as `felix.greeting`, `null` when not declared. |
 
 ```yaml
 metadata:
   name: cowork
+  greeting:
+    headline: What should we do in this folder?
+    subtitle: cowork reads the workspace without asking, and asks before it writes a file or runs a command.
   starters:
     - title: Find TODOs
       prompt: Search the workspace for TODO and summarize the matches by file.

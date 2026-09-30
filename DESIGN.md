@@ -560,7 +560,8 @@ every second is noise.
   than crushing its columns to a letter each.
 - **Empty thread:** a greeting, then the readout. Centred in the column at `max-w-3xl`: the
   Display headline "What do you want to work on?", a 16px muted sentence naming the agent
-  ("You're chatting with **cowork**…"), then the agent's starter prompts as a two-column grid
+  ("You're chatting with **cowork**…") — either replaced by the manifest's own
+  `metadata.greeting` (`felix.greeting` on `/v1/models`) when it declares one — then the agent's starter prompts as a two-column grid
   of `rounded-xl` outline cards (`border-border/60`, `bg-card/40`, no shadow) — title in 13px
   medium, the prompt it sends beneath in 11px muted, clamped to two lines with the full text on
   hover. They come from the manifest's `metadata.starters` (`felix.starters` on `/v1/models`),

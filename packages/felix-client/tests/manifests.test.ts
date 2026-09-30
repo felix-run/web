@@ -95,3 +95,25 @@ describe('listManifestEntries', () => {
     expect(await listManifests()).toEqual(['cowork', 'claude-opus-4', 'plain']);
   });
 });
+
+describe('greeting', () => {
+  it('keeps a well-formed greeting and drops anything else', async () => {
+    const { client } = serve({
+      object: 'list',
+      data: [
+        { id: 'a', felix: { greeting: { headline: 'Hi', subtitle: 'One line.' } } },
+        { id: 'b', felix: { greeting: { headline: 'Hi', subtitle: null } } },
+        { id: 'c', felix: { greeting: null } },
+        { id: 'd', felix: { greeting: { subtitle: 'no headline' } } },
+        { id: 'e', felix: {} },
+      ],
+    });
+    expect(await client.listManifestEntries()).toEqual([
+      { id: 'a', greeting: { headline: 'Hi', subtitle: 'One line.' } },
+      { id: 'b', greeting: { headline: 'Hi' } },
+      { id: 'c' },
+      { id: 'd' },
+      { id: 'e' },
+    ]);
+  });
+});
