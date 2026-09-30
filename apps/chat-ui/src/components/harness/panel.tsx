@@ -228,7 +228,11 @@ export function PageHeader({
           </span>
         ) : null}
         {controls || docsHref ? (
-          <div className="ml-auto flex items-center gap-2">
+          // `flex-wrap` + `justify-end`: the header wraps this group onto its own
+          // row when the title leaves no room, but the group itself did not wrap,
+          // so at 320px Eval's picker, New dataset and Docs ran 72px off the edge
+          // and the whole page scrolled sideways (Memory 41px, Corpus 29px).
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
             {controls}
             {/*
               Last, and quiet: the reference for what this page shows — which
@@ -451,7 +455,11 @@ export function PageSection({
           {title}
         </h3>
         {meta ? <span className="text-xs text-muted-foreground tabular-nums">{meta}</span> : null}
-        {actions ? <div className="ml-auto flex items-center gap-2">{actions}</div> : null}
+        {actions ? (
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+            {actions}
+          </div>
+        ) : null}
       </div>
       {children}
     </section>
