@@ -6,6 +6,8 @@ sidebar:
 ---
 
 import { Steps } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import approvalBanner from '../../assets/approval-banner.png';
 
 Felix is a **managed agents harness** you run yourself. You describe an agent declaratively; Felix
 compiles that description into a governed, observable, resumable runtime and serves it over several
@@ -267,6 +269,18 @@ Three things pause a run until something answers out of band: an `approval_requi
 a human decision, a `tool_request` frame waiting on the client, and a `ui_request` frame asking the
 user to choose, confirm or type something. Each has a timeout and fails closed. See
 [sticky interrupts](/guide/rest-api/#sticky-interrupts).
+
+<figure class="product-shot">
+  <Image
+    src={approvalBanner}
+    alt="chat-ui with a run paused on an approval. The attention line reads '1 call is waiting on you on this thread'. The transcript shows the user's request and a running write_file call. Below it an approval card for write_file under the rule workspace-write reads 'Confirm writes to the workspace', shows the file does not exist yet and the content that would be written, a deadline chip 'Auto-denies in 9:47', the sentence 'Approving also allows every identical write_file call until the deadline, not just this one', and Approve and Deny buttons."
+  />
+  <figcaption>
+    A gated <code>write_file</code> waiting on a decision in chat-ui: the file as it is and as it
+    would be, the deadline after which the harness denies it, and what approving grants. Captured
+    from a local harness (v0.5.0); the call was denied.
+  </figcaption>
+</figure>
 
 ## Surfaces
 

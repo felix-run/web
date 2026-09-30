@@ -25,7 +25,9 @@ home page is a front door, not a landing page.
   Route index for "where is this route". Every route in the release spec is listed there and linked
   to the guide section that explains it; the OpenAPI explorer is for request schemas and trying a
   call, not for response shapes (every harness route returns a bare dict).
-- **Show the mechanism.** RunTrace on the home page draws one approval-gated turn as real frames.
+- **Show the mechanism.** RunTrace on the home page draws one approval-gated turn as real frames,
+  and Concepts → Interrupts shows the same pause as chat-ui draws it — a real capture from a local
+  harness, captioned with where it came from.
   Expected output in Getting Started is taken from harness source and says which file.
 - **Every page ends on a next step.** Home ends on Where next; guides end on Where to next.
 - **Truth over tidiness.** Event names, routes and error reasons exactly as the harness sends them.
@@ -43,6 +45,5 @@ home page is a front door, not a landing page.
 
 ## Open
 
-- A real chat-ui screenshot of a run waiting on an approval does not exist yet.
 - The architecture page's ASCII topology has an ambiguous `│` under `felix-scheduler`; redraw it
   once someone confirms which processes use which stores.
