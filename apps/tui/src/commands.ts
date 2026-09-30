@@ -20,7 +20,7 @@
  */
 
 import { resolve } from 'node:path';
-import type { ChatEngine, FelixClient, ThreadMeta } from '@felix/client';
+import type { ChatEngine, FelixClient, ManifestStarter, ThreadMeta } from '@felix/client';
 import { threadSuffix } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
 import type { Spill } from './artifacts.js';
@@ -47,7 +47,7 @@ const SEARCH_LIMIT = 5;
  * eight while this string still named six.
  */
 export const HELP = [
-  '/new /clear /continue /think <level> /manifest [name] /quit',
+  '/new /clear /continue /think <level> /manifest [name] /start <n> /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n]',
   '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
   ...(['chat', 'threads', 'inspector'] as const).flatMap((where) => [
@@ -82,6 +82,10 @@ export interface CommandContext {
   hydrate(id: string): Promise<void>;
   newThread(): void;
   exit(): void;
+  /** The current manifest's starter prompts, as the harness lists them — `/start <n>`. */
+  starters(): ManifestStarter[];
+  /** Put text in the composer to be read and sent with Enter; never sends it. */
+  fill(text: string): void;
   /** Spilled tool outputs in this thread, oldest first — `/artifact <n>`. */
   spills(): Spill[];
   /**
@@ -165,6 +169,25 @@ export function runCommand(ctx: CommandContext, line: string): void {
       setManifest(arg);
       setNotice(`manifest: ${arg}`);
       return;
+    case 'start': {
+      // Fills rather than sends: what reaches the model is what was read on
+      // screen, and the greeting shows a starter's title, not its prompt.
+      const starters = ctx.starters();
+      if (!starters.length) {
+        setNotice(`${manifest} declares no starters`);
+        return;
+      }
+      const n = Number.parseInt(arg, 10);
+      const starter = Number.isInteger(n) ? starters[n - 1] : undefined;
+      if (!starter) {
+        setNotice(
+          `usage: /start <1–${starters.length}> — ${starters.map((s, i) => `${i + 1} ${s.title}`).join(' · ')}`,
+        );
+        return;
+      }
+      ctx.fill(starter.prompt);
+      return;
+    }
     case 'rename': {
       if (!arg) {
         setNotice('usage: /rename <name>');

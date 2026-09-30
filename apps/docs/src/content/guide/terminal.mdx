@@ -141,6 +141,7 @@ looks like the rest of the code on your machine.
 | `/continue` | Let the agent keep going. |
 | `/think <level>` | `off` `minimal` `low` `medium` `high` `xhigh` `max`. |
 | `/manifest [name]` | Switch agent, or list what the harness serves. |
+| `/start <n>` | Put the agent's `n`th starter prompt in the composer, to read and send with Enter. The empty thread numbers them; they come from the manifest's `metadata.starters`, and an agent that declares none has none here. |
 | `/rename <name>` | A durable name, replacing the title derived from the first message. |
 | `/fork` | Copy this thread into a new one and switch to it. The original is untouched. |
 | `/compact` | Summarise older context now instead of waiting for the window to fill. |

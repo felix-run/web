@@ -115,6 +115,93 @@ async function run(
 }
 
 describe('slash commands', () => {
+  const MODELS = {
+    '/v1/models': {
+      data: [
+        {
+          id: 'quick',
+          felix: {
+            greeting: { headline: 'Ask me something quick', subtitle: null },
+            starters: [
+              { title: 'Calculate', prompt: 'What is 17.5% of 2,340?' },
+              {
+                title: 'Draft a reply',
+                prompt: 'Draft a short, polite reply declining a meeting.',
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  it("greets with the manifest's headline and starters from /v1/models", async () => {
+    const h = harness(MODELS);
+    const { store, history, attention } = doubles();
+    const ui: Mounted = await mount(
+      createElement(App, {
+        config: config(),
+        store,
+        history,
+        attention,
+        epilogue: {},
+        root: '/tmp/felix-test',
+        onExit: () => {},
+      }) as ReactElement,
+      { width: 100, height: 24 },
+    );
+    await ui.until(() => shows(ui.frame(), 'Ask me something quick'));
+    expect(shows(ui.frame(), '1  Calculate')).toBe(true);
+    expect(shows(ui.frame(), '2  Draft a reply')).toBe(true);
+    ui.stop();
+    h.restore();
+  });
+
+  /**
+   * `/start` fills, it does not send: the greeting shows a title, and what
+   * reaches the model has to be what was read on screen — the same rule that
+   * makes a paste wait for Enter.
+   */
+  it('/start <n> puts the prompt in the composer, and Enter sends exactly that', async () => {
+    const { ui, h, frame } = await run('/start 2', { routes: MODELS });
+    await ui.until(() => shows(frame(), 'Draft a short, polite reply declining a meeting.'));
+    expect(h.to('/chat/stream')).toHaveLength(0);
+    await ui.keys.pressEnter();
+    await ui.until(() => h.to('/chat/stream').length > 0);
+    const body = h.to('/chat/stream')[0]?.body as { messages?: Array<{ content: string }> };
+    expect(body.messages?.at(-1)?.content).toBe('Draft a short, polite reply declining a meeting.');
+    ui.stop();
+    h.restore();
+  });
+
+  it('/start leaves the cursor at the end, so typing adds to the prompt', async () => {
+    const { ui, h, frame } = await run('/start 1', { routes: MODELS });
+    await ui.until(() => shows(frame(), 'What is 17.5% of 2,340?'));
+    await ui.keys.typeText(' Round it.');
+    await ui.settle();
+    await ui.keys.pressEnter();
+    await ui.until(() => h.to('/chat/stream').length > 0);
+    const body = h.to('/chat/stream')[0]?.body as { messages?: Array<{ content: string }> };
+    expect(body.messages?.at(-1)?.content).toBe('What is 17.5% of 2,340? Round it.');
+    ui.stop();
+    h.restore();
+  });
+
+  it('/start out of range names the starters it has', async () => {
+    const { ui, h, frame } = await run('/start 9', { routes: MODELS });
+    await ui.until(() => shows(frame(), 'usage: /start <1–2>'));
+    expect(h.to('/chat/stream')).toHaveLength(0);
+    ui.stop();
+    h.restore();
+  });
+
+  it('/start says so when the manifest declares none', async () => {
+    const { ui, h, frame } = await run('/start 1');
+    await ui.until(() => shows(frame(), 'quick declares no starters'));
+    ui.stop();
+    h.restore();
+  });
+
   it('refuses a thinking level the harness does not have, and sends nothing', async () => {
     const { ui, h, frame } = await run('/think sideways');
     // `until`, not a bare read: the renderer goes idle before React commits, so

@@ -28,7 +28,7 @@
 
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
 import { useKeyboard, usePaste } from '@opentui/react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Theme } from '../theme.js';
 
 /** Any newline, and any run of them, however the source spelled it. */
@@ -74,6 +74,13 @@ export interface ComposerProps {
   /** Hand the line to an editor; resolves with the edit, or nothing. */
   onEdit?: (value: string) => Promise<string | undefined>;
   hint?: string;
+  /**
+   * Text to put in the field for the operator to read and send — `/start <n>`.
+   * `n` changes on every fill, so the same starter chosen twice fills twice.
+   * An effect rather than a call: the command runs inside `submit`, which clears
+   * the field after it, so a fill made synchronously would be erased.
+   */
+  prefill?: { text: string; n: number } | null;
   theme: Theme;
 }
 
@@ -84,6 +91,7 @@ export function Composer({
   history = [],
   onEdit,
   hint,
+  prefill,
   theme,
 }: ComposerProps) {
   const ref = useRef<TextareaRenderable>(null);
@@ -96,6 +104,19 @@ export function Composer({
   const active = !disabled && !editing;
   const read = () => ref.current?.plainText ?? '';
   const write = (text: string) => ref.current?.setText(text);
+
+  // Keyed on `n` alone: the text is read when it changes, and re-filling on an
+  // unrelated re-render would overwrite whatever the operator typed since.
+  useEffect(() => {
+    if (!prefill) return;
+    write(prefill.text);
+    // `setText` leaves the cursor at the start, so anything typed after `/start`
+    // went *in front of* the prompt and Enter sent the two run together — seen
+    // live as `/manifest routerRead the workspace…`. At the end, it appends.
+    ref.current?.gotoBufferEnd();
+    recalled.current = null;
+    draft.current = prefill.text;
+  }, [prefill?.n]);
 
   const submit = () => {
     const text = read().trim();
