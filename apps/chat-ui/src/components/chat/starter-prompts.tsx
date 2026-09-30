@@ -1,3 +1,4 @@
+import { Button } from '@felix/ui/button';
 import { useShell } from '@/shell-context';
 
 /**
@@ -113,15 +114,18 @@ export function StarterPrompts({ manifest }: { manifest: string }) {
       <ul aria-labelledby="starter-prompts-title" className="mt-1.5 flex flex-wrap gap-1.5">
         {starters.map((s) => (
           <li key={`${manifest}-${s.title}`}>
-            <button
-              type="button"
+            {/* `shadow-none`: the outline variant's `shadow-xs` would float these,
+                and the only floating surface is the composer. */}
+            <Button
+              variant="outline"
+              size="xs"
               title={s.prompt}
               disabled={streaming}
               onClick={() => send(s.prompt)}
-              className="rounded-md border border-border px-2.5 py-1 text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+              className="font-normal shadow-none"
             >
               {s.title}
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
