@@ -8,6 +8,7 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
+    "sync:brand": "tsx scripts/sync-brand.ts",
     "sync:theme": "tsx scripts/sync-theme.ts",
     "lint": "biome check .",
     "check-types": "tsc --noEmit"

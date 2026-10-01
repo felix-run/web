@@ -334,7 +334,8 @@ thread is on the rollout, in an `sr-only` clause, because the foreground-versus-
 that says it on screen says it to nobody who cannot see it.
 
 The left cluster **yields in a fixed order**. The wordmark never shrinks and is never
-truncated; the run state never yields. Below `sm` both modes draw as icons (a scroll for
+truncated; the run state never yields. The mark goes first, whole, below `sm`: it repeats the
+wordmark beside it, so it is the one thing in the cluster whose loss costs nothing. Below `sm` both modes draw as icons (a scroll for
 Verbose, a bird for the canary), their words kept in the accessible name and the `title`.
 While the run state is showing below `sm`, the modes step off the screen — at 390px the
 wordmark and a `blocked` chip leave no room for one icon beside them. Verbose goes `hidden`,
@@ -472,6 +473,35 @@ than sitting in a box. Scrollbars are themed thin with the thumb inset by a tran
 border.
 
 ## Components
+
+### The mark
+
+An F drawn as a stem and a top arm on a rounded tile, with the middle arm replaced by a **dot** —
+the same state dot the run readout, chips and approvals draw. The dot is where the mark carries
+state, so the mark is the State-Only Rule applied to identity rather than an exception to it:
+there is still no brand colour, and the only hue the mark ever shows is a run state's.
+
+- **One geometry.** `packages/design/src/mark.ts` holds it on a 32-unit grid with every straight
+  edge on an even unit, so at 16px each edge lands on a whole pixel. The stroke is 4 units; a
+  6-unit stroke read as a corner bracket with a dot in its pocket rather than as a letter.
+  `pnpm sync:brand` renders every static file from it (favicons, touch and PWA icons, the docs'
+  header logos and social card); nothing is drawn by hand.
+- **In the tab, it carries state.** `presence.ts` repaints the SVG favicon's dot: `state-running`
+  while working, `state-blocked` while waiting on a person, and back to the static
+  `/favicon.svg` at rest. The tab tile is always the dark ink in either scheme, because the tab
+  strip is browser chrome rather than our page, and the dark-theme ramp is the one tuned to read
+  on near-black. Safari draws neither an SVG nor a swapped favicon; there the title carries the
+  state alone.
+- **In the page, it never does.** The header lockup and the auth panel draw the mark at rest: the
+  tile is `currentColor` and the glyph is `--background`, which is `primary`'s inversion with no
+  theme branch. The header already has a run-state slot beside the wordmark; a coloured dot one
+  element to its left would say the same thing twice.
+- **It is decorative beside the wordmark.** `aria-hidden` in chat-ui and an empty `alt` in the
+  docs, because the wordmark is the accessible name and a second "Felix" would be read out.
+- **Lockup:** mark, then the uppercase wordmark, `gap-2`. In chat-ui's header the mark is the
+  first thing to yield below `sm` (see Layout). The tile is sized so the glyph inside
+  it stands about as tall as the wordmark's caps: 20px beside chat-ui's 16px wordmark, 16px beside
+  the auth panel's 13px one, 1.5rem beside the docs' 1.25rem one.
 
 ### Buttons
 
@@ -746,7 +776,10 @@ no reduced-alpha focus indicator left in the app.
 
 ### Don't:
 
-- **Don't** add a brand accent colour. There isn't one, and the absence is the system.
+- **Don't** add a brand accent colour. There isn't one, and the absence is the system. The
+  mark's dot is not one either: it is ink at rest and a state's hue only when there is a state.
+- **Don't** hand-edit a rendered mark. Change `packages/design/src/mark.ts` and run
+  `pnpm sync:brand`.
 - **Don't** stack `rounded-xl` bordered cards down a panel. That is the closest anti-reference
   and the fastest way to make this look generated. In the transcript column `rounded-xl` is the
   established block radius and is correct.

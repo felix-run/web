@@ -40,6 +40,7 @@ pnpm check-protocol-parity  # SSE events: every arm handled, every emitted event
 pnpm check-tailwind-sources # every @source-covered tree still reaches the compiled CSS
 pnpm check-payload-shapes   # every required client field is one the harness actually sends
 pnpm sync:harness [path]    # re-record all three contract files from a harness checkout
+pnpm sync:brand             # re-render favicons, touch/PWA icons, docs logo + social card (needs rsvg-convert, magick)
 pnpm --filter @felix/chat-ui <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 ```

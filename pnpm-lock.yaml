@@ -116,6 +116,9 @@ importers:
       '@felix/cowork-client':
         specifier: workspace:*
         version: link:../../packages/cowork-client
+      '@felix/design':
+        specifier: workspace:*
+        version: link:../../packages/design
       '@felix/protocol':
         specifier: workspace:*
         version: link:../../packages/felix-protocol

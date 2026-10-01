@@ -64,6 +64,7 @@ import {
 } from '@/api';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import { AttentionLine } from '@/components/attention-line';
+import { BrandMark } from '@/components/brand-mark';
 import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
@@ -1346,7 +1347,8 @@ export function AppShell() {
             wordmark, so the wordmark was what gave: "F…", then nothing, and the
             canary pill ran on under New chat.
 
-            So: the wordmark and the run state never shrink. Below `sm` the two
+            So: the wordmark and the run state never shrink. Below `sm` the mark
+            is gone (it repeats the wordmark), and the two
             modes draw as icons, keeping their words for a reader, and while a
             run state is on screen they step aside (see the modes' row). Past
             that — a 320px viewport, where the wordmark and the chip alone are
@@ -1360,6 +1362,10 @@ export function AppShell() {
               An `h1` because the document had none — every page began at `h2`,
               so there was no top-level heading naming the application for anyone
               navigating by heading. */}
+          {/* The mark yields first, and whole: below `sm` it goes before the
+              modes do, because it says nothing the wordmark beside it does not,
+              and at 390px a `blocked` chip already leaves no room for an icon. */}
+          <BrandMark className="hidden sm:block" />
           <h1 className="shrink-0 text-base font-semibold uppercase tracking-wider">Felix</h1>
           {/* This thread's run, in one slot that is the same on both addresses.
               It used to ride the Chat door on `/harness` only, so `/t` said
