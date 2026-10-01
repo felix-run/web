@@ -881,7 +881,16 @@ then it is not a signal but a surprise. It reads an always-on `/approvals` poll
 row marker reads the same rows, and deliberately **not** through `usePoll`: that hook skips ticks
 while the tab is hidden, which is right for a reference panel and exactly wrong here, since a hidden
 tab is the case this exists for. The shell's other approvals poll (`syncApprovals`) is gated on
-`streaming`, i.e. on someone already watching.
+`streaming`, i.e. on someone already watching — **but it is not the only way the engine adopts.**
+It also runs on every thread change and whenever this poll lists a row for the open thread the
+engine does not hold. Until it did, the line and everything else disagreed: title, favicon, header
+chip, readout and banner read the engine's queue, which adopted only on mount and while streaming,
+so the line's own *Open thread to review* landed on a thread with no banner, an Idle readout and
+a plain title while the line said the call was waiting there. The engine also drops a list that
+resolves after the thread changed (it was filtered for the thread that asked), and marks `seen`
+only after that check, on a private copy merged back: marking the shared set as each list resolved
+let the thread being left mark a row just before the thread being entered filtered against it, and
+on a cold `/` — which mints a thread and moves — neither adopted it. `tests/blocked-route.test.tsx` pins the route end to end.
 
 **It never says the all-clear on a list it could not refresh.** The hook keeps the last list on a
 failed tick and reports `error` and `lastOkAt`; the line says *Checking approvals…* before the first

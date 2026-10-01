@@ -26,7 +26,7 @@ function sse(frames: unknown[]) {
 
 let posted: Array<{ url: string; body: unknown }>;
 
-function stubFetch(handler: (url: string) => Response) {
+function stubFetch(handler: (url: string) => Response | Promise<Response>) {
   posted = [];
   const fn = vi.fn(async (input: unknown, init?: RequestInit) => {
     const url = String(input);
@@ -313,6 +313,81 @@ describe('approvals', () => {
     await engine.syncApprovals(); // the poll runs on a timer; twice must not double up
 
     expect(engine.state.approvals.map((a) => a.approvalId)).toEqual(['ap_2']);
+  });
+
+  /**
+   * A thread change while the list is in flight. The rows were filtered for the
+   * thread that asked; adopting them after the switch put one conversation's
+   * approval in another's banner. Navigating to a thread now triggers a sync, so
+   * this race went from rare to routine.
+   */
+  it('drops a list that resolves after the thread changed, and can still adopt it later', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    stubFetch(async (url) => {
+      if (!url.includes('/approvals')) return new Response('{}');
+      await gate;
+      return new Response(
+        JSON.stringify({
+          requests: [{ id: 'ap_9', tool_name: 'write_file', args: {}, thread_id: 'tenant:a' }],
+        }),
+      );
+    });
+    let thread = 'a';
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => thread,
+    });
+
+    const inFlight = engine.syncApprovals();
+    thread = 'b';
+    engine.reset();
+    release();
+    await inFlight;
+    expect(engine.state.approvals).toEqual([]);
+
+    // Back on its own thread, the same row is still adoptable: the dropped
+    // sync did not leave it marked as seen.
+    thread = 'a';
+    engine.reset();
+    await engine.syncApprovals();
+    expect(engine.state.approvals.map((a) => a.approvalId)).toEqual(['ap_9']);
+  });
+
+  /**
+   * The interleaving that actually happens on a cold `/`: a sync for the minted
+   * thread is in flight when the address moves, and the new thread's sync is
+   * started before the first one resolves. Marking the shared `seen` set the
+   * moment a list resolved let the leaving sync mark an unattributed row just
+   * before the entering one filtered against it, so neither adopted it.
+   */
+  it('still adopts when a sync for the thread being left resolves first', async () => {
+    const gates: Array<() => void> = [];
+    stubFetch(async (url) => {
+      if (!url.includes('/approvals')) return new Response('{}');
+      await new Promise<void>((r) => gates.push(r));
+      return new Response(
+        JSON.stringify({ requests: [{ id: 'ap_u', tool_name: 'local_shell', args: {} }] }),
+      );
+    });
+    let thread = 'a';
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => thread,
+    });
+
+    const leaving = engine.syncApprovals();
+    thread = 'b';
+    engine.reset();
+    const entering = engine.syncApprovals();
+    await vi.waitFor(() => expect(gates).toHaveLength(2));
+    gates[0]?.();
+    await leaving;
+    gates[1]?.();
+    await entering;
+    expect(engine.state.approvals.map((a) => a.approvalId)).toEqual(['ap_u']);
   });
 
   /**

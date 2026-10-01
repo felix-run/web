@@ -144,8 +144,8 @@ export function Inspector({
                     <p className="mb-2 text-xs text-muted-foreground">{section.window}</p>
                   )}
                   {/*
-                  `bare` chrome: the tab is the heading, so the section draws none
-                  of its own.
+                  `tab` chrome: the tab is the heading, so the section draws none
+                  of its own, and an empty one is a line rather than a field.
 
                   `enabled` is simply whether the rail is open, because an
                   inactive `TabsContent` renders its element for the ARIA
@@ -155,7 +155,7 @@ export function Inspector({
                   one-section-one-poll economy tabs were chosen for, and
                   `forceMount` would silently undo it by mounting both.
                 */}
-                  <PanelModeProvider chrome="bare">
+                  <PanelModeProvider chrome="tab">
                     <SectionBoundary title={section.label}>
                       {section.id === 'plans' && (
                         <PlansSection enabled={open} open onToggle={() => {}} />

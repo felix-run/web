@@ -408,8 +408,16 @@ export function WorkspaceZone({ className }: { className?: string }) {
                 ))}
               </ul>
             ) : (
+              // Files is this tab's own store; Changes above is every workspace
+              // call on the thread, including the harness's own tools, which never
+              // touch it. "Nothing written yet" under "+5 written" read as a
+              // contradiction, so an empty store says which store it is.
               <p className="text-xs text-muted-foreground">
-                {mountLabel ? 'This folder is empty.' : 'Nothing written yet.'}
+                {mountLabel
+                  ? 'This folder is empty.'
+                  : changes.some((c) => c.changed)
+                    ? 'Nothing in this tab. The writes above ran on the harness.'
+                    : 'Nothing written in this tab yet.'}
               </p>
             )}
             {files.length > TREE_VISIBLE && (

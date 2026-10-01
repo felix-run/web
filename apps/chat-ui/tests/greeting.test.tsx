@@ -15,7 +15,7 @@ import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 afterEach(cleanup);
 
-function mount(over: Partial<ShellValue> = {}, manifest = 'cowork') {
+function mount(over: Partial<ShellValue> = {}, manifest = 'cowork', blocked = false) {
   const shell = {
     threadId: 'a1b2c3',
     harnessReachable: true,
@@ -26,7 +26,7 @@ function mount(over: Partial<ShellValue> = {}, manifest = 'cowork') {
   } as ShellValue;
   render(
     <ShellProvider value={shell}>
-      <Greeting manifest={manifest} />
+      <Greeting manifest={manifest} blocked={blocked} />
     </ShellProvider>,
   );
   return shell;
@@ -41,6 +41,26 @@ describe('the empty thread', () => {
     expect(screen.getByText('a1b2c3')).toBeTruthy();
     expect(screen.getByText('none mounted')).toBeTruthy();
     expect(screen.getByText('reachable')).toBeTruthy();
+  });
+
+  /**
+   * A thread with a call waiting on you is not asking what to work on. The
+   * headline and starters step aside; the readout, which is facts, stays.
+   */
+  it('steps aside while the thread is waiting on you, keeping the readout', () => {
+    mount({}, 'cowork', true);
+    expect(screen.queryByRole('heading', { name: 'What do you want to work on?' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^List the workspace/ })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Empty thread' })).toBeTruthy();
+    expect(screen.getByText('reachable')).toBeTruthy();
+  });
+
+  it('cuts a long thread id from the middle, whole to a screen reader', () => {
+    const id = '4f6c1e2a-0b7d-4c55-9a51-2f0e8d6b1a90';
+    mount({ threadId: id });
+    // The tail survives: it is what tells one thread from another.
+    expect(screen.getByText('4f6c1e…d6b1a90')).toBeTruthy();
+    expect(screen.getByText(id).className).toContain('sr-only');
   });
 
   it("offers the agent's starter prompts and sends the full prompt on click", () => {

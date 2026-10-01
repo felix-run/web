@@ -359,11 +359,26 @@ The workbench is **three zones**: the workspace (18rem), the transcript at readi
 transcript). An attention line runs full width under the header on every address. At rest its
 dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach
 approvals* with the age of its last answer, in `state-failed`, and never the all-clear.
-Expanded, its queue is held to the transcript's measure (`max-w-3xl`) and is **one line per
-call** — tool and target in mono, the thread, a countdown chip — opening into the approval card
-on *Review*. It opens itself only for a call on this thread, and a write from another thread
-offers *Open thread to review* instead of a card, because only its own banner can show what the
-write replaces. The workspace is open by default wherever it fits inline: it is the subject.
+Expanded, its queue is held to the transcript's measure (`max-w-3xl`) on the transcript's centre
+line, and is **one line per call** — tool and target in mono, the thread, and a countdown chip
+that says what it counts down to (*Auto-denies in 4:20*; the clock alone below `sm`) — opening
+into the approval card on *Review*. It opens itself only for a call on this thread. A write from
+another thread offers *Open thread to review* instead of a card, because only its own banner can
+show what the write replaces; off the workbench, where no banner is drawn, a call the banner owns
+routes the same way rather than being counted with nothing to press. The card names the gating
+rule beside the tool on every surface that decides one, and never offers to edit a whole file
+body.
+
+**"Blocked on this thread" is one set.** The title, favicon, notification, header chip, readout
+and banner read the engine's approval queue, and the engine adopts every row the always-on
+`/approvals` poll lists for this thread — on arrival at a thread and whenever the poll finds one
+it does not hold — so no surface can say a call is waiting while another says the thread is idle.
+While it is blocked, an empty thread's headline and starters step aside and its readout sits on
+the floor beside the banner.
+
+The workspace is open by default wherever it fits inline: it is the subject. The instrument
+starts open from **1600px**, where all three zones sit at their own widths, and closed below.
+A stored choice outranks both defaults.
 
 Spacing is Tailwind's default scale used narrowly: rows sit at `px-3 py-1.5`, panels pad at
 `p-4`, and stacked cards gap at `2.5`. Rhythm comes from repeating a few steps, not from a wide
@@ -749,9 +764,9 @@ banners docked directly above it, a slash menu that opens upward, and a hint lin
 11px that names the keys worth learning from there — Enter, ⇧Enter, and (from `md` up) the
 thread switcher and the jump to a waiting approval — as small bordered `kbd` keys.
 
-**The composer row rests at four:** an *Add to message* menu (attach images, voice input),
-the agent, Thinking, then Run in background and Send. Attach and the mic were two icon-only
-controls of six at the decision point reached most often. The mic leaves the menu while it
+**The composer row rests at five:** an *Add to message* menu (attach images, voice input),
+the agent, Thinking, then Run in background and Send — and only Send is primary. Attach and the
+mic were two icon-only controls of six at the decision point reached most often. The mic leaves the menu while it
 records — red `recording`, one click to stop — because a recording state behind a trigger is a
 recording nobody can see.
 

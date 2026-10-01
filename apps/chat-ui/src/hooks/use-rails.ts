@@ -9,6 +9,14 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
  */
 export const WORKSPACE_INLINE = '(min-width: 1024px)';
 export const INSTRUMENT_INLINE = '(min-width: 1280px)';
+/**
+ * Where the instrument starts open on a profile that has never chosen. At 1280
+ * it fits but squeezes the transcript to its floor, so it starts closed there;
+ * from 1600 all three zones sit at their own widths with the transcript at full
+ * reading measure, and a rail PRODUCT.md calls the one-glance answer to "what is
+ * it doing" has no reason to start hidden. A stored preference always wins.
+ */
+const INSTRUMENT_DEFAULT_OPEN = '(min-width: 1600px)';
 
 const HISTORY_KEY = 'felix.historyOpen';
 const INSPECTOR_KEY = 'felix.inspectorOpen';
@@ -19,6 +27,14 @@ function readBool(key: string, fallback: boolean): boolean {
   const raw = localStorage.getItem(key);
   if (raw === null) return fallback;
   return raw === '1' || raw === 'true';
+}
+
+function matches(query: string): boolean {
+  try {
+    return window.matchMedia(query).matches;
+  } catch {
+    return false;
+  }
 }
 
 function resolve(next: SetStateAction<boolean>, prev: boolean): boolean {
@@ -66,7 +82,9 @@ export function useRails(): Rails {
   inline.current = { workspace: workspaceInline, instrument: instrumentInline };
 
   const [historyPref, setHistoryPref] = useState(() => readBool(HISTORY_KEY, true));
-  const [inspectorPref, setInspectorPref] = useState(() => readBool(INSPECTOR_KEY, false));
+  const [inspectorPref, setInspectorPref] = useState(() =>
+    readBool(INSPECTOR_KEY, matches(INSTRUMENT_DEFAULT_OPEN)),
+  );
   const [drawer, setDrawer] = useState<Zone | null>(null);
 
   // A drawer belongs to the width it was opened at. Once its zone fits inline

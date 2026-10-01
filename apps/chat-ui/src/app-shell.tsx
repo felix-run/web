@@ -201,7 +201,8 @@ export function AppShell() {
   // Workspace open by default wherever it fits inline: it is the subject (the
   // folder, and the only door to other threads), and it used to open only once a
   // profile had threads, so a first visit started with the subject hidden.
-  // Instrument off so the conversation owns the rest. What is persisted is the
+  // The instrument starts open only where all three zones fit at their own
+  // widths (`useRails`). What is persisted is the
   // *inline* preference — a drawer at a narrow width starts closed and is never
   // written down; `useRails` says why.
   const { historyOpen, setHistoryOpen, inspectorOpen, setInspectorOpen, revealInspector } =
@@ -798,10 +799,41 @@ export function AppShell() {
    */
   const syncApprovals = useCallback(() => engine.syncApprovals(), [engine]);
 
-  // A run may already have been waiting on one before this tab loaded.
+  /**
+   * Adopt on every thread this tab lands on, not only the first.
+   *
+   * A run may already have been waiting before this tab loaded — and equally
+   * before this tab *navigated*: the attention line's "Open thread to review"
+   * exists to land on a thread whose banner can show a write's diff, and with
+   * this keyed on mount alone that banner never appeared until a reload, so the
+   * route led to an Idle readout and a welcome screen while the line said the
+   * call was waiting on this very thread. `threadId` rather than a call inside
+   * `loadThread`: the engine reads `threadIdRef`, which is current only after
+   * the render the new address causes.
+   */
   useEffect(() => {
     void syncApprovals();
-  }, [syncApprovals]);
+  }, [threadId, syncApprovals]);
+
+  /**
+   * One "blocked here", fed by both polls.
+   *
+   * The tenant poll runs always — hidden tab, idle thread — and the engine's
+   * own only while streaming. So a call on this thread could reach the attention
+   * line and nothing else: title, favicon, header chip, readout and banner all
+   * read the engine's queue, and said nothing was waiting while the line said it
+   * was. When the tenant list carries a row for this thread the engine does not
+   * hold, the engine adopts it; every surface then reads one set. Keyed on the
+   * missing ids, so it asks once per new row rather than once per tick.
+   */
+  const queuedIds = new Set(pendingQueue.map((q) => q.approvalId));
+  const unadoptedHere = tenantApprovals.pending
+    .filter((a) => a.thread_id === threadId && !queuedIds.has(a.id))
+    .map((a) => a.id)
+    .join(',');
+  useEffect(() => {
+    if (unadoptedHere) void syncApprovals();
+  }, [unadoptedHere, syncApprovals]);
 
   /**
    * Ask again while a run is live.
@@ -1812,6 +1844,7 @@ export function AppShell() {
         approvals={tenantApprovals}
         streaming={streaming}
         handled={bannerOwned}
+        bannerOnScreen={!onHarness}
         threadId={threadId}
         threads={threads}
         reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}

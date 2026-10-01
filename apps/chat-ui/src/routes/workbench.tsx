@@ -125,7 +125,9 @@ export function Workbench() {
         )}
         <main className="bg-dots relative isolate flex min-w-0 flex-1 flex-col">
           <Conversation>
-            {empty && <Greeting manifest={manifest} />}
+            {empty && (
+              <Greeting manifest={manifest} blocked={pending != null || uiPrompt != null} />
+            )}
             {turns.map((t, i) => {
               const isLast = i === turns.length - 1;
               return (

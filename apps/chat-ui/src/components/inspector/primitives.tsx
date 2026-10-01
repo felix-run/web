@@ -83,7 +83,13 @@ type SectionChrome =
   /** A `/harness` page: static heading, body fills the panel. */
   | 'panel'
   /** A `/harness` page whose *host* draws the heading — see the Ledger. */
-  | 'bare';
+  | 'bare'
+  /**
+   * An instrument tab: the tab is the heading, as with `bare`, but it lives in a
+   * 22rem rail, where an empty state is a line. `bare`'s page-sized empty field
+   * was the one box in the rail, standing in for content nobody had yet.
+   */
+  | 'tab';
 
 const PanelMode = createContext<SectionChrome>('disclosure');
 
@@ -163,7 +169,7 @@ export function Section({
   // Before the early returns: a hook after a conditional return is a hook that
   // runs on some renders and not others.
   useEffect(() => {
-    if (chrome === 'bare') sink?.({ meta, metaLead, metaAsOf, metaTone });
+    if (chrome === 'bare' || chrome === 'tab') sink?.({ meta, metaLead, metaAsOf, metaTone });
   }, [chrome, sink, meta, metaLead, metaAsOf, metaTone]);
 
   // The Ledger draws one heading for two halves, so its halves draw none: a
@@ -174,7 +180,8 @@ export function Section({
   // The measure is applied here rather than by each half, so the loading, empty
   // and error states take it too: the halves used to measure only their rows,
   // and a failed poll's slab ran the full width of the pane.
-  if (chrome === 'bare') return <div className={READING_MEASURE}>{children}</div>;
+  if (chrome === 'bare' || chrome === 'tab')
+    return <div className={READING_MEASURE}>{children}</div>;
 
   // A page does not disclose: there is nothing else on it to collapse *to*, and a
   // header that hides the only content on screen is a control whose best outcome
@@ -329,10 +336,10 @@ export function SectionBody({
           <Skeleton className="h-8 w-full rounded-md" />
         </div>
       )}
-      {/* A page frames its empty state; a disclosure row keeps it to a line. */}
+      {/* A page frames its empty state; a row or a rail's tab keeps it to a line. */}
       {!loading &&
         empty &&
-        (chrome === 'disclosure' ? (
+        (chrome === 'disclosure' || chrome === 'tab' ? (
           <p className="text-sm text-muted-foreground">{emptyText}</p>
         ) : (
           <PageEmpty>{emptyText}</PageEmpty>

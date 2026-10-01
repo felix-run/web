@@ -35,7 +35,12 @@ export interface ApprovalDecisionProps {
    * to show.
    */
   before?: string | null;
-  /** Manifest that asked, shown quietly beside the tool name. */
+  /**
+   * Shown quietly beside the tool name: the rule that gated the call, on every
+   * surface that decides one, and the manifest only where no rule is named. The
+   * banner and the attention line once filled it with different things, so one
+   * call read `workspace-write` in one place and `cowork` in the other.
+   */
   context?: string;
   /**
    * Why the gate fired, in the operator's own words — a rule's `description`, or
@@ -94,6 +99,9 @@ export interface ApprovalDecisionProps {
  */
 const DECISION_BUTTON = 'h-auto min-h-8 min-w-0 flex-1 py-1.5 whitespace-normal wrap-anywhere';
 
+/** Tools whose arguments are a whole file body. See `editable`. */
+const WHOLE_FILE_WRITES = new Set(['write_file', 'client · write_file']);
+
 /**
  * The one place a gated tool call is approved or denied.
  *
@@ -137,6 +145,14 @@ export function ApprovalDecision({
   const [deciding, setDeciding] = useState<'approved' | 'denied' | null>(null);
 
   const isWrite = before !== undefined;
+  /**
+   * Whether arguments may be edited is a property of the tool, not of where the
+   * card was drawn. Keyed on `before` it was offered for a `write_file` from the
+   * attention line — which has no `before` — and withheld for the same call in
+   * the banner. A whole file body in a textarea is not the affordance anyone
+   * wants, wherever the write is decided.
+   */
+  const editable = !WHOLE_FILE_WRITES.has(toolName);
   const summary = oneLine(summarizeToolArgs(toolName, args));
 
   // Re-read every second while the card is up, and only then. The deadline is
@@ -314,10 +330,7 @@ export function ApprovalDecision({
           >
             {deciding === 'denied' ? 'Denying…' : 'Deny'}
           </Button>
-          {/* Not offered for a write: that has a before/after pane rather than an
-            arguments blob, and editing a whole file body in a textarea inside a
-            banner is not the affordance anyone wants. */}
-          {!isWrite && (
+          {editable && (
             <Button
               size="sm"
               variant="ghost"
