@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
 import {
+  BirdIcon,
   CopyIcon,
   EllipsisIcon,
   MessageSquareIcon,
@@ -30,6 +31,7 @@ import {
   PanelLeftIcon,
   PanelRightIcon,
   PlusIcon,
+  ScrollTextIcon,
   ServerIcon,
   SunIcon,
 } from 'lucide-react';
@@ -1247,6 +1249,8 @@ export function AppShell() {
   const options = manifests.length ? manifests : [manifest];
   /** Waiting on a person — the same test `setPresence('blocked')` makes. */
   const runBlocked = pendingQueue.length > 0 || uiPrompt != null;
+  /** Whether the header's run-state chip is on screen, which the modes yield to. */
+  const runShown = runBlocked || streaming;
   // Read per render rather than stored: it cannot change, and costs a regex.
   const mac = isMacPlatform();
 
@@ -1337,15 +1341,32 @@ export function AppShell() {
         {onHarness && (
           <span aria-hidden data-slot="workspace-toggle-slot" className="size-8 shrink-0" />
         )}
-        <div className="flex min-w-0 items-center gap-2 px-1.5">
+        {/* The left cluster yields in a fixed order, because at 390px with both
+            modes on and a run blocked it holds more than its space. Before the
+            order was written down, every child was `shrink-0` except the
+            wordmark, so the wordmark was what gave: "F…", then nothing, and the
+            canary pill ran on under New chat.
+
+            So: the wordmark and the run state never shrink. Below `sm` the mark
+            is gone (it repeats the wordmark), and the two
+            modes draw as icons, keeping their words for a reader, and while a
+            run state is on screen they step aside (see the modes' row). Past
+            that — a 320px viewport, where the wordmark and the chip alone are
+            wider than the room — the cluster clips at its own edge rather than
+            running under the right cluster, which holds the controls. `py-1`
+            is room for a focus ring the clip would otherwise cut. */}
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden px-1.5 py-1">
           {/* Wordmark: caps via CSS, not in the string, so the accessible name
               and anything copied out stay the proper noun.
 
               An `h1` because the document had none — every page began at `h2`,
               so there was no top-level heading naming the application for anyone
               navigating by heading. */}
-          <BrandMark />
-          <h1 className="truncate text-base font-semibold uppercase tracking-wider">Felix</h1>
+          {/* The mark yields first, and whole: below `sm` it goes before the
+              modes do, because it says nothing the wordmark beside it does not,
+              and at 390px a `blocked` chip already leaves no room for an icon. */}
+          <BrandMark className="hidden sm:block" />
+          <h1 className="shrink-0 text-base font-semibold uppercase tracking-wider">Felix</h1>
           {/* This thread's run, in one slot that is the same on both addresses.
               It used to ride the Chat door on `/harness` only, so `/t` said
               nothing in the header and the two addresses disagreed about where
@@ -1358,6 +1379,12 @@ export function AppShell() {
               question is not working, and "running" was the reason to stay on a
               page while the run timed out behind it.
 
+              A tinted chip the height of the badges beside it, not bare text:
+              as `text-xs` with no surface it lost to the filled Verbose pill, so
+              the header ranked a viewing preference above the run. The tint is
+              the state's own hue at /10 — the ramp is tuned for text on its own
+              tint up to /15 in both themes.
+
               Not a live region. The attention line below is one, and already
               announces both "Working" and a call waiting on you; a second region
               saying the same change would make a screen reader say it twice.
@@ -1368,7 +1395,7 @@ export function AppShell() {
             <span
               data-slot="run-state"
               title="This thread's run is waiting on you"
-              className="flex shrink-0 items-center gap-1 text-xs text-state-blocked"
+              className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-state-blocked/10 px-2 py-0.5 text-xs font-medium text-state-blocked"
             >
               <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
               <span className="sr-only">This thread's run: </span>
@@ -1378,7 +1405,7 @@ export function AppShell() {
             <span
               data-slot="run-state"
               title="This thread's run is in progress"
-              className="flex shrink-0 items-center gap-1 text-xs text-state-running"
+              className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-state-running/10 px-2 py-0.5 text-xs font-medium text-state-running"
             >
               <span aria-hidden className="size-1.5 rounded-full bg-state-running" />
               <span className="sr-only">This thread's run: </span>
@@ -1388,64 +1415,102 @@ export function AppShell() {
           {/* The modes this tab is in, at every width. They were `hidden` below
               `sm`, so on a phone, or at 200% zoom, verbose and a canary rollout
               were states with nothing on screen to say so. What narrows instead
-              is the canary's version, which its `title` still carries.
+              is their words: below `sm` each draws as its icon, and the word
+              stays in the accessible name and the `title`.
 
-              Thinking is not here either. It is a parameter of the next send,
-              so it sits in the composer beside the agent picker, where it is
-              both shown and changed. */}
-          {verbose && (
-            <Badge variant="secondary" className="font-normal" asChild>
-              {/* A button, because a badge that reports a mode should also be the
-                  way out of it — otherwise the way out is two clicks into a menu
-                  whose trigger says nothing about verbose. Focus moves to that
-                  menu's trigger, since the badge unmounts under the click.
-
-                  No `aria-pressed`: the badge exists only while verbose is on,
-                  so it was permanently true — a toggle that could never read
-                  unpressed. The name says the state and the action instead. */}
-              <button
-                type="button"
-                aria-label="Verbose on, turn off"
-                title="Verbose tools is on. Click to turn it off."
-                onClick={() => {
-                  setVerbose(false);
-                  menuTriggerRef.current?.focus();
-                }}
-                className="cursor-pointer hover:bg-secondary/80"
-              >
-                Verbose
-              </button>
-            </Badge>
-          )}
-          {canary && (
-            // Outline and mono, never a filled pill: the version is the harness's
-            // number quoted back, and a filled badge made it the loudest object in
-            // the header. On-canary reads in the foreground, a rollout this thread
-            // is not confirmed to be on stays muted.
-            <Badge
-              variant="outline"
-              className={cn(
-                'border-border/60 font-mono font-normal',
-                canary.onCanary ? 'text-foreground' : 'text-muted-foreground',
-              )}
-              title={
-                canary.onCanary
-                  ? `This thread is served by canary v${canary.version} (rollout at ${canary.weight}%).`
-                  : `Canary rollout in flight: v${canary.version} at ${canary.weight}%. ` +
-                    'This thread is not confirmed to be on it.'
-              }
+              Below `sm`, while this thread's run state is showing, the modes
+              step off the screen. Measured at 390px, the wordmark and a
+              `blocked` chip leave no room for even one icon beside them, and
+              the alternatives were both worse: a badge clipped part-way reads
+              as broken, and one pushed out of view by overflow is a Verbose
+              button keyboard focus can land on and nobody can see. So Verbose
+              is `hidden`, which takes it out of the tab order as well — the
+              Session menu still holds it — and the canary, which is not
+              focusable, goes `sr-only` and is still read. Both come back when
+              the run settles. Nothing else in the cluster shrinks, so this row
+              is `min-w-0` for the widths between, where it is the one to give. */}
+          {(verbose || canary) && (
+            <div
+              data-slot="header-modes"
+              // `contents` while the modes have stepped off a narrow screen, so
+              // the row leaves no empty box and no gap behind them.
+              className={cn('flex min-w-0 items-center gap-2', runShown && 'max-sm:contents')}
             >
-              canary
-              <span className="hidden sm:inline">
-                {canary.onCanary
-                  ? `v${canary.version}`
-                  : `v${canary.version}${canary.weight < 100 ? ` @ ${canary.weight}%` : ''}`}
-              </span>
-            </Badge>
+              {verbose && (
+                <Badge
+                  variant="secondary"
+                  className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
+                  asChild
+                >
+                  {/* A button, because a badge that reports a mode should also be
+                      the way out of it — otherwise the way out is two clicks into
+                      a menu whose trigger says nothing about verbose. Focus moves
+                      to that menu's trigger, since the badge unmounts under the
+                      click.
+
+                      No `aria-pressed`: the badge exists only while verbose is
+                      on, so it was permanently true — a toggle that could never
+                      read unpressed. The name says the state and the action
+                      instead, which is also what lets the word go below `sm`. */}
+                  <button
+                    type="button"
+                    data-slot="verbose-mode"
+                    aria-label="Verbose on, turn off"
+                    title="Verbose tools is on. Click to turn it off."
+                    onClick={() => {
+                      setVerbose(false);
+                      menuTriggerRef.current?.focus();
+                    }}
+                    className="cursor-pointer hover:bg-secondary/80"
+                  >
+                    <ScrollTextIcon aria-hidden className="sm:hidden" />
+                    <span className="hidden sm:inline">Verbose</span>
+                  </button>
+                </Badge>
+              )}
+              {canary && (
+                // Outline and mono, never a filled pill: the version is the
+                // harness's number quoted back, and a filled badge made it the
+                // loudest object in the header. On-canary reads in the
+                // foreground, a rollout this thread is not confirmed to be on
+                // stays muted — and the words say the same, because a colour
+                // difference alone says it to nobody who cannot see it.
+                <Badge
+                  variant="outline"
+                  data-slot="canary-mode"
+                  className={cn(
+                    'h-5.5 border-border/60 font-mono font-normal',
+                    canary.onCanary ? 'text-foreground' : 'text-muted-foreground',
+                    runShown && 'max-sm:sr-only',
+                  )}
+                  title={
+                    canary.onCanary
+                      ? `This thread is served by canary v${canary.version} (rollout at ${canary.weight}%).`
+                      : `Canary rollout in flight: v${canary.version} at ${canary.weight}%. ` +
+                        'This thread is not confirmed to be on it.'
+                  }
+                >
+                  <BirdIcon aria-hidden className="sm:hidden" />
+                  <span className="sr-only sm:not-sr-only">canary</span>
+                  <span className="sr-only sm:not-sr-only">
+                    {canary.onCanary
+                      ? `v${canary.version}`
+                      : `v${canary.version}${canary.weight < 100 ? ` @ ${canary.weight}%` : ''}`}
+                  </span>
+                  <span className="sr-only">
+                    {canary.onCanary
+                      ? ', this thread is on it'
+                      : ', this thread is not confirmed on it'}
+                  </span>
+                </Badge>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="ml-auto flex items-center gap-1">
+        {/* `shrink-0`: the controls are what the left cluster yields to, never
+            the other way round. */}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {/* Conversation controls stay with the conversation. On `/harness` —
               whose premise is what outlives every run — New chat, the instrument
               and the Session menu's run verbs act on a transcript that is not on
@@ -1475,21 +1540,26 @@ export function AppShell() {
             client is — a conversation, and the harness behind it.
           */}
           {/* Always ghost: it links to the *other* address, so a "current" fill
-              would mark the place you are leaving. The icon names the destination. */}
+              would mark the place you are leaving. The icon names the destination
+              where there is room for it; below `sm` the door is its word alone,
+              because the word is the part that cannot go and the icon's 22px is
+              what lets the left cluster keep the wordmark and the run state. */}
           <Button asChild variant="ghost" size="sm" className="gap-1.5">
             <Link
               to={onHarness ? `/t/${threadId}` : '/harness'}
               title={onHarness ? 'Chat' : 'Harness'}
             >
               {onHarness ? (
-                <MessageSquareIcon className="size-4" aria-hidden />
+                <MessageSquareIcon className="hidden size-4 sm:block" aria-hidden />
               ) : (
-                <ServerIcon className="size-4" aria-hidden />
+                <ServerIcon className="hidden size-4 sm:block" aria-hidden />
               )}
-              {/* `sr-only`, not `hidden`, below `sm`: the icon is `aria-hidden`, so
-                  hiding the word too left the only route between the app's two
-                  addresses with no accessible name on a phone. */}
-              <span className="sr-only sm:not-sr-only">{onHarness ? 'Chat' : 'Harness'}</span>
+              {/* The word at every width. Below `sm` it used to be `sr-only`, so
+                  on a phone the only route between the app's two addresses was a
+                  server glyph beside a panel glyph — two icons that say nothing
+                  about which is a place. New chat gives up its word there
+                  instead: a plus is the one icon here that names its action. */}
+              <span>{onHarness ? 'Chat' : 'Harness'}</span>
             </Link>
           </Button>
           {onHarness ? (

@@ -319,16 +319,35 @@ headers match it at 48px, so the header's rule and each rail's rule line up.
 
 The header holds run *state*, not preferences. Immediately after the wordmark, on both
 addresses and at every width, one fixed slot says what **this thread's** run is doing:
-`blocked` in `state-blocked` while it waits on an approval or a question, else `running` in
-`state-running` while it streams, else nothing — a word and a dot, never the dot alone, and
-never a finer phase, which is the instrument's. Its `title` and an `sr-only` prefix say it is
-this thread's run, because the attention line beneath it is tenant-wide. It is not a live
-region: the attention line already announces the same change. After it, the tab's modes:
+`blocked` while it waits on an approval or a question, else `running` while it streams, else
+nothing — a word and a dot, never the dot alone, and never a finer phase, which is the
+instrument's. It is drawn as a **state chip**: rounded-full, the badges' height (22px), the
+word and dot in the state's colour on that colour at `/10` — 6.1:1 (`blocked`) and 6.4:1
+(`running`) in light, 11.6:1 and 10.2:1 in dark. Bare `text-xs` lost to the filled Verbose pill
+beside it, which ranked a viewing preference above the run. Its `title` and an `sr-only` prefix
+say it is this thread's run, because the attention line beneath it is tenant-wide. It is not a
+live region: the attention line already announces the same change. After it, the tab's modes:
 **Verbose**, a `secondary` badge that is also the button turning it off (named *Verbose on,
 turn off*), and the **canary** rollout as an outline badge in mono — the version is the
-harness's number quoted back, so it is never a filled pill, and below `sm` it narrows to the
-word with the version kept in its `title`. On the right: New chat, the Harness door — plain
-navigation, carrying no state of its own — the instrument toggle, and one ellipsis menu named
+harness's number quoted back, so it is never a filled pill. Its words also say whether this
+thread is on the rollout, in an `sr-only` clause, because the foreground-versus-muted colour
+that says it on screen says it to nobody who cannot see it.
+
+The left cluster **yields in a fixed order**. The wordmark never shrinks and is never
+truncated; the run state never yields. The mark goes first, whole, below `sm`: it repeats the
+wordmark beside it, so it is the one thing in the cluster whose loss costs nothing. Below `sm` both modes draw as icons (a scroll for
+Verbose, a bird for the canary), their words kept in the accessible name and the `title`.
+While the run state is showing below `sm`, the modes step off the screen — at 390px the
+wordmark and a `blocked` chip leave no room for one icon beside them. Verbose goes `hidden`,
+which also takes it out of the tab order (it is in the Session menu), and the canary, not
+focusable, goes `sr-only` and is still read; both return when the run settles. A badge clipped
+part-way reads as broken, and one pushed off by overflow is a button focus can reach and
+nobody can see, which is why the yield is whole. Past all that the cluster clips at its own
+edge rather than running under the right cluster, which is `shrink-0`: at 320px the chip is
+clipped, a known limit. On the right: New chat, which is a plus alone below `sm`; the Harness
+door — plain navigation carrying no state of its own, and its **word at every width**, icon
+and word from `sm`, the word alone below it, because a server glyph beside a panel glyph said
+nothing on a phone about which one was a place; the instrument toggle; and one ellipsis menu named
 **Session** that opens on what it is named for: *Session* (Continue run, disabled on an empty
 thread, and Copy thread id), then *View* (Verbose tools), then *Theme* under its own label as
 Light/Dark/System radio items. Theme is a set-once preference and holds no header slot of its
@@ -389,7 +408,8 @@ control, drop hint, notice pill).
 
 The access-key gate follows the tonal model too: its form card is flat — a full-strength
 `border` hairline at `rounded-lg`, no shadow — and its side panel is flat `muted`, where it was
-the app's one gradient. There is no gradient anywhere in the app.
+the app's one gradient. There is no gradient *fill* anywhere in the app; the transcript's dot
+grid is drawn with a `radial-gradient`, but it is a texture, not a fill (the One Texture Rule).
 
 **Where the system and the code disagree.** The vendored primitives in `packages/ui/src` are shadcn defaults and still carry theirs —
 `shadow-2xl` on overlays, `shadow-lg` on dialog-class surfaces, `shadow-xs` on outline buttons.
@@ -409,6 +429,22 @@ is `bg-code-surface`, inside a card it is `bg-background`. Both are flat colours
 these panes once carried three different alphas for one job, which made a pane's colour a
 function of the tint behind it, and an approval's diff came out faintly amber because the banner
 around it was.
+
+**The One Texture Rule.** The app has exactly one decorative texture: an 18px dot grid behind the
+transcript's `<main>` (`.bg-dots` in `index.css`), drawn from `--foreground` at
+`--dot-grid-alpha` (7% light, 16% dark, because text crosses it and owes its contrast —
+`tests/dot-grid-contrast.test.ts` recomputes both) and masked to fade out by 65% of the column's
+height. Nowhere else: not behind the workspace, the instrument, `/harness` or any panel, where
+rows are scanned rather than read.
+
+**The Solid-Over-Texture Rule.** Anything with a fill that sits over the grid is opaque. An alpha
+tint (`bg-muted/30`) mixes with *transparent*, so the grid runs straight through it — a tool card
+or a button reads as if it had no fill. `bg-solid-<token>/<n>` mixes with `--background`
+instead: the same pixel on the plain page, solid over the dots. Tool cards, starter cards, the
+transcript's notes and the message actions' dark hover use it; the composer dock and its input
+box are plain `bg-background` / `bg-card`, with no backdrop blur left to do anything.
+`tests/solid-over-dots.test.ts` fails on an alpha fill in the files that render over the grid;
+a fill that sits on an opaque parent (a row inside a card) is allowlisted there, by name.
 
 ## Shapes
 
@@ -462,7 +498,8 @@ there is still no brand colour, and the only hue the mark ever shows is a run st
   element to its left would say the same thing twice.
 - **It is decorative beside the wordmark.** `aria-hidden` in chat-ui and an empty `alt` in the
   docs, because the wordmark is the accessible name and a second "Felix" would be read out.
-- **Lockup:** mark, then the uppercase wordmark, `gap-2`. The tile is sized so the glyph inside
+- **Lockup:** mark, then the uppercase wordmark, `gap-2`. In chat-ui's header the mark is the
+  first thing to yield below `sm` (see Layout). The tile is sized so the glyph inside
   it stands about as tall as the wordmark's caps: 20px beside chat-ui's 16px wordmark, 16px beside
   the auth panel's 13px one, 1.5rem beside the docs' 1.25rem one.
 
@@ -613,7 +650,7 @@ every second is noise.
   Display headline "What do you want to work on?", a 16px muted sentence naming the agent
   ("You're chatting with **cowork**…") — either replaced by the manifest's own
   `metadata.greeting` (`felix.greeting` on `/v1/models`) when it declares one — then the agent's starter prompts as a two-column grid
-  of `rounded-xl` outline cards (`border-border/60`, `bg-card/40`, no shadow) — title in 13px
+  of `rounded-xl` outline cards (`border-border/60`, `bg-solid-card/40`, no shadow) — title in 13px
   medium, the prompt it sends beneath in 11px muted, clamped to two lines with the full text on
   hover. They come from the manifest's `metadata.starters` (`felix.starters` on `/v1/models`),
   fall back to a built-in table for a harness that sends none, and are disabled while a run
@@ -622,7 +659,7 @@ every second is noise.
 
 ### Tool cards
 
-`rounded-xl` with a `border/60` hairline on `muted/30`. Collapsed, the header reads
+`rounded-xl` with a `border/60` hairline on `solid-muted/30`. Collapsed, the header reads
 **`name · target · duration`** in 11px mono and then the state: the target is what differs
 between five `read_file` rows, so it is what the header spends its width on. There is no wrench
 — an icon on every card marks a row, not a kind. The state badge is honest about outcome: a shell
@@ -671,7 +708,7 @@ status line announces the last minute and the lapse once each.
 ### Inputs
 
 `bg-background` with a `--input` border, `rounded-md`, focus ring as above. The composer is the
-signature case: a lifted `card/80` surface, `rounded-2xl`, with an anchored send control,
+signature case: a lifted, opaque `card` surface, `rounded-2xl`, with an anchored send control,
 banners docked directly above it, a slash menu that opens upward, and a hint line beneath it at
 11px that names the keys worth learning from there — Enter, ⇧Enter, and (from `md` up) the
 thread switcher and the jump to a waiting approval — as small bordered `kbd` keys.
@@ -705,8 +742,10 @@ is the harness's mapping to fix; the list quotes the number rather than disguisi
 
 **The composer's focus indicator is its border.** It removes its textarea's ring and signals
 focus with a full-alpha `--ring` border plus the heavier composer shadow. The border is the
-indicator, so it owes 3:1: against the composer surface (`card/80` over the dock) it measures
-3.96:1 light and 3.78:1 dark, and 3.53:1 / 3.34:1 against the resting `border/50` it replaces.
+indicator, so it owes 3:1: against the composer surface (opaque `card`) it measures 3.96:1
+light and 3.67:1 dark, and 3.53:1 / 3.23:1 against the resting `border/50` it replaces. (Those
+were 3.78:1 and 3.34:1 dark while the surface was `card/80` over the dock; making it opaque
+lightened it a step, and both still clear 3:1.)
 It was `ring/60` until that was measured — 2.10:1 light, 2.15:1 dark — which failed. There is
 no reduced-alpha focus indicator left in the app.
 

@@ -265,13 +265,18 @@ describe('the harness address', () => {
     );
   });
 
-  it('keeps an accessible name on the Chat door at every width', async () => {
+  it('shows the Chat door its word at every width', async () => {
     mount('/harness/memory');
     await waitFor(() => expect(document.querySelector('header a[href^="/t/"]')).not.toBeNull());
     const door = document.querySelector('header a[href^="/t/"]') as HTMLElement;
-    // The word is visually hidden below `sm`, never removed: the icon is aria-hidden.
-    expect(door.textContent).toContain('Chat');
-    expect(door.querySelector('.hidden')).toBeNull();
+    // The word is on screen at every width: it was `sr-only` below `sm`, which
+    // left a phone a lone glyph for the route between the app's two addresses.
+    // The icon is what goes on a phone, and it is `aria-hidden` either way.
+    const word = [...door.querySelectorAll('span')].find((s) => s.textContent === 'Chat');
+    expect(word).toBeDefined();
+    expect(word?.className ?? '').not.toMatch(/sr-only|hidden/);
+    const icon = door.querySelector('svg');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('leaves the conversation controls with the conversation', async () => {
