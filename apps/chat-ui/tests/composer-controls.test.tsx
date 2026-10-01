@@ -223,23 +223,23 @@ describe('the Thinking picker', () => {
 
   /**
    * Seven bare words gave no idea what a level does or when it takes effect.
-   * Each option now carries a line about the mechanism, in the sans because it is
-   * our sentence rather than a quotation of the harness, and the list says the
-   * choice applies from the next turn.
+   * Each option now quotes the token budget the harness sends for it, in mono
+   * like every other quotation of the harness, and the list says the choice
+   * applies from the next turn.
    */
-  it('describes each level, and says when a choice takes effect', async () => {
+  it("quotes each level's token budget, and says when a choice takes effect", async () => {
     mount({ thinkingLevels: ['off', 'high'], thinkingLevel: 'off', onThinkingChange: vi.fn() });
     const user = userEvent.setup({ delay: null });
     screen.getByRole('combobox', { name: 'Thinking: off' }).focus();
     await user.keyboard('{Enter}');
     const options = await screen.findAllByRole('option');
     expect(options.map((o) => o.textContent)).toEqual([
-      'offNo extended reasoning before the reply.',
-      'highA large reasoning budget: more tokens and latency.',
+      'offNo thinking budget sent.',
+      'high2,048 tokens',
     ]);
-    const description = screen.getByText('No extended reasoning before the reply.');
-    expect(description.className.split(/\s+/)).not.toContain('font-mono');
-    const label = screen.getByText('Applies from the next turn');
+    const description = screen.getByText('2,048 tokens');
+    expect(description.className.split(/\s+/)).toContain('font-mono');
+    const label = screen.getByText('Token budget, from the next turn');
     // A label, not a choice: nothing a click or arrow key can land on.
     expect(label.closest('[role="option"]')).toBeNull();
     await user.keyboard('{Escape}');

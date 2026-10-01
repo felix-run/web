@@ -1493,15 +1493,10 @@ export function AppShell() {
           {onHarness ? (
             // The instrument toggle's slot, held empty for the same reason as the
             // workspace toggle's on the left: without it the door moved on every
-            // switch between the two addresses. Only from `sm` up — below it the
-            // held 32px read as a hole in a header with no room to spare, and the
-            // cost of dropping it is the door shifting one slot; the menu is the
-            // cluster's right edge, so it does not move at any width.
-            <span
-              aria-hidden
-              data-slot="instrument-toggle-slot"
-              className="hidden size-8 shrink-0 sm:block"
-            />
+            // switch between the two addresses. At every width — collapsing it
+            // on a phone was tried, and a door that moves is a worse cost than
+            // 32px of gap; the header does not overflow at 390px with it held.
+            <span aria-hidden data-slot="instrument-toggle-slot" className="size-8 shrink-0" />
           ) : (
             <Button
               variant={inspectorOpen ? 'secondary' : 'ghost'}

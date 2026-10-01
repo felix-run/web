@@ -504,9 +504,9 @@ rule under it sits on one line from page to page, and the tab title names the pa
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
 controls — New chat, the instrument toggle and the Session menu's run verbs — and keeps the door
 back to Chat as plain navigation; the run's state is in the slot beside the wordmark, which is
-there on both addresses. The ellipsis menu stays in the same slot on both addresses and, from
-`sm` up, the instrument toggle's slot is held empty, so the right-hand cluster does not move
-between them (below `sm` the held slot read as a hole, so it collapses and only the door shifts);
+there on both addresses. The ellipsis menu stays in the same slot on both addresses and the
+instrument toggle's slot is held empty at every width, so the right-hand cluster does not move
+between them — collapsing it below `sm` was tried, and a door that moves cost more than the gap;
 on `/harness` the menu is named **Theme** and holds only the Theme radio group. Two controls have
 one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Ledger's
 tabs) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
@@ -667,10 +667,12 @@ from `sm` up, then the level in mono, because the level is the harness's own val
 parameter of the next send, like the agent, so it lives where the send is made rather than in the
 header, and its accessible name carries the value (`Thinking: high`). Unlike the agent picker it
 stays enabled during a run: the level is session state on the harness, not a field of a send.
-Its list opens under a non-selectable label, *Applies from the next turn*, and each level carries
-one line in the sans saying what it does as mechanism — *off* is no extended reasoning, each step
-up a larger reasoning budget at the cost of more tokens and latency — with no token figures,
-because what a level buys is the model's and differs between them.
+Its list opens under a non-selectable label, *Token budget, from the next turn*, and each level
+carries the budget the harness sends for it, in mono because it is the harness's number quoted
+back: *off* sends none, then 128, 512, 1,024, 2,048, 8,192 and 32,000 tokens. The budget is what is
+sent, not what the model does with it — a model that takes an effort level gets the budget rounded
+to one, and on the current Claude models every level up to *high* rounds to the same effort. That
+is the harness's mapping to fix; the list quotes the number rather than disguising it.
 `/think` still cycles it, with a toast, because the operator is looking at the text they typed.
 
 **The composer's focus indicator is its border.** It removes its textarea's ring and signals

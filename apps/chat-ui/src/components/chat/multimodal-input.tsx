@@ -93,20 +93,26 @@ type Status = 'submitted' | 'streaming' | 'ready' | 'error';
 export type ModelOption = { id: string; label: string; description?: string };
 
 /**
- * What each thinking level does, one line apiece, said as mechanism: the level
- * sets how much the model may reason before it answers, and more of that costs
- * tokens and time. No numbers — what a level buys is the model's and
- * differs between them, so any figure here would be true of one model and wrong
- * for the next. A level the harness adds later gets no line rather than a guessed one.
+ * What each thinking level sends, one line apiece: the harness's own token
+ * budget for it (`THINKING_BUDGETS` in `felix/session/thinking.py`), quoted
+ * rather than paraphrased into "small" and "large".
+ *
+ * The budget is what the harness sends, not what the model does with it. A
+ * model that takes a budget gets it as-is; one that takes an effort level gets
+ * the budget rounded to one, and that rounding is coarse — on the current
+ * Claude models everything up to `high` lands on the same effort. That is the
+ * harness's mapping to fix, not this list's to disguise, so the line says the
+ * number and stops. A level the harness adds later gets no line rather than a
+ * guessed one.
  */
 const THINKING_DESCRIPTIONS: Readonly<Record<string, string>> = {
-  off: 'No extended reasoning before the reply.',
-  minimal: 'The smallest reasoning budget.',
-  low: 'A small reasoning budget.',
-  medium: 'A moderate reasoning budget: more tokens and latency.',
-  high: 'A large reasoning budget: more tokens and latency.',
-  xhigh: 'A larger reasoning budget: more tokens and latency.',
-  max: 'The largest reasoning budget: the most tokens and latency.',
+  off: 'No thinking budget sent.',
+  minimal: '128 tokens',
+  low: '512 tokens',
+  medium: '1,024 tokens',
+  high: '2,048 tokens',
+  xhigh: '8,192 tokens',
+  max: '32,000 tokens',
 };
 
 export type MultimodalInputProps = {
@@ -555,8 +561,7 @@ function MultimodalInputInner({
                   }))}
                   // Said where the choice is made: picking a level mid-run does
                   // not change the turn already being written.
-                  listLabel="Applies from the next turn"
-                  descriptionsAre="prose"
+                  listLabel="Token budget, from the next turn"
                   value={thinkingLevel}
                   onChange={onThinkingChange}
                   className="shrink-0"
@@ -723,7 +728,6 @@ function InlinePicker({
   prefix,
   className,
   listLabel,
-  descriptionsAre = 'quotation',
 }: {
   ariaLabel: string;
   options: ReadonlyArray<{ id: string; label: string; description?: string }>;
@@ -735,11 +739,6 @@ function InlinePicker({
   className?: string;
   /** A non-selectable line at the head of the list, naming what a choice does. */
   listLabel?: string;
-  /**
-   * How an option's `description` is set. An agent's is the harness's own model
-   * id, quoted, so mono; a thinking level's is our sentence about it, so sans.
-   */
-  descriptionsAre?: 'quotation' | 'prose';
 }) {
   const current = options.find((o) => o.id === value) ?? options[0];
   const items = options.map((o) => (
@@ -749,12 +748,11 @@ function InlinePicker({
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="font-mono font-medium">{o.label}</span>
         {o.description && (
+          // Mono: every description is a quotation of the harness — an agent's
+          // provider model id, or a thinking level's token budget.
           <span
             data-slot="option-description"
-            className={cn(
-              'text-xs wrap-anywhere text-muted-foreground',
-              descriptionsAre === 'quotation' && 'font-mono',
-            )}
+            className="font-mono text-xs wrap-anywhere text-muted-foreground"
           >
             {o.description}
           </span>
