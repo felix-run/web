@@ -59,13 +59,13 @@ export interface Rails {
  * engine's callbacks are built once and call them long after the render that
  * created them.
  */
-export function useRails(workspaceDefault: () => boolean): Rails {
+export function useRails(): Rails {
   const workspaceInline = useMediaQuery(WORKSPACE_INLINE);
   const instrumentInline = useMediaQuery(INSTRUMENT_INLINE);
   const inline = useRef<Record<Zone, boolean>>({ workspace: false, instrument: false });
   inline.current = { workspace: workspaceInline, instrument: instrumentInline };
 
-  const [historyPref, setHistoryPref] = useState(() => readBool(HISTORY_KEY, workspaceDefault()));
+  const [historyPref, setHistoryPref] = useState(() => readBool(HISTORY_KEY, true));
   const [inspectorPref, setInspectorPref] = useState(() => readBool(INSPECTOR_KEY, false));
   const [drawer, setDrawer] = useState<Zone | null>(null);
 
@@ -89,8 +89,8 @@ export function useRails(workspaceDefault: () => boolean): Rails {
             const value = resolve(next, prev);
             // Written here rather than from an effect on the preference, so the
             // store changes only when an operator changes the rail — never on
-            // mount, where it would freeze the "open if there are threads"
-            // default into an answer nobody gave. Idempotent, so StrictMode's
+            // mount, where it would freeze the default into an answer nobody
+            // gave. Idempotent, so StrictMode's
             // second run of this updater is harmless.
             localStorage.setItem(key, value ? '1' : '0');
             return value;

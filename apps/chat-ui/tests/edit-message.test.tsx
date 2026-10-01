@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { ThemeProvider } from '../src/components/theme-provider';
+import { Toaster } from '../src/components/toaster';
 
 /**
  * Editing a sent message is a rewind and a send, and both halves are easy to get
@@ -59,12 +60,13 @@ function sse(frames: unknown[]) {
   });
 }
 
-function stubFetch() {
+function stubFetch(
+  stream: () => Response | Promise<Response> = () =>
+    sse([{ event: 'text_delta', data: { delta: 'answer to the edit' } }]),
+) {
   const fn = vi.fn(async (input: unknown, _init?: RequestInit) => {
     const url = String(input);
-    if (url.includes('/chat/stream')) {
-      return sse([{ event: 'text_delta', data: { delta: 'answer to the edit' } }]);
-    }
+    if (url.includes('/chat/stream')) return stream();
     if (url.endsWith(`/chat/sessions/${THREAD}`)) {
       return new Response(JSON.stringify(snapshot), { status: 200 });
     }
@@ -95,6 +97,7 @@ function mount() {
       <ThemeProvider>
         <TooltipProvider>
           <App />
+          <Toaster />
         </TooltipProvider>
       </ThemeProvider>
     </MemoryRouter>,
@@ -156,5 +159,42 @@ describe('editing a sent message', () => {
     expect(bodiesTo(fetch, '/chat/rewind')).toEqual([]);
     expect(bodiesTo(fetch, '/chat/stream')).toEqual([]);
     expect(shown()).toContain('answer to the original');
+  });
+
+  it('offers Restore once the reply has landed, and restores to the original leaf', async () => {
+    // Held open until released, the way a real reply takes longer than a toast lives.
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const fetch = stubFetch(async () => {
+      await held;
+      return sse([{ event: 'text_delta', data: { delta: 'answer to the edit' } }]);
+    });
+    mount();
+    await waitFor(() => expect(editButtons()).toHaveLength(1));
+    await act(async () => void (await userEvent.click(editButtons()[0]!)));
+    const box = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Edit message"]');
+    await act(async () => {
+      await userEvent.clear(box!);
+      await userEvent.type(box!, 'a better question');
+      await userEvent.keyboard('{Enter}');
+    });
+
+    const restore = () =>
+      [...document.querySelectorAll('button')].find((b) => b.textContent === 'Restore original');
+    await waitFor(() => expect(bodiesTo(fetch, '/chat/stream')).toHaveLength(1));
+    // While the reply is still being written, Restore could not act — so it is not offered.
+    expect(restore()).toBeUndefined();
+
+    await act(async () => release());
+    await waitFor(() => expect(shown()).toContain('answer to the edit'));
+    await waitFor(() => expect(restore()).toBeDefined());
+    await act(async () => void (await userEvent.click(restore()!)));
+
+    // The second rewind puts the leaf back where it was before the edit.
+    await waitFor(() =>
+      expect(bodiesTo(fetch, '/chat/rewind').map((b) => b.event_id)).toEqual(['a1', 'a2']),
+    );
   });
 });

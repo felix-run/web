@@ -1,5 +1,11 @@
 import { Button } from '@felix/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@felix/ui/dropdown-menu';
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -19,6 +25,7 @@ import {
   Loader2,
   Mic,
   MicOff,
+  PlusIcon,
   Upload,
 } from 'lucide-react';
 import {
@@ -45,7 +52,13 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { toastProblem } from '@/lib/error-toast';
-import { ariaShortcut, isMacPlatform, type ShortcutAction, shortcutKeys } from '@/lib/shortcuts';
+import {
+  ariaShortcut,
+  isMacPlatform,
+  isTypingTarget,
+  type ShortcutAction,
+  shortcutKeys,
+} from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 import { PaperclipIcon, StopIcon } from './icons';
 import { PreviewAttachment } from './preview-attachment';
@@ -252,12 +265,16 @@ function MultimodalInputInner({
     if (slashIndex >= filteredCommands.length) setSlashIndex(0);
   }, [slashIndex, filteredCommands.length]);
 
-  // Autofocus once, after first paint
+  // Autofocus once, after first paint — unless something else already has the
+  // keyboard. A transcript that hydrates inside these 80ms can have an edit box
+  // open by the time this fires, and taking focus from it sent the rest of the
+  // edit as a brand-new message from the composer.
   useEffect(() => {
     if (hasAutoFocused.current) return;
     const t = window.setTimeout(() => {
-      textareaRef.current?.focus();
       hasAutoFocused.current = true;
+      if (isTypingTarget(document.activeElement)) return;
+      textareaRef.current?.focus();
     }, 80);
     return () => window.clearTimeout(t);
   }, []);
@@ -515,10 +532,21 @@ function MultimodalInputInner({
 
           <PromptInputFooter className="gap-2 px-2.5 pb-2.5 pt-0">
             <PromptInputTools className="flex min-w-0 flex-1 items-center gap-1">
-              <AttachmentsButton disabled={isBusy} count={files.length} max={MAX_FILES} />
-              {speech.isSupported && (
+              {/* One door for what goes *into* a message, so the row's resting
+                  set is agent · Thinking · background · Send. It was six
+                  controls, two of them icon-only, at the one decision point the
+                  operator reaches most often. The mic leaves the menu while it is
+                  recording: stopping has to be one click, and the recording state
+                  has to be on screen rather than behind a trigger. */}
+              <AddMenu
+                disabled={isBusy}
+                count={files.length}
+                max={MAX_FILES}
+                voice={speech.isSupported && !speech.isListening ? speech.start : null}
+              />
+              {speech.isSupported && speech.isListening && (
                 <MicButton
-                  isListening={speech.isListening}
+                  isListening
                   interim={speech.interim}
                   onStart={speech.start}
                   onStop={speech.stop}
@@ -615,35 +643,59 @@ function MultimodalInputInner({
   );
 }
 
-function AttachmentsButton({
+/**
+ * Attach and dictate, behind one trigger.
+ *
+ * Both items run from the menu's `onSelect`, which is a click: the file dialog
+ * and the speech permission prompt are only allowed to open while a user gesture
+ * is being handled, and a menu item activated by key or pointer is one.
+ */
+function AddMenu({
   disabled,
   count,
   max,
+  voice,
 }: {
   disabled: boolean;
   count: number;
   max: number;
+  /** Starts dictation, or `null` when this browser has none (or it is already on). */
+  voice: (() => void) | null;
 }) {
   const attachments = useProviderAttachments();
   const atLimit = count >= max;
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      className={cn(
-        'size-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground',
-        atLimit && 'opacity-40',
-      )}
-      disabled={disabled || atLimit}
-      onClick={(e) => {
-        e.preventDefault();
-        attachments.openFileDialog();
-      }}
-      aria-label={atLimit ? `Attachment limit reached (${max})` : 'Attach images'}
-    >
-      <PaperclipIcon className="size-4" />
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={disabled}
+          aria-label="Add to message"
+          title="Add to message"
+          className="size-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <PlusIcon className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" className="min-w-44">
+        <DropdownMenuItem
+          disabled={atLimit}
+          onSelect={() => attachments.openFileDialog()}
+          className="gap-2 text-sm"
+        >
+          <PaperclipIcon className="size-4" aria-hidden />
+          {atLimit ? `Attachment limit reached (${max})` : 'Attach images'}
+        </DropdownMenuItem>
+        {voice && (
+          <DropdownMenuItem onSelect={voice} className="gap-2 text-sm">
+            <Mic className="size-4" aria-hidden />
+            Voice input
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

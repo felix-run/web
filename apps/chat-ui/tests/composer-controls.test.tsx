@@ -132,20 +132,33 @@ describe('the agent picker', () => {
 });
 
 /**
- * At 390px a long agent name's trigger painted over the microphone: the mic's
- * wrapper had `min-w-0` and shrank to 14px under its 32px button. The floor is
- * now the button's own width.
+ * Attach and dictate share one trigger, so the composer row rests at agent ·
+ * Thinking · background · Send. The trigger must never shrink: at 390px a long
+ * agent name's trigger once painted over a 32px control beside it whose wrapper
+ * had `min-w-0`.
  */
-describe('the microphone', () => {
-  it('keeps a floor the width of its button', () => {
+describe('the add menu', () => {
+  it('offers attach and voice behind one trigger that never gives way', async () => {
     class FakeRecognition {}
     vi.stubGlobal('SpeechRecognition', FakeRecognition);
     vi.stubGlobal('webkitSpeechRecognition', FakeRecognition);
     mount();
-    const mic = screen.getByRole('button', { name: 'Start voice input' });
-    const wrapper = mic.parentElement as HTMLElement;
-    expect(wrapper.className.split(/\s+/)).toContain('min-w-8');
-    expect(wrapper.className.split(/\s+/)).not.toContain('min-w-0');
+    expect(screen.queryByRole('button', { name: 'Start voice input' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Attach images' })).toBeNull();
+    const trigger = screen.getByRole('button', { name: 'Add to message' });
+    expect(trigger.className.split(/\s+/)).toContain('shrink-0');
+    await userEvent.click(trigger);
+    expect(await screen.findByRole('menuitem', { name: 'Attach images' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Voice input' })).toBeTruthy();
+  });
+
+  it('leaves voice out where the browser has no speech recognition', async () => {
+    vi.stubGlobal('SpeechRecognition', undefined);
+    vi.stubGlobal('webkitSpeechRecognition', undefined);
+    mount();
+    await userEvent.click(screen.getByRole('button', { name: 'Add to message' }));
+    expect(await screen.findByRole('menuitem', { name: 'Attach images' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Voice input' })).toBeNull();
   });
 });
 

@@ -197,12 +197,14 @@ export function AppShell() {
   } | null>(null);
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
-  // Workspace open by default only when there are prior threads; instrument off
-  // so chat owns the first viewport. What is persisted is the *inline*
-  // preference — a drawer at a narrow width starts closed and is never written
-  // down; `useRails` says why.
+  // Workspace open by default wherever it fits inline: it is the subject (the
+  // folder, and the only door to other threads), and it used to open only once a
+  // profile had threads, so a first visit started with the subject hidden.
+  // Instrument off so the conversation owns the rest. What is persisted is the
+  // *inline* preference — a drawer at a narrow width starts closed and is never
+  // written down; `useRails` says why.
   const { historyOpen, setHistoryOpen, inspectorOpen, setInspectorOpen, revealInspector } =
-    useRails(() => listThreads().length > 0);
+    useRails();
   const [verbose, setVerbose] = useState(() => readBool(VERBOSE_KEY, false));
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { theme, resolved, setTheme } = useTheme();
@@ -1222,17 +1224,23 @@ export function AppShell() {
         ]);
         const userMessage: ChatMessage = { role: 'user', content: next };
         if (original.attachments?.length) userMessage.attachments = original.attachments;
-        void streamInto([userMessage], assistantId);
+        // The toast waits for the run. Restore cannot move the leaf under a live
+        // run, and a toast raised at send time had expired — taking its only
+        // way back with it — before any reply longer than a few seconds landed.
+        await streamInto([userMessage], assistantId);
+        if (threadIdRef.current !== threadId) return;
 
         toast.message(
           'Edited. The original and its replies are kept on another branch.',
           previousLeaf
             ? {
+                duration: 10_000,
                 action: {
                   label: 'Restore original',
                   onClick: () => {
-                    // Moving the leaf under a live run would graft its reply onto
-                    // the wrong branch, so this waits for the run to finish.
+                    // A message sent since the toast opened is a live run again, and
+                    // moving the leaf under it would graft its reply onto the wrong
+                    // branch.
                     if (engine.state.streaming) {
                       toast.message('Wait for this run to finish, then rewind.');
                       return;
@@ -1363,8 +1371,6 @@ export function AppShell() {
     skills,
     pending,
     queueLength: pendingQueue.length,
-    approvalQueue: pendingQueue,
-    bannerOwned,
     tenantApprovals,
     runClock,
     onDecide,
@@ -1779,6 +1785,7 @@ export function AppShell() {
         handled={bannerOwned}
         threadId={threadId}
         threads={threads}
+        reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}
       />
 
       {/*
