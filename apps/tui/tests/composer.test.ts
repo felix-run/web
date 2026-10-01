@@ -114,6 +114,46 @@ describe('the composer keys', () => {
   });
 
   /**
+   * A shell leaves the cursor at the end of a recalled line, so what you type
+   * next amends it. `setText` puts the cursor at the start, and the prefill for
+   * `/start` sent "/manifest routerRead the workspace…" before that was fixed;
+   * recall goes through the same write.
+   */
+  it('leaves the cursor at the end of a recalled prompt, so typing amends it', async () => {
+    const ui = await composer({ history: ['the last thing'] });
+    try {
+      ui.keys.pressArrow('up');
+      await ui.settle();
+      await ui.keys.typeText(' again');
+      await ui.settle();
+      ui.keys.pressEnter();
+      await ui.until(() => ui.submitted.length > 0);
+      expect(ui.submitted).toEqual(['the last thing again']);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('returns to the draft on down with the cursor after it, not before', async () => {
+    const ui = await composer({ history: ['the last thing'] });
+    try {
+      await ui.keys.typeText('my draft');
+      await ui.settle();
+      ui.keys.pressArrow('up');
+      await ui.settle();
+      ui.keys.pressArrow('down');
+      await ui.settle();
+      await ui.keys.typeText('!');
+      await ui.settle();
+      ui.keys.pressEnter();
+      await ui.until(() => ui.submitted.length > 0);
+      expect(ui.submitted).toEqual(['my draft!']);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  /**
    * Once there is a second line, the cursor has the better claim on ↑ than the
    * history does — there is somewhere to move to.
    */
