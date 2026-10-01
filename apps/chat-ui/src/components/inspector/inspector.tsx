@@ -2,11 +2,9 @@ import { describeGate, formatElapsed, relativeTime } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
-import { ClipboardListIcon, GaugeIcon, ListTodoIcon, XIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
-import { decideApproval, deletePlan, getToolMetrics, listApprovals, listPlans } from '@/api';
-import { ApprovalDecision } from '@/components/approval/approval-decision';
+import { GaugeIcon, ListTodoIcon, XIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { deletePlan, getToolMetrics, listPlans } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import {
   PanelModeProvider,
@@ -15,41 +13,48 @@ import {
   SectionBoundary,
 } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
+import { callTarget } from '@/lib/call-target';
 import { cn } from '@/lib/utils';
 import { type ShellValue, useShell } from '@/shell-context';
 import type { Plan, Turn } from '@/types';
 
-type SectionId = 'approvals' | 'plans' | 'metrics';
+type SectionId = 'plans' | 'metrics';
 
 /**
- * Right-hand inspector: a readout of **this run**, then the harness's approvals,
- * plans and tool metrics.
+ * Right-hand inspector: a readout of **this run**, then the harness's plans and
+ * tool metrics.
  *
  * Two scopes, and each has its own heading. The readout is run-scoped: it is
  * derived from the engine the shell already holds, so it costs no request, and
- * "This run" heads it. The three tabs are not: `/approvals`, `/plans` and
- * `/audit/metrics` take no thread filter, so each lists the whole tenant. They
- * used to sit under "This run" too, each with an "All threads" line underneath —
- * a heading claiming one scope over three bodies disclaiming it. Now they sit
- * under a sub-heading of their own, "Harness · all threads", and the per-tab line
- * is left saying only what the heading does not: the window a tab covers.
+ * "This run" heads it. The tabs are not: `/plans` and `/audit/metrics` take no
+ * thread filter, so each lists the whole tenant, under a sub-heading of their
+ * own, "Harness · all threads", and the per-tab line is left saying only what
+ * the heading does not: the window a tab covers.
+ *
+ * **There is no Approvals tab.** There was one, and it drew a second live
+ * decision card for every approval the attention line was already offering —
+ * two Approve buttons and two countdowns, a second apart, for one call. The
+ * attention line is the tenant-wide approvals surface: always on screen, polled
+ * whether or not anyone is looking, on both addresses. A rail that is closed
+ * half the time cannot be that, and a copy of it is a second thing to decide
+ * from. The run's own approval is in the readout's state and in the banner.
  *
  * It used to hold eight sections, which is what made it an accordion — six tab
  * destinations did not fit the rail's 22rem. The other five were tenant-durable
  * (activity, usage, memory, corpus, skills): they outlive any one run and answer
  * questions about the harness rather than about what is on screen, so they are
- * `/harness` now and this is the three that actually belong beside a transcript.
+ * `/harness` now. Approvals went to the attention line (above), which leaves the
+ * two that belong beside a transcript.
  *
  * Only the visible tab fetches. The count that must be true before anyone looks
  * is the attention line's, which polls on its own.
  */
 /**
- * The three sections, declared once so the strip and the panel cannot disagree.
+ * The sections, declared once so the strip and the panel cannot disagree.
  * `window` is what the tab covers beyond "every thread" — the heading already
  * says that — and is absent where the list is simply everything pending.
  */
 const SECTIONS = [
-  { id: 'approvals', label: 'Approvals' },
   { id: 'plans', label: 'Plans', window: 'Newest 25' },
   { id: 'metrics', label: 'Tools', window: 'Last 60 minutes' },
 ] as const satisfies readonly { id: SectionId; label: string; window?: string }[];
@@ -64,7 +69,7 @@ export function Inspector({
   /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
-  const [active, setActive] = useState<SectionId>('approvals');
+  const [active, setActive] = useState<SectionId>('plans');
 
   return (
     <aside
@@ -102,7 +107,7 @@ export function Inspector({
           <span className="text-xs font-normal text-muted-foreground">· all threads</span>
         </h3>
         {/*
-        Tabs, not a stacked accordion. Three sections fit a 22rem strip where the
+        Tabs, not a stacked accordion. Two sections fit a 22rem strip where the
         original eight did not, and one on screen is one poll rather than one per
         expanded section.
 
@@ -145,20 +150,12 @@ export function Inspector({
                   inactive `TabsContent` renders its element for the ARIA
                   association but **not its children** — measured: inactive panels
                   hold zero child nodes, and nine seconds on Plans issued three
-                  `/plans` requests and none to `/approvals` or the tool metrics.
-                  That is the one-section-one-poll economy tabs were chosen for,
-                  and `forceMount` would silently undo it by mounting all three.
+                  `/plans` requests and none to the tool metrics. That is the
+                  one-section-one-poll economy tabs were chosen for, and
+                  `forceMount` would silently undo it by mounting both.
                 */}
                   <PanelModeProvider chrome="bare">
                     <SectionBoundary title={section.label}>
-                      {section.id === 'approvals' && (
-                        <ApprovalsSection
-                          enabled={open}
-                          open
-                          onToggle={() => {}}
-                          onPending={() => {}}
-                        />
-                      )}
                       {section.id === 'plans' && (
                         <PlansSection enabled={open} open onToggle={() => {}} />
                       )}
@@ -251,9 +248,6 @@ export function threadTokens(turns: Turn[]): {
   return { input, output, reported, missing, floor: reported > 0 && missing > 0 };
 }
 
-/** Argument keys that name what a call acts on, for tools with no sentence of their own. */
-const TARGET_KEYS = ['path', 'file_path', 'url', 'query', 'target', 'command', 'name'] as const;
-
 function lastAssistant(turns: Turn[]): Turn | undefined {
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
@@ -264,12 +258,7 @@ function lastAssistant(turns: Turn[]): Turn | undefined {
 
 /**
  * The call still open on the newest assistant turn — the one the run is inside
- * right now — as its name plus what it acts on.
- *
- * `describeGate` gives the three client tools their sentence (it is
- * `summarizeToolArgs` without the pretty-printed JSON fallback, which is right
- * for a card and wrong for one line). Any other tool gets the first argument
- * that names a target, and nothing when none does.
+ * right now — as its name plus what it acts on (`callTarget`).
  */
 export function inFlightTool(turns: Turn[]): { name: string; target: string | null } | null {
   const open = lastAssistant(turns)
@@ -278,10 +267,7 @@ export function inFlightTool(turns: Turn[]): { name: string; target: string | nu
   if (!open) return null;
   const args =
     open.input && typeof open.input === 'object' ? (open.input as Record<string, unknown>) : {};
-  const gate = describeGate(open.name, args);
-  if (gate !== open.name) return { name: open.name, target: gate };
-  const key = TARGET_KEYS.find((k) => typeof args[k] === 'string' && args[k] !== '');
-  return { name: open.name, target: key ? String(args[key]) : null };
+  return { name: open.name, target: callTarget(open.name, args) };
 }
 
 const nf = new Intl.NumberFormat();
@@ -463,111 +449,6 @@ function RunReadout() {
 // --- section shell ---
 
 // --- Activity ---
-
-// --- Approvals ---
-
-function ApprovalsSection({
-  enabled,
-  open,
-  onToggle,
-  onPending,
-}: {
-  enabled: boolean;
-  open: boolean;
-  onToggle: () => void;
-  onPending: () => void;
-}) {
-  const { data, error, loading, refresh } = usePoll(() => listApprovals('pending'), { enabled });
-  const count = data?.length ?? 0;
-  const { bannerOwned, approvalQueue, threadId, threads, tenantApprovals } = useShell();
-  const owned = new Set(bannerOwned);
-
-  // A gated run is stalled until someone answers, so the section opens itself rather
-  // than waiting to be found. Only on the transition into a pending state: re-opening
-  // while a count merely stays non-zero would fight anyone who deliberately collapsed it.
-  const hadPending = useRef(false);
-  useEffect(() => {
-    if (count > 0 && !hadPending.current) onPending();
-    hadPending.current = count > 0;
-  }, [count, onPending]);
-
-  // The in-flight guard, the toasts and the payload treatment all live in
-  // `ApprovalDecision` now, shared with the transcript banner.
-  async function decide(id: string, status: 'approved' | 'denied') {
-    await decideApproval(id, { status });
-    // The attention line reads the shell's poll, not this section's.
-    tenantApprovals.markDecided(id);
-    refresh();
-  }
-
-  return (
-    <Section
-      icon={<ClipboardListIcon className="size-3.5" />}
-      title="Approvals"
-      meta={count > 0 ? `${count} waiting` : data ? 'none' : undefined}
-      metaTone={count > 0 ? 'attention' : 'default'}
-      open={open}
-      onToggle={onToggle}
-    >
-      <SectionBody
-        onRetry={refresh}
-        doing="load pending approvals"
-        loading={loading && !data}
-        error={error}
-        empty={count === 0}
-        emptyText="Gated tool calls wait here until you approve or deny them."
-        status={
-          count > 0
-            ? `${count} pending ${count === 1 ? 'approval' : 'approvals'}`
-            : 'No pending approvals'
-        }
-      >
-        {/* The only carded surface in the panel. Everything else here is a readout;
-            this is the one thing that stops a run until a person acts on it. */}
-        <div className="space-y-2.5">
-          {data?.map((a) =>
-            owned.has(a.id) ? (
-              // Counted, not re-offered — the same rule as the attention line,
-              // from the same set. The banner came by frame, so it can show the
-              // write's before/after diff and the rule's reason; a `/approvals`
-              // row carries neither, and a second Approve button here would be
-              // the weaker of two for one call.
-              <p key={a.id} className="text-xs text-muted-foreground">
-                <span className="font-mono text-foreground">{a.tool_name}</span> · deciding in the
-                banner below the transcript
-              </p>
-            ) : (
-              <div key={a.id} className="space-y-1">
-                {a.thread_id && a.thread_id !== threadId ? (
-                  <p className="text-xs text-muted-foreground">
-                    Blocking{' '}
-                    <Link
-                      to={`/t/${a.thread_id}`}
-                      className="underline underline-offset-2 hover:text-foreground"
-                    >
-                      {threads.find((t) => t.id === a.thread_id)?.title ?? 'another thread'}
-                    </Link>
-                  </p>
-                ) : null}
-                <ApprovalDecision
-                  toolName={a.tool_name}
-                  args={(a.args ?? {}) as Record<string, unknown>}
-                  context={a.manifest_id}
-                  // The row carries the deadline; only a frame carries the
-                  // reason, so it is recovered from the engine's queue when this
-                  // tab saw one and left out when it did not.
-                  expiresAt={a.expires_at}
-                  reason={approvalQueue.find((q) => q.approvalId === a.id)?.reason}
-                  onDecide={(status) => decide(a.id, status)}
-                />
-              </div>
-            ),
-          )}
-        </div>
-      </SectionBody>
-    </Section>
-  );
-}
 
 // --- Plans ---
 

@@ -197,12 +197,14 @@ export function AppShell() {
   } | null>(null);
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
-  // Workspace open by default only when there are prior threads; instrument off
-  // so chat owns the first viewport. What is persisted is the *inline*
-  // preference — a drawer at a narrow width starts closed and is never written
-  // down; `useRails` says why.
+  // Workspace open by default wherever it fits inline: it is the subject (the
+  // folder, and the only door to other threads), and it used to open only once a
+  // profile had threads, so a first visit started with the subject hidden.
+  // Instrument off so the conversation owns the rest. What is persisted is the
+  // *inline* preference — a drawer at a narrow width starts closed and is never
+  // written down; `useRails` says why.
   const { historyOpen, setHistoryOpen, inspectorOpen, setInspectorOpen, revealInspector } =
-    useRails(() => listThreads().length > 0);
+    useRails();
   const [verbose, setVerbose] = useState(() => readBool(VERBOSE_KEY, false));
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { theme, resolved, setTheme } = useTheme();
@@ -1363,8 +1365,6 @@ export function AppShell() {
     skills,
     pending,
     queueLength: pendingQueue.length,
-    approvalQueue: pendingQueue,
-    bannerOwned,
     tenantApprovals,
     runClock,
     onDecide,
@@ -1779,6 +1779,7 @@ export function AppShell() {
         handled={bannerOwned}
         threadId={threadId}
         threads={threads}
+        reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}
       />
 
       {/*

@@ -1,4 +1,10 @@
-import { relativeTime, type ThreadMeta } from '@felix/client';
+import {
+  type ApprovalRequest,
+  formatCountdown,
+  msUntilDecision,
+  relativeTime,
+  type ThreadMeta,
+} from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { ChevronRightIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -6,6 +12,7 @@ import { Link } from 'react-router';
 import { decideApproval } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
+import { callTarget } from '@/lib/call-target';
 import { ariaShortcut, isMacPlatform } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
@@ -35,7 +42,25 @@ import { cn } from '@/lib/utils';
  * answer is, keeping the last known count if there was one. It said all-clear
  * for as long as the harness was returning 429 on this route — the one failure a
  * line whose whole promise is "true without being looked at" cannot have.
+ *
+ * **It is the one approvals surface outside the transcript.** The run instrument
+ * used to carry an Approvals tab that drew the same rows again, so one call had
+ * two live cards and two countdowns. That tab is gone; this line is where a
+ * tenant-wide approval is decided or routed from.
  */
+
+/**
+ * Tools whose card needs the target's current contents to be decided honestly.
+ *
+ * A `/approvals` row carries the call's arguments and nothing about the file
+ * they replace, so a `write_file` from another thread can only be shown here
+ * without its before/after — the banner on its own thread draws both, because
+ * that approval reached it by frame with `before` read at request time. The
+ * line routes those rather than offering a weaker decision. An `edit_file`'s
+ * arguments *are* the change (old text and new), and a shell command's are the
+ * whole of it, so those stay decidable in place.
+ */
+const NEEDS_ITS_THREAD = new Set(['write_file', 'client · write_file']);
 
 const OPEN_KEY = 'felix.attentionOpen';
 
@@ -45,6 +70,7 @@ export function AttentionLine({
   handled,
   threadId,
   threads,
+  reasons = {},
 }: {
   /** The shell's tenant-wide `/approvals` poll — see `usePendingApprovals`. */
   approvals: PendingApprovals;
@@ -64,6 +90,12 @@ export function AttentionLine({
   threadId: string;
   /** The thread index, for naming an approval's thread rather than showing an id. */
   threads: ThreadMeta[];
+  /**
+   * The rule's reason for an approval this tab saw arrive by frame, keyed by id.
+   * The `/approvals` row carries none, so it is recovered here when it exists
+   * and left out when it does not.
+   */
+  reasons?: Record<string, string | undefined>;
 }) {
   const { pending, error, lastOkAt, failures, refresh, markDecided } = approvals;
   const [open, setOpen] = useState(() => {
@@ -97,14 +129,20 @@ export function AttentionLine({
    */
   const allOnThisThread = count > 0 && pending.every((a) => a.thread_id === threadId);
 
-  // Open itself when something starts waiting, and only on that transition —
-  // re-opening while a count merely stays non-zero would fight an operator who
-  // deliberately collapsed it. Same rule the inspector's approvals section uses.
-  const hadReviewable = useRef(false);
+  /**
+   * Open itself only for a call on **this** thread, and only on the transition
+   * into one. Opening for any new row meant a fresh thread opened onto another
+   * thread's write, a card the height of the composer between the operator and
+   * the work they came to start; the summary already says it is waiting, and the
+   * Review button is one key away. Re-opening while a count merely stays
+   * non-zero would fight an operator who deliberately collapsed it.
+   */
+  const hereCount = reviewable.filter((a) => a.thread_id === threadId).length;
+  const hadHere = useRef(false);
   useEffect(() => {
-    if (reviewable.length > 0 && !hadReviewable.current) setOpen(true);
-    hadReviewable.current = reviewable.length > 0;
-  }, [reviewable.length]);
+    if (hereCount > 0 && !hadHere.current) setOpen(true);
+    hadHere.current = hereCount > 0;
+  }, [hereCount]);
 
   const waiting = count > 0;
   /**
@@ -238,58 +276,177 @@ export function AttentionLine({
       </div>
 
       {reviewable.length > 0 && open && (
-        <div className="max-h-[40vh] space-y-2.5 overflow-y-auto border-t border-border/40 px-3 py-2.5">
-          {/*
-            The same card the transcript banner and the inspector use, rather than
-            a third, smaller decision surface. Approving is not approving one
-            call — it grants every byte-identical call to that tool until the
-            deadline — and that is a sentence the card already says. A compact
-            triage row that omitted it would be the most dangerous control here.
-
-            A row names its originating thread (`thread_id`, since
-            felix-run/felix@f679310), so one blocking another thread links
-            there. A row with none is unattributed rather than "here", which is
-            why the summary keeps "across the harness" unless every row is
-            provably this thread.
-          */}
+        // Held to the transcript's reading measure. Full-bleed, a grant sentence
+        // ran ~580 characters to a line on a wide display and Approve was a
+        // 600px bar; the queue is read, then decided, and both want a measure.
+        <ul className="max-h-[40vh] max-w-3xl divide-y divide-border/40 overflow-y-auto border-t border-border/40">
           {reviewable.map((a) => (
-            // Focusable but out of the tab order: the keyboard layer lands on
-            // the card rather than on Approve, for the reason the banner gives.
-            <div
+            <QueueRow
               key={a.id}
-              tabIndex={-1}
-              role="group"
-              aria-label={`Approval waiting: ${a.tool_name}`}
-              data-approval-focus="queue"
-              className="space-y-1 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              {a.thread_id && a.thread_id !== threadId ? (
-                <p className="text-xs text-muted-foreground">
-                  Blocking{' '}
-                  <Link
-                    to={`/t/${a.thread_id}`}
-                    className="underline underline-offset-2 hover:text-foreground"
-                  >
-                    {threads.find((t) => t.id === a.thread_id)?.title ?? 'another thread'}
-                  </Link>
-                </p>
-              ) : null}
-              <ApprovalDecision
-                key={a.id}
-                toolName={a.tool_name}
-                args={(a.args ?? {}) as Record<string, unknown>}
-                context={a.manifest_id}
-                expiresAt={a.expires_at}
-                onDecide={async (status) => {
-                  await decideApproval(a.id, { status });
-                  markDecided(a.id);
-                  refresh();
-                }}
-              />
-            </div>
+              approval={a}
+              threadId={threadId}
+              threads={threads}
+              reason={reasons[a.id]}
+              onDecided={() => {
+                markDecided(a.id);
+                refresh();
+              }}
+            />
           ))}
-        </div>
+        </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * One waiting call, as a line until someone asks for the card.
+ *
+ * The line says what is waiting, on what, for which thread and how long is
+ * left; the card is still the only place a decision is made, because approving
+ * grants every byte-identical call until the deadline and that is a sentence the
+ * card says and a line cannot. A call on this thread opens as its card. A call
+ * from another thread starts as its line, and a write from another thread never
+ * becomes a card here at all — it links to its thread, where the banner can draw
+ * what the write replaces (`NEEDS_ITS_THREAD`).
+ *
+ * One clock per call on screen: the line shows the countdown while it is
+ * collapsed and hands it to the card's chip when expanded.
+ */
+function QueueRow({
+  approval: a,
+  threadId,
+  threads,
+  reason,
+  onDecided,
+}: {
+  approval: ApprovalRequest;
+  threadId: string;
+  threads: ThreadMeta[];
+  reason?: string;
+  onDecided: () => void;
+}) {
+  const elsewhere = Boolean(a.thread_id) && a.thread_id !== threadId;
+  const [expanded, setExpanded] = useState(!elsewhere);
+  const args = (a.args ?? {}) as Record<string, unknown>;
+  const target = callTarget(a.tool_name, args);
+  const threadTitle = elsewhere
+    ? (threads.find((t) => t.id === a.thread_id)?.title ?? 'another thread')
+    : null;
+  // An unattributed write has nowhere to route to, so it stays decidable here:
+  // refusing to offer it would leave a call nobody can answer from this tab.
+  const route = elsewhere && NEEDS_ITS_THREAD.has(a.tool_name);
+  const bodyId = `queue-${a.id}`;
+
+  return (
+    // Focusable but out of the tab order: the keyboard layer lands on the row
+    // rather than on a button, for the reason the banner gives.
+    <li
+      tabIndex={-1}
+      role="group"
+      aria-label={`Approval waiting: ${a.tool_name}`}
+      data-approval-focus="queue"
+      className="px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+    >
+      <div className="flex min-w-0 items-center gap-2 text-xs">
+        <span className="shrink-0 font-mono text-foreground">{a.tool_name}</span>
+        {target && (
+          <span className="min-w-0 truncate font-mono text-muted-foreground" title={target}>
+            {target}
+          </span>
+        )}
+        {threadTitle && (
+          <span className="hidden min-w-0 shrink truncate text-muted-foreground sm:inline">
+            · {threadTitle}
+          </span>
+        )}
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {!expanded && <RowCountdown expiresAt={a.expires_at} />}
+          {route ? (
+            <Button asChild variant="outline" size="sm" className="h-6 px-2 text-xs">
+              <Link to={`/t/${a.thread_id}`}>
+                Open thread to review
+                <span className="sr-only">: {threadTitle}</span>
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 px-2 text-xs"
+              aria-expanded={expanded}
+              aria-controls={bodyId}
+              onClick={() => setExpanded((e) => !e)}
+            >
+              <ChevronRightIcon
+                className={cn(
+                  'size-3.5 transition-transform duration-150',
+                  expanded && 'rotate-90',
+                )}
+              />
+              {expanded ? 'Collapse' : 'Review'}
+            </Button>
+          )}
+        </span>
+      </div>
+      {route && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          A write is decided on its own thread, where the card can show what it replaces.
+        </p>
+      )}
+      {!route && expanded && (
+        <div id={bodyId} className="mt-2 space-y-1">
+          {threadTitle && (
+            <p className="text-xs text-muted-foreground">
+              Blocking{' '}
+              <Link
+                to={`/t/${a.thread_id}`}
+                className="font-medium text-foreground underline underline-offset-2"
+              >
+                {threadTitle}
+              </Link>
+            </p>
+          )}
+          <ApprovalDecision
+            toolName={a.tool_name}
+            args={args}
+            context={a.manifest_id}
+            expiresAt={a.expires_at}
+            reason={reason}
+            onDecide={async (status) => {
+              await decideApproval(a.id, { status });
+              onDecided();
+            }}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The collapsed row's deadline: the countdown alone, in the card chip's colours.
+ * Silent, like the chip: a clock that speaks every second is noise. The card's
+ * own status line announces the last minute and the lapse once it is open; a
+ * lapsed row is dropped by `listApprovals`, so this never has to say "denied".
+ */
+function RowCountdown({ expiresAt }: { expiresAt: number | null }) {
+  const [left, setLeft] = useState(() => msUntilDecision({ expiresAt }));
+  useEffect(() => {
+    setLeft(msUntilDecision({ expiresAt }));
+    if (expiresAt == null) return;
+    const timer = setInterval(() => setLeft(msUntilDecision({ expiresAt })), 1_000);
+    return () => clearInterval(timer);
+  }, [expiresAt]);
+  if (left === null) return null;
+  const countdown = formatCountdown(left);
+  return (
+    <span
+      role="timer"
+      aria-label={`Auto-denies in ${countdown}`}
+      className="rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-mono font-medium tabular-nums text-state-blocked"
+    >
+      {countdown}
+    </span>
   );
 }

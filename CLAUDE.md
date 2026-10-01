@@ -297,7 +297,10 @@ The instrument is **tabs**, not the old accordion: one section on screen is one 
 carries no counts, because populating them would mean every section fetching for a label nobody is
 reading — and the count that matters is in the attention line, tenant-wide. That is also why the
 inspector's old "approvals always polls while the panel is open" exception is gone: the attention
-line took that job.
+line took that job. **And so is the Approvals tab.** It drew a second live `ApprovalDecision` for
+every row the attention line was already offering — two Approve buttons and two countdowns a second
+apart for one call — so the instrument is Plans and Tools, and decides nothing.
+`tests/inspector-run.test.tsx` pins that it neither renders a decision nor asks `/approvals`.
 
 **`Touched on this thread` is a workspace tool's path argument, and nothing else.** The zone derives
 it from `Turn.tools[]` via `collectTouchedPaths` in `@felix/cowork-client`: `path` for the harness's
@@ -314,7 +317,7 @@ the transcript, which is the bigger half of it.
 
 `/harness` is the second address, and the split is by lifetime.** The inspector's eight sections
 divided into the three that describe the run on screen — approvals, plans, tool metrics, which stayed
-in the right rail — and the five that outlive every run: memory, corpus, skills, and what the harness
+in the right rail (approvals have since moved to the attention line alone) — and the five that outlive every run: memory, corpus, skills, and what the harness
 did and what it cost. Those five are `/harness` pages now (`src/components/harness/`), joined by the
 four workbenches that used to be slide-over sheets behind the header's ellipsis. Those were never
 hard to find; they had no home, which is what an ellipsis menu means. `Section` grew a chrome mode
@@ -865,16 +868,28 @@ provably this thread, and without the phrase it reads as "on the thread you are 
 approval the transcript banner already owns but does not re-offer it — an approval that reached the
 banner came by frame, so the banner can draw the write's before/after diff, and a `/approvals` row
 carries no `before` to build one from. Deciding from the line would mean deciding with strictly less
-in front of you. The expanded queue reuses `ApprovalDecision`, the same card the banner and the
-inspector use, rather than a third and smaller decision surface: approving grants every
-byte-identical call until the deadline, and that sentence has to be wherever the decision is made.
+in front of you. The expanded queue is **one line per call** — tool, target, thread, a countdown —
+and a line opens into `ApprovalDecision`, the same card the banner uses, rather than a smaller
+decision surface: approving grants every byte-identical call until the deadline, and that
+sentence has to be wherever the decision is made. One clock per call: the line's countdown hands
+over to the card's chip when it opens. The queue is held to the transcript's measure (`max-w-3xl`),
+because full-bleed its grant sentence ran ~580 characters to a line.
+
+**A write from another thread is routed, not decided.** The same "strictly less" argument covers
+any `write_file` whose `thread_id` names another thread: its banner, on that thread, can draw what
+the write replaces and this line cannot, so its row offers **Open thread to review** and no
+Approve (`NEEDS_ITS_THREAD`). An edit's arguments are the change and a command's are the whole of
+it, so those stay decidable here; an *unattributed* write stays decidable too, because it has
+nowhere to route to. And the queue opens itself only for a call on **this** thread — opening for
+any new row put another thread's write between a fresh thread and the work it was opened for.
 The dedupe has a second half: the banner lets go of an approval the instant it is decided, while
 the line's list is up to a poll old, so for one tick the line used to open itself and offer
-Approve on a call already answered. Every decision this tab makes — banner, line, inspector —
+Approve on a call already answered. Every decision this tab makes — banner or line —
 calls `markDecided` on the shell's poll first, which drops the row and keeps a lagging poll from
 putting it back, for `DECIDED_GRACE_MS` or until the harness stops listing it; bounded because
 `create_pending` can reuse an id for a genuinely new request.
-`tests/attention-line.test.tsx` pins the hidden-tab poll, the phrase and the dedupe.
+`tests/attention-line.test.tsx` pins the hidden-tab poll, the phrase, the dedupe, the routing,
+the this-thread-only auto-open and the one clock.
 
 This was previously a second app (`apps/float`, removed 2026-08-23) that served the same operator at
 lower density. What it actually contributed was the constraint above — assume no one is looking —

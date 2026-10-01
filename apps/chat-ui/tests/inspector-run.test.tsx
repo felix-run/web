@@ -19,11 +19,10 @@ import { ShellProvider, type ShellValue } from '../src/shell-context';
  *
  * The readout above the tabs is derived from the shell alone, so it must state
  * the run's state in words (never colour alone), say so at rest, and never
- * present a partial token sum as the thread's total. And the Approvals tab is a
- * tenant-wide `/approvals` list, so it must not re-offer the approval the
- * transcript banner already owns — the banner came by frame and carries the diff
- * and the reason; a second Approve button here would be the weaker of two for
- * one call — while still passing the row's deadline to the cards it does draw.
+ * present a partial token sum as the thread's total. And it decides nothing: the
+ * Approvals tab it used to carry drew a second live card for every approval the
+ * attention line already offered, so one call had two Approve buttons and two
+ * countdowns. Approvals are the attention line's and the banner's alone.
  */
 
 const approval = (over: Record<string, unknown> = {}) => ({
@@ -67,8 +66,6 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     skills: null,
     pending: null,
     queueLength: 0,
-    approvalQueue: [],
-    bannerOwned: [],
     runClock: { startedAt: null, endedAt: null },
     uiPrompt: null,
     threadId: 'here',
@@ -102,37 +99,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('the approvals tab', () => {
-  it('points at the banner for an approval the banner owns instead of re-offering it', async () => {
-    stub([approval({ id: 'a1' }), approval({ id: 'a2', tool_name: 'local_shell', args: {} })]);
-    mount({ bannerOwned: ['a1'] });
-
-    await screen.findByRole('button', { name: 'Approve local_shell' });
-    expect(screen.queryByRole('button', { name: 'Approve write_file' })).toBeNull();
-    expect(screen.getByText(/deciding in the banner below the transcript/)).toBeTruthy();
-    // One card, not two: the owned row costs a line, not a decision surface.
-    expect(screen.getAllByRole('button', { name: 'Deny' })).toHaveLength(1);
-  });
-
-  it("passes the row's deadline, and the frame's reason when this tab saw one", async () => {
-    stub([approval({ id: 'a2', expires_at: Date.now() + 90_000 })]);
-    mount({
-      approvalQueue: [
-        {
-          approvalId: 'a2',
-          toolName: 'write_file',
-          args: { path: 'notes.md' },
-          reason: 'Confirm writes to the workspace',
-        },
-      ],
-    });
-
-    await screen.findByRole('button', { name: 'Approve write_file' });
-    // What is pinned is that the deadline reaches the card, not how the card words it:
-    // the card's own tests own the copy, and it moved from the footer to a header chip
-    // that splits the countdown into its own element — so read the text, not a node.
-    expect(document.body.textContent).toMatch(/(Denied automatically|Auto-denies) in 1:(29|30)/);
-    expect(screen.getByText('Confirm writes to the workspace')).toBeTruthy();
+describe('the instrument and approvals', () => {
+  it('offers no decision, and asks the harness for none, even with a call waiting', async () => {
+    const fetch = stub([approval()]);
+    mount();
+    // Let any tab that mounted on open issue its first request.
+    await screen.findByRole('tab', { name: 'Plans' });
+    expect(screen.queryByRole('tab', { name: 'Approvals' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Approve/ })).toBeNull();
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('/approvals'))).toBe(false);
   });
 
   /**

@@ -59,8 +59,6 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     skills: null,
     pending: null,
     queueLength: 0,
-    approvalQueue: [],
-    bannerOwned: [],
     tenantApprovals: {
       pending: [],
       error: null,
@@ -254,7 +252,7 @@ describe('the run instrument', () => {
     );
 
     const tabs = await screen.findAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Approvals', 'Plans', 'Tools']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Plans', 'Tools']);
 
     for (const tab of tabs) {
       const id = tab.getAttribute('aria-controls');
@@ -283,10 +281,8 @@ describe('the run instrument', () => {
       </TooltipProvider>,
     );
 
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Approvals' })).toBeTruthy());
-    expect(screen.getByRole('tab', { name: 'Approvals' }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Plans' })).toBeTruthy());
+    expect(screen.getByRole('tab', { name: 'Plans' }).getAttribute('aria-selected')).toBe('true');
 
     // An inactive panel renders its element for the association and *not* its
     // children — which is the poll economy, not a rendering detail.
@@ -295,14 +291,12 @@ describe('the run instrument', () => {
     for (const panel of inactive) expect(panel.childElementCount).toBe(0);
 
     await act(async () => {
-      await userEvent.click(screen.getByRole('tab', { name: 'Plans' }));
+      await userEvent.click(screen.getByRole('tab', { name: 'Tools' }));
     });
     await waitFor(() =>
-      expect(screen.getByRole('tab', { name: 'Plans' }).getAttribute('aria-selected')).toBe('true'),
+      expect(screen.getByRole('tab', { name: 'Tools' }).getAttribute('aria-selected')).toBe('true'),
     );
-    expect(screen.getByRole('tab', { name: 'Approvals' }).getAttribute('aria-selected')).toBe(
-      'false',
-    );
+    expect(screen.getByRole('tab', { name: 'Plans' }).getAttribute('aria-selected')).toBe('false');
   });
 });
 
