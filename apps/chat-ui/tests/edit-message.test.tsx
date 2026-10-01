@@ -60,8 +60,10 @@ function sse(frames: unknown[]) {
   });
 }
 
-function stubFetch(stream: () => Response | Promise<Response> = () =>
-  sse([{ event: 'text_delta', data: { delta: 'answer to the edit' } }])) {
+function stubFetch(
+  stream: () => Response | Promise<Response> = () =>
+    sse([{ event: 'text_delta', data: { delta: 'answer to the edit' } }]),
+) {
   const fn = vi.fn(async (input: unknown, _init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/chat/stream')) return stream();

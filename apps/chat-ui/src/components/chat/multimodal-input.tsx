@@ -45,8 +45,13 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { toastProblem } from '@/lib/error-toast';
-import { ariaShortcut, isMacPlatform, type ShortcutAction, shortcutKeys } from '@/lib/shortcuts';
-import { isTypingTarget } from '@/lib/shortcuts';
+import {
+  ariaShortcut,
+  isMacPlatform,
+  isTypingTarget,
+  type ShortcutAction,
+  shortcutKeys,
+} from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 import { PaperclipIcon, StopIcon } from './icons';
 import { PreviewAttachment } from './preview-attachment';
