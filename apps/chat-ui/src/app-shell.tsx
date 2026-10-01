@@ -104,7 +104,7 @@ const THINKING_LEVELS: ThinkingLevel[] = [
   'xhigh',
   'max',
 ];
-/** The header menu's View → Theme choices, in the order the radio group lists them. */
+/** The header menu's Theme choices, in the order the radio group lists them. */
 const THEME_OPTIONS: ReadonlyArray<{ value: Theme; label: string; Icon: typeof SunIcon }> = [
   { value: 'light', label: 'Light', Icon: SunIcon },
   { value: 'dark', label: 'Dark', Icon: MoonIcon },
@@ -1344,14 +1344,49 @@ export function AppShell() {
               so there was no top-level heading naming the application for anyone
               navigating by heading. */}
           <h1 className="truncate text-base font-semibold uppercase tracking-wider">Felix</h1>
+          {/* This thread's run, in one slot that is the same on both addresses.
+              It used to ride the Chat door on `/harness` only, so `/t` said
+              nothing in the header and the two addresses disagreed about where
+              to look. Two words and nothing else — waiting on a person, or
+              working — because a copy with its own idea of which finer phases
+              were worth showing disagreed with the instrument's.
+
+              `blocked` outranks `running` and reads the same queue the tab title
+              does (`setPresence` above): a run waiting on an approval or a
+              question is not working, and "running" was the reason to stay on a
+              page while the run timed out behind it.
+
+              Not a live region. The attention line below is one, and already
+              announces both "Working" and a call waiting on you; a second region
+              saying the same change would make a screen reader say it twice.
+              The `sr-only` prefix is what keeps it from being mistaken for that
+              line when it is read in place: that line is tenant-wide, this is
+              the thread on screen. */}
+          {runBlocked ? (
+            <span
+              data-slot="run-state"
+              title="This thread's run is waiting on you"
+              className="flex shrink-0 items-center gap-1 text-xs text-state-blocked"
+            >
+              <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+              <span className="sr-only">This thread's run: </span>
+              blocked
+            </span>
+          ) : streaming ? (
+            <span
+              data-slot="run-state"
+              title="This thread's run is in progress"
+              className="flex shrink-0 items-center gap-1 text-xs text-state-running"
+            >
+              <span aria-hidden className="size-1.5 rounded-full bg-state-running" />
+              <span className="sr-only">This thread's run: </span>
+              running
+            </span>
+          ) : null}
           {/* The modes this tab is in, at every width. They were `hidden` below
               `sm`, so on a phone, or at 200% zoom, verbose and a canary rollout
               were states with nothing on screen to say so. What narrows instead
               is the canary's version, which its `title` still carries.
-
-              The run's phase is not here: the instrument and the attention line
-              both say it, and a third copy with its own idea of which phases
-              were worth showing disagreed with the instrument's.
 
               Thinking is not here either. It is a parameter of the next send,
               so it sits in the composer beside the agent picker, where it is
@@ -1361,10 +1396,14 @@ export function AppShell() {
               {/* A button, because a badge that reports a mode should also be the
                   way out of it — otherwise the way out is two clicks into a menu
                   whose trigger says nothing about verbose. Focus moves to that
-                  menu's trigger, since the badge unmounts under the click. */}
+                  menu's trigger, since the badge unmounts under the click.
+
+                  No `aria-pressed`: the badge exists only while verbose is on,
+                  so it was permanently true — a toggle that could never read
+                  unpressed. The name says the state and the action instead. */}
               <button
                 type="button"
-                aria-pressed
+                aria-label="Verbose on, turn off"
                 title="Verbose tools is on. Click to turn it off."
                 onClick={() => {
                   setVerbose(false);
@@ -1408,8 +1447,9 @@ export function AppShell() {
           {/* Conversation controls stay with the conversation. On `/harness` —
               whose premise is what outlives every run — New chat, the instrument
               and the Session menu's run verbs act on a transcript that is not on
-              screen. The door back to Chat is the one way to them, and it says
-              when a run is live or waiting on someone. */}
+              screen. The door back to Chat is the one way to them. It is plain
+              navigation: the run's state is in the slot beside the wordmark,
+              which is there on both addresses. */}
           {!onHarness && (
             <Button
               variant="ghost"
@@ -1448,35 +1488,20 @@ export function AppShell() {
                   hiding the word too left the only route between the app's two
                   addresses with no accessible name on a phone. */}
               <span className="sr-only sm:not-sr-only">{onHarness ? 'Chat' : 'Harness'}</span>
-              {/* From `/harness` the transcript is off screen, and a run still in
-                  it is the one thing worth going back for. The attention line
-                  says "Working" too, but it is a sentence across the page; this
-                  is on the door itself. A word, not the dot alone, and not only
-                  at `sm` and up, since the word is the state.
-
-                  `blocked` outranks `running`, and reads the same queue the tab
-                  title does (`setPresence` above): a run waiting on an approval
-                  or a question is not working, and "running" on the door was the
-                  reason to stay on a page while the run timed out behind it. */}
-              {onHarness && runBlocked && (
-                <span className="flex items-center gap-1 text-xs font-normal text-state-blocked">
-                  <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
-                  blocked
-                </span>
-              )}
-              {onHarness && streaming && !runBlocked && (
-                <span className="flex items-center gap-1 text-xs font-normal text-state-running">
-                  <span aria-hidden className="size-1.5 rounded-full bg-state-running" />
-                  running
-                </span>
-              )}
             </Link>
           </Button>
           {onHarness ? (
             // The instrument toggle's slot, held empty for the same reason as the
-            // workspace toggle's on the left: without it the door and the menu
-            // moved on every switch between the two addresses.
-            <span aria-hidden data-slot="instrument-toggle-slot" className="size-8 shrink-0" />
+            // workspace toggle's on the left: without it the door moved on every
+            // switch between the two addresses. Only from `sm` up — below it the
+            // held 32px read as a hole in a header with no room to spare, and the
+            // cost of dropping it is the door shifting one slot; the menu is the
+            // cluster's right edge, so it does not move at any width.
+            <span
+              aria-hidden
+              data-slot="instrument-toggle-slot"
+              className="hidden size-8 shrink-0 sm:block"
+            />
           ) : (
             <Button
               variant={inspectorOpen ? 'secondary' : 'ghost'}
@@ -1490,35 +1515,78 @@ export function AppShell() {
               <PanelRightIcon className="size-4" />
             </Button>
           )}
-          {/* One menu, in one place on both addresses. On `/harness` it holds only
-              View → Theme, and is named for that: a menu called Session with no
-              session in it would be the "More tools" problem again. Theme is a
-              set-once preference, so it no longer holds a header slot of its own. */}
+          {/* One menu, in one place on both addresses. On `/t` it is named
+              Session and opens on Session — it used to open on a View group,
+              so the name promised one thing and the first row was another.
+              View follows, then Theme under a label of its own: the Verbose
+              checkbox and the theme radios ran together as one unlabelled list.
+
+              On `/harness` it holds Theme alone, so it is named **Theme** there
+              and its one label says the same word: a menu called Session with no
+              session in it would be the "More tools" problem again, and one
+              called View holding only Theme names a group it does not show.
+              Theme is a set-once preference, so it holds no header slot of its
+              own. */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 ref={menuTriggerRef}
                 variant="ghost"
                 size="icon-sm"
-                aria-label={onHarness ? 'View' : 'Session'}
-                title={onHarness ? 'View' : 'Session'}
+                aria-label={onHarness ? 'Theme' : 'Session'}
+                title={onHarness ? 'Theme' : 'Session'}
               >
                 <EllipsisIcon className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>View</DropdownMenuLabel>
+            {/* `w-64` so Copy thread id and its id sit on one row: at `w-56` the
+                row wrapped. */}
+            <DropdownMenuContent align="end" className="w-64">
               {!onHarness && (
-                <DropdownMenuCheckboxItem
-                  checked={verbose}
-                  onCheckedChange={(checked) => {
-                    setVerbose(checked);
-                    if (checked) setInspectorOpen(true);
-                  }}
-                >
-                  Verbose tools
-                </DropdownMenuCheckboxItem>
+                <>
+                  <DropdownMenuLabel>Session</DropdownMenuLabel>
+                  {/* Disabled on an empty thread: there is no run to continue, and
+                      the harness would start one from nothing. */}
+                  <DropdownMenuItem
+                    disabled={streaming || turns.length === 0}
+                    onSelect={() => continueRun()}
+                  >
+                    Continue run
+                  </DropdownMenuItem>
+                  {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
+                      `self-pr-` for every `self-pr-*` thread. The id is whole in
+                      `title`, in the accessible name, and on the clipboard.
+
+                      `middleTruncate` is the only cut. The span does not also
+                      `truncate`: a CSS ellipsis on top of a middle ellipsis would
+                      drop the end of the id, which is the half that differs. */}
+                  <DropdownMenuItem
+                    onSelect={copyThreadId}
+                    title={threadId}
+                    aria-label={`Copy thread id ${threadId}`}
+                    className="gap-1.5 whitespace-nowrap"
+                  >
+                    <CopyIcon className="size-4" aria-hidden />
+                    Copy thread id
+                    <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
+                      {middleTruncate(threadId, 14)}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>View</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={verbose}
+                    onCheckedChange={(checked) => {
+                      setVerbose(checked);
+                      if (checked) setInspectorOpen(true);
+                    }}
+                  >
+                    Verbose tools
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                </>
               )}
+              <DropdownMenuLabel>Theme</DropdownMenuLabel>
               {/* Radio items, so the checked theme is announced rather than marked
                   with a glyph only a sighted reader could see. */}
               <DropdownMenuRadioGroup
@@ -1535,35 +1603,6 @@ export function AppShell() {
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
-              {!onHarness && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Session</DropdownMenuLabel>
-                  {/* Disabled on an empty thread: there is no run to continue, and
-                      the harness would start one from nothing. */}
-                  <DropdownMenuItem
-                    disabled={streaming || turns.length === 0}
-                    onSelect={() => continueRun()}
-                  >
-                    Continue run
-                  </DropdownMenuItem>
-                  {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
-                      `self-pr-` for every `self-pr-*` thread. The id is whole in
-                      `title`, in the accessible name, and on the clipboard. */}
-                  <DropdownMenuItem
-                    onSelect={copyThreadId}
-                    title={threadId}
-                    aria-label={`Copy thread id ${threadId}`}
-                    className="gap-1.5"
-                  >
-                    <CopyIcon className="size-4" aria-hidden />
-                    Copy thread id
-                    <span className="ml-auto min-w-0 truncate font-mono text-xs text-muted-foreground">
-                      {middleTruncate(threadId, 14)}
-                    </span>
-                  </DropdownMenuItem>
-                </>
-              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -232,6 +232,36 @@ describe('the header names the thread', () => {
     expect(writeText).toHaveBeenCalledWith('self-pr-306');
   });
 
+  /**
+   * A menu named Session opened on a View group. Session's verbs come first now,
+   * then View, then Theme under a label of its own — the Verbose checkbox and the
+   * theme radios had run together as one unlabelled list.
+   */
+  it('opens on Session, then View, then a labelled Theme group', async () => {
+    mount('/t/self-pr-306');
+    await waitFor(() => expect(address).toBe('/t/self-pr-306'));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Session' }));
+    const menu = await screen.findByRole('menu');
+    const rows = Array.from(
+      menu.querySelectorAll<HTMLElement>(
+        '[data-slot="dropdown-menu-label"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+      ),
+    ).map((el) => el.getAttribute('aria-label') ?? el.textContent);
+    expect(rows).toEqual([
+      'Session',
+      'Continue run',
+      'Copy thread id self-pr-306',
+      'View',
+      'Verbose tools',
+      'Theme',
+      'Light',
+      'Dark',
+      'System',
+    ]);
+    await user.keyboard('{Escape}');
+  });
+
   it('offers nothing to continue on an empty thread', async () => {
     mount('/t/empty-thread');
     await waitFor(() => expect(address).toBe('/t/empty-thread'));

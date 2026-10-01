@@ -1,5 +1,13 @@
 import { Button } from '@felix/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@felix/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import equal from 'fast-deep-equal';
 import {
@@ -83,6 +91,23 @@ type Status = 'submitted' | 'streaming' | 'ready' | 'error';
  * from the name, so it is always a quotation of the harness.
  */
 export type ModelOption = { id: string; label: string; description?: string };
+
+/**
+ * What each thinking level does, one line apiece, said as mechanism: the level
+ * sets how much the model may reason before it answers, and more of that costs
+ * tokens and time. No numbers — what a level buys is the model's and
+ * differs between them, so any figure here would be true of one model and wrong
+ * for the next. A level the harness adds later gets no line rather than a guessed one.
+ */
+const THINKING_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  off: 'No extended reasoning before the reply.',
+  minimal: 'The smallest reasoning budget.',
+  low: 'A small reasoning budget.',
+  medium: 'A moderate reasoning budget: more tokens and latency.',
+  high: 'A large reasoning budget: more tokens and latency.',
+  xhigh: 'A larger reasoning budget: more tokens and latency.',
+  max: 'The largest reasoning budget: the most tokens and latency.',
+};
 
 export type MultimodalInputProps = {
   status: Status;
@@ -496,7 +521,10 @@ function MultimodalInputInner({
               )}
               {models && models.length > 0 && (
                 <InlinePicker
-                  ariaLabel="Choose agent"
+                  // The value in the name, as the Thinking picker does: "Choose
+                  // agent" hid which agent was chosen from anyone who could not
+                  // read the trigger, and the trigger now truncates a long name.
+                  ariaLabel={`Agent: ${(models.find((m) => m.id === modelId) ?? models[0])?.label ?? ''}`}
                   options={models}
                   value={modelId}
                   onChange={onModelChange}
@@ -520,7 +548,15 @@ function MultimodalInputInner({
                       </span>
                     </>
                   }
-                  options={thinkingLevels.map((level) => ({ id: level, label: level }))}
+                  options={thinkingLevels.map((level) => ({
+                    id: level,
+                    label: level,
+                    description: THINKING_DESCRIPTIONS[level],
+                  }))}
+                  // Said where the choice is made: picking a level mid-run does
+                  // not change the turn already being written.
+                  listLabel="Applies from the next turn"
+                  descriptionsAre="prose"
                   value={thinkingLevel}
                   onChange={onThinkingChange}
                   className="shrink-0"
@@ -634,7 +670,11 @@ function MicButton({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
+    // `min-w-8`, never `min-w-0`: with no floor the wrapper shrank to 14px
+    // under its 32px button at 390px, and a long agent name's trigger painted
+    // over the mic. The floor is the button, so the button always shows, while
+    // the interim transcript beside it can still give way to an ellipsis.
+    <div className="flex min-w-8 items-center gap-1.5">
       <Button
         type="button"
         variant="ghost"
@@ -666,7 +706,7 @@ function MicButton({
         )}
       </Button>
       {isListening && interim && (
-        <span className="max-w-[16ch] truncate text-xs text-recording/80 italic sm:max-w-[24ch]">
+        <span className="min-w-0 max-w-[16ch] truncate text-xs text-recording/80 italic sm:max-w-[24ch]">
           {interim}
         </span>
       )}
@@ -682,6 +722,8 @@ function InlinePicker({
   disabled,
   prefix,
   className,
+  listLabel,
+  descriptionsAre = 'quotation',
 }: {
   ariaLabel: string;
   options: ReadonlyArray<{ id: string; label: string; description?: string }>;
@@ -691,8 +733,35 @@ function InlinePicker({
   /** Drawn in the trigger before the value: what the value is a value *of*. */
   prefix?: ReactNode;
   className?: string;
+  /** A non-selectable line at the head of the list, naming what a choice does. */
+  listLabel?: string;
+  /**
+   * How an option's `description` is set. An agent's is the harness's own model
+   * id, quoted, so mono; a thinking level's is our sentence about it, so sans.
+   */
+  descriptionsAre?: 'quotation' | 'prose';
 }) {
   const current = options.find((o) => o.id === value) ?? options[0];
+  const items = options.map((o) => (
+    // `textValue` keeps typeahead on the name: the item text now carries the
+    // provider model too, and a match should not depend on it.
+    <SelectItem key={o.id} value={o.id} textValue={o.label} className="text-sm">
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-mono font-medium">{o.label}</span>
+        {o.description && (
+          <span
+            data-slot="option-description"
+            className={cn(
+              'text-xs wrap-anywhere text-muted-foreground',
+              descriptionsAre === 'quotation' && 'font-mono',
+            )}
+          >
+            {o.description}
+          </span>
+        )}
+      </span>
+    </SelectItem>
+  ));
   return (
     <Select
       value={current?.id}
@@ -720,25 +789,26 @@ function InlinePicker({
       >
         {prefix}
         {/* SelectValue's default would render the SelectItem's full children
-            (label + description) and bloat the toolbar — force just the label. */}
-        <SelectValue>{current?.label ?? ''}</SelectValue>
+            (label + description) and bloat the toolbar — force just the label.
+
+            The inner span is what ellipsises. The primitive styles the value
+            slot `line-clamp-1` *and* `flex`, and the second undoes the first,
+            so a long agent name was clipped mid-letter with no ellipsis. */}
+        <SelectValue className="min-w-0">
+          <span className="min-w-0 truncate">{current?.label ?? ''}</span>
+        </SelectValue>
       </SelectTrigger>
       <SelectContent align="start">
-        {options.map((o) => (
-          // `textValue` keeps typeahead on the name: the item text now carries the
-          // provider model too, and a match should not depend on it.
-          <SelectItem key={o.id} value={o.id} textValue={o.label} className="text-sm">
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="font-mono font-medium">{o.label}</span>
-              {/* Mono because it is a quotation: the harness's own model id. */}
-              {o.description && (
-                <span className="font-mono text-xs wrap-anywhere text-muted-foreground">
-                  {o.description}
-                </span>
-              )}
-            </span>
-          </SelectItem>
-        ))}
+        {listLabel ? (
+          // A label has to sit in a group for the listbox to own it; that is
+          // the primitive's rule, not a grouping this list otherwise needs.
+          <SelectGroup>
+            <SelectLabel>{listLabel}</SelectLabel>
+            {items}
+          </SelectGroup>
+        ) : (
+          items
+        )}
       </SelectContent>
     </Select>
   );
