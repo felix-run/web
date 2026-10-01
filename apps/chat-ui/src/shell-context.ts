@@ -4,7 +4,7 @@ import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
-import type { ImageAttachment } from '@/types';
+import type { ImageAttachment, ThinkingLevel } from '@/types';
 
 /**
  * Engine-sourced fields are derived rather than re-declared, so a change to the
@@ -102,6 +102,15 @@ export interface ShellValue {
    * the header reports, so leaving that panel is what refreshes it.
    */
   refreshCanary: () => void;
+  /**
+   * The thread's thinking level, which the composer's picker shows and sets.
+   * Session state on the harness, hydrated from the snapshot; `chooseThinking`
+   * writes it there and reads the thread at call time, so a composer holding a
+   * stale copy still sets it on the thread on screen.
+   */
+  thinkingLevel: ThinkingLevel;
+  thinkingLevels: readonly ThinkingLevel[];
+  chooseThinking(level: ThinkingLevel): void;
   verbose: boolean;
   harnessReachable: boolean;
   historyOpen: boolean;

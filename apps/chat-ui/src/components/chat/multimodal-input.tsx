@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import equal from 'fast-deep-equal';
 import {
   ArrowUp,
+  BrainIcon,
   Clock,
   CornerDownLeft,
   ImagePlus,
@@ -15,6 +16,7 @@ import {
 import {
   type KeyboardEvent,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -107,6 +109,14 @@ export type MultimodalInputProps = {
    * so a thread first seen from another browser has no known agent.
    */
   threadAgent?: string | null;
+  /**
+   * The thread's thinking level and the levels the harness takes. Pass all
+   * three to show the Thinking picker beside the agent picker; it sits here
+   * because, like the agent, it is a parameter of the next send.
+   */
+  thinkingLevels?: ReadonlyArray<string>;
+  thinkingLevel?: string;
+  onThinkingChange?: (level: string) => void;
   placeholder?: string;
   className?: string;
 };
@@ -132,6 +142,9 @@ function MultimodalInputInner({
   modelId,
   onModelChange,
   threadAgent,
+  thinkingLevels,
+  thinkingLevel,
+  onThinkingChange,
   placeholder = 'Message Felix…',
   className,
 }: MultimodalInputProps) {
@@ -488,6 +501,29 @@ function MultimodalInputInner({
                   value={modelId}
                   onChange={onModelChange}
                   disabled={isBusy}
+                  // The agent's name is the one that gives way at a narrow width;
+                  // the Thinking picker beside it is a few characters at most.
+                  className="min-w-0"
+                />
+              )}
+              {thinkingLevels && thinkingLevels.length > 0 && thinkingLevel && (
+                // Not disabled while a run is in flight, unlike the agent: the
+                // level is session state on the harness rather than a field of a
+                // send, so changing it mid-run is how the next turn gets it.
+                <InlinePicker
+                  ariaLabel={`Thinking: ${thinkingLevel}`}
+                  prefix={
+                    <>
+                      <BrainIcon className="size-3.5 text-muted-foreground" aria-hidden />
+                      <span className="hidden font-sans text-muted-foreground sm:inline">
+                        Thinking:
+                      </span>
+                    </>
+                  }
+                  options={thinkingLevels.map((level) => ({ id: level, label: level }))}
+                  value={thinkingLevel}
+                  onChange={onThinkingChange}
+                  className="shrink-0"
                 />
               )}
               <HelperHint text={helperText} />
@@ -644,12 +680,17 @@ function InlinePicker({
   value,
   onChange,
   disabled,
+  prefix,
+  className,
 }: {
   ariaLabel: string;
   options: ReadonlyArray<{ id: string; label: string; description?: string }>;
   value?: string;
   onChange?: (id: string) => void;
   disabled?: boolean;
+  /** Drawn in the trigger before the value: what the value is a value *of*. */
+  prefix?: ReactNode;
+  className?: string;
 }) {
   const current = options.find((o) => o.id === value) ?? options[0];
   return (
@@ -670,9 +711,14 @@ function InlinePicker({
           so the Provenance Rule sets it as a quotation. */}
       <SelectTrigger
         size="sm"
-        className="h-8 max-w-[10rem] gap-1.5 rounded-full border-border/40 bg-muted/40 px-2.5 font-mono text-xs text-foreground/80 shadow-none hover:bg-muted hover:text-foreground"
+        className={cn(
+          'h-8 max-w-[10rem] gap-1.5 rounded-full border-border/40 bg-muted/40 px-2.5 font-mono text-xs text-foreground/80 shadow-none hover:bg-muted hover:text-foreground',
+          className,
+        )}
         aria-label={ariaLabel}
+        title={ariaLabel}
       >
+        {prefix}
         {/* SelectValue's default would render the SelectItem's full children
             (label + description) and bloat the toolbar — force just the label. */}
         <SelectValue>{current?.label ?? ''}</SelectValue>
@@ -958,6 +1004,8 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.modelId !== next.modelId) return false;
   if (prev.models !== next.models) return false;
   if (prev.threadAgent !== next.threadAgent) return false;
+  if (prev.thinkingLevel !== next.thinkingLevel) return false;
+  if (prev.thinkingLevels !== next.thinkingLevels) return false;
   if (!equal(prev.className, next.className)) return false;
   return true;
 });

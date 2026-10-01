@@ -62,6 +62,9 @@ export function Workbench() {
     manifestEntries,
     threads,
     threadId,
+    thinkingLevel,
+    thinkingLevels,
+    chooseThinking,
     verbose,
     harnessReachable,
     historyOpen,
@@ -184,6 +187,14 @@ export function Workbench() {
               modelId={manifest}
               onModelChange={setManifest}
               threadAgent={threadAgent}
+              thinkingLevels={thinkingLevels}
+              thinkingLevel={thinkingLevel}
+              onThinkingChange={(level) => {
+                // Narrowed back from the picker's string rather than cast: the
+                // picker only offers these, and a value that is not one is dropped.
+                const known = thinkingLevels.find((l) => l === level);
+                if (known) chooseThinking(known);
+              }}
               placeholder={
                 streaming
                   ? 'Type to steer the run…'

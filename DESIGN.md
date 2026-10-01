@@ -317,6 +317,16 @@ a token because two unrelated files need the same number — the header sizes it
 the toast layer clears it by it. They previously agreed by coincidence, and did not. Rail
 headers match it at 48px, so the header's rule and each rail's rule line up.
 
+The header holds run *state*, not preferences. Left of centre, after the wordmark, the tab's
+modes at every width: **Verbose**, a `secondary` badge that is also the button turning it off,
+and the **canary** rollout as an outline badge in mono — the version is the harness's number
+quoted back, so it is never a filled pill, and below `sm` it narrows to the word with the version
+kept in its `title`. The run's phase is not repeated there; the instrument and the attention line
+carry it. On the right: New chat, the Harness door, the instrument toggle, and one ellipsis menu
+named **Session** — *View* (Verbose tools, then Theme as Light/Dark/System radio items) and
+*Session* (Continue run, disabled on an empty thread, and Copy thread id). Theme is a set-once
+preference and holds no header slot of its own; Thinking is in the composer.
+
 The workbench is **three zones**: the workspace (18rem), the transcript at reading width
 (`max-w-3xl`, turns 24px apart) with the composer anchored beneath it, and the run instrument
 (`clamp(22rem, 24vw, 30rem)` — the panel is what widens on a large display, not the
@@ -436,7 +446,8 @@ border.
 - **Ghost:** transparent until `hover:bg-accent` — the default for header and row affordances,
   including New chat, because a toolbar of filled buttons is chrome competing with content.
 - **Secondary:** `bg-secondary`, used for the "this is currently on" state of a toggle (the
-  workspace and instrument toggles, the Harness/Chat switch).
+  workspace and instrument toggles). The Harness/Chat switch is **always ghost**: it links to
+  the *other* address, so a "current" fill would mark the place being left.
 - **Focus:** `focus-visible:ring-[3px]` at `--ring` plus a border shift. Never removed, never
   reduced in alpha — the ring's contrast was measured at full opacity. Toggles that have a
   keyboard binding say so in their `title` and `aria-keyshortcuts`.
@@ -484,7 +495,12 @@ its half), declared beside the destination and checked against the docs source b
 Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
-controls — New chat and the session menu — and keeps the door back to Chat. Two controls have
+controls — New chat, the instrument toggle and the Session menu's run verbs — and keeps the door
+back to Chat, which says `running` in `state-running` while a run streams and `blocked` in
+`state-blocked` while it waits on an approval or a question. The ellipsis menu stays in the same
+slot on both addresses and the instrument toggle's slot is held empty, so the right-hand cluster
+does not move between them; on `/harness` the menu is named **View** and holds only the Theme
+radio group. Two controls have
 one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Ledger's
 tabs) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
 sit in the header, and the form a create toggle opens is the page's first section, with the list
@@ -637,6 +653,13 @@ differs from the name, because it is a quotation of the harness. The trigger sho
 alone. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
 the manifest *name*, so for most manifests it is the catalog's 128k fallback rather than the
 model's real window, and printing it would be exact-looking and wrong.
+
+**The Thinking picker sits beside it**, in the same pill: a brain icon, *Thinking:* in the sans
+from `sm` up, then the level in mono, because the level is the harness's own value. It is a
+parameter of the next send, like the agent, so it lives where the send is made rather than in the
+header, and its accessible name carries the value (`Thinking: high`). Unlike the agent picker it
+stays enabled during a run: the level is session state on the harness, not a field of a send.
+`/think` still cycles it, with a toast, because the operator is looking at the text they typed.
 
 **The composer's focus indicator is its border.** It removes its textarea's ring and signals
 focus with a full-alpha `--ring` border plus the heavier composer shadow. The border is the

@@ -255,9 +255,7 @@ describe('in the app', () => {
     await press("'", box);
     await waitFor(() => expect(instrument()).toBeTruthy());
     expect(
-      document
-        .querySelector('[aria-label="Toggle run instrument"]')
-        ?.getAttribute('aria-keyshortcuts'),
+      document.querySelector('[aria-label="This run"]')?.getAttribute('aria-keyshortcuts'),
     ).toBe(ariaShortcut('toggle-instrument', isMacPlatform()));
 
     // Focus is inside the drawer now; the same binding has to close it.

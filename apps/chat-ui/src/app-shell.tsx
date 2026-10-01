@@ -19,18 +19,19 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
 import {
+  CopyIcon,
   EllipsisIcon,
   MessageSquareIcon,
+  MonitorIcon,
+  MoonIcon,
   PanelLeftIcon,
   PanelRightIcon,
   PlusIcon,
   ServerIcon,
+  SunIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, Outlet, useMatch, useNavigate } from 'react-router';
@@ -64,8 +65,7 @@ import { AttentionLine } from '@/components/attention-line';
 import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
-import { useTheme } from '@/components/theme-provider';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { type Theme, useTheme } from '@/components/theme-provider';
 import { usePendingApprovals } from '@/hooks/use-pending-approvals';
 import { useRails } from '@/hooks/use-rails';
 import { useShortcuts } from '@/hooks/use-shortcuts';
@@ -85,6 +85,7 @@ import {
   removeThread,
   saveTurns,
 } from '@/lib/threads';
+import { cn } from '@/lib/utils';
 import { NO_RUN, type RunClock, ShellProvider, type ShellValue } from '@/shell-context';
 import type { ChatMessage, ImageAttachment, ThinkingLevel, Turn } from '@/types';
 
@@ -102,6 +103,12 @@ const THINKING_LEVELS: ThinkingLevel[] = [
   'high',
   'xhigh',
   'max',
+];
+/** The header menu's View → Theme choices, in the order the radio group lists them. */
+const THEME_OPTIONS: ReadonlyArray<{ value: Theme; label: string; Icon: typeof SunIcon }> = [
+  { value: 'light', label: 'Light', Icon: SunIcon },
+  { value: 'dark', label: 'Dark', Icon: MoonIcon },
+  { value: 'system', label: 'System', Icon: MonitorIcon },
 ];
 /** How often to ask the harness for approvals while a run is in flight. */
 const APPROVAL_POLL_MS = 2_500;
@@ -195,7 +202,9 @@ export function AppShell() {
     useRails(() => listThreads().length > 0);
   const [verbose, setVerbose] = useState(() => readBool(VERBOSE_KEY, false));
   const [skills, setSkills] = useState<SkillState | null>(null);
-  const { resolved, setTheme } = useTheme();
+  const { theme, resolved, setTheme } = useTheme();
+  /** Where focus lands when the Verbose badge turns verbose off and unmounts. */
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   const leaseTokenRef = useRef<string | null>(null);
   /** Which thread the engine currently holds — see `loadThread`. */
@@ -1011,36 +1020,60 @@ export function AppShell() {
   /**
    * Kept, where `chooseThinking` drops its toast.
    *
-   * This is `/think`, a blind cycle: there is no control under the pointer
-   * showing what was picked. The header badge is the in-place answer everywhere
-   * else, and it cannot be one here, because it is `hidden sm:inline-flex` and
-   * renders nothing at all when the level is `off` — which is one of the values
-   * the cycle lands on.
+   * This is `/think`, a blind cycle: the composer's Thinking picker shows the
+   * level, but the operator is looking at the text they typed rather than the
+   * toolbar under it, so the cycle says where it landed.
+   *
+   * The thread comes from `threadIdRef` rather than the closure for the same
+   * reason as `chooseThinking` below: this reaches the composer through
+   * `onSlashCommand`, and the composer's memo can hold a stale callback.
    */
   const cycleThinking = useCallback(() => {
     const idx = THINKING_LEVELS.indexOf(thinkingLevel);
-    const next = THINKING_LEVELS[(idx + 1) % THINKING_LEVELS.length]!;
+    const next = THINKING_LEVELS[(idx + 1) % THINKING_LEVELS.length] ?? 'off';
     setThinkingLevelState(next);
-    void setThinkingLevel({ threadId, thinkingLevel: next })
+    void setThinkingLevel({ threadId: threadIdRef.current, thinkingLevel: next })
       .then(() => toast.message(`Thinking: ${next}`))
       .catch((err) =>
         toastError(err, 'change the thinking level', { retry: () => chooseThinking(next) }),
       );
-  }, [thinkingLevel, threadId]);
+  }, [thinkingLevel]);
 
-  const chooseThinking = useCallback(
-    (level: ThinkingLevel) => {
-      setThinkingLevelState(level);
-      // No toast: this comes from the menu's radio group, which shows the
-      // selection at the moment of the click, and the header badge carries it
-      // afterwards. `cycleThinking` above keeps its toast for the opposite
-      // reason.
-      void setThinkingLevel({ threadId, thinkingLevel: level }).catch((err) =>
-        toastError(err, 'change the thinking level', { retry: () => chooseThinking(level) }),
-      );
-    },
-    [threadId],
-  );
+  /**
+   * Set the level from the composer's Thinking picker.
+   *
+   * No toast: the picker shows the selection at the moment of the click and
+   * carries it afterwards. `cycleThinking` above keeps its toast for the
+   * opposite reason.
+   *
+   * Reads the thread through `threadIdRef`. `MultimodalInput` is memoised with a
+   * comparator that ignores callbacks, so the composer can hold this function
+   * across a thread change; closing over `threadId` would set the level on the
+   * thread the operator just left.
+   */
+  const chooseThinking = useCallback((level: ThinkingLevel) => {
+    setThinkingLevelState(level);
+    void setThinkingLevel({ threadId: threadIdRef.current, thinkingLevel: level }).catch((err) =>
+      toastError(err, 'change the thinking level', { retry: () => chooseThinking(level) }),
+    );
+  }, []);
+
+  /**
+   * Put the thread id on the clipboard.
+   *
+   * It is the one identifier the harness, its logs and the `/harness` pages all
+   * key on, and the menu used to show it as a disabled row nothing could be
+   * copied out of. The toast is the confirmation, because a menu closes on
+   * select and leaves nothing on screen to change.
+   */
+  const copyThreadId = useCallback(() => {
+    const failed = () => toastProblem('Could not copy the thread id: the browser refused.');
+    if (!navigator.clipboard) return failed();
+    void navigator.clipboard
+      .writeText(threadId)
+      .then(() => toast.message('Thread id copied', { description: threadId }))
+      .catch(failed);
+  }, [threadId]);
 
   /**
    * Move the thread's active leaf back to an earlier turn.
@@ -1211,6 +1244,8 @@ export function AppShell() {
   );
 
   const options = manifests.length ? manifests : [manifest];
+  /** Waiting on a person — the same test `setPresence('blocked')` makes. */
+  const runBlocked = pendingQueue.length > 0 || uiPrompt != null;
   // Read per render rather than stored: it cannot change, and costs a regex.
   const mac = isMacPlatform();
 
@@ -1264,6 +1299,9 @@ export function AppShell() {
     manifestOptions: options,
     manifestEntries,
     refreshCanary: () => void refreshCanary(),
+    thinkingLevel,
+    thinkingLevels: THINKING_LEVELS,
+    chooseThinking,
     verbose,
     harnessReachable,
     historyOpen,
@@ -1283,7 +1321,9 @@ export function AppShell() {
             // What is on screen, not what is stored: at a narrow width the
             // stored rail preference is not what the operator is looking at.
             aria-pressed={historyOpen}
-            aria-label="Toggle workspace"
+            // The tooltip's word, so the name a reader hears and the one a
+            // sighted operator sees are one name; `aria-pressed` says the rest.
+            aria-label="Workspace"
             aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
             title={`Workspace (${shortcutLabel('toggle-workspace', mac)})`}
           >
@@ -1304,15 +1344,49 @@ export function AppShell() {
               so there was no top-level heading naming the application for anyone
               navigating by heading. */}
           <h1 className="truncate text-base font-semibold uppercase tracking-wider">Felix</h1>
+          {/* The modes this tab is in, at every width. They were `hidden` below
+              `sm`, so on a phone, or at 200% zoom, verbose and a canary rollout
+              were states with nothing on screen to say so. What narrows instead
+              is the canary's version, which its `title` still carries.
+
+              The run's phase is not here: the instrument and the attention line
+              both say it, and a third copy with its own idea of which phases
+              were worth showing disagreed with the instrument's.
+
+              Thinking is not here either. It is a parameter of the next send,
+              so it sits in the composer beside the agent picker, where it is
+              both shown and changed. */}
           {verbose && (
-            <Badge variant="secondary" className="hidden font-normal sm:inline-flex">
-              Verbose
+            <Badge variant="secondary" className="font-normal" asChild>
+              {/* A button, because a badge that reports a mode should also be the
+                  way out of it — otherwise the way out is two clicks into a menu
+                  whose trigger says nothing about verbose. Focus moves to that
+                  menu's trigger, since the badge unmounts under the click. */}
+              <button
+                type="button"
+                aria-pressed
+                title="Verbose tools is on. Click to turn it off."
+                onClick={() => {
+                  setVerbose(false);
+                  menuTriggerRef.current?.focus();
+                }}
+                className="cursor-pointer hover:bg-secondary/80"
+              >
+                Verbose
+              </button>
             </Badge>
           )}
           {canary && (
+            // Outline and mono, never a filled pill: the version is the harness's
+            // number quoted back, and a filled badge made it the loudest object in
+            // the header. On-canary reads in the foreground, a rollout this thread
+            // is not confirmed to be on stays muted.
             <Badge
-              variant={canary.onCanary ? 'default' : 'secondary'}
-              className="hidden font-normal sm:inline-flex"
+              variant="outline"
+              className={cn(
+                'border-border/60 font-mono font-normal',
+                canary.onCanary ? 'text-foreground' : 'text-muted-foreground',
+              )}
               title={
                 canary.onCanary
                   ? `This thread is served by canary v${canary.version} (rollout at ${canary.weight}%).`
@@ -1320,29 +1394,22 @@ export function AppShell() {
                     'This thread is not confirmed to be on it.'
               }
             >
-              {canary.onCanary
-                ? `canary v${canary.version}`
-                : `canary v${canary.version}${canary.weight < 100 ? ` @ ${canary.weight}%` : ''}`}
-            </Badge>
-          )}
-          {thinkingLevel !== 'off' && (
-            <Badge variant="outline" className="hidden font-normal sm:inline-flex">
-              think:{thinkingLevel}
-            </Badge>
-          )}
-          {sessionPhase && sessionPhase !== 'idle' && (
-            <Badge variant="secondary" className="hidden font-normal sm:inline-flex">
-              {sessionPhase}
+              canary
+              <span className="hidden sm:inline">
+                {canary.onCanary
+                  ? `v${canary.version}`
+                  : `v${canary.version}${canary.weight < 100 ? ` @ ${canary.weight}%` : ''}`}
+              </span>
             </Badge>
           )}
         </div>
 
         <div className="ml-auto flex items-center gap-1">
           {/* Conversation controls stay with the conversation. On `/harness` —
-              whose premise is what outlives every run — New chat, Thinking and
-              Continue run act on a transcript that is not on screen, and were
-              four global options above a page that uses none of them. The door
-              back to Chat is the one way to them, and it says when a run is live. */}
+              whose premise is what outlives every run — New chat, the instrument
+              and the Session menu's run verbs act on a transcript that is not on
+              screen. The door back to Chat is the one way to them, and it says
+              when a run is live or waiting on someone. */}
           {!onHarness && (
             <Button
               variant="ghost"
@@ -1350,10 +1417,13 @@ export function AppShell() {
               onClick={newThread}
               disabled={streaming}
               className="gap-1.5"
-              aria-label="New chat"
+              title="New chat"
             >
               <PlusIcon className="size-4" aria-hidden />
-              <span className="hidden sm:inline">New chat</span>
+              {/* `sr-only` below `sm` rather than `hidden`, so the word is the
+                  accessible name at every width and no `aria-label` has to
+                  repeat it. */}
+              <span className="sr-only sm:not-sr-only">New chat</span>
             </Button>
           )}
           {/*
@@ -1365,7 +1435,10 @@ export function AppShell() {
           {/* Always ghost: it links to the *other* address, so a "current" fill
               would mark the place you are leaving. The icon names the destination. */}
           <Button asChild variant="ghost" size="sm" className="gap-1.5">
-            <Link to={onHarness ? `/t/${threadId}` : '/harness'}>
+            <Link
+              to={onHarness ? `/t/${threadId}` : '/harness'}
+              title={onHarness ? 'Chat' : 'Harness'}
+            >
               {onHarness ? (
                 <MessageSquareIcon className="size-4" aria-hidden />
               ) : (
@@ -1379,8 +1452,19 @@ export function AppShell() {
                   it is the one thing worth going back for. The attention line
                   says "Working" too, but it is a sentence across the page; this
                   is on the door itself. A word, not the dot alone, and not only
-                  at `sm` and up, since the word is the state. */}
-              {onHarness && streaming && (
+                  at `sm` and up, since the word is the state.
+
+                  `blocked` outranks `running`, and reads the same queue the tab
+                  title does (`setPresence` above): a run waiting on an approval
+                  or a question is not working, and "running" on the door was the
+                  reason to stay on a page while the run timed out behind it. */}
+              {onHarness && runBlocked && (
+                <span className="flex items-center gap-1 text-xs font-normal text-state-blocked">
+                  <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                  blocked
+                </span>
+              )}
+              {onHarness && streaming && !runBlocked && (
                 <span className="flex items-center gap-1 text-xs font-normal text-state-running">
                   <span aria-hidden className="size-1.5 rounded-full bg-state-running" />
                   running
@@ -1388,29 +1472,43 @@ export function AppShell() {
               )}
             </Link>
           </Button>
-          <ThemeToggle />
-          {!onHarness && (
+          {onHarness ? (
+            // The instrument toggle's slot, held empty for the same reason as the
+            // workspace toggle's on the left: without it the door and the menu
+            // moved on every switch between the two addresses.
+            <span aria-hidden data-slot="instrument-toggle-slot" className="size-8 shrink-0" />
+          ) : (
             <Button
               variant={inspectorOpen ? 'secondary' : 'ghost'}
               size="icon-sm"
               onClick={() => setInspectorOpen((o) => !o)}
               aria-pressed={inspectorOpen}
-              aria-label="Toggle run instrument"
+              aria-label="This run"
               aria-keyshortcuts={ariaShortcut('toggle-instrument', mac)}
               title={`This run (${shortcutLabel('toggle-instrument', mac)})`}
             >
               <PanelRightIcon className="size-4" />
             </Button>
           )}
-          {!onHarness && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="More tools">
-                  <EllipsisIcon className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>View</DropdownMenuLabel>
+          {/* One menu, in one place on both addresses. On `/harness` it holds only
+              View → Theme, and is named for that: a menu called Session with no
+              session in it would be the "More tools" problem again. Theme is a
+              set-once preference, so it no longer holds a header slot of its own. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                ref={menuTriggerRef}
+                variant="ghost"
+                size="icon-sm"
+                aria-label={onHarness ? 'View' : 'Session'}
+                title={onHarness ? 'View' : 'Session'}
+              >
+                <EllipsisIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>View</DropdownMenuLabel>
+              {!onHarness && (
                 <DropdownMenuCheckboxItem
                   checked={verbose}
                   onCheckedChange={(checked) => {
@@ -1420,42 +1518,54 @@ export function AppShell() {
                 >
                   Verbose tools
                 </DropdownMenuCheckboxItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Session</DropdownMenuLabel>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Thinking: {thinkingLevel}</DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-40">
-                    <DropdownMenuRadioGroup
-                      value={thinkingLevel}
-                      onValueChange={(v) => chooseThinking(v as ThinkingLevel)}
-                    >
-                      {THINKING_LEVELS.map((level) => (
-                        <DropdownMenuRadioItem key={level} value={level}>
-                          {level}
-                        </DropdownMenuRadioItem>
-                      ))}
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                <DropdownMenuItem disabled={streaming} onSelect={() => continueRun()}>
-                  Continue run
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
-                  `self-pr-` for every `self-pr-*` thread, and was the item's whole
-                  accessible name. The id is whole in `title` and to a reader. */}
-                <DropdownMenuItem
-                  disabled
-                  title={threadId}
-                  aria-label={`Thread ${threadId}`}
-                  className="gap-1.5 text-xs text-muted-foreground data-disabled:opacity-100"
-                >
-                  Thread
-                  <span className="min-w-0 truncate font-mono">{middleTruncate(threadId, 22)}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+              )}
+              {/* Radio items, so the checked theme is announced rather than marked
+                  with a glyph only a sighted reader could see. */}
+              <DropdownMenuRadioGroup
+                aria-label="Theme"
+                value={theme}
+                onValueChange={(v) => {
+                  if (v === 'light' || v === 'dark' || v === 'system') setTheme(v);
+                }}
+              >
+                {THEME_OPTIONS.map(({ value, label, Icon }) => (
+                  <DropdownMenuRadioItem key={value} value={value} className="gap-2">
+                    <Icon className="size-4" aria-hidden />
+                    {label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              {!onHarness && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Session</DropdownMenuLabel>
+                  {/* Disabled on an empty thread: there is no run to continue, and
+                      the harness would start one from nothing. */}
+                  <DropdownMenuItem
+                    disabled={streaming || turns.length === 0}
+                    onSelect={() => continueRun()}
+                  >
+                    Continue run
+                  </DropdownMenuItem>
+                  {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
+                      `self-pr-` for every `self-pr-*` thread. The id is whole in
+                      `title`, in the accessible name, and on the clipboard. */}
+                  <DropdownMenuItem
+                    onSelect={copyThreadId}
+                    title={threadId}
+                    aria-label={`Copy thread id ${threadId}`}
+                    className="gap-1.5"
+                  >
+                    <CopyIcon className="size-4" aria-hidden />
+                    Copy thread id
+                    <span className="ml-auto min-w-0 truncate font-mono text-xs text-muted-foreground">
+                      {middleTruncate(threadId, 14)}
+                    </span>
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
