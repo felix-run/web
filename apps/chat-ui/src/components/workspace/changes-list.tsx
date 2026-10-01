@@ -117,7 +117,13 @@ function ChangeRow({ change }: { change: PathChange }) {
   );
 }
 
+/**
+ * The pane labels say what happened, so a call that was not applied must not be
+ * labelled as though it was: "Written" under "Not applied" is a contradiction,
+ * and the label is what a glance reads.
+ */
 function Evidence({ evidence }: { evidence: ChangeEvidence }) {
+  const failed = Boolean(evidence.issue);
   return (
     <>
       {evidence.issue && (
@@ -127,13 +133,26 @@ function Evidence({ evidence }: { evidence: ChangeEvidence }) {
       )}
       {evidence.kind === 'edit' ? (
         <>
-          <CodePane label="Replaced">{evidence.oldText}</CodePane>
+          <CodePane label={failed ? 'Would have replaced' : 'Replaced'}>
+            {evidence.oldText}
+          </CodePane>
           <CodePane label="With" emphasis>
             {evidence.newText}
           </CodePane>
         </>
       ) : (
-        <CodePane label={evidence.kind === 'append' ? 'Appended' : 'Written'} emphasis>
+        <CodePane
+          label={
+            evidence.kind === 'append'
+              ? failed
+                ? 'Would have appended'
+                : 'Appended'
+              : failed
+                ? 'Would have written'
+                : 'Written'
+          }
+          emphasis
+        >
           {evidence.content}
         </CodePane>
       )}

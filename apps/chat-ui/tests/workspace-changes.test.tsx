@@ -293,6 +293,26 @@ describe('the Changes section', () => {
     const stat = screen.getByText('failed');
     expect(stat.className).toContain('text-state-failed');
   });
+
+  it('never labels a call that was not applied as written', async () => {
+    mount({
+      turns: [
+        assistant([
+          call(
+            'write_file',
+            { path: 'x.txt', content: 'a' },
+            '[tool error/internal] OSError: boom',
+          ),
+        ]),
+      ],
+    });
+    await userEvent.click(screen.getByRole('button', { name: /x\.txt/ }));
+    const row = screen.getByRole('button', { name: /x\.txt/ });
+    const panel = document.getElementById(row.getAttribute('aria-controls') ?? '');
+    expect(panel?.textContent).toContain('Not applied');
+    expect(panel?.textContent).toContain('Would have written');
+    expect(panel?.textContent).not.toMatch(/(^|[^ ])Written/);
+  });
 });
 
 describe('the thread trigger', () => {
