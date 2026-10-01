@@ -246,10 +246,16 @@ grant expires or is consumed.
 
 Two rules change who a grant covers:
 
-- **`one_shot: true`** — the grant is consumed once, with a conditional update, so two concurrent
-  identical calls cannot both spend it.
-- **`bind_principal: true`** — the grant is bound to the approving principal, so approving your own
-  call does not silently authorize somebody else's identical one.
+- **`one_shot: true`** — the grant is consumed once, by the call that waited for the decision or
+  the first identical call that finds it, with a conditional update, so two concurrent identical
+  calls cannot both spend it.
+- **`bind_principal: true`** — the grant is bound to the principal that asked, so approving your
+  own call does not silently authorize somebody else's identical one. That holds while a call
+  waits too: another principal's identical call is refused rather than joining your request.
+
+A pending row may carry `args.preview` — text the harness computed for you to read, such as the
+diff `publish_commits` is about to push. It is not an argument the tool runs with; leave it in or
+out of `edited_args`, it is stripped either way.
 
 A `require_approval` rule in `spec.command_screening` creates a real approval too, bounded by
 `command_screening.approval_ttl_seconds` (default 300 s) so a run cannot block forever.
