@@ -64,13 +64,35 @@ export function snapshotToEvents(snapshot: SessionSnapshot): SessionEvent[] {
   // the first of four events left all four on screen, so the action appeared to do
   // nothing while still changing where the next turn continues from.
   //
-  // The client models a thread as linear, so the active branch is everything up to
-  // and including the leaf. A leaf that is missing or already last leaves this a
-  // no-op.
+  // The active branch is the path from the leaf back to the root along each
+  // event's `metadata.parent_id` — the same walk `active_branch_events` does for
+  // the model's own context. Slicing the list at the leaf was right only while a
+  // thread had one branch: once a turn is edited and resent, the abandoned reply
+  // sits *between* the branch point and the new leaf in `seq` order, and a slice
+  // rendered both. A snapshot whose events carry no links (an older harness) has
+  // only one branch to show, so the slice stays as its fallback. A leaf that is
+  // missing leaves this a no-op.
   const leaf = snapshot.leafId;
   if (!leaf) return events;
   const cut = events.findIndex((e) => e.id === leaf);
-  return cut === -1 ? events : events.slice(0, cut + 1);
+  if (cut === -1) return events;
+  if (!events.some((e) => typeof e.metadata?.parent_id === 'string')) {
+    return events.slice(0, cut + 1);
+  }
+  const byId = new Map<string, SessionEvent>();
+  for (const e of events) if (e.id) byId.set(e.id, e);
+  const path: SessionEvent[] = [];
+  const seen = new Set<string>();
+  let cur: string | undefined = leaf;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const ev = byId.get(cur);
+    if (!ev) break;
+    path.push(ev);
+    const parent = ev.metadata?.parent_id;
+    cur = typeof parent === 'string' ? parent : undefined;
+  }
+  return path.reverse();
 }
 
 /**
@@ -244,11 +266,13 @@ export function eventsToTurns(
         pendingTools = [];
         pendingReasoning = [];
       }
+      const parent = ev.metadata?.parent_id;
       turns.push({
         id: ev.id ?? newId(),
         role: 'user',
         content: ev.content ?? '',
         eventId: ev.id,
+        ...(typeof parent === 'string' ? { parentEventId: parent } : {}),
       });
       continue;
     }

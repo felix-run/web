@@ -1,4 +1,6 @@
 import { interleaveTurn } from '@felix/client';
+import { Button } from '@felix/ui/button';
+import { useState } from 'react';
 import type { Turn } from '@/types';
 import { MessageActions } from './message-actions';
 import { Reasoning } from './reasoning';
@@ -27,6 +29,7 @@ export function Message({
   onLabel,
   onRegenerate,
   onRewind,
+  onEdit,
   verbose = false,
 }: {
   turn: Turn;
@@ -39,6 +42,8 @@ export function Message({
   onRegenerate?: () => void;
   /** Rewind the server leaf to this turn's event id. */
   onRewind?: () => void;
+  /** Replace a user turn's text and run from it. Absent while that cannot happen. */
+  onEdit?: (text: string) => void;
   /** Expand tool I/O and surface tool counts when set. */
   verbose?: boolean;
 }) {
@@ -74,44 +79,13 @@ export function Message({
 
   if (turn.role === 'user') {
     return (
-      <div className="group flex w-full flex-col gap-1.5">
-        <div className="border-l-2 border-foreground/25 py-0.5 pl-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">You</span>
-            {/* Outside the actions row on purpose: that row is hidden until hover,
-                and a label nobody can see without hunting for it is not a label. */}
-            {label && <LabelChip label={label} />}
-          </div>
-          {turn.attachments && turn.attachments.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-2">
-              {turn.attachments.map((a) => (
-                <img
-                  key={a.url}
-                  src={a.url}
-                  alt={a.filename ?? 'attachment'}
-                  className="size-24 rounded-xl border border-border/50 object-cover"
-                />
-              ))}
-            </div>
-          )}
-          {/* `wrap-anywhere`, not `break-words`: a commit hash, a path or a URL has no
-              space to wrap at, and unwrapped it overflowed the turn and gave the
-              whole transcript a sideways scroll at phone width (690px of content in
-              a 368px column). Plain text has no table or code block that would want
-              its words kept whole, so the stronger rule costs nothing here. */}
-          {turn.content && (
-            <div className="mt-1 whitespace-pre-wrap wrap-anywhere text-base text-foreground">
-              {turn.content}
-            </div>
-          )}
-        </div>
-        <MessageActions
-          content={turn.content}
-          onRewind={onRewind}
-          {...(label === undefined ? {} : { label })}
-          {...(onLabel ? { onLabel } : {})}
-        />
-      </div>
+      <UserTurn
+        turn={turn}
+        onRewind={onRewind}
+        {...(onEdit ? { onEdit } : {})}
+        {...(label === undefined ? {} : { label })}
+        {...(onLabel ? { onLabel } : {})}
+      />
     );
   }
 
@@ -230,5 +204,113 @@ function LabelChip({ label }: { label: string }) {
     <span className="min-w-0 wrap-anywhere rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground">
       {label}
     </span>
+  );
+}
+
+/**
+ * The operator's turn, and the one place a sent message can be rewritten.
+ *
+ * The editor replaces the text where it was rather than opening in the composer:
+ * what is being changed is *this* message, and the turns below it are what the
+ * edit sets aside, so they should stay in view while the new text is written.
+ */
+function UserTurn({
+  turn,
+  label,
+  onLabel,
+  onRewind,
+  onEdit,
+}: {
+  turn: Turn;
+  label?: string;
+  onLabel?: (label: string | null) => void;
+  onRewind?: () => void;
+  onEdit?: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const editing = draft !== null && !!onEdit;
+  const changed = editing && draft.trim().length > 0 && draft.trim() !== turn.content.trim();
+  const save = () => {
+    if (!changed || !onEdit) return;
+    onEdit(draft);
+    setDraft(null);
+  };
+
+  return (
+    <div className="group flex w-full flex-col gap-1.5">
+      <div className="border-l-2 border-foreground/25 py-0.5 pl-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">You</span>
+          {/* Outside the actions row on purpose: that row is hidden until hover,
+              and a label nobody can see without hunting for it is not a label. */}
+          {label && <LabelChip label={label} />}
+        </div>
+        {turn.attachments && turn.attachments.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            {turn.attachments.map((a) => (
+              <img
+                key={a.url}
+                src={a.url}
+                alt={a.filename ?? 'attachment'}
+                className="size-24 rounded-xl border border-border/50 object-cover"
+              />
+            ))}
+          </div>
+        )}
+        {editing ? (
+          <div className="mt-1 flex flex-col gap-2">
+            <textarea
+              // biome-ignore lint/a11y/noAutofocus: the editor was just opened for this
+              autoFocus
+              aria-label="Edit message"
+              value={draft}
+              rows={Math.min(12, Math.max(2, draft.split('\n').length))}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setDraft(null);
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  save();
+                }
+              }}
+              className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 text-base text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={save} disabled={!changed}>
+                Send edit
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+                Cancel
+              </Button>
+              {/* Says what happens to the turns below before it happens, the way
+                  Rewind's tooltip does — they are set aside, not deleted. */}
+              <span className="text-xs text-muted-foreground">
+                Replies below move to another branch; nothing is deleted.
+              </span>
+            </div>
+          </div>
+        ) : (
+          /* `wrap-anywhere`, not `break-words`: a commit hash, a path or a URL has no
+             space to wrap at, and unwrapped it overflowed the turn and gave the
+             whole transcript a sideways scroll at phone width (690px of content in
+             a 368px column). Plain text has no table or code block that would want
+             its words kept whole, so the stronger rule costs nothing here. */
+          turn.content && (
+            <div className="mt-1 whitespace-pre-wrap wrap-anywhere text-base text-foreground">
+              {turn.content}
+            </div>
+          )
+        )}
+      </div>
+      {!editing && (
+        <MessageActions
+          content={turn.content}
+          onRewind={onRewind}
+          {...(onEdit ? { onEdit: () => setDraft(turn.content) } : {})}
+          {...(label === undefined ? {} : { label })}
+          {...(onLabel ? { onLabel } : {})}
+        />
+      )}
+    </div>
   );
 }

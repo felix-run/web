@@ -146,6 +146,11 @@ A thread is a tree, not a line. **Fork** copies a session into a new thread up t
 abandoned branch is summarized into a `branch_summary` event so the model does not lose what happened
 there.
 
+Editing a sent message is the same move followed by a send. Chat UI rewinds the leaf to the event
+the message continued from, then sends the new text, so the edit becomes a sibling of the original.
+The model sees the conversation as if the original had never been sent, while the original and its
+replies stay on the session on the other branch, which is why the edit can be undone.
+
 ### Leases
 
 Two browser tabs on one session would race. Each client mints a holder id and takes a lease —

@@ -571,6 +571,13 @@ Flows worth knowing before editing the app:
   than the rest: `SessionSnapshot` did not model the field the harness had always sent, so a label
   could be set and never seen. The chip renders outside the hover-revealed actions row, because
   finding the labelled turn again by scrolling is the whole point.
+- **Editing a sent message** is rewind + send: the leaf moves to the edited message's
+  `parentEventId` (never the message itself, which would leave the original in context), then only
+  the new text is sent. The original stays on another branch, so the toast offers to restore it.
+  This is also why `snapshotToEvents` walks `metadata.parent_id` from the leaf rather than slicing
+  at it: after an edit the abandoned reply sits between the branch point and the leaf in `seq`
+  order. A just-sent message has no parent id yet, so the edit hydrates first; the first message
+  of a thread has nothing to branch from and offers no Edit.
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
   (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
   `/chat/sessions/search`.
