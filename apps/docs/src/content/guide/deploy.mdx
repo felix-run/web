@@ -41,6 +41,7 @@ the Makefile passes `--project-directory .`.
 | `make up-replicas` | Two API replicas behind one nginx origin |
 | `make up-observability` | OTel Collector, Prometheus, Grafana, Jaeger, Loki, Postgres/Valkey exporters |
 | `make up-temporal` | Temporal server, UI on :8233, and `felix-temporal-worker` |
+| `make up-self` | The self-build stack: a `shell` runner container that holds no secrets and runs every shell tool, and no host ports for DB, cache or object store. Writes `FELIX_SHELL_RUNNER_TOKEN` into `.env` first |
 
 ### Observability stack
 
