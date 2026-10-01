@@ -103,17 +103,24 @@ export function Composer({
 
   const active = !disabled && !editing;
   const read = () => ref.current?.plainText ?? '';
-  const write = (text: string) => ref.current?.setText(text);
+  /**
+   * Replace the field and leave the cursor at the end, the way a shell leaves a
+   * recalled line. `setText` alone parks it at the start, so whatever was typed
+   * next went *in front of* the text: ↑ then " again" sent "againthe last
+   * thing", and `/start` then `/manifest router` sent "/manifest routerRead the
+   * workspace…". Every replacement here — recall, the draft, `$EDITOR`'s
+   * result, a prefill — is text the operator goes on to amend.
+   */
+  const write = (text: string) => {
+    ref.current?.setText(text);
+    ref.current?.gotoBufferEnd();
+  };
 
   // Keyed on `n` alone: the text is read when it changes, and re-filling on an
   // unrelated re-render would overwrite whatever the operator typed since.
   useEffect(() => {
     if (!prefill) return;
     write(prefill.text);
-    // `setText` leaves the cursor at the start, so anything typed after `/start`
-    // went *in front of* the prompt and Enter sent the two run together — seen
-    // live as `/manifest routerRead the workspace…`. At the end, it appends.
-    ref.current?.gotoBufferEnd();
     recalled.current = null;
     draft.current = prefill.text;
   }, [prefill?.n]);
