@@ -1,10 +1,10 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 
 /**
- * Minimal light/dark/system theme provider — the Vite-native analogue of
- * vercel/ai-chatbot's `next-themes` `ThemeProvider`. Toggles the `.dark` class
- * on <html> (the selector the shadcn tokens in index.css key off), persists the
- * choice, and tracks the OS preference live while `system` is selected.
+ * Minimal light/dark/system theme provider. Toggles the `.dark` class on <html>
+ * (the selector the shadcn tokens in index.css key off), persists the choice,
+ * and tracks the OS preference live while `system` is selected. The control
+ * that sets it is the header menu's View → Theme radio group.
  */
 
 export type Theme = 'light' | 'dark' | 'system';

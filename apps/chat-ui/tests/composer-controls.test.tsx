@@ -160,3 +160,71 @@ describe('the agent picker, fed by the harness', () => {
     expect(second?.textContent).toBe('cowork');
   });
 });
+
+/**
+ * Thinking moved out of the header's overflow menu into the composer, beside the
+ * agent picker, because it is a parameter of the next send rather than a
+ * preference. It was three clicks into a submenu, and the only on-screen value
+ * was a `think:` badge that vanished below `sm` and at `off`.
+ */
+describe('the Thinking picker', () => {
+  const levels = ['off', 'low', 'high'] as const;
+
+  it('shows the level in its name and hands a choice to the caller', async () => {
+    const onThinkingChange = vi.fn();
+    mount({ thinkingLevels: levels, thinkingLevel: 'off', onThinkingChange });
+    const user = userEvent.setup({ delay: null });
+    const trigger = screen.getByRole('combobox', { name: 'Thinking: off' });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    await user.click(await screen.findByRole('option', { name: 'high' }));
+    expect(onThinkingChange).toHaveBeenCalledWith('high');
+  });
+
+  it('is absent when the caller supplies no levels', () => {
+    mount();
+    expect(screen.queryByRole('combobox', { name: /^Thinking/ })).toBeNull();
+  });
+
+  it('sets the level on the harness, and the header carries neither it nor a theme toggle', async () => {
+    const posted: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/chat/thinking')) {
+          posted.push(JSON.parse(String(init?.body ?? '{}')));
+          return new Response('{}', { status: 200 });
+        }
+        if (url.includes('/chat/sessions')) {
+          return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
+        }
+        if (url.includes('/approvals')) {
+          return new Response(JSON.stringify({ requests: [] }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    render(
+      <MemoryRouter initialEntries={['/t/thinking-thread']}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <App />
+          </TooltipProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup({ delay: null });
+    const trigger = await screen.findByRole('combobox', { name: 'Thinking: off' });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    await user.click(await screen.findByRole('option', { name: 'high' }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ thread_id: 'thinking-thread', thinking_level: 'high' });
+    // The picker carries the value afterwards; there is no second copy in the header.
+    await screen.findByRole('combobox', { name: 'Thinking: high' });
+    const header = document.querySelector('header') as HTMLElement;
+    expect(header.textContent).not.toMatch(/think:|Thinking/);
+    expect(header.querySelector('[aria-label="Toggle theme"]')).toBeNull();
+  });
+});

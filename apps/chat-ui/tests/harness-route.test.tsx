@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -276,8 +277,28 @@ describe('the harness address', () => {
   it('leaves the conversation controls with the conversation', async () => {
     mount('/harness/memory');
     await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
-    expect(document.querySelector('header [aria-label="New chat"]')).toBeNull();
-    expect(document.querySelector('header [aria-label="More tools"]')).toBeNull();
+    const header = document.querySelector('header') as HTMLElement;
+    expect(header.textContent).not.toContain('New chat');
+    expect(header.querySelector('[aria-label="Session"]')).toBeNull();
+    // The menu stays, named for the one thing it holds here, so the right-hand
+    // cluster does not jump between the two addresses.
+    expect(header.querySelector('[aria-label="View"]')).not.toBeNull();
+  });
+
+  it('keeps Theme reachable on /harness, as radio items, with no toggle of its own', async () => {
+    mount('/harness/memory');
+    await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
+    expect(document.querySelector('header [aria-label="Toggle theme"]')).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'View' }));
+    const group = await screen.findByRole('group', { name: 'Theme' });
+    const items = within(group).getAllByRole('menuitemradio');
+    expect(items.map((i) => i.textContent)).toEqual(['Light', 'Dark', 'System']);
+    // Checked state is announced, not drawn as a glyph.
+    expect(items.filter((i) => i.getAttribute('aria-checked') === 'true')).toHaveLength(1);
+    // Closed before teardown: an open menu's portal and its `pointer-events` lock
+    // outlive `document.body.innerHTML = ''` and break the next test's mount.
+    await user.keyboard('{Escape}');
   });
 
   it('lands on the Ledger when wide, and stays the list when narrow', async () => {

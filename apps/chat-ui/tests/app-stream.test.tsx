@@ -77,10 +77,16 @@ async function send(text = 'hi') {
 
 const shown = () => document.body.textContent ?? '';
 
-/** The collapsed reasoning disclosures currently on screen. */
+/**
+ * The collapsed reasoning disclosures currently on screen. Not the composer's
+ * Thinking picker, which is a `button` too and says "Thinking:" — clicking it
+ * opens a select whose modal layer leaves the next test unable to type.
+ */
 const thoughtTriggers = () =>
-  [...document.querySelectorAll('button')].filter((b) =>
-    /Thought for|Reasoning|Thinking/.test(b.textContent ?? ''),
+  [...document.querySelectorAll('button')].filter(
+    (b) =>
+      b.getAttribute('role') !== 'combobox' &&
+      /Thought for|Reasoning|Thinking/.test(b.textContent ?? ''),
   );
 
 async function openThoughts() {
@@ -314,5 +320,49 @@ describe('durable runs', () => {
     mount();
     await send();
     await seeText('the durable answer');
+  });
+});
+
+/**
+ * The header's door back to Chat, from `/harness`, says what the run is doing.
+ * It said `running` for a run blocked on an approval — the one state where
+ * staying on the harness page means the approval times out behind you.
+ */
+describe('the Chat door', () => {
+  it('says blocked, not running, while the run waits on an approval', async () => {
+    // A stream that announces an approval and then stays open, as the harness
+    // does while `wait_for_decision` holds the tool call.
+    const frame = {
+      event: 'approval_required',
+      data: { approval_id: 'ap-1', tool_name: 'write_file', args: { path: 'a.txt' } },
+    };
+    stubFetch([], () => {
+      const bytes = new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`);
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes);
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    });
+    mount();
+    await send();
+    await waitFor(() =>
+      expect(document.querySelector('[data-approval-focus="banner"]')).toBeTruthy(),
+    );
+
+    const harness = document.querySelector<HTMLAnchorElement>('header a[href="/harness"]');
+    expect(harness).not.toBeNull();
+    await act(async () => void (await userEvent.click(harness as HTMLAnchorElement)));
+
+    const door = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('header a[href^="/t/"]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(door.textContent).toContain('blocked');
+    expect(door.textContent).not.toContain('running');
   });
 });

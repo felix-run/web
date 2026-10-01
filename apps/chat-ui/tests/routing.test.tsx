@@ -202,17 +202,43 @@ describe('the transcript on a thread change', () => {
 });
 
 /**
- * The header's overflow menu names the thread by its id. It drew
+ * The header's Session menu names the thread by its id. It drew
  * `threadId.slice(0, 8)` — `self-pr-` for every `self-pr-*` thread, and that
- * fragment was the item's entire accessible name.
+ * fragment was the item's entire accessible name. It was also a disabled row,
+ * so the id could be read and never copied out.
  */
 describe('the header names the thread', () => {
   it('keeps the end of the id, where ids differ, and the whole id for a reader', async () => {
     mount('/t/self-pr-306');
     await waitFor(() => expect(address).toBe('/t/self-pr-306'));
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'More tools' }));
-    const item = await screen.findByRole('menuitem', { name: 'Thread self-pr-306' });
+    await user.click(screen.getByRole('button', { name: 'Session' }));
+    const item = await screen.findByRole('menuitem', { name: 'Copy thread id self-pr-306' });
     expect(item.textContent).toContain('self-pr-306');
+    expect(item.getAttribute('aria-disabled')).toBeNull();
+    // Closed before teardown: an open menu's `pointer-events` lock on <body>
+    // outlives the next mount and refuses its clicks.
+    await user.keyboard('{Escape}');
+  });
+
+  it('copies the whole id, not the truncated one on screen', async () => {
+    mount('/t/self-pr-306');
+    await waitFor(() => expect(address).toBe('/t/self-pr-306'));
+    // After `setup()`, which installs its own clipboard stub over `navigator`.
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText');
+    await user.click(screen.getByRole('button', { name: 'Session' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Copy thread id self-pr-306' }));
+    expect(writeText).toHaveBeenCalledWith('self-pr-306');
+  });
+
+  it('offers nothing to continue on an empty thread', async () => {
+    mount('/t/empty-thread');
+    await waitFor(() => expect(address).toBe('/t/empty-thread'));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Session' }));
+    const item = await screen.findByRole('menuitem', { name: 'Continue run' });
+    expect(item.getAttribute('aria-disabled')).toBe('true');
+    await user.keyboard('{Escape}');
   });
 });
