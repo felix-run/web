@@ -2046,6 +2046,7 @@ export function AppShell() {
         threadId={threadId}
         threads={threads}
         reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}
+        question={uiPrompt?.prompt ?? null}
       />
 
       {/*

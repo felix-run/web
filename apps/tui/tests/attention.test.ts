@@ -97,7 +97,7 @@ describe('createAttention', () => {
     // The title is a level, not an edge: the state reached while it was absent
     // has to land now, or the window keeps the shell's title through the run.
     expect(titles).toHaveLength(1);
-    expect(titles[0]).toContain('Approve');
+    expect(titles[0]).toContain('Waiting on you');
   });
 
   it('asks only once, however many times it is told', () => {
@@ -124,7 +124,7 @@ describe('createAttention', () => {
     h.attention.set('working');
     h.attention.set('blocked');
     expect(h.titles()).toHaveLength(3);
-    expect(h.titles()[2]).toContain('Approve');
+    expect(h.titles()[2]).toContain('Waiting on you');
   });
 
   it('stays silent while the terminal has never reported focus', () => {
@@ -147,7 +147,7 @@ describe('createAttention', () => {
     h.blur();
     h.attention.set('blocked');
     expect(h.notifications()).toHaveLength(1);
-    expect(h.notifications()[0]).toContain('waiting on your decision');
+    expect(h.notifications()[0]).toContain('waiting on you');
   });
 
   it('speaks up when a run finishes, but not when it was never running', () => {
