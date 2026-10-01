@@ -399,7 +399,7 @@ function DeadlineChip({ left }: { left: number }) {
 }
 
 /** A payload block: wraps rather than scrolling sideways, and folds rather than clipping. */
-function CodePane({
+export function CodePane({
   label,
   children,
   emphasis,

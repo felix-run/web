@@ -606,6 +606,27 @@ then that is where tools run). Its actions — *Mount a folder*, *Change folder*
 action says what to do rather than what is, and in the narrow drawer the header row is the one
 the close button shares.
 
+Under the header, **Changes on this thread** lists each workspace path a tool call named and what
+was done to it — rows, not cards. The path is mono with the directory truncating before the
+filename, so rows under one deep folder stay told apart by the part that differs, and the full
+path is the row's `title`. The stat is mono, tabular, right-aligned, and claims only what the call
+proves: an edit is `+N −M`, the line counts of the text it replaced and the text it put there; a
+whole-file write is `+N written` and never carries a minus, because once it has landed nothing
+holds the before-state; a read is its verb (`read`, `listed`, `searched`, `opened`, `ran in`)
+with `×3` for a repeat. A call the harness marked as failed or refused changed nothing and reads
+`failed`/`refused` in `state-failed` — a word, not only a colour. A call in flight reads
+`writing…`/`editing…` in muted. Paths a write or edit was attempted on sort first, then the rest,
+each newest first; eight are shown, then `and N more`. A row a write or edit was attempted on is a
+disclosure — the one chevron in the list marks the rows that open — and shows that call's
+evidence through the approval card's own folding pane: the replaced and replacing text for an
+edit, the written content for a write. While a durable run is in flight and has reported no call,
+the section is one muted line, *Changes appear when the run finishes.*, rather than absent.
+
+The thread trigger beneath the actions names the current thread and, when approvals wait on
+**other** threads, ends in a `state-blocked` dot and `1 waiting` — announced in full as "1 approval
+waiting on another thread". A row naming no thread is unattributed, not elsewhere, and does not
+count; this thread's own are already in the banner and the attention line.
+
 ### Run readout
 
 The top of the instrument, above its tabs: what the run is doing, derived from state the shell

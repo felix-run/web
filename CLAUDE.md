@@ -302,18 +302,28 @@ every row the attention line was already offering — two Approve buttons and tw
 apart for one call — so the instrument is Plans and Tools, and decides nothing.
 `tests/inspector-run.test.tsx` pins that it neither renders a decision nor asks `/approvals`.
 
-**`Touched on this thread` is a workspace tool's path argument, and nothing else.** The zone derives
-it from `Turn.tools[]` via `collectTouchedPaths` in `@felix/cowork-client`: `path` for the harness's
-five workspace tools, `cwd` for `local_shell`, `target` for `local_open`, by an allowlist of names.
-It used to run `collectToolCallPaths` — the mention heuristic, which walks *every* string — and so
-listed the files a `github__create_pull_request` body mentioned as files the agent had touched. That
-walker still exists for what it was written for, resolving a prose mention; a shell command's text
-no longer counts, because what a command touched is not something its text can say. It is also
-empty during a durable run, and that is the run loop: the zone reads the transcript, but a durable manifest's stream carries
-`run_accepted` → `run_status` → `final` and **no tool frames at all**, so the calls only arrive when
-the thread is next hydrated from the snapshot. Measured against `cowork`: `write_file` was invisible
-until a reload, then appeared with its arguments intact. The same gap hides the tool *cards* from
-the transcript, which is the bigger half of it.
+**`Changes on this thread` is a workspace tool's path argument, and nothing else.** The zone
+derives it from `Turn.tools[]` through `collectChanges` (`src/lib/changes.ts`), which is gated by
+`collectTouchedPaths` in `@felix/cowork-client`: `path` for the harness's five workspace tools, `cwd`
+for `local_shell`, `target` for `local_open`, by an allowlist of names. It used to run
+`collectToolCallPaths` — the mention heuristic, which walks *every* string — and so listed the files
+a `github__create_pull_request` body mentioned as files the agent had touched. That walker still
+exists for what it was written for, resolving a prose mention; a shell command's text no longer
+counts, because what a command touched is not something its text can say.
+**A row's stat claims only what the call proves.** An `edit_file` is `+N −M` from the line counts of
+`old_string` and `new_string` (times `replacements` when the result reports it) — the size of the
+replacement, not a line diff of the file. A `write_file` is `+N written` and never a minus: once a
+write has landed nothing holds the file's before-state — `PendingApproval.before` is read at decision
+time and gone after — so a diff would be drawn against an invented empty file. A call
+`classifyToolResult` marks as failed or refused changed nothing: it reads `failed`/`refused` and
+counts towards no stat. It is empty during a durable run unless the harness tails session events
+onto the stream, and that is the run loop: a durable manifest's stream carries `run_accepted` →
+`run_status` → `final` and **no tool frames**, so the calls arrive when the thread is next hydrated
+from the snapshot. Measured against `cowork`: `write_file` was invisible until a reload, then
+appeared with its arguments intact. The section says so rather than vanishing — *Changes appear when
+the run finishes.* while `durableRunInFlight` (streaming, with the engine's `runStatus` status turn
+last) holds and the run has reported no call. The same gap hides the tool *cards* from the
+transcript, which is the bigger half of it.
 
 `/harness` is the second address, and the split is by lifetime.** The inspector's eight sections
 divided into the three that describe the run on screen — approvals, plans, tool metrics, which stayed
