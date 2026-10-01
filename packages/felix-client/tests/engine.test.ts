@@ -104,6 +104,57 @@ describe('streaming a turn', () => {
   });
 });
 
+describe('usage on the terminal frame', () => {
+  /**
+   * `done` carries the final model call's block (`felix-run/felix#399`). Cached
+   * tokens are reported apart from `input`, and this turn's figure was `3 in`
+   * for a 1,035-token call when only `input` was read.
+   */
+  const block = { input: 3, output: 7, cacheRead: 0, cacheWrite: 1025, totalTokens: 1035 };
+
+  it('reads a one-call turn as its spend and as the context it left', async () => {
+    const engine = engineOn([delta('ok'), { event: 'done', data: { usage: block } }]);
+    await run(engine);
+
+    const turn = engine.state.turns.at(-1);
+    expect(turn?.usage).toEqual({ input: 3, output: 7, cacheWrite: 1025 });
+    expect(turn?.contextTokens).toBe(1035);
+  });
+
+  it('keeps the context but not the spend when the turn ran tools', async () => {
+    // The final call's block covers the last step only, so as the turn's spend it
+    // would undercount — the same rule hydration applies to a merged turn. Its
+    // prompt still held everything, so the context figure stands.
+    const engine = engineOn([
+      { event: 'tool_start', data: { name: 'search', id: 'c1', input: {} } },
+      { event: 'tool_end', data: { name: 'search', id: 'c1', output: 'found' } },
+      delta('ok'),
+      { event: 'done', data: { usage: block } },
+    ]);
+    await run(engine);
+
+    const turn = engine.state.turns.at(-1);
+    expect(turn?.tools?.length).toBe(1);
+    expect(turn?.usage).toBeUndefined();
+    expect(turn?.contextTokens).toBe(1035);
+  });
+
+  it('sets neither against a harness that sends no usage', async () => {
+    // What every harness before #399 sends: `on_chain_end` with its output as a
+    // Python repr, and a `done` with no usage key.
+    const engine = engineOn([
+      delta('ok'),
+      { event: 'on_chain_end', data: { output: 'InvokeOutput(messages=[...])' } },
+      { event: 'done', data: { final: { content: 'ok' } } },
+    ]);
+    await run(engine);
+
+    const turn = engine.state.turns.at(-1);
+    expect(turn?.usage).toBeUndefined();
+    expect(turn?.contextTokens).toBeUndefined();
+  });
+});
+
 describe('a drained steer', () => {
   /**
    * The harness appends the steer as a real user message and keeps going, so the

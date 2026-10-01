@@ -16,12 +16,13 @@
  * part of the behaviour. A reducer returning effects would move them a tick
  * later and change what the user sees.
  */
-import type {
-  ChatMessage,
-  PendingUiRequest,
-  SessionEvent,
-  StreamEvent,
-  TokenUsage,
+import {
+  type ChatMessage,
+  type PendingUiRequest,
+  promptTokens,
+  readUsage,
+  type SessionEvent,
+  type StreamEvent,
 } from '@felix/protocol';
 import { describeGate, type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
 import { reattachThread } from './reattach';
@@ -445,11 +446,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         }));
         break;
       }
-      case 'on_chain_end': {
-        const usage = (ev.data as { output?: { usage?: TokenUsage } }).output?.usage;
-        if (usage) patch((t) => ({ ...t, usage }));
+      // Nothing to read here: the harness puts its in-process `InvokeOutput` on this
+      // frame, which reaches the wire as a Python repr string. Usage rides on `done`.
+      case 'on_chain_end':
         break;
-      }
       // Progress either side of a tool call. Without it a long-running tool shows
       // nothing but "running" for its whole duration.
       case 'tool_execution_update': {
@@ -464,12 +464,18 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       // and the chance to settle anything still marked running before the spinner
       // outlives the run that owned it.
       case 'done': {
-        const data = ev.data as { final?: { content?: string } };
+        const data = ev.data as { final?: { content?: string }; usage?: unknown };
         const final = data.final?.content?.trim();
+        // The final call's block. It is the turn's spend only when that call was the
+        // whole turn — the same rule hydration applies — but it is always how full
+        // the context is, because that call's prompt held everything before it.
+        const usage = readUsage(data.usage);
         patch((t) => ({
           ...t,
           content: t.content.trim() ? t.content : (final ?? t.content),
           tools: (t.tools ?? []).map((tool) => (tool.done ? tool : { ...tool, done: true })),
+          ...(usage && !t.tools?.length ? { usage } : {}),
+          ...(usage ? { contextTokens: promptTokens(usage) + usage.output } : {}),
         }));
         break;
       }

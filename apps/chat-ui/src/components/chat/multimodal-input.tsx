@@ -53,6 +53,7 @@ import {
   shortcutKeys,
 } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
+import { ContextMeter } from './context-meter';
 import { PaperclipIcon, StopIcon } from './icons';
 import { PreviewAttachment } from './preview-attachment';
 import { type SlashCommand, SlashCommandMenu, slashCommands } from './slash-commands';
@@ -154,6 +155,11 @@ export type MultimodalInputProps = {
   thinkingLevels?: ReadonlyArray<string>;
   thinkingLevel?: string;
   onThinkingChange?: (level: string) => void;
+  /**
+   * Tokens in the context after the last reply, against the selected agent's
+   * window. Omitted when either is unknown, and the meter with it.
+   */
+  context?: { used: number; window: number } | null;
   placeholder?: string;
   className?: string;
 };
@@ -179,6 +185,7 @@ function MultimodalInputInner({
   modelId,
   onModelChange,
   threadAgent,
+  context,
   thinkingLevels,
   thinkingLevel,
   onThinkingChange,
@@ -575,6 +582,13 @@ function MultimodalInputInner({
                   value={thinkingLevel}
                   onChange={onThinkingChange}
                   className="shrink-0"
+                />
+              )}
+              {context && (
+                <ContextMeter
+                  used={context.used}
+                  window={context.window}
+                  agent={(models?.find((m) => m.id === modelId) ?? models?.[0])?.label}
                 />
               )}
               <HelperHint text={helperText} />
@@ -1084,6 +1098,8 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.threadAgent !== next.threadAgent) return false;
   if (prev.thinkingLevel !== next.thinkingLevel) return false;
   if (prev.thinkingLevels !== next.thinkingLevels) return false;
+  if (prev.context?.used !== next.context?.used) return false;
+  if (prev.context?.window !== next.context?.window) return false;
   if (!equal(prev.className, next.className)) return false;
   return true;
 });

@@ -404,11 +404,11 @@ present, else `data.text` or `data.delta`, else `""`.
   <dd>The run failed mid-stream. Not terminal — the stream still ends with `done`/`[DONE]`, so a client that ignores it reports success</dd>
   <dd class="event-data">`{"message":str}`</dd>
   <dt>`on_chain_end`</dt>
-  <dd>Penultimate frame; carries per-turn `usage`</dd>
-  <dd class="event-data">`{"output": InvokeOutput}`</dd>
+  <dd>Penultimate frame. Its `output` is the harness's in-process result object and reaches the wire as a Python `repr` string: there is nothing in it for a client to read. Usage rides on `done`</dd>
+  <dd class="event-data">`{"output": str}`</dd>
   <dt>`done`</dt>
-  <dd>Final frame before `[DONE]`. `stop_reason` is how the run ended — `end_turn`, `tool_use`, `max_tokens`, `max_turns`, `stop_sequence`, `pause_turn`, `refusal`, `unknown` — and is what `/v1` maps to `finish_reason`</dd>
-  <dd class="event-data">`{"final": ChatMessage, "messages":[…], "stop_reason": str}`</dd>
+  <dd>Final frame before `[DONE]`. `stop_reason` is how the run ended — `end_turn`, `tool_use`, `max_tokens`, `max_turns`, `stop_sequence`, `pause_turn`, `refusal`, `unknown` — and is what `/v1` maps to `finish_reason`. `usage` is the **final model call's** block, absent when the provider reported none (and on a harness older than `felix-run/felix#399`). `input` excludes cached tokens, so the prompt is `input + cacheRead + cacheWrite`. Because that call's prompt was the whole active branch, `totalTokens` is also how full the context window is</dd>
+  <dd class="event-data">`{"final": ChatMessage, "messages":[…], "stop_reason": str, "usage"?: {"input": int, "output": int, "cacheRead": int, "cacheWrite": int, "totalTokens": int, "cost": {…}}}`</dd>
 </dl>
 
 :::note

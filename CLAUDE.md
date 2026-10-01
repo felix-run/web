@@ -374,7 +374,14 @@ Flows worth knowing before editing the app:
 
 - **Streaming** — `POST /chat/stream`, SSE decoded with a carry buffer (frames split across network
   chunks). Deltas append to the current turn; `on_tool_start`/`on_tool_end` become inline tool cards;
-  the terminal `on_chain_end` carries per-turn `usage`.
+  usage arrives on `done` (`felix-run/felix#399`) as the final model call's block — never on
+  `on_chain_end`, whose `output` reaches the wire as a Python repr string. `input` there is the
+  **uncached** prompt only, so anything showing tokens goes through `promptTokens`; reading
+  `input` drew `3 in` for a 1,035-token call. `Turn.usage` is the turn's spend and is dropped
+  for a turn that ran tools (the final call is one step of it); `Turn.contextTokens` is how full
+  the window was and is kept either way, because the final call's prompt held the whole branch.
+  The composer's context meter reads that against `/v1/models`' `contextWindow` for the
+  *selected* agent, and below `sm` it yields to the agent picker unless the window is ≥90% full.
 - **Redundant state updates are not free.** The composer cleared a "slash menu dismissed" flag from
   an effect keyed on the text, so every keystroke set state — usually to the value it already held.
   React bails out of those but still counts them, so typing fast enough (a paste, a quick typist)

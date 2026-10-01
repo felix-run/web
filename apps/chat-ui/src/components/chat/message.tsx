@@ -1,4 +1,5 @@
 import { interleaveTurn } from '@felix/client';
+import { promptTokens } from '@felix/protocol';
 import { Button } from '@felix/ui/button';
 import { useState } from 'react';
 import type { Turn } from '@/types';
@@ -149,15 +150,7 @@ export function Message({
         </div>
       )}
 
-      {turn.usage && (
-        <div
-          className="font-mono text-xs text-muted-foreground"
-          title="Cumulative tokens for this turn"
-        >
-          {turn.usage.input.toLocaleString()} in · {turn.usage.output.toLocaleString()} out ·{' '}
-          {(turn.usage.input + turn.usage.output).toLocaleString()} tok
-        </div>
-      )}
+      {turn.usage && <UsageLine usage={turn.usage} />}
 
       {/* A turn carrying reasoning already says "Thinking" in its own block. */}
       {empty && streaming && !turn.reasoning?.length && <AwaitingStatus />}
@@ -311,6 +304,30 @@ function UserTurn({
           {...(onLabel ? { onLabel } : {})}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * One call's tokens. `in` is the whole prompt: the harness reports cached tokens
+ * apart from `input`, and counting `input` alone drew `3 in` for a 1,035-token
+ * call. How much of it came from the cache goes in the title rather than the line,
+ * because it changes what the turn cost and not how big it was.
+ */
+function UsageLine({ usage }: { usage: NonNullable<Turn['usage']> }) {
+  const prompt = promptTokens(usage);
+  const cached = (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+  return (
+    <div
+      className="font-mono text-xs text-muted-foreground"
+      title={
+        cached > 0
+          ? `Tokens for this turn. ${cached.toLocaleString()} of the ${prompt.toLocaleString()} in went through the prompt cache.`
+          : 'Tokens for this turn'
+      }
+    >
+      {prompt.toLocaleString()} in · {usage.output.toLocaleString()} out ·{' '}
+      {(prompt + usage.output).toLocaleString()} tok
     </div>
   );
 }

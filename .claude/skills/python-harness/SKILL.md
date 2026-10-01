@@ -39,8 +39,8 @@ The browser clients hand-mirror the harness's wire format. These are load-bearin
 - **SSE framing** on `POST /chat/stream`: `data: <json>` frames separated by `\n\n`, terminated by
   `data: [DONE]`. Clients decode with a carry buffer.
 - **Event names**: `on_chat_model_stream`/`text_delta`, `on_tool_start`/`on_tool_end`,
-  `tool_request`, `approval_required`, `ui_request`, `session_progress`, `on_chain_end` (carries
-  `usage`), `on_error`, `done`, `aborted`. Renaming one does not fail any build — the clients'
+  `tool_request`, `approval_required`, `ui_request`, `session_progress`, `on_chain_end`, `on_error`,
+  `done` (carries the final call's `usage`), `aborted`. Renaming one does not fail any build — the clients'
   `StreamEvent` union has an open catch-all arm, so the UI just goes quiet.
 - **Blocking round trips**: `tool_request` (answered by `POST /chat/tool_result`),
   `approval_required`, and `ui_request` each hold the run open. Changing their ids or payload shape

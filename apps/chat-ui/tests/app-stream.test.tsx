@@ -172,10 +172,14 @@ describe('tool calls', () => {
 });
 
 describe('usage', () => {
-  it('renders the per-turn token counts from on_chain_end', async () => {
+  it('renders the per-turn token counts from done', async () => {
+    // `done.usage` is the final call's block (felix-run/felix#399). This used to
+    // read `on_chain_end.output.usage`, a shape the harness never sent: that
+    // frame's output reaches the wire as a Python repr string.
     stubFetch([
       { event: 'text_delta', data: { delta: 'counted' } },
-      { event: 'on_chain_end', data: { output: { usage: { input: 1200, output: 340 } } } },
+      { event: 'on_chain_end', data: { output: 'InvokeOutput(messages=[...])' } },
+      { event: 'done', data: { usage: { input: 1200, output: 340, totalTokens: 1540 } } },
     ]);
     mount();
     await send();
