@@ -204,6 +204,13 @@ The five workspace tools resolve every path under `FELIX_WORKSPACE_ROOT`, reject
 and any traversal that escapes the root. With the variable unset they fail with
 `workspace_root is not configured (set FELIX_WORKSPACE_ROOT)`.
 
+They never follow a symlink. Each path is opened one component at a time from the root with
+`O_NOFOLLOW`, so a link anywhere in it — a directory or the file itself — is refused
+(`symlinks are not followed in workspace paths`), and a `FELIX_WORKSPACE_ROOT` that is itself a
+symlink is refused. Checking a path and then opening it by name would let anything else
+writing the workspace swap a directory for a link between the two. `list_dir` reports a link as
+`symlink`; `search_files` does not descend into one.
+
 Patterns contribute their own tools: `plan_create` / `plan_update_step` / `plan_get` (`deep`), and
 `remember_procedure` when procedural memory is on.
 
@@ -360,9 +367,10 @@ Container-backed code execution (the `sandbox` extra, Docker).
 
 ## `spec.shell_tools`
 
-Exec an allowlisted argv on the host the API runs on, in the `FELIX_WORKSPACE_ROOT` checkout —
-the tool that lets a coding agent run the repository's own gates. No shell interpreter: `&&`,
-`|` and `;` are literal arguments.
+Exec an allowlisted argv in the `FELIX_WORKSPACE_ROOT` checkout — the tool that lets a coding agent
+run the repository's own gates. No shell interpreter: `&&`, `|` and `;` are literal arguments. It
+runs as a child of the API process, or in a separate shell runner when `FELIX_SHELL_RUNNER_URL` is
+set (below).
 
 ```yaml
 spec:
@@ -390,8 +398,28 @@ than as one JSON object.
 Every prefix in `commands` must be covered by one in `FELIX_SHELL_ALLOWED_COMMANDS` (comma-separated;
 empty, the default, refuses every shell tool). Checked on manifest **write** (`400`), at compile,
 and per call. The child inherits only `PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ`. What the allowlist
-cannot bound: a listed command runs repository code as the API's user — the host is the boundary.
+cannot bound: a listed command runs repository code. Without a shell runner that code runs as the
+API's user, beside it, and can read the API process's environment through `/proc` — model keys,
+database credentials, any token the API holds. Run untrusted work through a runner.
 :::
+
+**The shell runner.** `felix-shell-runner` executes shell tools in a container of its own. With
+`FELIX_SHELL_RUNNER_URL` set, the API runs every check above, then sends the argv to the runner;
+the runner checks the argv against its own `FELIX_SHELL_ALLOWED_COMMANDS` and the `cwd` against its
+own `FELIX_WORKSPACE_ROOT` again, and kills the process group at the deadline or when the API goes
+away. A runner that is down, errors, times out or answers anything malformed fails the call — it
+never falls back to running the command in the API.
+
+| Setting | Default | Notes |
+|---|---|---|
+| `FELIX_SHELL_RUNNER_URL` | `""` | Empty runs shell tools in the API process. Operator configuration only: no manifest or model can set it. |
+| `FELIX_SHELL_RUNNER_TOKEN` | `""` | Bearer shared by the API and the runner; 32+ characters, required when the URL is set. |
+
+The builder stack (`make up-self`) runs one: a `shell` service that shares only the workspace
+volume, holds no secrets, sits on its own network so it cannot reach Postgres or Valkey, and runs
+with `cap_drop: ALL`, `no-new-privileges` and a process limit. Workspace clone and fetch run there
+too, since `git fetch` runs hooks the agent can write. It still has outbound internet for
+`git fetch` and `uv`, so a builder host must not carry a cloud instance role.
 
 ## `spec.browser_tools`
 
@@ -557,9 +585,10 @@ writes them through GitHub's Git Data API — blobs, one tree, one commit, then 
 - **Bounds:** 300 files and 8 MiB per publish, the preview's diff capped at 32 KiB (the stat is
   never cut), 300 s per publish.
 - **Where the token is.** Felix uses it in one HTTP client and passes it to no git process or
-  workspace environment. On a deployment where the shell tool runs as the API's own user, code
-  the agent runs can still read the API process's environment — keep the token's GitHub
-  permissions to contents and pull requests, and its Workflows permission off.
+  workspace environment. Where shell tools run in the API process — `FELIX_SHELL_RUNNER_URL`
+  unset — code the agent runs can still read that process's environment, token included; run
+  them through a [shell runner](#specshell_tools), as the builder stack does. Either way keep the
+  token's GitHub permissions to contents and pull requests, and its Workflows permission off.
 
 ## `spec.client_tools`
 
