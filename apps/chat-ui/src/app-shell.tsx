@@ -73,6 +73,7 @@ import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
 import { type Theme, useTheme } from '@/components/theme-provider';
+import { useMessageQueue } from '@/hooks/use-message-queue';
 import { usePendingApprovals } from '@/hooks/use-pending-approvals';
 import { useRails } from '@/hooks/use-rails';
 import { useShortcuts } from '@/hooks/use-shortcuts';
@@ -307,6 +308,7 @@ export function AppShell() {
    * driven by Back or a pasted link is long enough to matter.
    */
   threadIdRef.current = threadId;
+  const queue = useMessageQueue(threadId);
   useEffect(() => {
     verboseRef.current = verbose;
   }, [verbose]);
@@ -506,7 +508,10 @@ export function AppShell() {
     void abortChat(tid).catch(() => {});
     engine.abort();
     engine.setPhase('aborted');
-  }, [engine]);
+    // Stop means stop: the next queued message must not go out on its own the
+    // moment the run it was queued behind has been ended on purpose.
+    queue.setPaused(true);
+  }, [engine, queue.setPaused]);
 
   /**
    * Point the engine at a thread: local cache first, server snapshot behind it.
@@ -1457,6 +1462,12 @@ export function AppShell() {
       // Permission is asked for here, inside the click, and only for the mode
       // that needs it. Prompting on load is how a page trains people to say no.
       if (mode === 'background') void armNotifications();
+      // Mid-run, a message waits its turn rather than steering. The composer
+      // clears because this resolved, which is right: it is on screen, queued.
+      if (streaming && mode === 'stream') {
+        queue.enqueue({ text: message.text, files: message.files });
+        return;
+      }
       const images = message.files.filter((f) => f.mediaType.startsWith('image/'));
       let attachments: ImageAttachment[] = [];
       if (images.length && !streaming) {
@@ -1481,7 +1492,82 @@ export function AppShell() {
       }
       send(message.text, attachments, mode);
     },
-    [send, streaming],
+    [send, streaming, queue.enqueue],
+  );
+
+  /**
+   * Send the next queued message once the thread is free.
+   *
+   * `draining` covers the gap between taking a message and the run it opens:
+   * an image upload comes first, and `streaming` stays false through it, so
+   * without the ref the next render would take a second message too.
+   *
+   * A run that ended badly pauses the queue rather than sending into it. The
+   * next message was written on the assumption that this one would finish.
+   */
+  const draining = useRef(false);
+  const wasStreaming = useRef(streaming);
+  const drainedThread = useRef(threadId);
+  useEffect(() => {
+    const ended = wasStreaming.current && !streaming;
+    wasStreaming.current = streaming;
+    // Arriving on a thread with messages still queued from an earlier visit
+    // must not fire them: the operator came here to read, not to send.
+    if (drainedThread.current !== threadId) {
+      drainedThread.current = threadId;
+      draining.current = false;
+      if (queue.items.length > 0 && !streaming) queue.setPaused(true);
+      return;
+    }
+    if (streaming) {
+      draining.current = false;
+      return;
+    }
+    if (ended && (error || engine.state.phase === 'aborted') && queue.items.length > 0) {
+      queue.setPaused(true);
+      return;
+    }
+    if (draining.current || reattaching || !harnessReachable) return;
+    if (queue.paused || queue.items.length === 0) return;
+    const next = queue.items[0];
+    queue.take(next.id);
+    draining.current = true;
+    submit({ text: next.text, files: next.files }).then(
+      () => {
+        // A send that was refused without throwing opens no run, and nothing
+        // would ever clear the flag. Say so by pausing, with the message back.
+        if (!engine.state.streaming) {
+          draining.current = false;
+          queue.restore(next);
+          queue.setPaused(true);
+        }
+      },
+      () => {
+        draining.current = false;
+        queue.restore(next);
+        queue.setPaused(true);
+      },
+    );
+  }, [threadId, streaming, reattaching, harnessReachable, error, engine, queue, submit]);
+
+  /**
+   * Hand one queued message to the run in flight. The harness cancels the
+   * run's remaining tool calls when a steer lands, which is why this is a
+   * deliberate act on one message rather than what Enter does.
+   */
+  const steerQueued = useCallback(
+    (id: string) => {
+      if (!streaming || reattachingRef.current) return;
+      const message = queue.take(id);
+      if (!message) return;
+      void steerChat({ threadId, text: message.text.trim() }).catch((err) => {
+        // Put back rather than retried: a steer that failed on the response
+        // rather than the request may already be in the run.
+        queue.restore(message);
+        toastError(err, 'steer with that message');
+      });
+    },
+    [streaming, queue, threadId],
   );
 
   const onSlashCommand = useCallback(
@@ -1555,6 +1641,8 @@ export function AppShell() {
     rateTurn,
     send,
     submit,
+    queue,
+    steerQueued,
     stopRun,
     regenerate,
     rewindTo,

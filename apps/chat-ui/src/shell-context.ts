@@ -3,6 +3,7 @@ import { createContext, type Dispatch, type SetStateAction, useContext } from 'r
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
+import type { MessageQueue } from '@/hooks/use-message-queue';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
 import type { ImageAttachment, ThinkingLevel, TurnFeedback } from '@/types';
 
@@ -69,6 +70,10 @@ export interface ShellValue {
   ): Promise<void>;
   send(text: string, attachments?: ImageAttachment[], mode?: 'stream' | 'background'): void;
   submit(message: PromptInputMessage, mode?: 'stream' | 'background'): Promise<void>;
+  /** Messages written mid-run, held until the thread is free or the operator steers with one. */
+  queue: MessageQueue;
+  /** Steer the run in flight with one queued message. Cancels the run's remaining tool calls. */
+  steerQueued(id: string): void;
   stopRun(): void;
   regenerate(): void;
   rewindTo(eventId: string): void;

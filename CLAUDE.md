@@ -619,6 +619,16 @@ Flows worth knowing before editing the app:
   note means no case, because there is nothing to judge against. The rating buttons render
   *before* the hover-hidden actions, so a saved rating sits at the edge instead of floating after
   invisible buttons.
+- **Enter mid-run queues; it does not steer.** `POST /chat/steer` is irrevocable — the harness
+  offers no way to list, edit or withdraw a queued message — and a `kind: "steer"` cancels the
+  run's remaining tool calls the moment it lands. So the shell holds mid-run messages in
+  `useMessageQueue` (per thread, in the tab), the composer draws them as a tray it overlaps, and
+  the shell's drain effect sends the head as an ordinary turn once `streaming` drops. Steering is a
+  per-row act, refused for a row with images (a steer is text only). Stop, a failed run, and
+  arriving on a thread that already has a queue all **pause** it — sending the next step after
+  any of those would be the client deciding to carry on. `draining` guards the gap an image
+  upload opens between taking a message and `streaming` turning true; without it the next render
+  takes a second one. `tests/queued-messages.test.tsx` pins all of it at the wire.
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
   (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
   `/chat/sessions/search`.

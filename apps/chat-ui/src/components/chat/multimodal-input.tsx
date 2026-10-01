@@ -50,6 +50,7 @@ import {
   usePromptInputController,
   useProviderAttachments,
 } from '@/components/ai-elements/prompt-input';
+import type { MessageQueue } from '@/hooks/use-message-queue';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { toastProblem } from '@/lib/error-toast';
 import {
@@ -63,6 +64,7 @@ import { cn } from '@/lib/utils';
 import { ContextMeter } from './context-meter';
 import { PaperclipIcon, StopIcon } from './icons';
 import { PreviewAttachment } from './preview-attachment';
+import { QueuedMessages } from './queued-messages';
 import { type SlashCommand, SlashCommandMenu, slashCommands } from './slash-commands';
 
 /**
@@ -172,6 +174,12 @@ export type MultimodalInputProps = {
    * window. Omitted when either is unknown, and the meter with it.
    */
   context?: { used: number; window: number } | null;
+  /**
+   * Messages written mid-run and not yet sent, drawn on top of the composer.
+   * Edit moves one back into the composer, which is why the composer owns it.
+   */
+  queue?: MessageQueue;
+  onSteerQueued?: (id: string) => void;
   placeholder?: string;
   className?: string;
 };
@@ -198,6 +206,8 @@ function MultimodalInputInner({
   onModelChange,
   threadAgent,
   context,
+  queue,
+  onSteerQueued,
   thinkingLevels,
   thinkingLevel,
   onThinkingChange,
@@ -361,7 +371,7 @@ function MultimodalInputInner({
   const helperText =
     refusal ??
     (isBusy
-      ? 'Generating. Press Enter to steer.'
+      ? 'Generating. Enter queues your message for when it finishes.'
       : files.length >= MAX_FILES
         ? `Max ${MAX_FILES} attachments`
         : null);
@@ -412,7 +422,7 @@ function MultimodalInputInner({
       // blocks Enter, so reaching one means a path that bypassed both.
       if (!isConnected) refuseSubmit('Not connected to the harness. Nothing was sent.');
       if (reattaching) refuseSubmit(REATTACHING_REFUSAL);
-      // While streaming, submit steers the active run (handled by App.send).
+      // While streaming, submit queues the message (handled by the shell's submit).
       if (message.text.length > MAX_TEXT_LENGTH) {
         refuseSubmit(
           `Message is ${(message.text.length - MAX_TEXT_LENGTH).toLocaleString()} characters over the ${MAX_TEXT_LENGTH.toLocaleString()} limit. Nothing was sent.`,
@@ -423,6 +433,34 @@ function MultimodalInputInner({
       if (isBusy) controller.textInput.clear();
     },
     [isConnected, reattaching, isBusy, onSubmit, controller, handleSlashSelect],
+  );
+
+  /**
+   * Move a queued message back into the composer to be changed. Refused over a
+   * draft rather than merged into it: two messages run together is neither.
+   */
+  const editQueued = useCallback(
+    async (id: string) => {
+      if (controller.textInput.value.trim() || attachments.files.length > 0) {
+        toastProblem('Send or clear what is in the composer first, then edit the queued message.');
+        return;
+      }
+      const message = queue?.take(id);
+      if (!message) return;
+      controller.textInput.setInput(message.text);
+      if (message.files.length > 0) {
+        // Queued files are data URLs; the composer takes `File`s.
+        const files = await Promise.all(
+          message.files.map(async (f) => {
+            const blob = await (await fetch(f.url)).blob();
+            return new File([blob], f.filename ?? 'image', { type: f.mediaType });
+          }),
+        );
+        attachments.add(files);
+      }
+      textareaRef.current?.focus();
+    },
+    [controller, attachments, queue],
   );
 
   const handleTextareaKeyDown = useCallback(
@@ -480,6 +518,19 @@ function MultimodalInputInner({
       {!isConnected && <ConnectionBanner />}
 
       <div ref={formContainerRef} className="relative">
+        {queue && (
+          <QueuedMessages
+            items={queue.items}
+            paused={queue.paused}
+            running={isBusy && !reattaching}
+            onSteer={(id) => onSteerQueued?.(id)}
+            onEdit={editQueued}
+            onMove={queue.move}
+            onRemove={(id) => void queue.take(id)}
+            onResume={() => queue.setPaused(false)}
+            onClear={queue.clear}
+          />
+        )}
         {slashOpen && (
           <SlashCommandMenu
             query={slashQuery}
@@ -1073,7 +1124,7 @@ function KeyboardHint({ isBusy }: { isBusy: boolean }) {
         <Kbd>
           <CornerDownLeft className="size-2.5" />
         </Kbd>
-        <span>{isBusy ? 'to steer the run' : 'to send'}</span>
+        <span>{isBusy ? 'to queue' : 'to send'}</span>
       </span>
       {/* Decorative separator: `text-border` is a hairline colour and rendered this at
           1.24:1, effectively invisible. Hidden from assistive tech and given a colour
@@ -1156,6 +1207,8 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.thinkingLevels !== next.thinkingLevels) return false;
   if (prev.context?.used !== next.context?.used) return false;
   if (prev.context?.window !== next.context?.window) return false;
+  // Changes with the items and with the thread, which also re-binds `onSteerQueued`.
+  if (prev.queue !== next.queue) return false;
   if (!equal(prev.className, next.className)) return false;
   return true;
 });

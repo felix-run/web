@@ -296,6 +296,12 @@ of its next run; `kind: "follow_up"` queues a message delivered once the run goe
 `POST /chat/abort` stops it, and `POST /chat/continue` picks it back up with no new user message. The
 queues are Redis lists, so any replica can accept the steer.
 
+Neither queue can be read back or withdrawn once a message is in it, so the web client does not
+put one there by default. A message written while a run is going waits in the tab, above the
+composer, and is sent as the next turn when the run finishes. Until then it can be edited,
+reordered or removed, or sent into the run as a steer from its own row. Stopping a run, or a run
+that fails, pauses that queue, and nothing more is sent until you resume it.
+
 ## Interrupts
 
 Three things pause a run until something answers out of band: an `approval_required` frame waiting on
