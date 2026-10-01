@@ -394,3 +394,19 @@
     margin-inline-end: 0.35rem;
   }
 }
+
+/*
+ * The mark beside the wordmark. Starlight sizes the logo to the full nav bar
+ * height, which made the tile taller than the caps it introduces; at 1.5rem
+ * the glyph inside it stands about as tall as the 1.25rem title's caps. The
+ * gap is chat-ui's header gap rather than Starlight's nav gap, which was wide
+ * enough that the mark read as a separate control.
+ */
+.site-title {
+  gap: 0.5rem;
+}
+
+.site-title img {
+  height: 1.5rem;
+  width: auto;
+}

@@ -15,6 +15,7 @@
   "dependencies": {
     "@felix/client": "workspace:*",
     "@felix/cowork-client": "workspace:*",
+    "@felix/design": "workspace:*",
     "@felix/protocol": "workspace:*",
     "@felix/ui": "workspace:*",
     "class-variance-authority": "catalog:",

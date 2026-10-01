@@ -20,6 +20,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { BrandMark } from '@/components/brand-mark';
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -37,7 +38,10 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         className="relative hidden overflow-hidden border-r border-border/60 bg-muted lg:block"
       >
         <div className="flex h-full flex-col justify-between p-8">
-          <span className="text-sm font-semibold uppercase tracking-wider">Felix</span>
+          <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider">
+            <BrandMark className="size-4" />
+            Felix
+          </span>
 
           <div className="max-w-lg space-y-2">
             <h2 className="text-balance text-base font-semibold">

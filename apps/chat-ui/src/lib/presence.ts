@@ -6,16 +6,21 @@
  * assumption — it can block on an approval minutes after the tab lost focus, so
  * a signal that only exists on screen does not exist at all.
  *
- * Two channels, deliberately cheap:
+ * Three channels, deliberately cheap:
  *   - `document.title`, which is always in the tab strip;
+ *   - the favicon, whose dot takes the state's hue (`@felix/design/mark`) — the
+ *     one channel that still reads once a crowded strip has cut the title
+ *     down to its icon;
  *   - an OS notification, only when the tab is hidden and permission was
  *     already granted from a real user gesture (`armNotifications`).
  *
- * The title reflects state even while the tab is visible. The spec that
+ * Title and icon reflect state even while the tab is visible. The spec that
  * preceded this file restored a plain title on focus; always reflecting is
  * simpler, has no "stuck title" failure mode, and still helps the operator find
  * the right tab among many.
  */
+
+import { markDataUrl } from '@felix/design/mark';
 
 export type Presence = 'idle' | 'working' | 'blocked';
 
@@ -40,9 +45,22 @@ function title(): string {
   return `${PREFIX[current]}${place ? `${place} — ` : ''}${BASE_TITLE}`;
 }
 
+/**
+ * Repaint the SVG icon `index.html` declares. Idle goes back to the static
+ * file rather than an equivalent `data:` URL, so a tab at rest serves the same
+ * cacheable icon a fresh load does. Safari draws neither a swapped nor an SVG
+ * favicon, so there the static mark stays and the title carries the state.
+ */
+function paintIcon(): void {
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"][type="image/svg+xml"]');
+  if (!link) return;
+  link.href = current === 'idle' ? '/favicon.svg' : markDataUrl({ state: current });
+}
+
 function paint(): void {
   try {
     document.title = title();
+    paintIcon();
   } catch {
     // Non-DOM environment; the notification channel is independent.
   }

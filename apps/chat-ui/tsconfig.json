@@ -23,6 +23,7 @@
       "@felix/protocol": ["../../packages/felix-protocol/src/index.ts"],
       "@felix/cowork-client": ["../../packages/cowork-client/src/index.ts"],
       "@felix/cowork-client/*": ["../../packages/cowork-client/src/*"],
+      "@felix/design/*": ["../../packages/design/src/*"],
       "@felix/ui/*": ["../../packages/ui/src/*"],
       "@felix/ui/lib/utils": ["../../packages/ui/src/lib/utils.ts"],
       "@felix/test-kit/*": ["../../packages/test-kit/src/*"]

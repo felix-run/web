@@ -62,6 +62,7 @@ import {
 } from '@/api';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import { AttentionLine } from '@/components/attention-line';
+import { BrandMark } from '@/components/brand-mark';
 import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
@@ -1343,6 +1344,7 @@ export function AppShell() {
               An `h1` because the document had none — every page began at `h2`,
               so there was no top-level heading naming the application for anyone
               navigating by heading. */}
+          <BrandMark />
           <h1 className="truncate text-base font-semibold uppercase tracking-wider">Felix</h1>
           {/* This thread's run, in one slot that is the same on both addresses.
               It used to ride the Chat door on `/harness` only, so `/t` said
