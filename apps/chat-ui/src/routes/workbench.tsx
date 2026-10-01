@@ -55,6 +55,7 @@ export function Workbench() {
     stopRun,
     regenerate,
     rewindTo,
+    editTurn,
     onSlashCommand,
     manifest,
     setManifest,
@@ -129,6 +130,9 @@ export function Workbench() {
                   onRewind={
                     !streaming && t.eventId && !isLast ? () => rewindTo(t.eventId!) : undefined
                   }
+                  {...(!streaming && t.role === 'user' && (i > 0 || t.parentEventId)
+                    ? { onEdit: (text: string) => void editTurn(t.id, text) }
+                    : {})}
                   {...(t.eventId && labels[t.eventId] !== undefined
                     ? { label: labels[t.eventId] }
                     : {})}

@@ -675,6 +675,14 @@ curl -s -X POST "$BASE_URL/chat/fork" -H "authorization: Bearer $FELIX_KEY" \
 active leaf back to `event_id`. Unless `summarize: false` (or `session.branch_summary: false`), the
 abandoned branch is summarized into a `branch_summary` event using the manifest's model.
 
+The next message appends as a child of the new leaf, so a rewind followed by a send creates a
+branch. `GET /chat/sessions/{id}` still returns **every** event on the session, across all
+branches, and reports the active one only as `leafId`. To render the active branch, start at the
+leaf and follow each event's `metadata.parent_id` back to the root. That is the path the model's
+context is built from. Cutting the list off at the leaf works only while the thread has a single
+branch: after an edit, the abandoned reply sits between the branch point and the new leaf in `seq`
+order.
+
 ## OpenAI-compatible surface
 
 `model` is the **manifest name**.

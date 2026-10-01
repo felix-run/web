@@ -83,6 +83,7 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     stopRun: () => {},
     regenerate: () => {},
     rewindTo: () => {},
+    editTurn: async () => {},
     onSlashCommand: () => {},
     threads: [thread('now', 'Current thread'), thread('other', 'The other one')],
     selectThread: () => {},

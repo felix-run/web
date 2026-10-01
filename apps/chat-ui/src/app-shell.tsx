@@ -1163,6 +1163,97 @@ export function AppShell() {
     [streaming, threadId, manifest, hydrateFromServer],
   );
 
+  /**
+   * Replace a sent message with new text and run from there.
+   *
+   * Rewind and send, composed: the leaf moves to the event the original message
+   * continued from, and the new text is appended as its sibling — so the model
+   * sees the conversation as if the original had never been sent, and the
+   * original and everything after it stay on the session on another branch. That
+   * is what makes it undoable, the same way a rewind is.
+   *
+   * The parent is only known from a snapshot, and a message sent in this tab has
+   * none yet, so this hydrates first when it has to. The n-th user turn locally is
+   * the n-th on the snapshot's active branch; a count that disagrees means the two
+   * have diverged and the edit refuses rather than guessing which message was meant.
+   */
+  const editingRef = useRef(false);
+  const editTurn = useCallback(
+    async (turnId: string, text: string) => {
+      if (streaming || reattachingRef.current || rewindingRef.current || editingRef.current) return;
+      const next = text.trim();
+      const local = turnsRef.current;
+      const index = local.findIndex((t) => t.id === turnId);
+      const original = local[index];
+      if (!original || original.role !== 'user' || !next || next === original.content.trim()) {
+        return;
+      }
+      const ordinal = local.slice(0, index).filter((t) => t.role === 'user').length;
+
+      editingRef.current = true;
+      try {
+        const snap = await getSessionSnapshot(threadId);
+        const server = snap?.transcript?.length ? eventsToTurns(snapshotToEvents(snap)) : [];
+        const target = server.filter((t) => t.role === 'user')[ordinal];
+        if (!target?.parentEventId) {
+          toast.message(
+            target
+              ? 'The first message has nothing before it to branch from. Start a new thread instead.'
+              : 'This thread changed since it was loaded. Reload it and try again.',
+          );
+          return;
+        }
+        const previousLeaf = [...server].reverse().find((t) => t.eventId)?.eventId ?? null;
+        await rewindChat({ threadId, eventId: target.parentEventId, summarize: false, manifest });
+        if (threadIdRef.current !== threadId) return;
+
+        engine.setError(null);
+        const userTurn: Turn = {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: next,
+          ...(original.attachments?.length ? { attachments: original.attachments } : {}),
+        };
+        const assistantId = crypto.randomUUID();
+        engine.setTurns([
+          ...local.slice(0, index),
+          userTurn,
+          { id: assistantId, role: 'assistant', content: '', tools: [] },
+        ]);
+        const userMessage: ChatMessage = { role: 'user', content: next };
+        if (original.attachments?.length) userMessage.attachments = original.attachments;
+        void streamInto([userMessage], assistantId);
+
+        toast.message(
+          'Edited. The original and its replies are kept on another branch.',
+          previousLeaf
+            ? {
+                action: {
+                  label: 'Restore original',
+                  onClick: () => {
+                    // Moving the leaf under a live run would graft its reply onto
+                    // the wrong branch, so this waits for the run to finish.
+                    if (engine.state.streaming) {
+                      toast.message('Wait for this run to finish, then rewind.');
+                      return;
+                    }
+                    void rewindChat({ threadId, eventId: previousLeaf, summarize: false, manifest })
+                      .then(() => hydrateFromServer(threadId))
+                      .catch((err) => toastError(err, 'restore the original'));
+                  },
+                },
+              }
+            : undefined,
+        );
+      } catch (err) {
+        toastError(err, 'edit this message');
+      } finally {
+        editingRef.current = false;
+      }
+    },
+    [engine, streaming, threadId, manifest, streamInto, hydrateFromServer],
+  );
+
   const onUiRespond = useCallback(
     async (value: unknown) => {
       if (!uiPrompt) return;
@@ -1290,6 +1381,7 @@ export function AppShell() {
     stopRun,
     regenerate,
     rewindTo,
+    editTurn,
     onSlashCommand,
     threads,
     selectThread,

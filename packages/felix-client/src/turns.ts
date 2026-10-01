@@ -88,6 +88,13 @@ export interface Turn {
   /** Server event id when hydrated from a session snapshot (enables rewind). */
   eventId?: string;
   /**
+   * The event this one continues from, on a hydrated user turn. Editing a message
+   * rewinds the leaf here and sends the new text, so the edit becomes a sibling
+   * branch of the original rather than a reply to it. Absent on the first message
+   * of a thread, which has nothing before it to rewind to.
+   */
+  parentEventId?: string;
+  /**
    * Why the run stopped short, when it did. Set from the `max_turns` frame: the
    * react loop ran out of `recursion_limit` steps with tool calls still pending,
    * so the content above is an answer cut off mid-thought, not a finished one.

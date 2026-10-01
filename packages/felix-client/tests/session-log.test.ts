@@ -159,6 +159,73 @@ describe('snapshotToEvents — trimming to the active branch', () => {
     // Better a transcript that is too long than one silently emptied.
     expect(snapshotToEvents(snapshot('gone')).map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
   });
+
+  /**
+   * An edited message is a sibling of the original, so after one the abandoned
+   * reply sits between the branch point and the new leaf in `seq` order. A slice
+   * at the leaf rendered both conversations interleaved; the walk renders one.
+   */
+  const branched = (leafId: string): SessionSnapshot =>
+    ({
+      leafId,
+      transcript: [
+        { id: 'u1', seq: 1, kind: 'message', role: 'user', content: 'hi', metadata: {} },
+        {
+          id: 'a1',
+          seq: 2,
+          kind: 'message',
+          role: 'assistant',
+          content: 'hello',
+          metadata: { parent_id: 'u1' },
+        },
+        {
+          id: 'u2',
+          seq: 3,
+          kind: 'message',
+          role: 'user',
+          content: 'original',
+          metadata: { parent_id: 'a1' },
+        },
+        {
+          id: 'a2',
+          seq: 4,
+          kind: 'message',
+          role: 'assistant',
+          content: 'reply to original',
+          metadata: { parent_id: 'u2' },
+        },
+        {
+          id: 'u2b',
+          seq: 5,
+          kind: 'message',
+          role: 'user',
+          content: 'edited',
+          metadata: { parent_id: 'a1' },
+        },
+        {
+          id: 'a2b',
+          seq: 6,
+          kind: 'message',
+          role: 'assistant',
+          content: 'reply to edit',
+          metadata: { parent_id: 'u2b' },
+        },
+      ],
+    }) as unknown as SessionSnapshot;
+
+  it('follows parent links, so an abandoned branch is not rendered', () => {
+    expect(snapshotToEvents(branched('a2b')).map((e) => e.id)).toEqual(['u1', 'a1', 'u2b', 'a2b']);
+  });
+
+  it('can still show the original branch when the leaf is moved back to it', () => {
+    expect(snapshotToEvents(branched('a2')).map((e) => e.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
+  });
+
+  it('gives a hydrated user turn the event it continues from', () => {
+    const turns = eventsToTurns(snapshotToEvents(branched('a2b')));
+    const users = turns.filter((t) => t.role === 'user');
+    expect(users.map((t) => t.parentEventId)).toEqual([undefined, 'a1']);
+  });
 });
 
 /**

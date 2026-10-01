@@ -76,6 +76,8 @@ export interface ShellValue {
   stopRun(): void;
   regenerate(): void;
   rewindTo(eventId: string): void;
+  /** Replace a sent user message and run from it; the original stays on another branch. */
+  editTurn(turnId: string, text: string): Promise<void>;
   onSlashCommand(cmd: SlashCommand): void;
 
   /** The thread index behind the history rail. */
