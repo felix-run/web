@@ -543,6 +543,13 @@ Flows worth knowing before editing the app:
   longer pending". Thumbnails resolve through `GET /files/{id}`, whose response names **no** media
   type, so `sniffImageType` reads it off the bytes. Hydration restores `metadata.attachments`, which
   it used to ignore, so a reload had dropped every thumbnail.
+- **Tabular tool results are drawn as tables** (`parseTabular` in `@felix/client`, `ToolTable` in
+  chat-ui), with a Table / Raw toggle and a 100-row cap that says what it hides. It recognises a
+  JSON array of records, a small envelope around one (`items`, `rows`, `results`, …), and CSV/TSV,
+  and it is **deliberately conservative**: a miss leaves output as the text it was, while a false
+  positive mangles output that was fine. The first draft read three lines of comma-laden prose as
+  a CSV; header cells must now be label-like and no line may end like a sentence. A failed call
+  and a `local_shell` result keep their own rendering.
 - **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
   with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
   `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only
