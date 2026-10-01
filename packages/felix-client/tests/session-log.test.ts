@@ -480,6 +480,20 @@ describe('usage from the session log', () => {
     ]);
     expect(turns[1]?.content).toBe('done');
     expect(turns[1]?.usage).toBeUndefined();
+    // The final call's prompt held the tool step too, so the context figure stands.
+    expect(turns[1]?.contextTokens).toBe(1280);
+  });
+
+  it('counts cached tokens as part of the prompt', () => {
+    // The block the harness stored for a call whose prompt was written to the
+    // cache: `input` alone is 3, the prompt was 1,028.
+    const cached = { input: 3, output: 7, cacheRead: 0, cacheWrite: 1025, totalTokens: 1035 };
+    const turns = eventsToTurns([
+      ev({ seq: 1, role: 'user', content: 'hi' }),
+      ev({ seq: 2, role: 'assistant', content: 'yo', metadata: { usage: cached } }),
+    ]);
+    expect(turns[1]?.usage).toEqual({ input: 3, output: 7, cacheWrite: 1025 });
+    expect(turns[1]?.contextTokens).toBe(1035);
   });
 
   it('ignores a usage block it cannot read as numbers', () => {

@@ -27,9 +27,20 @@ export interface ChatMessage {
 }
 
 /** Cumulative token usage for one turn (all model sub-calls summed). */
+/**
+ * One model call's token counts, as the harness's usage block spells them.
+ *
+ * `input` is the **uncached** part of the prompt only. Cached tokens are reported
+ * apart — `cacheRead` for a prefix served from the provider's cache, `cacheWrite`
+ * for one written to it — so the prompt is all three added together. Reading
+ * `input` alone made a cached turn read as `3 in` when the call was 1,035 tokens.
+ * Both are optional: a harness or provider that does not cache sends neither.
+ */
 export interface TokenUsage {
   input: number;
   output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
 }
 
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -123,7 +134,12 @@ export type StreamEvent =
       event: 'session_progress';
       data: { phase?: string; reason?: string; [k: string]: unknown };
     }
-  | { event: 'on_chain_end'; data: { output?: { usage?: TokenUsage } } }
+  /**
+   * The harness's in-process `InvokeOutput`, which reaches the wire as a Python
+   * repr string (`default=str`). Typed as `unknown` because nothing in it is a
+   * contract; usage is on `done`.
+   */
+  | { event: 'on_chain_end'; data: { output?: unknown } }
   /**
    * A stream that failed after its 200 was sent.
    *
@@ -134,7 +150,16 @@ export type StreamEvent =
    * this arm.
    */
   | { event: 'on_error'; data: { message: string; type?: string } }
-  | { event: 'done'; data: { final?: ChatMessage; messages?: ChatMessage[] } }
+  /**
+   * `usage` is the final model call's block (`felix-run/felix#399`), absent from
+   * an older harness and whenever the provider reported none. Read it with
+   * `readUsage`; the wire also carries `cost` and `totalTokens`, which nothing
+   * here needs.
+   */
+  | {
+      event: 'done';
+      data: { final?: ChatMessage; messages?: ChatMessage[]; usage?: unknown };
+    }
   | { event: 'aborted'; data: { thread_id?: string } }
   /**
    * The durable trio. `POST /chat/stream` checks `spec.execution.mode` and, when

@@ -16,3 +16,4 @@ export type {
   ThreadHistory,
   TokenUsage,
 } from './types';
+export { promptTokens, readUsage } from './usage';

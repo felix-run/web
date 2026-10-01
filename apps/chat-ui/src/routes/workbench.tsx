@@ -1,6 +1,7 @@
 import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { useMemo } from 'react';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
+import { contextFill } from '@/components/chat/context-meter';
 import { Conversation } from '@/components/chat/conversation';
 import { Greeting, useMountLabel } from '@/components/chat/greeting';
 import { Message } from '@/components/chat/message';
@@ -98,6 +99,13 @@ export function Workbench() {
   }, [manifestOptions, manifestEntries]);
 
   const empty = turns.length === 0;
+
+  // The window is the *selected* agent's, not the one the thread last ran on: the
+  // next message goes to the selection, with this history replayed in front of it.
+  const context = useMemo(
+    () => contextFill(turns, manifestEntries.find((m) => m.id === manifest)?.contextWindow),
+    [turns, manifestEntries, manifest],
+  );
 
   // Which agent this thread's turns last ran on, for the line under the composer.
   // Only the local index knows (the harness keeps no manifest per thread), and a
@@ -199,6 +207,7 @@ export function Workbench() {
               modelId={manifest}
               onModelChange={setManifest}
               threadAgent={threadAgent}
+              context={context}
               thinkingLevels={thinkingLevels}
               thinkingLevel={thinkingLevel}
               onThinkingChange={(level) => {

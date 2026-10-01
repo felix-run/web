@@ -83,8 +83,20 @@ export interface Turn {
   runStatus?: 'running' | 'blocked';
   /** Image attachments on a user turn (rendered as thumbnails). */
   attachments?: ImageAttachment[];
-  /** Set on assistant turns from the terminal `on_chain_end` usage payload. */
+  /**
+   * What this turn spent, when one model call is the whole of it: from the live
+   * `done` frame, or from the snapshot's stored block. Left unset on a turn that
+   * ran tools, where the final call's block covers only the last step — a sum
+   * over the thread says `floor` for it instead.
+   */
   usage?: TokenUsage;
+  /**
+   * How full the context window was once this turn ended: the final model call's
+   * prompt, cached or not, plus its reply. Set whenever that call reported usage,
+   * tools or no tools, because the final call's prompt already held the whole
+   * active branch. What a context meter reads.
+   */
+  contextTokens?: number;
   /** Server event id when hydrated from a session snapshot (enables rewind). */
   eventId?: string;
   /**

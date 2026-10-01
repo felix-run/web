@@ -6,7 +6,13 @@
  * and produces what a client renders. Where a client *keeps* its copy — a
  * browser's localStorage, a CLI's state directory — is the client's business.
  */
-import type { SessionEvent, SessionSnapshot, TokenUsage } from '@felix/protocol';
+import {
+  promptTokens,
+  readUsage,
+  type SessionEvent,
+  type SessionSnapshot,
+  type TokenUsage,
+} from '@felix/protocol';
 import type { ReasoningBlock, ToolCall, Turn } from './turns';
 
 /**
@@ -198,12 +204,7 @@ export function readableThinking(metadata: Record<string, unknown> | undefined):
  * thread says `floor` for it rather than presenting a partial figure as whole.
  */
 function storedUsage(metadata: Record<string, unknown> | undefined): TokenUsage | undefined {
-  const raw = metadata?.usage;
-  if (!raw || typeof raw !== 'object') return undefined;
-  const { input, output } = raw as { input?: unknown; output?: unknown };
-  if (typeof input !== 'number' || typeof output !== 'number') return undefined;
-  if (!Number.isFinite(input) || !Number.isFinite(output)) return undefined;
-  return { input, output };
+  return readUsage(metadata?.usage);
 }
 
 /**
@@ -313,7 +314,8 @@ export function eventsToTurns(
         pendingReasoning = reasoning;
         continue;
       }
-      const usage = carried ? undefined : storedUsage(ev.metadata);
+      const stored = storedUsage(ev.metadata);
+      const usage = carried ? undefined : stored;
       turns.push({
         id: ev.id ?? newId(),
         role: 'assistant',
@@ -321,6 +323,9 @@ export function eventsToTurns(
         tools,
         ...(reasoning.length ? { reasoning } : {}),
         ...(usage ? { usage } : {}),
+        // Unlike `usage`, right whether or not a tool step was merged in: the final
+        // call's prompt already held everything before it.
+        ...(stored ? { contextTokens: promptTokens(stored) + stored.output } : {}),
         eventId: ev.id,
       });
     }

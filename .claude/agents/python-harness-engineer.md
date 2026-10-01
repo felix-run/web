@@ -29,8 +29,8 @@ Changes here are load-bearing for `apps/chat-ui`. Treat these as a public contra
 - **SSE framing on `POST /chat/stream`** — one event per `\n\n`, `data: <json>` lines, terminated by
   `data: [DONE]`. Clients decode with a carry buffer; a malformed or unterminated frame hangs the UI.
 - **Event names** — `on_chat_model_stream` / `text_delta`, `on_tool_start` / `on_tool_end`,
-  `tool_request`, `approval_required`, `ui_request`, `session_progress`, `on_chain_end` (carries
-  per-turn `usage`), `on_error`, `done`, `aborted`. Renaming one silently breaks the clients, because
+  `tool_request`, `approval_required`, `ui_request`, `session_progress`, `on_chain_end`, `on_error`,
+  `done` (carries the final call's `usage`), `aborted`. Renaming one silently breaks the clients, because
   their `StreamEvent` union has an open catch-all arm.
 - **The `x-manifest-variant` response header** (`stable` / `canary`) is read by the UI.
 - **`202 + resume_token`** from `POST /chat` puts the client into durable-run polling on

@@ -25,9 +25,9 @@ any new reader.
 | `approval_required` | Human approval needed | Banner → `POST /approvals/{id}/decide` — blocking |
 | `ui_request` | select / confirm / input prompt | Banner → `POST /chat/ui` — blocking |
 | `session_progress` | Phase/reason updates | Surface as status |
-| `on_chain_end` | Terminal frame | Carries `usage: { input, output }` for the turn |
+| `on_chain_end` | Terminal frame | `output` is a Python repr string on the wire — nothing to read |
 | `on_error` | Run failed | Show the message; end the turn |
-| `done` | Completion, may carry `final` | End the turn |
+| `done` | Completion, may carry `final` and `usage` (the final call's block, cache counted apart from `input`) | End the turn; read usage with `readUsage` |
 | `aborted` | Run cancelled | End the turn |
 
 The union's final arm is `{ event: string; data: Record<string, unknown> }` — an unknown frame is

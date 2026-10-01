@@ -1,4 +1,5 @@
 import { describeGate, formatElapsed, relativeTime } from '@felix/client';
+import { promptTokens } from '@felix/protocol';
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
@@ -214,7 +215,7 @@ export function runState(
 /**
  * Tokens reported on this thread's assistant turns, and whether that is a floor.
  *
- * `usage` arrives on a streamed turn's terminal `on_chain_end`, and on a turn
+ * `usage` arrives on a streamed turn's terminal `done`, and on a turn
  * rebuilt from the session snapshot when the harness stored it — which it does
  * only for a single-step answer (see `storedUsage` in `@felix/client`). A turn
  * that ran tools, or was written by a durable run, may carry none — so a thread
@@ -238,7 +239,8 @@ export function threadTokens(turns: Turn[]): {
   for (const t of turns) {
     if (t.role !== 'assistant') continue;
     if (t.usage) {
-      input += t.usage.input;
+      // The whole prompt; `input` alone leaves out whatever the cache served.
+      input += promptTokens(t.usage);
       output += t.usage.output;
       reported += 1;
     } else if (t.content || t.tools?.length) {

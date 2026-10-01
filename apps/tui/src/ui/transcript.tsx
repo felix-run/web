@@ -13,6 +13,7 @@
 
 import type { ReasoningBlock, ToolCall, Turn } from '@felix/client';
 import { classifyToolResult, countWords, formatElapsed, interleaveTurn } from '@felix/client';
+import { promptTokens } from '@felix/protocol';
 import {
   BoxRenderable,
   type CodeRenderable,
@@ -394,7 +395,8 @@ function AssistantTurn({
       {turn.usage ? (
         <text attributes={DIM}>
           {'  '}
-          {turn.usage.input} in / {turn.usage.output} out
+          {/* The whole prompt: cached tokens are reported apart from `input`. */}
+          {promptTokens(turn.usage)} in / {turn.usage.output} out
         </text>
       ) : null}
     </box>
