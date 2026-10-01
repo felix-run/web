@@ -317,15 +317,22 @@ a token because two unrelated files need the same number — the header sizes it
 the toast layer clears it by it. They previously agreed by coincidence, and did not. Rail
 headers match it at 48px, so the header's rule and each rail's rule line up.
 
-The header holds run *state*, not preferences. Left of centre, after the wordmark, the tab's
-modes at every width: **Verbose**, a `secondary` badge that is also the button turning it off,
-and the **canary** rollout as an outline badge in mono — the version is the harness's number
-quoted back, so it is never a filled pill, and below `sm` it narrows to the word with the version
-kept in its `title`. The run's phase is not repeated there; the instrument and the attention line
-carry it. On the right: New chat, the Harness door, the instrument toggle, and one ellipsis menu
-named **Session** — *View* (Verbose tools, then Theme as Light/Dark/System radio items) and
-*Session* (Continue run, disabled on an empty thread, and Copy thread id). Theme is a set-once
-preference and holds no header slot of its own; Thinking is in the composer.
+The header holds run *state*, not preferences. Immediately after the wordmark, on both
+addresses and at every width, one fixed slot says what **this thread's** run is doing:
+`blocked` in `state-blocked` while it waits on an approval or a question, else `running` in
+`state-running` while it streams, else nothing — a word and a dot, never the dot alone, and
+never a finer phase, which is the instrument's. Its `title` and an `sr-only` prefix say it is
+this thread's run, because the attention line beneath it is tenant-wide. It is not a live
+region: the attention line already announces the same change. After it, the tab's modes:
+**Verbose**, a `secondary` badge that is also the button turning it off (named *Verbose on,
+turn off*), and the **canary** rollout as an outline badge in mono — the version is the
+harness's number quoted back, so it is never a filled pill, and below `sm` it narrows to the
+word with the version kept in its `title`. On the right: New chat, the Harness door — plain
+navigation, carrying no state of its own — the instrument toggle, and one ellipsis menu named
+**Session** that opens on what it is named for: *Session* (Continue run, disabled on an empty
+thread, and Copy thread id), then *View* (Verbose tools), then *Theme* under its own label as
+Light/Dark/System radio items. Theme is a set-once preference and holds no header slot of its
+own; Thinking is in the composer.
 
 The workbench is **three zones**: the workspace (18rem), the transcript at reading width
 (`max-w-3xl`, turns 24px apart) with the composer anchored beneath it, and the run instrument
@@ -496,11 +503,11 @@ Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
 controls — New chat, the instrument toggle and the Session menu's run verbs — and keeps the door
-back to Chat, which says `running` in `state-running` while a run streams and `blocked` in
-`state-blocked` while it waits on an approval or a question. The ellipsis menu stays in the same
-slot on both addresses and the instrument toggle's slot is held empty, so the right-hand cluster
-does not move between them; on `/harness` the menu is named **View** and holds only the Theme
-radio group. Two controls have
+back to Chat as plain navigation; the run's state is in the slot beside the wordmark, which is
+there on both addresses. The ellipsis menu stays in the same slot on both addresses and the
+instrument toggle's slot is held empty at every width, so the right-hand cluster does not move
+between them — collapsing it below `sm` was tried, and a door that moves cost more than the gap;
+on `/harness` the menu is named **Theme** and holds only the Theme radio group. Two controls have
 one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Ledger's
 tabs) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
 sit in the header, and the form a create toggle opens is the page's first section, with the list
@@ -650,7 +657,8 @@ hover — never a `title`, which a keyboard user does not see.
 **The agent picker lists manifests in the harness's order**, each name over the provider model
 it runs on in 11px mono — `felix.providerModel` from `GET /v1/models`, shown only when it
 differs from the name, because it is a quotation of the harness. The trigger shows the name
-alone. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
+alone, truncating with an ellipsis, and its accessible name and `title` carry the value
+(`Agent: cowork`), as the Thinking picker's do. `felix.contextWindow` is kept by the client but not drawn: the harness computes it from
 the manifest *name*, so for most manifests it is the catalog's 128k fallback rather than the
 model's real window, and printing it would be exact-looking and wrong.
 
@@ -659,6 +667,12 @@ from `sm` up, then the level in mono, because the level is the harness's own val
 parameter of the next send, like the agent, so it lives where the send is made rather than in the
 header, and its accessible name carries the value (`Thinking: high`). Unlike the agent picker it
 stays enabled during a run: the level is session state on the harness, not a field of a send.
+Its list opens under a non-selectable label, *Token budget, from the next turn*, and each level
+carries the budget the harness sends for it, in mono because it is the harness's number quoted
+back: *off* sends none, then 128, 512, 1,024, 2,048, 8,192 and 32,000 tokens. The budget is what is
+sent, not what the model does with it — a model that takes an effort level gets the budget rounded
+to one, and on the current Claude models every level up to *high* rounds to the same effort. That
+is the harness's mapping to fix; the list quotes the number rather than disguising it.
 `/think` still cycles it, with a toast, because the operator is looking at the text they typed.
 
 **The composer's focus indicator is its border.** It removes its textarea's ring and signals

@@ -328,7 +328,7 @@ segmented rather than stacked so only the half being read polls. `SheetBoundary`
 `PanelBoundary` and wraps each destination individually — a panel throws during its *own* render, so
 one boundary around the group would take the other seven down with it. Wide, the nav is a resident
 rail; narrow there is no room for both, so `/harness` *is* the list and only redirects to
-`/harness/memory` on a wide viewport — redirecting on a phone would mean the list could never be
+`/harness/ledger` on a wide viewport — redirecting on a phone would mean the list could never be
 seen.
 
 **The shell must never treat a non-thread address as a thread.** `/t/:threadSuffix` is the truth when

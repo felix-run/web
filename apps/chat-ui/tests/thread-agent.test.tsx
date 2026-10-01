@@ -81,7 +81,7 @@ function seedThread(id: string, manifest: string, content: string) {
   localStorage.setItem('felix.threads', JSON.stringify(index));
 }
 
-const trigger = () => screen.findByRole('combobox', { name: 'Choose agent' });
+const trigger = () => screen.findByRole('combobox', { name: /^Agent: / });
 /** The picker's list arrived, so the trigger is showing a resolved choice. */
 const modelsLoaded = () =>
   waitFor(() => expect(requests.some((r) => r.url.endsWith('/v1/models'))).toBe(true));

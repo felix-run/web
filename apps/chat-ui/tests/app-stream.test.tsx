@@ -324,12 +324,14 @@ describe('durable runs', () => {
 });
 
 /**
- * The header's door back to Chat, from `/harness`, says what the run is doing.
- * It said `running` for a run blocked on an approval — the one state where
- * staying on the harness page means the approval times out behind you.
+ * This thread's run state sits in one slot beside the wordmark, the same on both
+ * addresses. It used to ride the Chat door on `/harness` only, so `/t` said
+ * nothing in the header. It must say `blocked`, not `running`, for a run waiting
+ * on an approval — the one state where looking elsewhere means the approval
+ * times out behind you.
  */
-describe('the Chat door', () => {
-  it('says blocked, not running, while the run waits on an approval', async () => {
+describe('the header run-state slot', () => {
+  it('says blocked, not running, on /t and on /harness while the run waits', async () => {
     // A stream that announces an approval and then stays open, as the harness
     // does while `wait_for_decision` holds the tool call.
     const frame = {
@@ -353,6 +355,14 @@ describe('the Chat door', () => {
       expect(document.querySelector('[data-approval-focus="banner"]')).toBeTruthy(),
     );
 
+    const slot = () => document.querySelector<HTMLElement>('header [data-slot="run-state"]');
+    await waitFor(() => expect(slot()?.textContent).toContain('blocked'));
+    expect(slot()?.textContent).not.toContain('running');
+    // Scoped to this thread, so it is not read as the tenant-wide line below it.
+    expect(slot()?.getAttribute('title')).toBe("This thread's run is waiting on you");
+    // Not a second live region: the attention line already announces the change.
+    expect(slot()?.closest('[aria-live]')).toBeNull();
+
     const harness = document.querySelector<HTMLAnchorElement>('header a[href="/harness"]');
     expect(harness).not.toBeNull();
     await act(async () => void (await userEvent.click(harness as HTMLAnchorElement)));
@@ -362,7 +372,9 @@ describe('the Chat door', () => {
       expect(found).not.toBeNull();
       return found as HTMLElement;
     });
-    expect(door.textContent).toContain('blocked');
-    expect(door.textContent).not.toContain('running');
+    // The same slot on the other address, and a door that is plain navigation.
+    expect(slot()?.textContent).toContain('blocked');
+    expect(slot()?.textContent).not.toContain('running');
+    expect(door.textContent).not.toMatch(/blocked|running/);
   });
 });

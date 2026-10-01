@@ -282,7 +282,7 @@ describe('the harness address', () => {
     expect(header.querySelector('[aria-label="Session"]')).toBeNull();
     // The menu stays, named for the one thing it holds here, so the right-hand
     // cluster does not jump between the two addresses.
-    expect(header.querySelector('[aria-label="View"]')).not.toBeNull();
+    expect(header.querySelector('[aria-label="Theme"]')).not.toBeNull();
   });
 
   it('keeps Theme reachable on /harness, as radio items, with no toggle of its own', async () => {
@@ -290,7 +290,7 @@ describe('the harness address', () => {
     await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
     expect(document.querySelector('header [aria-label="Toggle theme"]')).toBeNull();
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'View' }));
+    await user.click(screen.getByRole('button', { name: 'Theme' }));
     const group = await screen.findByRole('group', { name: 'Theme' });
     const items = within(group).getAllByRole('menuitemradio');
     expect(items.map((i) => i.textContent)).toEqual(['Light', 'Dark', 'System']);

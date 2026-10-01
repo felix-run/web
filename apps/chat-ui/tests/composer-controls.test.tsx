@@ -77,7 +77,7 @@ describe('the agent picker', () => {
       onModelChange: vi.fn(),
     });
     const user = userEvent.setup({ delay: null });
-    const trigger = screen.getByRole('combobox', { name: 'Choose agent' });
+    const trigger = screen.getByRole('combobox', { name: /^Agent: / });
     // The trigger names the agent only; the model belongs in the list.
     expect(trigger.textContent).toBe('cowork');
     trigger.focus();
@@ -100,12 +100,52 @@ describe('the agent picker', () => {
       onModelChange: vi.fn(),
     });
     const user = userEvent.setup({ delay: null });
-    const trigger = screen.getByRole('combobox', { name: 'Choose agent' });
+    const trigger = screen.getByRole('combobox', { name: /^Agent: / });
     expect(trigger.className.split(/\s+/)).toContain('font-mono');
     trigger.focus();
     await user.keyboard('{Enter}');
     const name = await screen.findByText('research', { selector: '[role="option"] span' });
     expect(name.className.split(/\s+/)).toContain('font-mono');
+  });
+
+  /**
+   * It was named "Choose agent", which hid the choice from anyone who could not
+   * read the trigger — and the trigger now ellipsises a long name, so a sighted
+   * operator may not be able to read it either. The value is in the name, the
+   * way the Thinking picker's is; the visible text stays the name alone.
+   */
+  it('names the chosen agent in its accessible name and title, and ellipsises the label', () => {
+    mount({
+      models: [
+        { id: 'research-assistant-long-name', label: 'research-assistant-long-name' },
+        { id: 'cowork', label: 'cowork' },
+      ],
+      modelId: 'research-assistant-long-name',
+      onModelChange: vi.fn(),
+    });
+    const trigger = screen.getByRole('combobox', { name: 'Agent: research-assistant-long-name' });
+    expect(trigger.getAttribute('title')).toBe('Agent: research-assistant-long-name');
+    expect(trigger.textContent).toBe('research-assistant-long-name');
+    const label = screen.getByText('research-assistant-long-name', { selector: 'span.truncate' });
+    expect(label.className.split(/\s+/)).toContain('min-w-0');
+  });
+});
+
+/**
+ * At 390px a long agent name's trigger painted over the microphone: the mic's
+ * wrapper had `min-w-0` and shrank to 14px under its 32px button. The floor is
+ * now the button's own width.
+ */
+describe('the microphone', () => {
+  it('keeps a floor the width of its button', () => {
+    class FakeRecognition {}
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+    vi.stubGlobal('webkitSpeechRecognition', FakeRecognition);
+    mount();
+    const mic = screen.getByRole('button', { name: 'Start voice input' });
+    const wrapper = mic.parentElement as HTMLElement;
+    expect(wrapper.className.split(/\s+/)).toContain('min-w-8');
+    expect(wrapper.className.split(/\s+/)).not.toContain('min-w-0');
   });
 });
 
@@ -148,7 +188,7 @@ describe('the agent picker, fed by the harness', () => {
       </MemoryRouter>,
     );
     const user = userEvent.setup({ delay: null });
-    const trigger = await screen.findByRole('combobox', { name: 'Choose agent' });
+    const trigger = await screen.findByRole('combobox', { name: /^Agent: / });
     // Two manifests means the list arrived; one would be the pre-answer fallback.
     await waitFor(async () => {
       trigger.focus();
@@ -177,8 +217,32 @@ describe('the Thinking picker', () => {
     const trigger = screen.getByRole('combobox', { name: 'Thinking: off' });
     trigger.focus();
     await user.keyboard('{Enter}');
-    await user.click(await screen.findByRole('option', { name: 'high' }));
+    await user.click(await screen.findByRole('option', { name: /^high/ }));
     expect(onThinkingChange).toHaveBeenCalledWith('high');
+  });
+
+  /**
+   * Seven bare words gave no idea what a level does or when it takes effect.
+   * Each option now quotes the token budget the harness sends for it, in mono
+   * like every other quotation of the harness, and the list says the choice
+   * applies from the next turn.
+   */
+  it("quotes each level's token budget, and says when a choice takes effect", async () => {
+    mount({ thinkingLevels: ['off', 'high'], thinkingLevel: 'off', onThinkingChange: vi.fn() });
+    const user = userEvent.setup({ delay: null });
+    screen.getByRole('combobox', { name: 'Thinking: off' }).focus();
+    await user.keyboard('{Enter}');
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual([
+      'offNo thinking budget sent.',
+      'high2,048 tokens',
+    ]);
+    const description = screen.getByText('2,048 tokens');
+    expect(description.className.split(/\s+/)).toContain('font-mono');
+    const label = screen.getByText('Token budget, from the next turn');
+    // A label, not a choice: nothing a click or arrow key can land on.
+    expect(label.closest('[role="option"]')).toBeNull();
+    await user.keyboard('{Escape}');
   });
 
   it('is absent when the caller supplies no levels', () => {
@@ -218,7 +282,7 @@ describe('the Thinking picker', () => {
     const trigger = await screen.findByRole('combobox', { name: 'Thinking: off' });
     trigger.focus();
     await user.keyboard('{Enter}');
-    await user.click(await screen.findByRole('option', { name: 'high' }));
+    await user.click(await screen.findByRole('option', { name: /^high/ }));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toMatchObject({ thread_id: 'thinking-thread', thinking_level: 'high' });
     // The picker carries the value afterwards; there is no second copy in the header.
