@@ -28,11 +28,13 @@ export function Greeting({ manifest }: { manifest: string }) {
   return (
     // `flex-1` + `justify-center`: the greeting is the only child of the transcript
     // column when a thread is empty, so it centres in the height actually available.
+    // Where the composer rises to meet it (`rise`, see the workbench), it sits on
+    // the column's floor instead, directly above the composer.
     // `max-w-3xl` matches the transcript and composer, so nothing shifts sideways
     // when the first message replaces it.
     <section
       aria-labelledby="empty-thread-title"
-      className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 py-4"
+      className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 py-4 rise:justify-end"
     >
       <div className="flex flex-col gap-2">
         <h2
