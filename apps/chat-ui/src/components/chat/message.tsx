@@ -3,8 +3,9 @@ import { promptTokens } from '@felix/protocol';
 import { Button } from '@felix/ui/button';
 import { useEffect, useState } from 'react';
 import { drawableUrl } from '@/lib/image-upload';
-import type { Turn } from '@/types';
+import type { Turn, TurnFeedback } from '@/types';
 import { MessageActions } from './message-actions';
+import { RateTurn } from './rate-turn';
 import { Reasoning } from './reasoning';
 import { Response } from './response';
 import { RunStatusLine } from './run-status';
@@ -32,6 +33,8 @@ export function Message({
   onRegenerate,
   onRewind,
   onEdit,
+  feedback,
+  onRate,
   verbose = false,
 }: {
   turn: Turn;
@@ -46,6 +49,10 @@ export function Message({
   onRewind?: () => void;
   /** Replace a user turn's text and run from it. Absent while that cannot happen. */
   onEdit?: (text: string) => void;
+  /** This answer's rating, from the snapshot. */
+  feedback?: TurnFeedback;
+  /** Rate it. Provided for assistant turns only. */
+  onRate?: (rating: 'up' | 'down' | null, opts?: { note?: string; evalDataset?: string }) => void;
   /** Expand tool I/O and surface tool counts when set. */
   verbose?: boolean;
 }) {
@@ -157,13 +164,18 @@ export function Message({
       {empty && streaming && !turn.reasoning?.length && <AwaitingStatus />}
 
       {!streaming && !empty && (
-        <MessageActions
-          content={turn.content}
-          onRegenerate={onRegenerate}
-          onRewind={onRewind}
-          {...(label === undefined ? {} : { label })}
-          {...(onLabel ? { onLabel } : {})}
-        />
+        <div className="flex flex-wrap items-center gap-0.5">
+          {/* First, so a rating — which stays visible — sits at the edge rather than
+              floating after action buttons that are invisible until hover. */}
+          {onRate && <RateTurn onRate={onRate} {...(feedback ? { feedback } : {})} />}
+          <MessageActions
+            content={turn.content}
+            onRegenerate={onRegenerate}
+            onRewind={onRewind}
+            {...(label === undefined ? {} : { label })}
+            {...(onLabel ? { onLabel } : {})}
+          />
+        </div>
       )}
     </div>
   );

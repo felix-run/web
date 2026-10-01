@@ -583,9 +583,19 @@ Thinking levels map to token budgets: `off` (none), `minimal` 128, `low` 512, `m
 | `GET` | `/chat/sessions/{thread_id}/export` | Active branch as JSONL (`application/x-ndjson`, attachment) |
 | `POST` | `/chat/sessions/name` | `{thread_id, name}` — also appends a `session_info` event |
 | `POST` | `/chat/sessions/label` | `{thread_id, event_id, label}` |
+| `POST` | `/chat/sessions/feedback` | `{thread_id, event_id, rating: "up" \| "down" \| null, note?}` — rate an assistant turn |
 | `POST` | `/chat/sessions/custom` | `{thread_id, content, in_context, metadata, role}` |
 | `GET` | `/chat/history/{thread_id}?limit=&before_seq=` | Flat transcript, newest window — `{thread_id, messages, events, oldest_seq, has_more}` |
 | `DELETE` | `/chat/history/{thread_id}` | Reset the session log |
+
+`/chat/sessions/feedback` rates an assistant message, and `null` clears the rating. An id the thread
+does not have is `404 unknown_event_id`, and anything that is not an assistant message is
+`400 not_an_assistant_message`. The current rating per event comes back on the snapshot as
+`feedback` (`{rating, note, at}`), and every change is also an audit event, `turn_feedback`, so
+`GET /audit?event_type=turn_feedback` lists them across the whole tenant. Nothing is written to the
+session log, so rating a turn does not move the thread's leaf. In the web UI a thumbs-down asks
+what was wrong. With a note, it can also save the question as an eval case, judged against that
+note: a complaint becomes a regression test.
 
 `/chat/sessions/custom` appends an entry from outside the conversation: a note, or an instruction
 from a plugin. `role` defaults to `system`, and `in_context` (default `false`) decides whether the

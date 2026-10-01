@@ -610,6 +610,15 @@ Flows worth knowing before editing the app:
   at it: after an edit the abandoned reply sits between the branch point and the leaf in `seq`
   order. A just-sent message has no parent id yet, so the edit hydrates first; the first message
   of a thread has nothing to branch from and offers no Edit.
+- **Feedback** — `POST /chat/sessions/feedback` (`felix-run/felix#403`) rates an assistant turn;
+  the snapshot's `feedback` map reads it back and each change is a `turn_feedback` audit event.
+  A reply written in this tab has no event id, so `rateTurn` resolves one from the snapshot by
+  position among same-role turns (`serverEventId`) and refuses when the counts disagree rather
+  than rating the wrong answer. A thumbs-down with a note can file an eval case: the preceding
+  user message, `llm_judge` against the note, created in the dataset if it does not exist. No
+  note means no case, because there is nothing to judge against. The rating buttons render
+  *before* the hover-hidden actions, so a saved rating sits at the edge instead of floating after
+  invisible buttons.
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
   (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
   `/chat/sessions/search`.

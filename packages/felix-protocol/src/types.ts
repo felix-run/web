@@ -41,6 +41,14 @@ export interface ChatMessage {
  * `input` alone made a cached turn read as `3 in` when the call was 1,035 tokens.
  * Both are optional: a harness or provider that does not cache sends neither.
  */
+/** One rating, as `POST /chat/sessions/feedback` stores it. */
+export interface TurnFeedback {
+  rating: 'up' | 'down';
+  note?: string;
+  /** Epoch ms. */
+  at?: number;
+}
+
 export interface TokenUsage {
   input: number;
   output: number;
@@ -229,6 +237,12 @@ export interface SessionSnapshot {
    * labelled turn is one anyone can also return to.
    */
   labels?: Record<string, string>;
+  /**
+   * A person's rating of an assistant turn, keyed by its event id
+   * (`felix-run/felix#403`). Absent from an older harness. A cleared rating is
+   * removed from the map, not set to `null`.
+   */
+  feedback?: Record<string, TurnFeedback>;
   transcript?: Array<{
     id?: string;
     seq: number;

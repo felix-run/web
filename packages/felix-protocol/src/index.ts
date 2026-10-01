@@ -23,5 +23,6 @@ export type {
   ThinkingLevel,
   ThreadHistory,
   TokenUsage,
+  TurnFeedback,
 } from './types';
 export { promptTokens, readUsage } from './usage';

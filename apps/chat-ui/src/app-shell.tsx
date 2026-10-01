@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 import {
   abortChat,
   acquireSessionLease,
+  addEvalItem,
   compactSession,
   continueChat,
   decideApproval,
@@ -48,16 +49,19 @@ import {
   exportSession,
   felix,
   forkSession,
+  getEvalDataset,
   getResolvedManifest,
   getSessionSnapshot,
   getThreadHistory,
   listManifestEntries,
   listSessions,
   listTenantManifests,
+  putEvalDataset,
   releaseSessionLease,
   renameSession,
   respondUiRequest,
   rewindChat,
+  setSessionFeedback,
   setSessionLabel,
   setThinkingLevel,
   steerChat,
@@ -91,7 +95,7 @@ import {
 } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { NO_RUN, type RunClock, ShellProvider, type ShellValue } from '@/shell-context';
-import type { ChatMessage, ImageAttachment, ThinkingLevel, Turn } from '@/types';
+import type { ChatMessage, ImageAttachment, ThinkingLevel, Turn, TurnFeedback } from '@/types';
 
 const MANIFEST_KEY = 'felix.manifest';
 /** How long a deleted conversation can be restored, and how long the server delete waits. */
@@ -413,12 +417,17 @@ export function AppShell() {
    * and hydration refills it rather than merging.
    */
   const [labels, setLabels] = useState<Record<string, string>>({});
+  /** Ratings of assistant turns, keyed by event id — the snapshot's `feedback`, managed like labels. */
+  const [feedback, setFeedback] = useState<Record<string, TurnFeedback>>({});
 
   const hydrateFromServer = useCallback((id: string) => {
     void (async () => {
       try {
         const snap = await getSessionSnapshot(id);
-        if (snap && id === threadIdRef.current) setLabels(snap.labels ?? {});
+        if (snap && id === threadIdRef.current) {
+          setLabels(snap.labels ?? {});
+          setFeedback(snap.feedback ?? {});
+        }
         if (snap?.transcript?.length) {
           const rebuilt = eventsToTurns(snapshotToEvents(snap));
           if (rebuilt.length && id === threadIdRef.current) {
@@ -531,6 +540,7 @@ export function AppShell() {
       // Server-owned like the rest of session state, so this clears and
       // hydration refills it rather than merging.
       setLabels({});
+      setFeedback({});
       if (hydrate) hydrateFromServer(id);
     },
     [engine, hydrateFromServer],
@@ -1151,6 +1161,104 @@ export function AppShell() {
     [labels, threadId],
   );
 
+  /**
+   * The server's event id for a local turn, fetching the snapshot when the turn
+   * has none — a reply written in this tab carries no ids until the thread is
+   * re-read. Matched by position among turns of the same role; a count that
+   * disagrees means the two transcripts have diverged, and that is `null` rather
+   * than a guess at which turn was meant.
+   */
+  const serverEventId = useCallback(
+    async (turnId: string): Promise<string | null> => {
+      const local = turnsRef.current;
+      const index = local.findIndex((t) => t.id === turnId);
+      const turn = local[index];
+      if (!turn) return null;
+      if (turn.eventId) return turn.eventId;
+      const snap = await getSessionSnapshot(threadId);
+      const server = snap?.transcript?.length ? eventsToTurns(snapshotToEvents(snap)) : [];
+      const sameRole = (ts: Turn[]) => ts.filter((t) => t.role === turn.role);
+      if (sameRole(server).length !== sameRole(local).length) return null;
+      const ordinal = sameRole(local.slice(0, index)).length;
+      return sameRole(server)[ordinal]?.eventId ?? null;
+    },
+    [threadId],
+  );
+
+  /**
+   * Rate an answer, or clear the rating with `null`. Optimistic, like a label: the
+   * rating is the operator's own annotation, so showing it a moment early costs
+   * nothing and waiting would feel broken.
+   *
+   * With `evalDataset` and a note, a thumbs-down also becomes an eval case: the
+   * question that produced the answer, judged against what the person said was
+   * wrong. Without a note there is nothing to judge against, so no case is made.
+   */
+  const rateTurn = useCallback(
+    async (
+      turnId: string,
+      rating: 'up' | 'down' | null,
+      opts: { note?: string; evalDataset?: string } = {},
+    ) => {
+      const eventId = await serverEventId(turnId).catch(() => null);
+      if (!eventId) {
+        toast.message(
+          'This answer is not on the harness yet, or the thread changed. Reload and try again.',
+        );
+        return;
+      }
+      const note = opts.note?.trim() ?? '';
+      const previous = feedback;
+      setFeedback((current) => {
+        const next = { ...current };
+        if (rating === null) delete next[eventId];
+        else next[eventId] = { rating, ...(note ? { note } : {}), at: Date.now() };
+        return next;
+      });
+      try {
+        await setSessionFeedback({ threadId, eventId, rating, ...(note ? { note } : {}) });
+      } catch (err) {
+        setFeedback(previous);
+        toastError(err, 'save that rating', { retry: () => void rateTurn(turnId, rating, opts) });
+        return;
+      }
+
+      if (rating !== 'down' || !note || !opts.evalDataset) return;
+      const local = turnsRef.current;
+      const at = local.findIndex((t) => t.id === turnId);
+      const question = [...local.slice(0, Math.max(at, 0))]
+        .reverse()
+        .find((t) => t.role === 'user');
+      if (!question?.content.trim()) {
+        toast.message('Rating saved. No question before this answer to make an eval case from.');
+        return;
+      }
+      const item = {
+        user_input: question.content.trim(),
+        rubric: {
+          llm_judge: true,
+          judge_criteria: `A person marked an earlier answer to this down, saying: "${note}". Pass only if the answer does not have that problem.`,
+        },
+      };
+      const dataset = opts.evalDataset;
+      try {
+        const exists = await getEvalDataset(dataset).then(
+          () => true,
+          (err: unknown) => {
+            if (/:\s*404\b/.test(String((err as Error)?.message))) return false;
+            throw err;
+          },
+        );
+        if (exists) await addEvalItem(dataset, item);
+        else await putEvalDataset(dataset, 'Answers people marked down in chat.', [item]);
+        toast.message(`Rating saved, and added as a case to ${dataset}.`);
+      } catch (err) {
+        toastError(err, `add the case to ${dataset}`);
+      }
+    },
+    [feedback, serverEventId, threadId],
+  );
+
   const rewindingRef = useRef(false);
   const rewindTo = useCallback(
     (eventId: string) => {
@@ -1443,6 +1551,8 @@ export function AppShell() {
     threadId,
     labels,
     labelTurn,
+    feedback,
+    rateTurn,
     send,
     submit,
     stopRun,

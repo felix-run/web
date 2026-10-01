@@ -83,6 +83,7 @@ export const rewindChat = felix.rewindChat.bind(felix);
 export const uploadFile = felix.uploadFile.bind(felix);
 export const getFile = felix.getFile.bind(felix);
 export const setSessionLabel = felix.setSessionLabel.bind(felix);
+export const setSessionFeedback = felix.setSessionFeedback.bind(felix);
 export const respondUiRequest = felix.respondUiRequest.bind(felix);
 export const getThreadHistory = felix.getThreadHistory.bind(felix);
 export const deleteThreadHistory = felix.deleteThreadHistory.bind(felix);

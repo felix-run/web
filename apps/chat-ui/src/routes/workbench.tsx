@@ -52,6 +52,8 @@ export function Workbench() {
     onUiCancel,
     labels,
     labelTurn,
+    feedback,
+    rateTurn,
     submit,
     stopRun,
     regenerate,
@@ -147,6 +149,17 @@ export function Workbench() {
                     ? { label: labels[t.eventId] }
                     : {})}
                   {...(t.eventId ? { onLabel: (next) => labelTurn(t.eventId!, next) } : {})}
+                  {...(t.role === 'assistant' && !(streaming && isLast)
+                    ? {
+                        onRate: (
+                          rating: 'up' | 'down' | null,
+                          opts?: { note?: string; evalDataset?: string },
+                        ) => void rateTurn(t.id, rating, opts),
+                        ...(t.eventId && feedback[t.eventId]
+                          ? { feedback: feedback[t.eventId] }
+                          : {}),
+                      }
+                    : {})}
                 />
               );
             })}
