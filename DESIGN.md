@@ -319,16 +319,34 @@ headers match it at 48px, so the header's rule and each rail's rule line up.
 
 The header holds run *state*, not preferences. Immediately after the wordmark, on both
 addresses and at every width, one fixed slot says what **this thread's** run is doing:
-`blocked` in `state-blocked` while it waits on an approval or a question, else `running` in
-`state-running` while it streams, else nothing — a word and a dot, never the dot alone, and
-never a finer phase, which is the instrument's. Its `title` and an `sr-only` prefix say it is
-this thread's run, because the attention line beneath it is tenant-wide. It is not a live
-region: the attention line already announces the same change. After it, the tab's modes:
+`blocked` while it waits on an approval or a question, else `running` while it streams, else
+nothing — a word and a dot, never the dot alone, and never a finer phase, which is the
+instrument's. It is drawn as a **state chip**: rounded-full, the badges' height (22px), the
+word and dot in the state's colour on that colour at `/10` — 6.1:1 (`blocked`) and 6.4:1
+(`running`) in light, 11.6:1 and 10.2:1 in dark. Bare `text-xs` lost to the filled Verbose pill
+beside it, which ranked a viewing preference above the run. Its `title` and an `sr-only` prefix
+say it is this thread's run, because the attention line beneath it is tenant-wide. It is not a
+live region: the attention line already announces the same change. After it, the tab's modes:
 **Verbose**, a `secondary` badge that is also the button turning it off (named *Verbose on,
 turn off*), and the **canary** rollout as an outline badge in mono — the version is the
-harness's number quoted back, so it is never a filled pill, and below `sm` it narrows to the
-word with the version kept in its `title`. On the right: New chat, the Harness door — plain
-navigation, carrying no state of its own — the instrument toggle, and one ellipsis menu named
+harness's number quoted back, so it is never a filled pill. Its words also say whether this
+thread is on the rollout, in an `sr-only` clause, because the foreground-versus-muted colour
+that says it on screen says it to nobody who cannot see it.
+
+The left cluster **yields in a fixed order**. The wordmark never shrinks and is never
+truncated; the run state never yields. Below `sm` both modes draw as icons (a scroll for
+Verbose, a bird for the canary), their words kept in the accessible name and the `title`.
+While the run state is showing below `sm`, the modes step off the screen — at 390px the
+wordmark and a `blocked` chip leave no room for one icon beside them. Verbose goes `hidden`,
+which also takes it out of the tab order (it is in the Session menu), and the canary, not
+focusable, goes `sr-only` and is still read; both return when the run settles. A badge clipped
+part-way reads as broken, and one pushed off by overflow is a button focus can reach and
+nobody can see, which is why the yield is whole. Past all that the cluster clips at its own
+edge rather than running under the right cluster, which is `shrink-0`: at 320px the chip is
+clipped, a known limit. On the right: New chat, which is a plus alone below `sm`; the Harness
+door — plain navigation carrying no state of its own, and its **word at every width**, icon
+and word from `sm`, the word alone below it, because a server glyph beside a panel glyph said
+nothing on a phone about which one was a place; the instrument toggle; and one ellipsis menu named
 **Session** that opens on what it is named for: *Session* (Continue run, disabled on an empty
 thread, and Copy thread id), then *View* (Verbose tools), then *Theme* under its own label as
 Light/Dark/System radio items. Theme is a set-once preference and holds no header slot of its
