@@ -607,6 +607,29 @@ export function createFelixClient(opts: FelixClientOptions) {
       if (!res.ok) throw new Error(`sessions/label: ${res.status} ${await detailOf(res)}`);
     },
     /**
+     * POST /chat/sessions/feedback — rate an assistant turn, or clear it with
+     * `null`. 404 for an event the thread does not have, 400 for one that is not
+     * an assistant message. Each change is also a `turn_feedback` audit event.
+     */
+    async setSessionFeedback(args: {
+      threadId: string;
+      eventId: string;
+      rating: 'up' | 'down' | null;
+      note?: string;
+    }): Promise<void> {
+      const res = await chatFetch('/chat/sessions/feedback', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          event_id: args.eventId,
+          rating: args.rating,
+          ...(args.note ? { note: args.note.slice(0, 1000) } : {}),
+        }),
+      });
+      if (!res.ok) throw new Error(`sessions/feedback: ${res.status} ${await detailOf(res)}`);
+    },
+    /**
      * POST /files — store an image and get the id a message can reference as
      * `felix-file://<id>`. The harness checks the bytes against `mediaType`, caps
      * them at `MAX_UPLOAD_BYTES` (400 over it), and answers 409 when the tenant's

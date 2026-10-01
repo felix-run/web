@@ -84,6 +84,9 @@
     "/chat/sessions/label": {
       "post": {}
     },
+    "/chat/sessions/feedback": {
+      "post": {}
+    },
     "/chat/abort": {
       "post": {}
     },
@@ -103,6 +106,9 @@
       "get": {}
     },
     "/audit": {
+      "get": {}
+    },
+    "/audit/export": {
       "get": {}
     },
     "/audit/metrics": {

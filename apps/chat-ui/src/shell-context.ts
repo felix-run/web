@@ -4,7 +4,7 @@ import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
-import type { ImageAttachment, ThinkingLevel } from '@/types';
+import type { ImageAttachment, ThinkingLevel, TurnFeedback } from '@/types';
 
 /**
  * Engine-sourced fields are derived rather than re-declared, so a change to the
@@ -59,6 +59,14 @@ export interface ShellValue {
   threadId: string;
   labels: Record<string, string>;
   labelTurn(eventId: string, label: string | null): void;
+  /** Ratings of assistant turns, keyed by server event id. */
+  feedback: Record<string, TurnFeedback>;
+  /** Rate a turn, or clear it; a thumbs-down with a note can also become an eval case. */
+  rateTurn(
+    turnId: string,
+    rating: 'up' | 'down' | null,
+    opts?: { note?: string; evalDataset?: string },
+  ): Promise<void>;
   send(text: string, attachments?: ImageAttachment[], mode?: 'stream' | 'background'): void;
   submit(message: PromptInputMessage, mode?: 'stream' | 'background'): Promise<void>;
   stopRun(): void;

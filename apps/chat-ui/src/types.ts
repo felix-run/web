@@ -59,6 +59,7 @@ export type {
   ThinkingLevel,
   ThreadHistory,
   TokenUsage,
+  TurnFeedback,
 } from '@felix/protocol';
 export { parseArtifactMarker } from '@felix/protocol';
 
