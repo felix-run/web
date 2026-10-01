@@ -7,6 +7,7 @@
  * browser's localStorage, a CLI's state directory — is the client's business.
  */
 import {
+  type ImageAttachment,
   promptTokens,
   readUsage,
   type SessionEvent,
@@ -203,6 +204,29 @@ export function readableThinking(metadata: Record<string, unknown> | undefined):
  * reading as the turn's total. Such a turn carries no usage, and a sum over the
  * thread says `floor` for it rather than presenting a partial figure as whole.
  */
+/**
+ * The images a user message carried, as the session log keeps them
+ * (`metadata.attachments`). Until this was read, a reload dropped every
+ * thumbnail: the snapshot had them, the rebuild did not look. A `felix-file://`
+ * reference comes back as one — drawing it is the renderer's job.
+ */
+function storedAttachments(metadata: Record<string, unknown> | undefined): ImageAttachment[] {
+  const raw = metadata?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((a) => {
+    if (!a || typeof a !== 'object') return [];
+    const { url, media_type, filename } = a as Record<string, unknown>;
+    if (typeof url !== 'string' || !url) return [];
+    return [
+      {
+        url,
+        media_type: typeof media_type === 'string' ? media_type : 'image/png',
+        ...(typeof filename === 'string' && filename ? { filename } : {}),
+      },
+    ];
+  });
+}
+
 function storedUsage(metadata: Record<string, unknown> | undefined): TokenUsage | undefined {
   return readUsage(metadata?.usage);
 }
@@ -268,12 +292,14 @@ export function eventsToTurns(
         pendingReasoning = [];
       }
       const parent = ev.metadata?.parent_id;
+      const attachments = storedAttachments(ev.metadata);
       turns.push({
         id: ev.id ?? newId(),
         role: 'user',
         content: ev.content ?? '',
         eventId: ev.id,
         ...(typeof parent === 'string' ? { parentEventId: parent } : {}),
+        ...(attachments.length ? { attachments } : {}),
       });
       continue;
     }

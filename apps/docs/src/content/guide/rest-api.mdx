@@ -174,6 +174,15 @@ to nothing is dropped with a warning, and the turn still answers.
 
 A part of any other type, or a `file` part with no `file_id`, is dropped with a logged warning.
 
+A message can also carry images in a top-level `attachments` list instead of content parts:
+`{"role":"user","content":"...","attachments":[{"url":"felix-file://<file_id>","media_type":"image/webp"}]}`.
+`url` takes the same three forms: `felix-file://` plus a `file_id` from `POST /files`, `https:`, or
+`data:`. This is the shape the session log stores, and the snapshot returns it on each user message
+as `metadata.attachments`, so a client can draw a thread's images again after a reload. The web
+UI uses it: it fits each image to the 600 KiB upload limit in the browser (re-encoding to WebP,
+or JPEG where the browser cannot encode WebP), uploads it, and sends only the reference. A GIF over
+the limit is refused instead of flattened to its first frame.
+
 Response:
 
 ```json
