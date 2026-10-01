@@ -378,3 +378,111 @@ describe('the header run-state slot', () => {
     expect(door.textContent).not.toMatch(/blocked|running/);
   });
 });
+
+/**
+ * The header's left cluster with everything it can hold: the wordmark, a blocked
+ * run, Verbose and a canary. At 390px that is more than its space, and before the
+ * yield order was written down the wordmark was what gave — "F…", then nothing.
+ *
+ * happy-dom lays nothing out and applies no media queries, so this pins what the
+ * order is made of rather than the pixels: the wordmark cannot shrink, the run
+ * state says its word, and the two modes keep their words for a reader when they
+ * draw as icons or step off a narrow screen. The pixels were measured at 390px in
+ * a browser when this was written.
+ */
+describe('the header with every mode on and a run blocked', () => {
+  it('keeps the wordmark and the run state, and names the compact modes', async () => {
+    localStorage.setItem('felix.verbose', 'true');
+    const frame = {
+      event: 'approval_required',
+      data: { approval_id: 'ap-2', tool_name: 'write_file', args: { path: 'b.txt' } },
+    };
+    const fn = vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('/chat/stream')) {
+        const bytes = new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(bytes);
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'text/event-stream' } },
+        );
+      }
+      // The resolved manifest says which side of the rollout serves this
+      // thread; the list says a rollout exists at all.
+      if (/\/manifests\/cowork/.test(url)) {
+        return new Response(JSON.stringify({ variant: 'canary' }), { status: 200 });
+      }
+      if (/\/manifests(\?|$)/.test(url)) {
+        return new Response(
+          JSON.stringify({
+            items: [{ name: 'cowork', version: 4, canary_version: 5, canary_weight: 10 }],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/chat/sessions')) {
+        return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
+      }
+      if (url.includes('/approvals'))
+        return new Response(JSON.stringify({ requests: [] }), { status: 200 });
+      return new Response('{}', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fn);
+    mount();
+    // At rest the modes are on screen at every width, as icons on a phone.
+    const idle = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('header [data-slot="verbose-mode"]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(idle.className).not.toMatch(/(^|\s)max-sm:hidden(\s|$)/);
+    await send();
+
+    const header = document.querySelector('header') as HTMLElement;
+    const wordmark = header.querySelector('h1') as HTMLElement;
+    expect(wordmark.textContent).toBe('Felix');
+    // The wordmark never yields: no `truncate`, and it does not shrink.
+    expect(wordmark.className).toContain('shrink-0');
+    expect(wordmark.className).not.toContain('truncate');
+
+    const slot = () => header.querySelector<HTMLElement>('[data-slot="run-state"]');
+    await waitFor(() => expect(slot()?.textContent).toContain('blocked'));
+    expect(slot()?.className).toContain('shrink-0');
+
+    // Verbose below `sm` is an icon; its name is still the state and the action.
+    const verbose = header.querySelector<HTMLButtonElement>('[data-slot="verbose-mode"]');
+    expect(verbose?.getAttribute('aria-label')).toBe('Verbose on, turn off');
+
+    // The canary below `sm` is a glyph; its words stay in the DOM for a reader —
+    // that it is a canary, which version, and whether this thread is on it.
+    const canary = await waitFor(() => {
+      const found = header.querySelector<HTMLElement>('[data-slot="canary-mode"]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    await waitFor(() => expect(canary.textContent).toContain('this thread is on it'));
+    expect(canary.textContent).toContain('canary');
+    expect(canary.textContent).toContain('v5');
+    expect(canary.getAttribute('title')).toContain('canary v5');
+
+    // While the run state shows, a phone has no room for the modes beside it.
+    // Verbose leaves the screen *and* the tab order — an invisible button focus
+    // can land on is the failure — while the canary, not focusable, stays read.
+    expect(verbose?.className).toMatch(/(^|\s)max-sm:hidden(\s|$)/);
+    expect(canary.className).toMatch(/(^|\s)max-sm:sr-only(\s|$)/);
+    expect(canary.className).not.toMatch(/(^|\s)max-sm:hidden(\s|$)/);
+    // And past that the cluster clips at its own edge rather than running under
+    // the controls on the right.
+    const cluster = wordmark.parentElement as HTMLElement;
+    expect(cluster.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+    expect(cluster.className).toMatch(/(^|\s)overflow-hidden(\s|$)/);
+
+    // The door between the two addresses says where it goes at every width.
+    const door = header.querySelector<HTMLAnchorElement>('a[href="/harness"]');
+    expect(door?.textContent).toBe('Harness');
+    expect(door?.querySelector('.sr-only')).toBeNull();
+  });
+});
