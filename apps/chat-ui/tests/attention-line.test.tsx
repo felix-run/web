@@ -64,13 +64,22 @@ const THREADS = [
  * real one — the hidden-tab rule is the hook's, and a stubbed hook would pass it
  * vacuously.
  */
-function Line({ streaming, handled }: { streaming: boolean; handled: string[] }) {
+function Line({
+  streaming,
+  handled,
+  bannerOnScreen = true,
+}: {
+  streaming: boolean;
+  handled: string[];
+  bannerOnScreen?: boolean;
+}) {
   const approvals = usePendingApprovals();
   return (
     <AttentionLine
       approvals={approvals}
       streaming={streaming}
       handled={handled}
+      bannerOnScreen={bannerOnScreen}
       threadId="here"
       threads={THREADS}
     />
@@ -84,6 +93,7 @@ function ReasonLine() {
       approvals={approvals}
       streaming={false}
       handled={[]}
+      bannerOnScreen
       threadId="here"
       threads={THREADS}
       reasons={{ a1: 'Confirm writes to the workspace' }}
@@ -91,11 +101,11 @@ function ReasonLine() {
   );
 }
 
-function mount(streaming = false, handled: string[] = []) {
+function mount(streaming = false, handled: string[] = [], bannerOnScreen = true) {
   return render(
     <MemoryRouter>
       <TooltipProvider>
-        <Line streaming={streaming} handled={handled} />
+        <Line streaming={streaming} handled={handled} bannerOnScreen={bannerOnScreen} />
       </TooltipProvider>
     </MemoryRouter>,
   );
@@ -313,11 +323,48 @@ describe('the attention line', () => {
     expect(within(row).getByText(/decided on its own thread/)).toBeTruthy();
   });
 
+  /**
+   * Off the workbench the banner is not on screen, so a call it owns would be a
+   * count with no verb. It gets a row that routes back to its thread instead —
+   * not a card, because the banner's card is the stronger of the two.
+   */
+  it('routes a banner-owned call back to its thread when the banner is not on screen', async () => {
+    stub([approval({ id: 'a1', thread_id: 'here' })]);
+    mount(false, ['a1'], false);
+    // On this thread, so the queue opens itself.
+    const row = await screen.findByRole('group', { name: 'Approval waiting: write_file' });
+    const open = within(row).getByRole('link', { name: /Open thread to review/ });
+    expect(open.getAttribute('href')).toBe('/t/here');
+    expect(within(row).queryByRole('button', { name: /approve/i })).toBeNull();
+  });
+
+  it('says what the countdown counts down to', async () => {
+    stub([approval({ thread_id: 'elsewhere' })]);
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Review' }));
+    expect(screen.getByRole('timer').textContent).toMatch(/^Auto-denies in \d+:\d{2}$/);
+  });
+
   it('keeps an unattributed write decidable, since it has nowhere to route to', async () => {
     stub([approval({ thread_id: '' })]);
     mount();
     await userEvent.click(await screen.findByRole('button', { name: 'Review' }));
     expect(await screen.findByRole('button', { name: 'Approve write_file' })).toBeTruthy();
+  });
+
+  /**
+   * One call, one vocabulary. The banner names the gating rule beside the tool
+   * and never offers to edit a whole file body; this card used to name the
+   * manifest and offer Edit for the same write, because it had no `before`.
+   */
+  it('names the rule and offers no argument editing for a write, as the banner does', async () => {
+    stub([approval({ thread_id: '' })]);
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Review' }));
+    const card = await screen.findByRole('group', { name: 'Approval waiting: write_file' });
+    expect(within(card).getByText('workspace-write')).toBeTruthy();
+    expect(within(card).queryByText('cowork')).toBeNull();
+    expect(within(card).queryByRole('button', { name: 'Edit arguments' })).toBeNull();
   });
 
   it('shows one clock per call: the row while collapsed, the card once open', async () => {
@@ -408,6 +455,7 @@ function DecidedFromBanner() {
         approvals={approvals}
         streaming={false}
         handled={handled}
+        bannerOnScreen
         threadId="here"
         threads={THREADS}
       />

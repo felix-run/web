@@ -789,12 +789,29 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       // Taken before the request, so an approval a frame queues while it is in
       // flight is not judged against a list read before its row existed.
       const queued = new Set(state.approvals.map((pending) => pending.approvalId));
-      const { added, deadlines, listed } = await syncApprovals({
+      const threadId = ports.threadId();
+      // A private copy of `seen`, merged back only once the thread is known not
+      // to have changed. The shared set used to be marked the moment a list
+      // resolved, so a sync for the thread being left could mark a row a beat
+      // before a sync for the thread being entered filtered against it — and
+      // neither adopted it.
+      const scratch = new Set(seenApprovals);
+      const result = await syncApprovals({
         listPending: () => ports.client.listApprovals('pending'),
-        threadId: ports.threadId(),
-        seen: seenApprovals,
+        threadId,
+        seen: scratch,
         readForDiff: ports.clientTools?.readForDiff?.bind(ports.clientTools),
       });
+      // The thread changed while the list was in flight. Its rows were filtered
+      // for the thread that asked, so adopting them now would put one
+      // conversation's approval in another's banner. The new thread asks for
+      // itself — navigating to a thread triggers a sync, so this is routine.
+      if (ports.threadId() !== threadId) return;
+      const { deadlines, listed } = result;
+      // Merged here, deduped against anything a concurrent sync for this same
+      // thread adopted first: two ticks in flight must not queue one call twice.
+      const added = result.added.filter((pending) => !seenApprovals.has(pending.approvalId));
+      for (const pending of added) seenApprovals.add(pending.approvalId);
       // An approval that arrived as a frame has no deadline — the frame carries
       // none — so the poll backfills it. Without this the banner for a *watched*
       // run is the one that never learns when the harness gives up.

@@ -39,6 +39,13 @@ export interface PathCall {
   outcome: CallOutcome;
   /** The harness's wording for a failure or refusal, for the evidence pane. */
   issue?: string;
+  /**
+   * The classifier's short name for it — `permission denied`, `timed out`,
+   * `not approved in time` — the same badge the call's tool card wears. A row
+   * that said `failed` beside a card saying `permission denied` was two words
+   * for one fact.
+   */
+  label?: string;
   tool: ToolCall;
 }
 
@@ -131,11 +138,19 @@ const PROGRESSIVE: Record<CallKind, string> = {
   open: 'opening…',
 };
 
-function outcomeOf(name: string, tool: ToolCall): { outcome: CallOutcome; issue?: string } {
+function outcomeOf(
+  name: string,
+  tool: ToolCall,
+): { outcome: CallOutcome; issue?: string; label?: string } {
   if (!tool.done) return { outcome: 'running' };
   const issue = classifyToolResult(name, tool.output);
   if (!issue) return { outcome: 'landed' };
-  return { outcome: issue.kind, issue: issue.message || issue.label };
+  return { outcome: issue.kind, issue: issue.message || issue.label, label: issue.label };
+}
+
+/** A failed or refused call's word: the classifier's, or the outcome's when it has none. */
+function failureWord(call: PathCall | undefined): string {
+  return call?.label || (call?.outcome === 'refused' ? 'refused' : 'failed');
 }
 
 /**
@@ -202,7 +217,7 @@ function statOf(calls: readonly PathCall[]): ChangeStat {
     if (parts.length > 0) return { text: parts.reverse().join(' · '), tone: 'count' };
     // Every attempt failed: report the newest, as a word.
     const last = mutations[0];
-    return { text: last?.outcome === 'refused' ? 'refused' : 'failed', tone: 'failed' };
+    return { text: failureWord(last), tone: 'failed' };
   }
 
   const counts = new Map<CallKind, number>();
@@ -211,7 +226,7 @@ function statOf(calls: readonly PathCall[]): ChangeStat {
     counts.set(call.kind, (counts.get(call.kind) ?? 0) + 1);
   }
   if (counts.size === 0) {
-    return { text: newest?.outcome === 'refused' ? 'refused' : 'failed', tone: 'failed' };
+    return { text: failureWord(newest), tone: 'failed' };
   }
   const words = [...counts].map(([kind, n]) => {
     const verb = VERB[kind as keyof typeof VERB];
@@ -245,10 +260,10 @@ export function collectChanges(turns: readonly Turn[]): PathChange[] {
       const name = bareName(tool.name);
       const kind = kindOf(name, record(tool.input));
       if (!kind) continue;
-      const { outcome, issue } = outcomeOf(name, tool);
+      const { outcome, issue, label } = outcomeOf(name, tool);
       for (const path of collectTouchedPaths(tool.name, tool.input)) {
         const entry = byPath.get(path) ?? { calls: [], newest: 0 };
-        entry.calls.unshift({ kind, outcome, issue, tool });
+        entry.calls.unshift({ kind, outcome, issue, label, tool });
         entry.newest = order;
         byPath.set(path, entry);
       }

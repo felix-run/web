@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
+import { CutId } from '@/components/cut-id';
 import { getMountLabel } from '@/lib/cowork';
+import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 import { StarterPrompts } from './starter-prompts';
 
@@ -17,7 +19,7 @@ import { StarterPrompts } from './starter-prompts';
  * manifest's tool list, which is not fetched until a run reports it) is left out
  * rather than approximated.
  */
-export function Greeting({ manifest }: { manifest: string }) {
+export function Greeting({ manifest, blocked = false }: { manifest: string; blocked?: boolean }) {
   const { threadId, harnessReachable, manifestEntries } = useShell();
   const folder = useMountLabel();
   // The manifest's own words, when it has them (`metadata.greeting`); each half
@@ -33,28 +35,45 @@ export function Greeting({ manifest }: { manifest: string }) {
     // `max-w-3xl` matches the transcript and composer, so nothing shifts sideways
     // when the first message replaces it.
     <section
-      aria-labelledby="empty-thread-title"
-      className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 py-4 rise:justify-end"
+      // Blocked, the heading is not drawn, so the region names itself.
+      aria-labelledby={blocked ? undefined : 'empty-thread-title'}
+      aria-label={blocked ? 'Empty thread' : undefined}
+      className={cn(
+        'mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 py-4',
+        // Blocked, the readout alone sits on the floor beside the banner rather
+        // than floating mid-column with nothing above it.
+        blocked ? 'justify-end' : 'justify-center rise:justify-end',
+      )}
     >
-      <div className="flex flex-col gap-2">
-        <h2
-          id="empty-thread-title"
-          className="text-balance text-2xl font-semibold tracking-tight md:text-[1.75rem]"
-        >
-          {greeting?.headline ?? 'What do you want to work on?'}
-        </h2>
-        <p className="max-w-prose text-pretty text-base text-muted-foreground">
-          {greeting?.subtitle ?? (
-            <>
-              You&apos;re chatting with{' '}
-              <span className="font-medium text-foreground">{manifest}</span>. Pick a starter or
-              type below; you can switch agents anytime from the composer.
-            </>
-          )}
-        </p>
-      </div>
+      {/* Not while this thread is waiting on you. An empty thread with a call
+          blocked on it is not one asking what to work on — the approval above
+          the composer is the work, and a headline and four starters above it
+          put an invitation between the operator and the decision. The readout
+          stays: it is facts, not an invitation. It returns once the call is
+          answered. */}
+      {!blocked && (
+        <>
+          <div className="flex flex-col gap-2">
+            <h2
+              id="empty-thread-title"
+              className="text-balance text-2xl font-semibold tracking-tight md:text-[1.75rem]"
+            >
+              {greeting?.headline ?? 'What do you want to work on?'}
+            </h2>
+            <p className="max-w-prose text-pretty text-base text-muted-foreground">
+              {greeting?.subtitle ?? (
+                <>
+                  You&apos;re chatting with{' '}
+                  <span className="font-medium text-foreground">{manifest}</span>. Pick a starter or
+                  type below; you can switch agents anytime from the composer.
+                </>
+              )}
+            </p>
+          </div>
 
-      <StarterPrompts manifest={manifest} />
+          <StarterPrompts manifest={manifest} />
+        </>
+      )}
 
       {/* The readout, as one line. A `dl` still, so each value keeps its name for a
           screen reader; laid out inline so it reads as a footnote, not a panel. */}
@@ -71,8 +90,10 @@ export function Greeting({ manifest }: { manifest: string }) {
         </div>
         <div className="flex min-w-0 gap-1.5">
           <dt>Thread</dt>
-          <dd className="max-w-[12rem] truncate font-mono tabular-nums" title={threadId}>
-            {threadId}
+          {/* Cut from the middle, like every id that tells rows apart: the tail
+              is what distinguishes one thread from another. */}
+          <dd className="font-mono tabular-nums" title={threadId}>
+            <CutId id={threadId} max={14} />
           </dd>
         </div>
         <div className="flex min-w-0 gap-1.5">

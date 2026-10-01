@@ -100,17 +100,18 @@ describe('collectChanges', () => {
       ]),
     ]);
     expect(row?.changed).toBe(false);
-    expect(row?.stat).toEqual({ text: 'failed', tone: 'failed' });
+    // The tool card's word for the same call, not a generic one beside it.
+    expect(row?.stat).toEqual({ text: 'permission denied', tone: 'failed' });
     expect(row?.evidence?.issue).toContain('Permission denied');
   });
 
-  it('reports a refused edit as refused', () => {
+  it('reports a refused edit in the words the tool card uses', () => {
     const [row] = collectChanges([
       assistant([
         call('edit_file', { path: 'a', old_string: 'x', new_string: 'y' }, '[policy deny] nope'),
       ]),
     ]);
-    expect(row?.stat).toEqual({ text: 'refused', tone: 'failed' });
+    expect(row?.stat).toEqual({ text: 'refused by policy', tone: 'failed' });
   });
 
   it('says a call in flight is in flight', () => {
@@ -292,6 +293,20 @@ describe('the Changes section', () => {
     });
     const stat = screen.getByText('failed');
     expect(stat.className).toContain('text-state-failed');
+  });
+
+  /**
+   * Files is this tab's store and Changes is every workspace call on the thread,
+   * so a harness-side write lands in the second and never the first. The empty
+   * store says which store it is rather than "Nothing written yet" under a
+   * `+1 written` row.
+   */
+  it("says the tab's store is empty because the writes ran on the harness", async () => {
+    mount({
+      turns: [assistant([call('write_file', { path: 'notes.md', content: 'hi' }, OK_WRITE)])],
+    });
+    expect(await screen.findByText(/The writes above ran on the harness/)).toBeTruthy();
+    expect(screen.queryByText('Nothing written yet.')).toBeNull();
   });
 
   it('never labels a call that was not applied as written', async () => {

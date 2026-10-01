@@ -1,5 +1,6 @@
 import {
   type ApprovalRequest,
+  approvalRuleLabel,
   formatCountdown,
   msUntilDecision,
   relativeTime,
@@ -68,6 +69,7 @@ export function AttentionLine({
   approvals,
   streaming,
   handled,
+  bannerOnScreen,
   threadId,
   threads,
   reasons = {},
@@ -86,6 +88,13 @@ export function AttentionLine({
    * line would mean deciding with strictly less to go on.
    */
   handled: string[];
+  /**
+   * Whether the transcript banner is on screen. Off the workbench (`/harness`)
+   * it is not, so a call it owns would be counted here with no way to reach it —
+   * an amber sentence with no verb, which teaches the operator to ignore amber.
+   * There, an owned call gets a row that routes back to its thread.
+   */
+  bannerOnScreen: boolean;
   /** The thread on screen, so the line can tell "here" from "somewhere else". */
   threadId: string;
   /** The thread index, for naming an approval's thread rather than showing an id. */
@@ -116,7 +125,7 @@ export function AttentionLine({
 
   const count = pending.length;
   const owned = new Set(handled);
-  const reviewable = pending.filter((a) => !owned.has(a.id));
+  const reviewable = pending.filter((a) => !owned.has(a.id) || !bannerOnScreen);
 
   /**
    * Whether the count is provably all on the thread in front of you.
@@ -276,24 +285,29 @@ export function AttentionLine({
       </div>
 
       {reviewable.length > 0 && open && (
-        // Held to the transcript's reading measure. Full-bleed, a grant sentence
-        // ran ~580 characters to a line on a wide display and Approve was a
-        // 600px bar; the queue is read, then decided, and both want a measure.
-        <ul className="max-h-[40vh] max-w-3xl divide-y divide-border/40 overflow-y-auto border-t border-border/40">
-          {reviewable.map((a) => (
-            <QueueRow
-              key={a.id}
-              approval={a}
-              threadId={threadId}
-              threads={threads}
-              reason={reasons[a.id]}
-              onDecided={() => {
-                markDecided(a.id);
-                refresh();
-              }}
-            />
-          ))}
-        </ul>
+        // Held to the transcript's reading measure and on its centre line, so
+        // the queue reads as the same column the decision continues in.
+        // Full-bleed, a grant sentence ran ~580 characters to a line and Approve
+        // was a 600px bar. The rule above stays full width: it belongs to the
+        // line, not to the list.
+        <div className="max-h-[40vh] overflow-y-auto border-t border-border/40">
+          <ul className="mx-auto max-w-3xl divide-y divide-border/40">
+            {reviewable.map((a) => (
+              <QueueRow
+                key={a.id}
+                approval={a}
+                inBanner={owned.has(a.id)}
+                threadId={threadId}
+                threads={threads}
+                reason={reasons[a.id]}
+                onDecided={() => {
+                  markDecided(a.id);
+                  refresh();
+                }}
+              />
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   );
@@ -315,19 +329,22 @@ export function AttentionLine({
  */
 function QueueRow({
   approval: a,
+  inBanner = false,
   threadId,
   threads,
   reason,
   onDecided,
 }: {
   approval: ApprovalRequest;
+  /** The banner owns it but is not on screen: route to it rather than offer a weaker card. */
+  inBanner?: boolean;
   threadId: string;
   threads: ThreadMeta[];
   reason?: string;
   onDecided: () => void;
 }) {
   const elsewhere = Boolean(a.thread_id) && a.thread_id !== threadId;
-  const [expanded, setExpanded] = useState(!elsewhere);
+  const [expanded, setExpanded] = useState(!elsewhere && !inBanner);
   const args = (a.args ?? {}) as Record<string, unknown>;
   const target = callTarget(a.tool_name, args);
   const threadTitle = elsewhere
@@ -335,7 +352,9 @@ function QueueRow({
     : null;
   // An unattributed write has nowhere to route to, so it stays decidable here:
   // refusing to offer it would leave a call nobody can answer from this tab.
-  const route = elsewhere && NEEDS_ITS_THREAD.has(a.tool_name);
+  const route = inBanner || (elsewhere && NEEDS_ITS_THREAD.has(a.tool_name));
+  // The banner's own call is this thread's, wherever its row says it came from.
+  const routeTo = inBanner ? threadId : a.thread_id;
   const bodyId = `queue-${a.id}`;
 
   return (
@@ -364,9 +383,9 @@ function QueueRow({
           {!expanded && <RowCountdown expiresAt={a.expires_at} />}
           {route ? (
             <Button asChild variant="outline" size="sm" className="h-6 px-2 text-xs">
-              <Link to={`/t/${a.thread_id}`}>
+              <Link to={`/t/${routeTo}`}>
                 Open thread to review
-                <span className="sr-only">: {threadTitle}</span>
+                {threadTitle && <span className="sr-only">: {threadTitle}</span>}
               </Link>
             </Button>
           ) : (
@@ -391,7 +410,9 @@ function QueueRow({
       </div>
       {route && (
         <p className="mt-1 text-xs text-muted-foreground">
-          A write is decided on its own thread, where the card can show what it replaces.
+          {inBanner
+            ? 'Open in the banner on its thread, which has the full card.'
+            : 'A write is decided on its own thread, where the card can show what it replaces.'}
         </p>
       )}
       {!route && expanded && (
@@ -410,7 +431,10 @@ function QueueRow({
           <ApprovalDecision
             toolName={a.tool_name}
             args={args}
-            context={a.manifest_id}
+            // The rule that gated it, as the banner shows it: one word in this slot
+            // for one call wherever it is decided. The manifest only when no rule
+            // is named.
+            context={approvalRuleLabel(a.rule_id, reason) ?? a.manifest_id}
             expiresAt={a.expires_at}
             reason={reason}
             onDecide={async (status) => {
@@ -440,13 +464,18 @@ function RowCountdown({ expiresAt }: { expiresAt: number | null }) {
   }, [expiresAt]);
   if (left === null) return null;
   const countdown = formatCountdown(left);
+  // The words, not only the clock: a bare `4:20` beside a call does not say what
+  // happens at zero, and what happens is the harness denying it. Below `sm` the
+  // row has no room for the sentence, and the chip's colour plus the card it
+  // opens carry it.
   return (
     <span
       role="timer"
       aria-label={`Auto-denies in ${countdown}`}
-      className="rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-mono font-medium tabular-nums text-state-blocked"
+      className="rounded-full bg-state-blocked/15 px-1.5 py-0.5 font-medium text-state-blocked"
     >
-      {countdown}
+      <span className="hidden sm:inline">Auto-denies in </span>
+      <span className="font-mono tabular-nums">{countdown}</span>
     </span>
   );
 }
