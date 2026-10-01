@@ -1219,9 +1219,12 @@ the text and any clean images still reach the agent. Under `block` the turn is a
 - A transcript counts only if the transcriber finished normally. A refusal, a filtered or
   truncated reply, or an empty one is treated as unscreened; `NO_TEXT` is the only answer that
   means "no text".
-- **Only the incoming turn is screened.** An image already in the thread's history replays
-  without being screened again — including one admitted before `image_model` was set, or by a
-  different manifest in the same thread.
+- **History is screened as well as the incoming turn.** An image already in the thread —
+  sent through a different manifest in the same thread, or before `image_model` was set — is
+  screened whenever the history is rebuilt for the model, including after compaction. A flagged
+  replayed image is always quarantined, even under `block`: refusing would refuse every later
+  turn of the thread, since its history can't be rewritten. A router's image screen also applies
+  to the sub-agents it hands the thread to, on top of any screen of their own.
 - It screens for injection only: the input PII guardrail does not read image text.
 - The transcriber reads the image it is screening, and a crafted image can try to talk it out of
   reporting its text. Treat this as one layer, like every model-based screener.
