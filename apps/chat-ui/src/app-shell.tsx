@@ -1222,17 +1222,23 @@ export function AppShell() {
         ]);
         const userMessage: ChatMessage = { role: 'user', content: next };
         if (original.attachments?.length) userMessage.attachments = original.attachments;
-        void streamInto([userMessage], assistantId);
+        // The toast waits for the run. Restore cannot move the leaf under a live
+        // run, and a toast raised at send time had expired — taking its only
+        // way back with it — before any reply longer than a few seconds landed.
+        await streamInto([userMessage], assistantId);
+        if (threadIdRef.current !== threadId) return;
 
         toast.message(
           'Edited. The original and its replies are kept on another branch.',
           previousLeaf
             ? {
+                duration: 10_000,
                 action: {
                   label: 'Restore original',
                   onClick: () => {
-                    // Moving the leaf under a live run would graft its reply onto
-                    // the wrong branch, so this waits for the run to finish.
+                    // A message sent since the toast opened is a live run again, and
+                    // moving the leaf under it would graft its reply onto the wrong
+                    // branch.
                     if (engine.state.streaming) {
                       toast.message('Wait for this run to finish, then rewind.');
                       return;

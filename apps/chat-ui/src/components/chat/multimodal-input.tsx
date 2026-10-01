@@ -46,6 +46,7 @@ import {
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { toastProblem } from '@/lib/error-toast';
 import { ariaShortcut, isMacPlatform, type ShortcutAction, shortcutKeys } from '@/lib/shortcuts';
+import { isTypingTarget } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 import { PaperclipIcon, StopIcon } from './icons';
 import { PreviewAttachment } from './preview-attachment';
@@ -252,12 +253,16 @@ function MultimodalInputInner({
     if (slashIndex >= filteredCommands.length) setSlashIndex(0);
   }, [slashIndex, filteredCommands.length]);
 
-  // Autofocus once, after first paint
+  // Autofocus once, after first paint — unless something else already has the
+  // keyboard. A transcript that hydrates inside these 80ms can have an edit box
+  // open by the time this fires, and taking focus from it sent the rest of the
+  // edit as a brand-new message from the composer.
   useEffect(() => {
     if (hasAutoFocused.current) return;
     const t = window.setTimeout(() => {
-      textareaRef.current?.focus();
       hasAutoFocused.current = true;
+      if (isTypingTarget(document.activeElement)) return;
+      textareaRef.current?.focus();
     }, 80);
     return () => window.clearTimeout(t);
   }, []);
