@@ -123,7 +123,7 @@ export function StarterPrompts({ manifest }: { manifest: string }) {
             title={s.prompt}
             disabled={streaming}
             onClick={() => send(s.prompt)}
-            className="h-auto w-full flex-col items-start justify-start gap-0.5 whitespace-normal rounded-xl border-border/60 bg-card/40 px-4 py-3 text-left shadow-none hover:bg-accent/60"
+            className="h-auto w-full flex-col items-start justify-start gap-0.5 whitespace-normal rounded-xl border-border/60 bg-solid-card/40 px-4 py-3 text-left shadow-none hover:bg-solid-accent/60"
           >
             <span className="text-sm font-medium text-foreground">{s.title}</span>
             {/* The prompt itself, so what a click sends is on screen before it is sent. */}

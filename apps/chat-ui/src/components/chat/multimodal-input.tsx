@@ -426,7 +426,7 @@ function MultimodalInputInner({
             // textarea to a 1-char column when flex-col selectors miss.
             '[&>[data-slot=input-group]]:flex [&>[data-slot=input-group]]:flex-col [&>[data-slot=input-group]]:items-stretch',
             '[&>[data-slot=input-group]]:rounded-2xl [&>[data-slot=input-group]]:border [&>[data-slot=input-group]]:border-border/50',
-            '[&>[data-slot=input-group]]:bg-card/80 [&>[data-slot=input-group]]:backdrop-blur-md',
+            '[&>[data-slot=input-group]]:bg-card',
             '[&>[data-slot=input-group]]:shadow-[var(--shadow-composer)]',
             '[&>[data-slot=input-group]]:transition-[border-color,box-shadow,background-color] [&>[data-slot=input-group]]:duration-200',
             // Full-alpha `--ring`, not `/60`. The textarea's own ring is removed below,
@@ -438,7 +438,7 @@ function MultimodalInputInner({
             '[&>[data-slot=input-group]]:has-[textarea:focus-visible]:shadow-[var(--shadow-composer-focus)]',
             '[&_textarea]:min-w-0 [&_textarea]:w-full [&_textarea]:focus-visible:ring-0 [&_textarea]:focus-visible:ring-offset-0 [&_textarea]:focus-visible:outline-none',
             isDragging &&
-              '[&>[data-slot=input-group]]:border-primary/60 [&>[data-slot=input-group]]:bg-primary/5 [&>[data-slot=input-group]]:ring-2 [&>[data-slot=input-group]]:ring-primary/25',
+              '[&>[data-slot=input-group]]:border-primary/60 [&>[data-slot=input-group]]:bg-solid-primary/5 [&>[data-slot=input-group]]:ring-2 [&>[data-slot=input-group]]:ring-primary/25',
           )}
           onError={(err) => {
             const messages: Record<typeof err.code, string> = {
@@ -810,7 +810,7 @@ function AttachmentsPreview() {
 
 function ConnectionBanner() {
   return (
-    <div className="mx-auto mb-2 flex w-fit items-center gap-2 rounded-full border border-border/50 bg-card/80 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
+    <div className="mx-auto mb-2 flex w-fit items-center gap-2 rounded-full border border-border/50 bg-card px-3 py-1 text-xs text-muted-foreground shadow-sm">
       <Loader2 className="size-3 animate-spin" />
       Reconnecting to the assistant
     </div>

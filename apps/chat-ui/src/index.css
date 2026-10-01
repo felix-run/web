@@ -285,6 +285,21 @@
   }
 }
 
+/* A tint that stays opaque over the dot grid. `bg-muted/30` mixes the colour with
+   *transparent*, so whatever is behind the element shows through it — on a plain
+   page that is the page, over the grid it is the dots, crossing a tool card or a
+   button as if it had no fill. `bg-solid-muted/30` mixes with `--background`
+   instead: the same pixel on the plain page, and solid over the grid. Anything
+   that sits on the transcript and has a fill uses this rather than an alpha
+   modifier. The modifier is required; without it there is no percentage to mix. */
+@utility bg-solid-* {
+  background-color: color-mix(
+    in oklab,
+    --value(--color-*) calc(--modifier(integer) * 1%),
+    var(--background)
+  );
+}
+
 /* Fenced code blocks own their surface, in both themes.
 
    Shiki highlights against two themes at once and smuggles the second one through
