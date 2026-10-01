@@ -55,6 +55,8 @@ export function Workbench() {
     feedback,
     rateTurn,
     submit,
+    queue,
+    steerQueued,
     stopRun,
     regenerate,
     rewindTo,
@@ -215,6 +217,8 @@ export function Workbench() {
               reattaching={reattaching}
               isConnected={harnessReachable}
               onSubmit={submit}
+              queue={queue}
+              onSteerQueued={steerQueued}
               onBackground={(message) => submit(message, 'background')}
               onStop={stopRun}
               onSlashCommand={onSlashCommand}
@@ -233,7 +237,7 @@ export function Workbench() {
               }}
               placeholder={
                 streaming
-                  ? 'Type to steer the run…'
+                  ? 'Write the next message…'
                   : manifest === DEFAULT_MANIFEST && mountedFolder
                     ? 'Describe a workspace goal…'
                     : 'Message Felix…'
