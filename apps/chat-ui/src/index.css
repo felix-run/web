@@ -291,7 +291,8 @@
    button as if it had no fill. `bg-solid-muted/30` mixes with `--background`
    instead: the same pixel on the plain page, and solid over the grid. Anything
    that sits on the transcript and has a fill uses this rather than an alpha
-   modifier. The modifier is required; without it there is no percentage to mix. */
+   modifier — `tests/solid-over-dots.test.ts` fails on one. The modifier is required;
+   without it there is no percentage to mix. */
 @utility bg-solid-* {
   background-color: color-mix(
     in oklab,

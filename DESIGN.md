@@ -389,7 +389,8 @@ control, drop hint, notice pill).
 
 The access-key gate follows the tonal model too: its form card is flat — a full-strength
 `border` hairline at `rounded-lg`, no shadow — and its side panel is flat `muted`, where it was
-the app's one gradient. There is no gradient anywhere in the app.
+the app's one gradient. There is no gradient *fill* anywhere in the app; the transcript's dot
+grid is drawn with a `radial-gradient`, but it is a texture, not a fill (the One Texture Rule).
 
 **Where the system and the code disagree.** The vendored primitives in `packages/ui/src` are shadcn defaults and still carry theirs —
 `shadow-2xl` on overlays, `shadow-lg` on dialog-class surfaces, `shadow-xs` on outline buttons.
@@ -409,6 +410,22 @@ is `bg-code-surface`, inside a card it is `bg-background`. Both are flat colours
 these panes once carried three different alphas for one job, which made a pane's colour a
 function of the tint behind it, and an approval's diff came out faintly amber because the banner
 around it was.
+
+**The One Texture Rule.** The app has exactly one decorative texture: an 18px dot grid behind the
+transcript's `<main>` (`.bg-dots` in `index.css`), drawn from `--foreground` at
+`--dot-grid-alpha` (7% light, 16% dark, because text crosses it and owes its contrast —
+`tests/dot-grid-contrast.test.ts` recomputes both) and masked to fade out by 65% of the column's
+height. Nowhere else: not behind the workspace, the instrument, `/harness` or any panel, where
+rows are scanned rather than read.
+
+**The Solid-Over-Texture Rule.** Anything with a fill that sits over the grid is opaque. An alpha
+tint (`bg-muted/30`) mixes with *transparent*, so the grid runs straight through it — a tool card
+or a button reads as if it had no fill. `bg-solid-<token>/<n>` mixes with `--background`
+instead: the same pixel on the plain page, solid over the dots. Tool cards, starter cards, the
+transcript's notes and the message actions' dark hover use it; the composer dock and its input
+box are plain `bg-background` / `bg-card`, with no backdrop blur left to do anything.
+`tests/solid-over-dots.test.ts` fails on an alpha fill in the files that render over the grid;
+a fill that sits on an opaque parent (a row inside a card) is allowlisted there, by name.
 
 ## Shapes
 
@@ -585,7 +602,7 @@ every second is noise.
   Display headline "What do you want to work on?", a 16px muted sentence naming the agent
   ("You're chatting with **cowork**…") — either replaced by the manifest's own
   `metadata.greeting` (`felix.greeting` on `/v1/models`) when it declares one — then the agent's starter prompts as a two-column grid
-  of `rounded-xl` outline cards (`border-border/60`, `bg-card/40`, no shadow) — title in 13px
+  of `rounded-xl` outline cards (`border-border/60`, `bg-solid-card/40`, no shadow) — title in 13px
   medium, the prompt it sends beneath in 11px muted, clamped to two lines with the full text on
   hover. They come from the manifest's `metadata.starters` (`felix.starters` on `/v1/models`),
   fall back to a built-in table for a harness that sends none, and are disabled while a run
@@ -594,7 +611,7 @@ every second is noise.
 
 ### Tool cards
 
-`rounded-xl` with a `border/60` hairline on `muted/30`. Collapsed, the header reads
+`rounded-xl` with a `border/60` hairline on `solid-muted/30`. Collapsed, the header reads
 **`name · target · duration`** in 11px mono and then the state: the target is what differs
 between five `read_file` rows, so it is what the header spends its width on. There is no wrench
 — an icon on every card marks a row, not a kind. The state badge is honest about outcome: a shell
@@ -643,7 +660,7 @@ status line announces the last minute and the lapse once each.
 ### Inputs
 
 `bg-background` with a `--input` border, `rounded-md`, focus ring as above. The composer is the
-signature case: a lifted `card/80` surface, `rounded-2xl`, with an anchored send control,
+signature case: a lifted, opaque `card` surface, `rounded-2xl`, with an anchored send control,
 banners docked directly above it, a slash menu that opens upward, and a hint line beneath it at
 11px that names the keys worth learning from there — Enter, ⇧Enter, and (from `md` up) the
 thread switcher and the jump to a waiting approval — as small bordered `kbd` keys.
@@ -677,8 +694,10 @@ is the harness's mapping to fix; the list quotes the number rather than disguisi
 
 **The composer's focus indicator is its border.** It removes its textarea's ring and signals
 focus with a full-alpha `--ring` border plus the heavier composer shadow. The border is the
-indicator, so it owes 3:1: against the composer surface (`card/80` over the dock) it measures
-3.96:1 light and 3.78:1 dark, and 3.53:1 / 3.34:1 against the resting `border/50` it replaces.
+indicator, so it owes 3:1: against the composer surface (opaque `card`) it measures 3.96:1
+light and 3.67:1 dark, and 3.53:1 / 3.23:1 against the resting `border/50` it replaces. (Those
+were 3.78:1 and 3.34:1 dark while the surface was `card/80` over the dock; making it opaque
+lightened it a step, and both still clear 3:1.)
 It was `ring/60` until that was measured — 2.10:1 light, 2.15:1 dark — which failed. There is
 no reduced-alpha focus indicator left in the app.
 
