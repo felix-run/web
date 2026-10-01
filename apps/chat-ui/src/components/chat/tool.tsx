@@ -1,4 +1,4 @@
-import { describeError, summarizeToolArgs } from '@felix/client';
+import { describeError, parseTabular, summarizeToolArgs } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
@@ -9,10 +9,11 @@ import {
   CircleAlertIcon,
   LoaderIcon,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
 import { cn } from '@/lib/utils';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
+import { ToolTable } from './tool-table';
 
 /**
  * Collapsible tool-call card driven by SSE `ToolCall.done`.
@@ -37,6 +38,16 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
   // same reason it is on a shell command that exited 1: a write that failed
   // with Errno 13 sat under a green `done` badge on the reference deployment.
   const issue = tool.done ? classifyToolResult(tool.name, tool.output) : null;
+  // Only a finished, successful result is read as a table; a failure says so in words.
+  // Memoised on the tool's own fields: a transcript re-renders on every streamed
+  // delta, and a large result would otherwise be re-parsed each time.
+  const table = useMemo(
+    () =>
+      tool.done && !parseShellResult(tool.output) && !classifyToolResult(tool.name, tool.output)
+        ? parseTabular(tool.output)
+        : null,
+    [tool.done, tool.name, tool.output],
+  );
   const target = toolTarget(tool.name, tool.input);
 
   return (
@@ -115,7 +126,11 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         ) : issue ? (
           <p className="whitespace-pre-wrap text-xs text-state-failed">{issue.message}</p>
         ) : tool.done ? (
-          <Field label="Output" value={tool.output} emphasis />
+          table ? (
+            <ToolTable table={table} raw={render(tool.output)} />
+          ) : (
+            <Field label="Output" value={tool.output} emphasis />
+          )
         ) : (
           verbose && (
             <p className="text-xs text-muted-foreground italic">Waiting for tool output…</p>

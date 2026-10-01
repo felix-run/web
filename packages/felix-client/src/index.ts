@@ -84,6 +84,7 @@ export {
   titleFromText,
   UNTITLED_THREAD_TITLE,
 } from './session-log';
+export { parseTabular, type Tabular } from './tabular';
 export { formatElapsed, relativeTime } from './time';
 export { classifyToolResult, type ToolResultIssue } from './tool-results';
 export {
