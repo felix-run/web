@@ -359,6 +359,11 @@ The workbench is **three zones**: the workspace (18rem), the transcript at readi
 transcript). An attention line runs full width under the header on every address. At rest its
 dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach
 approvals* with the age of its last answer, in `state-failed`, and never the all-clear.
+Expanded, its queue is held to the transcript's measure (`max-w-3xl`) and is **one line per
+call** — tool and target in mono, the thread, a countdown chip — opening into the approval card
+on *Review*. It opens itself only for a call on this thread, and a write from another thread
+offers *Open thread to review* instead of a card, because only its own banner can show what the
+write replaces. The workspace is open by default wherever it fits inline: it is the subject.
 
 Spacing is Tailwind's default scale used narrowly: rows sit at `px-3 py-1.5`, panels pad at
 `p-4`, and stacked cards gap at `2.5`. Rhythm comes from repeating a few steps, not from a wide
@@ -686,8 +691,9 @@ card, because below `lg` nothing else on that page gives the form an edge. This 
 
 ### Approval card
 
-The one place a gated call is decided, reused verbatim by the transcript banner, the attention
-line's queue and the instrument. Top to bottom, in reading order: the tool name as a mono badge,
+The one place a gated call is decided, reused verbatim by the transcript banner and the
+attention line's queue, and nowhere else: the instrument's Approvals tab, which drew a second live
+card and a second countdown for the same call, is gone. Top to bottom, in reading order: the tool name as a mono badge,
 the manifest, the queue count and the **deadline chip**; the reason; the summary; the evidence
 (before/after for a write, arguments otherwise, editable); the grant sentence at 13px
 (`foreground/85`, measured 12.84:1 light) directly above the buttons, because it is what
@@ -721,6 +727,12 @@ signature case: a lifted, opaque `card` surface, `rounded-2xl`, with an anchored
 banners docked directly above it, a slash menu that opens upward, and a hint line beneath it at
 11px that names the keys worth learning from there — Enter, ⇧Enter, and (from `md` up) the
 thread switcher and the jump to a waiting approval — as small bordered `kbd` keys.
+
+**The composer row rests at four:** an *Add to message* menu (attach images, voice input),
+the agent, Thinking, then Run in background and Send. Attach and the mic were two icon-only
+controls of six at the decision point reached most often. The mic leaves the menu while it
+records — red `recording`, one click to stop — because a recording state behind a trigger is a
+recording nobody can see.
 
 **Send is the composer's one primary action.** *Run in background* sits beside it as a muted
 ghost with a clock icon (icon-only below `sm`, the words kept as its accessible name), because it

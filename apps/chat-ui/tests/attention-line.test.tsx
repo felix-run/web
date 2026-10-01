@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,6 +73,20 @@ function Line({ streaming, handled }: { streaming: boolean; handled: string[] })
       handled={handled}
       threadId="here"
       threads={THREADS}
+    />
+  );
+}
+
+function ReasonLine() {
+  const approvals = usePendingApprovals();
+  return (
+    <AttentionLine
+      approvals={approvals}
+      streaming={false}
+      handled={[]}
+      threadId="here"
+      threads={THREADS}
+      reasons={{ a1: 'Confirm writes to the workspace' }}
     />
   );
 }
@@ -159,7 +174,7 @@ describe('the attention line', () => {
     expect(approvalCalls(spy)).toBeGreaterThan(atMount);
   });
 
-  it('opens the queue itself when something starts waiting', async () => {
+  it('opens the queue itself when a call on this thread starts waiting', async () => {
     vi.useFakeTimers();
     let rows: unknown[] = [];
     const fn = vi.fn(async () => new Response(JSON.stringify({ requests: rows }), { status: 200 }));
@@ -170,17 +185,45 @@ describe('the attention line', () => {
     });
     expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
 
-    rows = [approval()];
+    rows = [approval({ thread_id: 'here' })];
     await act(async () => {
       await vi.advanceTimersByTimeAsync(11_000);
     });
 
-    // The card the banner and the inspector use, not a smaller one: approving
-    // grants every identical call until the deadline, and that sentence has to
-    // be on screen wherever the decision is made.
+    // The card the banner uses, not a smaller one: approving grants every
+    // identical call until the deadline, and that sentence has to be on screen
+    // wherever the decision is made.
     // A direct read, not `waitFor`: fake timers are installed, and waitFor polls
     // on real ones — it would sit out its own timeout without ever re-checking.
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeNull();
+  });
+
+  /**
+   * Opening for any new row meant a fresh thread opened onto another thread's
+   * write — a card the height of the composer between the operator and the work
+   * they came to start. The summary still says it, and Review is one key away.
+   */
+  it('does not open itself for a call on another thread', async () => {
+    vi.useFakeTimers();
+    let rows: unknown[] = [];
+    const fn = vi.fn(async () => new Response(JSON.stringify({ requests: rows }), { status: 200 }));
+    vi.stubGlobal('fetch', fn);
+    mount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    rows = [
+      approval({ thread_id: 'elsewhere', tool_name: 'local_shell', args: { command: 'ls' } }),
+    ];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+
+    expect(screen.getByRole('status').textContent).toContain('1 call is waiting on you');
+    const review = screen.getByRole('button', { name: 'Review' });
+    expect(review.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
   });
 
   /**
@@ -242,10 +285,61 @@ describe('the attention line', () => {
    * approval blocking another conversation is a link rather than an id.
    */
   it('names and links the thread an approval is blocking, when it is not this one', async () => {
+    stub([approval({ thread_id: 'elsewhere', tool_name: 'local_shell', args: { command: 'ls' } })]);
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Review' }));
+    // The row first, then its card on request: one line per waiting call.
+    const row = screen.getByRole('group', { name: 'Approval waiting: local_shell' });
+    expect(within(row).getByText('· Overnight batch')).toBeTruthy();
+    await userEvent.click(within(row).getByRole('button', { name: 'Review' }));
+    const link = within(row).getByRole('link', { name: 'Overnight batch' });
+    expect(link.getAttribute('href')).toBe('/t/elsewhere');
+    expect(within(row).getByRole('button', { name: /approve/i })).toBeTruthy();
+  });
+
+  /**
+   * A `/approvals` row carries no `before`, so a write from another thread could
+   * only be shown here without what it replaces. The banner on its own thread
+   * has that, because the approval reached it by frame. So the line routes.
+   */
+  it("routes another thread's write to that thread instead of deciding it here", async () => {
     stub([approval({ thread_id: 'elsewhere' })]);
     mount();
-    const link = await screen.findByRole('link', { name: 'Overnight batch' });
-    expect(link.getAttribute('href')).toBe('/t/elsewhere');
+    await userEvent.click(await screen.findByRole('button', { name: 'Review' }));
+    const row = screen.getByRole('group', { name: 'Approval waiting: write_file' });
+    const open = within(row).getByRole('link', { name: /Open thread to review/ });
+    expect(open.getAttribute('href')).toBe('/t/elsewhere');
+    expect(within(row).queryByRole('button', { name: /approve/i })).toBeNull();
+    expect(within(row).getByText(/decided on its own thread/)).toBeTruthy();
+  });
+
+  it('keeps an unattributed write decidable, since it has nowhere to route to', async () => {
+    stub([approval({ thread_id: '' })]);
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Review' }));
+    expect(await screen.findByRole('button', { name: 'Approve write_file' })).toBeTruthy();
+  });
+
+  it('shows one clock per call: the row while collapsed, the card once open', async () => {
+    stub([approval({ thread_id: 'elsewhere', tool_name: 'local_shell', args: { command: 'ls' } })]);
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Review' }));
+    const row = screen.getByRole('group', { name: 'Approval waiting: local_shell' });
+    expect(within(row).getAllByRole('timer')).toHaveLength(1);
+    await userEvent.click(within(row).getByRole('button', { name: 'Review' }));
+    expect(within(row).getAllByRole('timer')).toHaveLength(1);
+  });
+
+  it("carries the rule's reason to the card when this tab saw it by frame", async () => {
+    stub([approval({ thread_id: 'here' })]);
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <ReasonLine />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('Confirm writes to the workspace')).toBeTruthy();
   });
 
   it('does not label a row that is already on the thread in front of you', async () => {
@@ -264,14 +358,17 @@ describe('the attention line', () => {
    * which suppressed them all. The count was right and the queue was a lie.
    */
   it('still offers an approval the banner is not the one drawing', async () => {
-    stub([approval({ id: 'a1' }), approval({ id: 'a2', thread_id: 'elsewhere' })]);
+    stub([
+      approval({ id: 'a1' }),
+      approval({ id: 'a2', thread_id: 'here', tool_name: 'local_shell', args: { command: 'ls' } }),
+    ]);
     mount(false, ['a1']);
 
     await waitFor(() =>
       expect(screen.getByRole('status').textContent).toContain('2 calls are waiting'),
     );
-    // One card, for the one the banner is not showing — named by its thread.
-    expect(await screen.findByRole('link', { name: 'Overnight batch' })).toBeTruthy();
+    // One card, for the one the banner is not showing.
+    expect(await screen.findByRole('button', { name: 'Approve local_shell' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /approve/i })).toHaveLength(1);
   });
 });

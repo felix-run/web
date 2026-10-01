@@ -40,18 +40,6 @@ export interface ShellValue {
   pending: EngineState['approvals'][number] | null;
   queueLength: number;
   /**
-   * The whole queue, oldest first. The banner draws only the head; the rest are
-   * here so a surface listing `/approvals` rows can recover what only a frame
-   * carries — the `reason` — for an approval the banner is not drawing.
-   */
-  approvalQueue: EngineState['approvals'];
-  /**
-   * Approval ids the transcript banner owns. Every other surface that lists
-   * `/approvals` counts these without re-offering them — see `AttentionLine`'s
-   * `handled` for why deciding elsewhere means deciding with less in front of you.
-   */
-  bannerOwned: string[];
-  /**
    * The tenant-wide `/approvals` poll the attention line reads. `pending` is the
    * last list that arrived, which may be older than `error` says — see
    * `PendingApprovals` before treating an empty list as "nothing waiting".
