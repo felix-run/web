@@ -926,6 +926,13 @@ than red — one 429 is the harness shedding a burst, and red on every one taugh
 ignore red — so the hook counts `failures` in a row and the line turns red on the second. Its failures used to be swallowed, and it read "Nothing waiting on you." with a green dot for
 as long as the harness answered the route with 429. The resting dot is neutral, not `state-done`.
 
+It also counts **an agent's question** (`ask_user` → `ui_request`), which blocks the run as an
+approval does but never appears in `/approvals`: the line said "Working. Nothing waiting on you."
+under a `blocked` header while a live run waited on an answer. The engine's `uiPrompt` is passed in
+as `question`, so the line goes amber and, off the workbench, links back with "Answer it". The tab
+title and notification say "Waiting on you" rather than "Approve" for the same reason, matched in
+the TUI's `attention.ts`.
+
 Two pieces of its copy are load-bearing. **"across the harness"** must not be edited out: a row
 with no `thread_id` is unattributed, not "here", so the count stays tenant-wide unless every row is
 provably this thread, and without the phrase it reads as "on the thread you are looking at". And the line **counts** an

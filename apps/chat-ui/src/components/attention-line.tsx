@@ -73,6 +73,7 @@ export function AttentionLine({
   threadId,
   threads,
   reasons = {},
+  question = null,
 }: {
   /** The shell's tenant-wide `/approvals` poll — see `usePendingApprovals`. */
   approvals: PendingApprovals;
@@ -105,6 +106,14 @@ export function AttentionLine({
    * and left out when it does not.
    */
   reasons?: Record<string, string | undefined>;
+  /**
+   * The question an agent is waiting on (`ask_user` → a `ui_request` frame), or
+   * `null`. It is this thread's — the engine holds only the open thread's prompt —
+   * and it blocks the run exactly as an approval does, but it is not an approval,
+   * so the `/approvals` poll never sees it. Without this the line said "Nothing
+   * waiting on you" while the header said `blocked` and the run waited on an answer.
+   */
+  question?: string | null;
 }) {
   const { pending, error, lastOkAt, failures, refresh, markDecided } = approvals;
   const [open, setOpen] = useState(() => {
@@ -179,7 +188,9 @@ export function AttentionLine({
   // line cannot vouch that nothing is waiting.
   const limited = stale && /:\s*429\b/.test(String((error as Error)?.message ?? error));
   const failure = limited ? 'Approvals rate-limited' : "Can't reach approvals";
-  const summary = rechecking
+  const asking = question != null;
+  const alsoAsking = ' · and a question on this thread';
+  const base = rechecking
     ? waiting
       ? `${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where} · rechecking`
       : 'Rechecking approvals…'
@@ -194,6 +205,16 @@ export function AttentionLine({
           : streaming
             ? 'Working. Nothing waiting on you.'
             : 'Nothing waiting on you.';
+  // A question is known locally, from the stream, so it is said even when the
+  // approvals poll has not answered — "Checking approvals…" over an open question
+  // would hide the one thing this line is certain of.
+  const summary = !asking
+    ? base
+    : waiting
+      ? `${base}${alsoAsking}`
+      : stale && !rechecking
+        ? `${failure} · a question is waiting on you on this thread`
+        : 'A question is waiting on you on this thread';
   // Outside the live region: it changes on every failed tick, and a screen
   // reader re-reading the sentence for a clock would bury the change that matters.
   const age =
@@ -213,7 +234,8 @@ export function AttentionLine({
    * Resting is neutral, matching the run readout's idle: idle is not on the ramp,
    * and green would claim a finished state this line has no evidence of.
    */
-  const dot = waiting
+  const blocked = waiting || asking;
+  const dot = blocked
     ? 'bg-state-blocked'
     : stale && !rechecking
       ? 'bg-state-failed'
@@ -226,7 +248,7 @@ export function AttentionLine({
       aria-label="What is waiting"
       className={cn(
         'shrink-0 border-b border-border/60 text-sm',
-        waiting ? 'bg-state-blocked/10' : 'bg-muted/30',
+        blocked ? 'bg-state-blocked/10' : 'bg-muted/30',
       )}
     >
       <div className="flex items-center gap-2 px-3 py-1.5">
@@ -247,7 +269,7 @@ export function AttentionLine({
             // Not `flex-1`: the age belongs beside the sentence it qualifies,
             // and a growing paragraph pushed it to the far edge of the window.
             'min-w-0 truncate',
-            waiting
+            blocked
               ? 'text-state-blocked'
               : stale && !rechecking
                 ? 'text-state-failed'
@@ -263,6 +285,13 @@ export function AttentionLine({
           >
             {age}
           </span>
+        )}
+        {asking && !bannerOnScreen && (
+          // Off the workbench the question's banner is not on screen, so a sentence
+          // with no way to the answer would be amber with no verb.
+          <Button asChild variant="ghost" size="sm" className="h-6 shrink-0 px-2 text-xs">
+            <Link to={`/t/${threadId}`}>Answer it</Link>
+          </Button>
         )}
         {reviewable.length > 0 && (
           <Button

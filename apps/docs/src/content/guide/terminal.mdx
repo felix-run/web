@@ -239,7 +239,7 @@ prompt and waits for enter, because what reaches the model should be what you re
 A run keeps going when the window does not have focus, and can block on an approval minutes later. So
 two signals, the same split the web UI makes:
 
-- **The window title** always reflects the run — `(...) Working`, `(!) Approve`, or `Felix`. It costs
+- **The window title** always reflects the run — `(...) Working`, `(!) Waiting on you` (an approval or an agent's question), or `Felix`. It costs
   nothing and it is what you see in a tab strip. The title stack is pushed on start and popped on
   exit, so your shell's own title survives.
 - **A desktop notification** (`OSC 9`) fires *only* once the terminal has reported that it lost

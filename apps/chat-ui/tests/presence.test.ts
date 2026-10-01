@@ -49,7 +49,7 @@ describe('presence', () => {
     setPresence('working');
     expect(document.title).toContain('Working');
     setPresence('blocked');
-    expect(document.title).toContain('Approve');
+    expect(document.title).toContain('Waiting on you');
     setPresence('idle');
     expect(document.title).toBe('Felix');
   });
@@ -83,7 +83,7 @@ describe('presence', () => {
     setPresence('blocked');
     setPresence('blocked');
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.title).toBe('Approval needed');
+    expect(calls[0]?.title).toBe('Waiting on you');
   });
 
   it('stays silent while the tab is visible', () => {
@@ -93,7 +93,7 @@ describe('presence', () => {
     setPresence('blocked');
     expect(calls).toHaveLength(0);
     // The banner is on screen; only the title carries it.
-    expect(document.title).toContain('Approve');
+    expect(document.title).toContain('Waiting on you');
   });
 
   it('announces the end of a run that was in flight', () => {

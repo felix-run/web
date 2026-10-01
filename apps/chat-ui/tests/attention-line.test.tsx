@@ -86,6 +86,30 @@ function Line({
   );
 }
 
+function QuestionLine({ bannerOnScreen = true }: { bannerOnScreen?: boolean }) {
+  const approvals = usePendingApprovals();
+  return (
+    <AttentionLine
+      approvals={approvals}
+      streaming
+      handled={[]}
+      bannerOnScreen={bannerOnScreen}
+      threadId="here"
+      threads={THREADS}
+      question="Deploy to staging or production?"
+    />
+  );
+}
+
+const mountQuestion = (bannerOnScreen = true) =>
+  render(
+    <MemoryRouter>
+      <TooltipProvider>
+        <QuestionLine bannerOnScreen={bannerOnScreen} />
+      </TooltipProvider>
+    </MemoryRouter>,
+  );
+
 function ReasonLine() {
   const approvals = usePendingApprovals();
   return (
@@ -375,6 +399,42 @@ describe('the attention line', () => {
     expect(within(row).getAllByRole('timer')).toHaveLength(1);
     await userEvent.click(within(row).getByRole('button', { name: 'Review' }));
     expect(within(row).getAllByRole('timer')).toHaveLength(1);
+  });
+
+  /**
+   * An agent's question (`ask_user`) blocks the run as an approval does, but the
+   * `/approvals` poll never sees it. The line said "Working. Nothing waiting on
+   * you." under a header that said `blocked`, on a live harness, while the run
+   * waited on an answer.
+   */
+  it('says a question is waiting, and never "nothing waiting", while one is open', async () => {
+    stub([]);
+    mountQuestion();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'A question is waiting on you on this thread',
+      ),
+    );
+    expect(document.querySelector('[data-attention-dot]')?.className).toContain('bg-state-blocked');
+    // The banner above the composer owns the answer; the line only says so.
+    expect(screen.queryByRole('link', { name: 'Answer it' })).toBeNull();
+  });
+
+  it('counts approvals and the question together', async () => {
+    stub([approval({ thread_id: 'here' })]);
+    mountQuestion();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toMatch(
+        /1 call is waiting on you on this thread · and a question on this thread/,
+      ),
+    );
+  });
+
+  it('routes back to the thread from a page where the question banner is not drawn', async () => {
+    stub([]);
+    mountQuestion(false);
+    const link = await screen.findByRole('link', { name: 'Answer it' });
+    expect(link.getAttribute('href')).toBe('/t/here');
   });
 
   it("carries the rule's reason to the card when this tab saw it by frame", async () => {

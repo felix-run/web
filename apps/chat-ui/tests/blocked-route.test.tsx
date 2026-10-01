@@ -107,12 +107,12 @@ describe('the route to a write on another thread', () => {
     // The banner, not the line's card: the line counts it and no longer offers it.
     expect(await screen.findByRole('button', { name: 'Approve write_file' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /^Approve/ })).toHaveLength(1);
-    await waitFor(() => expect(document.title).toContain('Approve'));
+    await waitFor(() => expect(document.title).toContain('Waiting on you'));
   });
 
   it('adopts a call the always-on poll finds for the open thread, without a reload', async () => {
     mount('/t/thread-b');
     expect(await screen.findByRole('button', { name: 'Approve write_file' })).toBeTruthy();
-    await waitFor(() => expect(document.title).toContain('Approve'));
+    await waitFor(() => expect(document.title).toContain('Waiting on you'));
   });
 });

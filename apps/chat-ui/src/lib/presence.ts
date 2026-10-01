@@ -29,7 +29,10 @@ const BASE_TITLE = 'Felix';
 const PREFIX: Record<Presence, string> = {
   idle: '',
   working: '(…) Working — ',
-  blocked: '(!) Approve — ',
+  // Not "Approve": an agent's question blocks a run the same way an approval does,
+  // and a tab reading "Approve" over a question sent the operator looking for a
+  // decision that did not exist. Matched in `apps/tui/src/attention.ts`.
+  blocked: '(!) Waiting on you — ',
 };
 
 let current: Presence = 'idle';
@@ -132,7 +135,7 @@ export function setPresence(next: Presence): void {
 
   if (!hidden()) return;
   if (next === 'blocked') {
-    notify('Approval needed', 'A run is waiting on your decision.');
+    notify('Waiting on you', 'A run is waiting on you.');
   } else if (next === 'idle' && previous !== 'idle') {
     notify('Run finished', 'Felix is done with the current goal.');
   }

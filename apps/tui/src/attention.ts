@@ -55,7 +55,8 @@ const BASE_TITLE = 'Felix';
 const TITLES: Record<Presence, string> = {
   idle: BASE_TITLE,
   working: `(...) Working - ${BASE_TITLE}`,
-  blocked: `(!) Approve - ${BASE_TITLE}`,
+  // Matched with chat-ui's `presence.ts`: a question blocks as an approval does.
+  blocked: `(!) Waiting on you - ${BASE_TITLE}`,
 };
 
 export interface Attention {
@@ -173,7 +174,7 @@ export function createAttention(options: AttentionOptions): Attention {
 
       // Only once the terminal has told us it is not being watched.
       if (focus !== 'blurred') return;
-      if (next === 'blocked') notify('Felix: a run is waiting on your decision.');
+      if (next === 'blocked') notify('Felix: a run is waiting on you.');
       else if (next === 'idle' && previous !== 'idle') notify('Felix: the run finished.');
     },
     setFocus(focused) {
