@@ -513,6 +513,54 @@ A resumed run will not re-issue a fetch. The model names the endpoint, and a `GE
 changes something is ordinary on the open web.
 </Aside>
 
+## `spec.github_publish`
+
+Publish commits the agent already made in its workspace to GitHub, without the file contents
+passing through the model. Binds one tool, `publish_commits`.
+
+```yaml
+spec:
+  github_publish:
+    repo: felix-run/felix
+    auth: secret:GITHUB_MCP_TOKEN
+    base: main
+    branch_prefix: felix/
+  approvals:
+    - id: publish
+      description: Publish these commits — read the diff in the preview
+      tools: [publish_commits]
+      one_shot: true
+      bind_principal: true
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `repo` | string | required | `owner/name` on github.com. |
+| `auth` | string | required | A `secret:NAME` ref, never a literal — the value is a write credential. |
+| `base` | string | `"main"` | The branch a new branch starts from, and one the tool never writes. Must not start with `branch_prefix`. |
+| `branch_prefix` | string | required | Every branch the tool may create or move starts with this. |
+
+The model calls `publish_commits(branch, head_sha, title?)`: a branch under `branch_prefix` and
+the full sha of a commit it made locally. The harness reads those commits with read-only git and
+writes them through GitHub's Git Data API — blobs, one tree, one commit, then the ref — so a
+196 KiB file with a one-line change is never a tool argument.
+
+- **An approval binds the content.** `head_sha` is an argument and commits are content-addressed,
+  so approving one sha does not approve another on the same branch. Every blob sha GitHub
+  returns, and the final tree, are checked against the local ones before the ref moves.
+- **It only fast-forwards.** The new commit's parent is the branch's current remote tip (or
+  `base`'s, for a new branch), which must be an ancestor of `head_sha`; the ref update is
+  `force: false`. Several local commits publish as one commit listing their subjects.
+- **The approval row shows the diff.** The harness computes the diff stat and unified diff
+  between that parent and `head_sha` and attaches it as the row's `preview` (below); if it
+  cannot, the call is refused rather than approved blind.
+- **Bounds:** 300 files and 8 MiB per publish, the preview's diff capped at 32 KiB (the stat is
+  never cut), 300 s per publish.
+- **Where the token is.** Felix uses it in one HTTP client and passes it to no git process or
+  workspace environment. On a deployment where the shell tool runs as the API's own user, code
+  the agent runs can still read the API process's environment — keep the token's GitHub
+  permissions to contents and pull requests, and its Workflows permission off.
+
 ## `spec.client_tools`
 
 Tools the **browser or CLI client** executes, not the server. This is how the web clients run local
@@ -1172,8 +1220,8 @@ spec:
 | `description` | string | `""` | Shown to the approver. |
 | `tools` | string[] | `[]` | |
 | `ttl_seconds` | int > 0 \| null | `null` | How long the run waits for a decision. |
-| `one_shot` | bool | `false` | The grant is consumed once. Enforced with a conditional update, so two concurrent identical calls cannot both spend it. |
-| `bind_principal` | bool | `false` | The grant is bound to the approving principal; it will not authorize another user's identical call. |
+| `one_shot` | bool | `false` | The grant is consumed once — by the call that waited for the decision, or by the first identical call that finds it. Enforced with a conditional update, so two concurrent identical calls cannot both spend it: a waiting call that loses is refused with `[approval already used]`, and one that finds the grant already spent asks for a new approval. |
+| `bind_principal` | bool | `false` | The grant is bound to the principal that asked; it will not authorize another user's identical call — including while it waits: an identical call from another principal is refused rather than joining the pending request. |
 | `allow_unattended` | bool | `false` | Permit the call with no human present. |
 | `when_args` | string[] | `[]` | Gate only the calls carrying **all** of these arguments, non-empty. Empty gates every call. |
 
@@ -1201,6 +1249,12 @@ A gated call creates a pending row keyed by a SHA-256 signature of its arguments
 `POST /approvals/{id}/decide` (`approved` / `denied`, optional `note`, optional `edited_args` which
 replace the call arguments). It **fails closed**: no request context, no store, or a store error all
 deny.
+
+A tool can attach a **preview** the harness computes from the call — `publish_commits` attaches
+the diff it is about to publish. It appears on the pending row and the `approval_required` frame
+as `args.preview`, is never part of the signature, and is stripped from `edited_args`. A preview
+that fails refuses the call (`[approval preview failed]`) and writes no row, so nothing is
+approved unseen.
 
 ## `spec.governance`
 
