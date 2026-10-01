@@ -690,13 +690,53 @@ spec:
 | `store` | `pgvector` \| `memory` \| `none` (aliases `agentcore`, `vectorize` accepted but inert) | `pgvector` | Durable-fact vector store. |
 | `capture` | object | disabled | Extract durable facts from a turn. |
 | `recall` | object | tools off | How stored facts reach the model beyond the prelude. |
-| `consolidate` | object | disabled | **Inert today** — do not rely on it. |
+| `consolidate` | object | disabled | Periodically merge agent-written facts that say the same thing (below). |
 
 The bundled `assistant` manifest is the worked example: `capture` on `claude-haiku` with
 `max_facts: 3` and `min_chars: 200`, `recall.tools: true`, `content_screening` on, an approval
 (`memory-forget`) on `forget`, and `auth.inbound.allow_anonymous: false`. Memory is keyed by tenant
 and manifest, not by caller, so a manifest that captures on a deployment shared by more than one
 person puts one caller's facts in another's prompt.
+
+### `memory.consolidate`
+
+Capture only adds, so a pool of facts grows on every long turn. Consolidation merges the ones that
+say the same thing.
+
+```yaml
+spec:
+  memory:
+    consolidate:
+      enabled: true
+      model: claude-haiku
+      after_facts: 50
+      max_facts: 200
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | Opt in, per manifest. |
+| `model` | string | `"claude-haiku"` | The route asked which facts are duplicates. Its calls are metered to the tenant and manifest. |
+| `after_facts` | int ≥ 10 | `50` | Only a pool holding more than this many eligible facts is considered. |
+| `max_facts` | int 1–500 | `200` | The newest facts shown per pass. |
+
+The worker's `consolidate_memory` cron (every 15 minutes) shows the model the newest `max_facts`
+active facts of the pool and asks which state the same thing. What it is allowed to do is narrow
+on purpose:
+
+- **It only merges duplicates.** Facts that merely relate, or that disagree, are left as they are.
+- **The model returns groups of ids, never text.** The store keeps the **oldest** fact of each group
+  — the model's ordering is ignored — and supersedes the rest, which stay stored and auditable.
+  No memory text is ever written by consolidation.
+- **Only agent-written facts.** Facts an operator wrote through `/memory` are never shown and never
+  retired. Facts of a different `kind`, or a different `topic_key` (absent counts), are never merged.
+- **Every group is checked first** — ids from the batch shown, none in two groups — and is applied
+  whole or not at all; a malformed answer changes nothing.
+- **A pool that has not changed is not asked again**, and at most 50 pools are consolidated per
+  tick. The skip is remembered per worker process, so a restart costs one call per pool.
+
+Facts reach the model fenced as untrusted data, since capture extracts them from turns that can
+include tool output.
 
 `capture`:
 
@@ -1429,7 +1469,7 @@ spec:
 ## Fields that parse but do nothing yet
 
 Do not build on these — they validate, but no code path consumes them:
-`spec.memory.consolidate.*` and `spec.anomaly.min_rate`.
+`spec.anomaly.min_rate`.
 
 `memory.checkpointer` used to be on this list. It now selects the session store for
 real, and the three names that could never work here — `agentcore`, `do` (Durable
