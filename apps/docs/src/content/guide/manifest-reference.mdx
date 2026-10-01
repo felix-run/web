@@ -194,6 +194,13 @@ spec:
 | `edit_file` | `{path, old_string, new_string, replace_all}` | Replaces one exact string, leaving the rest of the file untouched. Max 4 MB file; refuses a match it cannot find, and a match it finds more than once unless `replace_all` is set; refuses when the resulting file would exceed the limit before writing it. |
 | `search_files` | `{query, path, regex, max_hits}` | ≤ 50 hits; skips files over 256 KB. |
 | `list_skills` / `activate_skill` / `deactivate_skill` | — | Bound to the real catalog when `spec.skills` is set. |
+| `ask_user` | `{question, kind, options, timeout_seconds}` | Asks the person watching the run and waits for the answer. `kind` is `confirm`, `select` (implied by `options`) or `input`; the timeout defaults to 300 s, max 900. Returns `{answered, value}`, or `{answered: false, reason}`. Only a live `/chat/stream` can reach a person, so anywhere else it returns `reason: "no_one_watching"` at once. |
+
+`ask_user` is how an agent puts a decision to a person instead of guessing: both web clients
+draw the question as a banner above the composer and post the answer back. Use it for choices that
+are genuinely the person's to make. A question nobody can see is no question at all, so the tool
+refuses on a non-streaming `POST /chat`, a durable run, `/v1` and A2A rather than holding the run
+for its whole timeout.
 
 `edit_file` reads and writes bytes, not text — a universal-newline read would turn every `\r\n` in
 a file into `\n`, and writing the result back would rewrite every line ending in a CRLF file the
