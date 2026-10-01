@@ -591,6 +591,15 @@ every second is noise.
   fall back to a built-in table for a harness that sends none, and are disabled while a run
   streams. Under the cards the readout is one 11px muted line — agent, folder, thread,
   harness — with unreachable in `state-failed`, with the word.
+  **The composer rises to meet it** where there is room (`rise`: at least 768px wide and
+  928px tall). A track under the dock takes a third of the free height and the greeting sits
+  on the transcript's floor, so headline, starters and composer read as one block just above
+  centre, without the 400px walk from the starters down to the input. The dock's rule and
+  slab go while it rises. The first message collapses the track and the composer settles to
+  the bottom over the zones' 200ms `ease-out`. It is the same element throughout, so focus
+  and a draft carry across, and the motion is off under `prefers-reduced-motion`. Below the
+  threshold it stays docked. On a phone that is where the thumb and the keyboard are, and on
+  a short window the greeting would be scrolled out of its own share.
 
 ### Tool cards
 

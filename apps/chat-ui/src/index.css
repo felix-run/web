@@ -18,6 +18,11 @@
 @source "../node_modules/streamdown/dist";
 
 @custom-variant dark (&:is(.dark *));
+/* Room for the empty thread to rise: a desktop-width window tall enough that the
+   greeting and the composer fit together with nothing scrolled away. Measured, the
+   greeting overflowed its share by 73px at 800px tall and by 6px at 900. Below it
+   the composer stays docked — on a phone that is where the thumb and keyboard are. */
+@custom-variant rise (@media (min-width: 48rem) and (min-height: 58rem));
 
 /* Type ramp.
    Before this the app used ten sizes between 10px and 24px, five of them inside a

@@ -96,14 +96,15 @@ export function Workbench() {
     return manifestOptions.map((id) => ({ id, label: id, description: provider.get(id) }));
   }, [manifestOptions, manifestEntries]);
 
+  const empty = turns.length === 0;
+
   // Which agent this thread's turns last ran on, for the line under the composer.
   // Only the local index knows (the harness keeps no manifest per thread), and a
   // thread with turns but no row there — first seen from another browser — is
   // `null`, said as unknown rather than filled in with the current selection.
-  const threadAgent =
-    turns.length === 0
-      ? undefined
-      : (threads.find((t) => t.id === threadId)?.manifest ?? '').trim() || null;
+  const threadAgent = empty
+    ? undefined
+    : (threads.find((t) => t.id === threadId)?.manifest ?? '').trim() || null;
 
   return (
     <>
@@ -115,7 +116,7 @@ export function Workbench() {
         )}
         <main className="bg-dots relative isolate flex min-w-0 flex-1 flex-col">
           <Conversation>
-            {turns.length === 0 && <Greeting manifest={manifest} />}
+            {empty && <Greeting manifest={manifest} />}
             {turns.map((t, i) => {
               const isLast = i === turns.length - 1;
               return (
@@ -157,7 +158,14 @@ export function Workbench() {
               </div>
             )}
           </Conversation>
-          <div className="border-t border-border/50 bg-background pt-3">
+          <div
+            className={cn(
+              'border-t border-border/50 bg-background pt-3 transition-[background-color,border-color] duration-200 ease-out motion-reduce:transition-none',
+              // Rising, the dock sits under the greeting rather than under a
+              // transcript, so the rule and the slab that divide it from one go.
+              empty && 'rise:border-transparent rise:bg-transparent',
+            )}
+          >
             {pending ? (
               <ApprovalBanner
                 pending={pending}
@@ -204,6 +212,20 @@ export function Workbench() {
               }
             />
           </div>
+          {/* What lifts the composer on an empty thread: a track under the dock
+              that takes a third of the free height, so the greeting (pinned to the
+              bottom of the transcript) and the composer read as one block just
+              above centre. The first message collapses it, and the composer
+              settles to the bottom at the zones' 200ms rather than jumping half a
+              screen — the same element throughout, so focus and a half-typed
+              draft survive the move. */}
+          <div
+            aria-hidden
+            className={cn(
+              'shrink-0 grow-0 basis-0 transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none',
+              empty && 'rise:grow-[0.5]',
+            )}
+          />
         </main>
         {instrumentInline && (
           <RailPresence open={inspectorOpen} side="right">
