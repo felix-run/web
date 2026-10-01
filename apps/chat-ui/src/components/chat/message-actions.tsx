@@ -88,7 +88,7 @@ export function MessageActions({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-7 text-muted-foreground"
+              className="size-7 text-muted-foreground dark:hover:bg-solid-accent/50"
               onClick={copy}
               aria-label="Copy message"
             >
@@ -104,7 +104,7 @@ export function MessageActions({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-7 text-muted-foreground"
+              className="size-7 text-muted-foreground dark:hover:bg-solid-accent/50"
               onClick={() => {
                 setDraft(label ?? '');
                 setEditing(true);
@@ -123,7 +123,7 @@ export function MessageActions({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-7 text-muted-foreground"
+              className="size-7 text-muted-foreground dark:hover:bg-solid-accent/50"
               onClick={onRewind}
               aria-label="Rewind the thread to this message"
             >
@@ -149,7 +149,7 @@ export function MessageActions({
             <ConfirmButton
               variant="ghost"
               size="xs"
-              className="text-muted-foreground"
+              className="text-muted-foreground dark:hover:bg-solid-accent/50"
               restingClassName="size-7 px-0"
               aria-label="Regenerate response"
               question="Replace this answer? The thread's server log is reset and replayed as text, so tool results in it are dropped."

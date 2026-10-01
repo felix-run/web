@@ -43,7 +43,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className="overflow-hidden rounded-xl border border-border/60 bg-muted/30 text-sm"
+      className="overflow-hidden rounded-xl border border-border/60 bg-solid-muted/30 text-sm"
     >
       <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-xs hover:bg-muted/40">
         <span className="shrink-0 font-medium">{tool.name}</span>

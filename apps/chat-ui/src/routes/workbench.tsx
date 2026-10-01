@@ -139,7 +139,7 @@ export function Workbench() {
             {reattaching && (
               <div
                 role="status"
-                className="mx-auto max-w-2xl rounded-lg border border-border bg-muted/60 px-3 py-2 text-sm text-foreground"
+                className="mx-auto max-w-2xl rounded-lg border border-border bg-solid-muted/60 px-3 py-2 text-sm text-foreground"
               >
                 Connection dropped. That run was stopped — showing what it finished, and anything
                 still landing on this thread.
@@ -148,13 +148,13 @@ export function Workbench() {
             {error && (
               <div
                 role="alert"
-                className="mx-auto max-w-2xl wrap-anywhere rounded-lg border border-state-failed/30 bg-state-failed/10 px-3 py-2 text-sm text-state-failed"
+                className="mx-auto max-w-2xl wrap-anywhere rounded-lg border border-state-failed/30 bg-solid-state-failed/10 px-3 py-2 text-sm text-state-failed"
               >
                 {error}
               </div>
             )}
           </Conversation>
-          <div className="border-t border-border/50 bg-background/80 pt-3 backdrop-blur-sm">
+          <div className="border-t border-border/50 bg-background pt-3">
             {pending ? (
               <ApprovalBanner
                 pending={pending}

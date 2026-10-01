@@ -53,7 +53,7 @@ function ScrollToBottom() {
       type="button"
       size="icon-sm"
       variant="outline"
-      className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border-border/60 bg-card/90 shadow-md backdrop-blur"
+      className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border-border/60 bg-card shadow-md"
       onClick={() => scrollToBottom()}
       aria-label="Scroll to latest"
     >
