@@ -6,9 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ThreadList } from '@/components/chat/thread-list';
 import { CutId } from '@/components/cut-id';
+import { ChangesSection } from '@/components/workspace/changes-list';
+import { collectChanges, durableRunInFlight, runHasToolCalls } from '@/lib/changes';
 import {
   clearMount,
-  collectTouchedPaths,
   getMountLabel,
   hasMount,
   mountTree,
@@ -38,8 +39,6 @@ import { useShell } from '@/shell-context';
  * resting state here, not an error.
  */
 
-/** How many touched paths to list before the footer says what was left out. */
-const TOUCHED_VISIBLE = 8;
 const TREE_VISIBLE = 200;
 
 export function WorkspaceZone({ className }: { className?: string }) {
@@ -94,41 +93,31 @@ export function WorkspaceZone({ className }: { className?: string }) {
   }, [streaming, refresh]);
 
   /**
-   * What this thread's tool calls touched.
+   * What this thread's tool calls did to the workspace, per path.
    *
    * Derived from the transcript rather than tracked separately: the tool calls
-   * are already the record of what the agent touched, and a second list would be
-   * a second thing to keep true. Newest first, deduped.
+   * are already the record of what the agent did, and a second list would be a
+   * second thing to keep true. `collectChanges` says what a row may claim.
    *
-   * "Touched" means a workspace tool's *path argument* — `collectTouchedPaths`,
-   * not the mention heuristic. The heuristic walks every string a call carries,
-   * so a `github__create_pull_request` whose body listed the files it changed put
-   * `./scripts/test.sh` here as though the agent had opened it. A bare name still
-   * counts: `notes.txt` at the root of the workspace is exactly the write this
-   * exists to report.
+   * A path is a workspace tool's *path argument* — `collectTouchedPaths`, not
+   * the mention heuristic. The heuristic walks every string a call carries, so a
+   * `github__create_pull_request` whose body listed the files it changed put
+   * `./scripts/test.sh` here as though the agent had opened it.
    *
    * It covers the whole thread as hydrated, not this tab's visit to it — which is
    * why the heading says "this thread": on a thread from two days ago "this
    * session" read as "since I opened the tab", and the list is older than that.
    *
-   * **It is empty during a durable run, and that is the run loop, not this list.**
-   * A durable manifest's stream carries `run_accepted` → `run_status` → `final`
-   * and no tool frames at all, so `Turn.tools` stays empty while the agent works;
-   * the calls are in the harness's own transcript and arrive here only when the
-   * thread is next hydrated from the session snapshot. Measured against `cowork`
-   * on 2026-09-12: `write_file` was invisible here until a reload, at which point
-   * `notes/workbench-check.md` appeared with its arguments intact. The same gap
-   * hides the tool *cards* from the transcript, which is the bigger half of it.
+   * **It is empty during a durable run until the harness says otherwise.** A
+   * durable manifest's stream carries `run_accepted` → `run_status` → `final` and
+   * no tool frames, so `Turn.tools` stays empty while the agent works unless the
+   * harness tails its session events onto the stream; otherwise the calls arrive
+   * when the thread is hydrated after the run settles. Measured against `cowork`
+   * on 2026-09-12: `write_file` was invisible here until a reload. So the section
+   * says the list is coming rather than showing nothing — `durableGap`.
    */
-  const touched = useMemo(() => {
-    const seen = new Set<string>();
-    for (let i = turns.length - 1; i >= 0; i--) {
-      for (const tool of turns[i]?.tools ?? []) {
-        for (const path of collectTouchedPaths(tool.name, tool.input)) seen.add(path);
-      }
-    }
-    return [...seen];
-  }, [turns]);
+  const changes = useMemo(() => collectChanges(turns), [turns]);
+  const durableGap = durableRunInFlight(turns, streaming) && !runHasToolCalls(turns);
 
   /**
    * Must stay inside the click handler: the permission prompt is only allowed to
@@ -174,6 +163,18 @@ export function WorkspaceZone({ className }: { className?: string }) {
     for (const a of tenantApprovals.pending) if (a.thread_id) ids.add(a.thread_id);
     return ids;
   }, [tenantApprovals.pending]);
+
+  /**
+   * Approvals waiting on a thread other than this one — the reason to open the
+   * popover at all, said on the trigger so it does not have to be opened to find
+   * out. Only rows that name another thread count: one with no `thread_id`
+   * (absent and empty mean the same) is unattributed, not evidence of being
+   * elsewhere, and this thread's own are in the banner and the attention line.
+   */
+  const waitingElsewhere = useMemo(
+    () => tenantApprovals.pending.filter((a) => a.thread_id && a.thread_id !== threadId).length,
+    [tenantApprovals.pending, threadId],
+  );
 
   return (
     <aside
@@ -319,7 +320,24 @@ export function WorkspaceZone({ className }: { className?: string }) {
                   {currentLabel?.text ?? 'New thread'}
                 </span>
               )}
-              <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="flex shrink-0 items-center gap-2">
+                {waitingElsewhere > 0 && (
+                  // A word beside the dot, never the dot alone; the visible pair is
+                  // terse for the width, so what is announced is the whole sentence.
+                  <span className="flex items-center gap-1 text-state-blocked">
+                    <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                    <span aria-hidden className="tabular-nums">
+                      {waitingElsewhere} waiting
+                    </span>
+                    <span className="sr-only">
+                      {waitingElsewhere === 1
+                        ? '1 approval waiting on another thread'
+                        : `${waitingElsewhere} approvals waiting on other threads`}
+                    </span>
+                  </span>
+                )}
+                <ChevronsUpDownIcon className="size-3.5 text-muted-foreground" />
+              </span>
             </Button>
           </PopoverTrigger>
           <PopoverContent
@@ -368,30 +386,7 @@ export function WorkspaceZone({ className }: { className?: string }) {
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 p-3">
-          {/* Named sections: a `<section>` with no accessible name is announced as
-              an anonymous region, which is worse than no landmark at all. */}
-          {touched.length > 0 && (
-            <section aria-labelledby="workspace-touched-heading">
-              <h3
-                id="workspace-touched-heading"
-                className="mb-1.5 text-xs font-semibold text-muted-foreground"
-              >
-                Touched on this thread
-              </h3>
-              <ul className="space-y-0.5">
-                {touched.slice(0, TOUCHED_VISIBLE).map((path) => (
-                  <li key={path} className="truncate font-mono text-xs" title={path}>
-                    {path}
-                  </li>
-                ))}
-              </ul>
-              {touched.length > TOUCHED_VISIBLE && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  and {touched.length - TOUCHED_VISIBLE} more
-                </p>
-              )}
-            </section>
-          )}
+          <ChangesSection changes={changes} durableGap={durableGap} />
 
           <section aria-labelledby="workspace-files-heading">
             <h3

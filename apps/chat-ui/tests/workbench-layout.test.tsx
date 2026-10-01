@@ -184,7 +184,7 @@ describe('the workspace zone', () => {
     expect(current?.textContent).not.toContain('Waiting on you');
   });
 
-  it('lists what this thread touched, from the tool calls themselves', async () => {
+  it('lists what this thread changed, from the tool calls themselves', async () => {
     mountZone({
       turns: [
         {
@@ -216,21 +216,23 @@ describe('the workspace zone', () => {
       ] as ShellValue['turns'],
     });
 
-    await waitFor(() => expect(screen.getByText('Touched on this thread')).toBeTruthy());
-    expect(screen.getByText('notes/one.md')).toBeTruthy();
-    expect(screen.getByText('src/two.ts')).toBeTruthy();
-    expect(screen.getByText('bare.md')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Changes on this thread')).toBeTruthy());
+    // The row's text is split so the filename survives truncation; the full path
+    // is its title.
+    const rows = (path: string) => document.querySelectorAll(`[title="${path}"]`);
+    expect(rows('notes/one.md')).toHaveLength(1); // deduped, not listed once per call
+    expect(rows('src/two.ts')).toHaveLength(1);
+    expect(rows('bare.md')).toHaveLength(1);
     expect(screen.queryByText('echo hi')).toBeNull();
-    // Deduped, not listed once per call.
-    expect(screen.getAllByText('notes/one.md')).toHaveLength(1);
-    expect(screen.queryByText('./scripts/test.sh')).toBeNull();
-    expect(screen.queryByText('tests/unit/test_audit_deny_control.py')).toBeNull();
+    expect(rows('./scripts/test.sh')).toHaveLength(0);
+    expect(rows('tests/unit/test_audit_deny_control.py')).toHaveLength(0);
+    expect(document.body.textContent).not.toContain('scripts/test.sh');
   });
 
-  it('says nothing about touched files when no tool has run', async () => {
+  it('says nothing about changes when no tool has run', async () => {
     mountZone();
     await waitFor(() => expect(screen.getByText('Files')).toBeTruthy());
-    expect(screen.queryByText('Touched on this thread')).toBeNull();
+    expect(screen.queryByText('Changes on this thread')).toBeNull();
   });
 });
 
