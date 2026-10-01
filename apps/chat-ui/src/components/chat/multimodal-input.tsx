@@ -77,6 +77,11 @@ export const REATTACHING_REFUSAL = 'Rejoining this thread. Stop it first to send
 
 const MAX_TEXT_LENGTH = 32_000;
 const MAX_FILES = 4;
+/**
+ * The size of the file picked, not of what is sent. Every image is fitted to the
+ * harness's 600 KiB upload limit before it goes (`fitImage`), so this only bounds
+ * how much a browser is asked to decode and redraw.
+ */
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 /**
@@ -629,11 +634,20 @@ function MultimodalInputInner({
                 <BackgroundButton
                   disabled={!canBackground}
                   onClick={() => {
-                    void onBackground({
-                      text: controller.textInput.value,
-                      files: attachments.files,
-                    });
-                    controller.textInput.clear();
+                    // Cleared once the send settles, and only if it did: images are
+                    // uploaded first, and a refused upload toasts its reason and
+                    // throws — clearing up front lost the message it was explaining.
+                    // The attachments go too; they used to stay, ready to be sent
+                    // again with the next message.
+                    void Promise.resolve(
+                      onBackground({ text: controller.textInput.value, files: attachments.files }),
+                    ).then(
+                      () => {
+                        controller.textInput.clear();
+                        attachments.clear();
+                      },
+                      () => {},
+                    );
                   }}
                 />
               ) : null}

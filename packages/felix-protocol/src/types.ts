@@ -13,7 +13,12 @@ export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
 /** An image attached to a user message (multimodal/vision input). */
 export interface ImageAttachment {
-  /** Data URL (`data:<mime>;base64,…`) or remote `https://` URL. */
+  /**
+   * A stored upload as `felix-file://<id>` (see `files.ts`), a data URL
+   * (`data:<mime>;base64,…`), or a remote `https://` URL. A reference is the one
+   * to send: anything inline is saved into the session log and re-sent on every
+   * later turn.
+   */
   url: string;
   media_type: string;
   filename?: string;

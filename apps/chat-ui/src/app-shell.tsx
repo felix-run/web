@@ -76,6 +76,7 @@ import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { toastError, toastProblem } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
+import { ImageUploadError, uploadImages } from '@/lib/image-upload';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
@@ -1302,17 +1303,45 @@ export function AppShell() {
 
   // Map a composer submission (text + browser File parts, already converted to
   // data URLs by PromptInput) onto our send(). Image parts become attachments.
+  /**
+   * Send what the composer holds, uploading its images first.
+   *
+   * Async, and throwing on failure, because that is how the composer is told to
+   * keep the text: a refused upload that resolved would clear the message it was
+   * about to explain. Images are uploaded only when the message will open a run —
+   * a steer carries text alone, so uploading for one would store bytes nothing
+   * references.
+   */
   const submit = useCallback(
-    (message: PromptInputMessage, mode: 'stream' | 'background' = 'stream') => {
+    async (message: PromptInputMessage, mode: 'stream' | 'background' = 'stream') => {
       // Permission is asked for here, inside the click, and only for the mode
       // that needs it. Prompting on load is how a page trains people to say no.
       if (mode === 'background') void armNotifications();
-      const attachments: ImageAttachment[] = message.files
-        .filter((f) => f.mediaType.startsWith('image/'))
-        .map((f) => ({ url: f.url, media_type: f.mediaType, filename: f.filename }));
+      const images = message.files.filter((f) => f.mediaType.startsWith('image/'));
+      let attachments: ImageAttachment[] = [];
+      if (images.length && !streaming) {
+        const pending = toast.loading(
+          images.length === 1 ? 'Uploading the image…' : `Uploading ${images.length} images…`,
+        );
+        try {
+          attachments = await uploadImages(images);
+        } catch (err) {
+          if (err instanceof ImageUploadError) {
+            toastProblem(
+              `${err.message} Your message is still in the composer.`,
+              err.detail ? { detail: err.detail } : {},
+            );
+          } else {
+            toastError(err, 'upload the image');
+          }
+          throw err;
+        } finally {
+          toast.dismiss(pending);
+        }
+      }
       send(message.text, attachments, mode);
     },
-    [send],
+    [send, streaming],
   );
 
   const onSlashCommand = useCallback(

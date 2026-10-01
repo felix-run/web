@@ -60,7 +60,7 @@ export interface ShellValue {
   labels: Record<string, string>;
   labelTurn(eventId: string, label: string | null): void;
   send(text: string, attachments?: ImageAttachment[], mode?: 'stream' | 'background'): void;
-  submit(message: PromptInputMessage, mode?: 'stream' | 'background'): void;
+  submit(message: PromptInputMessage, mode?: 'stream' | 'background'): Promise<void>;
   stopRun(): void;
   regenerate(): void;
   rewindTo(eventId: string): void;

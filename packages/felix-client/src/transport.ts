@@ -20,6 +20,7 @@ import {
   readSseStream,
   type SessionSnapshot,
   type StreamEvent,
+  sniffImageType,
   type ThinkingLevel,
   type ThreadHistory,
 } from '@felix/protocol';
@@ -605,6 +606,44 @@ export function createFelixClient(opts: FelixClientOptions) {
       });
       if (!res.ok) throw new Error(`sessions/label: ${res.status} ${await detailOf(res)}`);
     },
+    /**
+     * POST /files — store an image and get the id a message can reference as
+     * `felix-file://<id>`. The harness checks the bytes against `mediaType`, caps
+     * them at `MAX_UPLOAD_BYTES` (400 over it), and answers 409 when the tenant's
+     * quota is full and 503 when no object store is configured.
+     */
+    async uploadFile(args: {
+      data: string;
+      mediaType: string;
+      filename?: string;
+    }): Promise<{ fileId: string; mediaType: string; sizeBytes: number }> {
+      const res = await chatFetch('/files', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          data: args.data,
+          media_type: args.mediaType,
+          ...(args.filename ? { filename: args.filename.slice(0, 255) } : {}),
+        }),
+      });
+      if (!res.ok) throw new Error(`files: ${res.status} ${await detailOf(res)}`);
+      const raw = (await res.json()) as { file_id: string; media_type: string; size_bytes: number };
+      return { fileId: raw.file_id, mediaType: raw.media_type, sizeBytes: raw.size_bytes };
+    },
+
+    /**
+     * GET /files/{file_id} — a stored upload's bytes, base64, for drawing it again.
+     * The response names no media type (the default store discards it), so it is
+     * read off the bytes the way the harness reads it; `undefined` for bytes that
+     * are none of the four types it stores.
+     */
+    async getFile(fileId: string): Promise<{ data: string; mediaType: string | undefined }> {
+      const res = await chatFetch(`/files/${encodeURIComponent(fileId)}`);
+      if (!res.ok) throw new Error(`files: ${res.status} ${await detailOf(res)}`);
+      const raw = (await res.json()) as { data: string };
+      return { data: raw.data, mediaType: sniffImageType(raw.data) };
+    },
+
     async rewindChat(args: {
       threadId: string;
       eventId: string;

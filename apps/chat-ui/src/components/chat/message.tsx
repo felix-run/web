@@ -1,7 +1,8 @@
 import { interleaveTurn } from '@felix/client';
 import { promptTokens } from '@felix/protocol';
 import { Button } from '@felix/ui/button';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { drawableUrl } from '@/lib/image-upload';
 import type { Turn } from '@/types';
 import { MessageActions } from './message-actions';
 import { Reasoning } from './reasoning';
@@ -241,12 +242,7 @@ function UserTurn({
         {turn.attachments && turn.attachments.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-2">
             {turn.attachments.map((a) => (
-              <img
-                key={a.url}
-                src={a.url}
-                alt={a.filename ?? 'attachment'}
-                className="size-24 rounded-xl border border-border/50 object-cover"
-              />
+              <AttachedImage key={a.url} url={a.url} alt={a.filename ?? 'attachment'} />
             ))}
           </div>
         )}
@@ -330,4 +326,48 @@ function UsageLine({ usage }: { usage: NonNullable<Turn['usage']> }) {
       {(prompt + usage.output).toLocaleString()} tok
     </div>
   );
+}
+
+/**
+ * One attached image. A stored upload arrives as `felix-file://<id>`, which no
+ * browser can draw, so it is fetched once and drawn from the bytes; a reference
+ * whose upload is gone says so in place of the image rather than leaving a
+ * broken-image glyph that reads as a rendering bug.
+ */
+function AttachedImage({ url, alt }: { url: string; alt: string }) {
+  const immediate = drawableUrl(url);
+  const [src, setSrc] = useState<string | null | undefined>(
+    typeof immediate === 'string' ? immediate : undefined,
+  );
+  useEffect(() => {
+    const next = drawableUrl(url);
+    if (typeof next === 'string') {
+      setSrc(next);
+      return;
+    }
+    let live = true;
+    void next.then((resolved) => {
+      if (live) setSrc(resolved);
+    });
+    return () => {
+      live = false;
+    };
+  }, [url]);
+
+  const box = 'size-24 rounded-xl border border-border/50';
+  if (src === null) {
+    return (
+      <div
+        className={`${box} flex items-center justify-center p-2 text-center text-xs text-muted-foreground`}
+      >
+        Image no longer stored
+      </div>
+    );
+  }
+  if (src === undefined) {
+    return (
+      <div role="img" aria-label={`${alt}, loading`} className={`${box} animate-pulse bg-muted`} />
+    );
+  }
+  return <img src={src} alt={alt} className={`${box} object-cover`} />;
 }

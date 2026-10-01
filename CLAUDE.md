@@ -531,6 +531,18 @@ Flows worth knowing before editing the app:
   `edited_args` installs a substitution that the **reuse path also applies**
   (`manifests/builder.py`), so an edited approval stands for every identical call until the grant
   expires rather than correcting the one in front of you.
+- **Images are uploads, not inline.** `submit` in `app-shell.tsx` fits each image to the harness's
+  600 KiB `/files` limit in the browser (`fitImage` in `src/lib/image-upload.ts`: WebP, else JPEG on
+  white; a GIF over the limit is refused rather than flattened), uploads it, and sends
+  `attachments[].url` as `felix-file://<id>`. Inline `data:` URLs land in the session log and are
+  re-sent to the model every turn, and the API's 1 MiB body limit refused anything over ~750 KB
+  while the composer advertised 10 MB. A steer uploads nothing, since it carries text only.
+  `submit` **throws** on a failed upload so the composer keeps the message. `/files` 409/503/400
+  are translated in `explainUpload`, because the shared `describeError` reads every 409 as an
+  approval someone else decided, and told an operator with a full quota that the image was "no
+  longer pending". Thumbnails resolve through `GET /files/{id}`, whose response names **no** media
+  type, so `sniffImageType` reads it off the bytes. Hydration restores `metadata.attachments`, which
+  it used to ignore, so a reload had dropped every thumbnail.
 - **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
   with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
   `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only
