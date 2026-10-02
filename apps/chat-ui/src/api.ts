@@ -437,3 +437,41 @@ export async function getAgentCard(): Promise<AgentCard> {
   if (!res.ok) throw new Error(`agent-card: ${res.status}`);
   return (await res.json()) as AgentCard;
 }
+
+// --- Web Push (/push) ---
+//
+// Every route needs `approvals:read`, the scope the approval frames need: a subscription is a
+// standing request to be told when a run is waiting on a person. A 503 means the deployment
+// has no VAPID key and does not push at all, which is not an error to report.
+
+/** GET /push/vapid-public-key → the key a browser subscribes with, or `null` when push is off. */
+export async function getPushPublicKey(): Promise<string | null> {
+  const res = await apiFetch('/api/push/vapid-public-key');
+  if (res.status === 503) return null;
+  if (!res.ok) throw new Error(`push key: ${res.status}`);
+  const body = (await res.json()) as { public_key?: string };
+  return body.public_key ?? null;
+}
+
+/** POST /push/subscriptions → register (or refresh) this browser. Idempotent on the endpoint. */
+export async function subscribePush(subscription: PushSubscriptionJSON): Promise<void> {
+  const res = await apiFetch('/api/push/subscriptions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(subscription),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`push subscribe: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+/** DELETE /push/subscriptions → forget this browser. Answered even when push is off. */
+export async function unsubscribePush(endpoint: string): Promise<void> {
+  const res = await apiFetch('/api/push/subscriptions', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  });
+  if (!res.ok) throw new Error(`push unsubscribe: ${res.status}`);
+}

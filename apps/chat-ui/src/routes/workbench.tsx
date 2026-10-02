@@ -7,6 +7,7 @@ import { Greeting, useMountLabel } from '@/components/chat/greeting';
 import { InstallHint } from '@/components/chat/install-hint';
 import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
+import { PushHint } from '@/components/chat/push-hint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { Inspector } from '@/components/inspector/inspector';
 import { RailPresence } from '@/components/rail-presence';
@@ -228,6 +229,7 @@ export function Workbench() {
               />
             ) : null}
             {!empty && <InstallHint />}
+            {!empty && <PushHint />}
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
               reattaching={reattaching}

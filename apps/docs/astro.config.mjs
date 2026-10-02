@@ -85,6 +85,7 @@ export default defineConfig({
             { label: 'Concepts', slug: 'guide/concepts' },
             { label: 'Deploy', slug: 'guide/deploy' },
             { label: 'Terminal client', slug: 'guide/terminal' },
+            { label: 'Phones and iPads', slug: 'guide/phones-and-tablets' },
           ],
         },
         {

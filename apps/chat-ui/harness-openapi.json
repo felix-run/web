@@ -139,6 +139,13 @@
     "/approvals/{approval_id}/decide": {
       "post": {}
     },
+    "/push/vapid-public-key": {
+      "get": {}
+    },
+    "/push/subscriptions": {
+      "post": {},
+      "delete": {}
+    },
     "/plans/": {
       "get": {}
     },
@@ -272,6 +279,12 @@
     },
     "/.well-known/jwks.json": {
       "get": {}
+    },
+    "/auth/github/device": {
+      "post": {}
+    },
+    "/auth/github/token": {
+      "post": {}
     }
   }
 }

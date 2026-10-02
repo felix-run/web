@@ -413,6 +413,12 @@ the header stays on screen and the composer sits on the keys rather than Safari 
 page out from under both. With no hardware keyboard in sight, Enter is a newline and Send sends
 — a soft keyboard has no Shift+Return — and the composer's key hint is not drawn.
 
+Two one-line offers sit above the composer on a phone or tablet, never on an empty thread and never
+together: in a browser tab, **install** (Safari gets where Add to Home Screen is, Chromium gets an
+Install button); inside the installed app, **notifications** (a bell, one sentence, *Turn on*). Each
+is muted 11px text with an outline action and a dismiss, and each is gone for good once dismissed
+or done. Neither is shown at a desk.
+
 **The Shrink-Floor Rule.** Anything below a scrolling region carries `flexShrink: 0`. A
 transcript longer than the screen will otherwise eat the composer's rows and leave a box you
 cannot type in, with nothing on screen to say why. Each component is correct alone; the failure

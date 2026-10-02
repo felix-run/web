@@ -465,6 +465,18 @@ Flows worth knowing before editing the app:
   `Vary: Origin` made every cached script miss. Offline, the shell loaded and stayed blank.
   It registers in production builds only (`src/lib/service-worker.ts`). `tests/sw.test.ts` runs
   the real file against stubbed worker globals.
+- **Web Push is how a waiting run reaches a device whose page is not running** (`felix-run/felix#418`).
+  The harness pushes when an approval row is *created* (never a reused one) and when an agent asks
+  a question; the payload is the kind, the thread and, for an approval, its id, tool and deadline,
+  never arguments or the question. `src/lib/push.ts` subscribes; `sw.js` shows the push and routes
+  a tap. A tap **posts `felix:open` to an open window** and the shell moves the router, because
+  navigating the window would reload it and drop a live run's connection; `navigate()` is only the
+  fallback for a window that does not answer. The VAPID key is fetched before the click so the
+  click goes straight to the permission prompt (`PushHint`, inside the installed app only, which
+  is also the only place iOS allows it). `resyncPush` re-registers a held subscription on every
+  load, since the harness drops rows after five failed sends. `presence.ts` shows its own
+  notifications through the worker when there is one: an installed iOS app refuses
+  `new Notification()`. Without a key on the harness the routes answer 503 and nothing is offered.
 - **Coming back to a suspended page** is `src/lib/resume.ts`: `visibilitychange` to visible,
   `pageshow` from the back/forward cache, and `online`, coalesced into one call. A phone freezes
   every timer while the app is in the background, so the shell asks `/approvals` at once on return,

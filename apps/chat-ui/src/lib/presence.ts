@@ -88,12 +88,29 @@ function notificationsGranted(): boolean {
 
 function notify(title: string, body: string): void {
   if (!notificationsGranted()) return;
+  // Through the service worker when there is one: an installed app on iOS, and Android
+  // Chrome, refuse `new Notification()` outright, and the worker's notification also
+  // routes a tap to the app (`sw.js`). The same tag replaces the previous one either way.
+  const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+  if (sw) {
+    void sw
+      .getRegistration()
+      .then((reg) =>
+        reg ? reg.showNotification(title, { body, tag: 'felix-run' }) : construct(title, body),
+      )
+      .catch(() => construct(title, body));
+    return;
+  }
+  construct(title, body);
+}
+
+function construct(title: string, body: string): void {
   try {
     live?.close();
     live = new Notification(title, { body, tag: 'felix-run' });
   } catch {
-    // Some embeddings (and Android Chrome) refuse direct construction. The
-    // title channel still carries the state, so this is not worth surfacing.
+    // Some embeddings refuse direct construction. The title channel still carries
+    // the state, so this is not worth surfacing.
     live = null;
   }
 }
@@ -164,4 +181,13 @@ export function clearNotification(): void {
     // ignore
   }
   live = null;
+  // And the one the worker showed, or it would outlive the state it described.
+  const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+  void sw
+    ?.getRegistration()
+    .then((reg) => reg?.getNotifications({ tag: 'felix-run' }))
+    .then((shown) => {
+      for (const n of shown ?? []) n.close();
+    })
+    .catch(() => {});
 }

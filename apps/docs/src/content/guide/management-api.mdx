@@ -20,7 +20,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | Scope | Grants |
 |---|---|
 | `audit:read` | `/audit`, `/audit/export`, `/audit/metrics` |
-| `approvals:read` / `approvals:write` | read requests / decide them |
+| `approvals:read` / `approvals:write` | read requests / decide them; `approvals:read` also covers every `/push` route |
 | `plans:read` / `plans:write` | read plans / upsert and delete |
 | `jobs:read` / `jobs:write` | read jobs and runs / upsert, delete and run now |
 | `manifests:read` / `manifests:write` | read manifests / publish, canary, rollback |
@@ -259,6 +259,80 @@ out of `edited_args`, it is stripped either way.
 
 A `require_approval` rule in `spec.command_screening` creates a real approval too, bounded by
 `command_screening.approval_ttl_seconds` (default 300 s) so a run cannot block forever.
+
+## Push
+
+A browser subscribes to be **woken when a run is waiting on a person**: a new approval, or an
+agent's question (`ui_request`). It is the one signal that reaches a device whose page is not
+running, such as a phone that suspended the web app when its owner switched apps. The web UI does
+this from the installed app (see [Phones and iPads](/guide/phones-and-tablets/)); any client can.
+
+The deployment must opt in. Until `FELIX_PUSH_VAPID_PRIVATE_KEY` and `FELIX_PUSH_VAPID_SUBJECT`
+are set, reading the key and subscribing answer **503** `push_not_configured`, so a client can tell
+"this harness does not push" from a failure. Every route needs `approvals:read`, the scope the
+`approval_required` frame needs, so a push tells nobody what the frame would not.
+
+What a push carries is deliberately thin, because it crosses the browser vendor's push service:
+
+| `kind` | Fields |
+|---|---|
+| `approval` | `approval_id`, `tool_name`, `thread_id`, `expires_at` |
+| `question` | `thread_id` |
+
+Never the call's arguments, the rule's reason, or the question's text: those are read from the
+thread, where the decision is made. `thread_id` is the full `{tenant}:{suffix}`. An approval row
+that `create_pending` reuses for a byte-identical call pushes nothing, and a push is held by the
+push service only until the approval's deadline.
+
+### `GET /push/vapid-public-key`
+
+<Badge text="approvals:read" variant="note" />
+
+```bash
+curl -s "$BASE_URL/push/vapid-public-key" -H "authorization: Bearer $FELIX_KEY"
+# {"public_key":"BP4z9KsN6nGR…"}
+```
+
+The `applicationServerKey` to pass to `pushManager.subscribe()`. It is derived from the private
+key, so rotating that key invalidates every existing subscription.
+
+### `POST /push/subscriptions`
+
+<Badge text="approvals:read" variant="note" />
+
+The body is `PushSubscription.toJSON()`, as the browser produces it:
+
+```bash
+curl -s -X POST "$BASE_URL/push/subscriptions" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"endpoint":"https://web.push.apple.com/QGuQ…","keys":{"p256dh":"BCVx…","auth":"BTBZ…"}}'
+# {"id":"9f2c…","created_at":1759370000000}
+```
+
+Idempotent on the endpoint: subscribing again replaces the keys and clears the failure count.
+The endpoint is a capability and is never echoed back.
+
+| Status | `detail` | Means |
+|---|---|---|
+| 422 | `push_endpoint_not_allowed` | Not an https URL on `FELIX_PUSH_ALLOWED_HOSTS` (Apple, Google, Mozilla and Microsoft by default), or not in the form a browser produces: a port, a username, an uppercase host. |
+| 422 | `push_keys_malformed` | `p256dh` is not a P-256 point, or `auth` is not 16 bytes. |
+| 409 | `push_subscription_limit` | The tenant already has 200 subscriptions. |
+
+A subscription is dropped by the harness when the push service answers 404 or 410, which is how a
+revoked permission or an uninstalled app is cleaned up, and after five failed sends in a row.
+
+### `DELETE /push/subscriptions`
+
+<Badge text="approvals:read" variant="note" />
+
+```bash
+curl -s -X DELETE "$BASE_URL/push/subscriptions" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"endpoint":"https://web.push.apple.com/QGuQ…"}'
+# {"removed":true}
+```
+
+Answered whether or not push is configured, so a device can always leave.
 
 ## Plans
 

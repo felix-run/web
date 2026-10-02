@@ -1,8 +1,12 @@
 /*
  * The app shell's service worker. Hand-written and small on purpose: it does
- * exactly two things, and everything it does not do is a decision.
+ * three things, and everything it does not do is a decision.
  *
  * It DOES:
+ *   - show the harness's pushes (a run waiting on an approval, an agent's
+ *     question) and, on a tap, bring the app to that thread. A push carries
+ *     the kind of wait and the thread, never the call or the question, so
+ *     the notification says what kind of thing is waiting and where.
  *   - answer a page load from the network, and from the last copy of the page
  *     only when the network fails. An installed app opened on a train then
  *     shows the gate's own "offline" screen instead of the browser's error
@@ -115,4 +119,70 @@ async function precacheShell() {
   await (await caches.open(SHELL)).put('/', res);
   const urls = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]);
   if (urls.length) await (await caches.open(ASSETS)).addAll(urls);
+}
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    // A push this file cannot read still has to show something: Safari revokes the
+    // subscription of a worker that receives pushes and shows nothing.
+  }
+  const suffix = threadSuffix(data.thread_id);
+  const approval = data.kind === 'approval';
+  const title = approval ? 'Waiting on your approval' : 'Felix is asking you something';
+  const body = approval
+    ? `${data.tool_name || 'A tool call'} needs a decision${deadline(data.expires_at)}.`
+    : 'Open the thread to answer it.';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      // One notification per approval (a repeat replaces it), one per thread for questions.
+      tag: approval && data.approval_id ? `approval:${data.approval_id}` : `question:${suffix}`,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { path: suffix ? `/t/${encodeURIComponent(suffix)}` : '/' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const path = event.notification.data?.path || '/';
+  event.waitUntil(openPath(path));
+});
+
+/**
+ * Bring an open window to `path`, or open one.
+ *
+ * An open window is asked to route there itself (`felix:open`), not navigated: navigating
+ * reloads the page, and a reload drops the connection of any run that window has in flight.
+ * The shell listens for that message and moves with the router. A window that never
+ * answers -- an older build, one still loading -- is navigated after a beat instead.
+ */
+async function openPath(path) {
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const open = windows.find((client) => new URL(client.url).origin === self.location.origin);
+  if (!open) return self.clients.openWindow(path);
+  await open.focus();
+  const channel = new MessageChannel();
+  const answered = new Promise((resolve) => {
+    channel.port1.onmessage = () => resolve(true);
+    setTimeout(() => resolve(false), 1000);
+  });
+  open.postMessage({ type: 'felix:open', path }, [channel.port2]);
+  if (!(await answered) && 'navigate' in open) await open.navigate(path);
+}
+
+/** `{tenant}:{suffix}` on the wire; the address carries the suffix alone. */
+function threadSuffix(threadId) {
+  if (typeof threadId !== 'string' || !threadId) return '';
+  return threadId.slice(threadId.lastIndexOf(':') + 1);
+}
+
+function deadline(expiresAt) {
+  if (typeof expiresAt !== 'number') return '';
+  const minutes = Math.round((expiresAt - Date.now()) / 60000);
+  return minutes >= 1 ? ` within ${minutes} min` : '';
 }
