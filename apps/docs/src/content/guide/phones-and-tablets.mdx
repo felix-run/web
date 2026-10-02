@@ -1,0 +1,73 @@
+---
+title: "Phones and iPads"
+description: "Using the web UI on an iPhone, iPad or Android phone — installing it, getting a notification when a run waits on you, typing, and what changes when you switch apps."
+sidebar:
+  order: 8
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The web UI works in a phone's or tablet's browser as it does on a desk, laid out for the narrower
+screen. Two things are worth doing differently on one: **install it**, and **send long work in the
+background**.
+
+## Install it
+
+On an **iPhone or iPad**, open the chat in Safari, tap **Share**, then **Add to Home Screen**. On
+**Android**, Chrome offers to install it, and the web UI shows an **Install** button once you have
+a conversation going.
+
+Installed, it opens full screen and fits around the notch and the home indicator. If it is opened
+with no network, it shows its own "Could not reach the server" rather than the browser's error
+page. A new deploy is picked up the next time it opens.
+
+## Notifications when a run is waiting on you
+
+A run that needs an approval, or that asks you a question, stops until someone answers, and an
+approval that is not answered by its deadline is **denied**. The web UI can send a notification
+when that happens, even with the app closed:
+
+1. Install it (above). On an iPhone or iPad this is required: Safari delivers notifications only to
+   an app on the Home Screen.
+2. Open the installed app. Once you have a conversation, a line above the message box offers
+   **Turn on**. Tap it, and allow notifications when the system asks.
+
+Tapping a notification opens the thread that is waiting. The notification names the kind of wait
+and, for an approval, the tool and how long is left. It never contains the call's arguments or
+the question itself, because it travels through Apple's, Google's or Mozilla's servers to reach
+you. Those you read in the app, where you decide.
+
+To stop them, turn notifications off for the app in the system's settings. The harness forgets
+the device the next time it tries to reach it.
+
+<Aside type="note" title="The deployment has to opt in">
+Notifications need a key on the harness: `FELIX_PUSH_VAPID_PRIVATE_KEY` and
+`FELIX_PUSH_VAPID_SUBJECT` (see `.env.example` in the harness). Without them the **Turn on** line
+never appears. The routes are described under [Push](/guide/management-api/#push).
+</Aside>
+
+## Typing
+
+On a touch keyboard, **Return starts a new line** and the send button sends: a phone keyboard has
+no Shift+Return, so this is the only way to write a second line. With a hardware keyboard attached
+to an iPad, Return sends as it does on a desk, and ⌘Return always sends. The keyboard shortcuts
+listed on a desk work the same way there.
+
+## Switching apps stops a live run
+
+When you switch away, the phone suspends the page, and its connection to the harness goes with it.
+A run streaming into that page is **stopped**: the harness ends a run whose connection drops,
+deliberately, so an abandoned run does not keep spending. When you come back, the thread shows what
+the run finished and says that leaving stopped it.
+
+For anything you will not watch to the end, use **Run in background** (the clock beside the send
+button). A background run lives on the harness, not in the page: it keeps going while you are
+away, and its approvals still reach you as notifications.
+
+## What is not available
+
+- **Mounting a folder.** Giving the agent a folder on your device needs a desktop browser with the
+  File System Access API (Chrome or Edge). On a phone, client tools work in a scratch space that
+  lives in the app.
+- **Hover-only controls.** None. A message's actions (copy, edit, rewind, rate) are always visible
+  on a touch screen.

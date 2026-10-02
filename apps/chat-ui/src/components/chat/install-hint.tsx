@@ -72,7 +72,7 @@ export function InstallHint() {
       <p className="min-w-0 flex-1">
         {ios ? (
           <>
-            Add Felix to your Home Screen to open it full screen: tap{' '}
+            Add Felix to your Home Screen to get a notification when a run is waiting on you: tap{' '}
             <Share aria-label="Share" className="inline size-3.5 align-text-bottom" />, then{' '}
             <span className="text-foreground">Add to Home Screen</span>.
           </>

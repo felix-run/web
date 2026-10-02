@@ -17,6 +17,30 @@ type Handler = (event: unknown) => void;
 let handlers: Record<string, Handler>;
 let stores: Map<string, Map<string, Response>>;
 let network: (url: string) => Promise<Response>;
+let shown: Array<{ title: string; options: NotificationOptions }>;
+let opened: string[];
+let windows: FakeWindow[];
+
+/** An open app window: records what it was asked, and answers `felix:open` when `listens`. */
+class FakeWindow {
+  url = `${ORIGIN}/t/elsewhere`;
+  focused = false;
+  messages: unknown[] = [];
+  navigatedTo: string | null = null;
+  constructor(private readonly listens: boolean) {}
+  async focus() {
+    this.focused = true;
+    return this;
+  }
+  postMessage(message: unknown, ports: MessagePort[]) {
+    this.messages.push(message);
+    if (this.listens) ports[0]?.postMessage('ok');
+  }
+  async navigate(path: string) {
+    this.navigatedTo = path;
+    return this;
+  }
+}
 
 function stubCaches() {
   stores = new Map();
@@ -88,6 +112,9 @@ function fetchEvent(
 
 beforeEach(async () => {
   handlers = {};
+  shown = [];
+  opened = [];
+  windows = [];
   network = async (url) => new Response(`net:${new URL(url).pathname}`, { status: 200 });
   vi.stubGlobal('self', {
     location: new URL(ORIGIN),
@@ -95,7 +122,19 @@ beforeEach(async () => {
       handlers[type] = h;
     },
     skipWaiting: () => {},
-    clients: { claim: async () => {} },
+    clients: {
+      claim: async () => {},
+      matchAll: async () => windows,
+      openWindow: async (path: string) => {
+        opened.push(path);
+        return null;
+      },
+    },
+    registration: {
+      showNotification: async (title: string, options: NotificationOptions) => {
+        shown.push({ title, options });
+      },
+    },
   });
   vi.stubGlobal('caches', stubCaches());
   vi.stubGlobal('fetch', (input: { url: string } | string) =>
@@ -195,5 +234,79 @@ describe('the service worker', () => {
       `${ORIGIN}/assets/index-xyz.js`,
     ]);
     expect(stores.get('felix-shell-v1')?.has(`${ORIGIN}/`)).toBe(true);
+  });
+
+  it('shows an approval push with the tool and routes its tap to the thread suffix', async () => {
+    let done: Promise<unknown> = Promise.resolve();
+    handlers.push({
+      data: {
+        json: () => ({
+          kind: 'approval',
+          approval_id: 'a1',
+          tool_name: 'write_file',
+          thread_id: 'acme:thread-7',
+          expires_at: Date.now() + 4.8 * 60_000, // off the rounding boundary
+        }),
+      },
+      waitUntil: (p: Promise<unknown>) => (done = p),
+    });
+    await done;
+    const [{ title, options }] = shown;
+    expect(title).toBe('Waiting on your approval');
+    expect(options.body).toBe('write_file needs a decision within 5 min.');
+    expect(options.tag).toBe('approval:a1');
+    expect(options.data).toEqual({ path: '/t/thread-7' });
+  });
+
+  it('shows something for a push it cannot read, since Safari revokes a worker that shows nothing', async () => {
+    let done: Promise<unknown> = Promise.resolve();
+    handlers.push({
+      data: {
+        json: () => {
+          throw new SyntaxError('not json');
+        },
+      },
+      waitUntil: (p: Promise<unknown>) => (done = p),
+    });
+    await done;
+    expect(shown).toHaveLength(1);
+    expect(shown[0].options.data).toEqual({ path: '/' });
+  });
+
+  it('asks an open window to route a tapped notification, rather than reloading a live run', async () => {
+    const app = new FakeWindow(true);
+    windows = [app];
+    let done: Promise<unknown> = Promise.resolve();
+    handlers.notificationclick({
+      notification: { close: () => {}, data: { path: '/t/thread-7' } },
+      waitUntil: (p: Promise<unknown>) => (done = p),
+    });
+    await done;
+    expect(app.focused).toBe(true);
+    expect(app.messages).toEqual([{ type: 'felix:open', path: '/t/thread-7' }]);
+    expect(app.navigatedTo).toBeNull();
+  });
+
+  it('navigates a window that does not answer, and opens one when none is open', async () => {
+    vi.useFakeTimers();
+    const silent = new FakeWindow(false);
+    windows = [silent];
+    let done: Promise<unknown> = Promise.resolve();
+    handlers.notificationclick({
+      notification: { close: () => {}, data: { path: '/t/thread-7' } },
+      waitUntil: (p: Promise<unknown>) => (done = p),
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await done;
+    vi.useRealTimers();
+    expect(silent.navigatedTo).toBe('/t/thread-7');
+
+    windows = [];
+    handlers.notificationclick({
+      notification: { close: () => {}, data: { path: '/t/thread-8' } },
+      waitUntil: (p: Promise<unknown>) => (done = p),
+    });
+    await done;
+    expect(opened).toEqual(['/t/thread-8']);
   });
 });

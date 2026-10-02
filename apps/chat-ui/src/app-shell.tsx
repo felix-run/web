@@ -85,6 +85,7 @@ import { middleTruncate } from '@/lib/format';
 import { ImageUploadError, uploadImages } from '@/lib/image-upload';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
+import { resyncPush } from '@/lib/push';
 import { lastResume, onResume } from '@/lib/resume';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
@@ -990,6 +991,28 @@ export function AppShell() {
    * way for the two to disagree.
    */
   useVisualViewport();
+
+  /**
+   * A tapped push notification, routed by the router rather than by a reload.
+   *
+   * `sw.js` asks an open window to move instead of navigating it, because a reload drops the
+   * connection of a run in flight. Only same-app paths are followed. And on load, tell the
+   * harness about a subscription this device already holds (`resyncPush` says why).
+   */
+  useEffect(() => {
+    const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+    if (!sw) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; path?: unknown } | null;
+      if (data?.type !== 'felix:open' || typeof data.path !== 'string') return;
+      if (!data.path.startsWith('/') || data.path.startsWith('//')) return;
+      event.ports[0]?.postMessage('ok');
+      navigate(data.path);
+    };
+    sw.addEventListener('message', onMessage);
+    void resyncPush();
+    return () => sw.removeEventListener('message', onMessage);
+  }, [navigate]);
   useShortcuts(onHarness ? 'harness' : 'workbench', {
     'toggle-workspace': () => setHistoryOpen((o) => !o),
     'toggle-instrument': () => setInspectorOpen((o) => !o),
