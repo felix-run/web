@@ -121,6 +121,25 @@ curl -s -X POST "$BASE_URL/auth/github/token" -H 'content-type: application/json
   -d "{\"device_code\": $(echo "$start" | jq .device_code)}"
 ```
 
+### From GitHub Actions
+
+Public only while `FELIX_GITHUB_OIDC_AUDIENCE` is set. A job with `id-token: write` posts its
+OIDC ID token, requested with that audience. Who may log in is the org's `actions` block, and
+[Auth](/internals/auth/#github-actions) has the setup and a workflow recipe.
+`felix_client.github_actions_login` and `felix login --github-actions` drive it.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| `POST` | `/auth/github/actions` | `{id_token, tenant?}` | `{access_token, token_type: "Bearer", expires_in, tenant, scopes}` |
+
+| Status | `error` | Do |
+|---|---|---|
+| 401 | `invalid_id_token` | The signature, issuer, audience or expiry did not check out. The reason is in the server's log |
+| 403 | `workflow_not_granted` | No `actions` block admits this repository, ref, workflow, environment or event |
+| 403 | `tenant_not_granted` | The `tenant` passed is not one this workflow is granted |
+| 409 | `tenant_ambiguous` | The workflow is granted several tenants, listed in `tenants`. Retry the **same** ID token with `tenant` |
+| 502 | `github_unavailable` | GitHub's signing keys could not be fetched. Try again |
+
 ## `GET /chat/stream/{thread_id}`
 
 Reattach to a thread after a dropped stream or a page refresh.

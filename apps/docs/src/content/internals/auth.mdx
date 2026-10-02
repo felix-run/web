@@ -93,7 +93,101 @@ only to the server that minted it. The file and its directory must be yours alon
 used. `felix login` refuses plain `http://` except to localhost, since the token comes back over
 that connection; `--insecure` overrides that.
 
-For machines (CI, cron) there is no person to approve a code. Mint a token for them with
+### GitHub Actions
+
+A workflow has no person to approve a code, but it does have an identity: a job granted
+`id-token: write` can ask GitHub for an OIDC ID token that names its repository, ref, workflow
+file and event. `POST /auth/github/actions` checks GitHub's signature on it and mints a Felix
+token for the tenant the repository's owner maps to. The job keeps no stored secret. The
+exchange is on while `FELIX_GITHUB_OIDC_AUDIENCE` is set, and it needs no OAuth app.
+
+```bash
+FELIX_GITHUB_OIDC_AUDIENCE=https://felix.example.com   # this deployment's own URL
+FELIX_GITHUB_ORG_TENANTS='{"acme-corp": {"id": 12345678, "tenant": "acme", "scopes": [],
+  "actions": {"repositories": {"deploy": 87654321},
+              "refs": ["refs/heads/main"],
+              "environments": ["production"],
+              "scopes": ["manifests:write"]}}}'
+```
+
+A valid ID token proves only that *some* workflow ran in a repository, so the org's `actions`
+block says which runs may log in:
+
+- **Repositories are `{name: id}`** (`gh api repos/acme-corp/deploy --jq .id`), matched on the
+  id, since a deleted repository's name can be taken by any member who can create one. The org
+  alone is not enough: an outside collaborator with write access to one repository can run a
+  workflow there.
+- **At least one narrowing is required.** Every narrowing you set must match:
+  - `refs` (`refs/heads/main`, `refs/tags/v*`);
+  - `workflows`, which matches `job_workflow_ref`, the workflow file that actually ran (for a
+    reusable workflow, the callee): `acme-corp/deploy/.github/workflows/ship.yml@*`;
+  - `environments`.
+
+  Patterns are case-sensitive globs, and `*` also matches `/`. An environment with required
+  reviewers is the strongest gate GitHub offers.
+- **`pull_request_target`, `issue_comment` and `workflow_run` are refused** unless listed in
+  `events`. They run on the base branch while acting on outside input, so a `ref` of `main` says
+  nothing about the code they execute.
+- **The block has its own `scopes`;** it never inherits the org's.
+- **The audience must be this deployment's own https URL.** Startup refuses GitHub's default
+  (`https://github.com/<owner>`), which tokens meant for other services carry. Keep it unique per
+  deployment, or a token captured by staging can be replayed to production.
+
+The token lasts `FELIX_GITHUB_OIDC_TTL_SECONDS` (default 15m, at most 1h). Its subject is
+`github-actions:<repository id>:<job_workflow_ref>`. It carries `idp: github-actions` and
+`github_actor`, never `github_login`, because whoever triggered the run did not authenticate.
+Every exchange is audited in its tenant as `github_actions_login`, with the repository, ref,
+workflow file, environment, event, sha, run and actors. The ID token is never logged or audited.
+It is not single-use either: replaying one within its few minutes of life mints another token for
+the same run.
+
+In the workflow, with nothing to install, logging in inside the step that uses the token:
+
+```yaml
+permissions:
+  id-token: write   # what lets the job ask GitHub for an ID token
+  contents: read
+steps:
+  - name: Call Felix
+    env:
+      FELIX_URL: https://felix.example.com
+    run: |
+      id_token=$(curl -sS --fail-with-body -G "$ACTIONS_ID_TOKEN_REQUEST_URL" \
+        -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+        --data-urlencode "audience=$FELIX_URL" | jq -r .value)
+      token=$(jq -n --arg t "$id_token" '{id_token: $t}' \
+        | curl -sS --fail-with-body -X POST "$FELIX_URL/auth/github/actions" \
+            -H 'content-type: application/json' -d @- | jq -r .access_token)
+      echo "::add-mask::$token"
+      curl -sS --fail-with-body "$FELIX_URL/manifests" -H "Authorization: Bearer $token"
+```
+
+Nothing registers the Felix token with the job log's masking for you, so `::add-mask::` it before
+anything could print it. Keep it in the step that uses it. Writing it to `$GITHUB_ENV` hands it to
+every later step, including any third-party action, and masking only hides it from the log. When
+a later step does need it, pass it as a step output to just that step. `--fail-with-body` fails
+the step on a refusal and still shows the `error` (`workflow_not_granted`, `tenant_ambiguous` and
+its `tenants`).
+
+Or, from Python, with `felix-client` (httpx and nothing else):
+
+```python
+import asyncio
+from felix_client import github_actions_login
+
+token = asyncio.run(github_actions_login("https://felix.example.com"))
+print(f"::add-mask::{token.access_token}")
+```
+
+The audience defaults to the server URL. Pass `audience=` if `FELIX_GITHUB_OIDC_AUDIENCE` is
+something else, which only makes sense when both name the same server. The ID token is good there
+for a few minutes, wherever it is sent.
+
+Where the CLI is installed, `felix login --github-actions [--audience …]` does the same. Capture
+its output, as in `token=$(felix login --github-actions)`: stdout is the token alone. In a job it
+also writes `::add-mask::` on stderr, but mask the captured value yourself as well.
+
+For machines outside GitHub Actions (cron, another CI), mint a token for them with
 `felix mint-jwt`.
 
 ## Manifest gates
