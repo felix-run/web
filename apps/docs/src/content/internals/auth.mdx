@@ -31,7 +31,65 @@ Unauthenticated in every mode: the probes `/health`, `/live`, `/ready`, and ever
 - **`/redoc` does not exist.** FastAPI's Swagger and ReDoc are both disabled (`docs_url=None`,
   `redoc_url=None`); `/docs` is a Scalar page the harness mounts itself, under one CSP.
 
-Missing credentials in `api_key` / `jwt` → **401** (fail closed). Mint self-issued tokens with `felix mint-jwt`.
+Missing credentials in `api_key` / `jwt` → **401** (fail closed). Mint self-issued tokens with `felix mint-jwt`,
+or let people get their own with [GitHub login](#github-login).
+
+## GitHub login
+
+A person runs `felix login`, enters a code at github.com, and gets a short-lived Felix JWT for the
+tenant their GitHub org maps to. GitHub OAuth apps issue no OIDC ID token, so there is nothing for
+a verifier to point at. Felix runs the device flow on the caller's behalf instead, checks
+membership, and mints a self-issued token. The GitHub token is used for two reads and dropped. No
+user table: the org map is the whole user model.
+
+```bash
+FELIX_AUTH_MODE=jwt
+FELIX_JWT_VERIFIERS=self:felix-self
+FELIX_JWKS_PRIVATE=...            # RSA PEM; FELIX_JWKS_PUBLIC is its public half
+FELIX_ALLOWED_TENANTS=acme
+FELIX_GITHUB_CLIENT_ID=Ov23li...  # OAuth app with "Enable Device Flow" ticked; no secret needed
+FELIX_GITHUB_ORG_TENANTS='{"acme-corp": {"id": 12345678, "tenant": "acme", "scopes": ["jobs:read", "manifests:write"]}}'
+```
+
+- **Orgs are pinned by numeric `id`** (`gh api orgs/acme-corp --jq .id`). A renamed or deleted
+  org's name can be registered by anyone, and matching on the name would hand that org's members
+  your tenant. A mismatch is refused and logged.
+- **Only an `active` membership counts.** A pending invitation is not membership. The app asks for
+  `read:org`. An org with OAuth app access restrictions must approve the app before its members
+  can log in (`org_access_restricted`).
+- **Two orgs on one tenant merge their scopes.** Orgs on *different* tenants make a login
+  ambiguous (409 `tenant_ambiguous`). Device codes are single-use, so that flow is spent; run
+  `felix login --tenant <one>`.
+- **The subject is `github:<numeric user id>`**, never the renameable login. The token also carries
+  `idp: github` and `github_login`.
+- **Tokens last `FELIX_GITHUB_LOGIN_TTL_SECONDS`** (default 8h, at most 24h). Nothing revokes one
+  early, so a member removed from the org keeps access until it expires. Rotating the key revokes
+  everything.
+- **Startup refuses a login that would mint tokens this process rejects.** One probe token per
+  mapped tenant goes through the configured verifiers, which catches a mismatched key pair, a
+  missing `self:felix-self`, a tenant outside `FELIX_ALLOWED_TENANTS`, or a `fixed:` verifier ahead
+  of it that would override the tenant.
+
+`POST /auth/github/device` and `POST /auth/github/token` are public, and only those two exact
+paths, only while `FELIX_GITHUB_CLIENT_ID` is set. Starting a flow spends the OAuth app's GitHub
+quota, so starts have their own hourly bucket per client address
+(`FELIX_GITHUB_DEVICE_STARTS_PER_HOUR`, default 10). Every token minted is audited in its tenant
+as `github_login`. The [REST API](/guide/rest-api/) has the request and refusal shapes.
+
+:::caution[Consent phishing is built into the device flow]
+Anyone can start a flow and ask one of your members to "approve this code". If they do, the
+attacker holds a token for that member's tenant. GitHub's approval screen names the OAuth app, so
+give the app a name nobody could mistake, tell members never to enter a code they did not
+request themselves, and keep the TTL short.
+:::
+
+`felix login --save` keeps one token per server in `~/.config/felix/token`, and hands each back
+only to the server that minted it. The file and its directory must be yours alone, or it is not
+used. `felix login` refuses plain `http://` except to localhost, since the token comes back over
+that connection; `--insecure` overrides that.
+
+For machines (CI, cron) there is no person to approve a code. Mint a token for them with
+`felix mint-jwt`.
 
 ## Manifest gates
 
@@ -50,10 +108,15 @@ Auth middleware installs a contextvars-backed `RequestContext`: settings, princi
 
 ## Tenant derivation (JWT)
 
-1. `custom:tenant_id` claim  
-2. `tenant_id` claim  
-3. First label of issuer host  
-4. Else `default` (also used for anonymous / api_key default meta)
+Each verifier in `FELIX_JWT_VERIFIERS` takes the tenant one way, set with `;tenant=`:
+
+| Mode | Tenant |
+|---|---|
+| `claim` (default) | The token's `tenant_id`, `custom:tenant_id` or `tid` claim, in that order. No claim → **refused**; it never falls back to a shared tenant. The value must be in `FELIX_ALLOWED_TENANTS` when that is set, and outside development a claim-mode verifier with no allowlist refuses to start |
+| `issuer` | The first DNS label of the issuer host. Two issuers that collapse to one tenant refuse to start |
+| `fixed:<tenant>` | Always that tenant |
+
+Anonymous callers and `api_key` keys without a tenant use `default`.
 
 ## Internal consumers
 
