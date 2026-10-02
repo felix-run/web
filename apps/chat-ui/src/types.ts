@@ -189,7 +189,41 @@ export interface ItemScore {
   /** Tool invocations the run made, and how many came back as an error or a denial. */
   tool_calls?: number;
   tool_errors?: number;
+  /**
+   * The candidate's own turn, metered onto the item (felix-run/felix#345). The
+   * judge's spend is the eval's, not the agent's, so it is not in here. Absent
+   * from a harness before that, and from an item that never reached the model.
+   */
+  duration_ms?: number;
+  tokens_input?: number;
+  tokens_output?: number;
+  /** A floor when the model is unpriced: tokens were metered and nothing was charged. */
+  cost_usd?: number;
+  /**
+   * The LLM judge could not run and the heuristic scored the item instead. The
+   * row is still scored, so nothing fails — which is why it has to be said.
+   * `judge_error` is the exception type, never its message.
+   */
+  judge_fallback?: boolean;
+  judge_error?: string;
   error?: string;
+}
+
+/**
+ * What a run cost and how its scoring went, summed by the harness from its score
+ * rows on read (`felix/eval/store.py:run_stats`).
+ */
+export interface EvalRunStats {
+  wall_ms: number | null;
+  items_ms: number;
+  slowest_ms: number;
+  tokens_input: number;
+  tokens_output: number;
+  cost_usd: number;
+  tool_calls: number;
+  tool_errors: number;
+  /** Items an LLM judge should have scored and the heuristic scored instead. */
+  judge_fallbacks: number;
 }
 
 export interface EvalRun {
@@ -209,6 +243,8 @@ export interface EvalRun {
    */
   error_count?: number;
   scores: ItemScore[];
+  /** Optional because a harness before felix-run/felix#345 does not send it. */
+  stats?: EvalRunStats;
 }
 
 /** POST /eval/datasets/{name}/run response. */
