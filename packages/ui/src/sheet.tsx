@@ -53,10 +53,13 @@ function SheetContent({
         data-slot="sheet-content"
         className={cn(
           'fixed z-50 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500',
+          // A side drawer runs the full height of the screen, so on a phone it meets
+          // the status bar, the notch and the home indicator. The insets are 0
+          // everywhere else; the `*-safe` utilities are defined in the app's CSS.
           side === 'right' &&
-            'inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm',
+            'inset-y-0 right-0 h-full w-3/4 border-l pt-safe pr-safe-0 pb-safe-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm',
           side === 'left' &&
-            'inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm',
+            'inset-y-0 left-0 h-full w-3/4 border-r pt-safe pl-safe-0 pb-safe-0 data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm',
           side === 'top' &&
             'inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top',
           side === 'bottom' &&
@@ -71,7 +74,7 @@ function SheetContent({
             the app. The padding is what makes the target, so the icon stays the same
             size and the hit area grows around it. */}
         {showCloseButton && (
-          <SheetPrimitive.Close className="absolute top-3.5 right-3.5 flex size-6 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <SheetPrimitive.Close className="absolute top-[calc(0.875rem+env(safe-area-inset-top,0px))] right-[max(0.875rem,env(safe-area-inset-right,0px))] flex size-6 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>

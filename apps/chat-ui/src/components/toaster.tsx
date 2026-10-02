@@ -37,8 +37,8 @@ export function Toaster() {
       // the history control, and its close button floated over the header's own
       // border. Both offsets are set: the mobile one falls back to sonner's
       // default otherwise, which is the same overlap on a narrower screen.
-      offset={{ top: 'calc(var(--header-height) + 0.75rem)' }}
-      mobileOffset={{ top: 'calc(var(--header-height) + 0.5rem)' }}
+      offset={{ top: 'calc(var(--header-height) + env(safe-area-inset-top, 0px) + 0.75rem)' }}
+      mobileOffset={{ top: 'calc(var(--header-height) + env(safe-area-inset-top, 0px) + 0.5rem)' }}
       // Sonner otherwise measures its own gaps in px against a font stack that is
       // not ours; `toastOptions.className` is left alone so the palette stays in
       // one place, in CSS, next to the tokens it reads.

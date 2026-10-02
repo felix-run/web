@@ -77,6 +77,7 @@ import { useMessageQueue } from '@/hooks/use-message-queue';
 import { usePendingApprovals } from '@/hooks/use-pending-approvals';
 import { useRails } from '@/hooks/use-rails';
 import { useShortcuts } from '@/hooks/use-shortcuts';
+import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { toastError, toastProblem } from '@/lib/error-toast';
@@ -920,6 +921,7 @@ export function AppShell() {
    * the same path. A binding that opened a copy of the state would be a second
    * way for the two to disagree.
    */
+  useVisualViewport();
   useShortcuts(onHarness ? 'harness' : 'workbench', {
     'toggle-workspace': () => setHistoryOpen((o) => !o),
     'toggle-instrument': () => setInspectorOpen((o) => !o),
@@ -1673,8 +1675,15 @@ export function AppShell() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <header className="flex h-[var(--header-height)] shrink-0 items-center gap-1 border-b border-border/60 px-3">
+    // `--vvh` is the visual viewport while an on-screen keyboard covers part of the
+    // layout one (use-visual-viewport.ts); otherwise `dvh`, which follows Safari's
+    // toolbar where `h-screen` (the *large* viewport) put the composer under it.
+    // The side insets are on the shell rather than on each zone: a phone on its
+    // side has the notch at one edge, and everything inside clears it at once.
+    <div className="flex h-[var(--vvh,100dvh)] flex-col bg-background px-safe-0">
+      {/* The inset is added to the bar's height rather than taken out of it:
+          `--header-height` is read by the toaster and must stay the bar's own. */}
+      <header className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-1 border-b border-border/60 px-3 pt-safe">
         {!onHarness && (
           <Button
             variant={historyOpen ? 'secondary' : 'ghost'}

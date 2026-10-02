@@ -18,6 +18,9 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 const STORAGE_KEY = 'felix.theme';
+/** `--background` per theme as sRGB, because `theme-color` is read by browser chrome
+ *  that does not take `oklch()`. */
+const THEME_COLOR = { light: '#ffffff', dark: '#09090b' } as const;
 
 function systemPrefersDark(): boolean {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
@@ -45,6 +48,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', resolved === 'dark');
     document.documentElement.style.colorScheme = resolved;
+    // Browser chrome follows the applied theme, not only the OS one the metas' media
+    // queries read. Same values as index.html, which sets them before first paint.
+    for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+      meta.setAttribute('content', THEME_COLOR[resolved]);
+    }
   }, [resolved]);
 
   const setTheme = (next: Theme) => {

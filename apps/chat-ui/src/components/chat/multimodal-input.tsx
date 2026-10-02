@@ -41,12 +41,14 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import {
+  enterAction,
   PromptInput,
   PromptInputFooter,
   type PromptInputMessage,
   PromptInputProvider,
   PromptInputTextarea,
   PromptInputTools,
+  softKeyboardLikely,
   usePromptInputController,
   useProviderAttachments,
 } from '@/components/ai-elements/prompt-input';
@@ -469,7 +471,7 @@ function MultimodalInputInner({
       // because PromptInput's own Enter guard reads a submit button that is not
       // rendered during a run. The reason is already on screen in `helperText`,
       // so refusing silently is not refusing without explanation.
-      if (e.key === 'Enter' && !e.shiftKey && refusal) {
+      if (refusal && enterAction(e) === 'send') {
         e.preventDefault();
         return;
       }
@@ -512,7 +514,7 @@ function MultimodalInputInner({
         // Same horizontal inset as the transcript column (`Conversation` uses px-4 md:px-6):
         // at md the composer was 8px further out, so the reading column and the thing you
         // type into did not share a left edge.
-        cn('relative mx-auto w-full max-w-3xl px-4 pb-4 md:px-6', className)
+        cn('relative mx-auto w-full max-w-3xl px-4 pb-safe-4 md:px-6', className)
       }
     >
       {!isConnected && <ConnectionBanner />}
@@ -1118,6 +1120,9 @@ function AgentNote({
 }
 
 function KeyboardHint({ isBusy }: { isBusy: boolean }) {
+  // With an on-screen keyboard there are no keys to name, and Enter is a newline
+  // there (`enterAction`), so "↵ to send" would be false. The Send button says it.
+  if (softKeyboardLikely()) return null;
   return (
     <p className="mt-2 text-center text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1">
