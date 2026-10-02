@@ -89,9 +89,11 @@ or Hyperdrive, and does not depend on a binding only reachable from inside them.
 
 `felix_ai.catalog` records one entry per model family — context window, max output, accepted request
 parameters, and rates. **An entry that does not state rates does not have them**: `pricing` is `None`,
-the model contributes zero to spend, and `is_priced()` reports it as unmeterable. None of the hosted
-tier ships with per-token rates, deliberately — Cloudflare bills Workers AI in neurons rather than
-tokens, so a per-token rate for it would be fiction.
+the model contributes zero to spend, and `is_priced()` reports it as unmeterable. The hosted tier
+ships without per-token rates, deliberately, with one exception: Workers AI. Cloudflare meters it in
+neurons but publishes a per-token rate for each model, so the catalog carries those rates under
+`@cf/` keys, which the same weights served by Ollama or Groq never match. The 10,000 free neurons a
+day are not subtracted, so spend reads high rather than low.
 
 A manifest that *declares* `limits.max_cost_usd` on a model with no known rates is **refused at
 compile**, pointing at `spec.model.price`. Only a declared cap is refused; an unset one is filled from
@@ -116,6 +118,10 @@ Manifests declare `spec.model.id` as a **logical** id. Ops maps it via `FELIX_MO
 | `gpt-4.1-mini` | `openai` | `gpt-4.1-mini` |
 | `llama-3-pro` | `ollama` | `llama3.3:70b` |
 | `llama-3-fast` | `ollama` | `llama3.2` |
+| `kimi-k2-cf` | `workers_ai` | `@cf/moonshotai/kimi-k2.6` |
+| `gpt-oss-120b-cf` | `workers_ai` | `@cf/openai/gpt-oss-120b` |
+| `gpt-oss-20b-cf` | `workers_ai` | `@cf/openai/gpt-oss-20b` |
+| `glm-flash-cf` | `workers_ai` | `@cf/zai-org/glm-4.7-flash` |
 
 Wire ids are complete as written — the Anthropic routes carry **no date suffix**. Two legacy logical
 ids, `claude-sonnet-4` and `claude-haiku-4`, still resolve so older manifests keep building; both now
