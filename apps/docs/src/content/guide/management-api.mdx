@@ -409,6 +409,40 @@ Documents reuse `FELIX_MEMORY_EMBEDDER` rather than taking a second setting: one
 deployment, one vector dimension. With none configured the corpus is still fully searchable by
 full text.
 
+### Syncing a docs site
+
+`felix ingest-docs` loads a directory of Markdown/MDX pages, one document per page. Each page's
+`source` is its public URL, so an agent can quote a hit and then read the whole page:
+
+```bash
+FELIX_API_KEY=... felix ingest-docs path/to/docs/src/content \
+  --site-url https://docs.example.com --url https://felix.example.com --prune
+```
+
+- **MDX is reduced to what a reader sees.** Frontmatter supplies the title, description and an
+  optional `slug:`. Import/export statements, component tags and `:::` fences are dropped; a
+  directive's label, or a tag's `title=`/`label=`, is kept. `.md` pages are plain Markdown, so
+  only the `:::` fences go. Code blocks are kept verbatim.
+- **Skipped:** the site's 404 page, hidden or `_`-prefixed paths, and a second file that lands on
+  the same page as another (reported, not overwritten).
+- **It is safe to repeat.** A page sent again replaces itself.
+- **`--prune` deletes documents under `--site-url` that no page produced any more.** That covers
+  deleted, moved and retitled pages. Anything outside the URL is never touched. Because it
+  deletes, it is fenced:
+  - `--site-url` must be an http(s) URL with a host;
+  - prune is skipped when any page failed, or when the corpus listing is full (500) and might be
+    hiding documents;
+  - it deletes nothing when more than `--max-prune` documents (default 10) would go. A
+    `--site-url` wider than the pages you synced looks exactly like that.
+- **`--dry-run` lists what would change.** With `--prune` it still reads the listing to work out
+  what it would remove.
+- **Credentials:** `--api-key` (or `FELIX_API_KEY`) needs `documents:write`. Without one, the
+  token `felix login --save` kept for that server is used.
+
+The bundled `support` agent pairs `search_docs` with `fetch_docs`, confined to
+`https://docs.felix.run/`. Syncing this site with `--site-url https://docs.felix.run` gives it a
+corpus whose sources it can fetch.
+
 :::note
 Limits worth knowing before a bulk import. `text` is capped below the 1 MiB request body limit; one
 document may split into at most 2,000 chunks; and `FELIX_DOCUMENTS_MAX_PER_TENANT` (default 5,000)
