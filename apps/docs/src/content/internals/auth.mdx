@@ -76,7 +76,9 @@ quota, so starts have two hourly buckets of their own: one per client address
 (`FELIX_GITHUB_DEVICE_STARTS_PER_HOUR`, default 10, with an IPv6 client keyed by its /64), and one
 for the whole deployment (`FELIX_GITHUB_DEVICE_STARTS_PER_HOUR_TOTAL`, default 300), because the
 quota is shared and a botnet is many clients. A start its client's bucket refuses does not count
-toward the total. Every token minted is audited in its tenant
+toward the total. Reaching the deployment cap refuses every new login until the hour turns
+(issued tokens are unaffected), so size it to your login volume; without `FELIX_REDIS_URL` both
+buckets are per process. Every token minted is audited in its tenant
 as `github_login`. The [REST API](/guide/rest-api/) has the request and refusal shapes.
 
 :::caution[Consent phishing is built into the device flow]
