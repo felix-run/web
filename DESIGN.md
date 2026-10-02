@@ -402,6 +402,17 @@ closing rail is `inert` until it unmounts. The narrow-width drawers slide at the
 it is a rail or an overlay. Both are off under `prefers-reduced-motion`: a panel appearing
 reports nothing about a run, so unlike the working pulse it has no reason to keep moving.
 
+**Phones and tablets.** The shell is `100dvh`, never `100vh`: on iOS `vh` is the viewport with
+Safari's toolbar *hidden*, which put the composer under the toolbar. It draws edge to edge
+(`viewport-fit=cover`) and keeps clear of the notch and home indicator with the `*-safe`
+utilities in `index.css`: the header grows a strip above itself (`pt-safe`), the composer's
+bottom padding becomes the home-indicator inset where that is larger (`pb-safe-4`), the shell
+clears a landscape notch at both sides, and the side drawers clear all three edges they meet.
+While an on-screen keyboard is up the shell's height follows the visual viewport (`--vvh`), so
+the header stays on screen and the composer sits on the keys rather than Safari scrolling the
+page out from under both. With no hardware keyboard in sight, Enter is a newline and Send sends
+— a soft keyboard has no Shift+Return — and the composer's key hint is not drawn.
+
 **The Shrink-Floor Rule.** Anything below a scrolling region carries `flexShrink: 0`. A
 transcript longer than the screen will otherwise eat the composer's rows and leave a box you
 cannot type in, with nothing on screen to say why. Each component is correct alone; the failure

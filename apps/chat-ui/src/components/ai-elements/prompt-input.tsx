@@ -45,6 +45,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -757,7 +758,60 @@ export const PromptInputBody = ({ className, ...props }: PromptInputBodyProps) =
   <div className={cn('contents', className)} {...props} />
 );
 
+/**
+ * What Enter means in the composer: `send`, `newline`, or `null` for "not Enter".
+ *
+ * At a desk Enter sends and Shift+Enter breaks the line. A phone's or tablet's
+ * on-screen keyboard has no Shift+Return, so under that rule a touch user could
+ * never write a second line — there Enter is a newline and the Send button sends.
+ * "Touch" is a coarse primary pointer *and* no hardware keyboard seen yet: an iPad
+ * with a keyboard attached still reports a coarse pointer, and the first key no
+ * soft keyboard can produce (a modifier, an arrow, Tab, Escape) flips this tab
+ * back to Enter-sends for the rest of its life. ⌘/Ctrl+Enter sends everywhere.
+ */
+export function enterAction(
+  e: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'>,
+): 'send' | 'newline' | null {
+  noteHardwareKey(e);
+  if (e.key !== 'Enter') return null;
+  if (e.metaKey || e.ctrlKey) return 'send';
+  if (e.shiftKey) return 'newline';
+  return softKeyboardLikely() ? 'newline' : 'send';
+}
+
+let hardwareKeyboardSeen = false;
+const HARDWARE_ONLY_KEYS = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Tab',
+  'Escape',
+]);
+
+function noteHardwareKey(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey'>) {
+  if (e.metaKey || e.ctrlKey || e.altKey || HARDWARE_ONLY_KEYS.has(e.key)) {
+    hardwareKeyboardSeen = true;
+  }
+}
+
+/** True on a touch-first device until a hardware keyboard has shown itself. */
+export function softKeyboardLikely(): boolean {
+  if (hardwareKeyboardSeen || typeof window === 'undefined') return false;
+  return window.matchMedia?.('(pointer: coarse)').matches ?? false;
+}
+
+/** For tests: forget a hardware keyboard seen by an earlier case. */
+export function resetHardwareKeyboardForTests() {
+  hardwareKeyboardSeen = false;
+}
+
 export type PromptInputTextareaProps = ComponentProps<typeof InputGroupTextarea>;
+
+const FIELD_SIZING =
+  typeof CSS === 'undefined' || typeof CSS.supports !== 'function'
+    ? true
+    : CSS.supports('field-sizing', 'content');
 
 export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTextareaProps>(
   function PromptInputTextarea(
@@ -778,11 +832,12 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
           return;
         }
 
-        if (e.key === 'Enter') {
+        const enter = enterAction(e);
+        if (enter) {
           if (isComposing || e.nativeEvent.isComposing) {
             return;
           }
-          if (e.shiftKey) {
+          if (enter === 'newline') {
             return;
           }
           e.preventDefault();
@@ -838,6 +893,35 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
       [attachments],
     );
 
+    // `field-sizing: content` grows the box with its text. Older Safari, and so
+    // older iOS, does not have it, and there the composer stays at its minimum
+    // height and scrolls inside three lines; measure instead. Keyed on the value so
+    // a programmatic change (a send clearing it, a recalled message) resizes too.
+    const innerRef = useRef<HTMLTextAreaElement | null>(null);
+    const setRefs = useCallback(
+      (el: HTMLTextAreaElement | null) => {
+        innerRef.current = el;
+        if (typeof ref === 'function') ref(el);
+        else if (ref) ref.current = el;
+      },
+      [ref],
+    );
+    const value = controller ? controller.textInput.value : props.value;
+    useLayoutEffect(() => {
+      const el = innerRef.current;
+      if (!el || FIELD_SIZING) return;
+      void value;
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    }, [value]);
+    const autoGrow = FIELD_SIZING
+      ? undefined
+      : (e: FormEvent<HTMLTextAreaElement>) => {
+          const el = e.currentTarget;
+          el.style.height = 'auto';
+          el.style.height = `${el.scrollHeight}px`;
+        };
+
     const handleCompositionEnd = useCallback(() => setIsComposing(false), []);
     const handleCompositionStart = useCallback(() => setIsComposing(true), []);
 
@@ -855,14 +939,17 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
 
     return (
       <InputGroupTextarea
-        ref={ref}
+        ref={setRefs}
         className={cn('field-sizing-content max-h-48 min-h-16', className)}
+        onInput={autoGrow}
         name="message"
         onCompositionEnd={handleCompositionEnd}
         onCompositionStart={handleCompositionStart}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         placeholder={placeholder}
+        // The on-screen keyboard labels its Return key with what it will do.
+        enterKeyHint={softKeyboardLikely() ? 'enter' : 'send'}
         {...props}
         {...controlledProps}
       />

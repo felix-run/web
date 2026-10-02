@@ -84,7 +84,7 @@ export function PanelErrorFallback({
  */
 export function AppErrorFallback({ error }: { error: Error }) {
   return (
-    <div role="alert" className="flex h-screen items-center justify-center bg-background p-6">
+    <div role="alert" className="flex h-dvh items-center justify-center bg-background p-6">
       <div className="max-w-md">
         {/* A headline, the ramp's top step; 18px was a size the ramp does not have. */}
         <h1 className="text-base font-semibold">Felix hit an error it can't recover</h1>

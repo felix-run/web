@@ -254,10 +254,59 @@
   *::-webkit-scrollbar-corner {
     background: transparent;
   }
+  /* Touch, mostly iOS. (Tailwind's preflight already pins text size on rotation
+     and drops the grey tap flash.) A double tap does not zoom, which also removes
+     the delay Safari adds while it waits to see whether a tap is the first of two;
+     pinch-zoom is untouched. And the shell does not rubber-band or pull-to-refresh:
+     a pull on a page that is mid-stream reloads it, and a foreground run dies with
+     its connection. Scrollers inside still scroll; they just do not hand their
+     overscroll to the page. */
+  html {
+    overscroll-behavior: none;
+  }
   body {
     background-color: var(--background);
     color: var(--foreground);
+    overscroll-behavior: none;
+    touch-action: manipulation;
   }
+}
+
+/* Safe areas. With `viewport-fit=cover` (index.html) the page draws under the notch,
+   the status bar of an installed app and the home indicator, and these are what keep
+   anything interactive out from under them. Everywhere without a notch every inset
+   is 0, so each utility is the layout it replaces.
+
+   Two shapes, for two cases. `pt-safe` *adds* the inset, for the header and the
+   drawers, which grow a strip above their content. The `-*` forms take the padding the element
+   already had as a floor and use the inset only when it is larger — the home
+   indicator's 34px replaces a 10px gap rather than stacking on it.
+
+   The bottom inset goes through `--safe-bottom` because Safari keeps reporting the
+   home indicator's 34px while the on-screen keyboard covers it, which left a blank
+   band between the composer and the keys. use-visual-viewport.ts sets
+   `data-keyboard` on the root while one is up. */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+:root[data-keyboard] {
+  --safe-bottom: 0px;
+}
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+@utility pb-safe-* {
+  padding-bottom: max(calc(var(--spacing) * --value(number)), var(--safe-bottom));
+}
+@utility pl-safe-* {
+  padding-left: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-left, 0px));
+}
+@utility pr-safe-* {
+  padding-right: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-right, 0px));
+}
+@utility px-safe-* {
+  padding-left: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-left, 0px));
+  padding-right: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-right, 0px));
 }
 
 /* A dot grid behind the transcript that fades out as it falls toward the composer.

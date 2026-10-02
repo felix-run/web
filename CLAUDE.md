@@ -395,6 +395,18 @@ Flows worth knowing before editing the app:
   the window was and is kept either way, because the final call's prompt held the whole branch.
   The composer's context meter reads that against `/v1/models`' `contextWindow` for the
   *selected* agent, and below `sm` it yields to the agent picker unless the window is ≥90% full.
+- **iPhone and iPad are real targets, and Safari is the browser that differs.** The shell is
+  `h-[var(--vvh,100dvh)]` — `h-screen` is the large viewport on iOS and put the composer under
+  the toolbar — and `src/hooks/use-visual-viewport.ts` sets `--vvh` only while a field has focus
+  and the on-screen keyboard has shortened the visual viewport, because Safari pans the page
+  rather than resizing it. `viewport-fit=cover` and the `*-safe` utilities in `index.css` go
+  together: one without the other either letterboxes or puts controls under the notch. The
+  bottom inset reads `--safe-bottom`, which drops to 0 under `data-keyboard`, since Safari keeps
+  reporting the home indicator beneath the keys. Enter in the composer is decided by
+  `enterAction` in `prompt-input.tsx`: newline on a coarse pointer until a hardware-only key
+  (a modifier, an arrow, Tab, Escape) has been seen, send otherwise, ⌘/Ctrl+Enter always sends.
+  `tests/touch-viewport.test.tsx` pins those three; insets, Safari's scroll on focus and the
+  keyboard itself are only verifiable on a device.
 - **Redundant state updates are not free.** The composer cleared a "slash menu dismissed" flag from
   an effect keyed on the text, so every keystroke set state — usually to the value it already held.
   React bails out of those but still counts them, so typing fast enough (a paste, a quick typist)
