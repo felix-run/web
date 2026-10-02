@@ -38,6 +38,8 @@ export interface StreamHandlers {
    * `GET /chat/stream/{thread_id}` to reattach after a dropped connection.
    */
   onCursor?: (lastEventId: string) => void;
+  /** Every chunk, keep-alive comments included; see `ReadSseOptions.onActivity`. */
+  onActivity?: (info: { keepAlive: boolean }) => void;
 }
 
 export interface StreamArgs {
@@ -223,7 +225,10 @@ export function createFelixClient(opts: FelixClientOptions) {
         throw new Error(`chat/stream: ${res.status} ${await detailOf(res)}`);
       }
 
-      await readSseStream(res, handlers.onEvent, { onCursor: handlers.onCursor });
+      await readSseStream(res, handlers.onEvent, {
+        onCursor: handlers.onCursor,
+        onActivity: handlers.onActivity,
+      });
     },
 
     /**
@@ -259,7 +264,10 @@ export function createFelixClient(opts: FelixClientOptions) {
         throw new Error(`chat/stream/${args.threadId}: ${res.status} ${await detailOf(res)}`);
       }
 
-      await readSseStream(res, handlers.onEvent, { onCursor: handlers.onCursor });
+      await readSseStream(res, handlers.onEvent, {
+        onCursor: handlers.onCursor,
+        onActivity: handlers.onActivity,
+      });
     },
 
     /** POST /chat/tool_result — complete a client-executed tool pause. */

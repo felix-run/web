@@ -39,6 +39,14 @@ export interface ReadSseOptions {
    * standing, so the callback fires only on frames that actually carry one.
    */
   onCursor?: (lastEventId: string) => void;
+  /**
+   * Called on every chunk the connection delivers, and again with `keepAlive`
+   * true for each comment-only frame — the heartbeat the reader otherwise drops.
+   * A long tool call sends no frames, so frames alone cannot tell a quiet stream
+   * from a dead one; a harness that heartbeats can, and this is how a caller
+   * learns both that it does and when it last did.
+   */
+  onActivity?: (info: { keepAlive: boolean }) => void;
 }
 
 /** One dispatchable SSE frame: its fields, before the payload is parsed. */
@@ -141,6 +149,7 @@ export async function readSseStream(
       heldCr = true;
     }
     buffer += chunk.replace(/\r\n?/g, '\n');
+    opts.onActivity?.({ keepAlive: false });
 
     // Drain whole frames; leave any partial tail in the buffer.
     let sep = buffer.indexOf('\n\n');
@@ -150,7 +159,10 @@ export async function readSseStream(
       sep = buffer.indexOf('\n\n');
 
       const frame = parseFrame(raw);
-      if (!frame) continue;
+      if (!frame) {
+        if (/^:/m.test(raw)) opts.onActivity?.({ keepAlive: true });
+        continue;
+      }
       if (frame.data === '[DONE]') return;
 
       if (frame.id !== undefined) opts.onCursor?.(frame.id);
