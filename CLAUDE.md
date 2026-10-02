@@ -316,11 +316,14 @@ replacement, not a line diff of the file. A `write_file` is `+N written` and nev
 write has landed nothing holds the file's before-state — `PendingApproval.before` is read at decision
 time and gone after — so a diff would be drawn against an invented empty file. A call
 `classifyToolResult` marks as failed or refused changed nothing: it reads `failed`/`refused` and
-counts towards no stat. It is empty during a durable run unless the harness tails session events
-onto the stream, and that is the run loop: a durable manifest's stream carries `run_accepted` →
-`run_status` → `final` and **no tool frames**, so the calls arrive when the thread is next hydrated
-from the snapshot. Measured against `cowork`: `write_file` was invisible until a reload, then
-appeared with its arguments intact. The section says so rather than vanishing — *Changes appear when
+counts towards no stat. During a durable run it fills as the run works: the harness tails the session log onto the
+stream as `session_event` frames (`felix-run/felix#238`) — each assistant message with its tool
+calls, and each tool result, as it lands — and the engine folds them into the in-flight turn.
+Whole messages only, never deltas. Re-measured against `cowork` on 2026-10-01: a `calculator`
+card appeared ~3s into the run, while the turn still read `Background · running`, and the answer
+~2s later. (Before #238 the stream carried `run_accepted` → `run_status` → `final` and nothing
+else, and calls appeared only on reload — the claim this paragraph used to make.) The section
+says so rather than vanishing — *Changes appear when
 the run finishes.* while `durableRunInFlight` (streaming, with the engine's `runStatus` status turn
 last) holds and the run has reported no call. The same gap hides the tool *cards* from the
 transcript, which is the bigger half of it.
@@ -433,11 +436,12 @@ Flows worth knowing before editing the app:
   only by `final`. Without that check the turn sits on `Background · running…` for the life of the
   tab while the run finishes behind it, taking the answer and the tool cards with it. Both settle
   paths, plus the `POST /chat` background path, call `EnginePorts.onDurableComplete`, which chat-ui
-  wires to `hydrateFromServer`: a durable run's stream carries no tool frames at all, so the tool
-  cards and anything derived from them exist only in the harness's transcript until something
-  re-reads it. Hydrating from there is safe **because** nothing was streamed — there is no local
-  detail for a snapshot rebuild to discard, which is not true of an ordinary run, and is why the
-  callback never fires for one.
+  wires to `hydrateFromServer`. The stream does carry the run's work — `session_event` frames,
+  whole messages tailed from the session log — but not everything the snapshot holds (labels,
+  ratings, the leaf), so the thread is re-read once at the end. Hydrating there is safe
+  **because** the in-flight turn was built from those same logged events rather than from
+  deltas: a snapshot rebuild has no local detail to discard, which is not true of an ordinary
+  run, and is why the callback never fires for one.
 - **Durable runs** — two entry points, and they behave differently. `POST /chat` may return
   `202 + resume_token`; poll `GET /chat/runs/{token}` (`pollDurableRun`). `POST /chat/stream` with a
   `spec.execution.mode: durable` manifest instead streams the run's *progress* —
