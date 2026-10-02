@@ -372,6 +372,21 @@ extra, set `FELIX_MEMORY_EMBEDDER=none` to keep full-text-only recall.
 Frontends live in [felix-run/web](https://github.com/felix-run/web). Deploy chat-ui with
 `vars.FELIX_ORIGIN` pointing at your public Felix API; docs is a static Workers site.
 
+### Browsers need a same-origin proxy
+
+Felix has no CORS layer, on purpose, so a page on another origin cannot call it directly. A
+preflight `OPTIONS` gets a 401 (or a 405 under `FELIX_AUTH_MODE=none`) with no
+`Access-Control-Allow-*` headers, and the browser stops there. A plain `GET` still reaches Felix,
+but the page cannot read the response. There is no browser login (no cookies), so a page calling
+Felix directly would have to hold a bearer token or API key, where any script on the page can read
+it.
+
+Put a server-side proxy on the page's own origin instead. It holds the credential, adds
+`Authorization`, and forwards to Felix. The chat-ui Worker does exactly this: it forwards `/api/*`
+to `FELIX_ORIGIN`, and when `CHAT_UI_KEY` is set it first checks the browser's `x-chat-key`. An
+nginx or Caddy `location /api/` block that sets the header works the same way. The CLI,
+`felix-client`, curl and other services are not browsers, so none of this applies to them.
+
 ## Where to next
 
 - [Getting Started](/guide/getting-started/) — local smoke
