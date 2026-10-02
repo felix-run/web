@@ -555,7 +555,7 @@ there is still no brand colour, and the only hue the mark ever shows is a run st
   reduced in alpha — the ring's contrast was measured at full opacity. Toggles that have a
   keyboard binding say so in their `title` and `aria-keyshortcuts`.
 - **Touch:** controls that are dense on purpose at a desk — a turn's 28px actions and rating,
-  the thread row's 24px icons, an attachment's remove — grow under the
+  the thread row's 24px icons, a drawer's close, an attachment's remove — grow under the
   `coarse:` variant (`@media (pointer: coarse)`), to 40px for the row actions. They are grown, not
   given an invisible hit slop, because a slop wider than the gap between neighbours captures
   taps meant for the next control. A control revealed on hover is revealed only where hover
