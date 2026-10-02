@@ -17,6 +17,7 @@ import {
   runEvalDataset,
 } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
+import { compact, usd } from '@/components/harness/ledger';
 import {
   CREATE_FORM,
   CreateToggle,
@@ -818,18 +819,36 @@ function AddItemForm({
  * Two runs of the same dataset against the same manifest are otherwise identical
  * on screen, which is the state this list is normally in.
  *
- * No token line: the runner records none per item (the previous version summed
- * `tokens_input`/`tokens_output` fields it had invented, and the line never
- * appeared). Cost is the Ledger's question, on `/harness/ledger`.
+ * Cost and tokens come from `run.stats`, which the harness sums from the score
+ * rows (felix-run/felix#345); a harness before that sends none and the line
+ * simply has no cost on it. The cost is the candidate's own turns, not the
+ * judge's, and it is labelled a floor whenever an item metered tokens with no
+ * price, as the Ledger labels one — an unpriced model costs something, just not
+ * something the harness knows.
  */
-function runTotals(run: EvalRun): { wallMs: number | null; toolCalls: number; toolErrors: number } {
+export function runTotals(run: EvalRun): {
+  wallMs: number | null;
+  toolCalls: number;
+  toolErrors: number;
+  tokens: number;
+  cost: number | null;
+  costIsFloor: boolean;
+  judgeFallbacks: number;
+} {
   let toolCalls = 0;
   let toolErrors = 0;
+  let costIsFloor = false;
   for (const s of run.scores) {
     toolCalls += s.tool_calls ?? 0;
     toolErrors += s.tool_errors ?? 0;
+    if (s.cost_usd === 0 && (s.tokens_input ?? 0) + (s.tokens_output ?? 0) > 0) costIsFloor = true;
   }
+  const stats = run.stats;
   return {
+    tokens: stats ? stats.tokens_input + stats.tokens_output : 0,
+    cost: stats ? stats.cost_usd : null,
+    costIsFloor,
+    judgeFallbacks: stats?.judge_fallbacks ?? run.scores.filter((s) => s.judge_fallback).length,
     // Both ends required, or the subtraction yields `NaN` and renders as one.
     wallMs:
       run.finished_at == null || !Number.isFinite(run.started_at)
@@ -928,6 +947,29 @@ function RunCard({ run }: { run: EvalRun }) {
             {` · ${run.error_count} errored`}
           </span>
         ) : null}
+        {t.tokens > 0 ? ` · ${compact(t.tokens)} tokens` : ''}
+        {t.cost != null && t.tokens > 0 ? (
+          <span
+            title={
+              t.costIsFloor
+                ? 'At least this much: an item metered tokens on a model with no price, so its cost is not in here'
+                : "The candidate's own turns; the judge's spend is not included"
+            }
+          >
+            {` · ${usd(t.cost)}${t.costIsFloor ? ' (floor)' : ''}`}
+          </span>
+        ) : null}
+        {/* Foreground rather than a failure colour: nothing failed, and that is the
+            problem — the judge could not run, the heuristic scored those items, and
+            the run reads as clean. */}
+        {t.judgeFallbacks > 0 ? (
+          <span
+            className="text-foreground"
+            title="The LLM judge could not run for these items, so the heuristic scored them instead"
+          >
+            {` · judge fell back on ${t.judgeFallbacks} ${t.judgeFallbacks === 1 ? 'item' : 'items'}`}
+          </span>
+        ) : null}
       </p>
       {run.scores.length > 0 && (
         <ul className="mt-1.5 space-y-1">
@@ -987,6 +1029,14 @@ function ScoreRow({ score }: { score: EvalRun['scores'][number] }) {
               {score.rule}
             </span>
           )}
+          {score.judge_fallback && (
+            <span
+              className="mt-0.5 shrink-0 font-mono text-xs text-foreground"
+              title={`The judge could not run${score.judge_error ? ` (${score.judge_error})` : ''}; the heuristic scored this item`}
+            >
+              heuristic
+            </span>
+          )}
           {/*
             Truncated by CSS rather than by `slice`, so the ellipsis is real and
             the full string is still in the DOM for find-in-page and for a screen
@@ -1029,16 +1079,43 @@ function ScoreRow({ score }: { score: EvalRun['scores'][number] }) {
               </p>
             </div>
           )}
+          {score.judge_fallback && (
+            <p className="text-xs text-foreground">
+              The judge could not run
+              {score.judge_error ? (
+                <>
+                  {' '}
+                  (<span className="font-mono">{score.judge_error}</span>)
+                </>
+              ) : null}
+              , so the heuristic scored this item. Its verdict is weaker than a judged one.
+            </p>
+          )}
           {score.tool_calls != null && (
             <p className="font-mono text-xs text-muted-foreground">
               {`${score.tool_calls} tool ${score.tool_calls === 1 ? 'call' : 'calls'}`}
               {score.tool_errors ? `, ${score.tool_errors} errored` : ''}
             </p>
           )}
+          {itemSpend(score) && (
+            <p className="font-mono text-xs text-muted-foreground">{itemSpend(score)}</p>
+          )}
         </CollapsibleContent>
       </Collapsible>
     </li>
   );
+}
+
+/** One item's own turn: how long, how many tokens, what it cost. */
+export function itemSpend(score: EvalRun['scores'][number]): string {
+  const parts: string[] = [];
+  if (score.duration_ms != null) parts.push(duration(score.duration_ms));
+  const tokens = (score.tokens_input ?? 0) + (score.tokens_output ?? 0);
+  if (tokens > 0) {
+    parts.push(`${compact(tokens)} tokens`);
+    if (score.cost_usd != null) parts.push(score.cost_usd === 0 ? 'unpriced' : usd(score.cost_usd));
+  }
+  return parts.join(' · ');
 }
 
 function Heading({ children }: { children: React.ReactNode }) {

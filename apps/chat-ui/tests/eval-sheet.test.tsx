@@ -245,6 +245,121 @@ describe('a run says what it did', () => {
  * new one, so the two cannot disagree; these pin its reading of the precedence
  * `_score_answer` uses, and the empty case, which is the one that gates nothing.
  */
+describe('a run says what it cost, and when its judge did not run', () => {
+  const started = Date.parse('2026-09-11T10:00:00Z');
+  const stats = (over: Record<string, unknown> = {}) => ({
+    wall_ms: 4200,
+    items_ms: 4000,
+    slowest_ms: 3000,
+    tokens_input: 1200,
+    tokens_output: 300,
+    cost_usd: 0.0123,
+    tool_calls: 0,
+    tool_errors: 0,
+    judge_fallbacks: 0,
+    ...over,
+  });
+  const run = (over: Record<string, unknown> = {}) => ({
+    id: 'r1',
+    dataset_name: 'golden',
+    candidate_manifest: 'quick',
+    status: 'completed',
+    started_at: started,
+    finished_at: started + 4200,
+    pass_count: 1,
+    fail_count: 0,
+    error_count: 0,
+    scores: [],
+    ...over,
+  });
+  const score = (over: Record<string, unknown> = {}) => ({
+    item_id: 'i1',
+    pass: true,
+    score: 1,
+    rule: 'contains',
+    answer: '42',
+    tool_calls: 0,
+    tool_errors: 0,
+    duration_ms: 1500,
+    tokens_input: 1200,
+    tokens_output: 300,
+    cost_usd: 0.0123,
+    ...over,
+  });
+
+  it("shows the run's tokens and cost from the harness's own stats", async () => {
+    await sheet({ runs: [run({ scores: [score()], stats: stats() })] });
+    await waitFor(() => expect(screen.getByText(/1\.5k tokens/)).toBeTruthy());
+    const cost = screen.getByText(/\$0\.0123/);
+    expect(cost.textContent).not.toMatch(/floor/);
+  });
+
+  it('calls the cost a floor when an item metered tokens with no price', async () => {
+    // An unpriced model's spend records as zero; summed in, the total is an
+    // underestimate, and labelling it the total is the misreading to avoid.
+    const unpriced = score({ item_id: 'i2', cost_usd: 0, tokens_input: 500, tokens_output: 100 });
+    await sheet({ runs: [run({ scores: [score(), unpriced], stats: stats() })] });
+    await waitFor(() => expect(screen.getByText(/\$0\.0123 \(floor\)/)).toBeTruthy());
+  });
+
+  it('says nothing about cost for a harness that sends no stats', async () => {
+    await sheet({
+      runs: [
+        run({
+          scores: [
+            score({ cost_usd: undefined, tokens_input: undefined, tokens_output: undefined }),
+          ],
+        }),
+      ],
+    });
+    await waitFor(() => expect(screen.getByText(/1\/1 pass/)).toBeTruthy());
+    expect(screen.queryByText(/tokens/)).toBeNull();
+    expect(screen.queryByText(/\$/)).toBeNull();
+  });
+
+  it('counts judge fallbacks on the run, in a colour that is not a failure', async () => {
+    // Nothing failed, which is the problem: the run reads as clean.
+    await sheet({
+      runs: [
+        run({ scores: [score({ judge_fallback: true })], stats: stats({ judge_fallbacks: 2 }) }),
+      ],
+    });
+    const note = await waitFor(() => screen.getByText(/judge fell back on 2 items/));
+    expect(note.className).toMatch(/\btext-foreground\b/);
+    expect(note.className).not.toMatch(/state-failed/);
+  });
+
+  it('marks the item the heuristic scored, and says why when it is opened', async () => {
+    await sheet({
+      runs: [
+        run({
+          scores: [score({ judge_fallback: true, judge_error: 'TimeoutError', rule: 'contains' })],
+          stats: stats({ judge_fallbacks: 1 }),
+        }),
+      ],
+    });
+    const marker = await waitFor(() => screen.getByText('heuristic'));
+    expect(marker.getAttribute('title')).toMatch(/TimeoutError/);
+    fireEvent.click(screen.getByRole('button', { name: /pass/i }));
+    await waitFor(() => expect(screen.getByText(/so the heuristic scored this item/)).toBeTruthy());
+    expect(screen.getByText('TimeoutError')).toBeTruthy();
+  });
+
+  it("shows an item's own duration, tokens and cost when it is opened", async () => {
+    await sheet({ runs: [run({ scores: [score()], stats: stats() })] });
+    fireEvent.click(await waitFor(() => screen.getByRole('button', { name: /pass/i })));
+    await waitFor(() => expect(screen.getByText('1.5s · 1.5k tokens · $0.0123')).toBeTruthy());
+  });
+
+  it('says an item was unpriced rather than free', async () => {
+    await sheet({
+      runs: [run({ scores: [score({ cost_usd: 0 })], stats: stats({ cost_usd: 0 }) })],
+    });
+    fireEvent.click(await waitFor(() => screen.getByRole('button', { name: /pass/i })));
+    await waitFor(() => expect(screen.getByText('1.5s · 1.5k tokens · unpriced')).toBeTruthy());
+  });
+});
+
 describe('a rubric is described as the scorer will read it', () => {
   it('lists trajectory rules first, then the one answer rule that will apply', async () => {
     const { describeRubric } = await import('../src/components/eval/eval-sheet');

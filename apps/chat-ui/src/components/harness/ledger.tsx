@@ -1121,7 +1121,7 @@ export function usd(n: number): string {
 }
 
 /** 12_400 → "12.4k". Header metas have to fit beside a title in a 22rem rail. */
-function compact(n: number): string {
+export function compact(n: number): string {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
   // `M`, not `m`: lowercase is the SI prefix for milli, and "24.7m tokens"
