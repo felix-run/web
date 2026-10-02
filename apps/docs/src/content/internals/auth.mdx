@@ -72,8 +72,13 @@ FELIX_GITHUB_ORG_TENANTS='{"acme-corp": {"id": 12345678, "tenant": "acme", "scop
 
 `POST /auth/github/device` and `POST /auth/github/token` are public, and only those two exact
 paths, only while `FELIX_GITHUB_CLIENT_ID` is set. Starting a flow spends the OAuth app's GitHub
-quota, so starts have their own hourly bucket per client address
-(`FELIX_GITHUB_DEVICE_STARTS_PER_HOUR`, default 10). Every token minted is audited in its tenant
+quota, so starts have two hourly buckets of their own: one per client address
+(`FELIX_GITHUB_DEVICE_STARTS_PER_HOUR`, default 10, with an IPv6 client keyed by its /64), and one
+for the whole deployment (`FELIX_GITHUB_DEVICE_STARTS_PER_HOUR_TOTAL`, default 300), because the
+quota is shared and a botnet is many clients. A start its client's bucket refuses does not count
+toward the total. Reaching the deployment cap refuses every new login until the hour turns
+(issued tokens are unaffected), so size it to your login volume; without `FELIX_REDIS_URL` both
+buckets are per process. Every token minted is audited in its tenant
 as `github_login`. The [REST API](/guide/rest-api/) has the request and refusal shapes.
 
 :::caution[Consent phishing is built into the device flow]
