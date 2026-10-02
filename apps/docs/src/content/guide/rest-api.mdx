@@ -86,6 +86,41 @@ Omit it and the turn is stateless.
 curl -s "$BASE_URL/health" | jq
 ```
 
+## GitHub login
+
+How a person gets a bearer token without an operator minting one. Both routes are public, and
+only while `FELIX_GITHUB_CLIENT_ID` is set; otherwise they sit behind auth like any other path.
+Setup and the rules (org → tenant, TTL, consent phishing) are in
+[Auth](/internals/auth/#github-login). `felix login` and
+`felix_client.github_device_login` drive this for you.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| `POST` | `/auth/github/device` | none | `{device_code, user_code, verification_uri, expires_in, interval}` |
+| `POST` | `/auth/github/token` | `{device_code, tenant?}` | `{access_token, token_type: "Bearer", expires_in, tenant, scopes}` |
+
+Show `user_code` and `verification_uri` to the person, then poll `/token` every `interval` seconds
+until it answers 200. A refusal is `{error, message, interval?, tenants?}`:
+
+| Status | `error` | Do |
+|---|---|---|
+| 428 | `authorization_pending` | Not approved yet. Wait `interval` (also `Retry-After`) and poll again |
+| 428 | `slow_down` | Same, at the new `interval` (or five seconds more if none is given) |
+| 400 | `expired_token`, `invalid_device_code` | The code is spent or expired. Start again |
+| 403 | `access_denied` | The person declined on GitHub |
+| 403 | `not_a_member`, `org_access_restricted`, `tenant_not_granted` | No configured org grants access (or the chosen tenant) |
+| 409 | `tenant_ambiguous` | Orgs map to several tenants, listed in `tenants`. **The flow is spent**: start a new one passing `tenant` |
+| 429 | `rate_limited` | Too many flows started from this address. `Retry-After` says how long |
+| 502 | `github_unavailable` | GitHub failed or could not be reached. Try again |
+| 503 | `github_config_error` | The server's OAuth app is misconfigured; the cause is in its log |
+
+```bash
+start=$(curl -s -X POST "$BASE_URL/auth/github/device")
+echo "$start" | jq -r '"Open \(.verification_uri) and enter \(.user_code)"'
+curl -s -X POST "$BASE_URL/auth/github/token" -H 'content-type: application/json' \
+  -d "{\"device_code\": $(echo "$start" | jq .device_code)}"
+```
+
 ## `GET /chat/stream/{thread_id}`
 
 Reattach to a thread after a dropped stream or a page refresh.
