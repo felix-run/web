@@ -32,6 +32,11 @@ export interface ShellValue {
    * claim from `streaming`, because that run was torn down.
    */
   reattaching: boolean;
+  /**
+   * The last reattach followed the operator leaving the page — on a phone, the
+   * app switch that suspended it. Cleared by the next send or thread.
+   */
+  leftApp: boolean;
   error: EngineState['error'];
   /** The engine's phase, or null while it is resting; a chip renders it. */
   sessionPhase: string | null;

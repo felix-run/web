@@ -40,6 +40,7 @@ export function Workbench() {
     turns,
     streaming,
     reattaching,
+    leftApp,
     error,
     sessionPhase,
     pending,
@@ -169,13 +170,26 @@ export function Workbench() {
                 connection went, so painting it blue claimed the one thing the copy
                 denies. Nor `failed` — nothing is broken and nobody is asked to act;
                 the reattach is only collecting what already landed. */}
-            {reattaching && (
+            {/* When the drop came from leaving the page — on a phone, switching
+                apps — say that, because it is the one cause the operator can
+                avoid next time, and say how. It outlives the reattach, which
+                takes a moment that person was not looking at. */}
+            {(reattaching || leftApp) && (
               <div
                 role="status"
                 className="mx-auto max-w-2xl rounded-lg border border-border bg-solid-muted/60 px-3 py-2 text-sm text-foreground"
               >
-                Connection dropped. That run was stopped — showing what it finished, and anything
-                still landing on this thread.
+                {leftApp ? (
+                  <>
+                    Leaving the page stopped that run — showing what it finished. To keep one going
+                    while you are away, send it with Run in background.
+                  </>
+                ) : (
+                  <>
+                    Connection dropped. That run was stopped — showing what it finished, and
+                    anything still landing on this thread.
+                  </>
+                )}
               </div>
             )}
             {error && (

@@ -962,3 +962,76 @@ describe('a ui_request is answered on the thread that asked', () => {
     expect(answer?.body).toMatchObject({ thread_id: 't1', request_id: 'u1', value: 'yes' });
   });
 });
+
+describe('a stream that went silent while the page was away', () => {
+  /**
+   * A live stream that delivers `head` and then neither ends nor errors — what a
+   * suspended phone's connection looks like on the way back — until the fetch is
+   * aborted, which is the only way out of it.
+   */
+  function hangingStream(head: string) {
+    const requests: Array<{ url: string; headers: Headers }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        requests.push({ url, headers: new Headers(init?.headers) });
+        if (url.endsWith('/chat/stream')) {
+          const body = new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new TextEncoder().encode(head));
+              init?.signal?.addEventListener('abort', () => c.error(init.signal?.reason));
+            },
+          });
+          return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+        }
+        if (url.includes('/chat/stream/')) return sse([]);
+        if (url.includes('/chat/sessions/')) return new Response(JSON.stringify({ phase: 'idle' }));
+        return new Response('{}');
+      }),
+    );
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+      newId: () => 'id',
+    });
+    engine.setTurns([{ id: 'a1', role: 'assistant', content: '', tools: [] }]);
+    return { engine, requests };
+  }
+
+  const frame = (f: unknown, id?: number) =>
+    `${id === undefined ? '' : `id: ${id}\n`}data: ${JSON.stringify(f)}\n\n`;
+
+  it('is cut and reattached from its cursor once it has missed three heartbeats', async () => {
+    const { engine, requests } = hangingStream(`${frame(delta('Hi'), 7)}: keep-alive\n\n`);
+    const done = run(engine);
+    await until(() => engine.state.turns[0]?.content === 'Hi');
+
+    expect(engine.checkLiveness(Date.now() + 10_000)).toBe(false);
+    expect(engine.checkLiveness(Date.now() + 46_000)).toBe(true);
+    await done;
+
+    const rejoin = requests.find((r) => r.url.includes('/chat/stream/t1'));
+    expect(rejoin?.headers.get('last-event-id')).toBe('7');
+    expect(engine.state.streaming).toBe(false);
+    expect(engine.state.error).toBeNull();
+  });
+
+  it('is left alone when it never showed it heartbeats, since hanging up ends the run', async () => {
+    const { engine, requests } = hangingStream(frame(delta('Hi')));
+    const done = run(engine);
+    await until(() => engine.state.turns[0]?.content === 'Hi');
+
+    expect(engine.checkLiveness(Date.now() + 10 * 60_000)).toBe(false);
+    expect(engine.state.streaming).toBe(true);
+    expect(requests.some((r) => r.url.includes('/chat/stream/t1'))).toBe(false);
+
+    engine.abort();
+    await done;
+  });
+
+  it('does nothing when no stream is open', () => {
+    const { engine } = hangingStream('');
+    expect(engine.checkLiveness(Date.now() + 60_000)).toBe(false);
+  });
+});

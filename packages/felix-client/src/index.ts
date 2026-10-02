@@ -40,6 +40,7 @@ export {
   type EnginePorts,
   type EngineState,
   type SendArgs,
+  STREAM_STALL_MS,
 } from './engine';
 export { type DescribedError, describeError } from './errors';
 export { createHttp, type FelixHttp } from './http';

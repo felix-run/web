@@ -85,6 +85,7 @@ import { middleTruncate } from '@/lib/format';
 import { ImageUploadError, uploadImages } from '@/lib/image-upload';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
+import { lastResume, onResume } from '@/lib/resume';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
 import {
@@ -122,6 +123,12 @@ const THEME_OPTIONS: ReadonlyArray<{ value: Theme; label: string; Icon: typeof S
 ];
 /** How often to ask the harness for approvals while a run is in flight. */
 const APPROVAL_POLL_MS = 2_500;
+/**
+ * How soon after the page comes back a dropped stream still counts as one the
+ * operator's leaving caused: the connection's failure surfaces on the first read
+ * after resume, or when `checkLiveness` cuts it a beat later.
+ */
+const LEFT_APP_WINDOW_MS = 10_000;
 /** How long past an approval's deadline to re-ask, so the harness has denied it by then. */
 const LAPSE_GRACE_MS = 2_000;
 
@@ -302,6 +309,23 @@ export function AppShell() {
   const reattachingRef = useRef(reattaching);
   reattachingRef.current = reattaching;
   /**
+   * The drop that started this reattach happened because the operator left —
+   * the page was hidden, or it had only just come back. On a phone that is the
+   * usual reason a run dies: switching apps suspends the page, the connection
+   * goes with it, and the harness tears down a run whose client hung up. Kept
+   * after the reattach finishes, until the next send or thread, because the
+   * reattach takes a moment and the person it is for has only just looked back.
+   */
+  const [leftApp, setLeftApp] = useState(false);
+  useEffect(() => {
+    if (!reattaching) return;
+    if (document.visibilityState === 'hidden' || Date.now() - lastResume() < LEFT_APP_WINDOW_MS) {
+      setLeftApp(true);
+    }
+  }, [reattaching]);
+  // A notice about this thread's run says nothing about the next thread's.
+  useEffect(() => setLeftApp(false), [threadId]);
+  /**
    * Mirrored at render rather than from an effect. The engine reads this for
    * every request it makes, and `hydrateFromServer` compares a slow response
    * against it to decide whether that response still belongs to the thread on
@@ -456,6 +480,26 @@ export function AppShell() {
     })();
   }, []);
   hydrateFromServerRef.current = hydrateFromServer;
+
+  /**
+   * Hydrate on return, but only when the harness holds more of the thread than
+   * this tab does — a run that finished somewhere else while the page was away.
+   * A rebuild from the snapshot drops local detail the snapshot does not carry
+   * (a turn's usage, among others), so an unconditional one on every return
+   * would cost the tab what it already had to learn nothing new.
+   */
+  const hydrateIfAhead = useCallback(
+    async (id: string) => {
+      const snap = await getSessionSnapshot(id).catch(() => null);
+      if (!snap?.transcript?.length || id !== threadIdRef.current) return;
+      const rebuilt = eventsToTurns(snapshotToEvents(snap));
+      if (rebuilt.length <= engine.state.turns.length || engine.state.streaming) return;
+      engine.setTurns(rebuilt);
+      saveTurns(id, rebuilt);
+      if (snap.phase) engine.setPhase(snap.phase);
+    },
+    [engine],
+  );
 
   const attachLease = useCallback(async (id: string) => {
     try {
@@ -733,7 +777,10 @@ export function AppShell() {
       messagesToSend: ChatMessage[],
       assistantId: string,
       mode: 'stream' | 'background' = 'stream',
-    ) => engine.send({ manifest, messages: messagesToSend, assistantId, mode }),
+    ) => {
+      setLeftApp(false);
+      return engine.send({ manifest, messages: messagesToSend, assistantId, mode });
+    },
     [engine, manifest],
   );
 
@@ -901,6 +948,27 @@ export function AppShell() {
     else if (streaming) setPresence('working');
     else setPresence('idle');
   }, [pendingQueue.length, uiPrompt, streaming]);
+
+  /**
+   * Coming back. A suspended page ran nothing while it was away — not the
+   * approval polls, whose intervals are frozen with every other timer, and not a
+   * live stream, whose connection may have died without telling its reader. So
+   * on return: ask about approvals now rather than at the next tick, let the
+   * engine cut a stream that has gone silent (it reattaches on its own), and pick
+   * up a thread that moved on without this tab.
+   */
+  const refreshTenantApprovals = useRef(tenantApprovals.refresh);
+  refreshTenantApprovals.current = tenantApprovals.refresh;
+  useEffect(
+    () =>
+      onResume(({ hiddenForMs }) => {
+        engine.checkLiveness();
+        refreshTenantApprovals.current();
+        void engine.syncApprovals();
+        if (hiddenForMs > 0 && !engine.state.streaming) void hydrateIfAhead(threadIdRef.current);
+      }),
+    [engine, hydrateIfAhead],
+  );
 
   useEffect(() => {
     const onVisibility = () => {
@@ -1623,6 +1691,7 @@ export function AppShell() {
     turns,
     streaming,
     reattaching,
+    leftApp,
     error,
     sessionPhase,
     skills,

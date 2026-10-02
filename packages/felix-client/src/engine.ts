@@ -131,7 +131,22 @@ export interface ChatEngine {
   setPhase(phase: string): void;
   /** Abort the in-flight run, if any. */
   abort(): void;
+  /**
+   * Drop a live stream that has gone silent, so the ordinary reattach path runs.
+   *
+   * For a page coming back from the background. A suspended tab's connection can
+   * die without an error ever reaching the reader, and the run then reads as live
+   * forever. Acts only on a stream that has *proved* it heartbeats — the harness
+   * sends a keep-alive every 15s on `POST /chat/stream` — and has missed three, so
+   * a healthy stream in a long tool call is never cut: hanging up tears the run
+   * down. Durable and reattach streams send no heartbeat and are never touched.
+   * Returns whether it acted.
+   */
+  checkLiveness(now?: number): boolean;
 }
+
+/** Three missed 15-second heartbeats. */
+export const STREAM_STALL_MS = 45_000;
 
 const IDLE: EngineState = {
   turns: [],
@@ -156,6 +171,14 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
   const seenApprovals = new Set<string>();
 
   let controller: AbortController | null = null;
+  /**
+   * The live `POST /chat/stream` connection, while one is open: its own abort
+   * (separate from the run's, so cutting a dead connection reads as a drop and
+   * not as Stop), when it last delivered anything, and whether it has shown it
+   * heartbeats at all.
+   */
+  let liveStream: { abort: AbortController; lastActivityAt: number; heartbeats: boolean } | null =
+    null;
   /**
    * The turn deltas currently land on. A drained steer splits the reply — the
    * harness appends the steer as a user message and keeps going — so this moves
@@ -681,21 +704,38 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         ports.onDurableComplete?.();
       };
 
+      const stream = {
+        abort: new AbortController(),
+        lastActivityAt: Date.now(),
+        heartbeats: false,
+      };
+      const stopStream = () => stream.abort.abort();
+      ctrl.signal.addEventListener('abort', stopStream, { once: true });
+      liveStream = stream;
       try {
-        await ports.client.streamChat(
-          {
-            manifest: args.manifest,
-            messages: args.messages,
-            threadId: ports.threadId(),
-            signal: ctrl.signal,
-          },
-          {
-            onEvent: (ev) => applyEvent(ev),
-            onCursor: (id) => {
-              lastEventId = id;
+        try {
+          await ports.client.streamChat(
+            {
+              manifest: args.manifest,
+              messages: args.messages,
+              threadId: ports.threadId(),
+              signal: stream.abort.signal,
             },
-          },
-        );
+            {
+              onEvent: (ev) => applyEvent(ev),
+              onCursor: (id) => {
+                lastEventId = id;
+              },
+              onActivity: ({ keepAlive }) => {
+                stream.lastActivityAt = Date.now();
+                if (keepAlive) stream.heartbeats = true;
+              },
+            },
+          );
+        } finally {
+          ctrl.signal.removeEventListener('abort', stopStream);
+          if (liveStream === stream) liveStream = null;
+        }
         /**
          * A durable stream can end **cleanly** without ever sending `final`.
          *
@@ -785,6 +825,13 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     },
     send,
     applyEvent,
+    checkLiveness(now = Date.now()) {
+      const stream = liveStream;
+      if (!stream?.heartbeats || now - stream.lastActivityAt < STREAM_STALL_MS) return false;
+      liveStream = null;
+      stream.abort.abort(new Error('stream stalled'));
+      return true;
+    },
     async syncApprovals() {
       // Taken before the request, so an approval a frame queues while it is in
       // flight is not judged against a list read before its row existed.
