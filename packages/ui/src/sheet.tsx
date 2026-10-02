@@ -73,8 +73,10 @@ function SheetContent({
             button measured 16×16, under WCAG 2.5.8's 24×24 floor, on every sheet in
             the app. The padding is what makes the target, so the icon stays the same
             size and the hit area grows around it. */}
+        {/* On a touch screen it grows to 40px: 24px is the floor for a pointer, not
+            for a finger, and this is the only way out of a drawer. */}
         {showCloseButton && (
-          <SheetPrimitive.Close className="absolute top-[calc(0.875rem+env(safe-area-inset-top,0px))] right-[max(0.875rem,env(safe-area-inset-right,0px))] flex size-6 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <SheetPrimitive.Close className="absolute top-[calc(0.875rem+env(safe-area-inset-top,0px))] right-[max(0.875rem,env(safe-area-inset-right,0px))] flex size-6 items-center justify-center rounded-sm [@media(pointer:coarse)]:size-10 opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
