@@ -4,6 +4,7 @@ import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill } from '@/components/chat/context-meter';
 import { Conversation } from '@/components/chat/conversation';
 import { Greeting, useMountLabel } from '@/components/chat/greeting';
+import { InstallHint } from '@/components/chat/install-hint';
 import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
@@ -226,6 +227,7 @@ export function Workbench() {
                 onCancel={() => void onUiCancel()}
               />
             ) : null}
+            {!empty && <InstallHint />}
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
               reattaching={reattaching}
