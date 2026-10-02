@@ -220,7 +220,7 @@ Cloud notes: `deploy/aws/README.md`, `deploy/gcp/README.md`.
 | Mode | Notes |
 |------|-------|
 | `jwt` | Preferred — set `FELIX_JWKS_PUBLIC` / verifiers. Add [GitHub login](/internals/auth/#github-login) to let people mint their own tokens from org membership |
-| `api_key` | `FELIX_AUTH_API_KEYS` map |
+| `api_key` | `FELIX_AUTH_API_KEYS` map. Tenants are the orgs sharing an install, and keys and tenants are the install operator's configuration, with no key table or key API: adding an org or a key is an edit and a restart. An org's members log in through [GitHub login](/internals/auth/#github-login) or your IdP instead |
 | `none` | **Loopback only** — see below |
 
 :::caution[`none` cannot be exposed]
