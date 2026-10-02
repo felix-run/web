@@ -7,7 +7,10 @@ import { AppErrorFallback, ErrorBoundary } from './components/error-boundary';
 import { Gate } from './components/gate';
 import { ThemeProvider } from './components/theme-provider';
 import { Toaster } from './components/toaster';
+import { registerServiceWorker } from './lib/service-worker';
 import './index.css';
+
+registerServiceWorker();
 
 // In dev the Vite proxy reaches Felix directly (no proxy Worker / secret), so
 // there's nothing to gate. In a built/deployed app, wrap App in the key gate.

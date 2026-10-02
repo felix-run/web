@@ -449,6 +449,18 @@ Flows worth knowing before editing the app:
   landed rather than imply a reply is still being written. A clean end is not the end of the thread
   — the harness closes an idle reattach at ~300s and expects the client back — so the loop re-checks
   `phase` and returns while it is still working.
+- **The service worker is `apps/chat-ui/public/sw.js`, hand-written, and it never touches
+  `/api/*`.** That is the live console: SSE, uploads, `x-chat-key`, approvals that must be current or
+  absent. It does two things: page loads go network-first, falling back to the cached shell so an
+  installed app opened offline reaches the gate's "Could not reach the server"; and hashed
+  `/assets/*` are cache-first, precached from the page's own `<script>`/`<link>` tags on install.
+  Because nothing of a run passes through it, a new version takes over at once (`skipWaiting`),
+  with no update prompt, and a deploy needs no version bump: pages are network-first and asset
+  names are hashes. Bump `VERSION` only when the caching itself changes. Cache lookups pass
+  `ignoreVary`: a module script carries `Origin`, the precache did not, and a server answering
+  `Vary: Origin` made every cached script miss. Offline, the shell loaded and stayed blank.
+  It registers in production builds only (`src/lib/service-worker.ts`). `tests/sw.test.ts` runs
+  the real file against stubbed worker globals.
 - **Coming back to a suspended page** is `src/lib/resume.ts`: `visibilitychange` to visible,
   `pageshow` from the back/forward cache, and `online`, coalesced into one call. A phone freezes
   every timer while the app is in the background, so the shell asks `/approvals` at once on return,
