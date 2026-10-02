@@ -22,6 +22,12 @@
    greeting and the composer fit together with nothing scrolled away. Measured, the
    greeting overflowed its share by 73px at 800px tall and by 6px at 900. Below it
    the composer stays docked — on a phone that is where the thumb and keyboard are. */
+/* A touch-first device. Controls that are dense on purpose at a desk (28px row
+   actions, 24px thread-row icons) grow under this to 40px, near Apple's 44pt, so a
+   finger lands on the control it aimed at. Grown rather than given an invisible
+   hit slop: a slop wider than the gap between two neighbours overlaps the next
+   one, and a tap on the edge of Edit landed on Rewind. */
+@custom-variant coarse (@media (pointer: coarse));
 @custom-variant rise (@media (min-width: 48rem) and (min-height: 58rem));
 
 /* Type ramp.
@@ -307,6 +313,21 @@
 @utility px-safe-* {
   padding-left: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-left, 0px));
   padding-right: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-right, 0px));
+}
+
+/* No zoom on focus. iOS zooms the page whenever a field under 16px takes focus, and
+   leaves it zoomed after the keyboard goes — the 13px `text-sm` most fields here use
+   did that to the thread search, every /harness form and the approval editor. Set
+   once rather than per field, *unlayered* so it outranks every `text-sm`/`text-xs`
+   utility without `!important`, and only on a coarse pointer, so the dense desk
+   layout keeps its 13px. Not `maximum-scale=1`, which would also take pinch-zoom
+   from someone who needs it. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
 
 /* A dot grid behind the transcript that fades out as it falls toward the composer.

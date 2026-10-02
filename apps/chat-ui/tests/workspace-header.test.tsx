@@ -18,6 +18,7 @@ import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 const fs = vi.hoisted(() => ({
   label: null as string | null,
+  picker: true,
   restore: { status: 'none' } as { status: string; name?: string },
   pick: vi.fn(async () => 'picked'),
   clear: vi.fn(),
@@ -33,7 +34,7 @@ vi.mock('../src/lib/cowork', () => ({
   reconnectMount: fs.reconnect,
   pickDirectory: fs.pick,
   clearMount: fs.clear,
-  supportsDirectoryPicker: () => true,
+  supportsDirectoryPicker: () => fs.picker,
   collectTouchedPaths: () => [],
 }));
 
@@ -76,6 +77,7 @@ function headerRow(): HTMLElement {
 
 beforeEach(() => {
   fs.label = null;
+  fs.picker = true;
   fs.restore = { status: 'none' };
   fs.pick.mockClear();
   fs.clear.mockClear();
@@ -129,5 +131,14 @@ describe('the workspace header', () => {
     expect(headerRow().textContent).toContain('in-tab');
     await userEvent.click(reconnect);
     expect(fs.reconnect).toHaveBeenCalledOnce();
+  });
+
+  it('says why there is no Mount where the browser has no directory picker', () => {
+    // Safari, Firefox, and so every iPhone and iPad: the buttons cannot exist, and
+    // without a line saying so their absence read as a feature that was missing.
+    fs.picker = false;
+    mount();
+    expect(screen.queryByRole('button', { name: 'Mount a folder' })).toBeNull();
+    expect(screen.getByText(/Mounting a folder needs Chrome or Edge/)).toBeTruthy();
   });
 });

@@ -1072,4 +1072,10 @@ the `toolkit-authoring` skill is how to extend it.
   a single-use dep keeps its literal version where it is. Bump a shared version in the catalog, not
   in a manifest. Note that `pnpm add` writes a **literal** version even for a package already in the
   catalog (pnpm's default `catalogMode: manual`) — fix it to `"catalog:"` by hand. See `README.md`.
+- **Touch rules live in CSS, not in each component.** Text fields are 16px under
+  `@media (pointer: coarse)` from an *unlayered* rule in `apps/chat-ui/src/index.css` — inside a
+  layer, any `text-sm` would outrank it and iOS would zoom on focus. Hover reveals are gated on
+  `[@media(hover:hover)]`, never on a width breakpoint, and dense controls grow with `coarse:`.
+  `tests/touch-affordances.test.tsx` pins the first two by shape, since happy-dom evaluates
+  neither media query.
 - Node ≥ 20, pnpm 10.33.2 (`packageManager` pinned). React 18, Tailwind v4 (CSS-first, no config file).
