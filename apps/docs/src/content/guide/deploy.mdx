@@ -329,7 +329,17 @@ keep traffic in your own network. Everything past the first three is configured 
 
 ```bash
 FELIX_MODEL_PROVIDER_OPTIONS='{"workers_ai":{"api_key":"...","account_id":"...","gateway_id":"default"}}'
-FELIX_MODEL_ROUTES='{"cf-fast":{"provider":"workers_ai","model":"@cf/meta/llama-3.3-70b-instruct-fp8-fast"}}'
+```
+
+That one entry is all the built-in Workers AI routes need: `kimi-k2-cf` (Kimi K2.6, 262K window),
+`gpt-oss-120b-cf`, `gpt-oss-20b-cf` and `glm-flash-cf`. All four call tools and are priced, so
+`limits.max_cost_usd` is enforced on them. To run on Workers AI wherever a manifest names no model,
+and move the Ollama ids and the memory embedder there as well:
+
+```bash
+FELIX_DEFAULT_MODEL_ID=kimi-k2-cf
+FELIX_MODEL_ROUTES='{"llama-3-pro":{"provider":"workers_ai","model":"@cf/openai/gpt-oss-120b"},"llama-3-fast":{"provider":"workers_ai","model":"@cf/zai-org/glm-4.7-flash"}}'
+FELIX_MEMORY_EMBEDDER=workers_ai
 ```
 
 Provider names in `FELIX_MODEL_ROUTES` are resolved against the registry at startup, so a typo fails
