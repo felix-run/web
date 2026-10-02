@@ -83,6 +83,11 @@ give the app a name nobody could mistake, tell members never to enter a code the
 request themselves, and keep the TTL short.
 :::
 
+`felix login --save` keeps one token per server in `~/.config/felix/token`, and hands each back
+only to the server that minted it. The file and its directory must be yours alone, or it is not
+used. `felix login` refuses plain `http://` except to localhost, since the token comes back over
+that connection; `--insecure` overrides that.
+
 For machines (CI, cron) there is no person to approve a code. Mint a token for them with
 `felix mint-jwt`.
 
