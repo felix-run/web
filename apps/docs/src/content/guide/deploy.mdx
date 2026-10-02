@@ -220,7 +220,7 @@ Cloud notes: `deploy/aws/README.md`, `deploy/gcp/README.md`.
 | Mode | Notes |
 |------|-------|
 | `jwt` | Preferred — set `FELIX_JWKS_PUBLIC` / verifiers. Add [GitHub login](/internals/auth/#github-login) to let people mint their own tokens from org membership |
-| `api_key` | `FELIX_AUTH_API_KEYS` map |
+| `api_key` | `FELIX_AUTH_API_KEYS` map. Keys and tenants are configuration, with no key table or key API: adding or revoking one is an edit and a restart, by design for a single-operator self-host |
 | `none` | **Loopback only** — see below |
 
 :::caution[`none` cannot be exposed]
