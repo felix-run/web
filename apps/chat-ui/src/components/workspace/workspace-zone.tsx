@@ -290,7 +290,14 @@ export function WorkspaceZone({ className }: { className?: string }) {
           >
             Reconnect {reconnectName}
           </Button>
-        ) : null}
+        ) : (
+          // Without the directory picker (Safari, Firefox, every iPhone and iPad)
+          // the mount buttons do not exist, and their silent absence read as a
+          // missing feature rather than a browser that cannot offer it.
+          <p className="mt-1 text-xs text-muted-foreground">
+            Mounting a folder needs Chrome or Edge on a computer; files here stay in this tab.
+          </p>
+        )}
 
         {/*
           Threads hang off the workspace rather than sitting beside it. The

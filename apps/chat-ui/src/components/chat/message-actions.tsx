@@ -78,10 +78,13 @@ export function MessageActions({
     );
   }
 
+  // Hidden until hover only where hover exists. This keyed on width (`sm:`) and so
+  // hid every action on an iPad, where a tap on the message does not reliably
+  // produce a hover and the invisible buttons could only be hit blind.
   return (
     <div
       className={cn(
-        'flex items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100',
+        'flex items-center gap-0.5 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
         className,
       )}
     >
@@ -91,7 +94,7 @@ export function MessageActions({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-7 text-muted-foreground dark:hover:bg-solid-accent/50"
+              className="size-7 text-muted-foreground coarse:size-10 dark:hover:bg-solid-accent/50"
               onClick={copy}
               aria-label="Copy message"
             >
@@ -107,7 +110,7 @@ export function MessageActions({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-7 text-muted-foreground dark:hover:bg-solid-accent/50"
+              className="size-7 text-muted-foreground coarse:size-10 dark:hover:bg-solid-accent/50"
               onClick={onEdit}
               aria-label="Edit this message"
             >
@@ -123,7 +126,7 @@ export function MessageActions({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-7 text-muted-foreground dark:hover:bg-solid-accent/50"
+              className="size-7 text-muted-foreground coarse:size-10 dark:hover:bg-solid-accent/50"
               onClick={() => {
                 setDraft(label ?? '');
                 setEditing(true);
@@ -142,7 +145,7 @@ export function MessageActions({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-7 text-muted-foreground dark:hover:bg-solid-accent/50"
+              className="size-7 text-muted-foreground coarse:size-10 dark:hover:bg-solid-accent/50"
               onClick={onRewind}
               aria-label="Rewind the thread to this message"
             >
@@ -169,7 +172,7 @@ export function MessageActions({
               variant="ghost"
               size="xs"
               className="text-muted-foreground dark:hover:bg-solid-accent/50"
-              restingClassName="size-7 px-0"
+              restingClassName="size-7 px-0 coarse:size-10"
               aria-label="Regenerate response"
               question="Replace this answer? The thread's server log is reset and replayed as text, so tool results in it are dropped."
               confirmLabel="Regenerate"

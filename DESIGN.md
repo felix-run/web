@@ -554,6 +554,13 @@ there is still no brand colour, and the only hue the mark ever shows is a run st
 - **Focus:** `focus-visible:ring-[3px]` at `--ring` plus a border shift. Never removed, never
   reduced in alpha — the ring's contrast was measured at full opacity. Toggles that have a
   keyboard binding say so in their `title` and `aria-keyshortcuts`.
+- **Touch:** controls that are dense on purpose at a desk — a turn's 28px actions and rating,
+  the thread row's 24px icons, an attachment's remove — grow under the
+  `coarse:` variant (`@media (pointer: coarse)`), to 40px for the row actions. They are grown, not
+  given an invisible hit slop, because a slop wider than the gap between neighbours captures
+  taps meant for the next control. A control revealed on hover is revealed only where hover
+  exists (`[@media(hover:hover)]:opacity-0 …:group-hover:opacity-100`), never by width: `sm:`
+  hid every turn action on an iPad.
 
 ### Panels and sections
 
@@ -769,7 +776,9 @@ status line announces the last minute and the lapse once each.
 
 ### Inputs
 
-`bg-background` with a `--input` border, `rounded-md`, focus ring as above. The composer is the
+`bg-background` with a `--input` border, `rounded-md`, focus ring as above. On a coarse pointer
+every text field is 16px, from one unlayered rule in `index.css` rather than per field: iOS zooms
+the page when a smaller field takes focus, and leaves it zoomed. The composer is the
 signature case: a lifted, opaque `card` surface, `rounded-2xl`, with an anchored send control,
 banners docked directly above it, a slash menu that opens upward, and a hint line beneath it at
 11px that names the keys worth learning from there — Enter, ⇧Enter, and (from `md` up) the

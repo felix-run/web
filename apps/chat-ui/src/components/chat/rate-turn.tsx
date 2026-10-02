@@ -120,7 +120,7 @@ export function RateTurn({
             aria-pressed={pressed}
             aria-label={pressed ? `${verb} (click to clear)` : verb}
             className={cn(
-              'size-7 dark:hover:bg-solid-accent/50',
+              'size-7 coarse:size-10 dark:hover:bg-solid-accent/50',
               pressed ? 'text-foreground' : 'text-muted-foreground',
             )}
             onClick={() => {
@@ -146,7 +146,7 @@ export function RateTurn({
         'flex items-center gap-0.5',
         rating
           ? ''
-          : 'opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100',
+          : 'opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
       )}
     >
       {button('up')}
