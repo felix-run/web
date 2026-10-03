@@ -4,7 +4,6 @@ import { Progress } from '@felix/ui/progress';
 import type { LanguageModelUsage } from 'ai';
 import type { ComponentProps } from 'react';
 import { createContext, useContext, useMemo } from 'react';
-import { getUsage } from 'tokenlens';
 import { cn } from '@/lib/utils';
 
 const PERCENT_MAX = 100;
@@ -33,6 +32,18 @@ const useContextValue = () => {
 
   return context;
 };
+
+/**
+ * Felix never prices on the client: the harness prices every call with its own
+ * catalog (the Ledger's figures), and a second, third-party price would disagree
+ * with it. Upstream imported `tokenlens` here for that, and its model catalog
+ * landed in the app's main chunk — ~290 KB on every page load — for a cost line
+ * this app never shows. Every row below prices only when given a `modelId`,
+ * which nothing passes.
+ */
+const getUsage = (_: { modelId: string; usage: Record<string, number> }) => ({
+  costUSD: undefined as { totalUSD?: number } | undefined,
+});
 
 export type ContextProps = ComponentProps<typeof HoverCard> & ContextSchema;
 

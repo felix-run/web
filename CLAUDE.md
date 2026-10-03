@@ -1142,7 +1142,27 @@ installed every npm dependency there (plus a bogus `cn` package, the registry's 
 rewrote the catalog in `pnpm-workspace.yaml` stripping its comments, and hung. Install by reading
 the registry JSON and writing files with imports rewritten, as this one was.
 
-**Only one is wired in: `FileTree`**, for the workspace's Files list, which was a flat column of
+**Wired in (2026-10-03):** FileTree (below); **CodeBlock** and **Terminal** in the tool card —
+JSON input/output highlighted with a copy control, a shell result's streams with ANSI colour;
+**Plan**, drawn in the turn from the `deep` pattern's `plan_create`/`plan_update_step`/`plan_get`
+calls, each of which returns the whole plan (`src/lib/plan-calls.ts`; one card per plan where it
+first appears, newest state, the later calls folded except in verbose); a **version switcher** on
+an edited message, from `branchPoints` in `@felix/client` (`MessageBranch` itself holds every
+version client-side, so the selector is rebuilt from the same `ButtonGroup`); **Context**, the
+meter's hover/focus breakdown, *without* its cost line — it prices from `tokenlens`, the harness
+prices calls itself, and two prices for one call would disagree with the Ledger; and
+**Checkpoint**, a restore point after a labelled turn. Two traps found on the way: `shiki` is
+pinned to the 3.x line streamdown uses, or the bundle carries two; and `ansi-to-react` is
+CommonJS whose default import Vite's dev bundle resolves to the module object — the app crashed
+on opening any shell result while every test passed, so `terminal.tsx` unwraps it. StackTrace
+stays unused: harness tool errors are `[tool error/<code>] message`, with no frames to parse. **Watch
+the main chunk when wiring one in**: `context.tsx` imported `tokenlens` for its cost line and
+`plan.tsx` rendered through the `motion`-based `Shimmer`, and between them the entry chunk grew
+~290 KB for a price this app never shows and an animation the CSS `shimmer` utility already does.
+Both are edited out (`tokenlens` is no longer a dependency), and the entry chunk ended smaller
+than before. Compare `dist/assets/index-*.js` against main, not just the total.
+
+**FileTree was the first wired in**, for the workspace's Files list, which was a flat column of
 up to 200 paths (`buildTree` in `src/lib/file-tree.ts` reads both stores' `d <path>` / `f <path>`
 entries — the old list printed those prefixes verbatim). Every other component either duplicates
 something chat-ui already renders with Felix-specific behaviour — message, conversation, tool,
@@ -1150,7 +1170,8 @@ reasoning, attachments, confirmation (the approval card), context (the meter), m
 (the agent picker), suggestion (starters), queue (the queued-messages tray), test-results (the
 eval run cards), speech-input — or has no Felix data to show (stack-trace, commit, package-info,
 environment-variables, the xyflow canvas). Adopting one of the first group means *replacing* a
-component its tests pin, not filling a gap. `file-tree.tsx` was edited on the way in: folder icons
+component its tests pin, not filling a gap. `context.tsx` was edited too: its rows printed `$0.00`
+with no model to price against, which reads as free rather than unpriced. `file-tree.tsx` was edited on the way in: folder icons
 were `text-blue-500` (blue is `running` here), and each folder was three Tab stops — its wrapper,
 an unlabelled chevron and a name button that did nothing without `onSelect` — so a folder is now
 one stop, its name, which toggles it, and a file is a stop only when selecting does something.

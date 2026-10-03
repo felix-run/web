@@ -83,8 +83,6 @@ export function ContextMeter({
       aria-valuemax={window}
       aria-valuenow={Math.min(used, window)}
       aria-valuetext={`${pct}% — ${detail}`}
-      // Focusable, so the breakdown opens from the keyboard as well as on hover.
-      tabIndex={0}
       title={detail}
       // Below `sm` it yields to the agent picker, whose name it otherwise squeezed
       // to a bare chevron at 390px — which agent the next message goes to matters
@@ -117,7 +115,21 @@ export function ContextMeter({
   // `$0`. Two prices for one call would be worse than one.
   return (
     <Context usedTokens={Math.min(used, window)} maxTokens={window} usage={sdkUsage(usage)}>
-      <ContextTrigger>{meter}</ContextTrigger>
+      {/* A button, so the breakdown opens from the keyboard as well as on hover;
+          the meter inside it is still what a reader hears. */}
+      <ContextTrigger>
+        <button
+          type="button"
+          aria-label="Context window breakdown"
+          // Hidden wherever the meter is, or a phone would tab to an empty button.
+          className={cn(
+            'shrink-0 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring',
+            !full && 'hidden sm:block',
+          )}
+        >
+          {meter}
+        </button>
+      </ContextTrigger>
       <ContextContent align="end" className="w-64">
         <ContextContentHeader />
         <ContextContentBody className="space-y-1.5 text-xs">

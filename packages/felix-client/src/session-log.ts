@@ -420,7 +420,7 @@ export function branchPoints(snapshot: SessionSnapshot): Map<string, BranchPoint
       .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
     if (versions.length < 2) continue;
     const tips = versions.map(tipOf);
-    versions.forEach((v, index) => out.set(v.id, { index, tips }));
+    for (const [index, v] of versions.entries()) out.set(v.id, { index, tips });
   }
   return out;
 }

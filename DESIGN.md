@@ -753,6 +753,20 @@ every second is noise.
   longer holds is `error`: an image-off icon, the failure-tinted border, and *Image no longer
   stored* wrapped to two lines rather than truncated. The composer draws pending files the same
   way, with a remove control that is always on screen.
+- **Tool output is highlighted where it is code.** JSON arguments and results are syntax-coloured
+  (the code block's own palette, not the state ramp — it is code, not status) with a copy control,
+  still wrapped and capped at 16rem. A shell result's stdout and stderr each sit in a terminal
+  panel on the code surface, ANSI colour drawn as colour, each with its own copy.
+- **A plan is a card in the turn.** Title and goal, `3 of 7 done` in mono as the header's value,
+  then the steps: an icon in the state ramp (done green, in progress blue, failed red, pending
+  muted) beside the agent's own status word, never the colour alone. Open while any step is
+  left. One card per plan, where it first appears.
+- **An edited message says it has versions.** `‹ 2 of 3 ›` in 11px mono beside *You*, always
+  visible; a switch rewinds the thread to that version.
+- **A labelled turn is a restore point.** After it, a bookmark, the label and *Restore*, then a
+  hairline to the edge.
+- **The context meter opens a breakdown** on hover or focus — the window bar, then input,
+  cache and output for the last reply. No price: the Ledger is where spend is read.
 - **The workspace's files are a tree.** Mono 11px, folders before files, the icons muted —
   never coloured, since colour here is state. It opens onto the work: folders holding a path
   this thread wrote or edited start expanded and those files are in the foreground, the rest
