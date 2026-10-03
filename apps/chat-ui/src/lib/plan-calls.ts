@@ -85,6 +85,30 @@ export function planFromCall(tool: ToolCall): PlanState | null {
  * state, so it does not jump down the turn as steps check off; the calls after
  * the first are what it summarises.
  */
+/**
+ * Step titles as the agent *sent* them to `plan_create`, by step id.
+ *
+ * The harness stores a step's title from `title` or `text` only, and a model
+ * that writes `description` (or `name`) gets every step stored with an empty
+ * title — measured on :8080 on 2026-10-03, where all three steps of a `deep` run's
+ * plan came back `"title": ""`. The words are still in the call's arguments, so
+ * they are read from there when the stored title is empty.
+ */
+function sentTitles(tool: ToolCall): Map<string, string> {
+  const out = new Map<string, string>();
+  const steps = (tool.input as { steps?: unknown } | undefined)?.steps;
+  if (!Array.isArray(steps)) return out;
+  steps.forEach((raw, i) => {
+    const s = typeof raw === 'string' ? { title: raw } : (raw as Record<string, unknown> | null);
+    if (!s) return;
+    const title = [s.title, s.text, s.description, s.name].find(
+      (v): v is string => typeof v === 'string' && v.trim() !== '',
+    );
+    if (title) out.set(String(s.id ?? i + 1), title);
+  });
+  return out;
+}
+
 export function plansInTurn(tools: readonly ToolCall[] | undefined): {
   latest: Map<string, PlanState>;
   /** Index of the call each plan's card is drawn at. */
@@ -95,9 +119,15 @@ export function plansInTurn(tools: readonly ToolCall[] | undefined): {
   const latest = new Map<string, PlanState>();
   const anchorOf = new Map<number, string>();
   const folded = new Set<number>();
+  const titles = new Map<string, Map<string, string>>();
   (tools ?? []).forEach((tool, i) => {
     const plan = planFromCall(tool);
     if (!plan) return;
+    if (tool.name === 'plan_create') titles.set(plan.id, sentTitles(tool));
+    const sent = titles.get(plan.id);
+    if (sent) {
+      for (const step of plan.steps) if (!step.title) step.title = sent.get(step.id) ?? '';
+    }
     if (!latest.has(plan.id)) anchorOf.set(i, plan.id);
     else folded.add(i);
     latest.set(plan.id, plan);
