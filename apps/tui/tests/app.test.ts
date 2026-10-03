@@ -268,6 +268,48 @@ describe('slash commands', () => {
     h.restore();
   });
 
+  it('/version <n> rewinds to the newest event under that version of the edited message', async () => {
+    // u2 was edited into u2b: both hang off a1, and a2b is the leaf.
+    const ev = (id: string, seq: number, role: 'user' | 'assistant', parent?: string) => ({
+      id,
+      seq,
+      kind: 'message',
+      role,
+      content: `text ${id}`,
+      ...(parent ? { metadata: { parent_id: parent } } : {}),
+    });
+    const { ui, h, frame } = await run('/version 1', {
+      routes: {
+        '/chat/sessions/': {
+          leafId: 'a2b',
+          transcript: [
+            ev('u1', 1, 'user'),
+            ev('a1', 2, 'assistant', 'u1'),
+            ev('u2', 3, 'user', 'a1'),
+            ev('a2', 4, 'assistant', 'u2'),
+            ev('u2b', 5, 'user', 'a1'),
+            ev('a2b', 6, 'assistant', 'u2b'),
+          ],
+        },
+        '/chat/sessions': { sessions: [] },
+      },
+    });
+    await ui.until(() => h.to('/chat/rewind').length > 0);
+    // Version 1 is the original; its thread ends at a2, not at the message itself.
+    expect((h.to('/chat/rewind')[0]?.body as { event_id?: string })?.event_id).toBe('a2');
+    await ui.until(() => shows(frame(), 'version 2 of 2'));
+    ui.stop();
+    h.restore();
+  });
+
+  it('/version says so when no message on the branch was edited', async () => {
+    const { ui, h, frame } = await run('/version 2');
+    await ui.until(() => shows(frame(), 'no edited message on this branch'));
+    expect(h.to('/chat/rewind')).toHaveLength(0);
+    ui.stop();
+    h.restore();
+  });
+
   it('/quit leaves exactly once', async () => {
     let exits = 0;
     const { ui, h } = await run('/quit', { onExit: () => exits++ });

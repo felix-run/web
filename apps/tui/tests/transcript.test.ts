@@ -23,6 +23,10 @@ import { hasAttribute, lines, mount, shows, styleOf, testTheme } from './render'
 const DIM = createTextAttributes({ dim: true });
 const BOLD = createTextAttributes({ bold: true });
 
+/** A theme colour as a span reports one: three channels, no alpha. */
+const rgb = (c: unknown) =>
+  (c as { toInts(): number[] }).toInts().slice(0, 3) as [number, number, number];
+
 const user = (content: string): Turn => ({
   id: `u-${content}`,
   role: 'user',
@@ -522,8 +526,6 @@ describe('reasoning while it is written', () => {
  * turn. It is drawn in the state colour it reports, not as a reply.
  */
 describe('a durable run in flight', () => {
-  const rgb = (c: unknown) =>
-    (c as { toInts(): number[] }).toInts().slice(0, 3) as [number, number, number];
   const status = (content: string, runStatus: 'running' | 'blocked'): Turn => ({
     id: 'a7',
     role: 'assistant',
@@ -642,6 +644,84 @@ describe('a note', () => {
       expect(shows(frame, 'note · system · not sent to the model')).toBe(true);
       expect(shows(frame, 'Prefer the staging bucket.')).toBe(true);
       expect(shows(frame, '› Prefer')).toBe(false);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+describe("the agent's plan", () => {
+  const plan = (steps: Array<[string, string]>) =>
+    JSON.stringify({
+      id: 'p1',
+      plan: {
+        title: 'Migrate billing',
+        goal: 'Move cents to a bigint column',
+        steps: steps.map(([title, status], i) => ({ id: String(i + 1), title, status })),
+        status: 'active',
+      },
+    });
+  const call = (name: string, output: string) => ({ name, input: {}, output, done: true });
+
+  it('is one block at its newest state, in place of the calls that built it', async () => {
+    const turn: Turn = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      tools: [
+        call(
+          'plan_create',
+          plan([
+            ['Add column', 'pending'],
+            ['Backfill', 'pending'],
+          ]),
+        ),
+        call('read_file', 'schema.sql contents'),
+        call(
+          'plan_update_step',
+          plan([
+            ['Add column', 'done'],
+            ['Backfill', 'in_progress'],
+          ]),
+        ),
+      ],
+    };
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [turn] }), {
+      width: 80,
+      height: 16,
+    });
+    try {
+      const f = ui.frame();
+      expect(shows(f, 'Migrate billing  1 of 2 done')).toBe(true);
+      expect(shows(f, '✓ Add column')).toBe(true);
+      expect(shows(f, '◌ Backfill · in_progress')).toBe(true);
+      // The other call is still a card; the plan calls are not.
+      expect(shows(f, 'read_file')).toBe(true);
+      expect(f).not.toContain('plan_update_step');
+      expect(f).not.toContain('plan_create');
+      expect(styleOf(ui.spans(), '◌')?.fg).toEqual(rgb(testTheme.running));
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+describe('an edited message', () => {
+  it('says which version it is and how to switch', async () => {
+    const turn: Turn = { ...user('try again'), eventId: 'e2' };
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [turn, user('unedited')],
+        branches: new Map([['e2', { index: 1, tips: ['t1', 't2', 't3'] }]]),
+      }),
+      { width: 60, height: 8 },
+    );
+    try {
+      const f = ui.frame();
+      expect(shows(f, 'version 2 of 3 · /version <n>')).toBe(true);
+      // Only the message that has versions carries the line.
+      expect(f.match(/version \d of/g)?.length).toBe(1);
     } finally {
       ui.stop();
     }

@@ -1,4 +1,4 @@
-import type { ToolCall } from '@/types';
+import type { ToolCall } from './turns';
 
 /**
  * Plans, read off the transcript.
@@ -14,7 +14,7 @@ export const PLAN_TOOLS = new Set(['plan_create', 'plan_update_step', 'plan_get'
 
 export type StepState = 'done' | 'running' | 'failed' | 'pending';
 
-export interface PlanStep {
+export interface PlanCallStep {
   id: string;
   title: string;
   state: StepState;
@@ -27,7 +27,7 @@ export interface PlanState {
   id: string;
   title: string;
   goal: string;
-  steps: PlanStep[];
+  steps: PlanCallStep[];
 }
 
 /** The agent writes statuses freely; these are the spellings it uses for each state. */
@@ -80,12 +80,6 @@ export function planFromCall(tool: ToolCall): PlanState | null {
 }
 
 /**
- * For one turn: the newest state of each plan, and which tool calls the plan card
- * stands in for. The card goes where the plan first appears and shows its newest
- * state, so it does not jump down the turn as steps check off; the calls after
- * the first are what it summarises.
- */
-/**
  * Step titles as the agent *sent* them to `plan_create`, by step id.
  *
  * The harness stores a step's title from `title` or `text` only, and a model
@@ -109,6 +103,12 @@ function sentTitles(tool: ToolCall): Map<string, string> {
   return out;
 }
 
+/**
+ * For one turn: the newest state of each plan, and which tool calls the plan card
+ * stands in for. The card goes where the plan first appears and shows its newest
+ * state, so it does not jump down the turn as steps check off; the calls after
+ * the first are what it summarises.
+ */
 export function plansInTurn(tools: readonly ToolCall[] | undefined): {
   latest: Map<string, PlanState>;
   /** Index of the call each plan's card is drawn at. */

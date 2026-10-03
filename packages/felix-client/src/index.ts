@@ -119,6 +119,14 @@ export type {
   UsageSummaryItem,
   UsageSummaryTotals,
 } from './management/usage';
+export {
+  PLAN_TOOLS,
+  type PlanCallStep,
+  type PlanState,
+  planFromCall,
+  plansInTurn,
+  type StepState,
+} from './plans';
 export { type ReattachOptions, reattachThread } from './reattach';
 export {
   type BranchPoint,

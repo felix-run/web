@@ -80,7 +80,7 @@ harness serves, and a command is the only thing that exposes one here — so a v
 
 ```
 /new /clear /continue /think <level> /manifest [name] /quit
-/rename <name> /fork /compact /export [file] /rewind [n]
+/rename <name> /fork /compact /export [file] /rewind [n] /version <n>
 /search <text> /open <n|thread-id> /refresh
 ```
 
