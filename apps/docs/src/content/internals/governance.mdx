@@ -58,7 +58,8 @@ A control that cannot run has not cleared anything, so unavailability is never t
     the action is counted as `felix_content_screening{action="image_unscreened"}`.
   - An after-tool hook that rewrites the text removes the images too.
   - At the door, images on a caller's non-user messages (`role: tool`, `assistant`) are removed,
-    because inbound screening reads only user turns.
+    because inbound screening reads only user turns. The same applies to a queue write-back to
+    `/internal` that is not a user message.
 - **Decider judges** fall back to the model judge and then the heuristic on any failure, and do not
   judge text longer than 8,000 characters — a prefix judge would pass filler followed by a payload.
 - **The PII guardrail** falls back to three regexes (email, US SSN, card-like digit runs) when

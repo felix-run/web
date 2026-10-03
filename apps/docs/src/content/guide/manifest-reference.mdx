@@ -448,7 +448,7 @@ the default image.
 
 `screenshot` returns the viewport as an **image the model sees**, not base64 text. It rides on the
 tool result and is stored in the attachment store under the request's tenant, with the same quota
-and retention as an upload. A run keeps at most 16 tool images, and 4 from any one call. The browser
+and retention as an upload. A request keeps at most 16 tool images across every agent it runs, and 4 from any one call. The browser
 is untrusted, so under `content_screening` each screenshot is screened by
 `content_screening.image_model`. **Without `image_model` every screenshot is quarantined**, and the
 build logs a warning saying so: set `image_model` to let screenshots through. A screenshot over 600
