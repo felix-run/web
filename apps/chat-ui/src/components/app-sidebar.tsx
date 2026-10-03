@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
+import { BrandToggle, Wordmark } from '@/components/brand-mark';
 import { ThreadList } from '@/components/chat/thread-list';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { WorkspaceSection } from '@/components/workspace/workspace-section';
@@ -57,7 +58,7 @@ export function AppSidebar() {
     exportThread,
     tenantApprovals,
   } = useShell();
-  const { state, isMobile, setOpen, setOpenMobile } = useSidebar();
+  const { state, open, isMobile, setOpen, setOpenMobile, toggleSidebar } = useSidebar();
   const collapsed = state === 'collapsed' && !isMobile;
   const navigate = useNavigate();
   const onHarness = !!useMatch('/harness/*');
@@ -101,6 +102,41 @@ export function AppSidebar() {
 
   return (
     <Sidebar title="Navigation" sheetProps={{ 'data-shortcut-surface': 'workspace' }}>
+      {/* The brand, at the sidebar's top edge and on the header's line: the same
+          height, inset and rule, so the two read as one bar. The mark is the
+          sidebar's toggle — the sidebar runs full height now, and the header no
+          longer carries a panel button or a slot held empty for one.
+
+          The mark sits 8px in, which is where the menu's icons sit, so collapsed
+          to icons it heads their column; the wordmark beyond it is clipped by the
+          panel's edge as it narrows rather than snapping out. Inline, the wordmark
+          is the page's `h1`; in the drawer the header behind it already holds
+          that, so it is a span here. */}
+      <div
+        data-slot="sidebar-brand"
+        className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-2 border-b border-border/60 px-2 pt-safe"
+      >
+        {isMobile ? (
+          <BrandToggle
+            open
+            onClick={() => setOpenMobile(false)}
+            aria-label="Close sidebar"
+            title="Close sidebar"
+          />
+        ) : (
+          <BrandToggle
+            open={open}
+            onClick={toggleSidebar}
+            // The header's old toggle's name and state, kept: what a reader hears
+            // and what the keyboard layer's tests find did not move with it.
+            aria-label="Sidebar"
+            aria-pressed={open}
+            aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
+            title={`${open ? 'Collapse' : 'Expand'} sidebar (${shortcutLabel('toggle-workspace', mac)})`}
+          />
+        )}
+        <Wordmark heading={!isMobile} />
+      </div>
       <SidebarHeader className="pb-1">
         <SidebarMenu>
           <SidebarMenuItem>

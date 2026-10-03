@@ -446,7 +446,8 @@ describe('the header with every mode on and a run blocked', () => {
     await send();
 
     const header = document.querySelector('header') as HTMLElement;
-    const wordmark = header.querySelector('h1') as HTMLElement;
+    // The app's name: in the header below 1024, at the top of the sidebar above.
+    const wordmark = document.querySelector('h1') as HTMLElement;
     expect(wordmark.textContent).toBe('Felix');
     // The wordmark never yields: no `truncate`, and it does not shrink.
     expect(wordmark.className).toContain('shrink-0');
@@ -480,7 +481,7 @@ describe('the header with every mode on and a run blocked', () => {
     expect(canary.className).not.toMatch(/(^|\s)max-sm:hidden(\s|$)/);
     // And past that the cluster clips at its own edge rather than running under
     // the controls on the right.
-    const cluster = wordmark.parentElement as HTMLElement;
+    const cluster = header.querySelector('[data-slot="header-state"]') as HTMLElement;
     expect(cluster.className).toMatch(/(^|\s)min-w-0(\s|$)/);
     expect(cluster.className).toMatch(/(^|\s)overflow-hidden(\s|$)/);
 
