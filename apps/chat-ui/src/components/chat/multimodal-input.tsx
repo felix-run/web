@@ -1065,7 +1065,7 @@ function AttachmentsPreview() {
         const image = file.mediaType?.startsWith('image');
         const name = file.filename ?? 'attachment';
         return (
-          <Attachment key={file.id} orientation="vertical" size="sm">
+          <Attachment key={file.id} orientation="vertical">
             <AttachmentMedia variant={image ? 'image' : 'icon'}>
               {image ? <img src={file.url} alt={name} /> : <FileIcon aria-hidden />}
             </AttachmentMedia>

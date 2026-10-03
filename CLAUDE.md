@@ -433,6 +433,19 @@ Flows worth knowing before editing the app:
   reply's 10rem stand-in and missed by ~900px at 1440. `OpenAtLastAnchor` makes that opening jump
   itself, because a cached thread has rows on the first render, before the scroller's own default
   can apply. `tests/conversation.test.tsx` pins the anchors and the full-height rows.
+
+  Three more were found only against a live harness (2026-10-03), where a thread opens from the
+  local cache and is then rebuilt from the snapshot. **The viewport is `overflow-anchor: none`**:
+  the browser's scroll anchoring locked onto a node in the reply and dragged the view down as it
+  streamed, taking the question just anchored off the top (80px → -381px, no input). **The row is
+  keyed by position, the message inside it by turn**: the scroller remembers which anchors it has
+  handled *by DOM element*, so a rebuild that re-minted turn ids re-created every row and it jumped
+  to the first anchor. **The opening position is held while the thread settles**: rows above the
+  question keep growing after the jump (the rebuild, late highlighting), and with the browser's
+  anchoring off nothing compensated — the question slid ~6,000px down. `OpenAtLastAnchor` moves the
+  viewport by the drift on every content resize until the reader scrolls, touches, presses a key
+  or the content is still for 1.5s. For a message just sent it holds the scroller's own placement
+  rather than re-aiming, so the previous turn still peeks above it.
 - **`shimmer` and `scroll-fade-*` are vendored** into `src/chat-utilities.css`, not imported from the
   CLI package's `tailwind.css`, which also redefines `data-open`, `data-checked` and the other
   `data-*` variants this app uses with their plain Tailwind meaning. Pair `shimmer` with

@@ -219,33 +219,37 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
 
   return (
     <SidebarGroup className="pt-1">
-      <SidebarGroupLabel asChild>
-        <button
-          type="button"
-          aria-expanded={shown}
-          aria-controls="sidebar-harness"
-          onClick={() =>
-            setFolded((f) => {
-              try {
-                localStorage.setItem(HARNESS_FOLD_KEY, f ? '0' : '1');
-              } catch {
-                // Storage blocked: the fold lasts for this page.
-              }
-              return !f;
-            })
-          }
-          className="w-full hover:text-foreground"
-        >
-          Harness
-          <ChevronRightIcon
-            aria-hidden
-            className={cn(
-              'ml-auto transition-transform duration-200 ease-out motion-reduce:transition-none',
-              shown && 'rotate-90',
-            )}
-          />
-        </button>
-      </SidebarGroupLabel>
+      {/* Not rendered while collapsed: the label is faded out there, and a fold
+          button nobody can see was still a Tab stop. The rows can't fold then anyway. */}
+      {!collapsed && (
+        <SidebarGroupLabel asChild>
+          <button
+            type="button"
+            aria-expanded={shown}
+            aria-controls="sidebar-harness"
+            onClick={() =>
+              setFolded((f) => {
+                try {
+                  localStorage.setItem(HARNESS_FOLD_KEY, f ? '0' : '1');
+                } catch {
+                  // Storage blocked: the fold lasts for this page.
+                }
+                return !f;
+              })
+            }
+            className="w-full hover:text-foreground"
+          >
+            Harness
+            <ChevronRightIcon
+              aria-hidden
+              className={cn(
+                'ml-auto transition-transform duration-200 ease-out motion-reduce:transition-none',
+                shown && 'rotate-90',
+              )}
+            />
+          </button>
+        </SidebarGroupLabel>
+      )}
       <SidebarGroupContent id="sidebar-harness" hidden={!shown}>
         <nav aria-label="Harness" onKeyDown={walkNav}>
           {GROUPS.map(({ key, label }, gi) => (

@@ -56,4 +56,10 @@ describe('Conversation', () => {
       document.querySelector('[data-slot=message-scroller-content]')?.getAttribute('aria-busy'),
     ).toBe('true');
   });
+
+  it("turns off the browser's scroll anchoring, which fought the scroller's", () => {
+    mount([{ id: 'turn-0', anchor: true }]);
+    const viewport = document.querySelector('[data-slot=message-scroller-viewport]');
+    expect(viewport?.className).toContain('[overflow-anchor:none]');
+  });
 });

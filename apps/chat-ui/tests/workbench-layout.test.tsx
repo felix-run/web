@@ -228,7 +228,9 @@ describe('the sidebar', () => {
       expect(
         screen.getByRole(name === 'Ledger' ? 'link' : 'button', { name: new RegExp(`^${name}`) }),
       ).toBeTruthy();
-    }
+    } // The Harness label is faded out when collapsed; its fold button must not
+    // linger as a Tab stop nobody can see.
+    expect(screen.queryByRole('button', { name: 'Harness' })).toBeNull();
   });
 });
 
