@@ -446,6 +446,15 @@ the default image.
 | `args_schema` | JSON Schema \| null | `null` |
 | `fatal` | bool | `false` |
 
+`screenshot` returns the viewport as an **image the model sees**, not base64 text. It rides on the
+tool result and is stored in the attachment store under the request's tenant, with the same quota
+and retention as an upload. A request keeps at most 16 tool images across every agent it runs, and 4 from any one call. The browser
+is untrusted, so under `content_screening` each screenshot is screened by
+`content_screening.image_model`. **Without `image_model` every screenshot is quarantined**, and the
+build logs a warning saying so: set `image_model` to let screenshots through. A screenshot over 600
+KiB is reported by size instead. `pdf` is not an image either wire can show and is still returned
+inline as text, up to 32 KB.
+
 ## `spec.search_tools`
 
 Search the web through the backend an **operator** configured. The model supplies a query,
@@ -1167,7 +1176,7 @@ Screens tool **output** for prompt injection before the model sees it.
 | `on_flag` | `quarantine` \| `block` | `quarantine` | Applies to output that is flagged **and** to output that could not be screened. |
 | `decider` | bool | `false` | Also ask [`spec.decider`](#specdecider): injection, jailbreak and exfiltration in one call. |
 | `model_tools` | string[] (globs) | `[]` | Which screened tools get the **paid** scoring — `model` and `decider`. Empty = every screened tool. Needs `model` or `decider: true`. |
-| `image_model` | string | `""` | A vision model that reads the text in each **user image**; the transcript is screened like typed text and `on_flag` applies per image. Empty = images are not screened. Needs `enabled: true`. |
+| `image_model` | string | `""` | A vision model that reads the text in each **user image**, and in each image a screened tool returns; the transcript is screened like typed text. `on_flag` applies per user image; a tool's image is always quarantined, never refused. Empty = user images are not screened, and an untrusted tool's images are quarantined. Needs `enabled: true`. |
 
 `decider` is **additive**: the markers run first, `model` runs beside it, either one flagging flags,
 and either one unable to run leaves the text unscreened rather than cleared. A decider is not
