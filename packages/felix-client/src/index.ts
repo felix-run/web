@@ -71,6 +71,7 @@ export {
 export {
   type BundleIssue,
   isSkillLibraryError,
+  isSkillName,
   isStaleWrite,
   REQUEST_BODY_LIMIT_BYTES,
   type ReviewCheck,

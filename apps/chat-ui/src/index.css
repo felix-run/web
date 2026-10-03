@@ -332,6 +332,15 @@
   }
 }
 
+/* Forced colours repaint the editor's transparent textarea text in the system
+   colour, so the highlighted mirror behind it would draw every glyph twice,
+   slightly apart. The mirror steps aside and the textarea is the text. */
+@media (forced-colors: active) {
+  .skill-code-mirror {
+    visibility: hidden;
+  }
+}
+
 /* The skill editor's coarse highlighter (`components/skills/highlight.ts`).
    Neutral on purpose: the state colours mean run states in this app, and a
    keyword painted "running" blue would say something it does not mean. */

@@ -28,21 +28,26 @@ import { type Location, UNSAFE_DataRouterContext, useBlocker } from 'react-route
 export function UnsavedChangesGuard({
   when,
   leaves,
+  onKeep,
 }: {
   when: boolean;
   leaves: (from: Location, to: Location) => boolean;
+  /** Where focus goes back to when the operator keeps editing — the editor, not the link. */
+  onKeep?: () => void;
 }) {
   const dataRouter = useContext(UNSAFE_DataRouterContext);
   if (!dataRouter) return null;
-  return <BlockerDialog when={when} leaves={leaves} />;
+  return <BlockerDialog when={when} leaves={leaves} onKeep={onKeep} />;
 }
 
 function BlockerDialog({
   when,
   leaves,
+  onKeep,
 }: {
   when: boolean;
   leaves: (from: Location, to: Location) => boolean;
+  onKeep?: () => void;
 }) {
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) => when && leaves(currentLocation, nextLocation),
@@ -50,7 +55,15 @@ function BlockerDialog({
   const open = blocker.state === 'blocked';
   return (
     <Dialog open={open} onOpenChange={(o) => !o && blocker.reset?.()}>
-      <DialogContent>
+      <DialogContent
+        onCloseAutoFocus={(event) => {
+          // Back into the editor the edits are in, not onto the link that tried to leave.
+          if (onKeep) {
+            event.preventDefault();
+            onKeep();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Leave without saving?</DialogTitle>
           <DialogDescription>

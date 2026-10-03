@@ -236,3 +236,23 @@ describe('refusals', () => {
     expect(describeError(err, 'publish this skill').message).toContain('needs a broader scope');
   });
 });
+
+describe('addresses', () => {
+  it('refuses a name, version or path that could not be a library address, before fetching', async () => {
+    const { calls, client } = stub(() => ({ body: {} }));
+    const attempts = [
+      client.getLibrarySkill('../audit'),
+      client.getLibrarySkill('Bad Name'),
+      client.getSkillVersion('ok', '1.0'),
+      client.publishSkillVersion('ok', '1.0.0/../../x'),
+      client.getSkillFile('ok', '1.0.0', 'references/../../../audit'),
+      client.getSkillFile('ok', '1.0.0', 'references//x.md'),
+    ];
+    for (const attempt of attempts) {
+      const err = await attempt.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SkillLibraryError);
+      expect((err as SkillLibraryError).code).toBe('invalid_address');
+    }
+    expect(calls).toHaveLength(0);
+  });
+});

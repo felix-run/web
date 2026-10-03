@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
 /**
  * Local-dev config. `vite dev` serves the SPA on :5173 and proxies every
@@ -74,8 +74,38 @@ const LOGIN_ROUTES = new Set([
   'POST /auth/github/token',
 ]);
 
+/**
+ * The Worker's cross-site write refusal (`worker/index.ts`, `crossSiteWrite`),
+ * mirrored for `vite dev`, which injects the dev key just as the Worker injects
+ * `FELIX_API_KEY` — so a page on another site could otherwise post to the local
+ * harness as you. Registered before Vite's own middleware, so it runs ahead of
+ * the proxy. The app itself is same-origin and never sees it.
+ */
+function refuseCrossSiteWrites(): Plugin {
+  return {
+    name: 'felix-refuse-cross-site-writes',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url?.startsWith('/api/') || req.method === 'GET' || req.method === 'HEAD') {
+          return next();
+        }
+        const site = req.headers['sec-fetch-site'];
+        const origin = req.headers.origin;
+        const self = `http://${req.headers.host ?? ''}`;
+        if (site === 'cross-site' || (origin !== undefined && origin !== self)) {
+          res.statusCode = 403;
+          res.setHeader('content-type', 'application/json');
+          res.end('{"error":"cross_site_request"}');
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [refuseCrossSiteWrites(), react(), tailwindcss()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

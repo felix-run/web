@@ -11,8 +11,11 @@ import { CheckIcon, CircleAlertIcon } from 'lucide-react';
 export function ValidationPanel({
   errors,
   onFocusError,
+  id,
 }: {
   errors: ValidationIssue[];
+  /** The source editor's `aria-describedby` points here while there are issues. */
+  id?: string;
   onFocusError?: (error: ValidationIssue) => void;
 }) {
   if (errors.length === 0) {
@@ -24,7 +27,7 @@ export function ValidationPanel({
     );
   }
   return (
-    <ul className="divide-y divide-border/60" aria-label="Validation issues">
+    <ul id={id} className="divide-y divide-border/60" aria-label="Validation issues">
       {errors.map((error) => (
         <li key={`${error.path}:${error.message}`}>
           <button

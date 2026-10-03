@@ -6,8 +6,14 @@
  * (which the transcript uses) is an async highlighter with a bundle per
  * language. The output is HTML, and every byte of the input is escaped on the
  * way in: skill files are agent-written, so this is the one place a hostile
- * `<img onerror>` would otherwise reach `innerHTML`. `tests/skill-highlight.test.ts`
+ * `<img onerror>` would otherwise reach `innerHTML`. `tests/skill-editor-pure.test.ts`
  * holds every language to that.
+ *
+ * Its cost is bounded the way the harness's scan is: every pattern that can
+ * span is capped in length, and a line longer than `MAX_TOKENIZED_LINE` is
+ * escaped and not tokenized at all. A sticky regex is tried at every position
+ * of a line, so one unbounded `[^\]]*` turned a 256 KiB line of `[` into a
+ * quadratic scan that froze the tab on every keystroke.
  *
  * Classes are `tok-*`, themed in `index.css` from the neutral palette rather
  * than from state colours: blue means *running* in this app, not *keyword*.
@@ -67,7 +73,11 @@ function span(cls: string, text: string): string {
 
 type Rule = { re: RegExp; cls: string | null };
 
+/** Lines longer than this are escaped and drawn plain: no grammar earns a quadratic scan. */
+export const MAX_TOKENIZED_LINE = 4000;
+
 function tokenizeLine(line: string, rules: Rule[]): string {
+  if (line.length > MAX_TOKENIZED_LINE) return escapeHtml(line);
   let out = '';
   let pos = 0;
   while (pos < line.length) {
@@ -99,6 +109,7 @@ const YAML_VALUE_RULES: Rule[] = [
 ];
 
 function highlightYamlLine(line: string): string {
+  if (line.length > MAX_TOKENIZED_LINE) return escapeHtml(line);
   const key = line.match(/^(\s*(?:-\s+)?)([\w.-]+)(\s*:)(\s|$)/);
   if (key) {
     const consumed = key[0].length;
@@ -114,9 +125,9 @@ function highlightYamlLine(line: string): string {
 }
 
 const MARKDOWN_INLINE_RULES: Rule[] = [
-  { re: /`[^`]+`/y, cls: 'tok-string' },
-  { re: /!?\[[^\]]*\]\([^)]*\)/y, cls: 'tok-link' },
-  { re: /(\*\*|__)(?=\S)[\s\S]*?\S\1/y, cls: null },
+  { re: /`[^`\n]{1,1000}`/y, cls: 'tok-string' },
+  { re: /!?\[[^\]\n]{0,512}\]\([^)\n]{0,2048}\)/y, cls: 'tok-link' },
+  { re: /(\*\*|__)(?=\S)[^\n]{0,1000}?\S\1/y, cls: null },
   { re: /[*_~]+/y, cls: 'tok-punctuation' },
   { re: /[A-Za-z0-9]+/y, cls: null },
 ];

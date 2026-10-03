@@ -91,7 +91,7 @@ export function SaveDialog({
           {parent && (
             <fieldset className="space-y-1.5">
               <legend className="text-xs font-medium text-muted-foreground">Version</legend>
-              <div role="radiogroup" className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 {(['patch', 'minor', 'major'] as const).map((b) => (
                   <label
                     key={b}

@@ -1,10 +1,10 @@
 import type { SkillFile } from '@felix/client';
+import { isBinaryAssetPath } from '@felix/skill-format';
 import { Skeleton } from '@felix/ui/skeleton';
 import { useMemo, useState } from 'react';
 import { ErrorNotice } from '@/components/error-notice';
 import { ViewSwitch } from '@/components/harness/panel';
 import { AssetPreview, formatBytes } from './asset-preview';
-import { isBinaryAssetPath } from './bundle-paths';
 import { FileTree } from './file-tree';
 import { languageForPath } from './highlight';
 import { PreviewPane } from './preview-pane';

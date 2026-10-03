@@ -1,15 +1,14 @@
-import { BUNDLE_DIRS, isAllowedPath, isBinaryAssetPath } from '@felix/skill-format';
+import { BUNDLE_DIRS } from '@felix/skill-format';
 
 /**
  * Bundle paths as the editor and the file tree handle them.
  *
- * Which paths are *allowed* is `@felix/skill-format`'s, which mirrors the
+ * Which paths are *allowed* is `@felix/skill-format`'s (`isAllowedPath`, imported
+ * from there directly), which mirrors the
  * harness's allowlist exactly: a looser copy here was how an editor offered a
  * save the harness then refused. What is local is presentation — which files
  * are text an operator can type into, and the tree they are drawn as.
  */
-
-export { isAllowedPath, isBinaryAssetPath };
 
 export type BundleDir = (typeof BUNDLE_DIRS)[number];
 

@@ -227,6 +227,12 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
   refresh and no revocation, so the header's account chip (`components/account-chip.tsx`) renews
   in a popover with the shell still mounted, and its Sign out says the token outlives it.
 - In `vite dev` the Worker is not in the loop, so the `CHAT_UI_KEY` gate is skipped entirely.
+- **A cross-site write is refused** (403 `cross_site_request`) before any of the above: any method
+  but GET/HEAD with `Sec-Fetch-Site: cross-site`, or an `Origin` that is not the Worker's own.
+  The Worker injects `FELIX_API_KEY` itself, so without this a plain form post from another site
+  arrived upstream as the deployment. A request with neither header is no browser's and meets
+  the key gate as before. `vite.config.ts` mirrors it in a middleware ahead of the proxy, since
+  the dev proxy injects the dev key the same way.
 
 The dev proxy in `apps/chat-ui/vite.config.ts` is a second copy of this contract — change one and
 the other diverges silently.
@@ -266,8 +272,11 @@ alone (react-router v7, declarative — a literal version in `apps/chat-ui`, sin
 catalog), mounted by `main.tsx` under a `createBrowserRouter` with one splat route rather than
 `BrowserRouter`: still no loaders or actions, but `useBlocker` (the skill editor's unsaved-changes
 guard) exists only under a data router, and `UnsavedChangesGuard` renders nothing under the
-`MemoryRouter` the tests mount. `App` also owns the one TanStack Query client, made per mount;
-the skill library is its only user, everything older polls through `usePoll`; `src/app-shell.tsx` is the layout route that owns the engine, the thread, the `/approvals`
+`MemoryRouter` the tests mount (`tests/skill-library-actions.test.tsx` mounts a
+`createMemoryRouter` to hold it). TanStack Query is the skill library's alone and loads with it:
+`components/skills/query-root.tsx` creates one client lazily and each lazy skills entry point
+wraps itself in it, unless a host (a test) already provided one; everything older polls through
+`usePoll`; `src/app-shell.tsx` is the layout route that owns the engine, the thread, the `/approvals`
 poll and `presence.ts`, and renders the matched route into an `<Outlet/>`. Everything below that
 seam reads `src/shell-context.ts`. The engine is *above* the `<Outlet/>` on purpose: a run is alive
 for as long as the tab is, so mounting `createChatEngine` inside a route would unmount it — and kill
@@ -751,12 +760,21 @@ Flows worth knowing before editing the app:
   *empty* filtered pages — the route filters after reading — for a bounded number of pages, then
   says there is more rather than "none". A save names `parent_version`; a 409 `parent_changed`
   stops at a choice (reload the newer version, or keep the edits with its diff on screen) and never
-  retries by itself. Skill text is agent-written: `SkillMarkdown` is the transcript pipeline minus
+  retries by itself. Keeping the edits lists every *other* file the newer version added, changed or
+  deleted (by digest) and holds the save until each is taken or kept, because a save sends the whole
+  bundle. Every decide surface — queue row, Versions, the chat card — lists every file that differs
+  from live, not only SKILL.md, and says when the draft was edited from something other than live.
+  Stored bundles are immutable, so `invalidateLibrary` never refetches them: the post-save cache is
+  seeded with the files sent, and a refetch would swap in the harness's redacted read. Skill text is agent-written: `SkillMarkdown` is the transcript pipeline minus
   `rehype-raw` (no HTML element from markdown) and loads no remote image, and `assetDataUrl` builds
   `data:` URLs only for the raster types on the harness's table, never SVG. `create_skill` /
   `update_skill` results render `SkillProposalCard` above the tool card, offering Approve only once
-  the library confirms the version is still a draft, and only the link after a 403. The library
-  and editor are a lazy chunk (the YAML parser rides in it); evals and feedback tabs are declared
+  the library confirms the version is still a draft, and only the link after a 403. The library,
+  the editor and the card are lazy chunks (the YAML parser and Query ride in them). The
+  highlighter caps every spanning pattern and leaves lines over 4000 characters untokenized — a
+  sticky regex runs at every position, so one unbounded span made a long line quadratic. The
+  harness's `/harness` layout renders one tree at every width, so crossing 768px no longer
+  remounts a page (and its unsaved edits). Evals and feedback tabs are declared
   `ready: false` in `SKILL_TABS` until the harness serves them.
 - **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and
   the snapshot's `labels` map reads them back. It was a write-only route here for a different reason

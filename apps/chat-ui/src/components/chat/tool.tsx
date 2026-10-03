@@ -9,7 +9,7 @@ import {
   CircleAlertIcon,
   LoaderIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
 import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block';
 import {
@@ -20,11 +20,21 @@ import {
   TerminalHeader,
   TerminalTitle,
 } from '@/components/ai-elements/terminal';
-import { SkillProposalCard } from '@/components/skills/skill-proposal-card';
 import { parseSkillCall } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { ToolTable } from './tool-table';
+
+/**
+ * The skill proposal card, loaded only when a transcript holds a skill call:
+ * it brings TanStack Query and the library client with it, which a thread with
+ * no `create_skill` in it should not pay for on every load.
+ */
+const SkillProposalCard = lazy(() =>
+  import('@/components/skills/skill-proposal-card').then((m) => ({
+    default: m.SkillProposalCardEntry,
+  })),
+);
 
 /**
  * Collapsible tool-call card driven by SSE `ToolCall.done`.
@@ -159,7 +169,9 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
   if (!skillCall) return card;
   return (
     <div className="space-y-1.5">
-      <SkillProposalCard toolName={tool.name} input={tool.input} result={skillCall} />
+      <Suspense fallback={null}>
+        <SkillProposalCard toolName={tool.name} input={tool.input} result={skillCall} />
+      </Suspense>
       {card}
     </div>
   );

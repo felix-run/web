@@ -1,5 +1,6 @@
 import { Skeleton } from '@felix/ui/skeleton';
 import { ErrorNotice } from '@/components/error-notice';
+import { BundleChanges } from './bundle-changes';
 import { DiffView } from './diff-view';
 import { useSkillFile } from './queries';
 
@@ -8,9 +9,9 @@ import { useSkillFile } from './queries';
  * before deciding a draft. `before` may be null (nothing is live yet), and the
  * diff is then against an empty file, labelled as such rather than as a version.
  *
- * Only SKILL.md: a draft an agent saved through `update_skill` changes the body
- * and keeps the rest of the parent's files, so SKILL.md is where it differs.
- * The Files tab browses everything else.
+ * SKILL.md as a diff, because it is what a draft is mostly about, and every
+ * other file that differs listed beneath it by digest — a reviewer approving
+ * the SKILL.md alone would be approving a changed script they never saw.
  */
 export function VersionDiff({
   name,
@@ -31,11 +32,14 @@ export function VersionDiff({
     return <Skeleton className="h-24 w-full rounded-lg" aria-label="Loading the comparison" />;
   }
   return (
-    <DiffView
-      before={before ? (left.data?.content ?? '') : ''}
-      after={right.data?.content ?? ''}
-      beforeLabel={before ?? 'nothing live'}
-      afterLabel={afterLabel ?? after}
-    />
+    <div className="space-y-2">
+      <DiffView
+        before={before ? (left.data?.content ?? '') : ''}
+        after={right.data?.content ?? ''}
+        beforeLabel={before ?? 'nothing live'}
+        afterLabel={afterLabel ?? after}
+      />
+      <BundleChanges name={name} before={before} after={after} skipSkillMd />
+    </div>
   );
 }

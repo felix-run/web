@@ -275,9 +275,45 @@ function tooLarge(route: string, bytes: number): SkillLibraryError {
   });
 }
 
-/** Path segments encoded one at a time, so a bundle path keeps its slashes. */
+/** The harness's skill-name rule: lowercase words joined by single hyphens, at most 64. */
+const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const VERSION_RE = /^\d+\.\d+\.\d+$/;
+
+/**
+ * A name, version or path the client refused to put in a URL. Nothing the
+ * harness would accept fails these checks, so one reaching here came from a
+ * link, a tool result or a typo — and a `..` segment that reached `fetch` would
+ * be normalised into a different route entirely.
+ */
+function badAddress(what: string, value: string): SkillLibraryError {
+  return new SkillLibraryError('skill-library', 400, {
+    error: 'invalid_address',
+    message: `${JSON.stringify(value.slice(0, 80))} is not a valid skill ${what}`,
+  });
+}
+
+function nameSegment(name: string): string {
+  if (name.length > 64 || !SKILL_NAME_RE.test(name)) throw badAddress('name', name);
+  return name;
+}
+
+function versionSegment(version: string): string {
+  if (version.length > 32 || !VERSION_RE.test(version)) throw badAddress('version', version);
+  return version;
+}
+
+/** Path segments encoded one at a time, so a bundle path keeps its slashes and never climbs. */
 function encodePath(path: string): string {
-  return path.split('/').map(encodeURIComponent).join('/');
+  const segments = path.split('/');
+  if (segments.some((s) => s === '' || s === '.' || s === '..') || path.includes('\\')) {
+    throw badAddress('file path', path);
+  }
+  return segments.map(encodeURIComponent).join('/');
+}
+
+/** Whether `name` is one the library could hold — for a caller deciding before it asks. */
+export function isSkillName(name: string): boolean {
+  return name.length <= 64 && SKILL_NAME_RE.test(name);
 }
 
 async function refusalOf(route: string, res: Response): Promise<SkillLibraryError> {
@@ -357,19 +393,14 @@ export function createSkillLibraryClient(http: FelixHttp) {
 
   /** GET /skill-library/{name} → the skill and every version, newest first. */
   async function getLibrarySkill(name: string): Promise<SkillDetail> {
-    return read(
-      'skill-library/skill',
-      await chatFetch(`/skill-library/${encodeURIComponent(name)}`),
-    );
+    return read('skill-library/skill', await chatFetch(`/skill-library/${nameSegment(name)}`));
   }
 
   /** GET /skill-library/{name}/versions/{v} → review record, checks, issues, file digests. */
   async function getSkillVersion(name: string, version: string): Promise<SkillVersionDetail> {
     return read(
       'skill-library/version',
-      await chatFetch(
-        `/skill-library/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`,
-      ),
+      await chatFetch(`/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}`),
     );
   }
 
@@ -378,7 +409,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
     return read(
       'skill-library/file',
       await chatFetch(
-        `/skill-library/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/files/${encodePath(path)}`,
+        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/files/${encodePath(path)}`,
       ),
     );
   }
@@ -388,7 +419,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
     return read(
       'skill-library/preview',
       await chatFetch(
-        `/skill-library/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/preview`,
+        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/preview`,
       ),
     );
   }
@@ -464,7 +495,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
     const init = sized('skill-library/save', body);
     return read(
       'skill-library/save',
-      await chatFetch(`/skill-library/${encodeURIComponent(name)}/versions`, {
+      await chatFetch(`/skill-library/${nameSegment(name)}/versions`, {
         method: 'PUT',
         ...init,
       }),
@@ -476,7 +507,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
     return read(
       'skill-library/publish',
       await chatFetch(
-        `/skill-library/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/publish`,
+        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/publish`,
         { method: 'POST' },
       ),
     );
@@ -487,7 +518,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
     return read(
       'skill-library/rollback',
       await chatFetch(
-        `/skill-library/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/rollback`,
+        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/rollback`,
         { method: 'POST' },
       ),
     );
@@ -502,7 +533,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
     return read(
       'skill-library/reject',
       await chatFetch(
-        `/skill-library/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}/reject`,
+        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/reject`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -516,7 +547,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
   async function archiveLibrarySkill(name: string): Promise<SkillArchived> {
     return read(
       'skill-library/archive',
-      await chatFetch(`/skill-library/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+      await chatFetch(`/skill-library/${nameSegment(name)}`, { method: 'DELETE' }),
     );
   }
 

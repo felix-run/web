@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router';
 import { AppShell } from '@/app-shell';
@@ -39,47 +38,7 @@ function NewThread() {
   return <Navigate to={`/t/${id}`} replace />;
 }
 
-/**
- * The one TanStack Query client, made per mount of the app rather than at module
- * scope, so a test that mounts the app twice gets two caches and never reads the
- * last one's answers.
- *
- * The skill library is its only user for now; the older panels poll through
- * `usePoll`. A refusal (any 4xx) is not retried, because asking again gets the
- * same answer slower; a 5xx or a dropped connection is retried once. Focus does
- * not refetch: the library's views refetch after every write and on mount, and
- * a refetch mid-edit is exactly what the editor's baseline rule has to defend
- * against.
- */
-export function makeQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 10_000,
-        refetchOnWindowFocus: false,
-        retry: (count, err) => {
-          const status = (err as { status?: number })?.status;
-          const fromText = /:\s*(\d{3})\b/.exec(String((err as Error)?.message ?? ''))?.[1];
-          const code = status ?? (fromText ? Number(fromText) : undefined);
-          if (code !== undefined && code >= 400 && code < 500) return false;
-          return count < 1;
-        },
-      },
-      mutations: { retry: false },
-    },
-  });
-}
-
 export default function App() {
-  const [queryClient] = useState(makeQueryClient);
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AppRoutes />
-    </QueryClientProvider>
-  );
-}
-
-function AppRoutes() {
   return (
     <Routes>
       <Route element={<AppShell />}>

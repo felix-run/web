@@ -27,6 +27,7 @@ export function VersionDecision({
   name,
   version,
   liveVersion,
+  parentVersion,
   canPublish = true,
   canReject = true,
   onDecided,
@@ -37,6 +38,8 @@ export function VersionDecision({
   name: string;
   version: string;
   liveVersion: string | null;
+  /** The version this draft was edited from, to say so when it is not the live one. */
+  parentVersion?: string | null;
   canPublish?: boolean;
   canReject?: boolean;
   onDecided?: (what: 'published' | 'rejected') => void;
@@ -59,8 +62,29 @@ export function VersionDecision({
     ? `replacing live ${liveVersion} for every ref that pins no version`
     : 'as its first live version';
 
+  // Publishing replaces whatever is live, not whatever the draft was edited
+  // from. When those differ, a reviewer reading "edited from X" would think the
+  // live version's own changes survive; they do not.
+  const offParent = !!liveVersion && parentVersion !== undefined && parentVersion !== liveVersion;
   return (
     <div className={cn('space-y-2', className)}>
+      {offParent && (
+        <p role="note" className="text-xs text-state-blocked">
+          {parentVersion ? (
+            <>
+              Edited from <span className="font-mono">{parentVersion}</span>, not from the live{' '}
+              <span className="font-mono">{liveVersion}</span>.
+            </>
+          ) : (
+            <>
+              Not edited from the live <span className="font-mono">{liveVersion}</span>.
+            </>
+          )}{' '}
+          Publishing replaces <span className="font-mono">{liveVersion}</span> with this version as
+          it stands, so anything only <span className="font-mono">{liveVersion}</span> has is gone —
+          the comparison shown is against <span className="font-mono">{liveVersion}</span>.
+        </p>
+      )}
       {!rejecting ? (
         <div className="flex flex-wrap gap-2">
           {canPublish && (

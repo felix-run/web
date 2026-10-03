@@ -6,9 +6,6 @@
 
 export type SemverBump = 'major' | 'minor' | 'patch';
 
-/** The harness's version shape: three numeric segments of up to six digits. */
-export const VERSION_RE = /^\d{1,6}\.\d{1,6}\.\d{1,6}$/;
-
 function parts(version: string): [number, number, number] {
   const p = version.split('.').map((n) => Number.parseInt(n.trim() || '0', 10) || 0);
   return [p[0] ?? 0, p[1] ?? 0, p[2] ?? 0];

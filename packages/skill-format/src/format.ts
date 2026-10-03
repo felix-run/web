@@ -21,7 +21,7 @@
  * A bundle is a plain `path → content` record here, the shape the wire carries.
  */
 
-import { isCollection, isNode, parseDocument, stringify, visit } from 'yaml';
+import { isMap, isNode, isScalar, isSeq, parseDocument, stringify, visit } from 'yaml';
 import {
   base64DecodedSize,
   isBinaryAssetPath,
@@ -114,24 +114,96 @@ export function splitFrontmatter(content: string): [string, string] | null {
   return [match[1] ?? '', match[2] ?? ''];
 }
 
-function depthOf(value: unknown, depth = 0): number {
-  if (depth > MAX_FRONTMATTER_DEPTH) return depth;
-  if (Array.isArray(value)) {
-    return value.reduce<number>((d, v) => Math.max(d, depthOf(v, depth + 1)), depth + 1);
+/**
+ * A value the harness's YAML loader builds as something other than text, a
+ * number, a list or a map — bytes from `!!binary`, a set, an ordered map. The
+ * harness refuses one wherever it checks for a scalar or a string, so it is
+ * carried as itself rather than as the string the JS parser would make of it.
+ */
+export class OpaqueValue {
+  constructor(readonly tag: string) {}
+}
+
+/**
+ * A mapping with a key that is not a string — `1: x`, or the complex `? [a]`.
+ * Legal YAML; the harness's frontmatter model refuses the key. `badKeys` are
+ * spelled as Python spells them, which is how the harness names them.
+ */
+export class NonStringKeyMap {
+  constructor(
+    readonly badKeys: string[],
+    readonly entries: Record<string, unknown>,
+  ) {}
+}
+
+const YAML_TAG = 'tag:yaml.org,2002:';
+const CORE_TAGS = new Set(
+  ['str', 'int', 'float', 'bool', 'null', 'map', 'seq'].map((t) => YAML_TAG + t),
+);
+const OPAQUE_TAGS = new Set(['binary', 'set', 'omap', 'pairs'].map((t) => YAML_TAG + t));
+
+class Refused extends Error {}
+
+function checkTag(tag: string | undefined): 'core' | 'opaque' | 'text' {
+  if (!tag || CORE_TAGS.has(tag)) return 'core';
+  if (OPAQUE_TAGS.has(tag)) return 'opaque';
+  // The harness reads a timestamp as its text.
+  if (tag === `${YAML_TAG}timestamp`) return 'text';
+  // An unknown tag: the harness's safe loader cannot construct it at all.
+  throw new Refused();
+}
+
+function pyRepr(node: unknown): string {
+  if (isScalar(node)) {
+    const v = node.value;
+    if (v === null || v === undefined) return 'None';
+    if (typeof v === 'boolean') return v ? 'True' : 'False';
+    if (typeof v === 'string') return `'${v}'`;
+    return String(v);
   }
-  if (value && typeof value === 'object') {
-    return Object.values(value).reduce<number>(
-      (d, v) => Math.max(d, depthOf(v, depth + 1)),
-      depth + 1,
-    );
+  if (isSeq(node)) {
+    const items = node.items.map(pyRepr);
+    return items.length === 1 ? `(${items[0]},)` : `(${items.join(', ')})`;
   }
-  return depth;
+  return '{...}';
+}
+
+/**
+ * The node as the harness's loader would build it. `depth` counts the
+ * collections around this node; a collection at nesting level
+ * `MAX_FRONTMATTER_DEPTH` is refused, exactly where the harness's composer
+ * stops.
+ */
+function toValue(node: unknown, depth: number): unknown {
+  if (node === null || node === undefined) return null;
+  if (isScalar(node)) {
+    const kind = checkTag(node.tag);
+    if (kind === 'opaque') return new OpaqueValue(node.tag ?? '');
+    if (kind === 'text') return String(node.source ?? node.value);
+    return node.value;
+  }
+  if (!isMap(node) && !isSeq(node)) throw new Refused();
+  if (depth + 1 >= MAX_FRONTMATTER_DEPTH) throw new Refused();
+  if (checkTag(node.tag) === 'opaque') return new OpaqueValue(node.tag ?? '');
+  if (isSeq(node)) return node.items.map((item) => toValue(item, depth + 1));
+  const entries: Record<string, unknown> = {};
+  const badKeys: string[] = [];
+  for (const pair of node.items) {
+    const key = pair.key;
+    if (isScalar(key) && typeof key.value === 'string' && checkTag(key.tag) === 'core') {
+      entries[key.value] = toValue(pair.value, depth + 1);
+    } else {
+      badKeys.push(pyRepr(key));
+    }
+  }
+  return badKeys.length ? new NonStringKeyMap(badKeys, entries) : entries;
 }
 
 /**
  * Split a SKILL.md; null when the fences are missing or the YAML is refused —
- * because it does not parse, is over `MAX_FRONTMATTER_CHARS`, nests past
- * `MAX_FRONTMATTER_DEPTH`, or holds any anchor or alias.
+ * because it does not parse, is over `MAX_FRONTMATTER_CHARS`, nests to
+ * `MAX_FRONTMATTER_DEPTH`, holds any anchor or alias, or carries a tag the
+ * harness's loader cannot construct.
  */
 export function parseSkillMd(
   content: string,
@@ -157,13 +229,12 @@ export function parseSkillMd(
     },
   });
   if (anchored) return null;
-  // Collections only count toward depth; a deep scalar is not a bomb.
-  if (isCollection(doc.contents)) {
-    const value = doc.toJS();
-    if (depthOf(value) > MAX_FRONTMATTER_DEPTH) return null;
-    return { yamlText, frontmatter: value, body };
+  try {
+    return { yamlText, frontmatter: toValue(doc.contents, 0), body };
+  } catch (err) {
+    if (err instanceof Refused) return null;
+    throw err;
   }
-  return { yamlText, frontmatter: doc.toJS(), body };
 }
 
 function stringifyFrontmatter(frontmatter: Record<string, unknown>): string {
@@ -275,10 +346,10 @@ function sizeIssues(files: SkillBundle, skillMd: string): ValidationIssue[] {
   return issues;
 }
 
-const isScalar = (v: unknown) =>
+const isScalarValue = (v: unknown) =>
   v === null || ['string', 'number', 'boolean'].includes(typeof v) || typeof v === 'bigint';
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date);
+  typeof v === 'object' && v !== null && Object.getPrototypeOf(v) === Object.prototype;
 
 function stringField(
   fm: Record<string, unknown>,
@@ -302,11 +373,24 @@ function stringField(
 
 /** The frontmatter schema's issues, worded as the harness's pydantic model words them. */
 function frontmatterIssues(frontmatter: unknown): ValidationIssue[] {
-  if (!isPlainObject(frontmatter)) {
-    return [{ path: 'frontmatter', message: 'Input should be a valid dictionary' }];
-  }
-  const fm = frontmatter;
   const issues: ValidationIssue[] = [];
+  let fm: Record<string, unknown>;
+  if (frontmatter instanceof NonStringKeyMap) {
+    for (const key of frontmatter.badKeys) {
+      issues.push({ path: `frontmatter.${key}`, message: 'Keys should be strings' });
+    }
+    fm = frontmatter.entries;
+  } else if (isPlainObject(frontmatter)) {
+    fm = frontmatter;
+  } else {
+    // The harness's loc for the model itself is the empty tuple, joined to `frontmatter.`.
+    return [
+      {
+        path: 'frontmatter.',
+        message: 'Input should be a valid dictionary or instance of SkillFrontmatter',
+      },
+    ];
+  }
   const add = (key: string, message: string | null) => {
     if (message) issues.push({ path: `frontmatter.${key}`, message });
   };
@@ -315,27 +399,38 @@ function frontmatterIssues(frontmatter: unknown): ValidationIssue[] {
   add('description', stringField(fm, 'description', { required: true, min: 1, max: 1024 }));
   add('license', stringField(fm, 'license', {}));
   add('compatibility', stringField(fm, 'compatibility', { max: 500 }));
-  add('allowed-tools', stringField(fm, 'allowed-tools', {}));
+  // The harness accepts the field by its name as well as its alias.
+  for (const key of ALLOWED_TOOLS_KEYS) add(key, stringField(fm, key, {}));
   if ('metadata' in fm && fm.metadata !== null) {
-    if (!isPlainObject(fm.metadata)) {
+    const metadata = fm.metadata;
+    if (metadata instanceof NonStringKeyMap) {
+      for (const key of metadata.badKeys)
+        add(`metadata.${key}.[key]`, 'Input should be a valid string');
+      for (const [key, value] of Object.entries(metadata.entries)) {
+        if (typeof value !== 'string') add(`metadata.${key}`, 'Input should be a valid string');
+      }
+    } else if (!isPlainObject(metadata)) {
       add('metadata', 'Input should be a valid dictionary');
     } else {
-      for (const [key, value] of Object.entries(fm.metadata)) {
+      for (const [key, value] of Object.entries(metadata)) {
         if (typeof value !== 'string') add(`metadata.${key}`, 'Input should be a valid string');
       }
     }
   }
   for (const [key, value] of Object.entries(fm)) {
-    if ((KEY_ORDER as readonly string[]).includes(key)) continue;
+    if ((KEY_ORDER as readonly string[]).includes(key) || ALLOWED_TOOLS_KEYS.includes(key))
+      continue;
     const flat = Array.isArray(value)
-      ? value.every(isScalar)
+      ? value.every(isScalarValue)
       : isPlainObject(value)
-        ? Object.values(value).every(isScalar)
-        : isScalar(value);
+        ? Object.values(value).every(isScalarValue)
+        : isScalarValue(value);
     if (!flat) add(key, 'must be a scalar, or a flat list or map of scalars');
   }
   return issues;
 }
+
+const ALLOWED_TOOLS_KEYS = ['allowed-tools', 'allowed_tools'];
 
 /** The strict check: size caps, frontmatter schema, name rules, and every path. */
 export function validateSkillBundle(files: SkillBundle, expectedSlug?: string): ValidationResult {
@@ -361,7 +456,12 @@ export function validateSkillBundle(files: SkillBundle, expectedSlug?: string): 
     };
   }
   const errors = frontmatterIssues(parsed.frontmatter);
-  const raw = isPlainObject(parsed.frontmatter) ? parsed.frontmatter : {};
+  const raw =
+    parsed.frontmatter instanceof NonStringKeyMap
+      ? parsed.frontmatter.entries
+      : isPlainObject(parsed.frontmatter)
+        ? parsed.frontmatter
+        : {};
   if (expectedSlug && raw.name !== expectedSlug) {
     errors.push({
       path: 'frontmatter.name',

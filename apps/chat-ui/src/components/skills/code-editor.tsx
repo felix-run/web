@@ -1,4 +1,4 @@
-import { useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { highlight, languageForPath } from './highlight';
 
@@ -8,9 +8,17 @@ import { highlight, languageForPath } from './highlight';
  * the colours. No editor library, because a skill file is short and the
  * transcript already ships one code renderer.
  *
- * Tab indents two spaces. Escape then Tab moves focus on instead, so the
- * textarea is never a keyboard trap.
+ * Tab indents two spaces; Shift+Tab moves focus back as it does anywhere else,
+ * and Escape then Tab moves it on, so the textarea is never a keyboard trap.
+ * The hint is the field's description, so a screen reader says how out.
+ *
+ * Under forced colours the browser repaints the transparent textarea's text in
+ * the system colour, so the mirror is hidden there (`index.css`) rather than
+ * drawn twice.
  */
+
+/** Past this many characters the mirror is re-highlighted a render behind the typing. */
+const DEFER_HIGHLIGHT_CHARS = 100_000;
 
 export type CodeEditorHandle = {
   focusLine: (line: number) => void;
@@ -27,22 +35,29 @@ export function CodeEditor({
   value,
   onChange,
   errorLines,
-  readOnly,
+  issuesId,
   ref,
 }: {
   path: string;
   value: string;
   onChange: (value: string) => void;
   errorLines?: Set<number>;
-  readOnly?: boolean;
+  /** The id of the list of validation issues, when there are any. */
+  issuesId?: string;
   ref?: React.Ref<CodeEditorHandle>;
 }) {
+  const hintId = useId();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [escapePressed, setEscapePressed] = useState(false);
 
   const lineCount = useMemo(() => value.split('\n').length, [value]);
-  const highlighted = useMemo(() => highlight(value, languageForPath(path)), [value, path]);
+  // A large file is highlighted from a deferred copy, so a keystroke never
+  // waits on re-tokenizing the whole of it; the caret is the textarea's, so
+  // nothing typed is lost while the colours catch up.
+  const deferred = useDeferredValue(value);
+  const source = value.length > DEFER_HIGHLIGHT_CHARS ? deferred : value;
+  const highlighted = useMemo(() => highlight(source, languageForPath(path)), [source, path]);
 
   useImperativeHandle(ref, () => ({
     focusLine: (line: number) => {
@@ -76,9 +91,9 @@ export function CodeEditor({
       setEscapePressed(true);
       return;
     }
-    if (event.key === 'Tab' && !escapePressed) {
+    if (event.key === 'Tab' && !escapePressed && !event.shiftKey) {
       event.preventDefault();
-      if (!event.shiftKey) insertText('  ');
+      insertText('  ');
       return;
     }
     setEscapePressed(false);
@@ -110,7 +125,10 @@ export function CodeEditor({
         <div className="relative flex-1">
           <pre
             aria-hidden
-            className={cn(SURFACE_CLASSES, 'pointer-events-none m-0 text-foreground')}
+            className={cn(
+              SURFACE_CLASSES,
+              'skill-code-mirror pointer-events-none m-0 text-foreground',
+            )}
             // The output of our own escaping tokenizer: every input byte is escaped.
             dangerouslySetInnerHTML={{ __html: `${highlighted}\n` }}
           />
@@ -119,12 +137,14 @@ export function CodeEditor({
             value={value}
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={onKeyDown}
-            readOnly={readOnly}
             wrap="off"
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
             aria-label={`${path} source`}
+            aria-describedby={issuesId ? `${hintId} ${issuesId}` : hintId}
+            aria-invalid={issuesId ? true : undefined}
+            data-skill-source
             className={cn(
               SURFACE_CLASSES,
               'absolute inset-0 h-full w-full resize-none overflow-hidden bg-transparent text-transparent caret-foreground outline-none selection:bg-foreground/15 selection:text-transparent',
@@ -132,6 +152,9 @@ export function CodeEditor({
           />
         </div>
       </div>
+      <p id={hintId} className="sr-only">
+        Tab inserts two spaces; Escape then Tab leaves the editor.
+      </p>
     </div>
   );
 }

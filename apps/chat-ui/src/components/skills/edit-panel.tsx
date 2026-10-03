@@ -1,11 +1,14 @@
+import { isStaleWrite } from '@felix/client';
+import { isBinaryAssetPath } from '@felix/skill-format';
 import { Button } from '@felix/ui/button';
 import { Skeleton } from '@felix/ui/skeleton';
 import { TriangleAlertIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ErrorNotice } from '@/components/error-notice';
 import { PageSection } from '@/components/harness/panel';
 import { isMacPlatform } from '@/lib/shortcuts';
+import type { FileChange } from './bundle-compare';
 import type { CodeEditorHandle } from './code-editor';
 import { DiffView } from './diff-view';
 import { errorLinesForSkillMd } from './frontmatter-lines';
@@ -14,7 +17,7 @@ import { RefusalNotice } from './refusal';
 import { SaveDialog } from './save-dialog';
 import { ScoreReadout } from './score-readout';
 import { SkillBundleEditor } from './skill-bundle-editor';
-import { REDACTED, type SkillEditor } from './use-skill-editor';
+import { REDACTED, type Resolution, type SkillEditor } from './use-skill-editor';
 import { ValidationPanel } from './validation-panel';
 
 /**
@@ -31,8 +34,13 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
   const editorRef = useRef<CodeEditorHandle>(null);
   const [saving, setSaving] = useState(false);
   const [dialogKey, setDialogKey] = useState(0);
+  const issuesId = useId();
 
   const openSave = () => {
+    if (editor.saveBlocked) {
+      toast.error(editor.saveBlocked);
+      return;
+    }
     if (issues.length > 0) {
       toast.error(
         `Fix ${issues.length} issue${issues.length === 1 ? '' : 's'} first: the harness would refuse this bundle.`,
@@ -78,8 +86,13 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
           dirty={bundle.dirty}
         />
       )}
-      {editor.rebasedOnto && (
-        <RebasedDiff name={name} onto={editor.rebasedOnto} mine={bundle.files['SKILL.md'] ?? ''} />
+      {editor.rebase && (
+        <RebasePanel
+          name={name}
+          rebase={editor.rebase}
+          mine={bundle.files}
+          onResolve={editor.resolve}
+        />
       )}
 
       {editor.redacted.length > 0 && (
@@ -168,6 +181,7 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
         validationErrors={issues}
         errorLines={errorLines}
         editorRef={editorRef}
+        issuesId={issues.length > 0 ? issuesId : undefined}
       />
 
       <PageSection
@@ -175,6 +189,7 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
         meta={issues.length ? `${issues.length} issue${issues.length === 1 ? '' : 's'}` : 'none'}
       >
         <ValidationPanel
+          id={issuesId}
           errors={issues}
           onFocusError={(error) => {
             bundle.setActivePath(
@@ -211,8 +226,9 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
           ) : null
         }
         onSave={(choice) => {
+          if (editor.saveBlocked) return;
           save.mutate(
-            { ...choice, files: bundle.files },
+            { ...choice, files: bundle.files, parent },
             {
               onSuccess: (result) => {
                 setSaving(false);
@@ -225,12 +241,7 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
               },
               onError: (err) => {
                 // A stale save closes the dialog: the choice it needs is on the page.
-                if (
-                  (err as { code?: string }).code === 'parent_changed' ||
-                  (err as { code?: string }).code === 'version_conflict'
-                ) {
-                  setSaving(false);
-                }
+                if (isStaleWrite(err)) setSaving(false);
               },
             },
           );
@@ -293,27 +304,175 @@ function StaleChoice({
   );
 }
 
-/** What the version saved over changed, shown until the save that goes on top of it. */
-function RebasedDiff({ name, onto, mine }: { name: string; onto: string; mine: string }) {
+/**
+ * What keeping the edits on top of a newer version means, file by file.
+ *
+ * A save sends the whole bundle, so every file the newer version changed —
+ * other than SKILL.md, which is diffed against the working copy — would be
+ * undone by it unless taken. Each is listed with what happened to it upstream,
+ * a diff on request, and a choice; the save waits until every one is made. The
+ * copy above the list says what saving does, and only that.
+ */
+function RebasePanel({
+  name,
+  rebase,
+  mine,
+  onResolve,
+}: {
+  name: string;
+  rebase: NonNullable<SkillEditor['rebase']>;
+  mine: Record<string, string>;
+  onResolve: (change: FileChange, choice: Resolution) => void;
+}) {
+  const { onto, base, upstream, unresolved, resolutions } = rebase;
   const theirs = useSkillFile(name, onto);
   return (
     <PageSection title={`Saving over ${onto}`}>
       <p className="mb-2 text-sm text-muted-foreground">
-        Your next save is based on <span className="font-mono text-foreground">{onto}</span>.
-        Anything it changed that is not in your edits below will be undone by that save.
+        Your next save is based on <span className="font-mono text-foreground">{onto}</span>. In
+        SKILL.md, anything it changed that is not in your edits below is undone by that save.
       </p>
       {theirs.error ? (
         <ErrorNotice error={theirs.error} doing={`read ${name} ${onto}'s SKILL.md`} />
       ) : theirs.data ? (
         <DiffView
           before={theirs.data.content}
-          after={mine}
+          after={mine['SKILL.md'] ?? ''}
           beforeLabel={`${onto} SKILL.md`}
           afterLabel="your SKILL.md"
         />
       ) : (
         <Skeleton className="h-24 w-full rounded-lg" />
       )}
+
+      <div className="mt-3">
+        {rebase.error ? (
+          <ErrorNotice error={rebase.error} doing={`compare ${base} with ${onto}`} />
+        ) : upstream === null ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            Comparing the other files of <span className="font-mono">{base}</span> and{' '}
+            <span className="font-mono">{onto}</span>…
+          </p>
+        ) : upstream.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            <span className="font-mono">{onto}</span> changed no other file, so the rest of your
+            bundle is saved as it is.
+          </p>
+        ) : (
+          <>
+            <p className="mb-1.5 text-sm">
+              <span className="font-mono">{onto}</span> also changed{' '}
+              {upstream.length === 1 ? 'this file' : `these ${upstream.length} files`} since{' '}
+              <span className="font-mono">{base}</span>. For each, take its version or keep yours
+              {unresolved && unresolved.length > 0
+                ? ` — ${unresolved.length} still to choose before saving.`
+                : '.'}
+            </p>
+            <ul aria-label={`Files ${onto} changed`} className="divide-y divide-border/60">
+              {upstream.map((change) => (
+                <UpstreamRow
+                  key={change.path}
+                  change={change}
+                  onto={onto}
+                  base={rebase.baseFiles?.[change.path]}
+                  theirs={rebase.ontoFiles?.[change.path]}
+                  canTake={rebase.ontoFiles !== undefined}
+                  choice={resolutions[change.path]}
+                  onResolve={(c) => onResolve(change, c)}
+                />
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
     </PageSection>
+  );
+}
+
+const UPSTREAM_WORD = { added: 'added', removed: 'deleted', changed: 'changed' } as const;
+
+function UpstreamRow({
+  change,
+  onto,
+  base,
+  theirs,
+  canTake,
+  choice,
+  onResolve,
+}: {
+  change: FileChange;
+  onto: string;
+  base: string | undefined;
+  theirs: string | undefined;
+  canTake: boolean;
+  choice: Resolution | undefined;
+  onResolve: (choice: Resolution) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const binary = isBinaryAssetPath(change.path);
+  const takeLabel = change.kind === 'removed' ? 'Delete it, as ' : 'Take ';
+  return (
+    <li className="space-y-1.5 py-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        <span className="font-mono">{change.path}</span>
+        <span className="text-xs text-muted-foreground">
+          {UPSTREAM_WORD[change.kind]} in {onto}
+        </span>
+        {choice && (
+          <span className="text-xs font-medium">
+            {choice === 'theirs'
+              ? change.kind === 'removed'
+                ? '· deleted, as in the newer version'
+                : "· the newer version's file"
+              : '· yours kept'}
+          </span>
+        )}
+        {!binary && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="ml-auto rounded-sm text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            {open ? 'Hide diff' : 'Show diff'}
+          </button>
+        )}
+      </div>
+      {open && !binary && (
+        <DiffView
+          before={base ?? ''}
+          after={theirs ?? ''}
+          beforeLabel={base === undefined ? 'absent' : 'before'}
+          afterLabel={theirs === undefined ? `absent in ${onto}` : onto}
+          maxHeight="max-h-64"
+        />
+      )}
+      <div
+        role="group"
+        aria-label={`${change.path}: which version to save`}
+        className="flex flex-wrap gap-2"
+      >
+        <Button
+          size="sm"
+          variant={choice === 'theirs' ? 'secondary' : 'outline'}
+          aria-pressed={choice === 'theirs'}
+          className="h-7 text-xs"
+          disabled={!canTake}
+          onClick={() => onResolve('theirs')}
+        >
+          {takeLabel}
+          {change.kind === 'removed' ? onto : `${onto}'s`}
+        </Button>
+        <Button
+          size="sm"
+          variant={choice === 'mine' ? 'secondary' : 'outline'}
+          aria-pressed={choice === 'mine'}
+          className="h-7 text-xs"
+          onClick={() => onResolve('mine')}
+        >
+          Keep mine
+        </Button>
+      </div>
+    </li>
   );
 }

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { ConfirmButton } from '@/components/confirm-button';
 import { PageSection } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
+import { BundleChanges } from './bundle-changes';
 import { DiffView } from './diff-view';
 import { useArchiveSkill, useSkillFile } from './queries';
 import { RefusalNotice } from './refusal';
@@ -92,12 +93,17 @@ export function VersionsPanel({
               : 'Reading both sides…'}
           </p>
         ) : (
-          <DiffView
-            before={leftText}
-            after={rightText}
-            beforeLabel={against === EDITOR ? 'editor' : against}
-            afterLabel={selected}
-          />
+          <div className="space-y-2">
+            <DiffView
+              before={leftText}
+              after={rightText}
+              beforeLabel={against === EDITOR ? 'editor' : against}
+              afterLabel={selected}
+            />
+            {against !== EDITOR && (
+              <BundleChanges name={name} before={against} after={selected} skipSkillMd />
+            )}
+          </div>
         )}
       </PageSection>
 
@@ -166,7 +172,12 @@ function VersionRow({
         </p>
       )}
       {state === 'draft' && (
-        <VersionDecision name={v.name} version={v.version} liveVersion={liveVersion} />
+        <VersionDecision
+          name={v.name}
+          version={v.version}
+          liveVersion={liveVersion}
+          parentVersion={v.parent_version}
+        />
       )}
       {state === 'superseded' && (
         <RollbackButton name={v.name} version={v.version} liveVersion={liveVersion} />

@@ -1,3 +1,4 @@
+import { isSkillLibraryError } from '@felix/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { ArrowLeftIcon, SparklesIcon } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
@@ -9,7 +10,7 @@ import { useLibrarySkill } from './queries';
 import { ReviewPanel } from './review-panel';
 import { SkillBundleBrowser } from './skill-bundle-browser';
 import { ShadowsUploadNotice } from './skill-status';
-import { leavesSkill, SKILL_TABS, type SkillAddress, type SkillTab } from './skill-tabs';
+import { EDITOR, leavesSkill, SKILL_TABS, type SkillAddress, type SkillTab } from './skill-tabs';
 import { UnsavedChangesGuard } from './unsaved-guard';
 import { useSkillEditor } from './use-skill-editor';
 import { VersionsPanel } from './versions-panel';
@@ -48,8 +49,15 @@ export function SkillPage({
     address.version && detail?.versions.some((v) => v.version === address.version)
       ? address.version
       : newest;
+  // An `against` the skill does not hold is a stale or hand-edited link: it
+  // falls back to the default comparison rather than asking for a version
+  // that does not exist.
+  const knownAgainst =
+    address.against === EDITOR || detail?.versions.some((v) => v.version === address.against)
+      ? address.against
+      : null;
   const against =
-    address.against ??
+    knownAgainst ??
     (detail?.live_version && detail.live_version !== version
       ? detail.live_version
       : (detail?.versions.find((v) => v.version === version)?.parent_version ?? version));
@@ -100,9 +108,17 @@ export function SkillPage({
             </>
           }
         />
-        <UnsavedChangesGuard when={editor.bundle.dirty} leaves={leavesSkill} />
+        <UnsavedChangesGuard
+          when={editor.bundle.dirty}
+          leaves={leavesSkill}
+          onKeep={() =>
+            document.querySelector<HTMLTextAreaElement>('textarea[data-skill-source]')?.focus()
+          }
+        />
         <PanelBody className="space-y-4">
-          {skill.error ? (
+          {isMissing(skill.error) ? (
+            <SkillNotFound name={name} backTo={backTo} />
+          ) : skill.error ? (
             <ReadFailure
               error={skill.error}
               doing={`read ${name} from the skill library`}
@@ -162,6 +178,28 @@ export function SkillPage({
         </PanelBody>
       </Tabs>
     </Panel>
+  );
+}
+
+/** A 404, or a name no library could hold: the link points at nothing. */
+function isMissing(err: unknown): boolean {
+  return isSkillLibraryError(err) && (err.status === 404 || err.code === 'invalid_address');
+}
+
+export function SkillNotFound({ name, backTo }: { name: string; backTo: string }) {
+  return (
+    <div role="status" className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm">
+      <p>
+        The skill library has no skill called <span className="font-mono">{name.slice(0, 80)}</span>
+        .
+      </p>
+      <Link
+        to={backTo}
+        className="mt-2 inline-block text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        Back to the library
+      </Link>
+    </div>
   );
 }
 

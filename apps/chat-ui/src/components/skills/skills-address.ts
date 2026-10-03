@@ -1,9 +1,12 @@
 import { useSearchParams } from 'react-router';
-import { plural } from '@/components/harness/panel';
-import { type LibraryFilter, useReviewQueue } from './queries';
+import type { LibraryFilter } from './queries';
 import { isSkillTab, type SkillAddress } from './skill-tabs';
 
 /**
+ * Light on purpose: the eager harness route reads the address to decide which
+ * lazy skills surface to load, so nothing here may import the library itself
+ * (or TanStack Query with it).
+ *
  * The skills page's address, read and written in one place. Everything the
  * library shows is in the search string — which skill, which tab, which
  * versions, which filter — so a review link pasted into a chat opens on the
@@ -86,15 +89,4 @@ export function useSkillsAddress() {
         { replace: true },
       ),
   };
-}
-
-/** The pending-draft count for a header, `50+` when the queue's first page was full. */
-export function usePendingDraftCount(): { count: number | null; text: string | undefined } {
-  const queue = useReviewQueue();
-  const first = queue.data?.pages[0];
-  if (!first) return { count: null, text: undefined };
-  const n = (queue.data?.pages ?? []).reduce((sum, p) => sum + p.items.length, 0);
-  const more = !!queue.data?.pages.at(-1)?.next_cursor;
-  if (n === 0) return { count: 0, text: undefined };
-  return { count: n, text: `${plural(n, 'draft', 'drafts', more ? n : undefined)} waiting` };
 }

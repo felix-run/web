@@ -1,27 +1,71 @@
+import { isSkillName } from '@felix/client';
 import { createSkillTemplate, isValidSkillName, validateSkillName } from '@felix/skill-format';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Textarea } from '@felix/ui/textarea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { createLibrarySkill } from '@/api';
-import { CREATE_FORM, CreateToggle, PageSection } from '@/components/harness/panel';
+import {
+  CREATE_FORM,
+  CreateToggle,
+  PageSection,
+  Panel,
+  PanelBody,
+  plural,
+} from '@/components/harness/panel';
 import { LibraryList } from './library-list';
-import { invalidateLibrary } from './queries';
+import { invalidateLibrary, useReviewQueue } from './queries';
+import { QueryRoot } from './query-root';
 import { RefusalNotice } from './refusal';
 import { ReviewQueue } from './review-queue';
-import { SkillPage } from './skill-page';
-import { usePendingDraftCount, useSkillsAddress } from './skills-address';
+import { SkillNotFound, SkillPage } from './skill-page';
+import { useSkillsAddress } from './skills-address';
 
 /**
  * The library below the per-agent skills: what is waiting on a person first,
  * then everything, filterable by status and by who wrote it.
  */
-export function SkillLibrary() {
+/** The library, in the shared Query client — the lazy entry point `/harness/skills` loads. */
+export function SkillLibraryEntry(props: { onPendingText?: (text: string | undefined) => void }) {
+  return (
+    <QueryRoot>
+      <SkillLibrary {...props} />
+    </QueryRoot>
+  );
+}
+
+/** One skill's page, in the shared Query client. */
+export function SkillLibraryPageEntry() {
+  return (
+    <QueryRoot>
+      <SkillLibraryPage />
+    </QueryRoot>
+  );
+}
+
+/** The pending-draft count for a header, `50+` when the queue's first page was full. */
+export function usePendingDraftCount(): { count: number | null; text: string | undefined } {
+  const queue = useReviewQueue();
+  const first = queue.data?.pages[0];
+  if (!first) return { count: null, text: undefined };
+  const n = (queue.data?.pages ?? []).reduce((sum, p) => sum + p.items.length, 0);
+  const more = !!queue.data?.pages.at(-1)?.next_cursor;
+  if (n === 0) return { count: 0, text: undefined };
+  return { count: n, text: `${plural(n, 'draft', 'drafts', more ? n : undefined)} waiting` };
+}
+
+export function SkillLibrary({
+  onPendingText,
+}: {
+  /** Reports the pending count up, for the page header drawn outside this lazy chunk. */
+  onPendingText?: (text: string | undefined) => void;
+} = {}) {
   const nav = useSkillsAddress();
   const pending = usePendingDraftCount();
+  useEffect(() => onPendingText?.(pending.text), [onPendingText, pending.text]);
   const [creating, setCreating] = useState(false);
   const formId = useId();
   return (
@@ -55,6 +99,16 @@ export function SkillLibrary() {
 export function SkillLibraryPage() {
   const nav = useSkillsAddress();
   if (!nav.skill) return null;
+  // A name no library could hold is a broken link, answered without asking.
+  if (!isSkillName(nav.skill)) {
+    return (
+      <Panel>
+        <PanelBody>
+          <SkillNotFound name={nav.skill} backTo={nav.backTo} />
+        </PanelBody>
+      </Panel>
+    );
+  }
   return (
     <SkillPage
       name={nav.skill}

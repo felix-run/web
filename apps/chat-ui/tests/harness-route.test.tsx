@@ -302,6 +302,36 @@ describe('the harness address', () => {
     await user.keyboard('{Escape}');
   });
 
+  it('keeps a destination mounted across the 768px boundary, so nothing typed is lost', async () => {
+    // Narrow and wide once returned different trees, so a resize unmounted the
+    // page: an unsaved skill edit or a half-typed search went with it.
+    let wide = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      get matches() {
+        return wide && query.includes('min-width: 768px');
+      },
+      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+    }));
+    mount('/harness/memory?view=search');
+    const input = (await screen.findByLabelText('What would it recall?')) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'half-typed' } });
+    await act(async () => {
+      wide = true;
+      for (const fn of listeners) fn();
+    });
+    await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
+    const after = screen.getByLabelText('What would it recall?') as HTMLInputElement;
+    expect(after).toBe(input);
+    expect(after.value).toBe('half-typed');
+    await act(async () => {
+      wide = false;
+      for (const fn of listeners) fn();
+    });
+    expect(screen.getByLabelText('What would it recall?')).toBe(input);
+  });
+
   it('lands on the Ledger when wide, and stays the list when narrow', async () => {
     // The Ledger answers "what happened while I was away"; Memory, first in the
     // list, is empty for most tenants.

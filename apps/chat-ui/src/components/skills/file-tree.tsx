@@ -1,3 +1,4 @@
+import { isAllowedPath, isBinaryAssetPath } from '@felix/skill-format';
 import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
@@ -18,15 +19,7 @@ import {
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { cn } from '@/lib/utils';
-import {
-  buildTree,
-  bundleDirs,
-  isAllowedPath,
-  isBinaryAssetPath,
-  isProtectedPath,
-  isTextPath,
-  type TreeNode,
-} from './bundle-paths';
+import { buildTree, bundleDirs, isProtectedPath, isTextPath, type TreeNode } from './bundle-paths';
 
 /**
  * A skill bundle as a tree: SKILL.md first, then the root files, then the four

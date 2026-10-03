@@ -75,7 +75,8 @@ export function SkillMarkdown({
         node?: unknown;
       }) => {
         const bundlePath = href ? resolveBundlePath(href) : null;
-        const inBundle = !!bundlePath && files?.[bundlePath] !== undefined;
+        // Own keys only: `[x](constructor)` must not find `Object.prototype.constructor`.
+        const inBundle = !!bundlePath && !!files && Object.hasOwn(files, bundlePath);
         if (bundlePath && inBundle && onOpenFile) {
           return (
             <button
@@ -106,7 +107,8 @@ export function SkillMarkdown({
       img: ({ src, alt }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => {
         const target = typeof src === 'string' ? src : '';
         const bundlePath = resolveBundlePath(target);
-        const content = bundlePath ? files?.[bundlePath] : undefined;
+        const content =
+          bundlePath && files && Object.hasOwn(files, bundlePath) ? files[bundlePath] : undefined;
         const dataUrl =
           bundlePath && content !== undefined && isBinaryAssetPath(bundlePath)
             ? assetDataUrl(bundlePath, content)

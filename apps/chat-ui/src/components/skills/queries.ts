@@ -53,9 +53,21 @@ export const skillKeys = {
     [...skillKeys.all, 'file', name, version, path] as const,
 };
 
-/** Every view of the library is stale after a write — the one rule a mutation follows. */
+/**
+ * A stored version's bytes never change — a save makes a new version — so its
+ * bundle and files are never stale. They are also the one place the editor's
+ * own save is seeded with the *unredacted* files it sent; refetching them would
+ * swap in the harness's secret-redacted read and put `[REDACTED]` in the
+ * working copy.
+ */
+const IMMUTABLE = new Set(['bundle', 'file']);
+
+/** Every mutable view of the library is stale after a write — the one rule a mutation follows. */
 export function invalidateLibrary(client: QueryClient) {
-  return client.invalidateQueries({ queryKey: skillKeys.all });
+  return client.invalidateQueries({
+    queryKey: skillKeys.all,
+    predicate: (query) => !IMMUTABLE.has(String(query.queryKey[1])),
+  });
 }
 
 /** Rows a filtered listing tries to fill before it stops following `next_cursor` by itself. */

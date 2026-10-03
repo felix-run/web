@@ -1,5 +1,6 @@
+import { isAllowedPath } from '@felix/skill-format';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isAllowedPath, isProtectedPath, pathsUnder } from './bundle-paths';
+import { isProtectedPath, pathsUnder } from './bundle-paths';
 
 /**
  * The editor's working copy of a skill bundle, and whether it differs from the

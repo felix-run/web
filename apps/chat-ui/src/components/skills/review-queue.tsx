@@ -113,7 +113,12 @@ function QueueRow({
           )}
         </CollapsibleContent>
       </Collapsible>
-      <VersionDecision name={draft.name} version={draft.version} liveVersion={draft.live_version} />
+      <VersionDecision
+        name={draft.name}
+        version={draft.version}
+        liveVersion={draft.live_version}
+        parentVersion={draft.parent_version}
+      />
     </li>
   );
 }

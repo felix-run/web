@@ -2,6 +2,7 @@ import {
   BINARY_ASSET_EXTENSIONS,
   base64DecodedSize,
   encodeBase64,
+  isBinaryAssetPath,
   MAX_BINARY_ASSET_BYTES,
   type ValidationIssue,
 } from '@felix/skill-format';
@@ -11,7 +12,7 @@ import { Columns2Icon } from 'lucide-react';
 import { type Ref, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { AssetPreview, formatBytes } from './asset-preview';
-import { isBinaryAssetPath, isTextPath, sanitizeAssetFileName } from './bundle-paths';
+import { isTextPath, sanitizeAssetFileName } from './bundle-paths';
 import { CodeEditor, type CodeEditorHandle } from './code-editor';
 import { FileTree } from './file-tree';
 import { FrontmatterForm } from './frontmatter-form';
@@ -34,14 +35,15 @@ export function SkillBundleEditor({
   validationErrors = [],
   errorLines,
   editorRef,
-  readOnly,
+  issuesId,
 }: {
   bundle: SkillBundleState;
   slug: string;
   validationErrors?: ValidationIssue[];
   errorLines?: Set<number>;
   editorRef?: Ref<CodeEditorHandle>;
-  readOnly?: boolean;
+  /** The id of the validation issue list, which the source editor is described by. */
+  issuesId?: string;
 }) {
   const fallbackEditorRef = useRef<CodeEditorHandle>(null);
   const assetInputRef = useRef<HTMLInputElement>(null);
@@ -77,14 +79,14 @@ export function SkillBundleEditor({
       <AssetPreview
         path={bundle.activePath}
         base64Content={activeContent}
-        onReplace={readOnly ? undefined : () => assetInputRef.current?.click()}
+        onReplace={() => assetInputRef.current?.click()}
       />
     ) : activeIsText ? (
       <CodeEditor
         ref={editorRef ?? fallbackEditorRef}
         path={bundle.activePath}
         value={activeContent}
-        readOnly={readOnly}
+        issuesId={isSkillMd ? issuesId : undefined}
         onChange={(next) => bundle.setFileContent(bundle.activePath, next)}
         errorLines={isSkillMd ? errorLines : undefined}
       />
@@ -122,13 +124,12 @@ export function SkillBundleEditor({
             files={bundle.files}
             pendingDirs={bundle.pendingDirs}
             activePath={bundle.activePath}
-            readOnly={readOnly}
             onSelect={bundle.setActivePath}
             onCreateFile={bundle.createFile}
             onCreateDir={bundle.createDir}
             onRename={bundle.renamePath}
             onDelete={bundle.deletePath}
-            onRequestUpload={readOnly ? undefined : () => assetInputRef.current?.click()}
+            onRequestUpload={() => assetInputRef.current?.click()}
           />
           <input
             ref={assetInputRef}
@@ -194,7 +195,7 @@ export function SkillBundleEditor({
                       content={activeContent ?? ''}
                       slug={slug}
                       errors={validationErrors}
-                      onChange={(next) => !readOnly && bundle.setFileContent('SKILL.md', next)}
+                      onChange={(next) => bundle.setFileContent('SKILL.md', next)}
                     />
                   </TabsContent>
                 </Tabs>

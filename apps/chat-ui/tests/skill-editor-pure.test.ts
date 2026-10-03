@@ -1,8 +1,7 @@
+import { isAllowedPath, isBinaryAssetPath } from '@felix/skill-format';
 import { describe, expect, it } from 'vitest';
 import {
   buildTree,
-  isAllowedPath,
-  isBinaryAssetPath,
   isProtectedPath,
   isTextPath,
   pathsUnder,
@@ -174,5 +173,35 @@ describe('highlight', () => {
     const out = highlight('{"name": "value"}', 'json');
     expect(out).toContain('tok-property');
     expect(out).toContain('tok-string');
+  });
+});
+
+describe('highlight cost', () => {
+  // A sticky pattern is tried at every position of a line, so one unbounded
+  // span made these quadratic: a 256 KiB line of `[` took minutes. The budget
+  // is generous on purpose — a linear pass takes milliseconds, a quadratic one
+  // takes orders of magnitude longer, and CI machines vary by far less.
+  const BUDGET_MS = 1000;
+  const hostile = {
+    'a 256 KiB line of [': '['.repeat(256 * 1024),
+    'a 256 KiB line of **': '**a'.repeat(87_000),
+    'a 256 KiB line of backticks and brackets': '`[('.repeat(87_000),
+    'a just-tokenized line of [': '['.repeat(3999),
+    'a just-tokenized line of ** with no close': `**${'a '.repeat(1998)}`,
+    'many just-tokenized lines': `${'[!['.repeat(1333)}\n`.repeat(64),
+  };
+
+  it.each(Object.entries(hostile))('highlights %s within budget, escaped', (_label, text) => {
+    for (const lang of ['markdown', 'yaml', 'python', 'shell', 'javascript', 'json'] as const) {
+      const started = performance.now();
+      const out = highlight(text, lang);
+      expect(performance.now() - started).toBeLessThan(BUDGET_MS);
+      expect(out).not.toContain('<script');
+    }
+  });
+
+  it('draws an over-long line plain rather than tokenizing it', () => {
+    const line = `# ${'x'.repeat(5000)} \`code\``;
+    expect(highlight(line, 'shell')).not.toContain('tok-');
   });
 });

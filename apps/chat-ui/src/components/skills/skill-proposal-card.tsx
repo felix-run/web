@@ -11,6 +11,7 @@ import {
 } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { useLibrarySkill } from './queries';
+import { QueryRoot } from './query-root';
 import { isForbidden } from './refusal';
 import { ScoreReadout } from './score-readout';
 import { VersionStateBadge, versionState } from './skill-status';
@@ -32,6 +33,15 @@ import { VersionDiff } from './version-diff';
  * here. When the library cannot be read, the card falls back to the result and
  * says that it has.
  */
+/** The card in the shared Query client — the lazy entry point the tool card loads. */
+export function SkillProposalCardEntry(props: Parameters<typeof SkillProposalCard>[0]) {
+  return (
+    <QueryRoot>
+      <SkillProposalCard {...props} />
+    </QueryRoot>
+  );
+}
+
 export function SkillProposalCard({
   toolName,
   input,
@@ -97,10 +107,15 @@ function SavedDraft({
   const state = row ? versionState(row, live) : result.status === 'published' ? 'live' : 'draft';
   const readable = !!skill.data;
   const cannotRead = skill.error ? isForbidden(skill.error) : false;
-  // Not before the library has answered: offering Approve on the result's word
-  // alone would offer it on a draft someone already decided in another tab.
-  const decidable = skill.isFetched && state === 'draft' && !forbidden && !cannotRead;
-  const before = parent ?? (state === 'draft' ? live : null);
+  // Only on the library's own word that this version is still a draft: the
+  // tool result is agent-relayed, and offering Approve on it would offer it on
+  // a draft someone already decided — or on one the library does not hold.
+  const decidable = !!row && state === 'draft' && !forbidden && !cannotRead;
+  // What publishing replaces is the live version, so that is what the diff is
+  // against — not the parent, which `VersionDecision` names when they differ.
+  const before = live && live !== result.version ? live : null;
+  // The library's record of the parent, over the call's argument naming it.
+  const editedFrom = row ? row.parent_version : parent;
 
   return (
     <div
@@ -126,10 +141,10 @@ function SavedDraft({
         <p className="mt-1.5 whitespace-pre-wrap break-words text-muted-foreground">{reason}</p>
       )}
       <p className="mt-1.5">
-        {toolName === 'update_skill' && parent ? (
+        {toolName === 'update_skill' && editedFrom ? (
           <>
             A new version of <span className="font-mono">{result.name}</span>, edited from{' '}
-            <span className="font-mono">{parent}</span>.
+            <span className="font-mono">{editedFrom}</span>.
           </>
         ) : (
           <>
@@ -184,7 +199,7 @@ function SavedDraft({
               aria-hidden
               className="size-3.5 transition-transform group-data-[state=open]:rotate-90"
             />
-            {before ? `Diff against ${before}` : 'Show SKILL.md'}
+            {before ? `Diff against live ${before}` : 'Show SKILL.md'}
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-2">
             {open && <VersionDiff name={result.name} before={before} after={result.version} />}
@@ -193,11 +208,12 @@ function SavedDraft({
       )}
 
       <div className="mt-3 space-y-2">
-        {decidable && (
+        {decidable && row && (
           <VersionDecision
-            name={result.name}
-            version={result.version}
+            name={row.name}
+            version={row.version}
             liveVersion={live}
+            parentVersion={row.parent_version}
             verb="Approve"
             onForbidden={onForbidden}
           />
