@@ -305,3 +305,32 @@ describe('the Thinking picker', () => {
     expect(header.querySelector('[aria-label="Toggle theme"]')).toBeNull();
   });
 });
+
+describe('an attachment waiting to be sent', () => {
+  /**
+   * The card sits inside the composer's form, and its remove control was a bare
+   * button — a submit. Measured against a live harness on 2026-10-03: three
+   * "removed" images had each been sent as an empty message.
+   */
+  it('is removed by its remove control, and nothing is sent', async () => {
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }),
+    );
+    const onSubmit = vi.fn();
+    const { container } = mount({ onSubmit });
+    const user = userEvent.setup({ delay: null });
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(
+      input as HTMLInputElement,
+      new File(['x'], 'shot.png', { type: 'image/png' }),
+    );
+    const remove = await screen.findByRole('button', { name: 'Remove shot.png' });
+    expect(remove.getAttribute('type')).toBe('button');
+    await user.click(remove);
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Remove shot.png' })).toBeNull(),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
