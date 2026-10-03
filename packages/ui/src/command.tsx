@@ -1,6 +1,7 @@
 import { Command as CommandPrimitive } from 'cmdk';
 import { Search } from 'lucide-react';
 import type * as React from 'react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog';
 import { InputGroup, InputGroupAddon } from './input-group';
 import { cn } from './lib/utils';
 
@@ -18,6 +19,42 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
       )}
       {...props}
     />
+  );
+}
+
+/**
+ * A command palette in a dialog. The title and description sit *inside*
+ * `DialogContent` (visually hidden), unlike upstream, which renders them beside
+ * it: there the dialog has no accessible name and Radix warns about it.
+ */
+function CommandDialog({
+  title = 'Command Palette',
+  description = 'Search for a command to run...',
+  children,
+  className,
+  showCloseButton = true,
+  ...props
+}: React.ComponentProps<typeof Dialog> & {
+  title?: string;
+  description?: string;
+  className?: string;
+  showCloseButton?: boolean;
+}) {
+  return (
+    <Dialog {...props}>
+      <DialogContent
+        className={cn('overflow-hidden p-0', className)}
+        showCloseButton={showCloseButton}
+      >
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <Command className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3">
+          {children}
+        </Command>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -127,6 +164,7 @@ function CommandShortcut({ className, ...props }: React.ComponentProps<'span'>) 
 
 export {
   Command,
+  CommandDialog,
   CommandEmpty,
   CommandGroup,
   CommandInput,
