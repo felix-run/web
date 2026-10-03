@@ -1851,7 +1851,11 @@ export function AppShell() {
                     aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
                     title={`Sidebar (${shortcutLabel('toggle-workspace', mac)})`}
                   />
-                  <Wordmark />
+                  {/* Below `sm`, while a run state is showing, the word steps aside
+                      the way the modes do: the mark beside it is the brand and the
+                      toggle, and the chip and the attention line need the room. It
+                      stays the page's `h1` for a reader. */}
+                  <Wordmark className={cn(runShown && 'max-sm:sr-only')} />
                 </div>
               )}
               {/* The left cluster yields in a fixed order, because at 390px with both
@@ -2009,15 +2013,19 @@ export function AppShell() {
               </div>
 
               {/*
-          Always rendered, never conditional, and above the `<Outlet/>` so it is the
-          same line on both addresses. It answers the question an operator has
-          before they have navigated anywhere, which means it cannot be somewhere
-          they have to navigate to.
-        */}
-              {/* `ml-auto` puts it beside the controls; a shrink weight far above the
-            run cluster's makes it the first thing in the header to give way, so
-            the run state and the brand keep their room at every width. */}
-              <div className="ml-auto flex min-w-0 shrink-[100] items-center justify-end pl-2">
+                The attention line. Always rendered, never conditional, and in the
+                header so it is the same line on both addresses: it answers the
+                question an operator has before they have navigated anywhere, so it
+                cannot be somewhere they have to navigate to.
+
+                `ml-auto` puts it beside the controls. From `sm` a shrink weight far
+                above the run cluster's makes it the first thing to give way — its
+                sentence truncates. Below `sm` it is two words that cannot truncate,
+                so it does not shrink at all: it shrank below them and drew "1
+                waiting" over New chat and the sidebar toggle at 390px and 320px.
+                There the run cluster gives instead, clipping at its own edge.
+              */}
+              <div className="ml-auto flex min-w-0 shrink-[100] items-center justify-end pl-2 max-sm:shrink-0">
                 <AttentionLine
                   approvals={tenantApprovals}
                   streaming={streaming}
@@ -2044,13 +2052,15 @@ export function AppShell() {
                     or as icons, so a second one here was the same button twice. It
                     stays here where the sidebar is a drawer, because there it would
                     be two clicks away. */}
+                {/* Below `sm` it steps aside while a run is showing: it is disabled
+                    for the whole of a run anyway, and the drawer holds it. */}
                 {!onHarness && !sidebarInline && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={newThread}
                     disabled={streaming}
-                    className="gap-1.5"
+                    className={cn('gap-1.5', runShown && 'max-sm:hidden')}
                     title="New chat"
                   >
                     <PlusIcon className="size-4" aria-hidden />
