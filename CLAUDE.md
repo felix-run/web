@@ -20,6 +20,7 @@ in this repo beyond one thin proxy Worker.
 | `packages/cowork-client` | Browser VFS, File System Access mount, client-side tool executor |
 | `packages/test-kit` | Reusable behavioral suites — the proxy Worker contract and the SSE reader |
 | `packages/design` | Neutral palette + theme-CSS builders (docs theme is generated from these) |
+| `packages/skill-format` (`@felix/skill-format`) | The harness's SKILL.md bundle rules in TS, for live validation in the skill editor; the harness stays authoritative |
 | `packages/typescript-config` | Shared tsconfig bases |
 
 ## Commands
@@ -253,11 +254,20 @@ reach the harness directly, a real origin plus a bearer token for anything that 
 package touches storage, the DOM, or notifications. `src/management/` holds the **read-only** half
 of the harness's operator surface — audit, usage, memory, plans, artifacts — composed onto the same
 client so a terminal can ask why a run did what it did; those routes were browser-only by accident
-rather than by design.
+rather than by design. The one exception is `management/skills.ts`, the tenant skill library
+(`/skill-library`), which has its full write surface there too — reviewing what an agent drafted is
+the point of it. Its refusals are thrown as `SkillLibraryError` carrying the parsed `{error, message,
+issues?, reasons?}`, because a 409 is a merge (`parent_changed`) or a rename (`skill_exists`) and a
+422 a bad bundle or a refused publish; writes measure their JSON body against the harness's 1 MiB
+cap before sending.
 
 **The shell is a layout route, and that is load-bearing.** `src/App.tsx` is now the route table
 alone (react-router v7, declarative — a literal version in `apps/chat-ui`, single-use, so not the
-catalog); `src/app-shell.tsx` is the layout route that owns the engine, the thread, the `/approvals`
+catalog), mounted by `main.tsx` under a `createBrowserRouter` with one splat route rather than
+`BrowserRouter`: still no loaders or actions, but `useBlocker` (the skill editor's unsaved-changes
+guard) exists only under a data router, and `UnsavedChangesGuard` renders nothing under the
+`MemoryRouter` the tests mount. `App` also owns the one TanStack Query client, made per mount;
+the skill library is its only user, everything older polls through `usePoll`; `src/app-shell.tsx` is the layout route that owns the engine, the thread, the `/approvals`
 poll and `presence.ts`, and renders the matched route into an `<Outlet/>`. Everything below that
 seam reads `src/shell-context.ts`. The engine is *above* the `<Outlet/>` on purpose: a run is alive
 for as long as the tab is, so mounting `createChatEngine` inside a route would unmount it — and kill
@@ -734,6 +744,20 @@ Flows worth knowing before editing the app:
   rather than a correction, which the Add form says where the decision is made. A hit's `channels`
   reading `lexical` alone means the vector retriever never *ran* (no embedder configured), not that
   it ran and disagreed.
+- **Skill library** — `/harness/skills` keeps the agent's active/declared skills on top and adds
+  the tenant library below: a review queue (oldest draft first, diff against live, publish or reject
+  with a note) and a list filtered by status and source. `?skill=&tab=&v=&against=` is a skill's
+  page (Edit, Versions, Review, Files), so any view is a link. The list follows `next_cursor` past
+  *empty* filtered pages — the route filters after reading — for a bounded number of pages, then
+  says there is more rather than "none". A save names `parent_version`; a 409 `parent_changed`
+  stops at a choice (reload the newer version, or keep the edits with its diff on screen) and never
+  retries by itself. Skill text is agent-written: `SkillMarkdown` is the transcript pipeline minus
+  `rehype-raw` (no HTML element from markdown) and loads no remote image, and `assetDataUrl` builds
+  `data:` URLs only for the raster types on the harness's table, never SVG. `create_skill` /
+  `update_skill` results render `SkillProposalCard` above the tool card, offering Approve only once
+  the library confirms the version is still a draft, and only the link after a 403. The library
+  and editor are a lazy chunk (the YAML parser rides in it); evals and feedback tabs are declared
+  `ready: false` in `SKILL_TABS` until the harness serves them.
 - **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and
   the snapshot's `labels` map reads them back. It was a write-only route here for a different reason
   than the rest: `SessionSnapshot` did not model the field the harness had always sent, so a label

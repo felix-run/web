@@ -10,7 +10,7 @@ import {
   type LucideIcon,
   SparklesIcon,
 } from 'lucide-react';
-import { Fragment, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { Fragment, type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Navigate, NavLink, Outlet, useMatch, useSearchParams } from 'react-router';
 import { getResolvedManifest, listAudit, listJobs } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
@@ -42,6 +42,7 @@ import {
 } from '@/components/inspector/primitives';
 import { failing, JOBS_POLL_KEY, JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
+import { usePendingDraftCount, useSkillsAddress } from '@/components/skills/skills-address';
 import { WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
@@ -86,7 +87,46 @@ function CorpusPanel() {
   );
 }
 
+/**
+ * `/harness/skills`: the agent's skills, then the tenant library and its review
+ * queue — or, with `?skill=`, one library skill's page. A search parameter
+ * rather than a nested route, so the destination list (one path segment per
+ * destination) stays the single table the nav and the routes are built from.
+ */
 function SkillsPanel() {
+  const { skill } = useSkillsAddress();
+  return skill ? (
+    <Suspense fallback={<LibraryLoading />}>
+      <SkillLibraryPage />
+    </Suspense>
+  ) : (
+    <SkillsOverview />
+  );
+}
+
+/**
+ * The library and the skill page load on first visit: the editor carries a
+ * YAML parser and the bundle validator, which nothing else in the app needs and
+ * which the entry chunk should not pay for on every load. The chat's inline
+ * skill card imports none of it.
+ */
+const SkillLibrary = lazy(() =>
+  import('@/components/skills/skill-library').then((m) => ({ default: m.SkillLibrary })),
+);
+const SkillLibraryPage = lazy(() =>
+  import('@/components/skills/skill-library').then((m) => ({ default: m.SkillLibraryPage })),
+);
+
+function LibraryLoading() {
+  return (
+    <p role="status" className="p-4 text-sm text-muted-foreground">
+      Loading the skill library…
+    </p>
+  );
+}
+
+function SkillsOverview() {
+  const pending = usePendingDraftCount();
   const { skills, threads, threadId } = useShell();
   const { agent, isChatAgent } = useHarnessAgent();
   // What the manifest declares, so the page has something true to show before
@@ -149,6 +189,12 @@ function SkillsPanel() {
         specError={specError}
         onRetrySpec={() => setSpecTry((n) => n + 1)}
         controls={<HarnessAgentPicker />}
+        library={
+          <Suspense fallback={<LibraryLoading />}>
+            <SkillLibrary />
+          </Suspense>
+        }
+        pendingText={pending.text}
       />
     </AsPanel>
   );

@@ -1,0 +1,68 @@
+import { Badge } from '@felix/ui/badge';
+
+type LooseFrontmatter = {
+  name?: unknown;
+  description?: unknown;
+  license?: unknown;
+  compatibility?: unknown;
+  metadata?: unknown;
+  'allowed-tools'?: unknown;
+};
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * A SKILL.md's frontmatter as a reader sees it: the name in mono, the
+ * description as prose, and the optional fields beneath. Every value is drawn
+ * as text — the description is the agent's, and it reaches the screen as a
+ * string, never as markup.
+ */
+export function FrontmatterCard({ frontmatter }: { frontmatter: unknown }) {
+  const fm = (frontmatter ?? {}) as LooseFrontmatter;
+  const metadata =
+    fm.metadata && typeof fm.metadata === 'object' && !Array.isArray(fm.metadata)
+      ? Object.entries(fm.metadata as Record<string, unknown>)
+      : [];
+  const rows: Array<[string, string]> = [];
+  const license = text(fm.license);
+  const compatibility = text(fm.compatibility);
+  if (license) rows.push(['License', license]);
+  if (compatibility) rows.push(['Compatibility', compatibility]);
+  const tools = text(fm['allowed-tools']);
+
+  return (
+    <div className="rounded-lg bg-muted/50 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-sm font-semibold">{text(fm.name) ?? '(no name)'}</span>
+        {tools && (
+          <Badge variant="outline" className="font-mono" title="Pre-approved tools (experimental)">
+            tools: {tools}
+          </Badge>
+        )}
+      </div>
+      {text(fm.description) && (
+        <p className="mt-1.5 max-w-prose text-sm whitespace-pre-wrap text-muted-foreground">
+          {text(fm.description)}
+        </p>
+      )}
+      {(rows.length > 0 || metadata.length > 0) && (
+        <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs">
+          {rows.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt className="text-muted-foreground">{label}</dt>
+              <dd className="min-w-0 break-words">{value}</dd>
+            </div>
+          ))}
+          {metadata.map(([key, value]) => (
+            <div key={key} className="contents">
+              <dt className="font-mono text-muted-foreground">{key}</dt>
+              <dd className="min-w-0 break-words font-mono">{String(value)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}

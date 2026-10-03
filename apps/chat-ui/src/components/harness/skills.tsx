@@ -15,10 +15,16 @@ import { middleTruncate } from '@/lib/format';
  * conversation, so it describes the chat's agent and nothing else; the manifest
  * knows only what is *declared*, for whichever agent the harness is looking at.
  *
- * There is no write here. A button used to post "list your skills" into the
- * chat's thread from this page, so its answer landed in a conversation that was
- * not on screen, addressed to an agent that might not be the one on this page.
- * It is a link to that conversation now: asking is something done in Chat.
+ * There is no write in this half. A button used to post "list your skills" into
+ * the chat's thread from this page, so its answer landed in a conversation that
+ * was not on screen, addressed to an agent that might not be the one on this
+ * page. It is a link to that conversation now: asking is something done in Chat.
+ *
+ * Below it, on `/harness/skills`, sits the tenant's skill **library** (`library`)
+ * — what agents drafted and operators saved, and the queue of drafts waiting on
+ * a person. That half is tenant-wide rather than per-agent, so it does not move
+ * with the agent picker, and its pending count is the header's value when there
+ * is one: a draft waiting is the thing on this page that asks for someone.
  */
 export function SkillsSection({
   open,
@@ -32,6 +38,8 @@ export function SkillsSection({
   onRetrySpec,
   chatTo,
   controls,
+  library,
+  pendingText,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -54,8 +62,12 @@ export function SkillsSection({
   onRetrySpec?: () => void;
   /** Header controls — the agent picker, on `/harness`. */
   controls?: ReactNode;
+  /** The tenant library and its review queue, drawn after the agent's skills. */
+  library?: ReactNode;
+  /** `3 drafts waiting`, when the review queue holds any. */
+  pendingText?: string;
 }) {
-  const meta = skills
+  const agentMeta = skills
     ? // `2/5` asked the reader to know which number was which; the words cost
       // three characters and remove the question.
       `${skills.active.length} of ${skills.declared.length} active`
@@ -66,7 +78,9 @@ export function SkillsSection({
     <Section
       icon={<SparklesIcon className="size-3.5" />}
       title="Skills"
-      meta={meta}
+      meta={pendingText ?? agentMeta}
+      metaLead={pendingText ? agentMeta : undefined}
+      metaTone={pendingText ? 'attention' : undefined}
       open={open}
       onToggle={onToggle}
       controls={controls}
@@ -166,6 +180,7 @@ export function SkillsSection({
           </p>
         )}
       </div>
+      {library ? <div className="mt-6 space-y-1">{library}</div> : null}
     </Section>
   );
 }

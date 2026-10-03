@@ -20,6 +20,8 @@ import {
   TerminalHeader,
   TerminalTitle,
 } from '@/components/ai-elements/terminal';
+import { SkillProposalCard } from '@/components/skills/skill-proposal-card';
+import { parseSkillCall } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { ToolTable } from './tool-table';
@@ -58,8 +60,14 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
     [tool.done, tool.name, tool.output],
   );
   const target = toolTarget(tool.name, tool.input);
+  // A skill an agent drafted is a decision waiting on a person, so it gets the
+  // proposal card above the ordinary one — which stays, folded, for the raw call.
+  const skillCall = useMemo(
+    () => (tool.done ? parseSkillCall(tool.name, tool.output) : null),
+    [tool.done, tool.name, tool.output],
+  );
 
-  return (
+  const card = (
     <Collapsible
       open={open}
       onOpenChange={setOpen}
@@ -147,6 +155,13 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         )}
       </CollapsibleContent>
     </Collapsible>
+  );
+  if (!skillCall) return card;
+  return (
+    <div className="space-y-1.5">
+      <SkillProposalCard toolName={tool.name} input={tool.input} result={skillCall} />
+      {card}
+    </div>
   );
 }
 

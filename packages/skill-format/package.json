@@ -1,0 +1,23 @@
+{
+  "name": "@felix/skill-format",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The agentskills.io SKILL.md bundle rules the harness enforces, for live validation in an editor.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "lint": "biome check .",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@felix/typescript-config": "workspace:*",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

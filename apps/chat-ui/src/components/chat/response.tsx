@@ -45,9 +45,9 @@ import { cn } from '@/lib/utils';
  * lists. `defaultRemarkPlugins` exists for this, keyed by name rather than an array,
  * hence `Object.values`. `tests/response.test.tsx` holds the two that would go silently.
  */
-const remarkPlugins = [...Object.values(defaultRemarkPlugins), remarkBreaks];
+export const responseRemarkPlugins = [...Object.values(defaultRemarkPlugins), remarkBreaks];
 
-type Components = NonNullable<StreamdownProps['components']>;
+export type Components = NonNullable<StreamdownProps['components']>;
 
 /**
  * Markers outside, with padding for them to sit in. The padding is what a wrapped
@@ -55,7 +55,7 @@ type Components = NonNullable<StreamdownProps['components']>;
  */
 const LIST = 'list-outside whitespace-normal pl-6 [li>&]:mt-1';
 
-const components: Components = {
+export const responseComponents: Components = {
   ul: ({ node: _node, className, ...props }) => (
     <ul className={cn(LIST, 'list-disc', className)} {...props} />
   ),
@@ -92,8 +92,8 @@ export function Response({ children, className }: { children: string; className?
   return (
     <Streamdown
       className={cn('max-w-none wrap-break-word', className)}
-      components={components}
-      remarkPlugins={remarkPlugins}
+      components={responseComponents}
+      remarkPlugins={responseRemarkPlugins}
     >
       {children}
     </Streamdown>

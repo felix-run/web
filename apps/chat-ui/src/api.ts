@@ -109,6 +109,23 @@ export const listPlans = felix.listPlans.bind(felix);
 export const deletePlan = felix.deletePlan.bind(felix);
 export const getArtifact = felix.getArtifact.bind(felix);
 
+// The tenant skill library: the one management area with a full write surface,
+// because reviewing what an agent drafted is what it is for.
+export const listLibrarySkills = felix.listLibrarySkills.bind(felix);
+export const listSkillReviewQueue = felix.listSkillReviewQueue.bind(felix);
+export const getSkillPublishPolicy = felix.getSkillPublishPolicy.bind(felix);
+export const getLibrarySkill = felix.getLibrarySkill.bind(felix);
+export const getSkillVersion = felix.getSkillVersion.bind(felix);
+export const getSkillFile = felix.getSkillFile.bind(felix);
+export const previewSkillVersion = felix.previewSkillVersion.bind(felix);
+export const readSkillBundle = felix.readSkillBundle.bind(felix);
+export const createLibrarySkill = felix.createLibrarySkill.bind(felix);
+export const saveSkillVersion = felix.saveSkillVersion.bind(felix);
+export const publishSkillVersion = felix.publishSkillVersion.bind(felix);
+export const rollbackSkillVersion = felix.rollbackSkillVersion.bind(felix);
+export const rejectSkillVersion = felix.rejectSkillVersion.bind(felix);
+export const archiveLibrarySkill = felix.archiveLibrarySkill.bind(felix);
+
 export type { StreamArgs, StreamHandlers } from '@felix/client';
 export { flattenPlan } from '@felix/client';
 
