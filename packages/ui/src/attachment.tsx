@@ -128,15 +128,22 @@ function AttachmentActions({ className, ...props }: React.ComponentProps<'div'>)
   );
 }
 
+/**
+ * `type="button"` unless told otherwise. An attachment card sits inside a
+ * composer's form, where a bare button is a submit: Remove sent the message,
+ * attachment and all, instead of removing it.
+ */
 function AttachmentAction({
   className,
   variant,
   size = 'icon-xs',
+  type = 'button',
   ...props
 }: React.ComponentProps<typeof Button>) {
   return (
     <Button
       data-slot="attachment-action"
+      type={type}
       variant={variant ?? 'ghost'}
       size={size}
       className={cn(className)}
