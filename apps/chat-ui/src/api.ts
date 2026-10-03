@@ -109,6 +109,33 @@ export const listPlans = felix.listPlans.bind(felix);
 export const deletePlan = felix.deletePlan.bind(felix);
 export const getArtifact = felix.getArtifact.bind(felix);
 
+// The tenant skill library: the one management area with a full write surface,
+// because reviewing what an agent drafted is what it is for.
+export const listLibrarySkills = felix.listLibrarySkills.bind(felix);
+export const listSkillReviewQueue = felix.listSkillReviewQueue.bind(felix);
+export const getSkillPublishPolicy = felix.getSkillPublishPolicy.bind(felix);
+export const getLibrarySkill = felix.getLibrarySkill.bind(felix);
+export const getSkillVersion = felix.getSkillVersion.bind(felix);
+export const getSkillFile = felix.getSkillFile.bind(felix);
+export const previewSkillVersion = felix.previewSkillVersion.bind(felix);
+export const readSkillBundle = felix.readSkillBundle.bind(felix);
+export const createLibrarySkill = felix.createLibrarySkill.bind(felix);
+export const saveSkillVersion = felix.saveSkillVersion.bind(felix);
+export const publishSkillVersion = felix.publishSkillVersion.bind(felix);
+export const rollbackSkillVersion = felix.rollbackSkillVersion.bind(felix);
+export const rejectSkillVersion = felix.rejectSkillVersion.bind(felix);
+export const archiveLibrarySkill = felix.archiveLibrarySkill.bind(felix);
+export const updateSkillPublishPolicy = felix.updateSkillPublishPolicy.bind(felix);
+export const resetSkillPublishPolicy = felix.resetSkillPublishPolicy.bind(felix);
+export const listFeedbackInbox = felix.listFeedbackInbox.bind(felix);
+export const listSkillFeedback = felix.listSkillFeedback.bind(felix);
+export const submitSkillFeedback = felix.submitSkillFeedback.bind(felix);
+export const acceptSkillFeedback = felix.acceptSkillFeedback.bind(felix);
+export const rejectSkillFeedback = felix.rejectSkillFeedback.bind(felix);
+export const queueSkillEval = felix.queueSkillEval.bind(felix);
+export const listSkillEvals = felix.listSkillEvals.bind(felix);
+export const getSkillEval = felix.getSkillEval.bind(felix);
+
 export type { StreamArgs, StreamHandlers } from '@felix/client';
 export { flattenPlan } from '@felix/client';
 

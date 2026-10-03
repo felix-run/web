@@ -1,7 +1,8 @@
 /**
  * The harness's management surface — what it *did*, what it *spent*, what it
- * *remembers*, what it can *retrieve*, what it *planned*, and the tool outputs
- * too large to inline.
+ * *remembers*, what it can *retrieve*, what it *planned*, the tool outputs
+ * too large to inline, and the tenant's skill library — the one area here with a
+ * full write surface, since reviewing a skill an agent drafted is the point of it.
  *
  * This half lived only in `apps/chat-ui/src/api.ts` until now, which made it
  * browser-only by accident rather than by design: a terminal client could drive
@@ -24,6 +25,8 @@ import { createAuditClient } from './audit';
 import { createDocumentsClient } from './documents';
 import { createMemoryClient } from './memory';
 import { createPlansClient } from './plans';
+import { createSkillQualityClient } from './skill-quality';
+import { createSkillLibraryClient } from './skills';
 import { createUsageClient } from './usage';
 
 export function createManagementClient(http: FelixHttp) {
@@ -34,5 +37,7 @@ export function createManagementClient(http: FelixHttp) {
     ...createDocumentsClient(http),
     ...createPlansClient(http),
     ...createArtifactsClient(http),
+    ...createSkillLibraryClient(http),
+    ...createSkillQualityClient(http),
   };
 }

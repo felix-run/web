@@ -10,7 +10,7 @@ import {
   type LucideIcon,
   SparklesIcon,
 } from 'lucide-react';
-import { Fragment, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { Fragment, type KeyboardEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Navigate, NavLink, Outlet, useMatch, useSearchParams } from 'react-router';
 import { getResolvedManifest, listAudit, listJobs } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
@@ -42,6 +42,7 @@ import {
 } from '@/components/inspector/primitives';
 import { failing, JOBS_POLL_KEY, JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
+import { useSkillsAddress } from '@/components/skills/skills-address';
 import { WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
@@ -86,7 +87,47 @@ function CorpusPanel() {
   );
 }
 
+/**
+ * `/harness/skills`: the agent's skills, then the tenant library and its review
+ * queue — or, with `?skill=`, one library skill's page. A search parameter
+ * rather than a nested route, so the destination list (one path segment per
+ * destination) stays the single table the nav and the routes are built from.
+ */
 function SkillsPanel() {
+  const { skill } = useSkillsAddress();
+  return skill ? (
+    <Suspense fallback={<LibraryLoading />}>
+      <SkillLibraryPage />
+    </Suspense>
+  ) : (
+    <SkillsOverview />
+  );
+}
+
+/**
+ * The library and the skill page load on first visit: the editor carries a
+ * YAML parser and the bundle validator, which nothing else in the app needs and
+ * which the entry chunk should not pay for on every load. The chat's inline
+ * skill card imports none of it.
+ */
+const SkillLibrary = lazy(() =>
+  import('@/components/skills/skill-library').then((m) => ({ default: m.SkillLibraryEntry })),
+);
+const SkillLibraryPage = lazy(() =>
+  import('@/components/skills/skill-library').then((m) => ({ default: m.SkillLibraryPageEntry })),
+);
+
+function LibraryLoading() {
+  return (
+    <p role="status" className="p-4 text-sm text-muted-foreground">
+      Loading the skill library…
+    </p>
+  );
+}
+
+function SkillsOverview() {
+  // Reported up by the lazy library, which owns the queue's read.
+  const [pendingText, setPendingText] = useState<string | undefined>(undefined);
   const { skills, threads, threadId } = useShell();
   const { agent, isChatAgent } = useHarnessAgent();
   // What the manifest declares, so the page has something true to show before
@@ -149,6 +190,12 @@ function SkillsPanel() {
         specError={specError}
         onRetrySpec={() => setSpecTry((n) => n + 1)}
         controls={<HarnessAgentPicker />}
+        library={
+          <Suspense fallback={<LibraryLoading />}>
+            <SkillLibrary onPendingText={setPendingText} />
+          </Suspense>
+        }
+        pendingText={pendingText}
       />
     </AsPanel>
   );
@@ -614,48 +661,45 @@ export function HarnessLayout() {
   // and a nav and no main, so a screen reader's landmark list offered every way
   // *around* the page and none into it, and "skip to main content" had nowhere to
   // land. Narrow, the index's list is the page's content, so it is the main there.
-  if (!wide) {
-    if (atIndex) {
-      return (
-        <main className="flex min-h-0 flex-1 flex-col">
-          <div className="shrink-0 border-b border-border/60 px-4 py-3">
-            {/* `h2`: the shell's wordmark is the page's one `h1`, and every
-                destination's own heading is an `h2` beside this one. */}
-            <h2 className="text-sm font-semibold">Harness</h2>
-            <p className="text-xs text-muted-foreground">
-              What this tenant owns, across every run.
-            </p>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <HarnessNav />
-          </div>
-        </main>
-      );
-    }
-    // The way back lives in the destination's own header, in the icon's place,
-    // rather than in a row of its own above it: see `PageBack`.
+  if (!wide && atIndex) {
     return (
-      <PageBack.Provider value={{ to: `/harness${search}`, label: 'Back to Harness' }}>
-        <main className="flex min-h-0 flex-1 flex-col">
-          <PageDocs.Provider value={destination?.docs ?? null}>
-            <Outlet />
-          </PageDocs.Provider>
-        </main>
-      </PageBack.Provider>
+      <main className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 border-b border-border/60 px-4 py-3">
+          {/* `h2`: the shell's wordmark is the page's one `h1`, and every
+                destination's own heading is an `h2` beside this one. */}
+          <h2 className="text-sm font-semibold">Harness</h2>
+          <p className="text-xs text-muted-foreground">What this tenant owns, across every run.</p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <HarnessNav />
+        </div>
+      </main>
     );
   }
 
+  // One tree for every destination at every width. Narrow and wide used to
+  // return different roots, so crossing 768px — rotating a tablet, dragging a
+  // window — unmounted the page and remounted it fresh, and an unsaved skill
+  // edit, a half-typed search, an open form went with it. The nav is a slot
+  // that is empty narrow; the way back is a context that is empty wide; the
+  // `<Outlet/>` sits at the same depth either way.
   return (
     <div className="flex min-h-0 flex-1">
-      {!sidebarInline && (
+      {wide && !sidebarInline && (
         <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60">
           <HarnessNav />
         </div>
       )}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <PageDocs.Provider value={destination?.docs ?? null}>
-          <Outlet />
-        </PageDocs.Provider>
+        {/* The way back lives in the destination's own header, in the icon's
+            place, rather than in a row of its own above it: see `PageBack`. */}
+        <PageBack.Provider
+          value={wide ? null : { to: `/harness${search}`, label: 'Back to Harness' }}
+        >
+          <PageDocs.Provider value={destination?.docs ?? null}>
+            <Outlet />
+          </PageDocs.Provider>
+        </PageBack.Provider>
       </main>
     </div>
   );

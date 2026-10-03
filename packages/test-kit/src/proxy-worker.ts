@@ -213,6 +213,67 @@ export function describeProxyWorker(label: string, worker: ProxyWorker): void {
     // bearer standing in for the shared key afterwards. The second is the one
     // that can open a hole — under FELIX_AUTH_MODE=none the harness accepts any
     // bearer, so the Worker may honour one only when the harness says it checks.
+    describe('cross-site writes', () => {
+      const post = (headers: Record<string, string>) =>
+        new Request('https://app.example.com/api/skill-library/x/versions/1.0.0/publish', {
+          method: 'POST',
+          headers,
+        });
+
+      it('refuses a write the browser marks cross-site, before reaching the harness', async () => {
+        const res = await worker.fetch(post({ 'sec-fetch-site': 'cross-site' }), env());
+        expect(res.status).toBe(403);
+        expect(upstream).not.toHaveBeenCalled();
+      });
+
+      it('refuses a write from a foreign Origin, even with the key and a bearer', async () => {
+        const res = await worker.fetch(
+          post({
+            origin: 'https://evil.example',
+            'x-chat-key': 'k',
+            authorization: 'Bearer t',
+          }),
+          env({ CHAT_UI_KEY: 'k', FELIX_API_KEY: 'deploy' }),
+        );
+        expect(res.status).toBe(403);
+        expect(upstream).not.toHaveBeenCalled();
+      });
+
+      it('refuses the login routes cross-site too', async () => {
+        const res = await worker.fetch(
+          new Request('https://app.example.com/api/auth/github/device', {
+            method: 'POST',
+            headers: { origin: 'null' },
+          }),
+          env(),
+        );
+        expect(res.status).toBe(403);
+      });
+
+      it('lets a same-origin write through, and every read whatever its origin', async () => {
+        const same = await worker.fetch(
+          post({ origin: 'https://app.example.com', 'sec-fetch-site': 'same-origin' }),
+          env({ FELIX_API_KEY: 'deploy' }),
+        );
+        expect(same.status).toBe(200);
+        const read = await worker.fetch(
+          new Request('https://app.example.com/api/audit', {
+            headers: { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' },
+          }),
+          env(),
+        );
+        expect(read.status).toBe(200);
+      });
+
+      it('holds a headerless write (not a browser) to the key gate, as before', async () => {
+        expect((await worker.fetch(post({}), env({ CHAT_UI_KEY: 'k' }))).status).toBe(401);
+        expect(
+          (await worker.fetch(post({ 'x-chat-key': 'k' }), env({ CHAT_UI_KEY: 'k' }))).status,
+        ).toBe(200);
+        expect((await worker.fetch(post({}), env())).status).toBe(200);
+      });
+    });
+
     describe('caller credentials', () => {
       const gated = env({ CHAT_UI_KEY: 'correct-horse', FELIX_API_KEY: 'sk-upstream' });
       const verifies = (value: boolean) => () =>

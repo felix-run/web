@@ -322,6 +322,51 @@
   }
 }
 
+/* The skill editor is a transparent textarea over a highlighted mirror, so the
+   rule above would grow the textarea and leave the mirror and its line numbers
+   at 11px — the caret drifting off the painted text on every line. The three
+   surfaces carry `skill-code` and move together. Unlayered for the same reason. */
+@media (pointer: coarse) {
+  .skill-code {
+    font-size: 16px;
+  }
+}
+
+/* Forced colours repaint the editor's transparent textarea text in the system
+   colour, so the highlighted mirror behind it would draw every glyph twice,
+   slightly apart. The mirror steps aside and the textarea is the text. */
+@media (forced-colors: active) {
+  .skill-code-mirror {
+    visibility: hidden;
+  }
+}
+
+/* The skill editor's coarse highlighter (`components/skills/highlight.ts`).
+   Neutral on purpose: the state colours mean run states in this app, and a
+   keyword painted "running" blue would say something it does not mean. */
+.tok-comment {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.tok-keyword,
+.tok-heading {
+  font-weight: 600;
+}
+.tok-string,
+.tok-number,
+.tok-fence,
+.tok-punctuation {
+  color: var(--muted-foreground);
+}
+.tok-property {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.tok-link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* A tint mixed into the page rather than laid over it. `bg-muted/30` mixes the
    colour with *transparent*, so the tint is a function of whatever is behind the
    element; `bg-solid-muted/30` mixes with `--background` instead — the same pixel

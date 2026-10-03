@@ -9,7 +9,7 @@ import {
   CircleAlertIcon,
   LoaderIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
 import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block';
 import {
@@ -20,9 +20,21 @@ import {
   TerminalHeader,
   TerminalTitle,
 } from '@/components/ai-elements/terminal';
+import { parseSkillCall } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { ToolTable } from './tool-table';
+
+/**
+ * The skill proposal card, loaded only when a transcript holds a skill call:
+ * it brings TanStack Query and the library client with it, which a thread with
+ * no `create_skill` in it should not pay for on every load.
+ */
+const SkillProposalCard = lazy(() =>
+  import('@/components/skills/skill-proposal-card').then((m) => ({
+    default: m.SkillProposalCardEntry,
+  })),
+);
 
 /**
  * Collapsible tool-call card driven by SSE `ToolCall.done`.
@@ -58,8 +70,14 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
     [tool.done, tool.name, tool.output],
   );
   const target = toolTarget(tool.name, tool.input);
+  // A skill an agent drafted is a decision waiting on a person, so it gets the
+  // proposal card above the ordinary one — which stays, folded, for the raw call.
+  const skillCall = useMemo(
+    () => (tool.done ? parseSkillCall(tool.name, tool.output) : null),
+    [tool.done, tool.name, tool.output],
+  );
 
-  return (
+  const card = (
     <Collapsible
       open={open}
       onOpenChange={setOpen}
@@ -147,6 +165,15 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         )}
       </CollapsibleContent>
     </Collapsible>
+  );
+  if (!skillCall) return card;
+  return (
+    <div className="space-y-1.5">
+      <Suspense fallback={null}>
+        <SkillProposalCard toolName={tool.name} input={tool.input} result={skillCall} />
+      </Suspense>
+      {card}
+    </div>
   );
 }
 

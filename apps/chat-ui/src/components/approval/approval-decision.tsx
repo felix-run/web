@@ -97,7 +97,8 @@ export interface ApprovalDecisionProps {
  * rather than clipping it — the name stays on screen *and* in the accessible
  * name, where an ellipsis would keep only the second.
  */
-const DECISION_BUTTON = 'h-auto min-h-8 min-w-0 flex-1 py-1.5 whitespace-normal wrap-anywhere';
+export const DECISION_BUTTON =
+  'h-auto min-h-8 min-w-0 flex-1 py-1.5 whitespace-normal wrap-anywhere';
 
 /** Tools whose arguments are a whole file body. See `editable`. */
 const WHOLE_FILE_WRITES = new Set(['write_file', 'client · write_file']);

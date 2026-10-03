@@ -260,6 +260,65 @@
     "/skills/{manifest_name}/activations/recent": {
       "get": {}
     },
+    "/skill-library": {
+      "get": {},
+      "post": {}
+    },
+    "/skill-library/-/review": {
+      "get": {}
+    },
+    "/skill-library/-/policy": {
+      "get": {},
+      "delete": {},
+      "patch": {}
+    },
+    "/skill-library/{name}": {
+      "get": {},
+      "delete": {}
+    },
+    "/skill-library/{name}/versions/{version}": {
+      "get": {}
+    },
+    "/skill-library/{name}/versions/{version}/files/{path}": {
+      "get": {}
+    },
+    "/skill-library/{name}/versions/{version}/preview": {
+      "get": {}
+    },
+    "/skill-library/{name}/versions": {
+      "put": {}
+    },
+    "/skill-library/{name}/versions/{version}/publish": {
+      "post": {}
+    },
+    "/skill-library/{name}/versions/{version}/rollback": {
+      "post": {}
+    },
+    "/skill-library/{name}/versions/{version}/reject": {
+      "post": {}
+    },
+    "/skill-library/-/feedback": {
+      "get": {}
+    },
+    "/skill-library/-/feedback/{feedback_id}/accept": {
+      "post": {}
+    },
+    "/skill-library/-/feedback/{feedback_id}/reject": {
+      "post": {}
+    },
+    "/skill-library/{name}/feedback": {
+      "post": {},
+      "get": {}
+    },
+    "/skill-library/{name}/versions/{version}/eval": {
+      "post": {}
+    },
+    "/skill-library/{name}/evals": {
+      "get": {}
+    },
+    "/skill-library/{name}/evals/{eval_id}": {
+      "get": {}
+    },
     "/a2a/": {
       "post": {}
     },

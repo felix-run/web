@@ -35,7 +35,8 @@ dev and production behave differently and nothing reports it.
 
 In the Worker specifically: `x-chat-key` is deleted before the upstream fetch, the gate comparison
 stays constant-time, and the response body is passed through untouched (`duplex: 'half'`) so SSE and
-`x-manifest-variant` survive.
+`x-manifest-variant` survive. The cross-site write refusal (`crossSiteWrite`) has a copy in each:
+the Worker's, and the `refuseCrossSiteWrites` middleware in `vite.config.ts`.
 
 ## 2. `StreamEvent` has a hole
 

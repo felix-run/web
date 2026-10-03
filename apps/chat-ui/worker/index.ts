@@ -21,6 +21,16 @@
  * The three login routes are public on both sides: they are how a browser
  * *gets* a bearer, so they cannot require one, and no credential of ours is
  * attached to them.
+ *
+ * **A write from another site's page is refused before any of that.** This
+ * Worker attaches `FELIX_API_KEY` itself, so without a `CHAT_UI_KEY` a plain
+ * cross-site form post — no custom header, no preflight — would arrive at the
+ * harness carrying the deployment's credential: publish a skill, decide an
+ * approval, forget a memory. Any method but GET and HEAD is refused when the
+ * browser says the request is `Sec-Fetch-Site: cross-site`, or sends an
+ * `Origin` that is not this one. A request with neither header is not a
+ * browser's, and is held to the same gate as before: the shared key when one
+ * is set.
  */
 
 interface Env {
@@ -71,6 +81,14 @@ async function harnessVerifiesBearers(origin: string): Promise<boolean> {
   return value;
 }
 
+/** A state-changing request a browser made on another site's behalf. */
+function crossSiteWrite(req: Request, self: string): boolean {
+  if (req.method === 'GET' || req.method === 'HEAD') return false;
+  if (req.headers.get('sec-fetch-site') === 'cross-site') return true;
+  const origin = req.headers.get('origin');
+  return origin !== null && origin !== self;
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -89,6 +107,10 @@ export default {
           { error: 'felix_origin_unset', hint: 'Set vars.FELIX_ORIGIN in wrangler.jsonc' },
           { status: 502 },
         );
+      }
+
+      if (crossSiteWrite(req, url.origin)) {
+        return Response.json({ error: 'cross_site_request' }, { status: 403 });
       }
 
       const rest = url.pathname.slice('/api'.length);

@@ -1,0 +1,171 @@
+{
+  "$comment": "SKILL.md frontmatter cases and the errors the harness's felix/skills/format.py validate_skill_bundle(files, 'a') returns for each, recorded from felix main. tests/harness-verdicts.test.ts holds @felix/skill-format to the same verdicts. Re-record by running the harness side; a shared corpus checked into the felix repo would replace this file.",
+  "slug": "a",
+  "cases": [
+    {
+      "skill_md": "---\nname: a\ndescription: d\n---\nbody",
+      "errors": []
+    },
+    {
+      "skill_md": "---\n\n---\nbody",
+      "errors": [
+        ["frontmatter.", "Input should be a valid dictionary or instance of SkillFrontmatter"],
+        ["frontmatter.name", "name must match skill slug \"a\""]
+      ]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nallowed_tools: [x, y]\n---\nb",
+      "errors": [["frontmatter.allowed_tools", "Input should be a valid string"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nextra: {1: x}\n---\nb",
+      "errors": [["frontmatter.extra", "must be a scalar, or a flat list or map of scalars"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nmetadata: {k: 1}\n---\nb",
+      "errors": [["frontmatter.metadata.k", "Input should be a valid string"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nmetadata: x\n---\nb",
+      "errors": [["frontmatter.metadata", "Input should be a valid dictionary"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nupdated: 2026-01-01\n---\nb",
+      "errors": []
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: [[1]]\n---\nb",
+      "errors": [["frontmatter.x", "must be a scalar, or a flat list or map of scalars"]]
+    },
+    {
+      "skill_md": "---\nname: 12\ndescription: d\n---\nb",
+      "errors": [
+        ["frontmatter.name", "Input should be a valid string"],
+        ["frontmatter.name", "name must match skill slug \"a\""]
+      ]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: \"\"\n---\nb",
+      "errors": [["frontmatter.description", "String should have at least 1 character"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nlicense: null\n---\nb",
+      "errors": []
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nname: b\n---\nb",
+      "errors": [
+        [
+          "SKILL.md",
+          "SKILL.md must contain YAML frontmatter delimited by --- (within the size and nesting limits, with no anchors or aliases)"
+        ]
+      ]
+    },
+    {
+      "skill_md": "---\n- a\n---\nb",
+      "errors": [
+        ["frontmatter.", "Input should be a valid dictionary or instance of SkillFrontmatter"],
+        ["frontmatter.name", "name must match skill slug \"a\""]
+      ]
+    },
+    {
+      "skill_md": "---\nname: a\r\ndescription: d\r\n---\r\nb",
+      "errors": []
+    },
+    {
+      "skill_md": "---  \nname: a\ndescription: d\n---\t\nb",
+      "errors": []
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\n---",
+      "errors": [
+        [
+          "SKILL.md",
+          "SKILL.md must contain YAML frontmatter delimited by --- (within the size and nesting limits, with no anchors or aliases)"
+        ]
+      ]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: !!binary aGk=\n---\nb",
+      "errors": [["frontmatter.x", "must be a scalar, or a flat list or map of scalars"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: !foo bar\n---\nb",
+      "errors": [
+        [
+          "SKILL.md",
+          "SKILL.md must contain YAML frontmatter delimited by --- (within the size and nesting limits, with no anchors or aliases)"
+        ]
+      ]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: 0x1F\n---\nb",
+      "errors": []
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: .nan\n---\nb",
+      "errors": []
+    },
+    {
+      "skill_md": "---\nname: A\ndescription: d\n---\nb",
+      "errors": [
+        [
+          "frontmatter.name",
+          "name may only contain lowercase letters, numbers, and hyphens; no leading/trailing/consecutive hyphens"
+        ],
+        ["frontmatter.name", "name must match skill slug \"a\""]
+      ]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: ~\n---\nb",
+      "errors": []
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\ncompatibility: 5\n---\nb",
+      "errors": [["frontmatter.compatibility", "Input should be a valid string"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: {a: null, b: [1]}\n---\nb",
+      "errors": [["frontmatter.x", "must be a scalar, or a flat list or map of scalars"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: 1e400\n---\nb",
+      "errors": []
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\n? [a]\n: b\n---\nb",
+      "errors": [["frontmatter.('a',)", "Keys should be strings"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n---\nb",
+      "errors": [["frontmatter.x", "must be a scalar, or a flat list or map of scalars"]]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n---\nb",
+      "errors": [
+        [
+          "SKILL.md",
+          "SKILL.md must contain YAML frontmatter delimited by --- (within the size and nesting limits, with no anchors or aliases)"
+        ]
+      ]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n---\nb",
+      "errors": [
+        [
+          "SKILL.md",
+          "SKILL.md must contain YAML frontmatter delimited by --- (within the size and nesting limits, with no anchors or aliases)"
+        ]
+      ]
+    },
+    {
+      "skill_md": "---\nname: a\ndescription: d\nx: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n---\nb",
+      "errors": [
+        [
+          "SKILL.md",
+          "SKILL.md must contain YAML frontmatter delimited by --- (within the size and nesting limits, with no anchors or aliases)"
+        ]
+      ]
+    }
+  ]
+}
