@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import remarkBreaks from 'remark-breaks';
 import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from 'streamdown';
+import { loadedMathPlugins, loadMathPlugins, needsMath, WITHOUT_MATH } from '@/lib/katex-plugin';
 import { cn } from '@/lib/utils';
 
 /**
@@ -89,11 +91,30 @@ export const responseComponents: Components = {
  * Links carry `wrap-anywhere` from the renderer already.
  */
 export function Response({ children, className }: { children: string; className?: string }) {
+  // KaTeX loads with the first reply that has math in it — see `lib/katex-plugin.ts`.
+  // Until then the math shows as its source for a moment. The swap is a remount
+  // (the `key`), because streamdown's own `memo` compares `children`, the theme,
+  // `mode` and `isAnimating` and nothing else: a new plugin list alone never
+  // reaches the blocks, and the math stayed as source.
+  const [rehypePlugins, setRehypePlugins] = useState(() => loadedMathPlugins() ?? WITHOUT_MATH);
+  const wantsMath = needsMath(children);
+  useEffect(() => {
+    if (!wantsMath || rehypePlugins !== WITHOUT_MATH) return;
+    let live = true;
+    loadMathPlugins()
+      .then((plugins) => live && setRehypePlugins(plugins))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [wantsMath, rehypePlugins]);
   return (
     <Streamdown
+      key={rehypePlugins === WITHOUT_MATH ? 'plain' : 'math'}
       className={cn('max-w-none wrap-break-word', className)}
       components={responseComponents}
       remarkPlugins={responseRemarkPlugins}
+      rehypePlugins={rehypePlugins}
     >
       {children}
     </Streamdown>

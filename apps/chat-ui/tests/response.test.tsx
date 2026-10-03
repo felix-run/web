@@ -157,3 +157,41 @@ describe('long content stays inside its own box', () => {
     );
   });
 });
+
+/**
+ * Math is rendered by a KaTeX that loads with the first reply needing it
+ * (`lib/katex-plugin.ts`), not with the app. What is pinned: a reply with `$$`
+ * still ends up as KaTeX markup, and the list without KaTeX keeps streamdown's
+ * other plugins in their order — sanitize and harden run after it, and dropping
+ * one of those with the KaTeX slot would be a safety regression, not a size win.
+ */
+describe('math in a reply', () => {
+  it('renders `$$` math once KaTeX has loaded, inline as well as on its own line', async () => {
+    // Asserted as KaTeX's output rather than its class names: the default
+    // `rehype-sanitize` runs after KaTeX and strips them, on main as here.
+    // Inline was the case that broke — streamdown's memo ignores a new plugin
+    // list, so without the remount the math stayed as `code.language-math`.
+    for (const md of ['Area: $$\\pi r^2$$', '$$\n\\pi r^2\n$$']) {
+      const { container, unmount } = render(<Response>{md}</Response>);
+      await waitFor(() => {
+        expect(container.querySelector('code.language-math')).toBeNull();
+        expect(container.textContent).toContain('π');
+      });
+      unmount();
+    }
+  });
+
+  it('keeps streamdown’s other rehype plugins, in order, without KaTeX', async () => {
+    const { defaultRehypePlugins } = await import('streamdown');
+    const { WITHOUT_MATH, loadMathPlugins } = await import('../src/lib/katex-plugin');
+    const { katex: _katex, ...rest } = defaultRehypePlugins;
+    expect(WITHOUT_MATH).toEqual(Object.values(rest));
+    const withMath = await loadMathPlugins();
+    expect(withMath).toHaveLength(Object.keys(defaultRehypePlugins).length);
+    expect(Object.keys(defaultRehypePlugins).indexOf('katex')).toBe(
+      withMath.findIndex(
+        (p) => Array.isArray(p) && (p[0] as { name?: string }).name === 'rehypeKatex',
+      ),
+    );
+  });
+});
