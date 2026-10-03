@@ -40,7 +40,7 @@ Manifests use `apiVersion: felix/v1`, `kind: Agent` (Pydantic v2, `extra=forbid`
 
 7. **Pattern dispatch** — `get_pattern(spec.pattern)` from the open registry (`react`, `deep`, `router`, `parallel`, `groupchat`, `reflect`, `plan_execute`, plus any registered plugins).
 
-8. **Durable wrap** — when `spec.execution.mode: durable`, wrap so invoke enqueues a fiber (or Temporal run) and returns a resume token.
+8. **Durable wrap** — when `spec.execution.mode: durable`, wrap so invoke enqueues a fiber and returns a resume token.
 
 </Steps>
 

@@ -66,7 +66,7 @@ system prompt, which the planner does receive.
 - **Deny strings, not throws** — governance returns model-visible deny content so the loop can adapt.
 - **Sequential tool dispatch** — deterministic audit order; limit counters don't race.
 - **Orthogonal bounds** — `recursion_limit` caps loop steps; `spec.limits` caps aggregate work (tool calls, wall clock, peer hops, tokens).
-- **Durable** — `spec.execution.mode: durable` wraps any pattern so invoke enqueues a fiber / Temporal run (see [architecture](/internals/architecture/)).
+- **Durable** — `spec.execution.mode: durable` wraps any pattern so invoke enqueues a fiber (see [architecture](/internals/architecture/)).
 
 :::tip
 Pick **reflect** when one shot might be right and you want quality via replay. Pick **plan_execute** when the task is multi-phase and a single react loop loses the plot.
