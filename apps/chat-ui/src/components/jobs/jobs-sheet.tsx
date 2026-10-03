@@ -20,8 +20,9 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { isFailure, StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
+import { StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
+import { failing, JOBS_POLL_KEY } from '@/lib/harness-glances';
 import type { JobRun } from '@/types';
 
 /**
@@ -33,13 +34,9 @@ import type { JobRun } from '@/types';
  * is no run-now route on the harness, so runs are observed rather than
  * triggered — expand a job to see its recent runs.
  */
-/** A job whose last run did not succeed. */
-/** The key the Jobs page and the rail's glance share their `listJobs` read under. */
-export const JOBS_POLL_KEY = 'jobs';
 
-export function failing(j: { last_status?: string | null; last_error?: string | null }): boolean {
-  return Boolean(j.last_error) || (j.last_status != null && isFailure(j.last_status));
-}
+// Re-exported from where the rail's glance can import them without this page.
+export { failing, JOBS_POLL_KEY };
 
 export function JobsSheet({
   manifest,

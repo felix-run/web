@@ -20,8 +20,18 @@ import {
 import { usePoll } from '@/hooks/usePoll';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { middleTruncate } from '@/lib/format';
+import {
+  ACTIVITY_FETCH,
+  AUDIT_POLL_KEY,
+  LEDGER_GLANCE_SPAN,
+  recentFailures,
+} from '@/lib/harness-glances';
 import { cn } from '@/lib/utils';
 import type { AuditEvent, UsageSummary } from '@/types';
+
+// The window, its keys and the glance's count live where the rail can import
+// them without loading this page; re-exported so the page's readers are unchanged.
+export { ACTIVITY_FETCH, AUDIT_POLL_KEY, LEDGER_GLANCE_SPAN, recentFailures };
 
 /**
  * The Ledger: what the harness *did*, and what it cost.
@@ -222,31 +232,6 @@ const THREAD_CHARS = 20;
 
 /** Rows rendered per section before the footer starts saying what was left out. */
 const ACTIVITY_VISIBLE = 12;
-
-/**
- * How many events the window covers. This is a request cap, not a total, and the
- * footer has to say so: `/audit` returns no count of what it did not send, so the
- * honest phrasing is "the last 60" rather than a number that looks like a census.
- * Upstream allows up to 500.
- */
-export const ACTIVITY_FETCH = 60;
-/**
- * The rail's Ledger glance counts failures in this window, where the page counts
- * them over its last `ACTIVITY_FETCH` events — on a quiet tenant those span weeks,
- * and one old failure kept the rail red for all of them. The header states both
- * so the two numbers cannot read as a contradiction.
- */
-export const LEDGER_GLANCE_MS = 24 * 60 * 60 * 1000;
-export const LEDGER_GLANCE_SPAN = '24h';
-
-/** Failures in the Ledger glance's window, which ends at `now`. */
-export function recentFailures(events: { status: string; ts: number }[], now: number): number {
-  const since = now - LEDGER_GLANCE_MS;
-  return events.filter((e) => isFailure(e.status) && e.ts != null && tsToMs(e.ts) >= since).length;
-}
-
-/** The key Activity and the rail's glance share their audit read under. */
-export const AUDIT_POLL_KEY = `audit:${ACTIVITY_FETCH}`;
 
 export function ActivitySection({
   enabled,

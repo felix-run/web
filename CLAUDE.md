@@ -393,7 +393,17 @@ hard to find; they had no home, which is what an ellipsis menu means. `Section` 
 
 Eight destinations, declared once as `HARNESS_DESTINATIONS` — the nav and the route table are built
 from that one list, because a nav entry with no route is a dead link and a route with no nav entry is
-a page nobody can reach, and both fail silently. Audit and usage are **one** destination, the Ledger:
+a page nobody can reach, and both fail silently. **The list is light and the pages are not**:
+`routes/harness.tsx` holds the destinations, the nav, its glances and the layout, because the app
+sidebar imports them on every load; the eight pages are `routes/harness-pages.tsx`, loaded on the
+first visit through one `lazy()` behind a `Suspense` around the layout's `<Outlet/>`. The glances'
+shared constants (`JOBS_POLL_KEY`, `failing`, `AUDIT_POLL_KEY`, `recentFailures`, …) live in
+`lib/harness-glances.ts` for the same reason — importing `failing` from `jobs-sheet.tsx` was enough
+to put the whole Jobs workbench in the entry. The run instrument (`Inspector`) is lazy in
+`routes/workbench.tsx` too, with a same-width placeholder so the transcript does not reflow.
+**Measure the first load, not the entry file**: Rolldown moves shared modules into chunks the entry
+imports statically, so this split took `index-*.js` from 652 to 508 kB while what a first load
+actually fetches (the entry plus its static imports, ~1.7 MB raw) fell only ~23 kB gzipped. Audit and usage are **one** destination, the Ledger:
 segmented rather than stacked so only the half being read polls. `SheetBoundary` became
 `PanelBoundary` and wraps each destination individually — a panel throws during its *own* render, so
 one boundary around the group would take the other seven down with it. Wide, the nav is a resident

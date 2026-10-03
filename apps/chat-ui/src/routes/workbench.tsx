@@ -1,7 +1,7 @@
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { LogOutIcon, UnplugIcon } from 'lucide-react';
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill } from '@/components/chat/context-meter';
 import { Conversation, ConversationItem } from '@/components/chat/conversation';
@@ -12,13 +12,39 @@ import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { PushHint } from '@/components/chat/push-hint';
 import { TurnCheckpoint } from '@/components/chat/turn-checkpoint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
-import { Inspector } from '@/components/inspector/inspector';
 import { RailPresence } from '@/components/rail-presence';
 import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
+
+/**
+ * The run instrument loads with its first showing, not with the app. Below 1280
+ * it is a drawer most visits never open, and its sections — plans, tool metrics
+ * and the primitives they draw with — were a block of the entry chunk every one
+ * of those visits paid for.
+ */
+const Inspector = lazy(() =>
+  import('@/components/inspector/inspector').then((m) => ({ default: m.Inspector })),
+);
+
+/**
+ * The instrument's footprint while it loads: the same column, empty, so the
+ * transcript does not reflow when the panel arrives a moment later.
+ */
+function InspectorLoading({ className }: { className?: string }) {
+  return (
+    <div
+      role="status"
+      aria-label="Loading this run"
+      className={cn(
+        'h-full w-[clamp(22rem,24vw,30rem)] shrink-0 border-l border-border/60 bg-solid-card/40',
+        className,
+      )}
+    />
+  );
+}
 
 /**
  * The narrow-width drawers' motion, at the inline rails' speed (`RAIL_MS`).
@@ -317,7 +343,9 @@ export function Workbench() {
         </main>
         {instrumentInline && (
           <RailPresence open={inspectorOpen} side="right">
-            <Inspector open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
+            <Suspense fallback={<InspectorLoading />}>
+              <Inspector open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
+            </Suspense>
           </RailPresence>
         )}
       </div>
@@ -346,11 +374,13 @@ export function Workbench() {
                 inspector" — a name for a panel that no longer exists, announced
                 over a heading that says something else. */}
             <SheetTitle className="sr-only">This run</SheetTitle>
-            <Inspector
-              open={inspectorOpen}
-              onClose={() => setInspectorOpen(false)}
-              className="w-full border-l-0 bg-transparent"
-            />
+            <Suspense fallback={<InspectorLoading className="w-full border-l-0 bg-transparent" />}>
+              <Inspector
+                open={inspectorOpen}
+                onClose={() => setInspectorOpen(false)}
+                className="w-full border-l-0 bg-transparent"
+              />
+            </Suspense>
           </SheetContent>
         </Sheet>
       )}
