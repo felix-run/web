@@ -10,11 +10,13 @@ import {
 import { Button } from '@felix/ui/button';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { ImageOffIcon, OctagonPauseIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { drawableUrl } from '@/lib/image-upload';
+import { plansInTurn } from '@/lib/plan-calls';
 import { cn } from '@/lib/utils';
 import type { Turn, TurnFeedback } from '@/types';
 import { MessageActions } from './message-actions';
+import { PlanCard } from './plan-card';
 import { RateTurn } from './rate-turn';
 import { Reasoning } from './reasoning';
 import { Response } from './response';
@@ -109,6 +111,7 @@ export function Message({
   }
 
   const empty = !turn.content && !turn.tools?.length;
+  const plans = useMemo(() => plansInTurn(turn.tools), [turn.tools]);
   const toolCount = turn.tools?.length ?? 0;
   return (
     <div className="group flex w-full flex-col gap-3">
@@ -129,6 +132,19 @@ export function Message({
           opens at the end of the prose so far, so nothing already rendered shifts. */}
       {interleaveTurn(turn.content, turn.tools, turn.reasoning).map((segment, i, arr) => {
         if (segment.kind === 'tool') {
+          // A plan's calls collapse into one card where the plan first appears,
+          // showing its newest state. Verbose still shows every call underneath.
+          const planId = plans.anchorOf.get(segment.index);
+          const plan = planId ? plans.latest.get(planId) : undefined;
+          if (plan) {
+            return (
+              <div key={`segment-${i}`} className="space-y-2">
+                <PlanCard plan={plan} live={streaming === true} />
+                {verbose && <Tool tool={segment.tool} verbose={verbose} />}
+              </div>
+            );
+          }
+          if (plans.folded.has(segment.index) && !verbose) return null;
           return <Tool key={`segment-${i}`} tool={segment.tool} verbose={verbose} />;
         }
         if (segment.kind === 'reasoning') {
