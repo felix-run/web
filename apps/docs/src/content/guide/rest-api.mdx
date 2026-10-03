@@ -781,6 +781,11 @@ curl -s "$BASE_URL/v1/chat/completions" \
 The optional `user` field becomes the thread suffix (`{tenant}:{user}`). Errors come back in OpenAI
 shape — `{"error": {...}}` — including `manifest_drift`, `content_filter` and `model_gateway_error`.
 
+Tool-call history round-trips the way an OpenAI SDK sends it: an assistant message's `tool_calls`
+(`function.arguments` as a JSON string) and the `tool` messages that answer them by `tool_call_id`
+reach the model together. Arguments that are not a JSON object are a `400 invalid_request_error`
+naming the call, `tool_calls[0]: arguments are not valid JSON`.
+
 ## A2A
 
 `POST /a2a` speaks A2A JSON-RPC for agent-to-agent calls. Peers declared in `spec.peers` become
