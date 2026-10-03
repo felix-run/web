@@ -122,11 +122,12 @@ export const FileTreeFolder = ({
     togglePath(path);
   }, [togglePath, path]);
 
-  // With no `onSelect`, the name toggles the folder: a name button that did
-  // nothing was a Tab stop with no action behind it.
+  // The name toggles the folder, and reports the selection when someone asked
+  // for it: a name button that did nothing was a Tab stop with no action behind
+  // it, and one that only selected left a folder you could not open by its name.
   const handleSelect = useCallback(() => {
-    if (onSelect) onSelect(path);
-    else togglePath(path);
+    onSelect?.(path);
+    togglePath(path);
   }, [onSelect, path, togglePath]);
 
   const folderContextValue = useMemo(() => ({ isExpanded, name, path }), [isExpanded, name, path]);

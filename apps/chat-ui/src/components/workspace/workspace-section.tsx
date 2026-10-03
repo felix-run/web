@@ -10,6 +10,7 @@ import {
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
 import { ChangesSection } from '@/components/workspace/changes-list';
+import { FilePreview } from '@/components/workspace/file-preview';
 import { collectChanges, durableRunInFlight, runHasToolCalls } from '@/lib/changes';
 import {
   clearMount,
@@ -70,6 +71,8 @@ export function WorkspaceSection({ className }: { className?: string }) {
   const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
   const [reconnectName, setReconnectName] = useState<string | null>(null);
   const [files, setFiles] = useState<string[]>([]);
+  /** The file open in the preview drawer. */
+  const [previewing, setPreviewing] = useState<string | null>(null);
   const canMount = supportsDirectoryPicker();
 
   const refresh = useCallback(async () => {
@@ -314,7 +317,12 @@ export function WorkspaceSection({ className }: { className?: string }) {
             Files
           </h3>
           {files.length ? (
-            <WorkspaceFileTree paths={files.slice(0, TREE_VISIBLE)} changed={changedPaths} />
+            <WorkspaceFileTree
+              paths={files.slice(0, TREE_VISIBLE)}
+              changed={changedPaths}
+              selected={previewing}
+              onOpenFile={setPreviewing}
+            />
           ) : (
             // Files is this tab's own store; Changes above is every workspace
             // call on the thread, including the harness's own tools, which never
@@ -335,6 +343,12 @@ export function WorkspaceSection({ className }: { className?: string }) {
           )}
         </section>
       </div>
+      <FilePreview
+        path={previewing}
+        changed={previewing !== null && changedPaths.has(previewing)}
+        streaming={streaming}
+        onClose={() => setPreviewing(null)}
+      />
     </section>
   );
 }
@@ -352,15 +366,28 @@ function normalisePath(path: string): string {
  * muted — the same distinction *Changes on this thread* draws above, carried into
  * the place an operator looks for a file. Everything else starts folded, so a
  * mounted repository is one row per top-level entry instead of two hundred paths.
+ * A file opens in the preview drawer; a folder's name still folds it.
  */
 function WorkspaceFileTree({
   paths,
   changed,
+  selected,
+  onOpenFile,
 }: {
   paths: readonly string[];
   changed: ReadonlySet<string>;
+  selected: string | null;
+  onOpenFile: (path: string) => void;
 }) {
   const tree = useMemo(() => buildTree(paths), [paths]);
+  const filePaths = useMemo(() => {
+    const out = new Set<string>();
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) n.kind === 'folder' ? walk(n.children) : out.add(n.path);
+    };
+    walk(tree);
+    return out;
+  }, [tree]);
   // Seeded once, from the changes on screen when the tree first draws: after that
   // the folds are the operator's.
   const [expanded, setExpanded] = useState(() => ancestorsOf(changed));
@@ -390,6 +417,10 @@ function WorkspaceFileTree({
       aria-label="Files"
       expanded={expanded}
       onExpandedChange={setExpanded}
+      {...(selected ? { selectedPath: selected } : {})}
+      onSelect={(path) => {
+        if (filePaths.has(path)) onOpenFile(path);
+      }}
       className="max-h-64 overflow-y-auto rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
     >
       {render(tree)}

@@ -342,14 +342,16 @@ describe('the workspace file tree', () => {
     tab.files = [];
   });
 
-  it('is one Tab stop per folder, and a folder opens from its name', async () => {
+  it('is one Tab stop per row, and a folder opens from its name', async () => {
     tab.files = ['d src', 'f src/app.ts', 'd docs', 'f docs/a.md', 'f README.md'];
     mount({});
     const tree = await screen.findByRole('tree', { name: 'Files' });
     const stops = [...tree.querySelectorAll<HTMLElement>('button, [tabindex]')].filter(
       (el) => el.tabIndex >= 0,
     );
-    expect(stops.map((el) => el.textContent)).toEqual(['docs', 'src']);
+    // A folder's stop is its name; a file is a stop because Enter opens it in
+    // the preview. Nothing else — no wrapper, no unlabelled chevron.
+    expect(stops.map((el) => el.textContent)).toEqual(['docs', 'src', 'README.md']);
     await userEvent.click(within(tree).getByRole('button', { name: 'src' }));
     expect(within(tree).getByText('app.ts')).toBeTruthy();
     tab.files = [];
