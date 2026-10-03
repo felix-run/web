@@ -879,9 +879,8 @@ spec:
 A durable `POST /chat` returns **`202`** with `{status, resume_token, fiber_id, expires_at,
 thread_id}`; poll `GET /chat/runs/{resume_token}`. Fibers checkpoint in Postgres and are picked up
 by the worker within about a second (`FELIX_FIBER_POLL_SECONDS`, see
-[Deploy → Durable runs](/guide/deploy/#durable-runs)). Setting `FELIX_DURABILITY=temporal` additionally starts a
-Temporal workflow on the `felix-fibers` task queue, falling back to the fiber scheduler if that
-fails.
+[Deploy → Durable runs](/guide/deploy/#durable-runs)). Fibers are the one durable backend; the
+Temporal backend was removed, and `FELIX_DURABILITY=temporal` now fails startup.
 
 `POST /chat/stream` on a durable manifest streams the run instead — `run_accepted`, `run_status`,
 `final` — and a client that disconnects reattaches with the resume token (see

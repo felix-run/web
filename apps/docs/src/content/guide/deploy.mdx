@@ -40,7 +40,6 @@ the Makefile passes `--project-directory .`.
 | `make up-pooled` | PgBouncer in transaction mode |
 | `make up-replicas` | Two API replicas behind one nginx origin |
 | `make up-observability` | OTel Collector, Prometheus, Grafana, Jaeger, Loki, Postgres/Valkey exporters |
-| `make up-temporal` | Temporal server, UI on :8233, and `felix-temporal-worker` |
 | `make up-self` | The self-build stack: a `shell` runner container that holds no secrets and runs every shell tool, and no host ports for DB, cache or object store. Writes `FELIX_SHELL_RUNNER_TOKEN` into `.env` first |
 
 ### Observability stack
@@ -61,25 +60,6 @@ your operator key and writes the bare token to a gitignored file. `/metrics` has
 that key reads metrics and is refused everywhere else.
 
 See [observability](/internals/observability/) for the metric catalog and span schema.
-
-### Temporal
-
-```bash
-make up-temporal        # Temporal UI :8233
-```
-
-Swaps durable execution from the Postgres fiber sweeper to Temporal. `auto-setup` creates its two
-databases inside the existing Postgres rather than standing up a second one, which keeps the overlay
-within reach of a small VM — and is a development convenience, not a production shape.
-
-`FELIX_DURABILITY=temporal` is set for **api, worker and the temporal-worker together**: they must
-agree, or a durable chat is enqueued for one driver and executed by the other. The image gets the
-`temporal` extra there too, because the backend raises without `temporalio` rather than degrading —
-correct, since a durable chat that quietly ran transiently would be worse.
-
-<Aside type="caution" title="Temporal Cloud is not reachable">
-`Client.connect` takes no TLS or API-key options, so this is a self-hosted Temporal path only.
-</Aside>
 
 ### Sending traces to a backend you already run
 

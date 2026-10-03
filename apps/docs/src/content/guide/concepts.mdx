@@ -282,9 +282,6 @@ does not lose the run. Poll
 `GET /chat/runs/{resume_token}` for the result, or name endpoints in `spec.execution.webhooks` and
 the worker POSTs the finished run to them, signed.
 
-Setting `FELIX_DURABILITY=temporal` additionally drives a Temporal workflow on the `felix-fibers`
-task queue, falling back to the fiber scheduler if that fails.
-
 `POST /chat/stream` on a durable manifest streams the run — `run_accepted`, `run_status`, `final` —
 and a dropped client reattaches with the resume token rather than losing the run.
 

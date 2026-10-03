@@ -90,7 +90,7 @@ POST /chat or /v1/chat/completions
        bind MCP / peers / sandboxes / containers / queues / browser
        governance wrappers (secret masking → … → approvals)
        get_pattern(spec.pattern) → Agent
-       optional durable wrap (fibers / Temporal)
+       optional durable wrap (fibers)
   → agent.invoke / agent.stream_events
        session strategy renders working set
        model chat → tool dispatch → persist session events
@@ -102,7 +102,7 @@ Names are the actual callables: `felix.runtime` owns `resolve_tenant_manifest` a
 
 ## Durability
 
-Default durability backend is **fibers** (Postgres-backed sleep/step/resume; each worker polls for due fibers every second and advances up to eight at once, with a once-a-minute cron sweep as the backstop). Set `spec.execution.mode: durable` to enqueue and return `202` with a `resume_token`. Optional **Temporal** (`FELIX_DURABILITY` + `felix temporal-worker` on queue `felix-fibers`) for external durable execution.
+The durability backend is **fibers** (Postgres-backed sleep/step/resume; each worker polls for due fibers every second and advances up to eight at once, with a once-a-minute cron sweep as the backstop). Set `spec.execution.mode: durable` to enqueue and return `202` with a `resume_token`.
 
 ## Background work
 
@@ -127,6 +127,6 @@ the following ever fires:
 |---|---|
 | `packages/harness/src/felix/` | Manifests, patterns, tools, session, governance, auth, plugins |
 | `apps/api` | FastAPI composition + routes |
-| `apps/worker` | Taskiq worker / scheduler / Temporal entrypoints |
+| `apps/worker` | Taskiq worker and scheduler entrypoints |
 | `packages/cli` | Ops CLI |
 | `manifests/` | Bundled agents (`quick`, `deep`, `router`, …) |
