@@ -260,6 +260,41 @@
     "/skills/{manifest_name}/activations/recent": {
       "get": {}
     },
+    "/skill-library": {
+      "get": {},
+      "post": {}
+    },
+    "/skill-library/-/review": {
+      "get": {}
+    },
+    "/skill-library/-/policy": {
+      "get": {}
+    },
+    "/skill-library/{name}": {
+      "get": {},
+      "delete": {}
+    },
+    "/skill-library/{name}/versions/{version}": {
+      "get": {}
+    },
+    "/skill-library/{name}/versions/{version}/files/{path}": {
+      "get": {}
+    },
+    "/skill-library/{name}/versions/{version}/preview": {
+      "get": {}
+    },
+    "/skill-library/{name}/versions": {
+      "put": {}
+    },
+    "/skill-library/{name}/versions/{version}/publish": {
+      "post": {}
+    },
+    "/skill-library/{name}/versions/{version}/rollback": {
+      "post": {}
+    },
+    "/skill-library/{name}/versions/{version}/reject": {
+      "post": {}
+    },
     "/a2a/": {
       "post": {}
     },
