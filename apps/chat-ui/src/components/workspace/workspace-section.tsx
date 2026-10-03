@@ -1,7 +1,14 @@
 import { Button } from '@felix/ui/button';
-import { ChevronRightIcon, FolderIcon, HardDriveIcon } from 'lucide-react';
+import { ChevronRightIcon, FileIcon, FolderIcon, HardDriveIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import {
+  FileTree,
+  FileTreeFile,
+  FileTreeFolder,
+  FileTreeIcon,
+  FileTreeName,
+} from '@/components/ai-elements/file-tree';
 import { ChangesSection } from '@/components/workspace/changes-list';
 import { collectChanges, durableRunInFlight, runHasToolCalls } from '@/lib/changes';
 import {
@@ -15,6 +22,7 @@ import {
   supportsDirectoryPicker,
   vfs,
 } from '@/lib/cowork';
+import { ancestorsOf, buildTree, type TreeNode } from '@/lib/file-tree';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 
@@ -118,6 +126,11 @@ export function WorkspaceSection({ className }: { className?: string }) {
    * says the list is coming rather than showing nothing — `durableGap`.
    */
   const changes = useMemo(() => collectChanges(turns), [turns]);
+  /** Paths a write or edit landed on, normalised to the tree's spelling. */
+  const changedPaths = useMemo(
+    () => new Set(changes.filter((c) => c.changed).map((c) => normalisePath(c.path))),
+    [changes],
+  );
   const durableGap = durableRunInFlight(turns, streaming) && !runHasToolCalls(turns);
 
   /**
@@ -300,17 +313,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
             Files
           </h3>
           {files.length ? (
-            <ul className="max-h-64 space-y-0.5 overflow-y-auto">
-              {files.slice(0, TREE_VISIBLE).map((path) => (
-                <li
-                  key={path}
-                  className="truncate font-mono text-xs text-muted-foreground"
-                  title={path}
-                >
-                  {path}
-                </li>
-              ))}
-            </ul>
+            <WorkspaceFileTree paths={files.slice(0, TREE_VISIBLE)} changed={changedPaths} />
           ) : (
             // Files is this tab's own store; Changes above is every workspace
             // call on the thread, including the harness's own tools, which never
@@ -332,5 +335,63 @@ export function WorkspaceSection({ className }: { className?: string }) {
         </section>
       </div>
     </section>
+  );
+}
+
+/** A tool's path argument as the tree spells it: no `./`, no leading slash. */
+function normalisePath(path: string): string {
+  return path.replace(/^\.\//, '').replace(/^\/+/, '');
+}
+
+/**
+ * The workspace's files as a tree rather than a flat column of paths.
+ *
+ * It opens onto the work: the folders holding a path this thread wrote or edited
+ * start expanded, and those paths are drawn in the foreground while the rest stay
+ * muted — the same distinction *Changes on this thread* draws above, carried into
+ * the place an operator looks for a file. Everything else starts folded, so a
+ * mounted repository is one row per top-level entry instead of two hundred paths.
+ */
+function WorkspaceFileTree({
+  paths,
+  changed,
+}: {
+  paths: readonly string[];
+  changed: ReadonlySet<string>;
+}) {
+  const tree = useMemo(() => buildTree(paths), [paths]);
+  // Seeded once, from the changes on screen when the tree first draws: after that
+  // the folds are the operator's.
+  const [expanded, setExpanded] = useState(() => ancestorsOf(changed));
+  const render = (nodes: TreeNode[]) =>
+    nodes.map((node) =>
+      node.kind === 'folder' ? (
+        <FileTreeFolder key={node.path} path={node.path} name={node.name} title={node.path}>
+          {render(node.children)}
+        </FileTreeFolder>
+      ) : (
+        <FileTreeFile key={node.path} path={node.path} name={node.name} title={node.path}>
+          <span aria-hidden className="size-4 shrink-0" />
+          <FileTreeIcon>
+            <FileIcon aria-hidden className="size-3.5 text-muted-foreground" />
+          </FileTreeIcon>
+          <FileTreeName
+            className={changed.has(node.path) ? 'text-foreground' : 'text-muted-foreground'}
+          >
+            {node.name}
+            {changed.has(node.path) && <span className="sr-only">, changed on this thread</span>}
+          </FileTreeName>
+        </FileTreeFile>
+      ),
+    );
+  return (
+    <FileTree
+      aria-label="Files"
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+      className="max-h-64 overflow-y-auto rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
+    >
+      {render(tree)}
+    </FileTree>
   );
 }

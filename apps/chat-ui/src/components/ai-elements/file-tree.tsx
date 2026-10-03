@@ -122,16 +122,28 @@ export const FileTreeFolder = ({
     togglePath(path);
   }, [togglePath, path]);
 
+  // With no `onSelect`, the name toggles the folder: a name button that did
+  // nothing was a Tab stop with no action behind it.
   const handleSelect = useCallback(() => {
-    onSelect?.(path);
-  }, [onSelect, path]);
+    if (onSelect) onSelect(path);
+    else togglePath(path);
+  }, [onSelect, path, togglePath]);
 
   const folderContextValue = useMemo(() => ({ isExpanded, name, path }), [isExpanded, name, path]);
 
   return (
     <FileTreeFolderContext.Provider value={folderContextValue}>
       <Collapsible onOpenChange={handleOpenChange} open={isExpanded}>
-        <div className={cn('', className)} role="treeitem" tabIndex={0} {...props}>
+        {/* One Tab stop per folder — its name. The wrapper was a stop too, and the
+            unlabelled chevron a third. */}
+        <div
+          className={cn('', className)}
+          role="treeitem"
+          aria-expanded={isExpanded}
+          // Focusable, as a treeitem must be, but not a Tab stop: the name is.
+          tabIndex={-1}
+          {...props}
+        >
           <div
             className={cn(
               'flex w-full items-center gap-1 rounded px-2 py-1 text-left transition-colors hover:bg-muted/50',
@@ -142,6 +154,8 @@ export const FileTreeFolder = ({
               <button
                 className="flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0"
                 type="button"
+                tabIndex={-1}
+                aria-hidden
               >
                 <ChevronRightIcon
                   className={cn(
@@ -152,15 +166,15 @@ export const FileTreeFolder = ({
               </button>
             </CollapsibleTrigger>
             <button
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-left"
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm border-none bg-transparent p-0 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
               onClick={handleSelect}
               type="button"
             >
               <FileTreeIcon>
                 {isExpanded ? (
-                  <FolderOpenIcon className="size-4 text-blue-500" />
+                  <FolderOpenIcon className="size-4 text-muted-foreground" />
                 ) : (
-                  <FolderIcon className="size-4 text-blue-500" />
+                  <FolderIcon className="size-4 text-muted-foreground" />
                 )}
               </FileTreeIcon>
               <FileTreeName>{name}</FileTreeName>
@@ -228,7 +242,8 @@ export const FileTreeFile = ({
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         role="treeitem"
-        tabIndex={0}
+        // A Tab stop only when selecting does something.
+        tabIndex={onSelect ? 0 : -1}
         {...props}
       >
         {children ?? (

@@ -1129,6 +1129,19 @@ installed every npm dependency there (plus a bogus `cn` package, the registry's 
 rewrote the catalog in `pnpm-workspace.yaml` stripping its comments, and hung. Install by reading
 the registry JSON and writing files with imports rewritten, as this one was.
 
+**Only one is wired in: `FileTree`**, for the workspace's Files list, which was a flat column of
+up to 200 paths (`buildTree` in `src/lib/file-tree.ts` reads both stores' `d <path>` / `f <path>`
+entries — the old list printed those prefixes verbatim). Every other component either duplicates
+something chat-ui already renders with Felix-specific behaviour — message, conversation, tool,
+reasoning, attachments, confirmation (the approval card), context (the meter), model-selector
+(the agent picker), suggestion (starters), queue (the queued-messages tray), test-results (the
+eval run cards), speech-input — or has no Felix data to show (stack-trace, commit, package-info,
+environment-variables, the xyflow canvas). Adopting one of the first group means *replacing* a
+component its tests pin, not filling a gap. `file-tree.tsx` was edited on the way in: folder icons
+were `text-blue-500` (blue is `running` here), and each folder was three Tab stops — its wrapper,
+an unlabelled chevron and a name button that did nothing without `onSelect` — so a folder is now
+one stop, its name, which toggles it, and a file is a stop only when selecting does something.
+
 ### Docs
 
 Prose is MDX under `apps/docs/src/content/` — note **not** `src/content/docs/`; `content.config.ts`

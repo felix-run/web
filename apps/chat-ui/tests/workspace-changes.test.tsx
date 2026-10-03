@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import type { ApprovalRequest, ToolCall, Turn } from '@felix/client';
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceSection } from '../src/components/workspace/workspace-section';
@@ -15,11 +15,13 @@ import { ShellProvider, type ShellValue } from '../src/shell-context';
  * a durable run's empty list is the run loop, not an empty thread.
  */
 
+const tab = vi.hoisted(() => ({ files: [] as string[] }));
+
 vi.mock('../src/lib/cowork', () => ({
   getMountLabel: () => null,
   hasMount: () => false,
   mountTree: async () => [],
-  vfs: { tree: () => [] },
+  vfs: { tree: () => tab.files },
   restoreMount: async () => ({ status: 'none' }),
   reconnectMount: async () => null,
   pickDirectory: async () => 'picked',
@@ -318,5 +320,38 @@ describe('the Changes section', () => {
     expect(panel?.textContent).toContain('Not applied');
     expect(panel?.textContent).toContain('Would have written');
     expect(panel?.textContent).not.toMatch(/(^|[^ ])Written/);
+  });
+});
+
+describe('the workspace file tree', () => {
+  /**
+   * The Files list was a flat column of up to 200 paths. As a tree it opens onto
+   * the work: folders holding a path this thread changed start expanded, and those
+   * files say so to a reader as well as in the foreground colour.
+   */
+  it('opens onto what this thread changed and leaves the rest folded', async () => {
+    tab.files = ['notes/one.md', 'notes/two.md', 'src/app.ts', 'README.md'];
+    mount({ turns: [assistant([call('write_file', { path: 'notes/one.md' })])] });
+    const tree = await screen.findByRole('tree', { name: 'Files' });
+    const one = await within(tree).findByText('one.md');
+    expect(one.textContent).toContain('changed on this thread');
+    expect(one.className).toContain('text-foreground');
+    expect(within(tree).getByText('two.md').className).toContain('text-muted-foreground');
+    // `src` holds nothing this thread touched, so it starts folded.
+    expect(within(tree).queryByText('app.ts')).toBeNull();
+    tab.files = [];
+  });
+
+  it('is one Tab stop per folder, and a folder opens from its name', async () => {
+    tab.files = ['d src', 'f src/app.ts', 'd docs', 'f docs/a.md', 'f README.md'];
+    mount({});
+    const tree = await screen.findByRole('tree', { name: 'Files' });
+    const stops = [...tree.querySelectorAll<HTMLElement>('button, [tabindex]')].filter(
+      (el) => el.tabIndex >= 0,
+    );
+    expect(stops.map((el) => el.textContent)).toEqual(['docs', 'src']);
+    await userEvent.click(within(tree).getByRole('button', { name: 'src' }));
+    expect(within(tree).getByText('app.ts')).toBeTruthy();
+    tab.files = [];
   });
 });
