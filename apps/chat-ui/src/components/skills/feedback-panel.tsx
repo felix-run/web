@@ -11,7 +11,14 @@ import { ConfirmButton } from '@/components/confirm-button';
 import { PageSection, ViewSwitch } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
-import { useFeedbackActions, useFeedbackInbox, useSkillFeedback } from './queries';
+import { StalledNotice } from './evals-panel';
+import {
+  isStalled,
+  useFeedbackActions,
+  useFeedbackInbox,
+  useNowWhile,
+  useSkillFeedback,
+} from './queries';
 import { RefusalNotice } from './refusal';
 import { ago } from './skill-status';
 import { VersionDiff } from './version-diff';
@@ -73,7 +80,7 @@ export function FeedbackPanel({
   onApplyToEditor,
 }: {
   detail: SkillDetail;
-  /** The version the page is looking at, offered as the feedback's target. */
+  /** The version the form offers as the feedback's target: the live one when there is one. */
   version: string;
   onApplyToEditor: (version: string) => void;
 }) {
@@ -81,6 +88,7 @@ export function FeedbackPanel({
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>('all');
   const feedback = useSkillFeedback(name, filter === 'all' ? null : filter);
   const items = feedback.data?.items ?? [];
+  const now = useNowWhile(items.some((f) => f.status === 'accepted' && f.improve));
   return (
     <div className="space-y-1">
       <PageSection title="File feedback">
@@ -115,7 +123,13 @@ export function FeedbackPanel({
         ) : (
           <ul aria-label={`Feedback on ${name}`} className="divide-y divide-border/60">
             {items.map((f) => (
-              <FeedbackRow key={f.id} feedback={f} onApplyToEditor={onApplyToEditor} />
+              <FeedbackRow
+                key={f.id}
+                feedback={f}
+                onApplyToEditor={onApplyToEditor}
+                now={now}
+                onCheckAgain={() => void feedback.refetch()}
+              />
             ))}
           </ul>
         )}
@@ -190,10 +204,15 @@ export function FeedbackRow({
   feedback: f,
   showSkill = false,
   onApplyToEditor,
+  onCheckAgain,
+  now,
 }: {
   feedback: SkillFeedback;
   showSkill?: boolean;
+  now?: number;
   onApplyToEditor?: (version: string) => void;
+  /** Re-read the list, for an improvement the page has stopped polling. */
+  onCheckAgain?: () => void;
 }) {
   const Icon = f.source === 'agent' ? BotIcon : UserIcon;
   return (
@@ -234,7 +253,12 @@ export function FeedbackRow({
           {f.suggested_patch}
         </pre>
       )}
-      <FeedbackOutcome feedback={f} onApplyToEditor={onApplyToEditor} />
+      <FeedbackOutcome
+        feedback={f}
+        onApplyToEditor={onApplyToEditor}
+        onCheckAgain={onCheckAgain}
+        now={now}
+      />
     </li>
   );
 }
@@ -242,9 +266,13 @@ export function FeedbackRow({
 function FeedbackOutcome({
   feedback: f,
   onApplyToEditor,
+  onCheckAgain,
+  now,
 }: {
   feedback: SkillFeedback;
   onApplyToEditor?: (version: string) => void;
+  onCheckAgain?: () => void;
+  now?: number;
 }) {
   const [open, setOpen] = useState(false);
   if (f.status === 'pending') return <FeedbackDecision feedback={f} />;
@@ -261,6 +289,9 @@ function FeedbackOutcome({
   ) : null;
   if (f.status === 'rejected') {
     return <p className="text-xs text-muted-foreground">Rejected{decided}.</p>;
+  }
+  if (f.status === 'accepted' && f.improve && isStalled(f, now)) {
+    return <StalledNotice onCheckAgain={onCheckAgain} />;
   }
   if (f.status === 'accepted') {
     return (
@@ -291,7 +322,7 @@ function FeedbackOutcome({
         Applied: the worker wrote{' '}
         {result ? (
           <Link
-            to={`/harness/skills?skill=${encodeURIComponent(f.name)}&tab=versions&v=${result}&against=${f.target_version}`}
+            to={`/harness/skills?skill=${encodeURIComponent(f.name)}&tab=versions&v=${encodeURIComponent(result)}&against=${encodeURIComponent(f.target_version)}`}
             className="font-mono underline underline-offset-2"
           >
             {f.name} {result}

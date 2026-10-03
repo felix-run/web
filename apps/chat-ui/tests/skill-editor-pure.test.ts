@@ -178,25 +178,52 @@ describe('highlight', () => {
 
 describe('highlight cost', () => {
   // A sticky pattern is tried at every position of a line, so one unbounded
-  // span made these quadratic: a 256 KiB line of `[` took minutes. The budget
-  // is generous on purpose — a linear pass takes milliseconds, a quadratic one
-  // takes orders of magnitude longer, and CI machines vary by far less.
-  const BUDGET_MS = 1000;
-  const hostile = {
-    'a 256 KiB line of [': '['.repeat(256 * 1024),
-    'a 256 KiB line of **': '**a'.repeat(87_000),
-    'a 256 KiB line of backticks and brackets': '`[('.repeat(87_000),
-    'a just-tokenized line of [': '['.repeat(3999),
-    'a just-tokenized line of ** with no close': `**${'a '.repeat(1998)}`,
-    'many just-tokenized lines': `${'[!['.repeat(1333)}\n`.repeat(64),
+  // span made these quadratic: a 256 KiB line of `[` took 53s. What is asserted
+  // is how the cost *scales*, not a wall-clock budget, because runners differ
+  // by more than any budget can absorb: quadrupling the input roughly
+  // quadruples a linear pass and multiplies a quadratic one by sixteen, and
+  // the bar sits between. A floor keeps sub-millisecond timings, which are all
+  // noise, from tripping it, and a generous ceiling catches a hang outright.
+  const RATIO = 8;
+  const FLOOR_MS = 100;
+  const CEILING_MS = 10_000;
+
+  /** The fastest of three runs, so a pause in the runner does not read as a cost. */
+  function timed(text: string): number {
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 3; i++) {
+      const started = performance.now();
+      highlight(text, 'markdown');
+      best = Math.min(best, performance.now() - started);
+    }
+    return best;
+  }
+
+  // Each is a hostile input at size n; the test runs n and 4n. The "line" cases
+  // stay under `MAX_TOKENIZED_LINE`, so they exercise the bounded patterns
+  // themselves rather than the cap; the rest are past it.
+  const hostile: Record<string, (n: number) => string> = {
+    'one long line of [': (n) => '['.repeat(n * 16),
+    'one long line of **': (n) => '**a'.repeat(n * 5),
+    'one long line of backticks and brackets': (n) => '`[('.repeat(n * 5),
+    'tokenized lines of [': (n) => `${'['.repeat(n - 1)}\n`.repeat(16),
+    'tokenized lines of ** with no close': (n) => `**${'a '.repeat(n / 2 - 2)}\n`.repeat(16),
+    'tokenized lines of [![': (n) => `${'[!['.repeat(n / 3 - 1)}\n`.repeat(16),
   };
 
-  it.each(Object.entries(hostile))('highlights %s within budget, escaped', (_label, text) => {
+  it.each(Object.entries(hostile))('highlights %s in linear time', (_label, make) => {
+    const n = 1000;
+    const small = timed(make(n));
+    expect(small).toBeLessThan(CEILING_MS);
+    const large = timed(make(n * 4));
+    expect(large).toBeLessThan(CEILING_MS);
+    expect(large).toBeLessThan(Math.max(RATIO * small, FLOOR_MS));
+  });
+
+  it.each(Object.entries(hostile))('escapes %s in every language', (_label, make) => {
+    const text = `${make(1000)}<script>alert(1)</script>`;
     for (const lang of ['markdown', 'yaml', 'python', 'shell', 'javascript', 'json'] as const) {
-      const started = performance.now();
-      const out = highlight(text, lang);
-      expect(performance.now() - started).toBeLessThan(BUDGET_MS);
-      expect(out).not.toContain('<script');
+      expect(highlight(text, lang)).not.toContain('<script');
     }
   });
 

@@ -257,6 +257,12 @@ export function useSkillEditor(name: string, detail: SkillDetail | undefined, en
       setRebase(null);
       setResolutions({});
       save.reset();
+      // Loading the version already loaded changes no state the bundle watches,
+      // so its baseline would keep the unsaved edits the caller just said to
+      // discard. Reset it to the stored files directly.
+      if (version === loadedFrom && files.data) {
+        bundle.reset({ 'SKILL.md': '', ...files.data.files });
+      }
       setLoadedFrom(version);
       setParent(version);
     },

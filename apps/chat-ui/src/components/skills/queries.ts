@@ -13,6 +13,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import {
   acceptSkillFeedback,
   archiveLibrarySkill,
@@ -234,6 +235,63 @@ export function useFreshSkill() {
 
 const inFlightEval = (e: SkillEval) => e.status === 'queued' || e.status === 'running';
 
+/**
+ * How long one job may sit in flight before the page stops asking about it.
+ * The worker sweeps every minute, so five minutes without progress means it
+ * is not running — and a tab polling every 3s forever would only spend the
+ * caller's rate limit. The page says so and offers to check again.
+ */
+export const STALL_MS = 5 * 60_000;
+
+/** When the job last moved: its heartbeat, its start, its claim, or when it was queued. */
+function lastProgress(job: {
+  created_at: number;
+  heartbeat_at: number | null;
+  started_at?: number | null;
+  claimed_at?: number | null;
+  decided_at?: number | null;
+}): number {
+  return Math.max(
+    job.created_at,
+    job.heartbeat_at ?? 0,
+    job.started_at ?? 0,
+    job.claimed_at ?? 0,
+    job.decided_at ?? 0,
+  );
+}
+
+/** Whether an in-flight job has made no progress for `STALL_MS`. */
+export function isStalled(
+  job: Parameters<typeof lastProgress>[0],
+  now: number = Date.now(),
+): boolean {
+  return now - lastProgress(job) >= STALL_MS;
+}
+
+/**
+ * The clock, re-read every 15s while `active`, so a job that stalls *between*
+ * polls is drawn as stalled: the last poll returns the same data, which by
+ * itself would never re-render the row.
+ */
+export function useNowWhile(active: boolean, everyMs = 15_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(timer);
+  }, [active, everyMs]);
+  return active ? now : Date.now();
+}
+
+/** Poll while some in-flight job is still moving; stop once every one has stalled. */
+function pollWhile<T extends Parameters<typeof lastProgress>[0]>(
+  items: T[] | undefined,
+  inFlight: (job: T) => boolean,
+): number | false {
+  const live = (items ?? []).filter(inFlight);
+  return live.length > 0 && live.some((job) => !isStalled(job)) ? JOB_POLL_MS : false;
+}
+
 /** A version's evaluations, newest first, re-read every few seconds while one is in flight. */
 export function useSkillEvals(name: string, version: string | null, { poll = true } = {}) {
   return useQuery({
@@ -242,8 +300,7 @@ export function useSkillEvals(name: string, version: string | null, { poll = tru
     enabled: !!name,
     // One poll per page: the harness rate-limits each caller, and a second view
     // of the same in-flight row would double the requests for nothing.
-    refetchInterval: (query) =>
-      poll && query.state.data?.items.some(inFlightEval) ? JOB_POLL_MS : false,
+    refetchInterval: (query) => (poll ? pollWhile(query.state.data?.items, inFlightEval) : false),
   });
 }
 
@@ -263,8 +320,7 @@ export function useSkillFeedback(name: string, status: FeedbackStatus | null) {
     queryKey: skillKeys.feedback(name, status),
     queryFn: () => listSkillFeedback(name, status ? { status } : {}),
     enabled: !!name,
-    refetchInterval: (query) =>
-      query.state.data?.items.some(inFlightFeedback) ? JOB_POLL_MS : false,
+    refetchInterval: (query) => pollWhile(query.state.data?.items, inFlightFeedback),
   });
 }
 

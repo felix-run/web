@@ -174,10 +174,15 @@ function PolicyForm({
     start.min_eval_uplift === null ? '' : String(start.min_eval_uplift),
   );
   const ids = { q: useId(), a: useId(), r: useId(), u: useId() };
-  const q = Number(quality);
-  const u = uplift.trim() === '' ? null : Number(uplift);
-  const qBad = !Number.isInteger(q) || q < 0 || q > 100;
-  const uBad = u !== null && (!Number.isInteger(u) || u < -100 || u > 100);
+  // Whole decimal integers only. `Number` reads '' and '   ' as 0 — an emptied
+  // field saved a quality floor of zero — and '0x10' and '1e2' as numbers.
+  const INTEGER = /^-?\d+$/;
+  const qText = quality.trim();
+  const uText = uplift.trim();
+  const q = Number(qText);
+  const u = uText === '' ? null : Number(uText);
+  const qBad = !INTEGER.test(qText) || q < 0 || q > 100;
+  const uBad = u !== null && (!INTEGER.test(uText) || u < -100 || u > 100);
   const patch = policyPatch(start, {
     min_quality: q,
     block_on_advisory: advisory,

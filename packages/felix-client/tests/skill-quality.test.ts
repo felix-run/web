@@ -57,6 +57,7 @@ describe('policy', () => {
       .updateSkillPublishPolicy({ min_quality: null as unknown as number })
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(SkillLibraryError);
+    expect((err as SkillLibraryError).code).toBe('invalid_policy');
     expect(calls).toHaveLength(0);
   });
 });

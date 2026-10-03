@@ -23,6 +23,7 @@ import {
   badAddress,
   nameSegment,
   refusalOf,
+  SkillLibraryError,
   type SkillPage,
   type SkillPolicy,
   type SkillPolicyValues,
@@ -122,6 +123,17 @@ function idSegment(id: string): string {
   return id;
 }
 
+/**
+ * A policy field set to null where the harness takes a value. Only
+ * `min_eval_uplift` can be cleared; any other null is a 422, refused here.
+ */
+function badPolicy(key: string): SkillLibraryError {
+  return new SkillLibraryError('skill-library/policy', 400, {
+    error: 'invalid_policy',
+    message: `${key} needs a value; only min_eval_uplift can be cleared`,
+  });
+}
+
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
 export function createSkillQualityClient(http: FelixHttp) {
@@ -152,7 +164,7 @@ export function createSkillQualityClient(http: FelixHttp) {
     const body: Record<string, unknown> = {};
     for (const key of ['min_quality', 'block_on_advisory', 'require_eval'] as const) {
       const value = patch[key];
-      if (value === null) throw badAddress(`policy field ${key}`, 'null');
+      if (value === null) throw badPolicy(key);
       if (value !== undefined) body[key] = value;
     }
     if (patch.min_eval_uplift !== undefined) body.min_eval_uplift = patch.min_eval_uplift;

@@ -2,6 +2,7 @@ import type { SkillDetail, SkillEval } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Skeleton } from '@felix/ui/skeleton';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRightIcon,
   CircleCheckIcon,
@@ -9,12 +10,19 @@ import {
   CircleXIcon,
   LoaderIcon,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PageSection } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
-import { usePublishPolicy, useQueueEval, useSkillEvals } from './queries';
+import {
+  isStalled,
+  skillKeys,
+  useNowWhile,
+  usePublishPolicy,
+  useQueueEval,
+  useSkillEvals,
+} from './queries';
 import { RefusalNotice } from './refusal';
 import { ago } from './skill-status';
 import { VersionPicker } from './version-picker';
@@ -65,6 +73,18 @@ export function EvalsPanel({
   const queue = useQueueEval();
   const items = evals.data?.items ?? [];
   const busy = items.some((e) => e.status === 'queued' || e.status === 'running');
+  const now = useNowWhile(busy);
+  // The cross-version list does not poll, so when the polled evaluation
+  // finishes it is told to: otherwise "Uplift by version" keeps the answer it
+  // had before the evaluation ran.
+  const client = useQueryClient();
+  const wasBusy = useRef(busy);
+  useEffect(() => {
+    if (wasBusy.current && !busy) {
+      void client.invalidateQueries({ queryKey: skillKeys.evals(name, null) });
+    }
+    wasBusy.current = busy;
+  }, [busy, client, name]);
   const row = detail.versions.find((v) => v.version === version);
   const gated = policy.data && (policy.data.require_eval || policy.data.min_eval_uplift != null);
 
@@ -133,7 +153,12 @@ export function EvalsPanel({
         ) : (
           <ul aria-label={`Evaluations of ${version}`} className="divide-y divide-border/60">
             {items.map((e) => (
-              <EvalRow key={e.id} evaluation={e} />
+              <EvalRow
+                key={e.id}
+                evaluation={e}
+                now={now}
+                onCheckAgain={() => void evals.refetch()}
+              />
             ))}
           </ul>
         )}
@@ -143,7 +168,17 @@ export function EvalsPanel({
   );
 }
 
-export function EvalRow({ evaluation: e }: { evaluation: SkillEval }) {
+export function EvalRow({
+  evaluation: e,
+  onCheckAgain,
+  now,
+}: {
+  evaluation: SkillEval;
+  /** The clock the stall is judged by; see `useNowWhile`. */
+  now?: number;
+  /** Re-read the list, for an evaluation the page has stopped polling. */
+  onCheckAgain?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const s = STATUS[e.status];
   return (
@@ -188,13 +223,16 @@ export function EvalRow({ evaluation: e }: { evaluation: SkillEval }) {
           )}
         </p>
       )}
-      {(e.status === 'queued' || e.status === 'running') && (
-        <p className="text-xs text-muted-foreground" role="status">
-          {e.status === 'queued'
-            ? 'Waiting for the worker, which runs it within a minute.'
-            : `Running since ${ago(e.started_at)}; last heartbeat ${ago(e.heartbeat_at)}.`}
-        </p>
-      )}
+      {(e.status === 'queued' || e.status === 'running') &&
+        (isStalled(e, now) ? (
+          <StalledNotice onCheckAgain={onCheckAgain} />
+        ) : (
+          <p className="text-xs text-muted-foreground" role="status">
+            {e.status === 'queued'
+              ? 'Waiting for the worker, which runs it within a minute.'
+              : `Running since ${ago(e.started_at)}; last heartbeat ${ago(e.heartbeat_at)}.`}
+          </p>
+        ))}
       {e.scenario_source && (
         <p className="text-xs text-muted-foreground">
           On {SOURCE[e.scenario_source]}
@@ -325,5 +363,26 @@ function UpliftByVersion({ evals }: { evals: SkillEval[] }) {
         })}
       </ul>
     </PageSection>
+  );
+}
+
+/**
+ * A job that has not moved for `STALL_MS`: the page has stopped polling it,
+ * and says the likely reason rather than spinning on.
+ */
+export function StalledNotice({ onCheckAgain }: { onCheckAgain?: () => void }) {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-state-blocked">
+      <span>
+        The worker hasn’t picked this up in five minutes. Is{' '}
+        <span className="font-mono">felix-worker</span> running alongside{' '}
+        <span className="font-mono">felix-scheduler</span>?
+      </span>
+      {onCheckAgain && (
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCheckAgain}>
+          Check again
+        </Button>
+      )}
+    </div>
   );
 }

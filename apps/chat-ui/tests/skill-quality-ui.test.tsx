@@ -6,11 +6,18 @@ import { Tool } from '../src/components/chat/tool';
 import { EvalRow } from '../src/components/skills/evals-panel';
 import { FeedbackRow, feedbackFailure } from '../src/components/skills/feedback-panel';
 import { PolicyEditor, policyPatch } from '../src/components/skills/policy-form';
-import { JOB_POLL_MS } from '../src/components/skills/queries';
+import { JOB_POLL_MS, STALL_MS } from '../src/components/skills/queries';
 import { policySentence } from '../src/components/skills/refusal';
 import { SkillLibraryPage } from '../src/components/skills/skill-library';
 import { VersionDecision } from '../src/components/skills/version-actions';
-import { fakeHarness, mountWithProviders, type Recorded, versionRow } from './skill-fixtures';
+import {
+  fakeHarness,
+  fileBody,
+  mountWithProviders,
+  type Recorded,
+  SKILL_MD,
+  versionRow,
+} from './skill-fixtures';
 
 /**
  * The quality loop in the library: evaluations, feedback, the tenant policy,
@@ -424,5 +431,220 @@ describe('parent_rejected', () => {
     const card = (await screen.findByText('not saved')).closest('div.rounded-xl') as HTMLElement;
     expect(card.textContent).toMatch(/0\.1\.2, which a person rejected\. Nothing was saved/);
     expect(card.textContent).toContain('0.1.1');
+  });
+});
+
+describe('review fixes', () => {
+  const policyOf = (): SkillPolicy => ({
+    min_quality: 40,
+    block_on_advisory: false,
+    security_fail_blocks: true,
+    require_eval: false,
+    min_eval_uplift: null,
+    source: 'tenant',
+    tenant_values: {
+      min_quality: 40,
+      block_on_advisory: false,
+      require_eval: false,
+      min_eval_uplift: null,
+    },
+    updated_at: 1,
+    updated_by: 'ops',
+  });
+
+  it.each([
+    '',
+    '   ',
+    '0x10',
+    '1e2',
+    '4.5',
+  ])('keeps Save disabled for a quality of %j rather than saving it as a number', (value) => {
+    fakeHarness(() => ({ body: policyOf() }));
+    mountWithProviders(<PolicyEditor policy={policyOf()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit policy…' }));
+    fireEvent.change(screen.getByLabelText(/Minimum quality, 0-100/), { target: { value } });
+    expect(
+      (screen.getByRole('button', { name: 'Save policy' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('refuses a hex or exponent uplift too', () => {
+    fakeHarness(() => ({ body: policyOf() }));
+    mountWithProviders(<PolicyEditor policy={policyOf()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit policy…' }));
+    fireEvent.change(screen.getByLabelText(/Minimum evaluation uplift/), {
+      target: { value: '1e1' },
+    });
+    expect(
+      (screen.getByRole('button', { name: 'Save policy' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('re-reads the cross-version list once the polled evaluation finishes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let reads = 0;
+    let crossReads = 0;
+    fakeHarness((req: Recorded) => {
+      if (req.path === '/skill-library/roll-dice') return { body: detail(null) };
+      if (req.path.startsWith('/skill-library/roll-dice/evals')) {
+        if (req.path.includes('version=')) reads++;
+        else crossReads++;
+        const status = reads >= 2 ? 'succeeded' : 'running';
+        return {
+          body: { items: [evaluation({ status, started_at: Date.now() })], next_cursor: null },
+        };
+      }
+      if (req.path === '/skill-library/-/policy') return { body: {} };
+      return undefined;
+    });
+    mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=roll-dice&tab=evals');
+    await screen.findByText('running');
+    const before = crossReads;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(JOB_POLL_MS + 100);
+    });
+    await screen.findByText('succeeded');
+    await waitFor(() => expect(crossReads).toBeGreaterThan(before));
+  });
+
+  it('stops polling a job that has not moved in five minutes, says why, and checks again on request', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const queuedAt = Date.now();
+    let reads = 0;
+    fakeHarness((req: Recorded) => {
+      if (req.path === '/skill-library/roll-dice') return { body: detail(null) };
+      if (req.path.startsWith('/skill-library/roll-dice/evals')) {
+        if (req.path.includes('version=')) reads++;
+        return {
+          body: {
+            items: [evaluation({ status: 'queued', created_at: queuedAt })],
+            next_cursor: null,
+          },
+        };
+      }
+      if (req.path === '/skill-library/-/policy') return { body: {} };
+      return undefined;
+    });
+    mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=roll-dice&tab=evals');
+    await screen.findByText('queued');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STALL_MS + JOB_POLL_MS * 2);
+    });
+    expect(await screen.findByText(/hasn’t picked this up in five minutes/)).toBeTruthy();
+    const stopped = reads;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 10);
+    });
+    expect(reads).toBe(stopped);
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    await waitFor(() => expect(reads).toBe(stopped + 1));
+  });
+
+  it('arms against the live version the server reports, not the stale one it was handed', async () => {
+    const h = fakeHarness((req: Recorded) =>
+      req.path === '/skill-library/roll-dice'
+        ? { body: detail('0.1.2') }
+        : { body: versionRow({ version: '0.1.3', status: 'published' }) },
+    );
+    mountWithProviders(<VersionDecision name="roll-dice" version="0.1.3" liveVersion="0.1.0" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.3' }));
+    expect(await screen.findByText(/replacing live 0\.1\.2/)).toBeTruthy();
+    expect(screen.queryByText(/replacing live 0\.1\.0/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.3' }));
+    await waitFor(() =>
+      expect(h.requests.find((r) => r.path.endsWith('/publish'))?.body).toEqual({
+        expected_live_version: '0.1.2',
+      }),
+    );
+  });
+
+  describe('Apply to editor, on the page', () => {
+    const DRAFT = SKILL_MD('roll-dice', '# Steps\n\n1. Roll.\n2. Link each line to its PR.\n');
+    function harness() {
+      return fakeHarness((req: Recorded) => {
+        if (req.path === '/skill-library/roll-dice') {
+          return {
+            body: detail('0.1.0', [
+              versionRow({ version: '0.1.2', parent_version: '0.1.0' }),
+              versionRow({ version: '0.1.0', status: 'published' }),
+            ]),
+          };
+        }
+        if (req.path.startsWith('/skill-library/roll-dice/feedback')) {
+          return {
+            body: {
+              items: [feedback({ status: 'applied', result_version: '0.1.2' })],
+              next_cursor: null,
+            },
+          };
+        }
+        const v = /^\/skill-library\/roll-dice\/versions\/(\d+\.\d+\.\d+)$/.exec(req.path);
+        if (v) {
+          return {
+            body: {
+              ...versionRow({ version: v[1] }),
+              review_checks: [],
+              security_issues: [],
+              files: [{ path: 'SKILL.md', sha256: v[1], size: 1 }],
+              shadows_operator_upload: false,
+            },
+          };
+        }
+        if (req.path === '/skill-library/roll-dice/versions/0.1.2/files/SKILL.md') {
+          return { body: fileBody('SKILL.md', DRAFT) };
+        }
+        if (req.method === 'PUT') {
+          return {
+            status: 201,
+            body: {
+              ...versionRow({ version: '0.1.3', parent_version: '0.1.2' }),
+              review_checks: [],
+              security_issues: [],
+              files: [{ path: 'SKILL.md', sha256: 'x', size: 1 }],
+              shadows_operator_upload: false,
+              published: false,
+              publish_blocked: null,
+            },
+          };
+        }
+        return undefined;
+      });
+    }
+
+    async function apply() {
+      fireEvent.click(await screen.findByRole('tab', { name: 'Feedback' }));
+      fireEvent.mouseDown(screen.getByRole('tab', { name: 'Feedback' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Apply to editor' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Load 0.1.2' }));
+      const source = (await screen.findByLabelText('SKILL.md source')) as HTMLTextAreaElement;
+      await waitFor(() => expect(source.value).toBe(DRAFT));
+      return source;
+    }
+
+    it('loads the draft into the editor, and the next save names it as the parent', async () => {
+      const h = harness();
+      mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=roll-dice&tab=feedback');
+      const source = await apply();
+      fireEvent.change(source, { target: { value: `${DRAFT}3. Done.\n` } });
+      fireEvent.click(screen.getByRole('button', { name: /Save version/ }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save 0.1.3' }));
+      await waitFor(() =>
+        expect(
+          (h.requests.find((r) => r.method === 'PUT')?.body as { parent_version: string })
+            .parent_version,
+        ).toBe('0.1.2'),
+      );
+    });
+
+    it('discards unsaved edits when the same draft is applied a second time', async () => {
+      harness();
+      mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=roll-dice&tab=feedback');
+      const source = await apply();
+      fireEvent.change(source, { target: { value: `${DRAFT}unsaved\n` } });
+      const again = await apply();
+      expect(again.value).toBe(DRAFT);
+      expect(document.body.textContent).not.toContain('unsaved changes');
+    });
   });
 });

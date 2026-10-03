@@ -89,6 +89,8 @@ export function RefusalNotice({
     eval_in_progress:
       'This version already has an evaluation queued or running. Wait for it to finish.',
     invalid_address: 'That is not a skill, version or item the library could hold.',
+    invalid_policy:
+      'Every policy field needs a value; only the evaluation uplift floor can be left empty.',
   };
   return (
     <Notice action={action}>
