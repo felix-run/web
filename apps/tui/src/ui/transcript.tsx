@@ -11,8 +11,21 @@
  * leans on the wrong default lays out silently wrong rather than failing.
  */
 
-import type { ReasoningBlock, ToolCall, Turn } from '@felix/client';
-import { classifyToolResult, countWords, formatElapsed, interleaveTurn } from '@felix/client';
+import type {
+  BranchPoint,
+  PlanState,
+  ReasoningBlock,
+  StepState,
+  ToolCall,
+  Turn,
+} from '@felix/client';
+import {
+  classifyToolResult,
+  countWords,
+  formatElapsed,
+  interleaveTurn,
+  plansInTurn,
+} from '@felix/client';
 import { promptTokens } from '@felix/protocol';
 import {
   BoxRenderable,
@@ -340,6 +353,49 @@ function RunStatus({
   );
 }
 
+/**
+ * The agent's plan, drawn where it first appeared in the turn.
+ *
+ * Every `plan_*` call answers with the whole plan, so the newest answer is its
+ * state and the calls after the first are folded into this block rather than
+ * drawn as a run of near-identical cards — the same reading chat-ui's plan card
+ * gives (`plansInTurn` in `@felix/client`). A step's status is the agent's own
+ * word, shown as sent; the glyph and colour are what it maps to.
+ */
+const STEP_GLYPH: Record<StepState, string> = {
+  done: '✓',
+  running: '◌',
+  failed: '✗',
+  pending: '○',
+};
+
+function PlanBlock({ plan, theme }: { plan: PlanState; theme: Theme }) {
+  const done = plan.steps.filter((s) => s.state === 'done').length;
+  const tone = (state: StepState) =>
+    state === 'running' ? theme.running : state === 'failed' ? theme.failed : undefined;
+  return (
+    <box flexDirection="column" marginBottom={1}>
+      <text>
+        <b>{plan.title || 'Plan'}</b>
+        <span attributes={DIM}>{`  ${done} of ${plan.steps.length} done`}</span>
+      </text>
+      {plan.goal ? <text attributes={DIM}>{oneLine(plan.goal, RESULT_WIDTH)}</text> : null}
+      {plan.steps.map((step, i) => (
+        <text key={step.id} {...(step.state === 'pending' ? { attributes: DIM } : {})}>
+          <span fg={tone(step.state) ?? (step.state === 'done' ? theme.ready : undefined)}>
+            {`  ${STEP_GLYPH[step.state]} `}
+          </span>
+          {oneLine(step.title || `Step ${i + 1}`, PLAN_TITLE_WIDTH)}
+          <span attributes={DIM}>{step.state === 'done' ? '' : ` · ${step.status}`}</span>
+        </text>
+      ))}
+    </box>
+  );
+}
+
+/** A step's title beside its glyph and status word, on an eighty-column terminal. */
+const PLAN_TITLE_WIDTH = 56;
+
 function AssistantTurn({
   turn,
   live,
@@ -356,10 +412,15 @@ function AssistantTurn({
   // Only the tail of a live turn is still being written. An earlier segment was
   // closed by the tool call that follows it and is as final as any past turn.
   const tail = segments.length - 1;
+  const plans = plansInTurn(turn.tools);
   return (
     <box flexDirection="column" marginBottom={1}>
       {segments.map((segment, i) => {
-        if (segment.kind === 'tool')
+        if (segment.kind === 'tool') {
+          if (plans.folded.has(segment.index)) return null;
+          const planId = plans.anchorOf.get(segment.index);
+          const plan = planId ? plans.latest.get(planId) : undefined;
+          if (plan) return <PlanBlock key={`t${segment.index}`} plan={plan} theme={theme} />;
           return (
             <ToolCard
               key={`t${segment.index}`}
@@ -367,6 +428,7 @@ function AssistantTurn({
               {...(handles.get(segment.tool) ? { spill: handles.get(segment.tool) } : {})}
             />
           );
+        }
         if (segment.kind === 'reasoning')
           return (
             <Reasoning key={`r${i}`} text={segment.text} live={live && i === tail} theme={theme} />
@@ -426,12 +488,36 @@ function NoteTurn({ turn, theme }: { turn: Turn; theme: Theme }) {
   );
 }
 
+/**
+ * A prompt, and — when it was edited — which version of it this is.
+ *
+ * The marker is a line of its own under the message rather than beside it, so
+ * a long prompt wraps the same whether or not it has versions. `/version <n>`
+ * switches; that it exists is the thing worth knowing without hunting for it.
+ */
+function UserTurn({ turn, theme, branch }: { turn: Turn; theme: Theme; branch?: BranchPoint }) {
+  return (
+    <box flexDirection="column" marginBottom={1}>
+      <box flexDirection="row">
+        <text fg={theme.ready}>{'› '}</text>
+        <text>{turn.content}</text>
+      </box>
+      {branch ? (
+        <text attributes={DIM}>
+          {`  version ${branch.index + 1} of ${branch.tips.length} · /version <n>`}
+        </text>
+      ) : null}
+    </box>
+  );
+}
+
 export function Transcript({
   turns,
   streaming = false,
   scrollRef,
   theme,
   greeting,
+  branches,
 }: {
   turns: Turn[];
   streaming?: boolean;
@@ -449,6 +535,12 @@ export function Transcript({
    * against the composer — instead of at the top of an empty column.
    */
   greeting?: ReactNode;
+  /**
+   * Edited messages' versions, keyed by the user message's event id — which
+   * only a hydrated turn carries, so a message sent in this process shows no
+   * marker until the thread is read back.
+   */
+  branches?: ReadonlyMap<string, BranchPoint>;
 }) {
   // Assigned across the whole transcript so `/artifact 2` means the same thing
   // to the command as it does to the card that drew `[a2]`.
@@ -480,10 +572,14 @@ export function Transcript({
         turn.role === 'note' ? (
           <NoteTurn key={turn.id} turn={turn} theme={theme} />
         ) : turn.role === 'user' ? (
-          <box key={turn.id} flexDirection="row" marginBottom={1}>
-            <text fg={theme.ready}>{'› '}</text>
-            <text>{turn.content}</text>
-          </box>
+          <UserTurn
+            key={turn.id}
+            turn={turn}
+            theme={theme}
+            {...(turn.eventId && branches?.get(turn.eventId)
+              ? { branch: branches.get(turn.eventId) }
+              : {})}
+          />
         ) : (
           <AssistantTurn
             key={turn.id}

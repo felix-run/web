@@ -10,6 +10,8 @@
 
 import { existsSync, writeFileSync } from 'node:fs';
 import {
+  type BranchPoint,
+  branchPoints,
   type ChatEngine,
   createChatEngine,
   createFelixClient,
@@ -56,6 +58,8 @@ import { type Connection, railRows, StatusLine, ThreadPicker } from './ui/rails.
 import { Transcript } from './ui/transcript.js';
 import { createWorkspace } from './workspace.js';
 import { useWriteGate } from './write-gate.js';
+
+const NO_BRANCHES: ReadonlyMap<string, BranchPoint> = new Map();
 
 /** Matches chat-ui: often enough to catch a gated tool, cheap enough to leave on. */
 const APPROVAL_POLL_MS = 2500;
@@ -243,6 +247,10 @@ export function App({
     }
   }, [client, store]);
 
+  /** Edited messages' versions, read off the last snapshot (`branchPoints`). */
+  const [branches, setBranches] = useState<ReadonlyMap<string, BranchPoint>>(NO_BRANCHES);
+  const branchesRef = useRef<ReadonlyMap<string, BranchPoint>>(NO_BRANCHES);
+
   /** The snapshot is authoritative; the local copy is a cache and a fallback. */
   const hydrate = useCallback(
     async (id: string) => {
@@ -250,6 +258,10 @@ export function App({
       if (!snapshot) return;
       const rebuilt = eventsToTurns(snapshotToEvents(snapshot));
       if (rebuilt.length) engine.setTurns(rebuilt);
+      // Kept in a ref too, so `/version` can read what this hydrate found
+      // without waiting for a render to hand it the new state.
+      branchesRef.current = branchPoints(snapshot);
+      setBranches(branchesRef.current);
       if (snapshot.phase) engine.setPhase(snapshot.phase);
     },
     [client, engine],
@@ -395,6 +407,8 @@ export function App({
     engine.abort();
     cancelWrite();
     engine.reset();
+    branchesRef.current = NO_BRANCHES;
+    setBranches(NO_BRANCHES);
     setThreadId(crypto.randomUUID());
     setNotice(null);
   }, [cancelWrite, engine]);
@@ -405,6 +419,8 @@ export function App({
       engine.abort();
       cancelWrite();
       engine.reset();
+      branchesRef.current = NO_BRANCHES;
+      setBranches(NO_BRANCHES);
       setThreadId(id);
       engine.setTurns(store.loadTurns(id));
       void hydrate(id);
@@ -535,6 +551,7 @@ export function App({
           selectThread,
           refreshThreads,
           hydrate,
+          branches: () => branchesRef.current,
           newThread,
           exit,
           spills: () => spills(turns),
@@ -754,6 +771,7 @@ export function App({
           streaming={streaming}
           scrollRef={scrollRef}
           theme={theme}
+          branches={branches}
           greeting={
             <Greeting
               manifest={manifest}

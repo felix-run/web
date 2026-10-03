@@ -20,7 +20,13 @@
  */
 
 import { resolve } from 'node:path';
-import type { ChatEngine, FelixClient, ManifestStarter, ThreadMeta } from '@felix/client';
+import type {
+  BranchPoint,
+  ChatEngine,
+  FelixClient,
+  ManifestStarter,
+  ThreadMeta,
+} from '@felix/client';
 import { threadSuffix } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
 import type { Spill } from './artifacts.js';
@@ -48,7 +54,7 @@ const SEARCH_LIMIT = 5;
  */
 export const HELP = [
   '/new /clear /continue /think <level> /manifest [name] /start <n> /quit',
-  '/rename <name> /fork /compact /export [file] /rewind [n]',
+  '/rename <name> /fork /compact /export [file] /rewind [n] /version <n>',
   '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
   ...(['chat', 'threads', 'inspector'] as const).flatMap((where) => [
     '',
@@ -80,6 +86,8 @@ export interface CommandContext {
   selectThread(id: string): void;
   refreshThreads(): Promise<void>;
   hydrate(id: string): Promise<void>;
+  /** Edited messages' versions as of the last hydrate, by user event id. */
+  branches(): ReadonlyMap<string, BranchPoint>;
   newThread(): void;
   exit(): void;
   /** The current manifest's starter prompts, as the harness lists them — `/start <n>`. */
@@ -274,6 +282,44 @@ export function runCommand(ctx: CommandContext, line: string): void {
             .then(() => setNotice(`rewound — ${back} turn(s) off the active branch`));
         })
         .catch((err) => engine.setError(explainError(err, 'rewind this thread', config)));
+      return;
+    }
+    case 'version': {
+      // Switches the newest edited message — the one whose versions are most
+      // likely what you are reading — to version `n`. A switch is a rewind to
+      // the newest event under that version, which is how chat-ui's `‹ ›` does
+      // it too: only the active branch is ever loaded.
+      const n = Number.parseInt(arg, 10);
+      if (!Number.isInteger(n) || n < 1) {
+        setNotice('usage: /version <n>');
+        return;
+      }
+      void hydrate(threadIdRef.current)
+        .then(() => {
+          const branches = ctx.branches();
+          const edited = [...engine.state.turns]
+            .reverse()
+            .find((t) => t.role === 'user' && t.eventId !== undefined && branches.has(t.eventId));
+          const branch = edited?.eventId ? branches.get(edited.eventId) : undefined;
+          if (!branch) {
+            setNotice('no edited message on this branch');
+            return;
+          }
+          const tip = branch.tips[n - 1];
+          if (!tip) {
+            setNotice(`that message has ${branch.tips.length} versions`);
+            return;
+          }
+          if (n === branch.index + 1) {
+            setNotice(`already on version ${n}`);
+            return;
+          }
+          return client
+            .rewindChat({ threadId: threadIdRef.current, eventId: tip, summarize: false, manifest })
+            .then(() => hydrate(threadIdRef.current))
+            .then(() => setNotice(`version ${n} of ${branch.tips.length}`));
+        })
+        .catch((err) => engine.setError(explainError(err, 'switch versions', config)));
       return;
     }
     case 'search': {

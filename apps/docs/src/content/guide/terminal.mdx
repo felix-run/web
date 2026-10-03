@@ -147,6 +147,7 @@ looks like the rest of the code on your machine.
 | `/compact` | Summarise older context now instead of waiting for the window to fill. |
 | `/export [file]` | Write the active branch as JSONL. Defaults to `felix-<thread>.jsonl` in the working directory, and refuses to overwrite an existing file. |
 | `/rewind [n]` | Move the active leaf back `n` turns (default 1). Later turns come off the branch rather than being deleted. |
+| `/version <n>` | Switch the newest edited message to its `n`th version, oldest first — the line under it reads `version 2 of 3`. A switch is a rewind to the newest event under that version, so its replies come back with it. |
 | `/search <text>` | Full-text across every thread the harness holds. |
 | `/open <n\|id>` | Open a numbered hit from the last `/search`, or a thread by id. |
 | `/artifact <n> [file]` | Read a spilled tool output — `n` is the handle on the card. With a path, writes it there instead of paging it; refuses to overwrite. |
@@ -165,6 +166,18 @@ it until `/refresh`.
 `/rewind` needs server event ids, which only arrive with a session snapshot, so it hydrates the
 thread from the harness before it moves anything — a thread streamed entirely in this process has no
 ids to rewind to until it does.
+
+An edited message keeps its other versions on the session: editing rewinds to the message's parent
+and sends the new text beside the old, which is what the web app's edit does. The version line is
+read off the snapshot, so a thread shows it once it has been hydrated — on opening it, or on any
+`/rewind` or `/version`. `/version` acts on the newest edited message on the active branch, the one
+you are most likely reading.
+
+When the agent plans — the `deep` pattern's `plan_create`, `plan_update_step` and `plan_get` — the
+transcript draws the plan as one block where it first appeared: its title, how many steps are done,
+and each step with the agent's own word for its status. Every plan call answers with the whole plan,
+so the block shows the newest answer and the later calls are folded into it rather than drawn as a
+run of near-identical tool cards.
 
 ## Inspecting the harness
 

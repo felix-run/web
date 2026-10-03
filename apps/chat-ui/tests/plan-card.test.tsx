@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
+
+import { planFromCall, plansInTurn } from '@felix/client';
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Message } from '../src/components/chat/message';
-import { planFromCall, plansInTurn } from '../src/lib/plan-calls';
 import type { ToolCall, Turn } from '../src/types';
 
 /**

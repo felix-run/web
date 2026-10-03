@@ -1,3 +1,4 @@
+import type { PlanState, StepState } from '@felix/client';
 import { CheckCircle2Icon, CircleDashedIcon, CircleIcon, CircleXIcon } from 'lucide-react';
 import {
   Plan,
@@ -7,7 +8,6 @@ import {
   PlanTitle,
   PlanTrigger,
 } from '@/components/ai-elements/plan';
-import type { PlanState, StepState } from '@/lib/plan-calls';
 import { cn } from '@/lib/utils';
 
 const STEP: Record<StepState, { Icon: typeof CircleIcon; tone: string }> = {

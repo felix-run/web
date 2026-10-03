@@ -1009,6 +1009,14 @@ browser cannot do rather than about the chat:
   `Action` kind added without a binding **fails to compile**, naming the missing one, and
   `tests/keys.test.ts` asserts the coverage from the other side. Adopting `@opentui/keymap` was
   considered for this and decided against — ROADMAP.md says why.
+- **A plan is a block, and an edited message says which version it is.** Both are read with the
+  logic chat-ui uses, which is why `plansInTurn` moved into `@felix/client` (`src/plans.ts`, step
+  type `PlanCallStep` beside the management half's `PlanStep`): the plan block sits at the first
+  `plan_*` call and folds the rest, and the version line under a user turn is `branchPoints` off
+  the last snapshot. That map is keyed by server event id, which only a hydrated turn carries, so
+  it is set in `hydrate` (and mirrored in a ref, because `/version` reads it in the same tick the
+  hydrate resolves) and cleared on every thread change. `/version <n>` acts on the newest edited
+  message on the active branch and rewinds to `tips[n-1]`, never to the message itself.
 - **The commands are the client's whole surface.** `@felix/client` reaches every chat verb the
   harness serves; a slash command is the only thing that exposes one here, so a verb with no `case`
   in `command()` — rename, fork, compact, export, rewind, search — is a verb this client does not
@@ -1207,7 +1215,7 @@ the registry JSON and writing files with imports rewritten, as this one was.
 **Wired in (2026-10-03):** FileTree (below); **CodeBlock** and **Terminal** in the tool card —
 JSON input/output highlighted with a copy control, a shell result's streams with ANSI colour;
 **Plan**, drawn in the turn from the `deep` pattern's `plan_create`/`plan_update_step`/`plan_get`
-calls, each of which returns the whole plan (`src/lib/plan-calls.ts`; one card per plan where it
+calls, each of which returns the whole plan (`plansInTurn` in `@felix/client`; one card per plan where it
 first appears, newest state, the later calls folded except in verbose); a **version switcher** on
 an edited message, from `branchPoints` in `@felix/client` (`MessageBranch` itself holds every
 version client-side, so the selector is rebuilt from the same `ButtonGroup`); **Context**, the

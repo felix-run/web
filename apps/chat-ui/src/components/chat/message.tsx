@@ -1,4 +1,4 @@
-import { type BranchPoint, interleaveTurn } from '@felix/client';
+import { type BranchPoint, interleaveTurn, plansInTurn } from '@felix/client';
 import { promptTokens } from '@felix/protocol';
 import {
   Attachment,
@@ -13,7 +13,6 @@ import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { ChevronLeftIcon, ChevronRightIcon, ImageOffIcon, OctagonPauseIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { drawableUrl } from '@/lib/image-upload';
-import { plansInTurn } from '@/lib/plan-calls';
 import { cn } from '@/lib/utils';
 import type { Turn, TurnFeedback } from '@/types';
 import { MessageActions } from './message-actions';
