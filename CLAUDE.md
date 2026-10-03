@@ -287,6 +287,18 @@ becomes one too. The instrument goes first because it is reference material, and
 cannot wait is already in the attention line and the banner above the composer — neither of which
 lives in a rail. The sidebar goes last because it holds every way to anywhere else.
 
+**The sidebar runs full height, and its top row is the brand.** The header and the attention line
+live in the `SidebarInset` beside it, so the sidebar's first row sits on the header's line — same
+height, same safe-area inset, same rule — and carries the mark and wordmark. The mark is the
+sidebar's **toggle** (`BrandToggle` in `src/components/brand-mark.tsx`, named *Sidebar*,
+`aria-pressed`); there is no panel button in the header from 1024 and no slot held empty for one,
+so the brand cannot move between addresses. Below 1024 the sidebar has no edge on screen, so the
+brand and its toggle stand at the start of the header instead, and the drawer heads itself with the
+same row (its mark named *Close sidebar*). **The wordmark is the page's one `h1`** — in the sidebar
+inline, in the header narrow, and a span in the drawer, which opens over a header already holding
+one; `tests/harness-route.test.tsx` and `tests/workbench-layout.test.tsx` pin that there is exactly
+one. New chat is in the header only where the sidebar is a drawer.
+
 **The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
 New chat; the threads, grouped as Pinned, Today, Yesterday, Previous 7 days and Older (Older starts
 folded, showing its count); the workspace section (`src/components/workspace/workspace-section.tsx`);
@@ -364,7 +376,7 @@ the thread the tab was already on**. Redirecting whenever the URL carried no thr
 indistinguishable from correct while `/` was the only such address; the moment `/harness` existed it
 bounced the operator to a freshly minted thread, and minting one resets the engine, so a run in
 flight died on the way out. *Across a reload* the tab has no "already", so a cold load on `/harness`
-used to mint, and the header's Chat link led to an empty thread. `src/lib/tab-thread.ts` keeps the
+used to mint, and the way back to the conversation led to an empty thread. `src/lib/tab-thread.ts` keeps the
 tab's last thread in **`sessionStorage`** (`felix.tabThread`) and the shell reads it only where the
 address names no thread **and is not `/`** — without that second condition `/` renders once on the
 remembered thread, and takes its lease, before `NewThread` replaces it. It is not the old
@@ -1005,7 +1017,7 @@ tab honest: the poll surfaces an approval the durable run cannot deliver, and pr
 is requested inside the background-run click, never on load.
 
 **The attention line is the in-viewport half of that pair.** `src/components/attention-line.tsx`
-renders full width under the header on **both** addresses, always — it says so when nothing is
+is a pill in the header, before the instrument toggle and the menu, on **both** addresses, always — it says so when nothing is
 waiting, because a line that only appears in trouble teaches the operator not to look at it, and
 then it is not a signal but a surprise. It reads an always-on `/approvals` poll
 (`src/hooks/use-pending-approvals.ts`), owned by the shell so the thread list's *Waiting on you*
@@ -1044,7 +1056,8 @@ provably this thread, and without the phrase it reads as "on the thread you are 
 approval the transcript banner already owns but does not re-offer it — an approval that reached the
 banner came by frame, so the banner can draw the write's before/after diff, and a `/approvals` row
 carries no `before` to build one from. Deciding from the line would mean deciding with strictly less
-in front of you. The expanded queue is **one line per call** — tool, target, thread, a countdown —
+in front of you. The expanded queue opens under the header — the pill portals it into a slot the shell
+renders there, so it pushes the page down rather than covering it — and is **one line per call** — tool, target, thread, a countdown —
 and a line opens into `ApprovalDecision`, the same card the banner uses, rather than a smaller
 decision surface: approving grants every byte-identical call until the deadline, and that
 sentence has to be wherever the decision is made. One clock per call: the line's countdown hands

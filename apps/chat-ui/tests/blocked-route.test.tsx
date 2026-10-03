@@ -101,7 +101,9 @@ describe('the route to a write on another thread', () => {
     expect(screen.queryByRole('button', { name: 'Approve write_file' })).toBeNull();
 
     await userEvent.click(within(line).getByRole('button', { name: 'Review' }));
-    await userEvent.click(within(line).getByRole('link', { name: /Open thread to review/ }));
+    // The queue opens under the header, outside the line's own pill.
+    const queue = document.querySelector('[data-slot="attention-queue"]') as HTMLElement;
+    await userEvent.click(within(queue).getByRole('link', { name: /Open thread to review/ }));
     await waitFor(() => expect(address).toBe('/t/thread-b'));
 
     // The banner, not the line's card: the line counts it and no longer offers it.

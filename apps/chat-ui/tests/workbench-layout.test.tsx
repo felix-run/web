@@ -528,6 +528,11 @@ describe('rail state across widths', () => {
     const ws = await toggle('Sidebar');
     await waitFor(() => expect(drawer('workspace')).toBeTruthy());
     expect(ws.getAttribute('aria-pressed')).toBe('true');
+    // The mark heads the drawer too, and closes it; the header behind keeps the
+    // page's one `h1`, so the drawer's wordmark is not a second.
+    expect(ws.closest('[data-slot="header-brand"]')).not.toBeNull();
+    expect(document.querySelectorAll('h1')).toHaveLength(1);
+    expect(drawer('workspace')?.querySelector('button[aria-label="Close sidebar"]')).toBeTruthy();
 
     const inst = await toggle('This run');
     await waitFor(() => expect(drawer('instrument')).toBeTruthy());

@@ -26,18 +26,15 @@ import {
   BirdIcon,
   CopyIcon,
   EllipsisIcon,
-  MessageSquareIcon,
   MonitorIcon,
   MoonIcon,
-  PanelLeftIcon,
   PanelRightIcon,
   PlusIcon,
   ScrollTextIcon,
-  ServerIcon,
   SunIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Link, Outlet, useMatch, useNavigate } from 'react-router';
+import { Outlet, useMatch, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
   abortChat,
@@ -70,7 +67,7 @@ import {
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AttentionLine } from '@/components/attention-line';
-import { BrandMark } from '@/components/brand-mark';
+import { BrandToggle, Wordmark } from '@/components/brand-mark';
 import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { SkillState } from '@/components/inspector/primitives';
@@ -205,6 +202,8 @@ export function AppShell() {
   const harnessPanel = useMatch('/harness/*');
   const onHarness = harnessRoot !== null || harnessPanel !== null;
   const sidebarInline = useMediaQuery(WORKSPACE_INLINE);
+  /** The slot under the header the attention line's queue renders into. */
+  const [attentionHost, setAttentionHost] = useState<HTMLDivElement | null>(null);
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
   // Canary rollout state for the selected manifest, from the `/manifests`
   // active pointer. Deliberately *not* "which side served this thread": that
@@ -1814,376 +1813,6 @@ export function AppShell() {
     // The side insets are on the shell rather than on each zone: a phone on its
     // side has the notch at one edge, and everything inside clears it at once.
     <div className="flex h-[var(--vvh,100dvh)] flex-col bg-background px-safe-0">
-      {/* The inset is added to the bar's height rather than taken out of it:
-          `--header-height` is read by the toaster and must stay the bar's own. */}
-      <header className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-1 border-b border-border/60 px-3 pt-safe">
-        {/* On both addresses now: the sidebar is the same one on each, and this
-            is its toggle — expanded or icons when inline, the drawer below 1024. */}
-        <Button
-          variant={historyOpen ? 'secondary' : 'ghost'}
-          size="icon-sm"
-          onClick={() => setHistoryOpen((o) => !o)}
-          // What is on screen, not what is stored: at a narrow width the
-          // stored preference is not what the operator is looking at. Pressed
-          // means expanded inline, or the drawer open below 1024.
-          aria-pressed={historyOpen}
-          aria-label="Sidebar"
-          aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
-          title={`Sidebar (${shortcutLabel('toggle-workspace', mac)})`}
-        >
-          <PanelLeftIcon className="size-4" />
-        </Button>
-        {/* The left cluster yields in a fixed order, because at 390px with both
-            modes on and a run blocked it holds more than its space. Before the
-            order was written down, every child was `shrink-0` except the
-            wordmark, so the wordmark was what gave: "F…", then nothing, and the
-            canary pill ran on under New chat.
-
-            So: the wordmark and the run state never shrink. Below `sm` the mark
-            is gone (it repeats the wordmark), and the two
-            modes draw as icons, keeping their words for a reader, and while a
-            run state is on screen they step aside (see the modes' row). Past
-            that — a 320px viewport, where the wordmark and the chip alone are
-            wider than the room — the cluster clips at its own edge rather than
-            running under the right cluster, which holds the controls. `py-1`
-            is room for a focus ring the clip would otherwise cut. */}
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden px-1.5 py-1">
-          {/* Wordmark: caps via CSS, not in the string, so the accessible name
-              and anything copied out stay the proper noun.
-
-              An `h1` because the document had none — every page began at `h2`,
-              so there was no top-level heading naming the application for anyone
-              navigating by heading. */}
-          {/* The mark yields first, and whole: below `sm` it goes before the
-              modes do, because it says nothing the wordmark beside it does not,
-              and at 390px a `blocked` chip already leaves no room for an icon. */}
-          <BrandMark className="hidden sm:block" />
-          <h1 className="shrink-0 text-base font-semibold uppercase tracking-wider">Felix</h1>
-          {/* This thread's run, in one slot that is the same on both addresses.
-              It used to ride the Chat door on `/harness` only, so `/t` said
-              nothing in the header and the two addresses disagreed about where
-              to look. Two words and nothing else — waiting on a person, or
-              working — because a copy with its own idea of which finer phases
-              were worth showing disagreed with the instrument's.
-
-              `blocked` outranks `running` and reads the same queue the tab title
-              does (`setPresence` above): a run waiting on an approval or a
-              question is not working, and "running" was the reason to stay on a
-              page while the run timed out behind it.
-
-              A tinted chip the height of the badges beside it, not bare text:
-              as `text-xs` with no surface it lost to the filled Verbose pill, so
-              the header ranked a viewing preference above the run. The tint is
-              the state's own hue at /10 — the ramp is tuned for text on its own
-              tint up to /15 in both themes.
-
-              Not a live region. The attention line below is one, and already
-              announces both "Working" and a call waiting on you; a second region
-              saying the same change would make a screen reader say it twice.
-              The `sr-only` prefix is what keeps it from being mistaken for that
-              line when it is read in place: that line is tenant-wide, this is
-              the thread on screen. */}
-          {runBlocked ? (
-            <span
-              data-slot="run-state"
-              title="This thread's run is waiting on you"
-              className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-state-blocked/10 px-2 py-0.5 text-xs font-medium text-state-blocked"
-            >
-              <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
-              <span className="sr-only">This thread's run: </span>
-              blocked
-            </span>
-          ) : streaming ? (
-            <span
-              data-slot="run-state"
-              title="This thread's run is in progress"
-              className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-state-running/10 px-2 py-0.5 text-xs font-medium text-state-running"
-            >
-              <span aria-hidden className="size-1.5 rounded-full bg-state-running" />
-              <span className="sr-only">This thread's run: </span>
-              running
-            </span>
-          ) : null}
-          {/* The modes this tab is in, at every width. They were `hidden` below
-              `sm`, so on a phone, or at 200% zoom, verbose and a canary rollout
-              were states with nothing on screen to say so. What narrows instead
-              is their words: below `sm` each draws as its icon, and the word
-              stays in the accessible name and the `title`.
-
-              Below `sm`, while this thread's run state is showing, the modes
-              step off the screen. Measured at 390px, the wordmark and a
-              `blocked` chip leave no room for even one icon beside them, and
-              the alternatives were both worse: a badge clipped part-way reads
-              as broken, and one pushed out of view by overflow is a Verbose
-              button keyboard focus can land on and nobody can see. So Verbose
-              is `hidden`, which takes it out of the tab order as well — the
-              Session menu still holds it — and the canary, which is not
-              focusable, goes `sr-only` and is still read. Both come back when
-              the run settles. Nothing else in the cluster shrinks, so this row
-              is `min-w-0` for the widths between, where it is the one to give. */}
-          {(verbose || canary) && (
-            <div
-              data-slot="header-modes"
-              // `contents` while the modes have stepped off a narrow screen, so
-              // the row leaves no empty box and no gap behind them.
-              className={cn('flex min-w-0 items-center gap-2', runShown && 'max-sm:contents')}
-            >
-              {verbose && (
-                <Badge
-                  variant="secondary"
-                  className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
-                  asChild
-                >
-                  {/* A button, because a badge that reports a mode should also be
-                      the way out of it — otherwise the way out is two clicks into
-                      a menu whose trigger says nothing about verbose. Focus moves
-                      to that menu's trigger, since the badge unmounts under the
-                      click.
-
-                      No `aria-pressed`: the badge exists only while verbose is
-                      on, so it was permanently true — a toggle that could never
-                      read unpressed. The name says the state and the action
-                      instead, which is also what lets the word go below `sm`. */}
-                  <button
-                    type="button"
-                    data-slot="verbose-mode"
-                    aria-label="Verbose on, turn off"
-                    title="Verbose tools is on. Click to turn it off."
-                    onClick={() => {
-                      setVerbose(false);
-                      menuTriggerRef.current?.focus();
-                    }}
-                    className="cursor-pointer hover:bg-secondary/80"
-                  >
-                    <ScrollTextIcon aria-hidden className="sm:hidden" />
-                    <span className="hidden sm:inline">Verbose</span>
-                  </button>
-                </Badge>
-              )}
-              {canary && (
-                // Outline and mono, never a filled pill: the version is the
-                // harness's number quoted back, and a filled badge made it the
-                // loudest object in the header. On-canary reads in the
-                // foreground, a rollout this thread is not confirmed to be on
-                // stays muted — and the words say the same, because a colour
-                // difference alone says it to nobody who cannot see it.
-                <Badge
-                  variant="outline"
-                  data-slot="canary-mode"
-                  className={cn(
-                    'h-5.5 border-border/60 font-mono font-normal',
-                    canary.onCanary ? 'text-foreground' : 'text-muted-foreground',
-                    runShown && 'max-sm:sr-only',
-                  )}
-                  title={
-                    canary.onCanary
-                      ? `This thread is served by canary v${canary.version} (rollout at ${canary.weight}%).`
-                      : `Canary rollout in flight: v${canary.version} at ${canary.weight}%. ` +
-                        'This thread is not confirmed to be on it.'
-                  }
-                >
-                  <BirdIcon aria-hidden className="sm:hidden" />
-                  <span className="sr-only sm:not-sr-only">canary</span>
-                  <span className="sr-only sm:not-sr-only">
-                    {canary.onCanary
-                      ? `v${canary.version}`
-                      : `v${canary.version}${canary.weight < 100 ? ` @ ${canary.weight}%` : ''}`}
-                  </span>
-                  <span className="sr-only">
-                    {canary.onCanary
-                      ? ', this thread is on it'
-                      : ', this thread is not confirmed on it'}
-                  </span>
-                </Badge>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* `shrink-0`: the controls are what the left cluster yields to, never
-            the other way round. */}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          {/* Conversation controls stay with the conversation. On `/harness` —
-              whose premise is what outlives every run — New chat, the instrument
-              and the Session menu's run verbs act on a transcript that is not on
-              screen. The door back to Chat is the one way to them. It is plain
-              navigation: the run's state is in the slot beside the wordmark,
-              which is there on both addresses. */}
-          {!onHarness && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={newThread}
-              disabled={streaming}
-              className="gap-1.5"
-              title="New chat"
-            >
-              <PlusIcon className="size-4" aria-hidden />
-              {/* `sr-only` below `sm` rather than `hidden`, so the word is the
-                  accessible name at every width and no `aria-label` has to
-                  repeat it. */}
-              <span className="sr-only sm:not-sr-only">New chat</span>
-            </Button>
-          )}
-          {/*
-            The second top-level address, and a real control rather than a menu
-            item: the four workbenches behind the ellipsis were not hard to find,
-            they had no home. This is the switch between the two things this
-            client is — a conversation, and the harness behind it.
-          */}
-          {/* Always ghost: it links to the *other* address, so a "current" fill
-              would mark the place you are leaving. The icon names the destination
-              where there is room for it; below `sm` the door is its word alone,
-              because the word is the part that cannot go and the icon's 22px is
-              what lets the left cluster keep the wordmark and the run state. */}
-          <Button asChild variant="ghost" size="sm" className="gap-1.5">
-            <Link
-              to={onHarness ? `/t/${threadId}` : '/harness'}
-              title={onHarness ? 'Chat' : 'Harness'}
-            >
-              {onHarness ? (
-                <MessageSquareIcon className="hidden size-4 sm:block" aria-hidden />
-              ) : (
-                <ServerIcon className="hidden size-4 sm:block" aria-hidden />
-              )}
-              {/* The word at every width. Below `sm` it used to be `sr-only`, so
-                  on a phone the only route between the app's two addresses was a
-                  server glyph beside a panel glyph — two icons that say nothing
-                  about which is a place. New chat gives up its word there
-                  instead: a plus is the one icon here that names its action. */}
-              <span>{onHarness ? 'Chat' : 'Harness'}</span>
-            </Link>
-          </Button>
-          {onHarness ? (
-            // The instrument toggle's slot, held empty for the same reason as the
-            // workspace toggle's on the left: without it the door moved on every
-            // switch between the two addresses. At every width — collapsing it
-            // on a phone was tried, and a door that moves is a worse cost than
-            // 32px of gap; the header does not overflow at 390px with it held.
-            <span aria-hidden data-slot="instrument-toggle-slot" className="size-8 shrink-0" />
-          ) : (
-            <Button
-              variant={inspectorOpen ? 'secondary' : 'ghost'}
-              size="icon-sm"
-              onClick={() => setInspectorOpen((o) => !o)}
-              aria-pressed={inspectorOpen}
-              aria-label="This run"
-              aria-keyshortcuts={ariaShortcut('toggle-instrument', mac)}
-              title={`This run (${shortcutLabel('toggle-instrument', mac)})`}
-            >
-              <PanelRightIcon className="size-4" />
-            </Button>
-          )}
-          {/* One menu, in one place on both addresses. On `/t` it is named
-              Session and opens on Session — it used to open on a View group,
-              so the name promised one thing and the first row was another.
-              View follows, then Theme under a label of its own: the Verbose
-              checkbox and the theme radios ran together as one unlabelled list.
-
-              On `/harness` it holds Theme alone, so it is named **Theme** there
-              and its one label says the same word: a menu called Session with no
-              session in it would be the "More tools" problem again, and one
-              called View holding only Theme names a group it does not show.
-              Theme is a set-once preference, so it holds no header slot of its
-              own. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                ref={menuTriggerRef}
-                variant="ghost"
-                size="icon-sm"
-                aria-label={onHarness ? 'Theme' : 'Session'}
-                title={onHarness ? 'Theme' : 'Session'}
-              >
-                <EllipsisIcon className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            {/* `w-64` so Copy thread id and its id sit on one row: at `w-56` the
-                row wrapped. */}
-            <DropdownMenuContent align="end" className="w-64">
-              {!onHarness && (
-                <>
-                  <DropdownMenuLabel>Session</DropdownMenuLabel>
-                  {/* Disabled on an empty thread: there is no run to continue, and
-                      the harness would start one from nothing. */}
-                  <DropdownMenuItem
-                    disabled={streaming || turns.length === 0}
-                    onSelect={() => continueRun()}
-                  >
-                    Continue run
-                  </DropdownMenuItem>
-                  {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
-                      `self-pr-` for every `self-pr-*` thread. The id is whole in
-                      `title`, in the accessible name, and on the clipboard.
-
-                      `middleTruncate` is the only cut. The span does not also
-                      `truncate`: a CSS ellipsis on top of a middle ellipsis would
-                      drop the end of the id, which is the half that differs. */}
-                  <DropdownMenuItem
-                    onSelect={copyThreadId}
-                    title={threadId}
-                    aria-label={`Copy thread id ${threadId}`}
-                    className="gap-1.5 whitespace-nowrap"
-                  >
-                    <CopyIcon className="size-4" aria-hidden />
-                    Copy thread id
-                    <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
-                      {middleTruncate(threadId, 14)}
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>View</DropdownMenuLabel>
-                  <DropdownMenuCheckboxItem
-                    checked={verbose}
-                    onCheckedChange={(checked) => {
-                      setVerbose(checked);
-                      if (checked) setInspectorOpen(true);
-                    }}
-                  >
-                    Verbose tools
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              <DropdownMenuLabel>Theme</DropdownMenuLabel>
-              {/* Radio items, so the checked theme is announced rather than marked
-                  with a glyph only a sighted reader could see. */}
-              <DropdownMenuRadioGroup
-                aria-label="Theme"
-                value={theme}
-                onValueChange={(v) => {
-                  if (v === 'light' || v === 'dark' || v === 'system') setTheme(v);
-                }}
-              >
-                {THEME_OPTIONS.map(({ value, label, Icon }) => (
-                  <DropdownMenuRadioItem key={value} value={value} className="gap-2">
-                    <Icon className="size-4" aria-hidden />
-                    {label}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
-
-      {/*
-        Always rendered, never conditional, and above the `<Outlet/>` so it is the
-        same line on both addresses. It answers the question an operator has
-        before they have navigated anywhere, which means it cannot be somewhere
-        they have to navigate to.
-      */}
-      <AttentionLine
-        approvals={tenantApprovals}
-        streaming={streaming}
-        handled={bannerOwned}
-        bannerOnScreen={!onHarness}
-        threadId={threadId}
-        threads={threads}
-        reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}
-        question={uiPrompt?.prompt ?? null}
-      />
-
       {/*
         The address decides what renders here. The engine, the thread and the
         approval queue are above it deliberately: mounting `createChatEngine`
@@ -2198,8 +1827,358 @@ export function AppShell() {
           onOpenMobileChange={setHistoryOpen}
           mobile={!sidebarInline}
         >
+          {/* Full height, beside the header rather than under it, so its top edge
+              can carry the brand on the header's own line. */}
           <AppSidebar />
           <SidebarInset>
+            {/* The inset is added to the bar's height rather than taken out of it:
+                `--header-height` is read by the toaster and must stay the bar's own. */}
+            <header className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-1 border-b border-border/60 px-3 pt-safe">
+              {/* Below 1024 the sidebar is a drawer and has no edge on screen, so its
+                  brand — and with it the toggle — stands here, in the slot the panel
+                  button had. From 1024 both live at the top of the sidebar instead,
+                  on this bar's line, and the header starts with the run. */}
+              {!sidebarInline && (
+                <div data-slot="header-brand" className="flex shrink-0 items-center gap-1.5">
+                  <BrandToggle
+                    open={historyOpen}
+                    onClick={() => setHistoryOpen((o) => !o)}
+                    // What is on screen, not what is stored: at this width the stored
+                    // preference is not what the operator is looking at. Pressed means
+                    // the drawer is open.
+                    aria-pressed={historyOpen}
+                    aria-label="Sidebar"
+                    aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
+                    title={`Sidebar (${shortcutLabel('toggle-workspace', mac)})`}
+                  />
+                  <Wordmark />
+                </div>
+              )}
+              {/* The left cluster yields in a fixed order, because at 390px with both
+                  modes on and a run blocked it holds more than its space. The brand
+                  before it never shrinks, and nor does the run state. Below `sm` the
+                  two modes draw as icons, keeping their words for a reader, and while
+                  a run state is on screen they step aside (see the modes' row). Past
+                  that — a 320px viewport, where the brand and the chip alone are wider
+                  than the room — the cluster clips at its own edge rather than running
+                  under the right cluster, which holds the controls. `py-1` is room for
+                  a focus ring the clip would otherwise cut. */}
+              <div
+                data-slot="header-state"
+                className="flex min-w-0 items-center gap-2 overflow-hidden px-1.5 py-1"
+              >
+                {/* This thread's run, in one slot that is the same on both addresses.
+                    It used to ride the Chat door on `/harness` only, so `/t` said
+                    nothing in the header and the two addresses disagreed about where
+                    to look. Two words and nothing else — waiting on a person, or
+                    working — because a copy with its own idea of which finer phases
+                    were worth showing disagreed with the instrument's.
+
+                    `blocked` outranks `running` and reads the same queue the tab title
+                    does (`setPresence` above): a run waiting on an approval or a
+                    question is not working, and "running" was the reason to stay on a
+                    page while the run timed out behind it.
+
+                    A tinted chip the height of the badges beside it, not bare text:
+                    as `text-xs` with no surface it lost to the filled Verbose pill, so
+                    the header ranked a viewing preference above the run. The tint is
+                    the state's own hue at /10 — the ramp is tuned for text on its own
+                    tint up to /15 in both themes.
+
+                    Not a live region. The attention line below is one, and already
+                    announces both "Working" and a call waiting on you; a second region
+                    saying the same change would make a screen reader say it twice.
+                    The `sr-only` prefix is what keeps it from being mistaken for that
+                    line when it is read in place: that line is tenant-wide, this is
+                    the thread on screen. */}
+                {runBlocked ? (
+                  <span
+                    data-slot="run-state"
+                    title="This thread's run is waiting on you"
+                    className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-solid-state-blocked/10 px-2 py-0.5 text-xs font-medium text-state-blocked"
+                  >
+                    <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                    <span className="sr-only">This thread's run: </span>
+                    blocked
+                  </span>
+                ) : streaming ? (
+                  <span
+                    data-slot="run-state"
+                    title="This thread's run is in progress"
+                    className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-solid-state-running/10 px-2 py-0.5 text-xs font-medium text-state-running"
+                  >
+                    <span aria-hidden className="size-1.5 rounded-full bg-state-running" />
+                    <span className="sr-only">This thread's run: </span>
+                    running
+                  </span>
+                ) : null}
+                {/* The modes this tab is in, at every width. They were `hidden` below
+                    `sm`, so on a phone, or at 200% zoom, verbose and a canary rollout
+                    were states with nothing on screen to say so. What narrows instead
+                    is their words: below `sm` each draws as its icon, and the word
+                    stays in the accessible name and the `title`.
+
+                    Below `sm`, while this thread's run state is showing, the modes
+                    step off the screen. Measured at 390px, the wordmark and a
+                    `blocked` chip leave no room for even one icon beside them, and
+                    the alternatives were both worse: a badge clipped part-way reads
+                    as broken, and one pushed out of view by overflow is a Verbose
+                    button keyboard focus can land on and nobody can see. So Verbose
+                    is `hidden`, which takes it out of the tab order as well — the
+                    Session menu still holds it — and the canary, which is not
+                    focusable, goes `sr-only` and is still read. Both come back when
+                    the run settles. Nothing else in the cluster shrinks, so this row
+                    is `min-w-0` for the widths between, where it is the one to give. */}
+                {(verbose || canary) && (
+                  <div
+                    data-slot="header-modes"
+                    // `contents` while the modes have stepped off a narrow screen, so
+                    // the row leaves no empty box and no gap behind them.
+                    className={cn('flex min-w-0 items-center gap-2', runShown && 'max-sm:contents')}
+                  >
+                    {verbose && (
+                      <Badge
+                        variant="secondary"
+                        className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
+                        asChild
+                      >
+                        {/* A button, because a badge that reports a mode should also be
+                            the way out of it — otherwise the way out is two clicks into
+                            a menu whose trigger says nothing about verbose. Focus moves
+                            to that menu's trigger, since the badge unmounts under the
+                            click.
+
+                            No `aria-pressed`: the badge exists only while verbose is
+                            on, so it was permanently true — a toggle that could never
+                            read unpressed. The name says the state and the action
+                            instead, which is also what lets the word go below `sm`. */}
+                        <button
+                          type="button"
+                          data-slot="verbose-mode"
+                          aria-label="Verbose on, turn off"
+                          title="Verbose tools is on. Click to turn it off."
+                          onClick={() => {
+                            setVerbose(false);
+                            menuTriggerRef.current?.focus();
+                          }}
+                          className="cursor-pointer hover:bg-solid-secondary/80"
+                        >
+                          <ScrollTextIcon aria-hidden className="sm:hidden" />
+                          <span className="hidden sm:inline">Verbose</span>
+                        </button>
+                      </Badge>
+                    )}
+                    {canary && (
+                      // Outline and mono, never a filled pill: the version is the
+                      // harness's number quoted back, and a filled badge made it the
+                      // loudest object in the header. On-canary reads in the
+                      // foreground, a rollout this thread is not confirmed to be on
+                      // stays muted — and the words say the same, because a colour
+                      // difference alone says it to nobody who cannot see it.
+                      <Badge
+                        variant="outline"
+                        data-slot="canary-mode"
+                        className={cn(
+                          'h-5.5 border-border/60 font-mono font-normal',
+                          canary.onCanary ? 'text-foreground' : 'text-muted-foreground',
+                          runShown && 'max-sm:sr-only',
+                        )}
+                        title={
+                          canary.onCanary
+                            ? `This thread is served by canary v${canary.version} (rollout at ${canary.weight}%).`
+                            : `Canary rollout in flight: v${canary.version} at ${canary.weight}%. ` +
+                              'This thread is not confirmed to be on it.'
+                        }
+                      >
+                        <BirdIcon aria-hidden className="sm:hidden" />
+                        <span className="sr-only sm:not-sr-only">canary</span>
+                        <span className="sr-only sm:not-sr-only">
+                          {canary.onCanary
+                            ? `v${canary.version}`
+                            : `v${canary.version}${canary.weight < 100 ? ` @ ${canary.weight}%` : ''}`}
+                        </span>
+                        <span className="sr-only">
+                          {canary.onCanary
+                            ? ', this thread is on it'
+                            : ', this thread is not confirmed on it'}
+                        </span>
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/*
+          Always rendered, never conditional, and above the `<Outlet/>` so it is the
+          same line on both addresses. It answers the question an operator has
+          before they have navigated anywhere, which means it cannot be somewhere
+          they have to navigate to.
+        */}
+              {/* `ml-auto` puts it beside the controls; a shrink weight far above the
+            run cluster's makes it the first thing in the header to give way, so
+            the run state and the brand keep their room at every width. */}
+              <div className="ml-auto flex min-w-0 shrink-[100] items-center justify-end pl-2">
+                <AttentionLine
+                  approvals={tenantApprovals}
+                  streaming={streaming}
+                  handled={bannerOwned}
+                  bannerOnScreen={!onHarness}
+                  threadId={threadId}
+                  threads={threads}
+                  reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}
+                  question={uiPrompt?.prompt ?? null}
+                  queueHost={attentionHost}
+                />
+              </div>
+              {/* `shrink-0`: the controls are what the left cluster yields to, never
+                  the other way round. */}
+              <div className="flex shrink-0 items-center gap-1">
+                {/* Conversation controls stay with the conversation. On `/harness` —
+                    whose premise is what outlives every run — New chat, the instrument
+                    and the Session menu's run verbs act on a transcript that is not on
+                    screen. The door back to Chat is the one way to them. It is plain
+                    navigation: the run's state is the header's first slot, on both
+                    addresses.
+
+                    From 1024 New chat is the sidebar's first row, on screen expanded
+                    or as icons, so a second one here was the same button twice. It
+                    stays here where the sidebar is a drawer, because there it would
+                    be two clicks away. */}
+                {!onHarness && !sidebarInline && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={newThread}
+                    disabled={streaming}
+                    className="gap-1.5"
+                    title="New chat"
+                  >
+                    <PlusIcon className="size-4" aria-hidden />
+                    {/* `sr-only` below `sm` rather than `hidden`, so the word is the
+                        accessible name at every width and no `aria-label` has to
+                        repeat it. */}
+                    <span className="sr-only sm:not-sr-only">New chat</span>
+                  </Button>
+                )}
+                {onHarness ? (
+                  // The instrument toggle's slot, held empty so the attention line
+                  // beside it stays put: without it the line moved on every switch
+                  // between the two addresses.
+                  <span
+                    aria-hidden
+                    data-slot="instrument-toggle-slot"
+                    className="size-8 shrink-0"
+                  />
+                ) : (
+                  <Button
+                    variant={inspectorOpen ? 'secondary' : 'ghost'}
+                    size="icon-sm"
+                    onClick={() => setInspectorOpen((o) => !o)}
+                    aria-pressed={inspectorOpen}
+                    aria-label="This run"
+                    aria-keyshortcuts={ariaShortcut('toggle-instrument', mac)}
+                    title={`This run (${shortcutLabel('toggle-instrument', mac)})`}
+                  >
+                    <PanelRightIcon className="size-4" />
+                  </Button>
+                )}
+                {/* One menu, in one place on both addresses. On `/t` it is named
+                    Session and opens on Session — it used to open on a View group,
+                    so the name promised one thing and the first row was another.
+                    View follows, then Theme under a label of its own: the Verbose
+                    checkbox and the theme radios ran together as one unlabelled list.
+
+                    On `/harness` it holds Theme alone, so it is named **Theme** there
+                    and its one label says the same word: a menu called Session with no
+                    session in it would be the "More tools" problem again, and one
+                    called View holding only Theme names a group it does not show.
+                    Theme is a set-once preference, so it holds no header slot of its
+                    own. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      ref={menuTriggerRef}
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={onHarness ? 'Theme' : 'Session'}
+                      title={onHarness ? 'Theme' : 'Session'}
+                    >
+                      <EllipsisIcon className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  {/* `w-64` so Copy thread id and its id sit on one row: at `w-56` the
+                      row wrapped. */}
+                  <DropdownMenuContent align="end" className="w-64">
+                    {!onHarness && (
+                      <>
+                        <DropdownMenuLabel>Session</DropdownMenuLabel>
+                        {/* Disabled on an empty thread: there is no run to continue, and
+                            the harness would start one from nothing. */}
+                        <DropdownMenuItem
+                          disabled={streaming || turns.length === 0}
+                          onSelect={() => continueRun()}
+                        >
+                          Continue run
+                        </DropdownMenuItem>
+                        {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
+                            `self-pr-` for every `self-pr-*` thread. The id is whole in
+                            `title`, in the accessible name, and on the clipboard.
+
+                            `middleTruncate` is the only cut. The span does not also
+                            `truncate`: a CSS ellipsis on top of a middle ellipsis would
+                            drop the end of the id, which is the half that differs. */}
+                        <DropdownMenuItem
+                          onSelect={copyThreadId}
+                          title={threadId}
+                          aria-label={`Copy thread id ${threadId}`}
+                          className="gap-1.5 whitespace-nowrap"
+                        >
+                          <CopyIcon className="size-4" aria-hidden />
+                          Copy thread id
+                          <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
+                            {middleTruncate(threadId, 14)}
+                          </span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>View</DropdownMenuLabel>
+                        <DropdownMenuCheckboxItem
+                          checked={verbose}
+                          onCheckedChange={(checked) => {
+                            setVerbose(checked);
+                            if (checked) setInspectorOpen(true);
+                          }}
+                        >
+                          Verbose tools
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
+                    <DropdownMenuLabel>Theme</DropdownMenuLabel>
+                    {/* Radio items, so the checked theme is announced rather than marked
+                        with a glyph only a sighted reader could see. */}
+                    <DropdownMenuRadioGroup
+                      aria-label="Theme"
+                      value={theme}
+                      onValueChange={(v) => {
+                        if (v === 'light' || v === 'dark' || v === 'system') setTheme(v);
+                      }}
+                    >
+                      {THEME_OPTIONS.map(({ value, label, Icon }) => (
+                        <DropdownMenuRadioItem key={value} value={value} className="gap-2">
+                          <Icon className="size-4" aria-hidden />
+                          {label}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </header>
+
+            {/* The attention line's queue opens here, under the bar the line sits
+                on, in the flow — it pushes the page down rather than covering it. */}
+            <div ref={setAttentionHost} className="contents" />
+
             <Outlet />
           </SidebarInset>
         </SidebarProvider>

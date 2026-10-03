@@ -17,8 +17,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip';
  *    host, which already decided them and has reasons for each (Ctrl+B opens a
  *    Firefox sidebar).
  * 2. **In the flow, not fixed.** Upstream pins the panel to the viewport with a
- *    spacer beside it, which assumes the sidebar runs full height. Here it sits
- *    under a header, so the panel is an ordinary flex child whose width animates.
+ *    spacer beside it. Here the panel is an ordinary flex child whose width
+ *    animates, beside an inset that holds the host's header — so the host's
+ *    layout, not `position: fixed`, decides how tall it is.
  * 3. **Icon collapse only.** The one mode the host uses; `offcanvas` and the
  *    floating/inset variants are gone rather than carried untested.
  */

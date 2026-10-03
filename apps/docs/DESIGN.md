@@ -134,7 +134,7 @@ other page on Starlight's previous/next pair, which follows the sidebar's order.
 Most of the chrome is Starlight's, recoloured from `@felix/design` rather than redrawn. What is
 Felix's own is small and deliberate: the wordmark, the reading measure, the callouts on the state
 ramp, the stream-events list, RunTrace, the Route index, and a dot grid behind the top of the
-reading column that the docs share with chat-ui's transcript.
+reading column — once shared with chat-ui's transcript, now the docs' alone.
 
 **Key Characteristics:**
 
@@ -245,7 +245,7 @@ it behaves the same in the hero and full width); the Route index stacks at **50r
 
 A **dot grid** — a text-colour dot on an 18px grid at 16% (dark) / 7% (light) layer opacity —
 sits behind the top of the reading column only, as a band at most one viewport tall that fades by
-65%. It is chat-ui's transcript texture with chat-ui's strengths, and it is off under
+65%. It began as chat-ui's transcript texture, which chat-ui has since dropped, and it is off under
 `prefers-contrast: more`, forced colours and print. In light mode it is nearly invisible: that is
 the price of the contrast rule it carries, not an oversight.
 

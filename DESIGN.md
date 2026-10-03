@@ -317,8 +317,23 @@ a token because two unrelated files need the same number — the header sizes it
 the toast layer clears it by it. They previously agreed by coincidence, and did not. Rail
 headers match it at 48px, so the header's rule and each rail's rule line up.
 
-The header holds run *state*, not preferences. Immediately after the wordmark, on both
-addresses and at every width, one fixed slot says what **this thread's** run is doing:
+**The brand belongs to the sidebar, and the mark is its toggle.** The app sidebar runs full
+height beside the header, and its top row is the header's line — the same
+`--header-height` plus the top safe-area inset, the same rule — carrying the mark and the
+wordmark. The mark sits 8px in, where the menu's icons sit, so collapsed to icons it heads their
+column and the wordmark is clipped by the narrowing panel rather than snapping out. The mark
+*is* the toggle (named *Sidebar*, `aria-pressed`, ⌘\): at rest it is the mark; where a pointer
+can hover, hovering — or keyboard focus on any device — cross-fades it to the panel glyph for
+what a click will do, in place, so nothing beside it moves. On touch it stays the mark. Below
+1024, where the sidebar is a drawer with no edge on screen, the mark and wordmark stand at the
+start of the header instead, toggling the drawer, and the drawer heads itself with the same row,
+its mark named *Close sidebar*. The wordmark is the page's one `h1` wherever it is the app's
+name on screen — the sidebar inline, the header narrow — and a span inside the drawer, which
+opens over a header already holding one. There is no toggle in the header from 1024 and no slot
+held empty for one: the brand cannot move between addresses because the sidebar does not.
+
+The header holds run *state*, not preferences. It starts (after the brand, below 1024) with one
+fixed slot, on both addresses and at every width, that says what **this thread's** run is doing:
 `blocked` while it waits on an approval or a question, else `running` while it streams, else
 nothing — a word and a dot, never the dot alone, and never a finer phase, which is the
 instrument's. It is drawn as a **state chip**: rounded-full, the badges' height (22px), the
@@ -333,9 +348,9 @@ harness's number quoted back, so it is never a filled pill. Its words also say w
 thread is on the rollout, in an `sr-only` clause, because the foreground-versus-muted colour
 that says it on screen says it to nobody who cannot see it.
 
-The left cluster **yields in a fixed order**. The wordmark never shrinks and is never
-truncated; the run state never yields. The mark goes first, whole, below `sm`: it repeats the
-wordmark beside it, so it is the one thing in the cluster whose loss costs nothing. Below `sm` both modes draw as icons (a scroll for
+The left cluster **yields in a fixed order**. The brand before it never shrinks and the
+wordmark is never truncated — the mark is the sidebar's toggle, so unlike the decorative mark
+it replaced it never yields; the run state never yields either. Below `sm` both modes draw as icons (a scroll for
 Verbose, a bird for the canary), their words kept in the accessible name and the `title`.
 While the run state is showing below `sm`, the modes step off the screen — at 390px the
 wordmark and a `blocked` chip leave no room for one icon beside them. Verbose goes `hidden`,
@@ -344,10 +359,11 @@ focusable, goes `sr-only` and is still read; both return when the run settles. A
 part-way reads as broken, and one pushed off by overflow is a button focus can reach and
 nobody can see, which is why the yield is whole. Past all that the cluster clips at its own
 edge rather than running under the right cluster, which is `shrink-0`: at 320px the chip is
-clipped, a known limit. On the right: New chat, which is a plus alone below `sm`; the Harness
-door — plain navigation carrying no state of its own, and its **word at every width**, icon
-and word from `sm`, the word alone below it, because a server glyph beside a panel glyph said
-nothing on a phone about which one was a place; the instrument toggle; and one ellipsis menu named
+clipped, a known limit. There is **no door to `/harness`** in the header: the sidebar lists its
+eight pages, and a second way there in the bar was the same link twice. Before the controls sits
+the **attention line** (below). On the right: New chat, only where the sidebar is a drawer (from 1024 it is the sidebar's
+first row, expanded or as icons), and a plus alone below `sm`; the instrument toggle; and one
+ellipsis menu named
 **Session** that opens on what it is named for: *Session* (Continue run, disabled on an empty
 thread, and Copy thread id), then *View* (Verbose tools), then *Theme* under its own label as
 Light/Dark/System radio items. Theme is a set-once preference and holds no header slot of its
@@ -356,10 +372,17 @@ own; Thinking is in the composer.
 The workbench is **three zones**: the app sidebar (17rem expanded, 3rem as icons), the transcript at reading width
 (`max-w-3xl`, turns 24px apart) with the composer anchored beneath it, and the run instrument
 (`clamp(22rem, 24vw, 30rem)` — the panel is what widens on a large display, not the
-transcript). An attention line runs full width under the header on every address. At rest its
-dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach
+transcript). The **attention line** is a pill in the header, right-aligned before the instrument
+toggle and the menu, on every address — the answer to "is anything waiting on me" on the bar every
+address shares rather than a row of its own. It is the first thing in the header to give way (a
+shrink weight far above the run cluster's): the sentence truncates, and below `sm` it is two words
+(*1 waiting*, *Clear*, *Unreachable*) with *Review* as its chevron alone, the full sentence kept as
+the live region and the `title`. It is tinted only when it has something to say — `state-blocked`
+at `/10` while a person is asked, `state-failed` while it cannot vouch for the list — and is muted
+text on no surface at rest. At rest its dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach
 approvals* with the age of its last answer, in `state-failed`, and never the all-clear.
-Expanded, its queue is held to the transcript's measure (`max-w-3xl`) on the transcript's centre
+Expanded, its queue opens **under the header**, in the flow — it pushes the page down rather than
+covering it — and is held to the transcript's measure (`max-w-3xl`) on the transcript's centre
 line, and is **one line per call** — tool and target in mono, the thread, and a countdown chip
 that says what it counts down to (*Auto-denies in 4:20*; the clock alone below `sm`) — opening
 into the approval card on *Review*. It opens itself only for a call on this thread. A write from
@@ -448,8 +471,7 @@ control, drop hint, notice pill).
 
 The access-key gate follows the tonal model too: its form card is flat — a full-strength
 `border` hairline at `rounded-lg`, no shadow — and its side panel is flat `muted`, where it was
-the app's one gradient. There is no gradient *fill* anywhere in the app; the transcript's dot
-grid is drawn with a `radial-gradient`, but it is a texture, not a fill (the One Texture Rule).
+the app's one gradient. There is no gradient anywhere in the app, and no texture (the No Texture Rule).
 
 **Where the system and the code disagree.** The vendored primitives in `packages/ui/src` are shadcn defaults and still carry theirs —
 `shadow-2xl` on overlays, `shadow-lg` on dialog-class surfaces, `shadow-xs` on outline buttons.
@@ -470,21 +492,14 @@ these panes once carried three different alphas for one job, which made a pane's
 function of the tint behind it, and an approval's diff came out faintly amber because the banner
 around it was.
 
-**The One Texture Rule.** The app has exactly one decorative texture: an 18px dot grid behind the
-transcript's `<main>` (`.bg-dots` in `index.css`), drawn from `--foreground` at
-`--dot-grid-alpha` (7% light, 16% dark, because text crosses it and owes its contrast —
-`tests/dot-grid-contrast.test.ts` recomputes both) and masked to fade out by 65% of the column's
-height. Nowhere else: not behind the workspace, the instrument, `/harness` or any panel, where
-rows are scanned rather than read.
-
-**The Solid-Over-Texture Rule.** Anything with a fill that sits over the grid is opaque. An alpha
-tint (`bg-muted/30`) mixes with *transparent*, so the grid runs straight through it — a tool card
-or a button reads as if it had no fill. `bg-solid-<token>/<n>` mixes with `--background`
-instead: the same pixel on the plain page, solid over the dots. Tool cards, starter cards, the
-transcript's notes and the message actions' dark hover use it; the composer dock and its input
-box are plain `bg-background` / `bg-card`, with no backdrop blur left to do anything.
-`tests/solid-over-dots.test.ts` fails on an alpha fill in the files that render over the grid;
-a fill that sits on an opaque parent (a row inside a card) is allowlisted there, by name.
+**The No Texture Rule.** The canvas is flat `--background`, behind the header and the transcript
+alike. A dot grid sat behind the transcript until 2026-10-03 and was removed: it carried no
+information in a surface where colour and mark carry state, it capped the contrast of the muted
+text crossing it, and it obliged every fill laid over it to be opaque — a standing rule each new
+card had to know. `bg-solid-<token>/<n>` (a tint mixed with `--background` rather than with
+transparent) outlived it: tool cards, starter cards, the transcript's notes, the header's chips
+and the attention line still use it, and it remains the spelling for a tint that must be one flat
+colour whatever sits behind it.
 
 ## Shapes
 
@@ -534,12 +549,13 @@ there is still no brand colour, and the only hue the mark ever shows is a run st
   state alone.
 - **In the page, it never does.** The header lockup and the auth panel draw the mark at rest: the
   tile is `currentColor` and the glyph is `--background`, which is `primary`'s inversion with no
-  theme branch. The header already has a run-state slot beside the wordmark; a coloured dot one
-  element to its left would say the same thing twice.
+  theme branch. The header's first slot is the run state; a coloured dot on the mark
+  would say the same thing twice.
 - **It is decorative beside the wordmark.** `aria-hidden` in chat-ui and an empty `alt` in the
-  docs, because the wordmark is the accessible name and a second "Felix" would be read out.
-- **Lockup:** mark, then the uppercase wordmark, `gap-2`. In chat-ui's header the mark is the
-  first thing to yield below `sm` (see Layout). The tile is sized so the glyph inside
+  docs, because the wordmark is the accessible name and a second "Felix" would be read out. In
+  chat-ui it sits inside the sidebar toggle, which carries its own name.
+- **Lockup:** mark, then the uppercase wordmark, `gap-2`. In chat-ui the lockup heads the sidebar (see
+  Layout), and the mark never yields: it is the toggle. The tile is sized so the glyph inside
   it stands about as tall as the wordmark's caps: 20px beside chat-ui's 16px wordmark, 16px beside
   the auth panel's 13px one, 1.5rem beside the docs' 1.25rem one.
 
@@ -614,11 +630,11 @@ its half), declared beside the destination and checked against the docs source b
 Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
-controls — New chat, the instrument toggle and the Session menu's run verbs — and keeps the door
-back to Chat as plain navigation; the run's state is in the slot beside the wordmark, which is
-there on both addresses. The ellipsis menu stays in the same slot on both addresses and the
-instrument toggle's slot is held empty at every width, so the right-hand cluster does not move
-between them — collapsing it below `sm` was tried, and a door that moves cost more than the gap;
+controls — New chat, the instrument toggle and the Session menu's run verbs; the way back to the
+conversation is its row in the sidebar's thread list, and the run's state is the header's first
+slot, on both addresses. The ellipsis menu stays in the same slot on both addresses and the
+instrument toggle's slot is held empty at every width, so the attention line beside it does not
+move between them;
 on `/harness` the menu is named **Theme** and holds only the Theme radio group. Two controls have
 one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Ledger's
 tabs) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
