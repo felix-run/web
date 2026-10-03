@@ -13,7 +13,6 @@ import {
   useState,
 } from 'react';
 import type { BundledLanguage, BundledTheme, HighlighterGeneric, ThemedToken } from 'shiki';
-import { createHighlighter } from 'shiki';
 import { cn } from '@/lib/utils';
 
 // Shiki uses bitflags for font styles: 1=italic, 2=bold, 4=underline
@@ -140,10 +139,15 @@ const getHighlighter = (
     return cached;
   }
 
-  const highlighterPromise = createHighlighter({
-    langs: [language],
-    themes: ['github-light', 'github-dark'],
-  });
+  // Imported here, not at the top: Shiki's core is ~40 kB gzipped, and a static
+  // import put it in every first load for a highlighter that is only ever asked
+  // for asynchronously — a tool card's JSON, a file preview.
+  const highlighterPromise = import('shiki').then(({ createHighlighter }) =>
+    createHighlighter({
+      langs: [language],
+      themes: ['github-light', 'github-dark'],
+    }),
+  );
 
   highlighterCache.set(language, highlighterPromise);
   return highlighterPromise;

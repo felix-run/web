@@ -1189,6 +1189,21 @@ one still matches something rendered. That is the failure this repo keeps meetin
 compiles, matches nothing, and reports nothing. The dependency is pinned **exactly** in the
 catalog for the same reason — a caret took it from 1.3 to 1.6 unannounced.
 
+**KaTeX loads with the first reply that has math, not with the app.** Streamdown imports
+`rehype-katex` at the top of its bundle, which put ~75 kB gzipped in every first load. A build-only
+resolver in `vite.config.ts` (`lazyKatex`) points that import at a no-op
+(`src/lib/rehype-katex-omitted.ts`); `src/lib/katex-plugin.ts` is the one importer let through, and
+`Response` passes streamdown's defaults minus KaTeX until a reply contains `$$` (the same test
+streamdown uses before loading KaTeX's CSS), then the list with it, keeping the order — sanitize and
+harden run after KaTeX. The swap is a **remount** (`key`): streamdown's top-level `memo` compares
+`children`, the theme, `mode` and `isAnimating` and nothing else, so a new `rehypePlugins` alone
+never reaches the blocks and inline math stayed as `code.language-math`. `rehype-katex` is a direct
+dependency only so that import resolves; keep it on the version streamdown uses. **Math has never
+rendered properly here, before or after this**: the default `rehype-sanitize` runs after KaTeX and
+strips its class names, so the formula shows as MathML, TeX source and glyphs run together. Shiki
+is the same kind of fix, simpler: `ai-elements/code-block.tsx` imports it inside the highlighter
+it already created asynchronously, rather than at the top of the module.
+
 **A dependency can need one too.** `streamdown` — which renders every assistant message — styles
 itself with Tailwind classes that live in its own `dist`, so `index.css` sources
 `../node_modules/streamdown/dist` as well. The failure is partial and therefore easy to miss: a
