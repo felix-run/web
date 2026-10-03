@@ -1830,13 +1830,7 @@ export function AppShell() {
           {/* Full height, beside the header rather than under it, so its top edge
               can carry the brand on the header's own line. */}
           <AppSidebar />
-          {/* The dot grid starts at the top of the inset, not below the header: the
-              header is part of the transcript's surface, so the texture runs
-              under both and the bar reads as the top of the page rather than a
-              strip on top of it. On the conversation only — `/harness` is rows to
-              scan, and the One Texture Rule keeps it plain. Everything on it
-              uses `bg-solid-*` tints (`tests/solid-over-dots.test.ts`). */}
-          <SidebarInset className={cn(!onHarness && 'bg-dots isolate')}>
+          <SidebarInset>
             {/* The inset is added to the bar's height rather than taken out of it:
                 `--header-height` is read by the toaster and must stay the bar's own. */}
             <header className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-1 border-b border-border/60 px-3 pt-safe">

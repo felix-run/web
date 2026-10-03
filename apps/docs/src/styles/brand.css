@@ -72,20 +72,19 @@
 }
 
 /*
- * The dot grid, carried over from chat-ui's transcript (`.bg-dots` in
- * apps/chat-ui/src/index.css) so the two surfaces share one texture: a
- * foreground dot on an 18px grid, its strength set on the layer rather than in
+ * The dot grid. It began as chat-ui's transcript texture, which chat-ui has
+ * since dropped (2026-10-03); the docs keep it as their own. A foreground dot
+ * on an 18px grid, its strength set on the layer rather than in
  * the colour, fading out as it falls down the page.
  *
- * Same placement rule as there, translated: behind the reading column and
+ * Placed behind the reading column and
  * nowhere else. Not behind the sidebar or the table of contents, which are
  * scanned rather than read — the TOC's faint text is also the text with least
  * contrast margin, and it would sit on the dots for the whole page. And only
  * as a band at the top of the page, a viewport tall at most, because a mask
  * sized to a 400-screen reference page would never visibly fade.
  *
- * `--felix-dot-alpha` is chat-ui's `--dot-grid-alpha`, same values and same
- * reason: what a dot costs the text crossing it differs by theme. At 7% light
+ * `--felix-dot-alpha` is per theme because what a dot costs the text crossing it differs by theme. At 7% light
  * body text (#404040) over a dot's centre measures 8.9:1; at 16% dark, body
  * text (#d4d4d4) measures 8.7:1 and faint text (#a3a3a3) 5.1:1.
  */

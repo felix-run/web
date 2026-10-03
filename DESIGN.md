@@ -471,8 +471,7 @@ control, drop hint, notice pill).
 
 The access-key gate follows the tonal model too: its form card is flat — a full-strength
 `border` hairline at `rounded-lg`, no shadow — and its side panel is flat `muted`, where it was
-the app's one gradient. There is no gradient *fill* anywhere in the app; the transcript's dot
-grid is drawn with a `radial-gradient`, but it is a texture, not a fill (the One Texture Rule).
+the app's one gradient. There is no gradient anywhere in the app, and no texture (the No Texture Rule).
 
 **Where the system and the code disagree.** The vendored primitives in `packages/ui/src` are shadcn defaults and still carry theirs —
 `shadow-2xl` on overlays, `shadow-lg` on dialog-class surfaces, `shadow-xs` on outline buttons.
@@ -493,23 +492,14 @@ these panes once carried three different alphas for one job, which made a pane's
 function of the tint behind it, and an approval's diff came out faintly amber because the banner
 around it was.
 
-**The One Texture Rule.** The app has exactly one decorative texture: an 18px dot grid behind the
-conversation — the header and the transcript as one surface, painted on the `SidebarInset` on `/t`
-(`.bg-dots` in `index.css`), so the bar reads as the top of the page rather than a strip laid
-over it — drawn from `--foreground` at
-`--dot-grid-alpha` (7% light, 16% dark, because text crosses it and owes its contrast —
-`tests/dot-grid-contrast.test.ts` recomputes both) and masked to fade out by 65% of the column's
-height. Nowhere else: not behind the sidebar, the instrument (whose fill is solid, so the inset's
-grid stops at its edge), `/harness` or any panel, where rows are scanned rather than read.
-
-**The Solid-Over-Texture Rule.** Anything with a fill that sits over the grid is opaque. An alpha
-tint (`bg-muted/30`) mixes with *transparent*, so the grid runs straight through it — a tool card
-or a button reads as if it had no fill. `bg-solid-<token>/<n>` mixes with `--background`
-instead: the same pixel on the plain page, solid over the dots. Tool cards, starter cards, the
-transcript's notes and the message actions' dark hover use it; the composer dock and its input
-box are plain `bg-background` / `bg-card`, with no backdrop blur left to do anything.
-`tests/solid-over-dots.test.ts` fails on an alpha fill in the files that render over the grid;
-a fill that sits on an opaque parent (a row inside a card) is allowlisted there, by name.
+**The No Texture Rule.** The canvas is flat `--background`, behind the header and the transcript
+alike. A dot grid sat behind the transcript until 2026-10-03 and was removed: it carried no
+information in a surface where colour and mark carry state, it capped the contrast of the muted
+text crossing it, and it obliged every fill laid over it to be opaque — a standing rule each new
+card had to know. `bg-solid-<token>/<n>` (a tint mixed with `--background` rather than with
+transparent) outlived it: tool cards, starter cards, the transcript's notes, the header's chips
+and the attention line still use it, and it remains the spelling for a tint that must be one flat
+colour whatever sits behind it.
 
 ## Shapes
 
