@@ -179,6 +179,9 @@ helm upgrade --install felix ./deploy/helm/felix \
 ```
 
 A **pre-install/pre-upgrade Job** runs `felix migrate head` (`migrate.enabled=true`).
+Rolling the schema back is a separate, deliberate step: `felix migrate <revision> --down` runs each
+revision's `downgrade()`, which drops what it added. Without `--down`, asking for a revision the
+database has already passed is refused (exit 2) rather than reported as done.
 The chart runs **api**, **worker**, and **scheduler**. For `FELIX_OBJECT_STORE=fs`,
 enable `persistence.enabled=true`.
 
