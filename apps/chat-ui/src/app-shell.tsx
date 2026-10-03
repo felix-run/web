@@ -1,4 +1,6 @@
 import {
+  type BranchPoint,
+  branchPoints,
   type ChatEngine,
   createChatEngine,
   eventsToTurns,
@@ -467,6 +469,8 @@ export function AppShell() {
   const [labels, setLabels] = useState<Record<string, string>>({});
   /** Ratings of assistant turns, keyed by event id — the snapshot's `feedback`, managed like labels. */
   const [feedback, setFeedback] = useState<Record<string, TurnFeedback>>({});
+  /** Edited messages' other versions, by user event id — read off every snapshot. */
+  const [branches, setBranches] = useState<Map<string, BranchPoint>>(() => new Map());
 
   const hydrateFromServer = useCallback((id: string) => {
     void (async () => {
@@ -475,6 +479,7 @@ export function AppShell() {
         if (snap && id === threadIdRef.current) {
           setLabels(snap.labels ?? {});
           setFeedback(snap.feedback ?? {});
+          setBranches(branchPoints(snap));
         }
         if (snap?.transcript?.length) {
           const rebuilt = eventsToTurns(snapshotToEvents(snap));
@@ -612,6 +617,7 @@ export function AppShell() {
       // hydration refills it rather than merging.
       setLabels({});
       setFeedback({});
+      setBranches(new Map());
       if (hydrate) hydrateFromServer(id);
     },
     [engine, hydrateFromServer],
@@ -1540,6 +1546,27 @@ export function AppShell() {
     [engine, streaming, threadId, manifest, streamInto, hydrateFromServer],
   );
 
+  /**
+   * Show another version of an edited message.
+   *
+   * The same move as the edit toast's Restore, from the turn itself: rewind the
+   * leaf to the end of that version's thread and re-read it. Refused under a live
+   * run, for the toast's reason — moving the leaf would graft the reply in flight
+   * onto the wrong branch.
+   */
+  const switchBranch = useCallback(
+    (tipEventId: string) => {
+      if (engine.state.streaming) {
+        toast.message('Wait for this run to finish, then switch versions.');
+        return;
+      }
+      void rewindChat({ threadId, eventId: tipEventId, summarize: false, manifest })
+        .then(() => hydrateFromServer(threadId))
+        .catch((err) => toastError(err, 'switch to that version'));
+    },
+    [engine, threadId, manifest, hydrateFromServer],
+  );
+
   const onUiRespond = useCallback(
     async (value: unknown) => {
       if (!uiPrompt) return;
@@ -1771,6 +1798,8 @@ export function AppShell() {
     threadId,
     labels,
     labelTurn,
+    branches,
+    switchBranch,
     feedback,
     rateTurn,
     send,

@@ -11,6 +11,15 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
+import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block';
+import {
+  Terminal,
+  TerminalActions,
+  TerminalContent,
+  TerminalCopyButton,
+  TerminalHeader,
+  TerminalTitle,
+} from '@/components/ai-elements/terminal';
 import { cn } from '@/lib/utils';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { ToolTable } from './tool-table';
@@ -144,11 +153,14 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
 function Field({ label, value, emphasis }: { label: string; value: unknown; emphasis?: boolean }) {
   const text = render(value);
   const spilled = parseArtifactMarker(text);
+  const json = useMemo(() => prettyJson(value), [value]);
   return (
     <div>
       <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
       {spilled ? (
         <SpilledOutput ref_={spilled} />
+      ) : json !== null ? (
+        <JsonBlock json={json} label={label} />
       ) : (
         // Wrapped, not scrolled sideways. Unwrapped, an expanded Output was one line
         // of escaped JSON under a horizontal scrollbar — present, and unreadable
@@ -324,13 +336,66 @@ function Stream({ label, text, sayEmpty }: { label: string; text: string; sayEmp
     // empty stderr is the normal case and saying so on every card is noise.
     return sayEmpty ? <p className="text-xs text-muted-foreground">{label}: nothing</p> : null;
   }
+  // A terminal rather than a <pre>: commands colour their output with ANSI codes,
+  // and a <pre> printed them as `\u001b[32m` noise around the words. The surface is
+  // the code slab, not the vendored near-black, so it sits in both themes like
+  // every other block of tool output.
   return (
-    <div>
-      <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
-      <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-background p-2.5 text-xs leading-relaxed text-foreground">
-        {text}
-      </pre>
-    </div>
+    <Terminal
+      output={text}
+      autoScroll={false}
+      className="border-border/60 bg-code-surface text-foreground"
+    >
+      <TerminalHeader className="border-border/60 px-2.5 py-1">
+        <TerminalTitle className="text-xs text-muted-foreground [&>svg]:size-3.5">
+          {label}
+        </TerminalTitle>
+        <TerminalActions>
+          <TerminalCopyButton aria-label={`Copy ${label}`} className="size-6" />
+        </TerminalActions>
+      </TerminalHeader>
+      <TerminalContent className="max-h-64 p-2.5 text-xs" />
+    </Terminal>
+  );
+}
+
+/**
+ * A value worth highlighting as JSON — an object or array, or a string holding
+ * one — pretty-printed; `null` for anything else, which stays plain text.
+ */
+export function prettyJson(value: unknown): string | null {
+  let v = value;
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!(s.startsWith('{') || s.startsWith('['))) return null;
+    try {
+      v = JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof v !== 'object' || v === null) return null;
+  return JSON.stringify(v, null, 2);
+}
+
+/**
+ * Tool arguments and results as highlighted JSON, with a copy control.
+ *
+ * Still wrapped rather than scrolled sideways — the reason `Field` wraps — and
+ * capped at the same height, so a card is no taller than it was.
+ */
+function JsonBlock({ json, label }: { json: string; label: string }) {
+  return (
+    <CodeBlock
+      code={json}
+      language="json"
+      className="max-h-64 overflow-y-auto rounded-lg border-border/60 bg-background [&_code]:text-xs [&_pre]:!bg-transparent [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:p-2.5 [&_pre]:pr-9 [&_pre]:text-xs"
+    >
+      <CodeBlockCopyButton
+        aria-label={`Copy ${label.toLowerCase()}`}
+        className="absolute top-1 right-1 z-10 size-6"
+      />
+    </CodeBlock>
   );
 }
 

@@ -1,4 +1,4 @@
-import { interleaveTurn } from '@felix/client';
+import { type BranchPoint, interleaveTurn } from '@felix/client';
 import { promptTokens } from '@felix/protocol';
 import {
   Attachment,
@@ -8,13 +8,16 @@ import {
   AttachmentTitle,
 } from '@felix/ui/attachment';
 import { Button } from '@felix/ui/button';
+import { ButtonGroup, ButtonGroupText } from '@felix/ui/button-group';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
-import { ImageOffIcon, OctagonPauseIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, ImageOffIcon, OctagonPauseIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { drawableUrl } from '@/lib/image-upload';
+import { plansInTurn } from '@/lib/plan-calls';
 import { cn } from '@/lib/utils';
 import type { Turn, TurnFeedback } from '@/types';
 import { MessageActions } from './message-actions';
+import { PlanCard } from './plan-card';
 import { RateTurn } from './rate-turn';
 import { Reasoning } from './reasoning';
 import { Response } from './response';
@@ -43,11 +46,17 @@ export function Message({
   onRegenerate,
   onRewind,
   onEdit,
+  branch,
+  onSwitchBranch,
   feedback,
   onRate,
   verbose = false,
 }: {
   turn: Turn;
+  /** This message's other versions, when it was edited. */
+  branch?: BranchPoint;
+  /** Show another version. Absent while a run is live. */
+  onSwitchBranch?: (tipEventId: string) => void;
   streaming?: boolean;
   /** The operator's name for this turn, from the session snapshot. */
   label?: string;
@@ -101,6 +110,8 @@ export function Message({
       <UserTurn
         turn={turn}
         onRewind={onRewind}
+        {...(branch ? { branch } : {})}
+        {...(onSwitchBranch ? { onSwitchBranch } : {})}
         {...(onEdit ? { onEdit } : {})}
         {...(label === undefined ? {} : { label })}
         {...(onLabel ? { onLabel } : {})}
@@ -109,6 +120,9 @@ export function Message({
   }
 
   const empty = !turn.content && !turn.tools?.length;
+  // Plain, not memoised: this runs after the early returns above, where a hook
+  // would be conditional, and reading a turn's plan calls is cheap.
+  const plans = plansInTurn(turn.tools);
   const toolCount = turn.tools?.length ?? 0;
   return (
     <div className="group flex w-full flex-col gap-3">
@@ -129,6 +143,19 @@ export function Message({
           opens at the end of the prose so far, so nothing already rendered shifts. */}
       {interleaveTurn(turn.content, turn.tools, turn.reasoning).map((segment, i, arr) => {
         if (segment.kind === 'tool') {
+          // A plan's calls collapse into one card where the plan first appears,
+          // showing its newest state. Verbose still shows every call underneath.
+          const planId = plans.anchorOf.get(segment.index);
+          const plan = planId ? plans.latest.get(planId) : undefined;
+          if (plan) {
+            return (
+              <div key={`segment-${i}`} className="space-y-2">
+                <PlanCard plan={plan} live={streaming === true} />
+                {verbose && <Tool tool={segment.tool} verbose={verbose} />}
+              </div>
+            );
+          }
+          if (plans.folded.has(segment.index) && !verbose) return null;
           return <Tool key={`segment-${i}`} tool={segment.tool} verbose={verbose} />;
         }
         if (segment.kind === 'reasoning') {
@@ -250,8 +277,12 @@ function UserTurn({
   onLabel,
   onRewind,
   onEdit,
+  branch,
+  onSwitchBranch,
 }: {
   turn: Turn;
+  branch?: BranchPoint;
+  onSwitchBranch?: (tipEventId: string) => void;
   label?: string;
   onLabel?: (label: string | null) => void;
   onRewind?: () => void;
@@ -274,6 +305,7 @@ function UserTurn({
           {/* Outside the actions row on purpose: that row is hidden until hover,
               and a label nobody can see without hunting for it is not a label. */}
           {label && <LabelChip label={label} />}
+          {branch && <VersionSwitcher branch={branch} onSwitch={onSwitchBranch} />}
         </div>
         {turn.attachments && turn.attachments.length > 0 && (
           <AttachmentGroup className="mt-1.5" aria-label="Attached images">
@@ -417,5 +449,53 @@ function AttachedImage({ url, alt }: { url: string; alt: string }) {
         </AttachmentTitle>
       </AttachmentContent>
     </Attachment>
+  );
+}
+
+/**
+ * `‹ 2 of 3 ›` on a message that was edited: the versions of it the session holds.
+ *
+ * AI Elements' MessageBranch keeps every version's content in React and switches
+ * between them locally; here only the active branch is ever loaded, and a switch is
+ * a rewind on the harness, so the selector is built from the same ButtonGroup it
+ * uses and driven by `branchPoints`. Always visible rather than in the hover row:
+ * that a message has other versions is worth knowing without hunting for it.
+ */
+function VersionSwitcher({
+  branch,
+  onSwitch,
+}: {
+  branch: BranchPoint;
+  onSwitch: ((tipEventId: string) => void) | undefined;
+}) {
+  const total = branch.tips.length;
+  const go = (offset: number) => {
+    const tip = branch.tips[(branch.index + offset + total) % total];
+    if (tip) onSwitch?.(tip);
+  };
+  return (
+    <ButtonGroup aria-label="Versions of this message" className="items-center">
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Previous version"
+        disabled={!onSwitch}
+        onClick={() => go(-1)}
+      >
+        <ChevronLeftIcon />
+      </Button>
+      <ButtonGroupText className="h-6 border-0 bg-transparent px-1 font-mono text-xs text-muted-foreground tabular-nums shadow-none">
+        {branch.index + 1} of {total}
+      </ButtonGroupText>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Next version"
+        disabled={!onSwitch}
+        onClick={() => go(1)}
+      >
+        <ChevronRightIcon />
+      </Button>
+    </ButtonGroup>
   );
 }

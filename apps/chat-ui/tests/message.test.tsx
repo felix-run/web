@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, fireEvent, render as rtlRender, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Message } from '../src/components/chat/message';
 import type { Turn } from '../src/types';
 
@@ -286,5 +286,33 @@ describe('long unbroken tokens', () => {
     fireEvent.click(getByRole('button', { name: /reasoning/i }));
     await waitFor(() => expect(textNode(container, PATH)).toBeDefined());
     expect(textNode(container, PATH)?.className).toContain('wrap-anywhere');
+  });
+});
+
+describe('a message with other versions', () => {
+  it('says which version it is, and asks for the right tip in each direction', () => {
+    const onSwitchBranch = vi.fn();
+    const turn: Turn = { id: 'u2', role: 'user', content: 'Edited question', eventId: 'u2b' };
+    const { getByRole, getByText } = render(
+      <Message
+        turn={turn}
+        branch={{ index: 1, tips: ['a2', 'a2b', 'a2c'] }}
+        onSwitchBranch={onSwitchBranch}
+      />,
+    );
+    expect(getByRole('group', { name: 'Versions of this message' })).toBeTruthy();
+    expect(getByText('2 of 3')).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Next version' }));
+    expect(onSwitchBranch).toHaveBeenLastCalledWith('a2c');
+    fireEvent.click(getByRole('button', { name: 'Previous version' }));
+    expect(onSwitchBranch).toHaveBeenLastCalledWith('a2');
+  });
+
+  it('cannot switch while a run is live', () => {
+    const turn: Turn = { id: 'u2', role: 'user', content: 'q', eventId: 'u2b' };
+    const { getByRole } = render(<Message turn={turn} branch={{ index: 0, tips: ['x', 'y'] }} />);
+    expect((getByRole('button', { name: 'Next version' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 });

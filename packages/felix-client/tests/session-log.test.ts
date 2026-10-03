@@ -1,6 +1,7 @@
 import type { SessionEvent, SessionSnapshot } from '@felix/protocol';
 import { describe, expect, it } from 'vitest';
 import {
+  branchPoints,
   eventsToTurns,
   mergeSessions,
   snapshotToEvents,
@@ -501,5 +502,44 @@ describe('usage from the session log', () => {
       ev({ seq: 1, role: 'assistant', content: 'a', metadata: { usage: { input: '12' } } }),
     ]);
     expect(turns[0]?.usage).toBeUndefined();
+  });
+});
+
+describe('branchPoints', () => {
+  // u1 → a1 → u2 → a2, then u2 edited twice: u2b → a2b, u2c → a2c (the leaf).
+  const ev = (id: string, seq: number, role: 'user' | 'assistant', parent?: string) => ({
+    id,
+    seq,
+    kind: 'message',
+    role,
+    content: id,
+    ...(parent ? { metadata: { parent_id: parent } } : {}),
+  });
+  const snapshot = {
+    id: 't1',
+    leafId: 'a2c',
+    transcript: [
+      ev('u1', 1, 'user'),
+      ev('a1', 2, 'assistant', 'u1'),
+      ev('u2', 3, 'user', 'a1'),
+      ev('a2', 4, 'assistant', 'u2'),
+      ev('u2b', 5, 'user', 'a1'),
+      ev('a2b', 6, 'assistant', 'u2b'),
+      ev('u2c', 7, 'user', 'a1'),
+      ev('a2c', 8, 'assistant', 'u2c'),
+    ],
+  };
+
+  it("gives each version of an edited message its place and every version's tip", () => {
+    const points = branchPoints(snapshot as never);
+    expect(points.get('u2c')).toEqual({ index: 2, tips: ['a2', 'a2b', 'a2c'] });
+    expect(points.get('u2')?.index).toBe(0);
+    // A message with one version is not a branch point.
+    expect(points.has('u1')).toBe(false);
+  });
+
+  it('finds nothing on a snapshot whose events carry no links', () => {
+    const flat = { ...snapshot, transcript: snapshot.transcript.map(({ metadata: _, ...e }) => e) };
+    expect(branchPoints(flat as never).size).toBe(0);
   });
 });

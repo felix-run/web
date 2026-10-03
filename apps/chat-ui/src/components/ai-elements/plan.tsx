@@ -14,8 +14,6 @@ import type { ComponentProps } from 'react';
 import { createContext, useContext, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
-import { Shimmer } from './shimmer';
-
 interface PlanContextValue {
   isStreaming: boolean;
 }
@@ -34,6 +32,8 @@ export type PlanProps = ComponentProps<typeof Collapsible> & {
   isStreaming?: boolean;
 };
 
+// The app's CSS `shimmer` utility rather than AI Elements' Shimmer component, which
+// animates with `motion` — a library this card would have pulled into the main chunk.
 export const Plan = ({ className, isStreaming = false, children, ...props }: PlanProps) => {
   const contextValue = useMemo(() => ({ isStreaming }), [isStreaming]);
 
@@ -65,7 +65,11 @@ export const PlanTitle = ({ children, ...props }: PlanTitleProps) => {
 
   return (
     <CardTitle data-slot="plan-title" {...props}>
-      {isStreaming ? <Shimmer>{children}</Shimmer> : children}
+      {isStreaming ? (
+        <span className="shimmer shimmer-color-foreground">{children}</span>
+      ) : (
+        children
+      )}
     </CardTitle>
   );
 };
@@ -83,7 +87,11 @@ export const PlanDescription = ({ className, children, ...props }: PlanDescripti
       data-slot="plan-description"
       {...props}
     >
-      {isStreaming ? <Shimmer>{children}</Shimmer> : children}
+      {isStreaming ? (
+        <span className="shimmer shimmer-color-foreground">{children}</span>
+      ) : (
+        children
+      )}
     </CardDescription>
   );
 };

@@ -367,3 +367,60 @@ export function eventsToTurns(
   }
   return turns;
 }
+
+/** A message that was edited: which version this is, and where each version's thread ends. */
+export interface BranchPoint {
+  /** This version's place among its siblings, oldest first. */
+  index: number;
+  /** For each version, the newest event under it — the leaf a switch rewinds to. */
+  tips: string[];
+}
+
+/**
+ * Every user message that has another version, from a snapshot.
+ *
+ * Editing a sent message rewinds to its parent and sends the new text as a sibling,
+ * so the original and its replies stay on the session (`editTurn` in chat-ui). The
+ * snapshot carries every event with its `metadata.parent_id`, so the versions of a
+ * message are the user messages that share its parent, and switching to one is a
+ * rewind to the newest event in its subtree. Keyed by the user message's event id,
+ * which is what a hydrated `Turn.eventId` holds. Messages with one version are left
+ * out, as is everything on a snapshot whose events carry no links.
+ */
+export function branchPoints(snapshot: SessionSnapshot): Map<string, BranchPoint> {
+  const items = (snapshot.transcript ?? []).filter(
+    (e): e is typeof e & { id: string } => typeof e.id === 'string',
+  );
+  const parentOf = (e: (typeof items)[number]) => {
+    const p = (e.metadata as { parent_id?: unknown } | undefined)?.parent_id;
+    return typeof p === 'string' ? p : null;
+  };
+  const children = new Map<string, typeof items>();
+  for (const e of items) {
+    const p = parentOf(e);
+    if (p === null) continue;
+    const list = children.get(p) ?? [];
+    list.push(e);
+    children.set(p, list);
+  }
+  const tipOf = (root: (typeof items)[number]): string => {
+    let best = root;
+    const stack = [root];
+    while (stack.length) {
+      const e = stack.pop() as (typeof items)[number];
+      if ((e.seq ?? 0) > (best.seq ?? 0)) best = e;
+      stack.push(...(children.get(e.id) ?? []));
+    }
+    return best.id;
+  };
+  const out = new Map<string, BranchPoint>();
+  for (const siblings of children.values()) {
+    const versions = siblings
+      .filter((e) => e.kind === 'message' && e.role === 'user')
+      .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+    if (versions.length < 2) continue;
+    const tips = versions.map(tipOf);
+    for (const [index, v] of versions.entries()) out.set(v.id, { index, tips });
+  }
+  return out;
+}

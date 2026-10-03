@@ -4,7 +4,6 @@ import { Progress } from '@felix/ui/progress';
 import type { LanguageModelUsage } from 'ai';
 import type { ComponentProps } from 'react';
 import { createContext, useContext, useMemo } from 'react';
-import { getUsage } from 'tokenlens';
 import { cn } from '@/lib/utils';
 
 const PERCENT_MAX = 100;
@@ -33,6 +32,18 @@ const useContextValue = () => {
 
   return context;
 };
+
+/**
+ * Felix never prices on the client: the harness prices every call with its own
+ * catalog (the Ledger's figures), and a second, third-party price would disagree
+ * with it. Upstream imported `tokenlens` here for that, and its model catalog
+ * landed in the app's main chunk — ~290 KB on every page load — for a cost line
+ * this app never shows. Every row below prices only when given a `modelId`,
+ * which nothing passes.
+ */
+const getUsage = (_: { modelId: string; usage: Record<string, number> }) => ({
+  costUSD: undefined as { totalUSD?: number } | undefined,
+});
 
 export type ContextProps = ComponentProps<typeof HoverCard> & ContextSchema;
 
@@ -205,6 +216,8 @@ export const ContextContentFooter = ({
   );
 };
 
+// A cost only when there is a model to price against: without one this printed
+// `$0.00`, which reads as free rather than as unpriced.
 const TokensWithCost = ({ tokens, costText }: { tokens?: number; costText?: string }) => (
   <span>
     {tokens === undefined
@@ -244,7 +257,7 @@ export const ContextInputUsage = ({ className, children, ...props }: ContextInpu
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
       <span className="text-muted-foreground">Input</span>
-      <TokensWithCost costText={inputCostText} tokens={inputTokens} />
+      <TokensWithCost costText={modelId ? inputCostText : undefined} tokens={inputTokens} />
     </div>
   );
 };
@@ -277,7 +290,7 @@ export const ContextOutputUsage = ({ className, children, ...props }: ContextOut
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
       <span className="text-muted-foreground">Output</span>
-      <TokensWithCost costText={outputCostText} tokens={outputTokens} />
+      <TokensWithCost costText={modelId ? outputCostText : undefined} tokens={outputTokens} />
     </div>
   );
 };
@@ -314,7 +327,7 @@ export const ContextReasoningUsage = ({
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
       <span className="text-muted-foreground">Reasoning</span>
-      <TokensWithCost costText={reasoningCostText} tokens={reasoningTokens} />
+      <TokensWithCost costText={modelId ? reasoningCostText : undefined} tokens={reasoningTokens} />
     </div>
   );
 };
@@ -347,7 +360,7 @@ export const ContextCacheUsage = ({ className, children, ...props }: ContextCach
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
       <span className="text-muted-foreground">Cache</span>
-      <TokensWithCost costText={cacheCostText} tokens={cacheTokens} />
+      <TokensWithCost costText={modelId ? cacheCostText : undefined} tokens={cacheTokens} />
     </div>
   );
 };

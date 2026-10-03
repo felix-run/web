@@ -294,14 +294,37 @@ describe('the tool card output pane', () => {
         verbose
       />,
     );
-    const pre = screen.getByText(/"number": 232/).closest('pre') as HTMLElement;
-    expect(pre.textContent).toBe('{\n  "number": 232,\n  "state": "open"\n}');
-    expect(pre.className).toContain('whitespace-pre-wrap');
+    // Highlighted as JSON, in a block that keeps the card's wrap-don't-scroll rule.
+    const block = document.querySelector('[data-language="json"]') as HTMLElement;
+    // One block per line (the copy control copies the newlines).
+    const lines = [...block.querySelectorAll('pre code > span')].map((l) => l.textContent);
+    expect(lines).toEqual(['{', '  "number": 232,', '  "state": "open"', '}']);
+    expect(block.className).toContain('[&_pre]:whitespace-pre-wrap');
+    expect(screen.getByRole('button', { name: 'Copy output' })).toBeTruthy();
   });
 
   it('leaves output that only starts with a brace exactly as sent', async () => {
     const { Tool } = await import('../src/components/chat/tool');
     render(<Tool tool={{ name: 'grep', done: true, output: '{ not json' }} verbose />);
     expect(screen.getByText('{ not json')).toBeTruthy();
+  });
+});
+
+describe('a shell result with colour in it', () => {
+  it('draws ANSI colour as colour, not as escape codes, and copies each stream', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    const output = JSON.stringify({
+      argv: ['pnpm', 'test'],
+      exit_code: 0,
+      timed_out: false,
+      truncated: false,
+      stdout: '\u001b[32m✓ 12 passed\u001b[0m',
+      stderr: '',
+    });
+    render(<Tool tool={{ name: 'test', done: true, output }} verbose />);
+    const line = screen.getByText('✓ 12 passed');
+    expect(line.closest('pre')?.textContent).not.toContain('\u001b');
+    expect(line.getAttribute('style') ?? line.className).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy stdout' })).toBeTruthy();
   });
 });
