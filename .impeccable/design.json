@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-01T03:55:00Z",
+  "generatedAt": "2026-10-03T18:31:44Z",
   "title": "Design System: Felix chat-ui",
   "extensions": {
     "colorMeta": {
@@ -167,6 +167,24 @@
           "oklch(0.5 0.2 25)",
           "oklch(0.72 0.19 24)"
         ]
+      },
+      "accent": {
+        "role": "neutral",
+        "displayName": "Selection Wash",
+        "canonical": "oklch(0.967 0.001 286.375)",
+        "tonalRamp": [
+          "oklch(0.967 0.001 286.375)",
+          "oklch(0.274 0.006 286.033)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "neutral",
+        "displayName": "Ink Inverse",
+        "canonical": "oklch(0.985 0 0)",
+        "tonalRamp": [
+          "oklch(0.985 0 0)",
+          "oklch(0.21 0.006 285.885)"
+        ]
       }
     },
     "typographyMeta": {
@@ -221,23 +239,28 @@
         "name": "surface-transition",
         "value": "200ms",
         "purpose": "The composer's border and shadow on focus, and the tool card's chevron (motion-reduce: none)."
+      },
+      {
+        "name": "shimmer",
+        "value": "2s linear infinite sweep",
+        "purpose": "Live words only — Thinking, a running tool, a running durable status, Waiting for the harness — swept toward the foreground so the text only ever brightens. Stops, words unchanged, under prefers-reduced-motion; nothing finished sweeps."
       }
     ],
     "breakpoints": [
       {
         "name": "instrument-inline",
         "value": "1280px",
-        "purpose": "Above this the run instrument is an inline column; below it becomes a drawer. Three zones want ~1200px of content; the instrument yields first because it is reference material."
+        "purpose": "Above this the run instrument is an inline column; below it becomes a drawer. The sidebar, a reading column and the instrument want ~1200px of content; the instrument yields first because it is reference material."
       },
       {
-        "name": "workspace-inline",
+        "name": "sidebar-inline",
         "value": "1024px",
-        "purpose": "Above this the workspace zone is an inline column; below it becomes a drawer. It yields last because it is the subject."
+        "purpose": "Above this the app sidebar is inline (expanded, or collapsed to icons); below it becomes a drawer. It yields last because it holds every way to anywhere else: threads, the workspace, the harness."
       },
       {
         "name": "harness-nav",
         "value": "768px",
-        "purpose": "Above this /harness is nav-rail + panel; below it the index is the list and a destination is a page with a back control. Also where the composer hint shows its shortcut keys."
+        "purpose": "/harness draws its own nav rail only between this and 1024px, where the sidebar is a drawer; below it the index is the list and a destination is a page with a back control. Also where the composer hint shows its shortcut keys."
       }
     ],
     "layoutTokens": [
@@ -252,9 +275,9 @@
         "purpose": "One step above every portalled primitive at z-50, so a toast reporting on a sheet is readable over it."
       },
       {
-        "name": "workspace-width",
-        "value": "18rem",
-        "purpose": "The workspace zone, left of the transcript."
+        "name": "sidebar-width",
+        "value": "17rem (3rem as icons)",
+        "purpose": "The app sidebar, left of the transcript, on both addresses. Collapsed it is a column of icons with names in tooltips, never nothing."
       },
       {
         "name": "instrument-width",
@@ -273,7 +296,7 @@
       "name": "Brand Lockup",
       "kind": "custom",
       "refersTo": "brand-mark",
-      "description": "The mark before the uppercase wordmark. In the page the tile is currentColor and the glyph is the page, so it inverts with the theme and never carries state; it is aria-hidden because the wordmark is the name. In chat-ui's header it is the first thing to yield, whole, below sm.",
+      "description": "The mark before the uppercase wordmark, heading the app sidebar, where the mark is the sidebar toggle and never yields. In the page the tile is currentColor and the glyph is the page, so it inverts with the theme and never carries state; it is aria-hidden because the wordmark is the name.",
       "html": "<div class=\"ds-lockup\"><svg class=\"ds-mark\" viewBox=\"0 0 32 32\" aria-hidden=\"true\"><rect width=\"32\" height=\"32\" rx=\"7\" fill=\"currentColor\"/><path d=\"M10 6h14v4H14v16h-4z\" fill=\"var(--background, oklch(1 0 0))\"/><circle cx=\"20\" cy=\"16\" r=\"4\" fill=\"var(--background, oklch(1 0 0))\"/></svg><span class=\"ds-wordmark\">Felix</span></div>",
       "css": ".ds-lockup { display: flex; align-items: center; gap: 8px; color: var(--foreground, oklch(0.141 0.005 285.823)); } .ds-mark { width: 20px; height: 20px; flex: none; } .ds-wordmark { font: 600 1rem/1.6 ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; }"
     },
@@ -364,11 +387,35 @@
       "description": "A status is never colour alone: every dot carries adjacent text.",
       "html": "<p class=\"ds-state\"><span class=\"ds-dot\" aria-hidden=\"true\"></span>1 call is waiting on you across the harness</p>",
       "css": ".ds-state { display: flex; align-items: center; gap: 8px; margin: 0; font: 400 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; color: var(--state-blocked, oklch(0.473 0.137 46.201)); } .ds-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--state-blocked, oklch(0.473 0.137 46.201)); flex: none; }"
+    },
+    {
+      "name": "Sidebar Thread Row",
+      "kind": "nav",
+      "refersTo": "sidebar-thread-row",
+      "description": "A thread in the sidebar: its title over one 11px line — Waiting on you first, in the blocked hue with its dot, when an approval names it — then the agent in mono and how long ago. The current row sits on accent with aria-current.",
+      "html": "<a class=\"ds-thread\" aria-current=\"page\" href=\"#\"><span class=\"ds-thread-title\">Migrate the billing table</span><span class=\"ds-thread-meta\"><span class=\"ds-thread-wait\"><span class=\"ds-thread-dot\" aria-hidden=\"true\"></span>Waiting on you ·</span> <span class=\"ds-thread-agent\">cowork</span> · 21m ago</span></a>",
+      "css": ".ds-thread { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 6px; color: var(--foreground, oklch(0.141 0.005 285.823)); text-decoration: none; font: 500 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; transition: background .15s; } .ds-thread:hover { background: color-mix(in oklch, var(--accent, oklch(0.967 0.001 286.375)) 50%, transparent); } .ds-thread[aria-current] { background: var(--accent, oklch(0.967 0.001 286.375)); } .ds-thread:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, oklch(0.6 0.015 286.067)); } .ds-thread-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-thread-meta { font: 400 0.6875rem/1.45 ui-sans-serif, system-ui, sans-serif; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-thread-wait { color: var(--state-blocked, oklch(0.473 0.137 46.201)); } .ds-thread-dot { display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 9999px; background: var(--state-blocked, oklch(0.473 0.137 46.201)); vertical-align: middle; } .ds-thread-agent { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }"
+    },
+    {
+      "name": "Plan Card",
+      "kind": "card",
+      "refersTo": "plan-card",
+      "description": "The agent's plan in the turn that made it: title and goal, '1 of 3 done' in mono as the header's value, then each step with an icon in the state ramp beside the agent's own status word — never the colour alone.",
+      "html": "<section class=\"ds-plan\"><header class=\"ds-plan-head\"><div><p class=\"ds-plan-title\">Ship the release notes</p><p class=\"ds-plan-goal\">Complete and ship the release notes</p></div><span class=\"ds-plan-count\">1 of 3 done</span></header><ol class=\"ds-plan-steps\"><li><span class=\"ds-step-icon ds-done\" aria-hidden=\"true\">✓</span><span class=\"ds-step-title ds-step-done\">Collect merged PRs</span><span class=\"ds-step-status ds-done\">done</span></li><li><span class=\"ds-step-icon ds-running\" aria-hidden=\"true\">◌</span><span class=\"ds-step-title\">Draft notes</span><span class=\"ds-step-status ds-running\">in_progress</span></li><li><span class=\"ds-step-icon\" aria-hidden=\"true\">○</span><span class=\"ds-step-title\">Review</span><span class=\"ds-step-status\">pending</span></li></ol></section>",
+      "css": ".ds-plan { border: 1px solid color-mix(in oklch, var(--border, oklch(0.92 0.004 286.32)) 60%, transparent); border-radius: 14px; font: 400 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; color: var(--foreground, oklch(0.141 0.005 285.823)); } .ds-plan-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; } .ds-plan-head > div { flex: 1; min-width: 0; } .ds-plan-title { margin: 0; font-weight: 500; } .ds-plan-goal { margin: 2px 0 0; font-size: 0.6875rem; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-plan-count { font: 400 0.6875rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); font-variant-numeric: tabular-nums; } .ds-plan-steps { margin: 0; padding: 8px 12px; list-style: none; border-top: 1px solid color-mix(in oklch, var(--border, oklch(0.92 0.004 286.32)) 50%, transparent); display: grid; gap: 6px; } .ds-plan-steps li { display: flex; align-items: flex-start; gap: 8px; } .ds-step-icon { width: 14px; flex: none; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-step-title { flex: 1; } .ds-step-done { color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-step-status { font: 400 0.6875rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-done { color: var(--state-done, oklch(0.432 0.095 166.913)); } .ds-running { color: var(--state-running, oklch(0.443 0.11 240.79)); }"
+    },
+    {
+      "name": "Note Marker",
+      "kind": "custom",
+      "refersTo": "marker",
+      "description": "A note about the run rather than the run itself: one muted line with a 16px icon and no box, a hairline under it when it closes a passage. Failures are still the failed-tinted box; this is for connection-dropped, step-limit and reconnecting notes.",
+      "html": "<p class=\"ds-marker\" role=\"status\"><svg class=\"ds-marker-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M7 7l10 10M5 12a7 7 0 0 1 7-7M19 12a7 7 0 0 1-7 7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg><span>Connection dropped. That run was stopped — showing what it finished.</span></p>",
+      "css": ".ds-marker { display: flex; align-items: center; gap: 8px; margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--border, oklch(0.92 0.004 286.32)); font: 400 0.8125rem/1.5 ui-sans-serif, system-ui, sans-serif; color: var(--muted-foreground, oklch(0.53 0.016 285.938)); } .ds-marker-icon { width: 16px; height: 16px; flex: none; }"
     }
   ],
   "narrative": {
     "northStar": "The Workbench",
-    "overview": "This is not a chat app that happens to log tool calls; it is a window onto a running process that happens to accept messages. The mounted folder is the subject, the thread is how you talk to it, and the machinery is on display because supervising it is the job. The surface is read daily by one operator who ran the harness themselves and holds the gate key — so density, learned affordances, and labels that assume the harness was configured by the reader are all permitted. What is not permitted is a tidier abstraction standing in front of what the harness actually reported.\n\nThe register is **instrumented, calm, exact**. Instrumented: show real states, real numbers, real event types. Calm: an autonomous process already generates uncertainty, and the interface does not add to it — no alarm colours for ordinary states, no motion competing with streaming text, no celebration. Exact: a number is a number, and rounding away information the operator would act on is a defect, not a simplification.\n\nThe confirmed anti-references are specific and close. The nearest is the **scaffolded AI-chat default** — untouched neutral tokens, `rounded-xl` bordered cards stacked down every panel, an icon on every row, a gradient somewhere: recognisable as generated rather than designed. Then **density without hierarchy**, the observability-dashboard failure where every panel is equally loud and the eye has nowhere to land. Then **consumer-chat warmth** — the inverted user bubble, the avatar, the headline asking what you want to work on over a grid of starter cards — which hides the mechanism and so inverts the product. Then **warm-neutral editorial** — cream, serif display, marketing cadence — which is the wrong register entirely.",
+    "overview": "This is not a chat app that happens to log tool calls; it is a window onto a running process that happens to accept messages. The mounted folder is the subject, the thread is how you talk to it, and the machinery is on display because supervising it is the job. The surface is read daily by one operator who ran the harness themselves and holds the gate key — so density, learned affordances, and labels that assume the harness was configured by the reader are all permitted. What is not permitted is a tidier abstraction standing in front of what the harness actually reported.\n\nThe register is **instrumented, calm, exact**. Instrumented: show real states, real numbers, real event types. Calm: an autonomous process already generates uncertainty, and the interface does not add to it — no alarm colours for ordinary states, no motion competing with streaming text, no celebration. Exact: a number is a number, and rounding away information the operator would act on is a defect, not a simplification.\n\nThe confirmed anti-references are specific and close. The nearest is the **scaffolded AI-chat default** — untouched neutral tokens, `rounded-xl` bordered cards stacked down every panel, an icon on every row, a gradient somewhere: recognisable as generated rather than designed. Then **density without hierarchy**, the observability-dashboard failure where every panel is equally loud and the eye has nowhere to land. Then **consumer-chat warmth** — the inverted user bubble, the avatar, the headline asking what you want to work on over a grid of starter cards — which hides the mechanism and so inverts the product. One piece of that is shipped anyway, by choice: the empty thread's welcome headline and starter cards came back on 2026-09-30, because an empty thread that only listed facts left a new operator guessing what to ask. They are confined to the empty thread, keep the readout beside them, and are gone once the first message lands; the bubble and the avatar stay out. Then **warm-neutral editorial** — cream, serif display, marketing cadence — which is the wrong register entirely.",
     "keyCharacteristics": [
       "A neutral zinc field where colour means run state and nothing else.",
       "Rules and tonal steps for separation; cards reserved for things that stop a run.",
@@ -409,6 +456,11 @@
         "section": "typography"
       },
       {
+        "name": "Nothing but the welcome is set above 16px",
+        "body": "The empty thread's headline is the single display-size element (`text-2xl`, 28px at `md`). The last three headings off the ramp — the access gate's panel heading at 24px and the gate form's and error boundary's `h1` at 18px — are headlines now. No other element uses `text-lg`, `text-xl` or `text-2xl`; reaching for one is adding a second display element, which this surface does not have.",
+        "section": "typography"
+      },
+      {
         "name": "The Yield Rule",
         "body": "A rail never narrows the thing it describes; it leaves.",
         "section": "layout"
@@ -429,32 +481,32 @@
         "section": "elevation"
       },
       {
-        "name": "The Mark Rule",
-        "section": "components",
-        "body": "The mark is one geometry in `packages/design/src/mark.ts`, and every rendering of it — favicons, touch and PWA icons, the docs logos and social card — is generated by `pnpm sync:brand`, never drawn by hand. Its dot is the State-Only Rule applied to identity: glyph ink at rest, a run state's hue only in the tab, and never a brand colour. In the page it is always at rest, because the header's run-state slot already says the state beside it."
+        "name": "The No Texture Rule",
+        "body": "The canvas is flat `--background`, behind the header and the transcript alike. A dot grid sat behind the transcript until 2026-10-03 and was removed: it carried no information in a surface where colour and mark carry state, it capped the contrast of the muted text crossing it, and it obliged every fill laid over it to be opaque — a standing rule each new card had to know. `bg-solid-<token>/<n>` (a tint mixed with `--background` rather than with transparent) outlived it: tool cards, starter cards, the transcript's notes, the header's chips and the attention line still use it, and it remains the spelling for a tint that must be one flat colour whatever sits behind it.",
+        "section": "elevation"
       }
     ],
     "dos": [
-      "Do spend colour on run state and nothing else — the four-hue ramp, `destructive` for a destructive action, `recording` for the microphone.",
-      "Do give every panel header one at-a-glance value, so expanding it is usually unnecessary.",
-      "Do set monospace for anything the harness emitted and proportional for anything we wrote.",
-      "Do set what is read at 16px and what is scanned at 11/13px, and nothing in between.",
-      "Do separate with a rule or a tonal step before reaching for a card.",
-      "Do carry `flexShrink: 0` on anything below a scrolling region.",
-      "Do measure contrast in each theme in its natural state. Flipping `.dark` at runtime leaves portalled content reporting stale backgrounds, which invents failures that are not there.",
-      "Do state the resting case. A signal that appears only in trouble teaches the operator not to look at it."
+      "**Do** spend colour on run state and nothing else — the four-hue ramp, `destructive` for a destructive action, `recording` for the microphone.",
+      "**Do** give every panel header one at-a-glance value, so expanding it is usually unnecessary.",
+      "**Do** set monospace for anything the harness emitted and proportional for anything we wrote.",
+      "**Do** set what is read at 16px and what is scanned at 11/13px, and nothing in between.",
+      "**Do** separate with a rule or a tonal step before reaching for a card.",
+      "**Do** carry `flexShrink: 0` on anything below a scrolling region.",
+      "**Do** measure contrast in each theme in its natural state. Flipping `.dark` at runtime leaves portalled content reporting stale backgrounds, which invents failures that are not there.",
+      "**Do** state the resting case. A signal that appears only in trouble teaches the operator not to look at it."
     ],
     "donts": [
-      "Don't add a brand accent colour. There isn't one, and the absence is the system. The mark's dot is not one either: it is ink at rest and a state's hue only when there is a state.",
-      "Don't stack `rounded-xl` bordered cards down a panel. That is the closest anti-reference and the fastest way to make this look generated. In the transcript column `rounded-xl` is the established block radius and is correct.",
-      "Don't put an icon on every row. Icons mark kinds, not rows.",
-      "Don't draw a user turn as a bubble or give either speaker an avatar.",
-      "Don't introduce a new shadow token. The composer holds the only two; elsewhere reach for a tonal step or a rule, and do not read the vendored primitives' shadcn defaults as licence.",
-      "Don't encode a status in colour alone, and don't use amber and red interchangeably — `blocked` asks a person to act, `failed` reports something that already happened.",
-      "Don't edit the frozen hex in `packages/design/src/tokens.ts` to resolve a palette mismatch. The stylesheet is authored, the hex is derived.",
-      "Don't drop below 11px to gain density.",
-      "Don't add motion that competes with streaming text, and honour `prefers-reduced-motion`.",
-      "Don't hand-edit a rendered mark. Change `packages/design/src/mark.ts` and run `pnpm sync:brand`."
+      "**Don't** add a brand accent colour. There isn't one, and the absence is the system. The mark's dot is not one either: it is ink at rest and a state's hue only when there is a state.",
+      "**Don't** hand-edit a rendered mark. Change `packages/design/src/mark.ts` and run `pnpm sync:brand`.",
+      "**Don't** stack `rounded-xl` bordered cards down a panel. That is the closest anti-reference and the fastest way to make this look generated. In the transcript column `rounded-xl` is the established block radius and is correct.",
+      "**Don't** put an icon on every row. Icons mark kinds, not rows.",
+      "**Don't** draw a user turn as a bubble or give either speaker an avatar.",
+      "**Don't** introduce a new shadow token. The composer holds the only two; elsewhere reach for a tonal step or a rule, and do not read the vendored primitives' shadcn defaults as licence.",
+      "**Don't** encode a status in colour alone, and don't use amber and red interchangeably — `blocked` asks a person to act, `failed` reports something that already happened.",
+      "**Don't** edit the frozen hex in `packages/design/src/tokens.ts` to resolve a palette mismatch. The stylesheet is authored, the hex is derived.",
+      "**Don't** drop below 11px to gain density.",
+      "**Don't** add motion that competes with streaming text, and honour `prefers-reduced-motion`. A \"still working\" pulse or spinner slows under reduced motion rather than stopping: frozen, it reports a live run as a hung one."
     ]
   }
 }
