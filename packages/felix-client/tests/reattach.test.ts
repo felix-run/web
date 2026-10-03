@@ -96,6 +96,33 @@ describe('reattachThread', () => {
     ]);
   });
 
+  it('lets go as soon as the snapshot says the thread is idle, not when the harness closes', async () => {
+    // A reattach stream that sends its snapshot and then holds the connection, as
+    // the harness does for ~300s on an idle thread. Only an abort ends it.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        if (String(input).includes('/chat/stream/')) {
+          const body = new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new TextEncoder().encode(snapshotFrame('idle')));
+              init?.signal?.addEventListener('abort', () => c.error(init.signal?.reason));
+            },
+          });
+          return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+        }
+        return new Response(JSON.stringify({ phase: 'idle' }));
+      }),
+    );
+
+    const settled = reattachThread({ client, threadId: 't1', onTurns: () => {}, wait: noWait });
+    const outcome = await Promise.race([
+      settled.then(() => 'returned'),
+      new Promise((r) => setTimeout(() => r('still holding'), 500)),
+    ]);
+    expect(outcome).toBe('returned');
+  });
+
   it('sends the cursor as Last-Event-ID when one is known', async () => {
     const calls = stubFetch([sse(DONE), new Response(JSON.stringify({ phase: 'idle' }))]);
 

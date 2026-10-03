@@ -37,6 +37,8 @@ export interface ShellValue {
    * app switch that suspended it. Cleared by the next send or thread.
    */
   leftApp: boolean;
+  /** The last reattach followed a drop with any other cause. Same lifetime as `leftApp`. */
+  dropped?: boolean;
   error: EngineState['error'];
   /** The engine's phase, or null while it is resting; a chip renders it. */
   sessionPhase: string | null;

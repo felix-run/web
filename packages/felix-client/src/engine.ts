@@ -134,13 +134,20 @@ export interface ChatEngine {
   /**
    * Drop a live stream that has gone silent, so the ordinary reattach path runs.
    *
-   * For a page coming back from the background. A suspended tab's connection can
-   * die without an error ever reaching the reader, and the run then reads as live
-   * forever. Acts only on a stream that has *proved* it heartbeats — the harness
-   * sends a keep-alive every 15s on `POST /chat/stream` — and has missed three, so
-   * a healthy stream in a long tool call is never cut: hanging up tears the run
-   * down. Durable and reattach streams send no heartbeat and are never touched.
-   * Returns whether it acted.
+   * For a page coming back from the background, and on a timer while one is on
+   * screen: a connection can die without an error ever reaching the reader — a
+   * suspended tab, a proxy that lost its upstream — and the run then reads as live
+   * forever. Acts only when the harness has *proved* it heartbeats and the stream
+   * has then gone 45s with nothing at all, so a healthy stream in a long tool call
+   * is never cut: hanging up tears the run down.
+   *
+   * The harness sends `: keep-alive` only after 15s with nothing else to send
+   * (`with_heartbeat` in its `routes/_sse.py`), so a stream that dies mid-reply,
+   * while deltas were flowing, has never shown one. Proof is therefore kept per
+   * engine as well as per stream: once any stream from this harness has
+   * heartbeated, a later one that falls silent for three intervals is dead. Durable
+   * streams (`run_accepted` seen) send none by design and are never touched, nor
+   * are reattach streams. Returns whether it acted.
    */
   checkLiveness(now?: number): boolean;
 }
@@ -179,6 +186,8 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    */
   let liveStream: { abort: AbortController; lastActivityAt: number; heartbeats: boolean } | null =
     null;
+  /** Some stream from this harness has sent a keep-alive, so it is one that heartbeats. */
+  let harnessHeartbeats = false;
   /**
    * The turn deltas currently land on. A drained steer splits the reply — the
    * harness appends the steer as a user message and keeps going — so this moves
@@ -728,7 +737,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
               },
               onActivity: ({ keepAlive }) => {
                 stream.lastActivityAt = Date.now();
-                if (keepAlive) stream.heartbeats = true;
+                if (keepAlive) {
+                  stream.heartbeats = true;
+                  harnessHeartbeats = true;
+                }
               },
             },
           );
@@ -827,7 +839,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     applyEvent,
     checkLiveness(now = Date.now()) {
       const stream = liveStream;
-      if (!stream?.heartbeats || now - stream.lastActivityAt < STREAM_STALL_MS) return false;
+      if (!stream || now - stream.lastActivityAt < STREAM_STALL_MS) return false;
+      // A durable run's stream carries status, not deltas, and never heartbeats.
+      const proved = stream.heartbeats || (harnessHeartbeats && resumeToken === null);
+      if (!proved) return false;
       liveStream = null;
       stream.abort.abort(new Error('stream stalled'));
       return true;

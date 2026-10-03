@@ -133,6 +133,8 @@ const APPROVAL_POLL_MS = 2_500;
  * after resume, or when `checkLiveness` cuts it a beat later.
  */
 const LEFT_APP_WINDOW_MS = 10_000;
+/** How often to ask whether a live stream has stalled, while the page is on screen. */
+const LIVENESS_CHECK_MS = 15_000;
 /** How long past an approval's deadline to re-ask, so the harness has denied it by then. */
 const LAPSE_GRACE_MS = 2_000;
 
@@ -322,14 +324,29 @@ export function AppShell() {
    * reattach takes a moment and the person it is for has only just looked back.
    */
   const [leftApp, setLeftApp] = useState(false);
+  /**
+   * The same, for a drop with any other cause: a network switch, a proxy that lost
+   * its upstream, a stream the liveness check cut. It has the same lifetime for the
+   * same reason. The reattach after a dropped run is quick — the snapshot says the
+   * thread is idle — and what it rebuilds often has no reply at all, because the
+   * harness keeps none of a run it tore down. A notice that lived only as long as
+   * the reattach flashed for half a second and left a question with no answer and
+   * nothing to say why (measured live, 2026-10-03).
+   */
+  const [dropped, setDropped] = useState(false);
   useEffect(() => {
     if (!reattaching) return;
     if (document.visibilityState === 'hidden' || Date.now() - lastResume() < LEFT_APP_WINDOW_MS) {
       setLeftApp(true);
+    } else {
+      setDropped(true);
     }
   }, [reattaching]);
   // A notice about this thread's run says nothing about the next thread's.
-  useEffect(() => setLeftApp(false), [threadId]);
+  useEffect(() => {
+    setLeftApp(false);
+    setDropped(false);
+  }, [threadId]);
   /**
    * Mirrored at render rather than from an effect. The engine reads this for
    * every request it makes, and `hydrateFromServer` compares a slow response
@@ -784,6 +801,7 @@ export function AppShell() {
       mode: 'stream' | 'background' = 'stream',
     ) => {
       setLeftApp(false);
+      setDropped(false);
       return engine.send({ manifest, messages: messagesToSend, assistantId, mode });
     },
     [engine, manifest],
@@ -974,6 +992,24 @@ export function AppShell() {
       }),
     [engine, hydrateIfAhead],
   );
+
+  /**
+   * The same check while the page is on screen.
+   *
+   * A stream can go silent without the page ever leaving: a proxy that dropped
+   * its upstream, a half-open connection after a network switch. The reader is
+   * never told, so the turn read *running* indefinitely — measured on 2026-10-03
+   * by cutting the dev proxy's upstream mid-reply: a minute later the header
+   * still said running and nothing had reattached. `checkLiveness` keeps its own
+   * rule (a stream that has shown a keep-alive and then missed three), so a
+   * quiet stream in a long tool call is still never cut on a guess; this only
+   * makes sure someone asks.
+   */
+  useEffect(() => {
+    if (!streaming) return;
+    const id = window.setInterval(() => engine.checkLiveness(), LIVENESS_CHECK_MS);
+    return () => window.clearInterval(id);
+  }, [engine, streaming]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -1719,6 +1755,7 @@ export function AppShell() {
     streaming,
     reattaching,
     leftApp,
+    dropped,
     error,
     sessionPhase,
     skills,
