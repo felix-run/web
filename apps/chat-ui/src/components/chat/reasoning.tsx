@@ -44,7 +44,13 @@ export function Reasoning({ text, streaming = false }: { text: string; streaming
         ) : (
           <BrainIcon aria-hidden className="size-3.5 shrink-0" />
         )}
-        <span className={cn(streaming && 'font-medium text-state-running')}>
+        {/* The sweep says the block is still being written; it brightens toward
+            the foreground, so the running blue never dips under its own contrast. */}
+        <span
+          className={cn(
+            streaming && 'shimmer shimmer-color-foreground font-medium text-state-running',
+          )}
+        >
           {streaming ? 'Thinking' : elapsed === null ? 'Reasoning' : 'Thought for'}
         </span>
         {/* `Thought for 14s · 312 words`; a block this tab never watched has no

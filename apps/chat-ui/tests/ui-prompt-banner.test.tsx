@@ -69,4 +69,58 @@ describe('UiPromptBanner', () => {
     );
     expect(document.activeElement).toBe(composer);
   });
+
+  it('sends the chosen option only on Send answer, never on choosing it', () => {
+    const onRespond = vi.fn();
+    const select: PendingUiRequest = {
+      requestId: 'r3',
+      threadId: 't1',
+      kind: 'select',
+      prompt: 'Which environment?',
+      options: [
+        { value: 'staging', label: 'Staging' },
+        { value: 'prod', label: 'Production' },
+      ],
+    };
+    render(
+      <UiPromptBanner
+        pending={select}
+        resolving={false}
+        onRespond={onRespond}
+        onCancel={vi.fn()}
+      />,
+    );
+    // A radio group moves its selection on an arrow key; choosing must not answer.
+    fireEvent.click(screen.getByRole('radio', { name: /Production/ }));
+    expect(onRespond).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+    expect(onRespond).toHaveBeenCalledWith('prod');
+  });
+
+  it('sends what was typed', () => {
+    const onRespond = vi.fn();
+    render(
+      <UiPromptBanner pending={input} resolving={false} onRespond={onRespond} onCancel={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Which branch?' }), {
+      target: { value: 'release/0.9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+    expect(onRespond).toHaveBeenCalledWith('release/0.9');
+  });
+
+  it('keeps confirm as two immediate answers', () => {
+    const onRespond = vi.fn();
+    render(
+      <UiPromptBanner
+        pending={confirm}
+        resolving={false}
+        onRespond={onRespond}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    expect(onRespond).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole('button', { name: 'Send answer' })).toBeNull();
+  });
 });

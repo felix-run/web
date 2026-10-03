@@ -109,7 +109,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         ) : (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
             <LoaderIcon className="size-3 motion-safe:animate-spin" />
-            {tool.phase ?? 'running'}
+            <span className="shimmer shimmer-color-foreground">{tool.phase ?? 'running'}</span>
           </Badge>
         )}
         <ChevronDownIcon

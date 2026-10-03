@@ -691,8 +691,15 @@ every second is noise.
   itself `ltr`), because the first words never change and a row that sits still reads as a stalled
   stream. Settled, the dot becomes a brain icon, the tail goes, and the row states what was
   measured: `Thought for 16s · 180 words`, or `Reasoning · 180 words` for a block rebuilt from
-  history, which carries no duration. The pulse is the transcript's one motion, and it runs only
-  while no answer text is arriving to compete with.
+  history, which carries no duration. While it streams, *Thinking* also carries the **shimmer**, a
+  sweep across the word, and the dot pulses. Both run only while no answer text is arriving to
+  compete with.
+- **Live words sweep.** A word that says something is still happening carries `shimmer`:
+  *Thinking*, a tool card's `running` phase, a durable run's status while it is `running` (never
+  while `blocked`), *Waiting for the harness…*, and the reattach notice's "still landing". It
+  always sweeps toward the foreground (`shimmer-color-foreground`), so the word gets brighter in
+  passing and never dips below its resting contrast. It stops, words unchanged, under
+  `prefers-reduced-motion`. Nothing that has finished sweeps.
 - **Durable status:** a durable run's stream carries no deltas, so until `final` the turn holds
   the engine's status line — *Durable run accepted…*, *Background · running…*, *Waiting on your
   approval · Write notes.txt*. It is drawn as a status, not as the reply: the state dot, the line
@@ -704,6 +711,26 @@ every second is noise.
   muted stopwatch, count and reasoning tail 5.27:1; the longest approval line wraps inside the
   column with its stopwatch still on screen, and nothing scrolls sideways. In dark, loaded as
   dark rather than toggled: `state-running` 11.94:1, `state-blocked` 13.75:1, muted 7.59:1.
+- **Notes are markers, not cards.** A note about the run, as opposed to the run itself, is a
+  `Marker`: one muted line with a 16px icon, and no box. This covers the reattach and left-the-page
+  notices (with a hairline under them), the step-limit stop (in `state-blocked`), and *Reconnecting
+  to the assistant* above the composer. A failure is still the failed-tinted box, because it is an
+  error, not a note.
+- **Attachments are cards in a row.** An attached image is a small vertical `Attachment`: the image,
+  then its name truncated beneath. A row of them scrolls sideways inside a fading edge rather than
+  wrapping. Fetching the bytes reads as `processing` (the name sweeps). An upload the harness no
+  longer holds is `error`: an image-off icon, the failure-tinted border, and *Image no longer
+  stored* wrapped to two lines rather than truncated. The composer draws pending files the same
+  way, with a remove control that is always on screen.
+- **An agent's question is a one-item form.** `select` and `input` render as a `Questionnaire`:
+  bordered choices (radio, numbered 1–9) or a field, then *Send answer* and *Decline to answer*.
+  Choosing never sends, because a radio group moves on an arrow key. `confirm` stays as two
+  immediate buttons, Yes and No, beside the decline.
+- **The transcript scrolls by turn.** Each operator message is an anchor. When one is sent it
+  lands near the top of the view and the reply grows beneath it. The view follows the stream only
+  while the reader is at the live edge. A thread opens on its newest question, not at its last
+  paragraph. *Scroll to latest* fades in, round and outlined, centred over the column's foot,
+  whenever there is more below.
 - **Long tokens wrap; wide blocks scroll in place.** Nothing in a turn may widen the column.
   Plain text — the operator's turn, a note, reasoning — wraps with `wrap-anywhere`, so a
   commit hash or an absolute path breaks rather than giving the transcript a sideways scroll

@@ -1,6 +1,15 @@
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
-import { useEffect, useRef } from 'react';
+import {
+  Questionnaire,
+  QuestionnaireChoice,
+  QuestionnaireChoices,
+  QuestionnaireInput,
+  QuestionnaireItem,
+  QuestionnaireSubmit,
+  QuestionnaireTitle,
+} from '@felix/ui/questionnaire';
+import { useCallback, useRef } from 'react';
 import type { PendingUiRequest } from '@/types';
 
 /**
@@ -38,9 +47,20 @@ export function UiPromptBanner({
   // while someone was typing into the composer, where it took the rest of their
   // sentence into this field instead. Focus moves only when nothing is being
   // typed; otherwise the field is the next Tab stop above the composer.
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (!isTyping(document.activeElement)) inputRef.current?.focus();
+  //
+  // A callback ref rather than a mount effect: the questionnaire replaces its field
+  // once while the item registers, so an effect here focused an element that was
+  // about to leave the page. Done only once focus has actually landed on a field in
+  // the document — and then never again, so a later re-mount cannot pull it back.
+  const focused = useRef(false);
+  const inputRef = useCallback((el: HTMLInputElement | null) => {
+    if (!el || focused.current || !el.isConnected) return;
+    if (isTyping(document.activeElement)) {
+      focused.current = true;
+      return;
+    }
+    el.focus();
+    if (document.activeElement === el) focused.current = true;
   }, []);
 
   const kindLabel =
@@ -77,50 +97,61 @@ export function UiPromptBanner({
           </div>
         ) : null}
 
-        {pending.kind === 'select' ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {pending.options.map((opt) => (
-              <Button
-                key={opt.value}
-                size="sm"
-                variant="outline"
-                disabled={resolving}
-                onClick={() => onRespond(opt.value)}
-              >
-                {opt.label}
-              </Button>
-            ))}
-            <Button size="sm" variant="ghost" disabled={resolving} onClick={onCancel}>
-              {DECLINE_LABEL}
-            </Button>
-          </div>
-        ) : null}
-
-        {pending.kind === 'input' ? (
-          <form
-            className="mt-3 flex flex-wrap gap-2"
+        {pending.kind === 'select' || pending.kind === 'input' ? (
+          // One question as a form: the choice (or the typed answer) is made, then
+          // sent — never sent by the act of choosing, because a radio group moves
+          // its selection on an arrow key and an answer the agent acts on must not
+          // be one keystroke of navigation. Number keys pick an option, Enter sends.
+          <Questionnaire
+            className="mt-3 gap-3"
+            shortcuts={pending.kind === 'select' ? 'numbers' : undefined}
             onSubmit={(e) => {
               e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              onRespond(String(fd.get('value') ?? ''));
+              const value = new FormData(e.currentTarget).get('answer');
+              if (value === null) return;
+              onRespond(String(value));
             }}
           >
-            <input
-              name="value"
-              defaultValue={typeof pending.defaultValue === 'string' ? pending.defaultValue : ''}
-              disabled={resolving}
-              ref={inputRef}
-              aria-label={pending.prompt}
-              className="min-w-[12rem] flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
-              placeholder="Type a response…"
-            />
-            <Button size="sm" type="submit" disabled={resolving}>
-              Send
-            </Button>
-            <Button size="sm" type="button" variant="ghost" disabled={resolving} onClick={onCancel}>
-              {DECLINE_LABEL}
-            </Button>
-          </form>
+            <QuestionnaireItem name="answer" required disabled={resolving}>
+              <QuestionnaireTitle className="sr-only">{pending.prompt}</QuestionnaireTitle>
+              {pending.kind === 'select' ? (
+                <QuestionnaireChoices>
+                  {pending.options.map((opt) => (
+                    <QuestionnaireChoice
+                      key={opt.value}
+                      value={opt.value}
+                      defaultChecked={pending.defaultValue === opt.value}
+                    >
+                      {opt.label}
+                    </QuestionnaireChoice>
+                  ))}
+                </QuestionnaireChoices>
+              ) : (
+                <QuestionnaireInput
+                  ref={inputRef}
+                  aria-label={pending.prompt}
+                  defaultValue={
+                    typeof pending.defaultValue === 'string' ? pending.defaultValue : ''
+                  }
+                  placeholder="Type a response…"
+                />
+              )}
+            </QuestionnaireItem>
+            <div className="flex flex-wrap gap-2">
+              <QuestionnaireSubmit size="sm" disabled={resolving}>
+                Send answer
+              </QuestionnaireSubmit>
+              <Button
+                size="sm"
+                type="button"
+                variant="ghost"
+                disabled={resolving}
+                onClick={onCancel}
+              >
+                {DECLINE_LABEL}
+              </Button>
+            </div>
+          </Questionnaire>
         ) : null}
       </div>
     </div>

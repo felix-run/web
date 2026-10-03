@@ -1,8 +1,18 @@
 import { interleaveTurn } from '@felix/client';
 import { promptTokens } from '@felix/protocol';
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from '@felix/ui/attachment';
 import { Button } from '@felix/ui/button';
+import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
+import { ImageOffIcon, OctagonPauseIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { drawableUrl } from '@/lib/image-upload';
+import { cn } from '@/lib/utils';
 import type { Turn, TurnFeedback } from '@/types';
 import { MessageActions } from './message-actions';
 import { RateTurn } from './rate-turn';
@@ -148,14 +158,21 @@ export function Message({
       })}
 
       {turn.stop && (
-        <div
-          className="font-mono text-xs text-state-blocked"
+        // A note about how the turn ended, in the failure-adjacent amber it always
+        // used: the answer above is cut short, and the operator may want to continue.
+        <Marker
+          className="text-xs text-state-blocked"
           title="The react loop hit spec.recursion_limit before the model finished; the answer above is cut short"
         >
-          Stopped at the step limit
-          {turn.stop.limit === undefined ? '' : ` (${turn.stop.limit})`} with tool calls still
-          pending
-        </div>
+          <MarkerIcon>
+            <OctagonPauseIcon className="size-3.5" />
+          </MarkerIcon>
+          <MarkerContent>
+            Stopped at the step limit
+            {turn.stop.limit === undefined ? '' : ` (${turn.stop.limit})`} with tool calls still
+            pending
+          </MarkerContent>
+        </Marker>
       )}
 
       {turn.usage && <UsageLine usage={turn.usage} />}
@@ -190,11 +207,18 @@ export function Message({
  * that does not move: motion here would compete with the stream it is waiting
  * for, and a static word honours reduced motion without needing a query.
  */
+/**
+ * Sent, and nothing back yet. The sweep is what says the wait is live rather than
+ * stalled; it brightens toward the foreground, so the muted text never dips below
+ * its own contrast, and it stops under reduced motion with the words unchanged.
+ */
 function AwaitingStatus() {
   return (
-    <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
-      Waiting for the harness…
-    </p>
+    <Marker role="status" aria-live="polite" className="text-xs">
+      <MarkerContent className="shimmer shimmer-color-foreground">
+        Waiting for the harness…
+      </MarkerContent>
+    </Marker>
   );
 }
 
@@ -252,11 +276,11 @@ function UserTurn({
           {label && <LabelChip label={label} />}
         </div>
         {turn.attachments && turn.attachments.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-2">
+          <AttachmentGroup className="mt-1.5" aria-label="Attached images">
             {turn.attachments.map((a) => (
               <AttachedImage key={a.url} url={a.url} alt={a.filename ?? 'attachment'} />
             ))}
-          </div>
+          </AttachmentGroup>
         )}
         {editing ? (
           <div className="mt-1 flex flex-col gap-2">
@@ -366,20 +390,32 @@ function AttachedImage({ url, alt }: { url: string; alt: string }) {
     };
   }, [url]);
 
-  const box = 'size-24 rounded-xl border border-border/50';
-  if (src === null) {
-    return (
-      <div
-        className={`${box} flex items-center justify-center p-2 text-center text-xs text-muted-foreground`}
-      >
-        Image no longer stored
-      </div>
-    );
-  }
-  if (src === undefined) {
-    return (
-      <div role="img" aria-label={`${alt}, loading`} className={`${box} animate-pulse bg-muted`} />
-    );
-  }
-  return <img src={src} alt={alt} className={`${box} object-cover`} />;
+  // One card in three states: fetching the bytes reads as processing (the title
+  // sweeps), an upload the harness no longer holds is an error said in words, and
+  // a drawn image is done. The name is the title in every state, because "which
+  // image" is the question each of them answers.
+  const state = src === null ? 'error' : src === undefined ? 'processing' : 'done';
+  return (
+    <Attachment state={state} orientation="vertical" size="sm">
+      <AttachmentMedia variant={src ? 'image' : 'icon'}>
+        {src ? (
+          <img src={src} alt={alt} />
+        ) : src === null ? (
+          <ImageOffIcon aria-hidden />
+        ) : (
+          <span role="img" aria-label={`${alt}, loading`} />
+        )}
+      </AttachmentMedia>
+      <AttachmentContent>
+        {/* The failure is a sentence, so it wraps rather than truncating to
+            "Image no longer…", which hid the one word that explains it. */}
+        <AttachmentTitle
+          title={alt}
+          className={cn(src === null && 'line-clamp-2 whitespace-normal')}
+        >
+          {src === null ? 'Image no longer stored' : alt}
+        </AttachmentTitle>
+      </AttachmentContent>
+    </Attachment>
+  );
 }

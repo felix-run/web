@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./chat-utilities.css";
 
 /* `@felix/ui` is consumed as raw source from outside this app's root, so Tailwind's
    automatic content detection never sees it. Without this, every utility that appears
