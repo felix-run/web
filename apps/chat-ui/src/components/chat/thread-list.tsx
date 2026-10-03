@@ -36,6 +36,43 @@ const NO_PINS: ReadonlySet<string> = new Set();
 const ID_CHARS = 24;
 
 /**
+ * A row's actions, laid over the end of the row rather than beside it.
+ *
+ * Beside it, two buttons held ~56px of every row while invisible, so at rest a
+ * title cut off a third of the way across a sidebar that had room for it. Over
+ * it, the title takes the full width and the actions fade in on its tail, on a
+ * gradient of the row's own colour (`--row-bg`) so the words they cover go
+ * under them rather than through them.
+ *
+ * Only where the device can hover. On touch nothing reveals them, so they stay
+ * in the row, visible, holding their width — the trade the hover was buying.
+ */
+const ROW_ACTIONS = cn(
+  'flex shrink-0 items-center gap-0.5',
+  '[@media(hover:hover)]:absolute [@media(hover:hover)]:inset-y-0 [@media(hover:hover)]:right-0',
+  '[@media(hover:hover)]:rounded-r-md [@media(hover:hover)]:pr-1 [@media(hover:hover)]:pl-5',
+  '[@media(hover:hover)]:bg-[linear-gradient(to_right,transparent,var(--row-bg)_1.25rem)]',
+  '[@media(hover:hover)]:opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none',
+  '[@media(hover:hover)]:group-hover/thread:opacity-100',
+  '[@media(hover:hover)]:group-focus-within/thread:opacity-100',
+  '[@media(hover:hover)]:has-[[data-state=open]]:opacity-100',
+);
+
+/**
+ * The row's colour, as a variable the actions' gradient can read. A hovered or
+ * focused row is `accent` at half over the page — mixed with `--background`
+ * rather than with transparent, so the gradient ends on the same pixel the row
+ * paints. Spelled out per variant rather than interpolated: Tailwind generates
+ * only the classes it finds written whole in the source.
+ */
+const ROW_LIT = cn(
+  '[--row-bg:var(--background)]',
+  'hover:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
+  'focus-within:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
+  'has-[[data-state=open]]:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
+);
+
+/**
  * Every thread this client can reach, as the sidebar's Threads section.
  *
  * Grouped the way a returning operator looks for one: what they pinned, then by
@@ -217,11 +254,14 @@ export function ThreadList({
     const waiting = blocked.has(t.id);
     const isPinned = pinned.has(t.id);
     return (
+      // `group/thread`, named: the sidebar's root is an unnamed `group`, so a bare
+      // `group-hover` here matched the pointer anywhere in the sidebar and lit
+      // every row's actions at once.
       <div
         key={t.id}
         className={cn(
-          'group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
-          t.id === currentId ? 'bg-accent' : 'hover:bg-accent/50',
+          'group/thread relative flex items-center gap-2 rounded-md bg-(--row-bg) px-2 py-1.5 text-sm',
+          t.id === currentId ? '[--row-bg:var(--accent)]' : ROW_LIT,
         )}
       >
         {renaming?.id === t.id ? (
@@ -301,80 +341,90 @@ export function ThreadList({
             </span>
           </button>
         )}
-        {(onTogglePin || onRename || onFork || onCompact || onExport) && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={`Actions for ${label.text}`}
-                className="grid size-6 shrink-0 coarse:size-10 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
-              >
-                <MoreHorizontalIcon className="size-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-44"
-              onCloseAutoFocus={(e) => {
-                if (!renameJustStarted.current) return;
-                renameJustStarted.current = false;
-                e.preventDefault();
-              }}
-            >
-              {onTogglePin && (
-                <DropdownMenuItem onSelect={() => onTogglePin(t.id)}>
-                  {isPinned ? (
-                    <>
-                      <PinOffIcon className="size-3.5" /> Unpin
-                    </>
-                  ) : (
-                    <>
-                      <PinIcon className="size-3.5" /> Pin
-                    </>
-                  )}
-                </DropdownMenuItem>
-              )}
-              {onRename && (
-                <DropdownMenuItem
-                  onSelect={() => {
-                    renameJustStarted.current = true;
-                    setRenaming({ id: t.id, draft: t.named ? t.title : '' });
+        {renaming?.id !== t.id && (
+          <div data-slot="thread-actions" className={ROW_ACTIONS}>
+            {(onTogglePin || onRename || onFork || onCompact || onExport) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`Actions for ${label.text}`}
+                    className="grid size-6 shrink-0 coarse:size-10 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-accent data-[state=open]:text-foreground"
+                  >
+                    <MoreHorizontalIcon className="size-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-44"
+                  onCloseAutoFocus={(e) => {
+                    if (!renameJustStarted.current) return;
+                    renameJustStarted.current = false;
+                    e.preventDefault();
                   }}
                 >
-                  <PencilIcon className="size-3.5" /> Rename
-                </DropdownMenuItem>
-              )}
-              {/* The three below all act on server state, so a thread the
-                harness has never seen cannot offer them. */}
-              {onFork && (
-                <DropdownMenuItem disabled={t.onServer === false} onSelect={() => onFork(t.id)}>
-                  <GitBranchIcon className="size-3.5" /> Duplicate
-                </DropdownMenuItem>
-              )}
-              {onCompact && (
-                <DropdownMenuItem disabled={t.onServer === false} onSelect={() => onCompact(t.id)}>
-                  <ShrinkIcon className="size-3.5" /> Compact context
-                </DropdownMenuItem>
-              )}
-              {onExport && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem disabled={t.onServer === false} onSelect={() => onExport(t.id)}>
-                    <DownloadIcon className="size-3.5" /> Export JSONL
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  {onTogglePin && (
+                    <DropdownMenuItem onSelect={() => onTogglePin(t.id)}>
+                      {isPinned ? (
+                        <>
+                          <PinOffIcon className="size-3.5" /> Unpin
+                        </>
+                      ) : (
+                        <>
+                          <PinIcon className="size-3.5" /> Pin
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                  )}
+                  {onRename && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        renameJustStarted.current = true;
+                        setRenaming({ id: t.id, draft: t.named ? t.title : '' });
+                      }}
+                    >
+                      <PencilIcon className="size-3.5" /> Rename
+                    </DropdownMenuItem>
+                  )}
+                  {/* The three below all act on server state, so a thread the
+                  harness has never seen cannot offer them. */}
+                  {onFork && (
+                    <DropdownMenuItem disabled={t.onServer === false} onSelect={() => onFork(t.id)}>
+                      <GitBranchIcon className="size-3.5" /> Duplicate
+                    </DropdownMenuItem>
+                  )}
+                  {onCompact && (
+                    <DropdownMenuItem
+                      disabled={t.onServer === false}
+                      onSelect={() => onCompact(t.id)}
+                    >
+                      <ShrinkIcon className="size-3.5" /> Compact context
+                    </DropdownMenuItem>
+                  )}
+                  {onExport && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={t.onServer === false}
+                        onSelect={() => onExport(t.id)}
+                      >
+                        <DownloadIcon className="size-3.5" /> Export JSONL
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <button
+              type="button"
+              aria-label="Delete thread"
+              className="grid size-6 shrink-0 coarse:size-10 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-state-failed focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              onClick={() => onDelete(t.id)}
+            >
+              <Trash2Icon className="size-3.5" />
+            </button>
+          </div>
         )}
-        <button
-          type="button"
-          aria-label="Delete thread"
-          className="grid size-6 shrink-0 coarse:size-10 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-state-failed focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-          onClick={() => onDelete(t.id)}
-        >
-          <Trash2Icon className="size-3.5" />
-        </button>
       </div>
     );
   }

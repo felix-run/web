@@ -656,13 +656,15 @@ takes the header's icon slot rather than a row of its own. An id that has to dis
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
 
-The sidebar's workspace section has a header in the same grammar: folder or drive icon, **Workspace**, then
-the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the
+The sidebar's workspace section has the sidebar's section header — the row Harness draws: a small
+muted **Workspace** label, then the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the
 tab's own store (including while a folder from last session waits on a reconnect, because until
 then that is where tools run). Its actions — *Mount a folder*, *Change folder* / *Disconnect*,
 *Reconnect <name>* — are an outline row beneath, never in the value slot: a header that holds an
-action says what to do rather than what is. The section folds from a chevron at its right edge,
-beside the row rather than in it, and remembers that it was folded.
+action says what to do rather than what is. The section folds from a chevron at the row's right
+edge, on the Harness fold's line, kept outside the label-and-value group so the value is never a
+control; it remembers that it was folded. It was an icon and a semibold title, louder than both of
+its neighbours for a section that is often folded.
 
 Under the header, **Changes on this thread** lists each workspace path a tool call named and what
 was done to it — rows, not cards. The path is mono with the directory truncating before the
@@ -690,7 +692,11 @@ days*, and *Older*. Older is a disclosure showing its count, and it starts folde
 thread on screen. Group labels are 11px muted, and empty groups are not drawn. A search drops the
 groups. Each row is the thread's title over one 11px line — *Waiting on you* in `state-blocked`
 first when an approval names that thread, then the agent in mono, then how long ago. The current row
-sits on `accent` with `aria-current`. Harness keeps its two labelled runs, *Records* and
+sits on `accent` with `aria-current`. A row's actions (the ⋯ menu and Delete) lie *over* the end of
+the row, revealed by that row's hover or focus (`group/thread` — the sidebar's root is an unnamed
+`group`, and a bare `group-hover` lit every row at once) on a gradient of the row's own colour, so
+at rest the title has the full width; beside the title, two invisible buttons cost it a third. On
+touch, where nothing reveals them, they stay in the row, visible. Harness keeps its two labelled runs, *Records* and
 *Workbenches*, and its glances (*1 failing*); those poll only while the rows are on screen.
 
 Collapsed to icons, the column is New chat, Search, Threads, Workspace, then the eight destinations.
