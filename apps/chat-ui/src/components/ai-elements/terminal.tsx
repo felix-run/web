@@ -1,7 +1,7 @@
 import { Button } from '@felix/ui/button';
-import Ansi from 'ansi-to-react';
+import * as AnsiModule from 'ansi-to-react';
 import { CheckIcon, CopyIcon, TerminalIcon, Trash2Icon } from 'lucide-react';
-import type { ComponentProps, HTMLAttributes } from 'react';
+import type { ComponentProps, ComponentType, HTMLAttributes } from 'react';
 import {
   createContext,
   useCallback,
@@ -12,6 +12,18 @@ import {
   useState,
 } from 'react';
 import { cn } from '@/lib/utils';
+
+// ansi-to-react is CommonJS with `exports.default = Ansi`, and bundlers disagree
+// about what a default import of it is: Vitest hands back the component, Vite's
+// dev bundle the module object — which crashed the whole app the moment a shell
+// result was opened. Unwrap whichever shape arrived.
+type AnsiComponent = ComponentType<{ children?: string; className?: string; useClasses?: boolean }>;
+const Ansi: AnsiComponent = (() => {
+  let m: unknown = AnsiModule;
+  while (typeof m === 'object' && m !== null && 'default' in m)
+    m = (m as { default: unknown }).default;
+  return m as AnsiComponent;
+})();
 
 interface TerminalContextType {
   output: string;

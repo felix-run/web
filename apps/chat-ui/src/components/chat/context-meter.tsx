@@ -1,4 +1,18 @@
+import { promptTokens, type TokenUsage } from '@felix/protocol';
+import {
+  Context,
+  ContextCacheUsage,
+  ContextContent,
+  ContextContentBody,
+  ContextContentHeader,
+  ContextInputUsage,
+  ContextOutputUsage,
+  ContextTrigger,
+} from '@/components/ai-elements/context';
 import { cn } from '@/lib/utils';
+
+type ContextUsage = NonNullable<React.ComponentProps<typeof Context>['usage']>;
+
 import type { Turn } from '@/types';
 
 /** At or above this share the meter says so in words, not only with the bar. */
@@ -19,7 +33,10 @@ export function contextFill(turns: Turn[], window: number | undefined) {
   for (let i = turns.length - 1; i >= 0; i--) {
     const used = turns[i]?.contextTokens;
     if (turns[i]?.role === 'assistant' && used !== undefined) {
-      return { used, window, share: used / window };
+      // The same turn's spend, for the breakdown: absent when the turn ran tools,
+      // since then the final call is one step of it (`Turn.usage`).
+      const usage = turns[i]?.usage;
+      return { used, window, share: used / window, ...(usage ? { usage } : {}) };
     }
   }
   return null;
@@ -42,10 +59,13 @@ export function ContextMeter({
   used,
   window,
   agent,
+  usage,
 }: {
   used: number;
   window: number;
   agent?: string;
+  /** The last reply's tokens, for the breakdown on hover or focus. */
+  usage?: TokenUsage;
 }) {
   const share = Math.min(1, used / window);
   const pct = Math.round(share * 100);
@@ -55,7 +75,7 @@ export function ContextMeter({
   } context window, as of the last reply${
     full ? '. Nearly full: the harness compacts or the model truncates past this.' : '.'
   }`;
-  return (
+  const meter = (
     <div
       role="meter"
       aria-label="Context window used"
@@ -63,6 +83,8 @@ export function ContextMeter({
       aria-valuemax={window}
       aria-valuenow={Math.min(used, window)}
       aria-valuetext={`${pct}% — ${detail}`}
+      // Focusable, so the breakdown opens from the keyboard as well as on hover.
+      tabIndex={0}
       title={detail}
       // Below `sm` it yields to the agent picker, whose name it otherwise squeezed
       // to a bare chevron at 390px — which agent the next message goes to matters
@@ -89,4 +111,46 @@ export function ContextMeter({
       </span>
     </div>
   );
+  // AI Elements' Context hover card, for what the percentage is made of. No cost
+  // line: its footer prices tokens from a third-party catalog, and the harness
+  // prices them with its own — the Ledger's figure, where an unpriced model reads
+  // `$0`. Two prices for one call would be worse than one.
+  return (
+    <Context usedTokens={Math.min(used, window)} maxTokens={window} usage={sdkUsage(usage)}>
+      <ContextTrigger>{meter}</ContextTrigger>
+      <ContextContent align="end" className="w-64">
+        <ContextContentHeader />
+        <ContextContentBody className="space-y-1.5 text-xs">
+          {usage ? (
+            <>
+              <ContextInputUsage />
+              <ContextCacheUsage />
+              <ContextOutputUsage />
+            </>
+          ) : (
+            <p className="text-muted-foreground">
+              The last reply ran tools, so no single call's spend stands for it. The window figure
+              is its final call's prompt.
+            </p>
+          )}
+        </ContextContentBody>
+      </ContextContent>
+    </Context>
+  );
+}
+
+/**
+ * Felix's usage in the AI SDK's spelling, which the vendored rows read. `input`
+ * here is the *uncached* prompt only, so the SDK's input — the whole prompt — is
+ * `promptTokens`, with the cached part beside it.
+ */
+function sdkUsage(usage: TokenUsage | undefined) {
+  if (!usage) return undefined;
+  const input = promptTokens(usage);
+  return {
+    inputTokens: input,
+    outputTokens: usage.output,
+    totalTokens: input + usage.output,
+    cachedInputTokens: usage.cacheRead ?? 0,
+  } as unknown as ContextUsage;
 }

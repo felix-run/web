@@ -1,3 +1,4 @@
+import type { TokenUsage } from '@felix/protocol';
 import {
   Attachment,
   AttachmentAction,
@@ -186,7 +187,7 @@ export type MultimodalInputProps = {
    * Tokens in the context after the last reply, against the selected agent's
    * window. Omitted when either is unknown, and the meter with it.
    */
-  context?: { used: number; window: number } | null;
+  context?: { used: number; window: number; usage?: TokenUsage } | null;
   /**
    * Messages written mid-run and not yet sent, drawn on top of the composer.
    * Edit moves one back into the composer, which is why the composer owns it.
@@ -675,6 +676,7 @@ function MultimodalInputInner({
                 <ContextMeter
                   used={context.used}
                   window={context.window}
+                  {...(context.usage ? { usage: context.usage } : {})}
                   agent={(models?.find((m) => m.id === modelId) ?? models?.[0])?.label}
                 />
               )}

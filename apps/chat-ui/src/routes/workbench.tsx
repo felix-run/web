@@ -10,6 +10,7 @@ import { InstallHint } from '@/components/chat/install-hint';
 import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { PushHint } from '@/components/chat/push-hint';
+import { TurnCheckpoint } from '@/components/chat/turn-checkpoint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { Inspector } from '@/components/inspector/inspector';
 import { RailPresence } from '@/components/rail-presence';
@@ -177,6 +178,14 @@ export function Workbench() {
                         }
                       : {})}
                   />
+                  {/* A labelled turn is a restore point, so it says so where it is
+                      rather than only in the hover-revealed actions. */}
+                  {t.eventId && labels[t.eventId] !== undefined && !streaming && !isLast && (
+                    <TurnCheckpoint
+                      label={labels[t.eventId] as string}
+                      onRestore={() => rewindTo(t.eventId as string)}
+                    />
+                  )}
                 </ConversationItem>
               );
             })}

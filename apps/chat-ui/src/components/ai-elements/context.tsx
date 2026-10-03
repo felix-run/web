@@ -205,6 +205,8 @@ export const ContextContentFooter = ({
   );
 };
 
+// A cost only when there is a model to price against: without one this printed
+// `$0.00`, which reads as free rather than as unpriced.
 const TokensWithCost = ({ tokens, costText }: { tokens?: number; costText?: string }) => (
   <span>
     {tokens === undefined
@@ -244,7 +246,7 @@ export const ContextInputUsage = ({ className, children, ...props }: ContextInpu
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
       <span className="text-muted-foreground">Input</span>
-      <TokensWithCost costText={inputCostText} tokens={inputTokens} />
+      <TokensWithCost costText={modelId ? inputCostText : undefined} tokens={inputTokens} />
     </div>
   );
 };
@@ -277,7 +279,7 @@ export const ContextOutputUsage = ({ className, children, ...props }: ContextOut
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
       <span className="text-muted-foreground">Output</span>
-      <TokensWithCost costText={outputCostText} tokens={outputTokens} />
+      <TokensWithCost costText={modelId ? outputCostText : undefined} tokens={outputTokens} />
     </div>
   );
 };
@@ -314,7 +316,7 @@ export const ContextReasoningUsage = ({
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
       <span className="text-muted-foreground">Reasoning</span>
-      <TokensWithCost costText={reasoningCostText} tokens={reasoningTokens} />
+      <TokensWithCost costText={modelId ? reasoningCostText : undefined} tokens={reasoningTokens} />
     </div>
   );
 };
@@ -347,7 +349,7 @@ export const ContextCacheUsage = ({ className, children, ...props }: ContextCach
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
       <span className="text-muted-foreground">Cache</span>
-      <TokensWithCost costText={cacheCostText} tokens={cacheTokens} />
+      <TokensWithCost costText={modelId ? cacheCostText : undefined} tokens={cacheTokens} />
     </div>
   );
 };
