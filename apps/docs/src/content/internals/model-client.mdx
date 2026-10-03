@@ -151,6 +151,16 @@ When the primary route is vouched text-only:
 | Neither is set, and a user turn carries an image | `/chat` and `/v1/chat/completions` answer **422** naming the route, before the agent is built or any model called. |
 | An image reaches the route mid-run anyway (a fallback, a tool result) | It is replaced by `[image omitted: model route '…' does not accept images]` and counted in `felix_model_images_omitted`. |
 
+The 422 and the build read one plan, so they agree about a route. A vision route that is named but
+cannot serve — missing from `FELIX_MODEL_ROUTES`, or text-only itself — fails the build, as an
+unroutable fallback does, and `felix doctor` fails on it.
+
+The image stays in the thread's history, so once a thread has been shown a picture every later turn
+of it goes to the vision route, until compaction or a window drops the image. `felix_model_switch`
+counts each of those calls. `felix_model_images_omitted` counts each image once, when it arrives.
+Usage is metered under the route that answered: the composite stamps it on the result rather than on
+itself. The vision route is a single route, with no fallbacks or escalation of its own.
+
 A route the catalog cannot vouch for either way is sent the image unchanged, as before this
 check existed. `felix doctor` notes a text-only default with no vision route.
 
