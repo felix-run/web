@@ -10,6 +10,16 @@ import { type MakeLive, useFreshSkill, useVersionActions } from './queries';
 import { isForbidden, RefusalNotice } from './refusal';
 
 /**
+ * The place each answer takes in the decision row — Publish's in a wrapper it
+ * needs anyway (it arms in place), Reject's in one of the same so the two are the
+ * same kind of flex item. A bare button beside a wrapper is not: `flex-1`
+ * resolves to a zero basis plus the item's own padding and border, so the bare
+ * one came out 26px wider. Nothing here sizes the button itself — that is
+ * `DECISION_BUTTON`, on each button — so both answers are one height and one width.
+ */
+const DECISION_SLOT = 'min-w-0 flex-1';
+
+/**
  * The three decisions a version takes — publish, roll back, reject — as one
  * control set, shared by the Versions tab, the review queue and the chat card,
  * so a decision reads the same wherever it is made.
@@ -97,6 +107,7 @@ export function VersionDecision({
               label={`${verb} ${version}`}
               confirmLabel={`${verb} ${version}`}
               className={DECISION_BUTTON}
+              slotClassName={DECISION_SLOT}
               disabled={busy}
               mutation={publish}
               onDone={() => {
@@ -106,18 +117,20 @@ export function VersionDecision({
             />
           )}
           {canReject && (
-            <Button
-              size="sm"
-              variant="outline"
-              className={DECISION_BUTTON}
-              disabled={busy}
-              onClick={() => {
-                publish.reset();
-                setRejecting(true);
-              }}
-            >
-              Reject…
-            </Button>
+            <div className={DECISION_SLOT}>
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(DECISION_BUTTON, 'w-full')}
+                disabled={busy}
+                onClick={() => {
+                  publish.reset();
+                  setRejecting(true);
+                }}
+              >
+                Reject…
+              </Button>
+            </div>
           )}
         </div>
       ) : (
@@ -228,6 +241,7 @@ function MakeLiveButton({
   onDone,
   disabled,
   className,
+  slotClassName,
   size = 'sm',
 }: {
   kind: 'publish' | 'rollback';
@@ -243,7 +257,15 @@ function MakeLiveButton({
   };
   onDone: () => void;
   disabled?: boolean;
+  /** The button's own classes. */
   className?: string;
+  /**
+   * The wrapper's, for the place it takes in a row. Kept apart from the button's:
+   * the wrapper used to take both, so `DECISION_BUTTON`'s padding and minimum
+   * height applied twice — once around the button — and Reject beside it
+   * stretched to the padded wrapper and stood taller than Publish.
+   */
+  slotClassName?: string;
   size?: 'xs' | 'sm';
 }) {
   const fresh = useFreshSkill();
@@ -306,7 +328,7 @@ function MakeLiveButton({
   const error = readError ?? mutation.error;
   const liveChanged = isSkillLibraryError(error) && error.code === 'live_changed';
   return (
-    <div className={cn('space-y-2', !armed && className)}>
+    <div className={cn('space-y-2', !armed && slotClassName)}>
       {phase.at !== 'armed' ? (
         <Button
           size={size}

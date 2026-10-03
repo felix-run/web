@@ -89,6 +89,7 @@ import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import { resyncPush } from '@/lib/push';
 import { lastResume, onResume } from '@/lib/resume';
+import { createLeaseKeeper } from '@/lib/session-lease';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
 import {
@@ -151,6 +152,12 @@ function tabHolderId(): string {
   }
 }
 
+/** One keeper for the tab, so a remounted shell finds the holds the last one left. */
+const sessionLeases = createLeaseKeeper(
+  { acquire: acquireSessionLease, release: releaseSessionLease },
+  tabHolderId,
+);
+
 function readBool(key: string, fallback: boolean): boolean {
   const raw = localStorage.getItem(key);
   if (raw === null) return fallback;
@@ -185,11 +192,39 @@ export function AppShell() {
   // `/` is the one address that asks for a new thread, so it never recalls one.
   const freshRoute = useMatch('/') !== null;
   const activeThread = useRef<string | null>(null);
+  /**
+   * Thread ids this tab made up and has not yet sent a message to.
+   *
+   * The harness has never heard of one, and must not until a message goes: on a
+   * `memory://` store any lease or snapshot request for an unknown thread files
+   * it as a session (and `/chat/abort` does on any store), and every page load
+   * used to do that twice — once for an id the shell minted for its first render
+   * on `/`, once for the different id `NewThread` then redirected to — leaving
+   * two empty, UUID-titled threads in the rail. The shell is now the only place
+   * an id is minted, `/` redirects to that same id, and nothing asks the harness
+   * about it until `streamInto` sends.
+   */
+  const unsentRef = useRef<Set<string>>(new Set());
+  const mint = useCallback(() => {
+    const id = crypto.randomUUID();
+    unsentRef.current.add(id);
+    return id;
+  }, []);
   if (routeThread) activeThread.current = routeThread;
+  // `/` asks for a new thread — unless the tab is already on one it has not used.
+  else if (freshRoute && !unsentRef.current.has(activeThread.current ?? '')) {
+    activeThread.current = mint();
+  }
   // A cold load on `/harness` has no thread yet; the tab's last one is the one
   // "keeps the thread the tab was already on" means after a reload.
-  activeThread.current ??= (freshRoute ? null : recallTabThread()) ?? crypto.randomUUID();
+  activeThread.current ??= recallTabThread() ?? mint();
   const threadId = activeThread.current;
+  /** Bumped when an unsent thread gets its first message, so the lease effect sees it. */
+  const [, setSentEpoch] = useState(0);
+  const leaseable = !unsentRef.current.has(threadId);
+  const markSent = useCallback((id: string) => {
+    if (unsentRef.current.delete(id)) setSentEpoch((n) => n + 1);
+  }, []);
   useEffect(() => {
     if (routeThread) rememberTabThread(routeThread);
   }, [routeThread]);
@@ -235,7 +270,6 @@ export function AppShell() {
   /** Where focus lands when the Verbose badge turns verbose off and unmounts. */
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const leaseTokenRef = useRef<string | null>(null);
   /** Which thread the engine currently holds — see `loadThread`. */
   const loadedThreadRef = useRef<string | null>(null);
   /**
@@ -528,38 +562,6 @@ export function AppShell() {
     [engine],
   );
 
-  const attachLease = useCallback(async (id: string) => {
-    try {
-      const result = await acquireSessionLease({
-        threadId: id,
-        holderId: tabHolderId(),
-        mode: 'exclusive',
-      });
-      if (result.ok && result.token) leaseTokenRef.current = result.token;
-      else if (!result.ok) {
-        // Another tab holds exclusive — attach as shared observer.
-        const shared = await acquireSessionLease({
-          threadId: id,
-          holderId: tabHolderId(),
-          mode: 'shared',
-        });
-        if (shared.token) leaseTokenRef.current = shared.token;
-      }
-    } catch {
-      // leases are best-effort
-    }
-  }, []);
-
-  const detachLease = useCallback(async (id: string) => {
-    const token = leaseTokenRef.current;
-    leaseTokenRef.current = null;
-    await releaseSessionLease({
-      threadId: id,
-      holderId: tabHolderId(),
-      token: token ?? undefined,
-    });
-  }, []);
-
   // Mount-only: storage migration and the thread index. Everything thread-scoped
   // is `loadThread`'s, below, because it now has more than one way to happen.
   useEffect(() => {
@@ -567,17 +569,19 @@ export function AppShell() {
     void refreshThreads();
   }, []);
 
-  // Exclusive lease while this tab is attached to a thread.
+  // Exclusive lease while this tab is attached to a thread — but not to one it
+  // made up and has not sent to: the harness has never heard of that thread, and
+  // asking for its lease is what files it as a session (see `unsentRef`).
   useEffect(() => {
-    void attachLease(threadId);
-    return () => {
-      void detachLease(threadId);
-    };
-  }, [threadId, attachLease, detachLease]);
+    if (!leaseable) return;
+    return sessionLeases.attach(threadId);
+  }, [threadId, leaseable]);
 
   const stopRun = useCallback(() => {
     const tid = threadIdRef.current;
-    void abortChat(tid).catch(() => {});
+    // Nothing runs on a thread nothing was sent to, and `/chat/abort` writes the
+    // thread's phase — so aborting one would file it as an empty session.
+    if (!unsentRef.current.has(tid)) void abortChat(tid).catch(() => {});
     engine.abort();
     engine.setPhase('aborted');
     // Stop means stop: the next queued message must not go out on its own the
@@ -632,12 +636,12 @@ export function AppShell() {
 
   const newThread = useCallback(() => {
     stopRun();
-    const id = crypto.randomUUID();
+    const id = mint();
     // Nothing to hydrate: the id was minted a line ago, so the snapshot request
     // would be a round trip to be told the thread does not exist yet.
     loadThread(id, false);
     navigate(`/t/${id}`);
-  }, [stopRun, loadThread, navigate]);
+  }, [stopRun, mint, loadThread, navigate]);
 
   const selectThread = useCallback(
     (id: string) => {
@@ -808,9 +812,10 @@ export function AppShell() {
     ) => {
       setLeftApp(false);
       setDropped(false);
+      markSent(threadIdRef.current);
       return engine.send({ manifest, messages: messagesToSend, assistantId, mode });
     },
-    [engine, manifest],
+    [engine, manifest, markSent],
   );
 
   const pending = pendingQueue[0] ?? null;
@@ -994,7 +999,13 @@ export function AppShell() {
         engine.checkLiveness();
         refreshTenantApprovals.current();
         void engine.syncApprovals();
-        if (hiddenForMs > 0 && !engine.state.streaming) void hydrateIfAhead(threadIdRef.current);
+        if (
+          hiddenForMs > 0 &&
+          !engine.state.streaming &&
+          !unsentRef.current.has(threadIdRef.current)
+        ) {
+          void hydrateIfAhead(threadIdRef.current);
+        }
       }),
     [engine, hydrateIfAhead],
   );

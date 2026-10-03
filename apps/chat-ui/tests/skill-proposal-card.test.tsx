@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Tool } from '../src/components/chat/tool';
 import { parseSkillCall } from '../src/lib/skill-calls';
 import {
+  expectSameWeight,
   fakeHarness,
   fileBody,
   mountWithProviders,
@@ -180,6 +181,13 @@ describe('SkillProposalCard', () => {
     // The refetch says it is live; the card stops offering a decision.
     expect(await screen.findByText('live')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+  });
+
+  it('gives Approve and Reject the same weight', async () => {
+    library(DRAFT_AND_LIVE);
+    mountWithProviders(<Tool tool={tool(saved())} />);
+    const approve = await screen.findByRole('button', { name: 'Approve 0.1.1' });
+    expectSameWeight(approve, screen.getByRole('button', { name: 'Reject…' }));
   });
 
   it('does not offer Approve until the library has confirmed the draft exists', async () => {
