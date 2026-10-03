@@ -86,7 +86,7 @@ spec:
 | `cache` | bool | `false` | Provider prompt caching. |
 | `thinking_budget` | int \| null, `128`–`64000` | `null` | Extended-thinking token budget. |
 | `thinking_level` | `off` `minimal` `low` `medium` `high` `xhigh` `max` \| null | `null` | When set, **overrides** `thinking_budget` via the level map. |
-| `fallbacks` | string[] | `[]` | Tried in order on a provider error; increments the `felix_model_switch` counter. |
+| `fallbacks` | string[] | `[]` | Tried in order on a provider error; increments the `felix_model_switch` counter. The vision route tries the ones that can see. A turn a fallback answers is metered at the fallback's rates. |
 | `vision_model` | string \| null | `null` | Route for any call carrying an image when `id` is a text-only model. Null falls back to `FELIX_DEFAULT_VISION_MODEL_ID`; with neither, such a turn is a 422. See [Images and text-only routes](/internals/model-client/#images-and-text-only-routes). |
 | `confidence_escalation` | object | disabled | See below. |
 | `price` | map[string, float] | `{}` | USD per 1M tokens, overriding the built-in table for cost attribution. |

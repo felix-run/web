@@ -159,7 +159,8 @@ The image stays in the thread's history, so once a thread has been shown a pictu
 of it goes to the vision route, until compaction or a window drops the image. `felix_model_switch`
 counts each of those calls. `felix_model_images_omitted` counts each image once, when it arrives.
 Usage is metered under the route that answered: the composite stamps it on the result rather than on
-itself. The vision route is a single route, with no fallbacks or escalation of its own. The thread is
+itself. The vision route fails over to whichever of `spec.model.fallbacks` can see (a text-only fallback is
+skipped), and has no escalation of its own. The thread is
 compacted against the smaller of the two routes' windows, since either may answer its next turn; a
 declared `spec.session.context_window_tokens` still wins.
 
