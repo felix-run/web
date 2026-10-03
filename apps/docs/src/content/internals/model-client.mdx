@@ -161,6 +161,20 @@ counts each of those calls. `felix_model_images_omitted` counts each image once,
 Usage is metered under the route that answered: the composite stamps it on the result rather than on
 itself. The vision route is a single route, with no fallbacks or escalation of its own.
 
+### Images a tool returns
+
+A tool returns an image for the model to see with `ToolOutputDict.attachments`. The runner puts it on
+the tool message, and each wire renders it the one way its API accepts:
+
+| Wire | Rendering |
+|---|---|
+| Anthropic | Inside the `tool_result`, as `[text, image…]` content beside the call that produced it. A result without an image stays a plain string, for the prompt cache. |
+| OpenAI chat completions (and every OpenAI-compatible provider) | The `tool` message stays text, and one `user` turn follows the run of tool messages. Each image appears under a line naming its tool and marking it as data, not instructions. Never inside the run: tool messages must follow their assistant turn contiguously. |
+
+Only inline bytes are rendered on a tool message, so a remote URL there is never fetched. The
+session log keeps a `felix-file://` reference, resolved to bytes just before the wire like an
+upload. A tool image reaching a text-only route is replaced by the "image omitted" line.
+
 A route the catalog cannot vouch for either way is sent the image unchanged, as before this
 check existed. `felix doctor` notes a text-only default with no vision route.
 

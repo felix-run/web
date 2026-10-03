@@ -50,7 +50,15 @@ A control that cannot run has not cleared anything, so unavailability is never t
   came back empty, and any remote `http(s)` image —
   which the provider fetches itself, so it cannot be screened as sent — are unavailable: `block`
   answers `503`, `quarantine` removes the image. A transcriber error emits
-  `felix_control_unavailable{control="image_screening"}`.
+  `felix_control_unavailable{control="image_screening"}`. An image a **tool** returns is screened
+  by the content-screening wrapper on its own `tool_image` surface and is always quarantined —
+  `block` denies the call on its text, not on its images — and quarantined tool text takes the
+  tool's images with it.
+  - Without `image_model`, an untrusted tool's images are quarantined outright (fail closed), and
+    the action is counted as `felix_content_screening{action="image_unscreened"}`.
+  - An after-tool hook that rewrites the text removes the images too.
+  - At the door, images on a caller's non-user messages (`role: tool`, `assistant`) are removed,
+    because inbound screening reads only user turns.
 - **Decider judges** fall back to the model judge and then the heuristic on any failure, and do not
   judge text longer than 8,000 characters — a prefix judge would pass filler followed by a payload.
 - **The PII guardrail** falls back to three regexes (email, US SSN, card-like digit runs) when
