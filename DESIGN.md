@@ -353,7 +353,7 @@ thread, and Copy thread id), then *View* (Verbose tools), then *Theme* under its
 Light/Dark/System radio items. Theme is a set-once preference and holds no header slot of its
 own; Thinking is in the composer.
 
-The workbench is **three zones**: the workspace (18rem), the transcript at reading width
+The workbench is **three zones**: the app sidebar (17rem expanded, 3rem as icons), the transcript at reading width
 (`max-w-3xl`, turns 24px apart) with the composer anchored beneath it, and the run instrument
 (`clamp(22rem, 24vw, 30rem)` — the panel is what widens on a large display, not the
 transcript). An attention line runs full width under the header on every address. At rest its
@@ -376,7 +376,8 @@ it does not hold — so no surface can say a call is waiting while another says 
 While it is blocked, an empty thread's headline and starters step aside and its readout sits on
 the floor beside the banner.
 
-The workspace is open by default wherever it fits inline: it is the subject. The instrument
+The sidebar is expanded by default wherever it fits inline; collapsing it leaves a column of icons
+with their names in tooltips, never nothing. The instrument
 starts open from **1600px**, where all three zones sit at their own widths, and closed below.
 A stored choice outranks both defaults.
 
@@ -387,8 +388,10 @@ vocabulary.
 Zones yield rather than squeeze, in a fixed order. Three zones want ~1200px of content, so
 **1280px** is where all three fit; below it the **instrument** becomes a drawer, because it is
 reference material and the half of it that cannot wait already lives in the attention line and
-the banner above the composer. Below **1024px** the workspace follows, last because it is the
-subject. `/harness` is nav-rail plus panel above **768px**; below it the index *is* the list.
+the banner above the composer. Below **1024px** the sidebar follows as a drawer, last because it
+holds every way to anywhere else. `/harness` needs no nav of its own while the sidebar is inline;
+between **768px** and **1024px** it draws its rail beside the panel, and below 768px the index *is*
+the list.
 The breakpoints are derived from what the content needs, not from device names.
 
 **The Yield Rule.** A rail never narrows the thing it describes; it leaves.
@@ -637,13 +640,13 @@ takes the header's icon slot rather than a row of its own. An id that has to dis
 the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
 
-The workspace zone's header follows the same grammar: folder or drive icon, **Workspace**, then
+The sidebar's workspace section has a header in the same grammar: folder or drive icon, **Workspace**, then
 the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the
 tab's own store (including while a folder from last session waits on a reconnect, because until
 then that is where tools run). Its actions — *Mount a folder*, *Change folder* / *Disconnect*,
 *Reconnect <name>* — are an outline row beneath, never in the value slot: a header that holds an
-action says what to do rather than what is, and in the narrow drawer the header row is the one
-the close button shares.
+action says what to do rather than what is. The section folds from a chevron at its right edge,
+beside the row rather than in it, and remembers that it was folded.
 
 Under the header, **Changes on this thread** lists each workspace path a tool call named and what
 was done to it — rows, not cards. The path is mono with the directory truncating before the
@@ -661,10 +664,22 @@ evidence through the approval card's own folding pane: the replaced and replacin
 edit, the written content for a write. While a durable run is in flight and has reported no call,
 the section is one muted line, *Changes appear when the run finishes.*, rather than absent.
 
-The thread trigger beneath the actions names the current thread and, when approvals wait on
-**other** threads, ends in a `state-blocked` dot and `1 waiting` — announced in full as "1 approval
-waiting on another thread". A row naming no thread is unattributed, not elsewhere, and does not
-count; this thread's own are already in the banner and the attention line.
+### Sidebar
+
+The sidebar has one order on both addresses: **New chat** (an outline row, the sidebar's only
+bordered control), then **Threads**, then the workspace section, then **Harness**, with hairline
+separators between them. Threads has a sticky label and search field, then its groups: *Pinned*
+(labelled *this browser* at the right, because pins are local), *Today*, *Yesterday*, *Previous 7
+days*, and *Older*. Older is a disclosure showing its count, and it starts folded unless it holds the
+thread on screen. Group labels are 11px muted, and empty groups are not drawn. A search drops the
+groups. Each row is the thread's title over one 11px line — *Waiting on you* in `state-blocked`
+first when an approval names that thread, then the agent in mono, then how long ago. The current row
+sits on `accent` with `aria-current`. Harness keeps its two labelled runs, *Records* and
+*Workbenches*, and its glances (*1 failing*); those poll only while the rows are on screen.
+
+Collapsed to icons, the column is New chat, Search, Threads, Workspace, then the eight destinations.
+Search and Threads expand the sidebar and put the caret in the search field. When any thread is
+waiting on approval, Threads carries a 6px `state-blocked` dot, which is spoken as well.
 
 ### Run readout
 

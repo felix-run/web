@@ -190,3 +190,23 @@ transcript live — is closed: the engine settles a stream that ended without `f
 harness tails the session log between status frames (felix-run/felix#238), and the engine folds
 those `session_event` frames on the durable path (#167). Verified end to end on 2026-09-12 once a
 thread-id collision was ruled out.
+
+## Amendment 2026-10-02 — the app sidebar
+
+The operator asked for a TypingMind-shaped sidebar built on shadcn's Sidebar, and chose a
+**single app sidebar** (Shape round, 2026-10-02) over an icon rail with a switching panel, and
+over keeping the workspace zone with a primitive swapped in. This reverses two decisions above:
+"threads become a popover off the workspace header", and the workspace as the left zone. The
+reason is the one the popover made unavoidable: it was the only way to reach another thread at any
+width, which put the most frequent navigation in this app two clicks deep.
+
+- **One sidebar on both addresses**, owned by the shell, holding New chat, then Threads (Pinned,
+  then by last activity), then Workspace, then Harness. `/harness` drops its resident nav while
+  the sidebar is inline.
+- **Structure only from the references.** The references supplied collapse-to-icons, grouped
+  menus and the mobile sheet. Colour, type and density stay this document's: a zinc field, colour
+  only for state, and no avatar, no tinted brand surface, no folders.
+- **The folder is still the subject, but it is no longer the door.** The workspace section sits
+  below the threads and folds. Where it sits relative to Threads was left open at confirmation;
+  it went below them because the thread list is what is opened most often.
+- `Mod+\` and `Mod+K` are unchanged. The references' `Mod+B` was not taken (see `lib/shortcuts.ts`).

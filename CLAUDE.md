@@ -277,21 +277,31 @@ The Memory and Corpus strips are deliberately *not* tabs. They switch the input 
 their modes share, so there is no panel per mode to point at; they are `role="group"` with
 `aria-pressed` buttons, which promises only what they are.
 
-**The shell is three zones now, and they yield in a fixed order.** `src/routes/workbench.tsx`
-renders the workspace (`src/components/workspace/workspace-zone.tsx`, 18rem), the transcript at
-reading width with the composer anchored, and the run instrument
-(`clamp(22rem,24vw,30rem)`). Three zones want 1200px of content before any chrome, so **1280** is
-where all three fit: below it the **instrument** becomes a drawer, below **1024** the workspace
-follows. The instrument goes first because it is reference material, and the half of it that cannot
-wait is already in the attention line and the banner above the composer — neither of which lives in
-a rail. The workspace yields last because it is the subject.
+**The shell is three zones, and they yield in a fixed order.** On the left, the **app sidebar**
+(`src/components/app-sidebar.tsx`, 17rem, or 3rem collapsed to icons) belongs to the *shell*, not to
+a route, so it is the same on `/t` and `/harness`. In the middle, `src/routes/workbench.tsx` renders
+the transcript at reading width with the composer anchored. On the right is the run instrument
+(`clamp(22rem,24vw,30rem)`). The three want 1200px of content before any chrome, so **1280** is
+where they all fit. Below that the **instrument** becomes a drawer, and below **1024** the sidebar
+becomes one too. The instrument goes first because it is reference material, and the half of it that
+cannot wait is already in the attention line and the banner above the composer — neither of which
+lives in a rail. The sidebar goes last because it holds every way to anywhere else.
 
-**The thread rail is gone.** Threads are a popover off the workspace header, which makes that
-popover the *only* door to another conversation at any width — a break there is not a degraded rail,
-it is a thread list nobody can open, so `tests/workbench-layout.test.tsx` pins it. The association
-is local-only anyway (the harness records which threads exist, not which folder any of them used),
-so the popover is a flat list and the trigger names the current thread rather than implying a folder
-owns it.
+**The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
+New chat; the threads, grouped as Pinned, Today, Yesterday, Previous 7 days and Older (Older starts
+folded, showing its count); the workspace section (`src/components/workspace/workspace-section.tsx`);
+and the eight harness destinations with their glances. It replaced three earlier things: a threads
+popover off the workspace header, which had been the *only* way to switch threads; the workspace
+zone; and `/harness`'s resident nav rail, which is drawn now only between 768 and 1024, where the
+sidebar is a drawer. A break here is not a degraded rail — it is a thread list nobody can open — so
+`tests/workbench-layout.test.tsx` pins every collapsed icon as well as the list. Pins live in
+`felix.pinnedThreads` and are local, because the harness records which threads exist, not which
+ones an operator keeps near. `removeThread` drops a deleted thread's pin. The primitive is
+`@felix/ui/sidebar`, which is shadcn's Sidebar **adapted**: its state is controlled by `use-rails`
+(`historyOpen` means expanded when inline, and the drawer below 1024); it sits in the page flow under
+the header rather than fixed to the viewport; and there is no `Mod+B`, because Ctrl+B opens a Firefox
+sidebar. The binding is `Mod+\`, and `Mod+K` lands in the thread search. Both work on `/harness`
+too.
 
 The instrument is **tabs**, not the old accordion: one section on screen is one poll. The strip
 carries no counts, because populating them would mean every section fetching for a label nobody is

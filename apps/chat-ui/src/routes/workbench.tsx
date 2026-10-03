@@ -11,8 +11,7 @@ import { PushHint } from '@/components/chat/push-hint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { Inspector } from '@/components/inspector/inspector';
 import { RailPresence } from '@/components/rail-presence';
-import { WorkspaceZone } from '@/components/workspace/workspace-zone';
-import { INSTRUMENT_INLINE, WORKSPACE_INLINE } from '@/hooks/use-rails';
+import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { cn } from '@/lib/utils';
@@ -28,8 +27,8 @@ const DRAWER_MOTION =
   'ease-out data-[state=closed]:duration-200 data-[state=open]:duration-200 motion-reduce:animate-none';
 
 /**
- * The workbench: the thread rail, the transcript and composer, and the
- * run-scoped inspector.
+ * The workbench: the transcript and composer, and the run-scoped inspector. The
+ * sidebar to its left belongs to the shell, because it is the same on `/harness`.
  *
  * Everything here is a view onto state the root layout owns — the engine, the
  * thread and the approval queue outlive this route, which is the whole point of
@@ -76,26 +75,21 @@ export function Workbench() {
     chooseThinking,
     verbose,
     harnessReachable,
-    historyOpen,
-    setHistoryOpen,
     inspectorOpen,
     setInspectorOpen,
   } = useShell();
 
   // Content-driven, not device-driven, and the order is the thesis.
   //
-  // Three zones want 18rem + a ~560px reading column + 22rem, which is 1200px of
-  // content before any chrome — so 1280 is where all three fit. Below it the
-  // **instrument** yields first: it is reference material about the run, and the
-  // half of it that cannot wait (an approval, a `ui_request`) is already in the
-  // attention line and the banner above the composer, neither of which is in a
-  // rail. Below 1024 the workspace follows, and the transcript takes the width.
-  //
-  // The workspace yields *last* of the two because it is the subject — the folder
-  // is what the agent is working on, and the thread is how you talk to it. A rail
-  // never narrows the thing it describes; it leaves.
+  // The sidebar (17rem), a ~560px reading column and the instrument (22rem) want
+  // 1200px of content before any chrome — so 1280 is where all three fit. Below
+  // it the **instrument** yields first: it is reference material about the run,
+  // and the half of it that cannot wait (an approval, a `ui_request`) is already
+  // in the attention line and the banner above the composer, neither of which is
+  // in a rail. Below 1024 the sidebar follows, as a drawer, and the transcript
+  // takes the width. The sidebar yields last because it holds every way to
+  // anywhere else — threads, the workspace, the harness.
   const instrumentInline = useMediaQuery(INSTRUMENT_INLINE);
-  const workspaceInline = useMediaQuery(WORKSPACE_INLINE);
 
   const modelOptions = useMemo(() => {
     // The provider model is the one thing the harness says about a manifest
@@ -125,11 +119,6 @@ export function Workbench() {
   return (
     <>
       <div className="flex min-h-0 flex-1">
-        {workspaceInline && (
-          <RailPresence open={historyOpen} side="left">
-            <WorkspaceZone />
-          </RailPresence>
-        )}
         <main className="bg-dots relative isolate flex min-w-0 flex-1 flex-col">
           <Conversation>
             {empty && (
@@ -296,24 +285,6 @@ export function Workbench() {
         a fixed rem width is the whole story: the instrument's 22rem is 352px, and
         on a 320px phone it hung 32px off the left edge — its title, its first tab
         and the start of every row cut away, measured in a real browser. */}
-      {!workspaceInline && (
-        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-          {/* `data-shortcut-surface` names this drawer to the keyboard layer, so
-              the binding that opened it may also close it while it holds focus. */}
-          <SheetContent
-            side="left"
-            data-shortcut-surface="workspace"
-            className={cn('w-[18rem] max-w-full gap-0 p-0 sm:max-w-none', DRAWER_MOTION)}
-          >
-            <SheetTitle className="sr-only">Workspace</SheetTitle>
-            {/* The same zone, not a smaller stand-in: the threads popover, the
-                mount controls and the tree all have to be reachable here or the
-                narrow layout is missing a third of the app. The drawer supplies
-                its own close button top-right, which the header pads around. */}
-            <WorkspaceZone className="w-full border-r-0 bg-transparent [&>div:first-child]:pr-11" />
-          </SheetContent>
-        </Sheet>
-      )}
       {!instrumentInline && (
         <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
           <SheetContent

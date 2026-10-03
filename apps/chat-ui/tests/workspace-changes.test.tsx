@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import type { ApprovalRequest, ToolCall, Turn } from '@felix/client';
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WorkspaceZone } from '../src/components/workspace/workspace-zone';
+import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import { collectChanges, countLines, durableRunInFlight } from '../src/lib/changes';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
@@ -175,15 +175,6 @@ describe('collectChanges', () => {
   });
 });
 
-function approval(id: string, threadId?: string): ApprovalRequest {
-  return {
-    id,
-    tool_name: 'write_file',
-    status: 'pending',
-    ...(threadId === undefined ? {} : { thread_id: threadId }),
-  } as ApprovalRequest;
-}
-
 function mount({
   turns = [],
   streaming = false,
@@ -217,7 +208,7 @@ function mount({
   return render(
     <TooltipProvider>
       <ShellProvider value={value}>
-        <WorkspaceZone />
+        <WorkspaceSection />
       </ShellProvider>
     </TooltipProvider>,
   );
@@ -327,34 +318,5 @@ describe('the Changes section', () => {
     expect(panel?.textContent).toContain('Not applied');
     expect(panel?.textContent).toContain('Would have written');
     expect(panel?.textContent).not.toMatch(/(^|[^ ])Written/);
-  });
-});
-
-describe('the thread trigger', () => {
-  function trigger() {
-    return screen.getByRole('button', { name: /New thread/ });
-  }
-
-  it('counts approvals waiting on other threads only', () => {
-    mount({
-      pending: [
-        approval('1', 'elsewhere'),
-        approval('2', 'here'),
-        approval('3'),
-        approval('4', ''),
-      ],
-    });
-    const t = trigger();
-    expect(within(t).getByText('1 approval waiting on another thread')).toBeTruthy();
-    expect(t.textContent).toContain('1 waiting');
-  });
-
-  it('pluralises, and says nothing when only this thread and unattributed rows wait', () => {
-    cleanup();
-    mount({ pending: [approval('1', 'a'), approval('2', 'b')] });
-    expect(within(trigger()).getByText('2 approvals waiting on other threads')).toBeTruthy();
-    cleanup();
-    mount({ pending: [approval('1', 'here'), approval('2')] });
-    expect(trigger().textContent).not.toContain('waiting');
   });
 });
