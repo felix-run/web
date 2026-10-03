@@ -521,14 +521,26 @@ Flows worth knowing before editing the app:
   `pageshow` from the back/forward cache, and `online`, coalesced into one call. A phone freezes
   every timer while the app is in the background, so the shell asks `/approvals` at once on return,
   and calls `engine.checkLiveness()`. That cuts a live stream that has gone silent, which a
-  suspended page's connection can do without ever erroring, so the ordinary reattach runs. It
-  acts **only** on a stream that has shown a keep-alive comment (the harness sends one every 15s
-  on `POST /chat/stream`, surfaced through `ReadSseOptions.onActivity`) and then missed three:
-  hanging up tears a run down, so a quiet stream in a long tool call must never be cut on a
-  guess. Durable and reattach streams send no heartbeat and are never touched. A reattach that
+  suspended page's connection can do without ever erroring, so the ordinary reattach runs.
+  **The shell also runs it every 15s while a stream is live**: a connection can die with the page
+  on screen too (a proxy losing its upstream, a network switch), and on 2026-10-03 a stream cut
+  mid-reply read *running* for as long as the tab stayed open. It acts **only** once the harness
+  has *proved* it heartbeats and the stream has then gone 45s with nothing at all: hanging up
+  tears a run down, so a quiet stream in a long tool call must never be cut on a guess. **The
+  harness sends `: keep-alive` only after 15s with nothing else to send** (`with_heartbeat` in its
+  `routes/_sse.py`) — 45s of live streaming carried none — so a stream that dies while deltas are
+  flowing has never shown one of its own. That is why the proof is kept per engine as well as per
+  stream: once any stream from this harness has heartbeated, a later one silent for three
+  intervals is dead. Durable streams (`resumeToken` set) and reattach streams send no heartbeat
+  and are never touched. **A reattach lets go as soon as its snapshot says the thread is not
+  working** (`reattach.ts`), rather than when the harness closes an idle reattach ~300s later —
+  which had kept a torn-down run reading *running* for five minutes. A reattach that
   began while the page was hidden, or just after it came back, sets the shell's `leftApp`,
   and the transcript says leaving stopped the run and that Run in background would not have
-  been stopped, until the next send or thread. Idle on return, the shell re-hydrates only when
+  been stopped; any other drop sets `dropped`, which says the connection dropped and nothing
+  more is coming for that run. Both last until the next send or thread, because the rejoin is
+  over in a moment and what it rebuilds often has no reply at all — the harness keeps none of a
+  run it tore down. Idle on return, the shell re-hydrates only when
   the snapshot holds more turns than the tab, because a rebuild discards local detail.
 - **Session state is server-authoritative** — `GET /chat/sessions/{id}` returns the snapshot
   (transcript, phase, thinking level, leaf, lease) used to hydrate a thread, and `GET /chat/sessions`

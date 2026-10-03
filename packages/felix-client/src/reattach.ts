@@ -82,9 +82,17 @@ export async function reattachThread(opts: ReattachOptions): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (opts.signal?.aborted) return;
 
+    // Its own abort, so a snapshot that says the thread has stopped can end this
+    // attempt. The harness holds an idle reattach open for ~300s; waiting that out
+    // kept a dropped run reading *running* for five minutes after the snapshot had
+    // already said `idle` — measured live on 2026-10-03.
+    const attemptAbort = new AbortController();
+    const onOuterAbort = () => attemptAbort.abort(opts.signal?.reason);
+    opts.signal?.addEventListener('abort', onOuterAbort, { once: true });
+
     try {
       await opts.client.resumeStream(
-        { threadId: opts.threadId, lastEventId: cursor, signal: opts.signal },
+        { threadId: opts.threadId, lastEventId: cursor, signal: attemptAbort.signal },
         {
           onCursor: (id) => {
             cursor = id;
@@ -99,6 +107,7 @@ export async function reattachThread(opts: ReattachOptions): Promise<void> {
               seenSnapshot = true;
               if (snap.phase) opts.onPhase?.(snap.phase);
               render();
+              if (snap.phase && !WORKING_PHASES.has(snap.phase)) attemptAbort.abort();
               return;
             }
             if (ev.event === 'session_event') {
@@ -122,6 +131,8 @@ export async function reattachThread(opts: ReattachOptions): Promise<void> {
     } catch {
       // A failed reattach is not worth surfacing on its own; the phase check
       // below decides whether it is worth another try.
+    } finally {
+      opts.signal?.removeEventListener('abort', onOuterAbort);
     }
 
     if (opts.signal?.aborted) return;

@@ -287,6 +287,35 @@ describe('the workspace section', () => {
   });
 });
 
+describe('the dropped-connection notice', () => {
+  const notice = () => document.querySelector('[data-slot=marker][role=status]')?.textContent ?? '';
+  const mountWorkbench = (over: Partial<ShellValue>) =>
+    render(
+      <TooltipProvider>
+        <ShellProvider value={shell({ inspectorOpen: false, ...over })}>
+          <Workbench />
+        </ShellProvider>
+      </TooltipProvider>,
+    );
+
+  it('says what is still landing while the thread is being rejoined', () => {
+    mountWorkbench({ reattaching: true, dropped: true });
+    expect(notice()).toContain('anything still landing');
+  });
+
+  /**
+   * The rejoin after a dropped run is quick, and what it rebuilds often has no
+   * reply, because the harness keeps none of a run it tore down. The notice has to
+   * outlive it, or the operator is left with an unanswered question and no reason.
+   */
+  it('stays once the rejoin is over, and says nothing more is coming', () => {
+    mountWorkbench({ reattaching: false, dropped: true });
+    expect(notice()).toContain('Connection dropped');
+    expect(notice()).toContain('Nothing more is coming');
+    expect(notice()).not.toContain('still landing');
+  });
+});
+
 describe('the run instrument', () => {
   /**
    * The tab strip is a real tab widget, not roles painted on buttons.

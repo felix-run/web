@@ -44,6 +44,7 @@ export function Workbench() {
     streaming,
     reattaching,
     leftApp,
+    dropped,
     error,
     sessionPhase,
     pending,
@@ -181,7 +182,7 @@ export function Workbench() {
                 apps — say that, because it is the one cause the operator can
                 avoid next time, and say how. It outlives the reattach, which
                 takes a moment that person was not looking at. */}
-            {(reattaching || leftApp) && (
+            {(reattaching || leftApp || dropped) && (
               <ConversationItem id="reattach">
                 {/* A marker, not a card: it is a note about the run, in the
                     transcript's own voice, and nobody is being asked to act on it.
@@ -196,11 +197,18 @@ export function Workbench() {
                       </>
                     ) : (
                       <>
-                        Connection dropped. That run was stopped — showing what it finished, and{' '}
-                        <span className={cn(reattaching && 'shimmer shimmer-color-foreground')}>
-                          anything still landing on this thread
-                        </span>
-                        .
+                        Connection dropped. That run was stopped — showing what it finished
+                        {reattaching ? (
+                          <>
+                            , and{' '}
+                            <span className="shimmer shimmer-color-foreground">
+                              anything still landing on this thread
+                            </span>
+                            .
+                          </>
+                        ) : (
+                          '. Nothing more is coming for it; send again to retry.'
+                        )}
                       </>
                     )}
                   </MarkerContent>

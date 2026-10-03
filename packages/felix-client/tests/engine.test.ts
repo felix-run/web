@@ -969,13 +969,19 @@ describe('a stream that went silent while the page was away', () => {
    * suspended phone's connection looks like on the way back — until the fetch is
    * aborted, which is the only way out of it.
    */
-  function hangingStream(head: string) {
+  function hangingStream(head: string, { before = [] as string[] } = {}) {
     const requests: Array<{ url: string; headers: Headers }> = [];
+    // Streams that complete before the hanging one, in order.
+    const complete = [...before];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: unknown, init?: RequestInit) => {
         const url = String(input);
         requests.push({ url, headers: new Headers(init?.headers) });
+        if (url.endsWith('/chat/stream') && complete.length > 0) {
+          const text = `${complete.shift()}data: [DONE]\n\n`;
+          return new Response(text, { headers: { 'content-type': 'text/event-stream' } });
+        }
         if (url.endsWith('/chat/stream')) {
           const body = new ReadableStream<Uint8Array>({
             start(c) {
@@ -1026,6 +1032,41 @@ describe('a stream that went silent while the page was away', () => {
     expect(engine.state.streaming).toBe(true);
     expect(requests.some((r) => r.url.includes('/chat/stream/t1'))).toBe(false);
 
+    engine.abort();
+    await done;
+  });
+
+  /**
+   * The harness heartbeats only after 15s with nothing else to send, so a stream
+   * that dies while deltas are flowing has never shown a keep-alive of its own.
+   * Measured against a live harness on 2026-10-03: 45s of streaming carried none,
+   * and a stream cut mid-reply read *running* for as long as the page stayed open.
+   */
+  it('is cut once an earlier stream from the same harness has heartbeated', async () => {
+    const { engine, requests } = hangingStream(frame(delta('Hi'), 9), {
+      before: [`${frame(delta('Earlier'))}: keep-alive\n\n`],
+    });
+    await run(engine);
+    engine.setTurns([{ id: 'a1', role: 'assistant', content: '', tools: [] }]);
+    const done = run(engine);
+    await until(() => engine.state.turns.at(-1)?.content === 'Hi');
+
+    expect(engine.checkLiveness(Date.now() + 10_000)).toBe(false);
+    expect(engine.checkLiveness(Date.now() + 46_000)).toBe(true);
+    await done;
+    expect(requests.some((r) => r.url.includes('/chat/stream/t1'))).toBe(true);
+  });
+
+  it('never cuts a durable stream, which carries no heartbeat by design', async () => {
+    const accepted = frame({ event: 'run_accepted', data: { resume_token: 'rt1' } });
+    const { engine } = hangingStream(accepted, {
+      before: [`${frame(delta('Earlier'))}: keep-alive\n\n`],
+    });
+    await run(engine);
+    const done = run(engine);
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(engine.checkLiveness(Date.now() + 10 * 60_000)).toBe(false);
     engine.abort();
     await done;
   });
