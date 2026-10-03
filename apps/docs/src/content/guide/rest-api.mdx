@@ -786,6 +786,25 @@ shape — `{"error": {...}}` — including `manifest_drift`, `content_filter` an
 `POST /a2a` speaks A2A JSON-RPC for agent-to-agent calls. Peers declared in `spec.peers` become
 `peer__{name}` tools on the calling agent, and hop depth is bounded by `limits.max_peer_hops`.
 
+**Images.** `message/send` takes images as FileParts carrying their bytes. `type` and `mime_type`
+are accepted as spellings too.
+
+```json
+{"kind": "file", "file": {"bytes": "<base64>", "mimeType": "image/png"}}
+```
+
+An image-only message is valid. `mimeType` is optional and read from the bytes when absent. A
+FilePart is held to the `/files` upload rules: png, jpeg, gif or webp by its bytes, at most 600 KiB.
+It is stored like an upload, under the tenant's attachment quota. A FilePart that fails the rules,
+or that carries a `uri` instead of bytes, refuses the message with `-32602` rather than being
+dropped. The image is then screened like any user turn's. If the agent's model route is text-only
+and no vision route is set, the message gets `-32602` naming the route. A refused message's task
+reads `failed` on `tasks/get`.
+
+A peer's answer is read from its `artifacts`, or else its status message. Image FileParts in it
+reach the calling agent as tool images: checked and capped before screening reads them, then
+stored and screened as an untrusted tool's are.
+
 ## MCP
 
 | Method | Path | Notes |
@@ -796,6 +815,18 @@ shape — `{"error": {...}}` — including `manifest_drift`, `content_filter` an
 Tool `inputSchema` is generated from each tool's argument schema. A remote MCP tool that already
 supplies JSON Schema is forwarded verbatim through `raw_input_schema`, preserving its descriptions
 and enums.
+
+**Images.**
+- **Server side.** A tool that returns images (a browser screenshot, an image tool's result)
+  answers `tools/call` with an `image` content block for each, as base64. The limits:
+  - at most four images;
+  - each must be an image by its bytes;
+  - a stored image is sent only if the same call made it, read back under the caller's tenant,
+    since an MCP client cannot resolve a `felix-file://` reference;
+  - a URL is never passed on.
+- **Client side.** Felix reads a remote server's `image` content blocks as tool images. They are
+  stored and capped, and screened as an untrusted tool's are, which means they are quarantined
+  when `content_screening.image_model` is unset.
 
 ## Well-known
 
