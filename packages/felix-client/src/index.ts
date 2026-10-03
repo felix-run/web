@@ -76,6 +76,8 @@ export type {
 } from './management/usage';
 export { type ReattachOptions, reattachThread } from './reattach';
 export {
+  type BranchPoint,
+  branchPoints,
   eventsToTurns,
   mergeSessions,
   type SessionSummary,

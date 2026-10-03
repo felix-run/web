@@ -57,6 +57,8 @@ export function Workbench() {
     onUiCancel,
     labels,
     labelTurn,
+    branches,
+    switchBranch,
     feedback,
     rateTurn,
     submit,
@@ -147,6 +149,10 @@ export function Workbench() {
                     key={t.id}
                     turn={t}
                     streaming={streaming && isLast}
+                    {...(t.eventId && branches?.has(t.eventId)
+                      ? { branch: branches.get(t.eventId) }
+                      : {})}
+                    {...(!streaming && switchBranch ? { onSwitchBranch: switchBranch } : {})}
                     verbose={verbose}
                     onRegenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
                     onRewind={

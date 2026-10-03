@@ -1,4 +1,4 @@
-import type { ChatEngine, ManifestEntry, ThreadMeta } from '@felix/client';
+import type { BranchPoint, ChatEngine, ManifestEntry, ThreadMeta } from '@felix/client';
 import { createContext, type Dispatch, type SetStateAction, useContext } from 'react';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
@@ -66,6 +66,10 @@ export interface ShellValue {
   /** This thread. */
   threadId: string;
   labels: Record<string, string>;
+  /** Edited messages' versions, by user event id (`branchPoints`). */
+  branches?: Map<string, BranchPoint>;
+  /** Rewind to the end of another version's thread. */
+  switchBranch?: (tipEventId: string) => void;
   labelTurn(eventId: string, label: string | null): void;
   /** Ratings of assistant turns, keyed by server event id. */
   feedback: Record<string, TurnFeedback>;
