@@ -350,7 +350,10 @@ that says it on screen says it to nobody who cannot see it.
 
 The left cluster **yields in a fixed order**. The brand before it never shrinks and the
 wordmark is never truncated — the mark is the sidebar's toggle, so unlike the decorative mark
-it replaced it never yields; the run state never yields either. Below `sm` both modes draw as icons (a scroll for
+it replaced it never yields; the run state never yields either. Below `sm`, while a run state is
+showing, the wordmark steps aside (it stays the `h1` for a reader; the mark is the brand), and so
+does New chat, which a run disables anyway and the drawer still holds — without both, the chip and
+the attention line's *1 waiting* overran the controls at 390px and 320px. Below `sm` both modes draw as icons (a scroll for
 Verbose, a bird for the canary), their words kept in the accessible name and the `title`.
 While the run state is showing below `sm`, the modes step off the screen — at 390px the
 wordmark and a `blocked` chip leave no room for one icon beside them. Verbose goes `hidden`,
@@ -375,8 +378,9 @@ The workbench is **three zones**: the app sidebar (17rem expanded, 3rem as icons
 transcript). The **attention line** is a pill in the header, right-aligned before the instrument
 toggle and the menu, on every address — the answer to "is anything waiting on me" on the bar every
 address shares rather than a row of its own. It is the first thing in the header to give way (a
-shrink weight far above the run cluster's): the sentence truncates, and below `sm` it is two words
-(*1 waiting*, *Clear*, *Unreachable*) with *Review* as its chevron alone, the full sentence kept as
+shrink weight far above the run cluster's): the sentence truncates. Below `sm` it is two words that
+cannot truncate, so there it does not shrink at all and the run cluster clips instead — it is two words
+(*1 waiting*, *None waiting*, *Unreachable*) with *Review* as its chevron alone, the full sentence kept as
 the live region and the `title`. It is tinted only when it has something to say — `state-blocked`
 at `/10` while a person is asked, `state-failed` while it cannot vouch for the list — and is muted
 text on no surface at rest. At rest its dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach

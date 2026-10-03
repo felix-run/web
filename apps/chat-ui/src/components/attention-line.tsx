@@ -244,7 +244,7 @@ export function AttentionLine({
             ? 'Checking'
             : streaming
               ? 'Working'
-              : 'Clear';
+              : 'None waiting';
   // Outside the live region: it changes on every failed tick, and a screen
   // reader re-reading the sentence for a clock would bury the change that matters.
   const age =
