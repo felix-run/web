@@ -3,7 +3,7 @@ import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WorkspaceZone } from '../src/components/workspace/workspace-zone';
+import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
@@ -63,7 +63,7 @@ function mount() {
   return render(
     <TooltipProvider>
       <ShellProvider value={value}>
-        <WorkspaceZone />
+        <WorkspaceSection />
       </ShellProvider>
     </TooltipProvider>,
   );
@@ -94,9 +94,9 @@ describe('the workspace header', () => {
     const value = screen.getByText('felix-web');
     expect(value.className.split(/\s+/)).toContain('font-mono');
     expect(headerRow().contains(value)).toBe(true);
-    // Nothing clickable in the row the drawer's close button shares.
+    // Nothing clickable in the row: the value is a fact, not a control.
     expect(headerRow().querySelector('button')).toBeNull();
-    expect(screen.getByRole('complementary', { name: 'Workspace felix-web' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Workspace felix-web' })).toBeTruthy();
   });
 
   it('reads in-tab when no folder is mounted, with Mount offered below rather than in it', async () => {

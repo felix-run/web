@@ -103,11 +103,13 @@ describe('route', () => {
     expect(route(ctrl('\\'), inst)).toBeNull();
   });
 
-  it('on /harness, only reaches for an approval', () => {
+  it('on /harness, reaches the approval and the sidebar, and nothing the workbench owns', () => {
     const harness = state({ surface: 'harness' });
     expect(route(ctrl(';'), harness)).toBe('focus-approval');
-    expect(route(ctrl('\\'), harness)).toBeNull();
-    expect(route(ctrl('k'), harness)).toBeNull();
+    // The sidebar is the same on both addresses, so its bindings are too.
+    expect(route(ctrl('\\'), harness)).toBe('toggle-workspace');
+    expect(route(ctrl('k'), harness)).toBe('open-threads');
+    expect(route(ctrl("'"), harness)).toBeNull();
     expect(route(key('/'), harness)).toBeNull();
   });
 
@@ -263,17 +265,12 @@ describe('in the app', () => {
     await waitFor(() => expect(instrument()).toBeNull());
   });
 
-  it('opens the thread popover, the only thread switcher there is', async () => {
+  it('lands in the sidebar thread search', async () => {
     const box = await mount();
     box.focus();
     await press('k', box);
-    // The popover's content is a dialog holding the thread list's "New" action.
     await waitFor(() =>
-      expect(
-        [...document.querySelectorAll('[role="dialog"]')].some(
-          (d) => d.getAttribute('data-shortcut-surface') === null,
-        ),
-      ).toBe(true),
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Search threads'),
     );
   });
 

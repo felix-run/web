@@ -42,6 +42,7 @@ import {
 } from '@/components/inspector/primitives';
 import { failing, JOBS_POLL_KEY, JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
+import { WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { setPresencePlace } from '@/lib/presence';
@@ -362,7 +363,7 @@ export const HARNESS_DESTINATIONS: {
   },
 ];
 
-const GROUPS = [
+export const GROUPS = [
   { key: 'records', label: 'Records' },
   { key: 'workbenches', label: 'Workbenches' },
 ] as const;
@@ -376,7 +377,7 @@ const GROUPS = [
  * Tab stops: every link is still one, as links are, and once focus is in the
  * list the arrows move through it faster.
  */
-function walkNav(event: KeyboardEvent<HTMLElement>) {
+export function walkNav(event: KeyboardEvent<HTMLElement>) {
   const moves: Record<string, (i: number, n: number) => number> = {
     ArrowDown: (i, n) => (i + 1) % n,
     ArrowUp: (i, n) => (i - 1 + n) % n,
@@ -472,11 +473,12 @@ export function glanceOf(
   return { text: `${count} ${word}`, span, title: `${count} ${word}${within}`, tone: 'failed' };
 }
 
-function useNavGlances(): Record<string, Glance | undefined> {
+export function useNavGlances(enabled = true): Record<string, Glance | undefined> {
   // Shared reads: on the Jobs page or the Ledger these ride the page's own
   // faster poll rather than sending the same request a second time.
-  const jobs = useSharedPoll(JOBS_POLL_KEY, listJobs, { intervalMs: 30_000 });
+  const jobs = useSharedPoll(JOBS_POLL_KEY, listJobs, { enabled, intervalMs: 30_000 });
   const audit = useSharedPoll(AUDIT_POLL_KEY, () => listAudit({ limit: ACTIVITY_FETCH }), {
+    enabled,
     intervalMs: 30_000,
   });
   const failingJobs = (jobs.data ?? []).filter(failing).length;
@@ -487,6 +489,38 @@ function useNavGlances(): Record<string, Glance | undefined> {
     jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
     ledger: glanceOf(audit, failedEvents, 'failed', 'the ledger', LEDGER_GLANCE_SPAN),
   };
+}
+
+/** A destination's glance, drawn at the end of its nav row. */
+export function NavGlance({ glance }: { glance: Glance | undefined }) {
+  if (!glance) return null;
+  return (
+    <span
+      title={glance.title}
+      className={cn(
+        'ml-auto shrink-0 pl-2 text-xs font-medium tabular-nums',
+        glance.tone === 'failed' ? 'text-state-failed' : 'text-muted-foreground',
+      )}
+    >
+      {/* For the accessible name, which would otherwise run "Jobs1 failing"
+          together — and carries the age or the "couldn't check" that the short
+          text abbreviates. */}
+      <span className="sr-only">, {glance.title}</span>
+      <span aria-hidden>{glance.text}</span>
+      {glance.span && !glance.age && (
+        <span aria-hidden className="font-normal text-muted-foreground">
+          {' · '}
+          {glance.span}
+        </span>
+      )}
+      {glance.age && (
+        <span aria-hidden className="font-normal text-muted-foreground">
+          {' · '}
+          {glance.age}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; className?: string }) {
@@ -531,35 +565,7 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                   >
                     <Icon className="size-4 shrink-0" />
                     <span className="truncate">{name}</span>
-                    {glance[path] && (
-                      <span
-                        title={glance[path]?.title}
-                        className={cn(
-                          'ml-auto shrink-0 pl-2 text-xs font-medium tabular-nums',
-                          glance[path]?.tone === 'failed'
-                            ? 'text-state-failed'
-                            : 'text-muted-foreground',
-                        )}
-                      >
-                        {/* For the accessible name, which would otherwise run
-                            "Jobs1 failing" together — and carries the age or the
-                            "couldn't check" that the short text abbreviates. */}
-                        <span className="sr-only">, {glance[path]?.title}</span>
-                        <span aria-hidden>{glance[path]?.text}</span>
-                        {glance[path]?.span && !glance[path]?.age && (
-                          <span aria-hidden className="font-normal text-muted-foreground">
-                            {' · '}
-                            {glance[path]?.span}
-                          </span>
-                        )}
-                        {glance[path]?.age && (
-                          <span aria-hidden className="font-normal text-muted-foreground">
-                            {' · '}
-                            {glance[path]?.age}
-                          </span>
-                        )}
-                      </span>
-                    )}
+                    <NavGlance glance={glance[path]} />
                   </NavLink>
                 </li>
               ),
@@ -574,13 +580,17 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
 /**
  * Layout route for `/harness`.
  *
- * Wide, the nav is a resident rail beside the panel. Narrow, there is no room for
+ * From 1024 the app sidebar is inline and carries the destinations itself, so
+ * this layout is the page alone. Between 768 and 1024 the sidebar is a drawer,
+ * and the nav is a resident rail here instead — the destinations must be one
+ * click away at every width, not one drawer away. Narrow, there is no room for
  * both, so `/harness` *is* the list and a destination is a page with a way back —
  * which is also why the index only redirects on a wide viewport. Redirecting on a
  * phone would mean the list could never be seen at all.
  */
 export function HarnessLayout() {
   const wide = useMediaQuery('(min-width: 768px)');
+  const sidebarInline = useMediaQuery(WORKSPACE_INLINE);
   const atIndex = !!useMatch('/harness');
   const at = useMatch('/harness/:destination')?.params.destination;
   const destination = HARNESS_DESTINATIONS.find((d) => d.path === at);
@@ -637,9 +647,11 @@ export function HarnessLayout() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60">
-        <HarnessNav />
-      </div>
+      {!sidebarInline && (
+        <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60">
+          <HarnessNav />
+        </div>
+      )}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <PageDocs.Provider value={destination?.docs ?? null}>
           <Outlet />

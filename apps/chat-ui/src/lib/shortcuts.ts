@@ -91,7 +91,7 @@ export interface Shortcut {
  * all read from here, so what is advertised cannot drift from what is routed.
  */
 export const SHORTCUTS: readonly Shortcut[] = Object.freeze([
-  { action: 'toggle-workspace', key: '\\', mod: true, what: 'Workspace' },
+  { action: 'toggle-workspace', key: '\\', mod: true, what: 'Sidebar' },
   { action: 'toggle-instrument', key: "'", mod: true, what: 'This run' },
   { action: 'open-threads', key: 'k', mod: true, what: 'Threads' },
   { action: 'focus-approval', key: ';', mod: true, what: 'What is waiting' },
@@ -157,7 +157,7 @@ export function route(event: KeyInput, state: ShortcutState): ShortcutAction | n
 
   if (state.overlay === 'other') return null;
   if (state.overlay === 'workspace-drawer') {
-    // The thread popover lives inside this drawer, so reaching it is not
+    // The thread search lives inside this drawer, so reaching it is not
     // reaching past the modal.
     return match.action === 'toggle-workspace' || match.action === 'open-threads'
       ? match.action
@@ -168,7 +168,13 @@ export function route(event: KeyInput, state: ShortcutState): ShortcutAction | n
   }
 
   if (!match.mod && state.typing) return null;
-  if (state.surface === 'harness' && match.action !== 'focus-approval') return null;
+  // The sidebar is on both addresses, so its two bindings are too; the
+  // instrument and the composer exist only on the workbench.
+  if (
+    state.surface === 'harness' &&
+    !['focus-approval', 'toggle-workspace', 'open-threads'].includes(match.action)
+  )
+    return null;
   return match.action;
 }
 

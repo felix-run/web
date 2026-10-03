@@ -1,23 +1,24 @@
 // @vitest-environment happy-dom
+import { SidebarProvider } from '@felix/ui/sidebar';
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
+import { AppSidebar } from '../src/components/app-sidebar';
 import { Inspector } from '../src/components/inspector/inspector';
 import { ThemeProvider } from '../src/components/theme-provider';
-import { WorkspaceZone } from '../src/components/workspace/workspace-zone';
+import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import { Workbench } from '../src/routes/workbench';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
  * The three-zone shell, at the two seams that can strand a control.
  *
- * The thread rail is gone: threads hang off the workspace header now. That makes
- * the popover the *only* way to reach another conversation at any width, so a
- * break there is not a degraded rail, it is a thread list with no door. And the
- * instrument became tabs, where exactly one section may be mounted — the poll
+ * The sidebar is the one door to every other conversation, at every width —
+ * inline, collapsed to icons, or as the drawer — so a break there is not a
+ * degraded rail, it is a thread list with no door. And the instrument became tabs, where exactly one section may be mounted — the poll
  * economy that justified tabs is only real if the other two are not running.
  */
 
@@ -106,11 +107,34 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
   } as ShellValue;
 }
 
+function mountSidebar(
+  over: Partial<ShellValue> = {},
+  { open = true, mobile = false }: { open?: boolean; mobile?: boolean } = {},
+) {
+  return render(
+    <MemoryRouter initialEntries={['/t/now']}>
+      <TooltipProvider>
+        <ShellProvider value={shell(over)}>
+          <SidebarProvider
+            open={open}
+            onOpenChange={() => {}}
+            openMobile={mobile}
+            onOpenMobileChange={() => {}}
+            mobile={mobile}
+          >
+            <AppSidebar />
+          </SidebarProvider>
+        </ShellProvider>
+      </TooltipProvider>
+    </MemoryRouter>,
+  );
+}
+
 function mountZone(over: Partial<ShellValue> = {}) {
   return render(
     <TooltipProvider>
       <ShellProvider value={shell(over)}>
-        <WorkspaceZone />
+        <WorkspaceSection />
       </ShellProvider>
     </TooltipProvider>,
   );
@@ -128,44 +152,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('the workspace zone', () => {
-  it('names the current thread on the popover trigger', async () => {
-    mountZone();
-    await waitFor(() => expect(screen.getByText('Current thread')).toBeTruthy());
-  });
-
+describe('the sidebar', () => {
   /**
-   * The rail is gone, so this popover is the only door to another conversation.
-   * If it stops opening, every thread but the current one becomes unreachable at
-   * every width — the exact "reachable in one layout, missing in the other"
-   * failure the drawer pairs exist to prevent, except with no other layout.
+   * The threads popover was the only door to another conversation; the sidebar
+   * is that door now, at every width — inline, as icons, or as the drawer. If its
+   * list stops rendering, every thread but the current one is unreachable.
    */
-  it('opens the thread list, which is now the only way to reach another thread', async () => {
-    mountZone();
-    const trigger = await screen.findByText('Current thread');
-    await act(async () => {
-      await userEvent.click(trigger);
-    });
-    await waitFor(() => expect(screen.getByText('The other one')).toBeTruthy());
-  });
-
-  /**
-   * `mod+k` opens this to find a thread, and Radix lands on the first tabbable
-   * element — which was New chat, the one control that leaves the thread you are
-   * on. The shortcut clicks the trigger, so the click path is the shortcut path.
-   */
-  it('puts focus in the search field when the list opens, not on New chat', async () => {
-    mountZone();
-    const trigger = await screen.findByText('Current thread');
-    await act(async () => {
-      await userEvent.click(trigger);
-    });
-    const search = await screen.findByRole('searchbox', { name: 'Search threads' });
-    await waitFor(() => expect(document.activeElement).toBe(search));
+  it('lists every thread, and marks the one on screen', async () => {
+    mountSidebar();
+    const current = await screen.findByRole('button', { name: /^Current thread/ });
+    expect(current.getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('button', { name: /^The other one/ })).toBeTruthy();
   });
 
   it('marks a thread an approval is waiting on, from the shell poll it already has', async () => {
-    mountZone({
+    mountSidebar({
       tenantApprovals: {
         pending: [{ id: 'a1', thread_id: 'other', tool_name: 'write_file' }],
         error: null,
@@ -173,15 +174,65 @@ describe('the workspace zone', () => {
         refresh: () => {},
       } as unknown as ShellValue['tenantApprovals'],
     });
-    await act(async () => {
-      await userEvent.click(await screen.findByText('Current thread'));
-    });
     const row = (await screen.findByText('The other one')).closest('button');
     expect(row?.textContent).toContain('Waiting on you');
-    const current = screen.getAllByText('Current thread').at(-1)?.closest('button');
+    const current = screen.getByText('Current thread').closest('button');
     expect(current?.textContent).not.toContain('Waiting on you');
   });
 
+  it('groups by last activity, and starts Older folded with its count', async () => {
+    const day = 86_400_000;
+    mountSidebar({
+      threads: [
+        { ...thread('now', 'Current thread') },
+        { ...thread('week', 'Earlier this week'), updatedAt: Date.now() - 3 * day },
+        { ...thread('old', 'Last quarter'), updatedAt: Date.now() - 90 * day },
+      ],
+    });
+    expect(await screen.findByRole('group', { name: 'Today' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Previous 7 days' })).toBeTruthy();
+    const older = screen.getByRole('button', { name: /^Older/ });
+    expect(older.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('Last quarter')).toBeNull();
+    await act(async () => userEvent.click(older));
+    expect(screen.getByText('Last quarter')).toBeTruthy();
+  });
+
+  it('never folds away the thread on screen', async () => {
+    mountSidebar({
+      threadId: 'old',
+      threads: [
+        thread('now', 'Recent'),
+        { ...thread('old', 'Last quarter'), updatedAt: Date.now() - 90 * 86_400_000 },
+      ],
+    });
+    const row = await screen.findByRole('button', { name: /^Last quarter/ });
+    expect(row.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('pins a thread above the dates, and remembers it in this browser', async () => {
+    mountSidebar();
+    await act(async () =>
+      userEvent.click(screen.getByRole('button', { name: 'Actions for The other one' })),
+    );
+    await act(async () => userEvent.click(await screen.findByRole('menuitem', { name: 'Pin' })));
+    const pinned = await screen.findByRole('group', { name: /^Pinned/ });
+    expect(pinned.textContent).toContain('The other one');
+    expect(JSON.parse(localStorage.getItem('felix.pinnedThreads') ?? '[]')).toEqual(['other']);
+  });
+
+  it('keeps every section reachable when collapsed to icons', async () => {
+    mountSidebar({}, { open: false });
+    expect(screen.queryByRole('searchbox', { name: 'Search threads' })).toBeNull();
+    for (const name of ['New chat', 'Search threads', 'Threads', 'Workspace', 'Ledger']) {
+      expect(
+        screen.getByRole(name === 'Ledger' ? 'link' : 'button', { name: new RegExp(`^${name}`) }),
+      ).toBeTruthy();
+    }
+  });
+});
+
+describe('the workspace section', () => {
   it('lists what this thread changed, from the tool calls themselves', async () => {
     mountZone({
       turns: [
@@ -321,18 +372,22 @@ describe('the narrow drawers', () => {
     }));
   });
 
-  it.each([
-    ['workspace', { historyOpen: true, inspectorOpen: false }],
-    ['instrument', { historyOpen: false, inspectorOpen: true }],
-  ])('caps the %s drawer at the viewport', (_, open) => {
+  it('caps the instrument drawer at the viewport', () => {
     render(
       <TooltipProvider>
-        <ShellProvider value={shell(open)}>
+        <ShellProvider value={shell({ historyOpen: false, inspectorOpen: true })}>
           <Workbench />
         </ShellProvider>
       </TooltipProvider>,
     );
     const drawer = document.querySelector('[data-slot="sheet-content"]');
+    expect(drawer?.classList).toContain('max-w-full');
+  });
+
+  it('caps the sidebar drawer at the viewport', () => {
+    mountSidebar({}, { mobile: true });
+    const drawer = document.querySelector('[data-slot="sheet-content"]');
+    expect(drawer?.getAttribute('data-shortcut-surface')).toBe('workspace');
     expect(drawer?.classList).toContain('max-w-full');
   });
 });
@@ -411,9 +466,9 @@ describe('rail state across widths', () => {
    * rather than userEvent, which refuses to click through the `pointer-events:
    * none` the same modal sets. A keyboard shortcut reaches the same setter.
    */
-  const button = (name: 'Workspace' | 'This run') =>
+  const button = (name: 'Sidebar' | 'This run') =>
     document.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`) as HTMLButtonElement;
-  const toggle = async (name: 'Workspace' | 'This run') => {
+  const toggle = async (name: 'Sidebar' | 'This run') => {
     const el = button(name);
     await act(async () => el.click());
     return el;
@@ -429,7 +484,7 @@ describe('rail state across widths', () => {
     await mountApp(390);
 
     expect(drawers()).toHaveLength(0);
-    expect(button('Workspace').getAttribute('aria-pressed')).toBe('false');
+    expect(button('Sidebar').getAttribute('aria-pressed')).toBe('false');
     expect(button('This run').getAttribute('aria-pressed')).toBe('false');
     expect(stored()).toEqual(['1', '1']);
   });
@@ -439,7 +494,7 @@ describe('rail state across widths', () => {
     localStorage.setItem('felix.inspectorOpen', '1');
     await mountApp(390);
 
-    const ws = await toggle('Workspace');
+    const ws = await toggle('Sidebar');
     await waitFor(() => expect(drawer('workspace')).toBeTruthy());
     expect(ws.getAttribute('aria-pressed')).toBe('true');
 

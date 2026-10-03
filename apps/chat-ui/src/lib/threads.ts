@@ -23,6 +23,7 @@ const INDEX_KEY = 'felix.threads';
 const TURNS_PREFIX = 'felix.turns:';
 const LEGACY_TURNS = 'felix.turns';
 const LEGACY_THREAD = 'felix.threadId';
+const PINS_KEY = 'felix.pinnedThreads';
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -88,6 +89,10 @@ export function threadLabel(meta: Pick<ThreadMeta, 'id' | 'title' | 'named'>): {
 
 export function removeThread(threadId: string): void {
   localStorage.removeItem(TURNS_PREFIX + threadId);
+  // A pin outliving its thread would be a row nobody can see holding a slot
+  // in a list someone can — and a thread minted later under the same id would
+  // arrive pinned.
+  writePins([...readPins()].filter((id) => id !== threadId));
   const index = readJSON<ThreadMeta[]>(INDEX_KEY, []).filter((t) => t.id !== threadId);
   localStorage.setItem(INDEX_KEY, JSON.stringify(index));
 }
@@ -108,4 +113,72 @@ export function migrateLegacy(now: number): void {
   saveTurns(id, legacyTurns);
   indexThread({ id, manifest, title: titleFromText(firstUser?.content ?? ''), updatedAt: now });
   localStorage.removeItem(LEGACY_TURNS);
+}
+
+/**
+ * Threads pinned to the top of the sidebar, by suffix.
+ *
+ * Local to this browser and said so where they are set: the harness records
+ * which threads exist and what they are named, not which ones an operator keeps
+ * near. Read defensively, because storage can be blocked or hold anything.
+ */
+export function readPins(): Set<string> {
+  const raw = readJSON<unknown>(PINS_KEY, []);
+  return new Set(Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []);
+}
+
+export function writePins(ids: Iterable<string>): void {
+  try {
+    localStorage.setItem(PINS_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Storage full or blocked: the pin lasts for this page and no longer.
+  }
+}
+
+export type ThreadGroupKey = 'pinned' | 'today' | 'yesterday' | 'week' | 'older';
+
+export interface ThreadGroup {
+  key: ThreadGroupKey;
+  label: string;
+  threads: ThreadMeta[];
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * The sidebar's sections: pinned first, then by last activity.
+ *
+ * Bucketed on `updatedAt` — the last time this client or the harness saw the
+ * thread move — against local midnight, so "Today" means the operator's day
+ * rather than the last twenty-four hours. A pinned thread appears only under
+ * Pinned. Empty groups are left out rather than drawn with no rows under them.
+ */
+export function groupThreads(
+  threads: readonly ThreadMeta[],
+  pinned: ReadonlySet<string>,
+  now: number = Date.now(),
+): ThreadGroup[] {
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  const today = midnight.getTime();
+  const yesterday = today - DAY_MS;
+  const week = today - 7 * DAY_MS;
+
+  const groups: ThreadGroup[] = [
+    { key: 'pinned', label: 'Pinned', threads: [] },
+    { key: 'today', label: 'Today', threads: [] },
+    { key: 'yesterday', label: 'Yesterday', threads: [] },
+    { key: 'week', label: 'Previous 7 days', threads: [] },
+    { key: 'older', label: 'Older', threads: [] },
+  ];
+  const at = (key: ThreadGroupKey) => groups.find((g) => g.key === key)!.threads;
+
+  for (const t of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    if (pinned.has(t.id)) at('pinned').push(t);
+    else if (t.updatedAt >= today) at('today').push(t);
+    else if (t.updatedAt >= yesterday) at('yesterday').push(t);
+    else if (t.updatedAt >= week) at('week').push(t);
+    else at('older').push(t);
+  }
+  return groups.filter((g) => g.threads.length > 0);
 }

@@ -21,6 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
+import { SidebarInset, SidebarProvider } from '@felix/ui/sidebar';
 import {
   BirdIcon,
   CopyIcon,
@@ -67,6 +68,7 @@ import {
   steerChat,
 } from '@/api';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
+import { AppSidebar } from '@/components/app-sidebar';
 import { AttentionLine } from '@/components/attention-line';
 import { BrandMark } from '@/components/brand-mark';
 import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
@@ -75,9 +77,10 @@ import type { SkillState } from '@/components/inspector/primitives';
 import { type Theme, useTheme } from '@/components/theme-provider';
 import { useMessageQueue } from '@/hooks/use-message-queue';
 import { usePendingApprovals } from '@/hooks/use-pending-approvals';
-import { useRails } from '@/hooks/use-rails';
+import { useRails, WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useVisualViewport } from '@/hooks/use-visual-viewport';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { toastError, toastProblem } from '@/lib/error-toast';
@@ -199,6 +202,7 @@ export function AppShell() {
   const harnessRoot = useMatch('/harness');
   const harnessPanel = useMatch('/harness/*');
   const onHarness = harnessRoot !== null || harnessPanel !== null;
+  const sidebarInline = useMediaQuery(WORKSPACE_INLINE);
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
   // Canary rollout state for the selected manifest, from the `/manifests`
   // active pointer. Deliberately *not* "which side served this thread": that
@@ -1017,10 +1021,10 @@ export function AppShell() {
     'toggle-workspace': () => setHistoryOpen((o) => !o),
     'toggle-instrument': () => setInspectorOpen((o) => !o),
     'open-threads': () => {
-      // The popover hangs off the workspace, so the zone has to be open first —
+      // The search lives in the sidebar, so it has to be open first — expanded
       // inline or as the drawer, whichever this width gets.
       setHistoryOpen(true);
-      whenMounted('[data-shortcut="threads"]', (el) => el.click());
+      whenMounted('[data-shortcut-target="thread-search"]', (el) => el.focus());
     },
     'focus-composer': () => {
       document.querySelector<HTMLElement>('[data-shortcut-target="composer"]')?.focus();
@@ -1776,29 +1780,22 @@ export function AppShell() {
       {/* The inset is added to the bar's height rather than taken out of it:
           `--header-height` is read by the toaster and must stay the bar's own. */}
       <header className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-1 border-b border-border/60 px-3 pt-safe">
-        {!onHarness && (
-          <Button
-            variant={historyOpen ? 'secondary' : 'ghost'}
-            size="icon-sm"
-            onClick={() => setHistoryOpen((o) => !o)}
-            // What is on screen, not what is stored: at a narrow width the
-            // stored rail preference is not what the operator is looking at.
-            aria-pressed={historyOpen}
-            // The tooltip's word, so the name a reader hears and the one a
-            // sighted operator sees are one name; `aria-pressed` says the rest.
-            aria-label="Workspace"
-            aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
-            title={`Workspace (${shortcutLabel('toggle-workspace', mac)})`}
-          >
-            <PanelLeftIcon className="size-4" />
-          </Button>
-        )}
-        {/* The toggle's slot, held empty where the toggle has nothing to toggle.
-            Without it the wordmark moved 36px left on every switch between the
-            two addresses — the one element that should not move at all. */}
-        {onHarness && (
-          <span aria-hidden data-slot="workspace-toggle-slot" className="size-8 shrink-0" />
-        )}
+        {/* On both addresses now: the sidebar is the same one on each, and this
+            is its toggle — expanded or icons when inline, the drawer below 1024. */}
+        <Button
+          variant={historyOpen ? 'secondary' : 'ghost'}
+          size="icon-sm"
+          onClick={() => setHistoryOpen((o) => !o)}
+          // What is on screen, not what is stored: at a narrow width the
+          // stored preference is not what the operator is looking at. Pressed
+          // means expanded inline, or the drawer open below 1024.
+          aria-pressed={historyOpen}
+          aria-label="Sidebar"
+          aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
+          title={`Sidebar (${shortcutLabel('toggle-workspace', mac)})`}
+        >
+          <PanelLeftIcon className="size-4" />
+        </Button>
         {/* The left cluster yields in a fixed order, because at 390px with both
             modes on and a run blocked it holds more than its space. Before the
             order was written down, every child was `shrink-0` except the
@@ -2157,7 +2154,18 @@ export function AppShell() {
         take a live run down with it.
       */}
       <ShellProvider value={shell}>
-        <Outlet />
+        <SidebarProvider
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          openMobile={historyOpen}
+          onOpenMobileChange={setHistoryOpen}
+          mobile={!sidebarInline}
+        >
+          <AppSidebar />
+          <SidebarInset>
+            <Outlet />
+          </SidebarInset>
+        </SidebarProvider>
       </ShellProvider>
     </div>
   );
