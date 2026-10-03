@@ -420,6 +420,23 @@ Flows worth knowing before editing the app:
   (a modifier, an arrow, Tab, Escape) has been seen, send otherwise, ⌘/Ctrl+Enter always sends.
   `tests/touch-viewport.test.tsx` pins those three; insets, Safari's scroll on focus and the
   keyboard itself are only verifiable on a device.
+- **The transcript scrolls by turn, not by the bottom edge** (`components/chat/conversation.tsx`,
+  on `@felix/ui/message-scroller`). An operator turn is a scroll anchor: sent, it lands near the
+  top and the reply grows below; the view follows the stream only while the reader is at the live
+  edge. Three rules that are easy to break from `routes/workbench.tsx`. **The greeting is not a
+  row**: the scroller applies its opening position when rows first appear, and treats rows added
+  after that as new messages, so a counted greeting made a loaded thread arrive as "just sent" and
+  open on its first question. **Rows are named by position** (`turn-<i>`), not by turn id, because
+  a snapshot rebuild can re-mint ids, and the same transcript under new ids reads as a page of new
+  anchors. **Rows are drawn in full** (`[content-visibility:visible]`): with the primitive's default
+  off-screen placeholders, the opening jump to the newest question was measured against a long
+  reply's 10rem stand-in and missed by ~900px at 1440. `OpenAtLastAnchor` makes that opening jump
+  itself, because a cached thread has rows on the first render, before the scroller's own default
+  can apply. `tests/conversation.test.tsx` pins the anchors and the full-height rows.
+- **`shimmer` and `scroll-fade-*` are vendored** into `src/chat-utilities.css`, not imported from the
+  CLI package's `tailwind.css`, which also redefines `data-open`, `data-checked` and the other
+  `data-*` variants this app uses with their plain Tailwind meaning. Pair `shimmer` with
+  `shimmer-color-foreground` on muted or state-coloured text, so the sweep only brightens.
 - **Redundant state updates are not free.** The composer cleared a "slash menu dismissed" flag from
   an effect keyed on the text, so every keystroke set state — usually to the value it already held.
   React bails out of those but still counts them, so typing fast enough (a paste, a quick typist)
@@ -1129,4 +1146,4 @@ the `toolkit-authoring` skill is how to extend it.
   `[@media(hover:hover)]`, never on a width breakpoint, and dense controls grow with `coarse:`.
   `tests/touch-affordances.test.tsx` pins the first two by shape, since happy-dom evaluates
   neither media query.
-- Node ≥ 20, pnpm 10.33.2 (`packageManager` pinned). React 18, Tailwind v4 (CSS-first, no config file).
+- Node ≥ 20, pnpm 10.33.2 (`packageManager` pinned). React 19, Tailwind v4 (CSS-first, no config file).

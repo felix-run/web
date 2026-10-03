@@ -52,6 +52,8 @@ export function RunStatusLine({ text, tone, live }: { text: string; tone: Tone; 
         className={cn(
           'min-w-0 wrap-anywhere',
           live ? cn('font-medium', TONE[tone].text) : 'text-muted-foreground',
+          // Only while working: a run waiting on a person is not, and holds still.
+          live && tone === 'running' && 'shimmer shimmer-color-foreground',
         )}
       >
         {text}

@@ -31,8 +31,7 @@
     "remark-breaks": "^4.0.0",
     "sonner": "catalog:",
     "streamdown": "catalog:",
-    "tailwind-merge": "catalog:",
-    "use-stick-to-bottom": "^1.1.1"
+    "tailwind-merge": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",

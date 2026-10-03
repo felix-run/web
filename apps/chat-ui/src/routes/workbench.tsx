@@ -1,8 +1,10 @@
+import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
+import { LogOutIcon, UnplugIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill } from '@/components/chat/context-meter';
-import { Conversation } from '@/components/chat/conversation';
+import { Conversation, ConversationItem } from '@/components/chat/conversation';
 import { Greeting, useMountLabel } from '@/components/chat/greeting';
 import { InstallHint } from '@/components/chat/install-hint';
 import { Message } from '@/components/chat/message';
@@ -100,6 +102,9 @@ export function Workbench() {
   }, [manifestOptions, manifestEntries]);
 
   const empty = turns.length === 0;
+  // Rows are named by position (see `Conversation`), so the anchor is too.
+  const lastUser = turns.map((t) => t.role).lastIndexOf('user');
+  const lastAnchorId = lastUser === -1 ? undefined : `turn-${lastUser}`;
 
   // The window is the *selected* agent's, not the one the thread last ran on: the
   // next message goes to the selection, with this history replayed in front of it.
@@ -120,41 +125,47 @@ export function Workbench() {
     <>
       <div className="flex min-h-0 flex-1">
         <main className="bg-dots relative isolate flex min-w-0 flex-1 flex-col">
-          <Conversation>
+          <Conversation lastAnchorId={lastAnchorId}>
             {empty && (
-              <Greeting manifest={manifest} blocked={pending != null || uiPrompt != null} />
+              // Not a row: the scroller applies its opening position when rows first
+              // appear, and a greeting counted as one made a thread's turns arrive as
+              // "new" (see `Conversation`).
+              <div className="flex flex-1 flex-col">
+                <Greeting manifest={manifest} blocked={pending != null || uiPrompt != null} />
+              </div>
             )}
             {turns.map((t, i) => {
               const isLast = i === turns.length - 1;
               return (
-                <Message
-                  key={t.id}
-                  turn={t}
-                  streaming={streaming && isLast}
-                  verbose={verbose}
-                  onRegenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
-                  onRewind={
-                    !streaming && t.eventId && !isLast ? () => rewindTo(t.eventId!) : undefined
-                  }
-                  {...(!streaming && t.role === 'user' && (i > 0 || t.parentEventId)
-                    ? { onEdit: (text: string) => void editTurn(t.id, text) }
-                    : {})}
-                  {...(t.eventId && labels[t.eventId] !== undefined
-                    ? { label: labels[t.eventId] }
-                    : {})}
-                  {...(t.eventId ? { onLabel: (next) => labelTurn(t.eventId!, next) } : {})}
-                  {...(t.role === 'assistant' && !(streaming && isLast)
-                    ? {
-                        onRate: (
-                          rating: 'up' | 'down' | null,
-                          opts?: { note?: string; evalDataset?: string },
-                        ) => void rateTurn(t.id, rating, opts),
-                        ...(t.eventId && feedback[t.eventId]
-                          ? { feedback: feedback[t.eventId] }
-                          : {}),
-                      }
-                    : {})}
-                />
+                <ConversationItem key={t.id} id={`turn-${i}`} anchor={t.role === 'user'}>
+                  <Message
+                    turn={t}
+                    streaming={streaming && isLast}
+                    verbose={verbose}
+                    onRegenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
+                    onRewind={
+                      !streaming && t.eventId && !isLast ? () => rewindTo(t.eventId!) : undefined
+                    }
+                    {...(!streaming && t.role === 'user' && (i > 0 || t.parentEventId)
+                      ? { onEdit: (text: string) => void editTurn(t.id, text) }
+                      : {})}
+                    {...(t.eventId && labels[t.eventId] !== undefined
+                      ? { label: labels[t.eventId] }
+                      : {})}
+                    {...(t.eventId ? { onLabel: (next) => labelTurn(t.eventId!, next) } : {})}
+                    {...(t.role === 'assistant' && !(streaming && isLast)
+                      ? {
+                          onRate: (
+                            rating: 'up' | 'down' | null,
+                            opts?: { note?: string; evalDataset?: string },
+                          ) => void rateTurn(t.id, rating, opts),
+                          ...(t.eventId && feedback[t.eventId]
+                            ? { feedback: feedback[t.eventId] }
+                            : {}),
+                        }
+                      : {})}
+                  />
+                </ConversationItem>
               );
             })}
             {/* Neutral, not `running`: the run this names was torn down when the
@@ -166,30 +177,40 @@ export function Workbench() {
                 avoid next time, and say how. It outlives the reattach, which
                 takes a moment that person was not looking at. */}
             {(reattaching || leftApp) && (
-              <div
-                role="status"
-                className="mx-auto max-w-2xl rounded-lg border border-border bg-solid-muted/60 px-3 py-2 text-sm text-foreground"
-              >
-                {leftApp ? (
-                  <>
-                    Leaving the page stopped that run — showing what it finished. To keep one going
-                    while you are away, send it with Run in background.
-                  </>
-                ) : (
-                  <>
-                    Connection dropped. That run was stopped — showing what it finished, and
-                    anything still landing on this thread.
-                  </>
-                )}
-              </div>
+              <ConversationItem id="reattach">
+                {/* A marker, not a card: it is a note about the run, in the
+                    transcript's own voice, and nobody is being asked to act on it.
+                    The word that matters is "stopped", so it leads. */}
+                <Marker role="status" variant="border">
+                  <MarkerIcon>{leftApp ? <LogOutIcon /> : <UnplugIcon />}</MarkerIcon>
+                  <MarkerContent>
+                    {leftApp ? (
+                      <>
+                        Leaving the page stopped that run — showing what it finished. To keep one
+                        going while you are away, send it with Run in background.
+                      </>
+                    ) : (
+                      <>
+                        Connection dropped. That run was stopped — showing what it finished, and{' '}
+                        <span className={cn(reattaching && 'shimmer shimmer-color-foreground')}>
+                          anything still landing on this thread
+                        </span>
+                        .
+                      </>
+                    )}
+                  </MarkerContent>
+                </Marker>
+              </ConversationItem>
             )}
             {error && (
-              <div
-                role="alert"
-                className="mx-auto max-w-2xl wrap-anywhere rounded-lg border border-state-failed/30 bg-solid-state-failed/10 px-3 py-2 text-sm text-state-failed"
-              >
-                {error}
-              </div>
+              <ConversationItem id="error">
+                <div
+                  role="alert"
+                  className="mx-auto max-w-2xl wrap-anywhere rounded-lg border border-state-failed/30 bg-solid-state-failed/10 px-3 py-2 text-sm text-state-failed"
+                >
+                  {error}
+                </div>
+              </ConversationItem>
             )}
           </Conversation>
           <div

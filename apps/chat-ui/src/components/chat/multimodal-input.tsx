@@ -1,3 +1,12 @@
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from '@felix/ui/attachment';
 import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
@@ -5,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
+import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import {
   Select,
   SelectContent,
@@ -21,12 +31,14 @@ import {
   BrainIcon,
   Clock,
   CornerDownLeft,
+  FileIcon,
   ImagePlus,
   Loader2,
   Mic,
   MicOff,
   PlusIcon,
   Upload,
+  XIcon,
 } from 'lucide-react';
 import {
   type KeyboardEvent,
@@ -65,7 +77,6 @@ import {
 import { cn } from '@/lib/utils';
 import { ContextMeter } from './context-meter';
 import { PaperclipIcon, StopIcon } from './icons';
-import { PreviewAttachment } from './preview-attachment';
 import { QueuedMessages } from './queued-messages';
 import { type SlashCommand, SlashCommandMenu, slashCommands } from './slash-commands';
 
@@ -1037,30 +1048,54 @@ function SendOrStop({
   );
 }
 
+/**
+ * What will go with the message. Images are fitted and uploaded when it is sent
+ * (`submit` in the shell), so until then each is a local preview; the card says
+ * the name and the type, and its remove control is always on screen rather than
+ * revealed by hover, because on a touch screen there is no hover to reveal it.
+ */
 function AttachmentsPreview() {
   const attachments = useProviderAttachments();
   const files = attachments.files;
   if (files.length === 0) return null;
 
   return (
-    <div className="flex w-full flex-row gap-2 self-start overflow-x-auto px-3 pt-3">
-      {files.map((file) => (
-        <PreviewAttachment
-          key={file.id}
-          attachment={{ url: file.url, name: file.filename, contentType: file.mediaType }}
-          onRemove={() => attachments.remove(file.id)}
-        />
-      ))}
-    </div>
+    <AttachmentGroup aria-label="Attachments" className="w-full self-start px-3 pt-3">
+      {files.map((file) => {
+        const image = file.mediaType?.startsWith('image');
+        const name = file.filename ?? 'attachment';
+        return (
+          <Attachment key={file.id} orientation="vertical" size="sm">
+            <AttachmentMedia variant={image ? 'image' : 'icon'}>
+              {image ? <img src={file.url} alt={name} /> : <FileIcon aria-hidden />}
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle title={name}>{name}</AttachmentTitle>
+            </AttachmentContent>
+            <AttachmentActions>
+              <AttachmentAction
+                aria-label={`Remove ${name}`}
+                onClick={() => attachments.remove(file.id)}
+                className="bg-background/80 coarse:size-9"
+              >
+                <XIcon />
+              </AttachmentAction>
+            </AttachmentActions>
+          </Attachment>
+        );
+      })}
+    </AttachmentGroup>
   );
 }
 
 function ConnectionBanner() {
   return (
-    <div className="mx-auto mb-2 flex w-fit items-center gap-2 rounded-full border border-border/50 bg-card px-3 py-1 text-xs text-muted-foreground shadow-sm">
-      <Loader2 className="size-3 animate-spin" />
-      Reconnecting to the assistant
-    </div>
+    <Marker role="status" className="mx-auto mb-2 w-fit text-xs">
+      <MarkerIcon>
+        <Loader2 className="size-3 motion-safe:animate-spin" />
+      </MarkerIcon>
+      <MarkerContent>Reconnecting to the assistant</MarkerContent>
+    </Marker>
   );
 }
 
