@@ -312,7 +312,9 @@ Evaluations and AI improvements from accepted feedback run in the worker's `skil
 enqueued every minute by **`felix-scheduler`** — run it alongside `felix-worker`, or a queued
 evaluation stays `queued` and accepted feedback is never rewritten. The API never enqueues to the
 worker directly. Each sweep runs at most five jobs of each kind, and one sweep runs at a time across
-every worker.
+every worker, held by a lease row that works through a transaction pooler, so the PgBouncer overlay
+needs nothing special. A worker that dies mid-sweep frees it within the job deadline plus five
+minutes.
 
 | Setting | Default | |
 |---|---|---|
