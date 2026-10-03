@@ -140,6 +140,133 @@ rather than bridging is deliberate: a pub/sub bridge is at-most-once and here th
 prompt, so a dropped one costs a decision rather than latency. The same reasoning is why the
 transcript tail reads the session log instead of forwarding display events.
 
+## Skills
+
+**Skill bodies are the one place model-written text can become instructions**, so they are held to
+a review step. The catalog names skills in the system tier, and `activate_skill` returns a body as
+instructions. A body from the bundled directory, `FELIX_SKILLS_DIR` or an uploaded object-store key
+is operator-written. A body from the tenant skill library reaches a catalog only as a *published*
+version, and an agent's save (`create_skill`, `update_skill`) is a draft no catalog loads.
+Publishing is done by an operator, or — with `spec.skill_authoring.mode: publish` — by the agent
+itself, which the schema allows only behind an approvals rule that gates every `create_skill` and
+`update_skill` call. So every library body in a catalog was either reviewed by an operator or
+approved by a person before it was saved. An agent's edit of a version an operator wrote is never
+published automatically, whatever the mode.
+
+`create_skill` and `update_skill` are trusted local tools and are not content-screened by default;
+their output is the library's own JSON. What they *save* is scanned on save and again on publish,
+and their approval preview is the SKILL.md the harness renders from the arguments, so an approver
+reads the instructions rather than the model's summary of them.
+
+### Approvals bind `parent_version`
+
+`update_skill` names the version it edits in a required `parent_version` argument, which must be the
+skill's newest version that is not a rejected draft. Its approval preview shows that version and
+every file the edit keeps from it, each by sha256. The call signature is a hash of the arguments, so
+a grant found later — by a retry, another replica or a resumed fiber — authorizes an edit of that
+version only, and the call is refused `parent_changed` if the skill has moved past it. Naming a
+rejected draft is refused `parent_rejected`, so a rejected draft's files — a bad `scripts/` file,
+say — cannot ride into the next agent draft. An operator's save keeps building on the absolute newest
+version, consciously.
+
+An agent's save may carry `evals/` files only unchanged from its parent, byte for byte, so every
+`evals/` file traces back to an operator's save.
+
+### The skill publish gate
+
+Every publish and rollback — an operator's through `/skill-library`, or an agent's in `publish`
+mode — runs the same gate on the stored version, and the management preview runs the same check
+without acting on it:
+
+1. **Re-read.** Every file is read back from the object store and checked against the digest its
+   `skill_file` row recorded at save. Missing or altered bytes fail the gate.
+2. **Re-validate.** The bundle is validated again; a version that no longer validates is blocked.
+3. **Re-scan.** The quality review and the security scan run again on the bytes, not from the row:
+   an operator can write the store directly, and the scanner's rules may have grown since the draft
+   was saved.
+4. **Policy.** A `fail` scan (any `critical` or `high` finding) blocks always, whoever asks — no
+   setting turns that off. The policy then raises the bar: `min_quality`, `block_on_advisory`,
+   `require_eval` and `min_eval_uplift`, from `FELIX_SKILL_PUBLISH_*` tightened by the tenant's own
+   policy. A tenant can never lower the deployment's bar.
+
+A rollback is judged without `require_eval` and `min_eval_uplift`: it returns to a version that was
+already live, often under time pressure, and the requirement may have been set after it went live.
+The scan, validation and quality floor still apply. A blocked publish is audited with its reasons.
+
+### Redaction on management reads
+
+`skills:read` is the lower scope, and an agent writes some of what it reads. So every
+`/skill-library` read and write response is secret-redacted: file text, and the reason, description,
+decision note, review-check and security-issue messages a saver or the scan wrote, and feedback
+bodies, suggested patches, evaluation scenarios, judge reasons and job errors. Redaction is the
+default — only a fixed structural allowlist (ids, names, versions, statuses, sources, paths,
+digests) passes through — so a field added later is redacted unless someone decides otherwise.
+
+### Feedback cannot start a rewrite
+
+Feedback changes nothing: it waits as `pending` until a person decides it. **An agent's feedback
+cannot start a rewrite.** Only a person's accept with `improve` lets the worker rewrite the skill,
+and **every rewrite lands as a draft** (`source: agent`, author `skill-improver`) in the review
+queue, published only through the same gate as any other draft. The improvement model is handed the
+current SKILL.md, the feedback and any suggested patch, each fenced as untrusted data in a region it
+cannot close; its output is validated like any save and must keep the skill's name, or the feedback
+fails. If the skill has moved past the version the feedback names, the feedback fails
+`parent_changed` rather than rebasing onto what may be another agent's unreviewed draft.
+
+### Evaluation trust
+
+The evaluation's answering model gets the skill body fenced as "reference skill instructions
+(untrusted data)". The judge (`FELIX_SKILL_EVAL_JUDGE_MODEL`, the eval judge every rubric uses)
+reads the scenario prompt, the criteria and each answer fenced, told all three are data and to
+ignore any instruction or score inside them; it never sees the skill and does not know which answer
+had it. A judge call that yields no usable score fails the evaluation instead of falling back to the
+heuristic, so a broken judge route cannot satisfy an eval gate.
+
+**For an agent's version, only bundle scenarios count.** Generated and default scenarios are written
+from the skill's own text — the agent's — so an agent could steer the test it is graded on. Only an
+evaluation on the bundle's own `evals/` scenarios counts toward `require_eval` and `min_eval_uplift`
+for a version an agent wrote; the others still run and are shown with `counts_for_gate: false`. A
+version's first evaluation fixes its scenario set, and every later evaluation reuses it, so
+rerunning cannot shop for a kinder set.
+
+### Skill jobs are bounded
+
+The worker's improvements and evaluations (`skill_jobs`) are not a manifest's run, so `spec.limits`
+does not apply. Every model call is metered to the skill's tenant. What bounds them:
+
+| Bound | Value |
+|---|---|
+| Output tokens per call | `FELIX_SKILL_EVAL_MAX_TOKENS` (2048), `FELIX_SKILL_IMPROVE_MAX_TOKENS` (8192) |
+| Calls per evaluation | four per scenario, at most `FELIX_SKILL_EVAL_MAX_SCENARIOS` (10) scenarios |
+| Wall clock per job | `FELIX_SKILL_JOB_DEADLINE_SECONDS` (1200); past it the job is `failed` |
+| Attempts per job | three claims; the next fails it `attempts_exhausted` |
+| Per tenant | `FELIX_SKILL_JOBS_MAX_QUEUED` (20) queued or running, `FELIX_SKILL_JOBS_DAILY_LIMIT` (200) created per UTC day; `429 skill_jobs_cap_reached` past either |
+| Per sweep | one sweep at a time across every worker, at most five jobs of each kind |
+
+A job heartbeats its claim between model calls and stops as soon as the heartbeat does not land, so
+a worker whose claim lapsed (no heartbeat for ten minutes) and was taken over cannot write over the
+one that took it. Claims are fair across tenants: the next job is the oldest due job of the tenant
+whose last claim is oldest, so a tenant with a deep queue cannot starve one with a single job.
+
+### Residual risks
+
+- **An eval gate is a quality bar, not a security control.** In `deploy/GOVERNANCE.md`'s words: the
+  scenario prompt and criteria still come from text someone wrote — an operator's `evals/` for a
+  counting run — and the judge is a model; a skill body that persuades the answering model to write
+  an answer that flatters itself is not something fencing can prevent.
+- **Feedback reaches a reviewer.** An agent that absorbed injected text can get that text in front
+  of a reviewer, and no further.
+- **Unlisted operator uploads.** The object store has no listing, so an upload at a version the
+  library never held is not flagged as `shadows_operator_upload` — though a ref pinning it is still
+  served the upload.
+- **Some caps count, then insert.** Two requests racing at the feedback cap or a job cap can both
+  get in; those caps bound a looping agent and a tenant's spend, not an exact count. The pending-draft
+  cap recounts after the save and backs out, so it errs the other way and may refuse one too many.
+- **The scan is heuristic.** It looks for credentials, risky script constructs, prompt-injection
+  phrasing, obfuscation, URLs to executables or piped remote content, and oversized files, with
+  bounded patterns. A body it does not recognise as dangerous passes it; the review step is the
+  control.
+
 ## Fatal tools
 
 `fatal=True` on a tool aborts the loop with the error as the final message (no model recovery). Use sparingly — quotas, hard security failures, unusable config.

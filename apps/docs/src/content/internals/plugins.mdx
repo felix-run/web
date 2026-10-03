@@ -127,7 +127,9 @@ config = (ctx.get("extensions") or {}).get("my-plugin") or {}
 ## Skills need no code
 
 Drop a `SKILL.md` into the directory named by `FELIX_SKILLS_DIR`, or upload one per tenant to the
-object store. Neither requires a package.
+object store. Neither requires a package. A tenant's own skills — written by an agent with
+`spec.skill_authoring` or by an operator — go through the [skill library](/guide/management-api/#skill-library)
+and its review step instead.
 
 ## What is deliberately closed
 

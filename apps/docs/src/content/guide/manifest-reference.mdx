@@ -195,7 +195,7 @@ spec:
 | `write_file` | `{path, content, append}` | Max 512 KB. |
 | `edit_file` | `{path, old_string, new_string, replace_all}` | Replaces one exact string, leaving the rest of the file untouched. Max 4 MB file; refuses a match it cannot find, and a match it finds more than once unless `replace_all` is set; refuses when the resulting file would exceed the limit before writing it. |
 | `search_files` | `{query, path, regex, max_hits}` | ≤ 50 hits; skips files over 256 KB. |
-| `list_skills` / `activate_skill` / `deactivate_skill` | — | Bound to the real catalog when `spec.skills` is set. |
+| `list_skills` / `activate_skill` / `deactivate_skill` / `read_skill_file` | `{name}`; `read_skill_file` also `{path}` | Bound to the real catalog when `spec.skills` or `spec.skill_authoring.enabled` is set; `read_skill_file` is added whenever any skill tool is. |
 | `ask_user` | `{question, kind, options, timeout_seconds}` | Asks the person watching the run and waits for the answer. `kind` is `confirm`, `select` (implied by `options`) or `input`; the timeout defaults to 300 s, max 900. Returns `{answered, value}`, or `{answered: false, reason}`. Only a live `/chat/stream` can reach a person, so anywhere else it returns `reason: "no_one_watching"` at once. |
 
 `ask_user` is how an agent puts a decision to a person instead of guessing: both web clients
@@ -258,10 +258,64 @@ spec:
 | `version` | string \| null | `null` |
 | `description` | string \| null | `null` |
 
-A skill is a `SKILL.md` with YAML frontmatter under `skills/<name>/`. The frontmatter can fold extra
-tools, MCP servers and peers into any manifest that lists it; the body is appended to the system
-prompt under an `## Active Skills` header. Activation is per-tenant and **restriction-only** — a
-tenant overlay can disable declared skills but never enable undeclared ones.
+A skill is a `SKILL.md` with YAML frontmatter and a Markdown body. The system prompt carries the
+catalog — each skill's name and description — and `activate_skill` returns the body to the model as
+instructions. `description` here is not read by the loader (the SKILL.md's own frontmatter supplies
+the catalog's); it is surfaced on the A2A agent card. `version` pins an operator upload at
+`skills/{tenant}/{name}/{version}/SKILL.md`, which then wins over a tenant library skill of the same
+name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the full precedence.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `spec.skills_declared_only` | bool | `false` | `false` seeds the catalog with every bundled skill, every skill in `FELIX_SKILLS_DIR` and every live tenant-library skill, and `spec.skills` adds to that. `true` makes the declared names the whole catalog. |
+
+## `spec.skill_authoring`
+
+Lets the agent write to its tenant's skill library: binds `create_skill`, `update_skill` and
+`submit_skill_feedback`. Off by default.
+
+```yaml
+spec:
+  skill_authoring:
+    enabled: true
+    mode: draft
+    max_pending: 20
+    auto_eval: false
+```
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `false` | Bind the three tools. |
+| `mode` | `draft` \| `publish` | `draft` | `draft`: every save waits for a person to publish it. `publish`: a save is published at once if the publish gate passes, and stays a draft (the result carries `publish_blocked` with the reasons) if not. |
+| `max_pending` | int 1–200 | `20` | Undecided agent drafts this manifest may hold in the tenant's library, and undecided feedback it may have filed, before the tools refuse (`pending_cap_reached`, `feedback_cap_reached`). |
+| `auto_eval` | bool | `false` | Queue an evaluation (`FELIX_SKILL_EVAL_MODEL`) of every draft the agent saves; the result carries its `eval_id`. Model calls on the tenant's bill. |
+
+**`mode: publish` needs an approval on both writes.** Validation refuses the manifest unless the
+approval rule [`spec.approvals`](#specapprovals) would select for `create_skill`, and the one it
+would select for `update_skill`, both exist and carry no `when_args` — a conditional rule lets the
+calls without those arguments through ungated. Literal tool names win over globs and the last match
+wins, as for any approval. So a person reads every skill an agent publishes, in the approval preview
+the harness renders: the SKILL.md that would be saved and, for an edit, the parent version and every
+file kept from it by sha256.
+
+```yaml
+spec:
+  skill_authoring:
+    enabled: true
+    mode: publish
+  approvals:
+    - id: skill-author
+      description: Confirm saving a skill to the library
+      tools: [create_skill, update_skill]
+      ttl_seconds: 600
+      allow_unattended: false
+```
+
+In either mode, an agent's edit of a version an operator wrote is saved as a draft and never
+published automatically, and `submit_skill_feedback` only reaches library skills in this agent's own
+catalog. Drafts and feedback are decided through [`/skill-library`](/guide/management-api/#skill-library).
+The bundled `contributor` manifest enables authoring in `draft` mode; `governed` carries the
+`skill-author` approval rule above.
 
 ## `spec.mcp_servers`
 

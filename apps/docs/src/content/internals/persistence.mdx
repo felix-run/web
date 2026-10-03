@@ -11,15 +11,17 @@ Felix is cloud-agnostic: Postgres, a cache, and an object store behind Protocols
 
 | Store | Config | Holds |
 |---|---|---|
-| **Postgres + pgvector** | `FELIX_DATABASE_URL` | Sessions, audit, manifests, approvals, plans, jobs, fibers, eval, memory vectors |
+| **Postgres + pgvector** | `FELIX_DATABASE_URL` | Sessions, audit, manifests, approvals, plans, jobs, fibers, eval, memory vectors, the skill library's review records |
 | **Valkey / Redis** | `FELIX_REDIS_URL` | Taskiq broker, rate-limit / short-lived cache, queue-tool lists |
-| **Object store** | `FELIX_OBJECT_STORE=fs\|s3\|gcs\|memory` | Artifacts, optional policy bundles / bulk blobs |
+| **Object store** | `FELIX_OBJECT_STORE=fs\|s3\|gcs\|memory` | Artifacts, uploads, skill bytes (operator uploads and the tenant library), optional policy bundles / bulk blobs |
 
 Migrations: Alembic via `felix migrate` (or `make migrate`). Local Compose uses pgvector + Valkey; `fs` object store needs no MinIO. Cloud notes: [deploy](/guide/deploy/), `deploy/aws/`, `deploy/gcp/`.
 
 ## Tenant isolation
 
-Tenant-owned tables lead with `tenant_id` in the primary key. Every store query filters on tenant. Thread ids are `{tenant_id}:{suffix}` — caller suffixes containing `:` or `#` are rejected so the prefix cannot be smuggled.
+Tenant-owned tables lead with `tenant_id` in the primary key. Every store query filters on tenant, and the tenant tables carry the same row-level-security policy (`felix_tenant_isolation`: `tenant_id = current_setting('app.tenant_id')`, unless `app.rls_bypass` is on) — the six skill tables included. A cross-tenant worker sweep, such as the skill-job claim, runs under the bypass, because RLS with no tenant bound would silently return nothing.
+
+Every store has an in-memory twin selected by `FELIX_DATABASE_URL=memory://…`, the supported no-infrastructure path; the skill library, feedback, evaluation and policy stores follow it, and the conformance suite (`test_skill_library_store.py`, `test_skill_quality_store.py`) runs one contract against both arms. Thread ids are `{tenant_id}:{suffix}` — caller suffixes containing `:` or `#` are rejected so the prefix cannot be smuggled.
 
 ## Session events
 
@@ -40,10 +42,28 @@ Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compact
 | `eval_*` | Datasets, items, runs. `put_dataset` upserts on `(tenant_id, dataset_name, item_id)` — it adds and updates items but never removes one, and re-writing an item leaves its `created_at` at first appearance |
 | `memory_vectors` | pgvector HNSW, `vector(768)`; kinds `fact` / `event` / `instruction` / `task`, plus `procedure` rows from procedural memory |
 | `document_chunks` | Operator-ingested corpus; generated `content_tsv` (GIN) + **nullable** pgvector HNSW, so a deployment with no embedder still gets full-text retrieval |
+| `skill`, `skill_version`, `skill_file` | The tenant skill library (migration `0022`). `skill` is `(tenant_id, name)` with `live_version`, the only thing a catalog follows; null when archived. `skill_version` is `(tenant_id, name, version)`, immutable: status `draft` / `published` / `archived`, source `agent` / `operator`, the review score, scan status and findings, and who decided it. The primary key is the save lock: two saves racing to one version collide on the row before either writes bytes. `skill_file` is `(tenant_id, name, version, path)` with the `sha256` and `size` of what was written — never the content |
+| `skill_feedback`, `skill_eval`, `skill_policy` | The library's quality loop (migration `0023`). Feedback and evaluations carry the worker's claim (`claim_token`, `heartbeat_at`, `attempts`); a partial unique index holds a version to one queued or running evaluation. `skill_policy` is one row per tenant, read on top of `FELIX_SKILL_PUBLISH_*` |
 
 ## Object store
 
 Used for artifact spill when `spec.artifacts.enabled` and output exceeds `threshold_chars`. Keys are tenant-scoped: `artifacts/{tenant}/{manifest}/{id}.txt`, with an `{id}.owner` object beside it recording the conversation that spilled it, which is what limits the model's `read_artifact` to its own. Each spill is also recorded in the `artifacts` table (tenant RLS like every tenant table), because the store cannot be listed and an object nothing records is one nothing can collect. The row is written before the objects and deleted after them, so drift is always a row naming absent objects. The worker's nightly retention sweep drops spills older than `FELIX_ARTIFACT_RETENTION_DAYS` — **30 by default**, `0` keeps forever — text, owner record and row together. Uploads (`attachments/`) are swept the same way but kept forever by default. Spills written before migration `0018` have no row and are not collected. Small VMs: `FELIX_OBJECT_STORE=fs` under `FELIX_DATA_DIR`. Helm: enable `persistence` so `/data` survives restarts.
+
+### Skill bytes
+
+Two prefixes, written by different people, never overlapping:
+
+| Prefix | Key | Written by | Read |
+|---|---|---|---|
+| `skills/` | `skills/{tenant}/{name}/SKILL.md`, `skills/{name}/SKILL.md`, and pinned `…/{name}/{version}/SKILL.md` | the operator, directly in the store | by the catalog loader for declared names |
+| `skill-library/` | `skill-library/{tenant}/{name}/{version}/{path}` | the library service only | live versions only, each checked against its `skill_file` digest |
+
+Library bytes never land under `skills/`, so an agent's draft cannot overwrite an operator's upload
+pinned at the same version, and a library version is read only through its `skill_file` rows, so a
+reader cannot be steered at an object the save did not write. A library SKILL.md whose bytes no
+longer match their digest is left out of the catalog; the management file route answers
+`500 version_corrupt`, and a publish of it is blocked. Versions are never deleted, so their objects
+are not collected; a skill holds at most 200 versions.
 
 ## Analytics warehouse (optional)
 
