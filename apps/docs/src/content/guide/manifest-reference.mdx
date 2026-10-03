@@ -455,6 +455,66 @@ build logs a warning saying so: set `image_model` to let screenshots through. A 
 KiB is reported by size instead. `pdf` is not an image either wire can show and is still returned
 inline as text, up to 32 KB.
 
+## `spec.image_tools`
+
+Image operations the model can run on the images in its conversation, backed by Pillow. Install the
+`image` extra (`uv sync --extra image`, or `FELIX_DOCKER_EXTRAS=image`). Without it each tool still
+binds and answers with what to install.
+
+```yaml
+spec:
+  image_tools:
+    - { name: list_images, op: list }
+    - { name: thumbnail_image, op: thumbnail }
+    - { name: crop_image, op: crop }
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `description` | string | a description of the op |
+| `op` | `list` \| `info` \| `resize` \| `crop` \| `rotate` \| `convert` \| `thumbnail` | required |
+| `allow_path` | bool | `false` |
+| `fatal` | bool | `false` |
+
+One op per tool, so a manifest grants exactly the operations it names. A model sees an image's
+pixels, not its file id, so every op except `list` takes `image`:
+- `latest`, the default: the newest image in the thread's active branch;
+- `#n`, as a `list` tool numbers them;
+- a `felix-file://` reference the thread holds.
+
+A reference to any other upload is refused. A tool whose entry sets `allow_path: true` also takes
+`path`, a file under `FELIX_WORKSPACE_ROOT`. That directory is shared by every tenant on the host,
+which is why reading it is opt-in. The ops' own arguments:
+
+| Op | Arguments | Returns |
+|---|---|---|
+| `list` | none | The thread's images, newest last, as `#n` with where each came from |
+| `info` | — | Format, size, mode and frame count, as text |
+| `resize` | `width`, `height` (either alone keeps the aspect ratio) | The resized image |
+| `crop` | `left`, `top`, `right`, `bottom` in pixels | The box |
+| `rotate` | `degrees`, counter-clockwise | The rotated image, on a canvas grown to fit |
+| `convert` | `format` (`png`, `jpeg`, `webp`, `gif`), `quality` | The re-encoded image |
+| `thumbnail` | `max_size` for the longest side (default 512) | The shrunk image |
+
+Each result comes back as an image the model sees. It is stored under the request's tenant, with
+the attachment quota and retention, and it counts against the request's 16 tool images (charged
+before anything is written). Its `felix-file://` reference is named in the reply, so the next call
+can work on it.
+
+Bounds:
+- Only png, jpeg, gif and webp are parsed, as sniffed from the bytes, so no other Pillow decoder is
+  reachable.
+- Input is read up to 20 MiB, and an image whose header claims more than 4096×4096 pixels is
+  refused before decoding.
+- Output is at most 4096 px a side and is downscaled to fit the 600 KiB attachment limit.
+- At most two images are decoded at once per process.
+
+Under `content_screening`, results are screened according to where their input came from:
+- with `image_model`, every result is screened like an untrusted tool's image;
+- without it, a result made from a workspace file is quarantined, and one made from a thread image
+  passes.
+
 ## `spec.search_tools`
 
 Search the web through the backend an **operator** configured. The model supplies a query,
