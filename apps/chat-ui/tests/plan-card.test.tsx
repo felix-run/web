@@ -89,4 +89,45 @@ describe('plans in a turn', () => {
     // The two plan calls are what the card stands for, so neither draws a tool card.
     expect(screen.queryByText('plan_update_step')).toBeNull();
   });
+
+  it('recovers step titles the harness dropped, from what plan_create was sent', () => {
+    // Measured on :8080: the model sent `description`, the harness stored `title: ""`.
+    const create: ToolCall = {
+      name: 'plan_create',
+      input: {
+        steps: [
+          { id: 's1', description: 'Collect merged PRs' },
+          { id: 's2', description: 'Draft notes' },
+        ],
+      },
+      output: JSON.stringify({
+        id: 'p9',
+        plan: {
+          title: 'Ship',
+          steps: [
+            { id: 's1', title: '', status: 'pending' },
+            { id: 's2', title: '', status: 'pending' },
+          ],
+        },
+      }),
+      done: true,
+    };
+    const update: ToolCall = {
+      name: 'plan_update_step',
+      input: { plan_id: 'p9', step_id: 's1', status: 'done' },
+      output: JSON.stringify({
+        id: 'p9',
+        plan: {
+          title: 'Ship',
+          steps: [
+            { id: 's1', title: '', status: 'done' },
+            { id: 's2', title: '', status: 'pending' },
+          ],
+        },
+      }),
+      done: true,
+    };
+    const plan = plansInTurn([create, update]).latest.get('p9');
+    expect(plan?.steps.map((s) => s.title)).toEqual(['Collect merged PRs', 'Draft notes']);
+  });
 });

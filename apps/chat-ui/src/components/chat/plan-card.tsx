@@ -58,7 +58,7 @@ export function PlanCard({ plan, live }: { plan: PlanState; live: boolean }) {
       </PlanHeader>
       <PlanContent className="border-t border-border/50 px-3 py-2">
         <ol className="space-y-1.5">
-          {plan.steps.map((step) => {
+          {plan.steps.map((step, index) => {
             const { Icon, tone } = STEP[step.state];
             return (
               <li key={step.id} className="flex items-start gap-2">
@@ -69,7 +69,9 @@ export function PlanCard({ plan, live }: { plan: PlanState; live: boolean }) {
                       step.state === 'done' ? 'text-muted-foreground' : 'text-foreground',
                     )}
                   >
-                    {step.title}
+                    {/* A step can arrive with no title at all; its number still says
+                        which one it is. */}
+                    {step.title || `Step ${index + 1}`}
                   </span>
                   {step.note ? <p className="text-xs text-muted-foreground">{step.note}</p> : null}
                 </div>

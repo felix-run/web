@@ -1463,6 +1463,42 @@ export function AppShell() {
    * the n-th on the snapshot's active branch; a count that disagrees means the two
    * have diverged and the edit refuses rather than guessing which message was meant.
    */
+  /**
+   * After an edit's run: learn the versions it created, without a rebuild.
+   *
+   * The switcher reads `branchPoints` off a snapshot and is keyed by the user
+   * message's event id, which a message sent in this tab does not have — so on
+   * the live check the edited turn showed no `‹ 2 of 2 ›` until a reload. A full
+   * hydrate would supply both but discards detail only this tab holds (a run's
+   * live reasoning, its unsaved tool output), so this stamps the server's ids onto
+   * the local user turns by position, the same ordinal match the edit itself
+   * uses, and refuses when the counts disagree rather than guessing.
+   */
+  const adoptVersions = useCallback(
+    async (id: string) => {
+      const snap = await getSessionSnapshot(id).catch(() => null);
+      if (!snap?.transcript?.length || threadIdRef.current !== id) return;
+      setBranches(branchPoints(snap));
+      const serverUsers = eventsToTurns(snapshotToEvents(snap)).filter((t) => t.role === 'user');
+      const local = engine.state.turns;
+      if (local.filter((t) => t.role === 'user').length !== serverUsers.length) return;
+      let k = 0;
+      engine.setTurns(
+        local.map((t) => {
+          if (t.role !== 'user') return t;
+          const server = serverUsers[k++];
+          if (!server?.eventId || t.eventId) return t;
+          return {
+            ...t,
+            eventId: server.eventId,
+            ...(server.parentEventId ? { parentEventId: server.parentEventId } : {}),
+          };
+        }),
+      );
+    },
+    [engine],
+  );
+
   const editingRef = useRef(false);
   const editTurn = useCallback(
     async (turnId: string, text: string) => {
@@ -1513,6 +1549,7 @@ export function AppShell() {
         // way back with it — before any reply longer than a few seconds landed.
         await streamInto([userMessage], assistantId);
         if (threadIdRef.current !== threadId) return;
+        await adoptVersions(threadId);
 
         toast.message(
           'Edited. The original and its replies are kept on another branch.',
@@ -1543,7 +1580,7 @@ export function AppShell() {
         editingRef.current = false;
       }
     },
-    [engine, streaming, threadId, manifest, streamInto, hydrateFromServer],
+    [engine, streaming, threadId, manifest, streamInto, hydrateFromServer, adoptVersions],
   );
 
   /**
