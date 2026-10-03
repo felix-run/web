@@ -116,6 +116,7 @@ the following ever fires:
 | `run_scheduled_jobs` | `* * * * *` | Sweep due `jobs` rows |
 | `fiber_scheduler` | `* * * * *` | Wake and resume due durable fibers |
 | `webhook_delivery` | `* * * * *` | POST finished durable runs to their completion webhooks, with retry |
+| `skill_jobs` | `* * * * *` | Run accepted skill improvements (each into a draft) and queued skill evaluations, at most five of each per sweep |
 | `continuous_eval` | `*/10 * * * *` | Continuous eval tick |
 | `consolidate_memory` | `*/15 * * * *` | Memory consolidation |
 | `anomaly_scan` | `*/30 * * * *` | Error-rate scan and canary auto-rollback |

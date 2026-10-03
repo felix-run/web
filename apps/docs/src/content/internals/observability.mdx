@@ -159,8 +159,9 @@ activity. The request span still measures the whole request.
 ## Audit events
 
 Every row carries `tenant_id`, `ts`, `event_type`, `manifest_id`, `principal_subj`, `status` and
-`payload_json`. Seven types are written — four by the agent loop, three by the governance wrappers
-on either side of it:
+`payload_json`. Seven types come from a turn — four by the agent loop, three by the governance
+wrappers on either side of it — and the skill tools and the skill library write the
+[skill events](#skill-events) below:
 
 | `event_type` | Emitted | `status` | Payload |
 |---|---|---|---|
@@ -185,6 +186,31 @@ What does *not* land there is anything decided outside a tool call: a turn refus
 `inbound_screening`, and an answer blocked on the way out is `guardrails_reply` or `judge_deny`. An
 incident query filtered to `policy_deny` alone sees none of those three.
 :::
+
+### Skill events
+
+`skill_activation` is written by `activate_skill` and `deactivate_skill` inside a turn. The rest are
+written by the skill library for work done outside one — a management route acting for an operator,
+or a worker job — so `principal_subj` is the operator, the authoring manifest's id for an agent's
+save, or `skill-improver` / `skill-eval` for the worker. The five version events (`skill_draft_saved`
+through `skill_archived`) carry the version's `origin_manifest_id` as `manifest_id` — empty for an
+operator's save — and their payloads name `skill`, `version`, `source`, `author`, `quality_score` and
+`security_status`. Feedback events name `skill`, `target_version`, `feedback_id`, `source` and
+`author`, with the authoring manifest as `manifest_id` for an agent's feedback.
+
+| `event_type` | Emitted | `status` | Payload adds |
+|---|---|---|---|
+| `skill_activation` | `activate_skill` / `deactivate_skill` | `ok`, `unknown_skill` | `action`, `skill`, `thread_id`, `tool_call_id` |
+| `skill_draft_saved` | Every save, agent or operator | `ok` | `parent`, `reason` (first 200 chars, redacted), `shadows_operator_upload`, `principal` |
+| `skill_published` | A publish | `ok`, `blocked` | `previous`, or `reasons` when blocked |
+| `skill_rolled_back` | A rollback | `ok`, `blocked` | `previous`, or `reasons` when blocked |
+| `skill_rejected` | A draft rejected | `ok` | `note` (first 200 chars) |
+| `skill_archived` | `DELETE /skill-library/{name}` | `ok` | `previous` |
+| `skill_feedback_submitted` | Feedback filed | `ok` | `feedback_status`, `body_chars`, `has_patch` — never the body |
+| `skill_feedback_accepted` / `skill_feedback_rejected` | A person's decision | `ok` | `improve` |
+| `skill_feedback_applied` / `skill_feedback_failed` | The worker's improvement | `ok` | `result_version`, `model`, `error` |
+| `skill_eval_queued` / `skill_eval_finished` | An evaluation queued / run | `ok`, `failed` | `skill`, `version`, `eval_id`, `eval_status`, `scenario_source`, `baseline_score`, `with_skill_score`, `uplift`, `error` |
+| `skill_policy_updated` / `skill_policy_deleted` | `PATCH` / `DELETE /skill-library/-/policy` | `ok` | `before`, `after` (each with `source`), `tenant` |
 
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
 truncation marker) so a runaway loop cannot flood storage.

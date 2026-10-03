@@ -1,6 +1,6 @@
 ---
 title: "Management API"
-description: "Tenant-scoped management endpoints — audit, approvals, plans, memory, documents, artifacts, files, skills, jobs, manifests, eval, usage — with scope requirements and curl examples."
+description: "Tenant-scoped management endpoints — audit, approvals, plans, memory, documents, artifacts, files, skills, the skill library, jobs, manifests, eval, usage — with scope requirements and curl examples."
 sidebar:
   order: 5
 ---
@@ -30,7 +30,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `documents:read` / `documents:write` | search and list the corpus / ingest and delete |
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 | `files:read` / `files:write` | read an upload back / upload and delete |
-| `skills:read` | `/skills/{manifest_name}` and everything under it |
+| `skills:read` / `skills:write` | `/skills/{manifest_name}` and every `/skill-library` read / save, publish, roll back, reject, archive, decide feedback, queue evaluations and set the publish policy |
 
 Three rules make this practical:
 
@@ -78,8 +78,9 @@ curl -s "$BASE_URL/audit?limit=20&status=denied" \
   -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
-**Seven** event types are written. Filter on these — `event_type` is matched literally, so a name
-that is not in this table returns an empty page rather than an error:
+**Seven** event types come from a turn. Filter on these — `event_type` is matched literally, so a
+name that is not in this table, or among the skill events below it, returns an empty page rather
+than an error:
 
 | `event_type` | Emitted by | `status` |
 |---|---|---|
@@ -91,7 +92,14 @@ that is not in this table returns an empty page rather than an error:
 | `guardrails_reply` | the reply path, when PII was found in the answer | `blocked`, `redacted` |
 | `judge_deny` | the reply path, when a `final_response` judge scored under threshold | `denied` |
 
-The last three are the ones an operator looking only at `policy_deny` will miss. They are emitted
+The skill tools and the [skill library](#skill-library) write `skill_activation`,
+`skill_draft_saved`, `skill_published`, `skill_rolled_back`, `skill_rejected`, `skill_archived`,
+`skill_feedback_submitted`, `skill_feedback_accepted`, `skill_feedback_rejected`,
+`skill_feedback_applied`, `skill_feedback_failed`, `skill_eval_queued`, `skill_eval_finished`,
+`skill_policy_updated` and `skill_policy_deleted`; payloads are in
+[Observability](/internals/observability/#skill-events).
+
+Of the seven, the last three are the ones an operator looking only at `policy_deny` will miss. They are emitted
 by the governance wrappers on either side of the loop rather than by the loop itself, so they carry
 no `tool` — `inbound_screening` carries `surface` (`turn` or `tool_arguments`), `judge_deny` carries
 `judge`, `score` and `threshold`.
@@ -533,9 +541,10 @@ reference.
 
 ## Skills
 
-Read-only inspection of the [Agent Skills](/guide/manifest-reference/) a manifest compiles: which
+Read-only inspection of the [Agent Skills](/guide/concepts/#skill) a manifest compiles: which
 skills the model can reach, which are active, and the instructions activation would hand it.
-Activation stays a decision the model makes mid-turn; there is no write surface.
+Activation stays a decision the model makes mid-turn; there is no write surface here. Writing the
+tenant's skills is the [skill library](#skill-library).
 
 | Method | Path | Scope |
 |---|---|---|
@@ -548,7 +557,7 @@ behind it — so the answer is what the next turn will see. An unknown or invali
 skill not in its catalog, is `404 not_found`.
 
 The list returns `{manifest, declared_only, items, active}`. Each item is
-`{name, description, version, active, has_body, model_invocable, declared}`:
+`{name, description, version, active, has_body, model_invocable, declared, source}`:
 
 | Field | Meaning |
 |---|---|
@@ -556,15 +565,17 @@ The list returns `{manifest, declared_only, items, active}`. Each item is
 | `has_body` | the skill has instructions; the body itself is only on the single-skill route |
 | `model_invocable` | `false` when the skill sets `disable_model_invocation` — in the catalog, never offered to the model |
 | `declared` | the manifest named it in `spec.skills` |
+| `source` | `bundled` (the harness's `skills/` or `FELIX_SKILLS_DIR`), `store` (an operator's object-store upload) or `library` (the live version of a tenant-library skill) |
 
 `declared: false` is the one to read. Unless the manifest sets `spec.skills_declared_only`, the
-catalog is seeded with every bundled skill and every skill in `FELIX_SKILLS_DIR` before `spec.skills`
-is resolved, so a manifest declaring one skill is offered every skill on the host. With
-`declared_only: true`, only declared skills are in the catalog.
+catalog is seeded with every bundled skill, every skill in `FELIX_SKILLS_DIR` and every live skill
+in the tenant's library before `spec.skills` is resolved, so a manifest declaring one skill is offered
+every skill on the host and in the library. With `declared_only: true`, only declared skills are in
+the catalog.
 
 The single-skill route returns `{name, description, version, filename, metadata, active,
-model_invocable, declared, body}`. `body` is the text appended to the system prompt on activation;
-`body` and `metadata` are secret-redacted, and `filename` is the basename only. A skill named in
+model_invocable, declared, source, body}`. `body` is the instructions `activate_skill` returns to the
+model; `body` and `metadata` are secret-redacted, and `filename` is the basename only. A skill named in
 `spec.skills` whose body was never found still resolves, with the loader's placeholder description
 and an empty body.
 
@@ -573,6 +584,241 @@ state. `limit` is 1–200, default 50. Each item is `{ts, skill, action, thread_
 status}`: `action` is `activate` or `deactivate`, and `status` is `ok` or `unknown_skill` (the model
 named a skill that does not exist). `tool_call_id` joins the row to the matching `tool_call` audit
 event.
+
+## Skill library
+
+The tenant's own skills: every skill an agent drafted (`create_skill`, `update_skill`) or an operator
+saved, each version's review record, the feedback on it, its evaluations, and the publish policy.
+`/skills/{manifest}` answers "what can this manifest's model reach"; this answers "what is in the
+library, and what is waiting on a person". [Concepts → Skill](/guide/concepts/#skill) has the model.
+
+Reads need `skills:read`; anything that changes the library needs `skills:write`, which implies the
+read. The principal is recorded as the author of a save, as `decided_by` on a decision, and on every
+audit event. Every state change goes through the same library service an agent's tools use, so an
+operator's publish passes the same [gate](/internals/governance/#the-skill-publish-gate) as an
+agent's, and a failing security scan blocks whoever asks.
+
+<Aside type="caution">
+With `FELIX_AUTH_MODE=none` the scope checks are skipped entirely, so anyone who can reach the API
+can publish a skill to every manifest in the tenant.
+</Aside>
+
+| Method | Path | Scope | Success |
+|---|---|---|---|
+| `GET` | `/skill-library?status=&source=&limit=&cursor=` | `skills:read` | `200` |
+| `GET` | `/skill-library/-/review?limit=&cursor=` | `skills:read` | `200` |
+| `GET` | `/skill-library/-/feedback?status=&limit=&cursor=` | `skills:read` | `200` |
+| `GET` | `/skill-library/-/policy` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}/versions/{version}` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}/versions/{version}/files/{path}` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}/versions/{version}/preview` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}/feedback?status=&limit=&cursor=` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}/evals?version=&limit=&cursor=` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}/evals/{eval_id}` | `skills:read` | `200` |
+| `POST` | `/skill-library` | `skills:write` | `201` |
+| `PUT` | `/skill-library/{name}/versions` | `skills:write` | `201` |
+| `POST` | `/skill-library/{name}/versions/{version}/publish` | `skills:write` | `200` |
+| `POST` | `/skill-library/{name}/versions/{version}/rollback` | `skills:write` | `200` |
+| `POST` | `/skill-library/{name}/versions/{version}/reject` | `skills:write` | `200` |
+| `DELETE` | `/skill-library/{name}` | `skills:write` | `200` |
+| `POST` | `/skill-library/{name}/versions/{version}/eval` | `skills:write` | `202` |
+| `POST` | `/skill-library/{name}/feedback` | `skills:write` | `201` |
+| `POST` | `/skill-library/-/feedback/{feedback_id}/accept` | `skills:write` | `200` |
+| `POST` | `/skill-library/-/feedback/{feedback_id}/reject` | `skills:write` | `200` |
+| `PATCH` | `/skill-library/-/policy` | `skills:write` | `200` |
+| `DELETE` | `/skill-library/-/policy` | `skills:write` | `200` |
+
+### Addressing and paging
+
+Collection-wide routes sit under `/-/`. `-` cannot be a skill name, so every skill stays addressable
+as `/{name}` and no name is reserved. A name is 1–64 lowercase letters, digits and single hyphens; a
+version is `major.minor.patch`. Anything else is `404 not_found` before a store is read.
+
+Every listing returns `{items, next_cursor}`. Pass `next_cursor` back as `cursor`; it is `null` on the
+last page. `limit` is 1–100, default 50.
+
+| Listing | Order | Filters |
+|---|---|---|
+| `GET /skill-library` | by name | `status`: `live` (has a live version), `draft` (has drafts awaiting review), `archived` (neither); `source`: `agent` or `operator`, of the newest version |
+| `GET /-/review` | oldest draft first, across skills | — |
+| `GET /-/feedback` | oldest first | `status`, default `pending` |
+| `GET /{name}/feedback` | newest first | `status` |
+| `GET /{name}/evals` | newest first | `version` |
+
+The library list applies its filters to a page **after** reading it, so a filtered page can be
+short — even empty — and still have a next one; follow `next_cursor` until it is null. Each item is
+`{name, live_version, latest, pending_drafts, shadows_operator_upload, created_by, created_at,
+updated_at}`, where `latest` is the newest version's `{version, status, source, quality_score,
+security_status, created_at}`. A review-queue item is a version record plus the skill's
+`live_version`, to diff against. A cursor the route did not issue is `422 invalid_cursor`.
+
+### Reading a skill
+
+`GET /{name}` returns the skill and its versions, newest first, metadata only. A **version record**
+is `{name, version, parent_version, status, source, author, origin_manifest_id, session_id, reason,
+description, quality_score, security_status, decided_by, decision_note, created_at, decided_at,
+published_at}`. `status` is `draft`, `published` (the live one) or `archived` (superseded, rejected,
+or taken out by an archive); `source` is `agent` or `operator`. `GET /{name}/versions/{version}` adds
+`review_checks`, `security_issues`, `files` (`{path, sha256, size}`) and `shadows_operator_upload`.
+
+`shadows_operator_upload: true` means an operator upload exists under the same name at a key a
+`spec.skills` ref reads, so the name is split: an unpinned ref gets the library's live version, a ref
+pinning the upload's version gets the upload. The object store has no listing, so only the
+unversioned keys and the versions in question are probed.
+
+`GET …/files/{path}` returns `{path, encoding, content_type, content, sha256, size}` for one file,
+read back against the digest recorded when it was saved. Text is `utf-8` and secret-redacted; a
+binary asset under `assets/` is `base64` and unredacted. A path outside the bundle allowlist is
+`422 invalid_path`; bytes that no longer match their digest are `500 version_corrupt`.
+
+`GET …/preview` re-runs validation, the quality review and the security scan on the stored bytes and
+applies the publish policy in force: `{name, version, status, valid, validation_issues,
+quality_score, review_checks, security_status, security_issues, policy_passes, reasons}`. It changes
+nothing and is not audited. `policy_passes` says whether the gate would let these bytes through, not
+whether the version's state allows a publish.
+
+**Every read is redacted by default.** Every field of a row except a structural allowlist — ids,
+names, versions, statuses, sources, authors and principals, paths, digests, model route ids — is
+secret-redacted on the way out: reasons, descriptions, decision notes, review-check and
+security-issue messages, feedback bodies and suggested patches, evaluation scenarios, judge reasons
+and job errors. A field added later is redacted unless someone decides it is structural.
+
+### Saving a version
+
+Both saves take `{files, reason, publish}`. `files` maps a bundle path to its content (1–200 entries;
+a binary asset under `assets/` is base64), `reason` is at most 2000 characters, and `publish: true`
+also publishes in the same request.
+
+```bash
+curl -s -X POST "$BASE_URL/skill-library" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"files":{"SKILL.md":"---\nname: invoice-triage\ndescription: Sort incoming invoices by urgency.\n---\n\nRead the due date first.\n"},"reason":"first cut"}' | jq
+```
+
+`POST /skill-library` creates a skill at `0.1.0` under the SKILL.md's own `name`; `409 skill_exists`
+if the library already holds it. `PUT /{name}/versions` adds a version and also takes:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `parent_version` | `major.minor.patch`, required | The newest version the editor loaded. `409 parent_changed` when anything newer was saved since, so two editors cannot silently overwrite each other. |
+| `version` | string | An explicit new version; it must be newer than every existing one (`409 version_conflict`). |
+| `bump` | `patch` \| `minor` \| `major` | Bump the newest version; default `patch`. Give `version` or `bump`, not both. |
+
+A save is validated, reviewed and scanned before anything is written; an invalid bundle is
+`422 invalid_bundle` with up to 50 `issues` (`{path, message}`). Both return the new version's record
+with `files`, `shadows_operator_upload`, `published`, and `publish_blocked` — the refusal body of the
+publish asked for, or `null`. The draft is saved either way. Operator saves are not counted against
+any manifest's `max_pending`; a skill holds at most 200 versions (`409 version_cap_reached`).
+
+### Publish, roll back, reject, archive
+
+| Route | From | Effect |
+|---|---|---|
+| `…/publish` | a draft | Runs the gate; the version becomes `live_version` and the one it replaces is archived. `422 publish_blocked` with `reasons`. |
+| `…/rollback` | a version that was once live | Runs the gate **without** the evaluation requirement; makes it live again. |
+| `…/reject` | a draft | Body `{note}` (1–2000 characters). Archives the draft without publishing it. |
+| `DELETE /{name}` | any skill | Clears `live_version`, so the skill leaves every catalog. Versions and bytes are kept, and a rollback brings one back. Returns `{name, live_version}`. |
+
+A version in the wrong state for the move is `409 version_conflict`. Publish and rollback take an
+optional `{expected_live_version}`: the live version the page showed, or `null` for "nothing was
+live". It is checked under the skill row's lock, and another version being live by then is
+`409 live_changed`. Leave the body out to move whatever is live.
+
+### Feedback
+
+`POST /{name}/feedback` takes `{body, suggested_patch, target_version}` — `body` 1–8000 characters,
+`suggested_patch` up to 32000, `target_version` defaulting to the live version, else the newest — and
+files it as `source: human`, `status: pending`. An agent files the same with `submit_skill_feedback`.
+
+| `status` | Means |
+|---|---|
+| `pending` | waiting for a person |
+| `accepted` | accepted; with `improve`, waiting for the worker, otherwise final |
+| `applied` | the worker saved a rewrite as draft `result_version`, now in the review queue |
+| `failed` | the rewrite failed; `error` says why (`parent_changed` if the skill moved past `target_version`) |
+| `rejected` | final |
+
+`…/accept` takes an optional `{improve, note}`; `improve` defaults to `true`, which queues an AI
+rewrite as a skill job. `…/reject` requires `{note}`. Deciding feedback that was already decided is
+`409 feedback_conflict`. A feedback row also carries `model`, `claimed_at`, `heartbeat_at` and
+`attempts` for the worker's run.
+
+### Evaluations
+
+`POST …/versions/{version}/eval` queues an evaluation and returns it `queued` with `202`. The
+worker's `skill_jobs` sweep runs it within a minute; poll `GET /{name}/evals/{eval_id}`. A version
+holds one queued or running evaluation at a time (`409 eval_in_progress`).
+
+An evaluation is `{id, name, version, status, scenario_source, scenarios, baseline_score,
+with_skill_score, uplift, results, model, judge_model, error, requested_by, created_at, started_at,
+heartbeat_at, attempts, finished_at, counts_for_gate, gate_note}`. `status` is `queued`, `running`,
+`succeeded` or `failed`. Scores are 0–100 from the judge, `uplift` is `with_skill_score −
+baseline_score`, and all three are null until it has succeeded. `results` holds each scenario's two
+scores, uplift and the judge's reasons.
+
+Scenarios come from the bundle when it has them — `evals/scenarios.json` (a list) or one
+`evals/<dir>/scenario.json` each, every entry `{name, prompt, criteria}`, at most 10 — else up to 5
+are generated by the eval model from the SKILL.md, else three defaults are built around the
+description (`scenario_source`: `bundle`, `generated`, `default`). `FELIX_SKILL_EVAL_MAX_SCENARIOS`
+caps all three. A version's first evaluation fixes its scenarios, and every later one reuses them.
+
+`counts_for_gate` says whether the evaluation can satisfy `require_eval` and `min_eval_uplift`, and
+`gate_note` why not: only a succeeded one can, and for a version an agent wrote only one on the
+bundle's own `evals/` scenarios.
+
+### Publish policy
+
+`GET /-/policy` returns the gate in force: `{min_quality, block_on_advisory, security_fail_blocks,
+require_eval, min_eval_uplift, source, tenant_values, updated_at, updated_by}`. `security_fail_blocks`
+is always `true`.
+
+`PATCH /-/policy` sets fields of the tenant's own policy and returns the policy now in force. Only
+the fields sent change.
+
+| Field | Type | Tightened by the deployment's |
+|---|---|---|
+| `min_quality` | int 0–100 | `FELIX_SKILL_PUBLISH_MIN_QUALITY` — the higher wins |
+| `block_on_advisory` | bool | `FELIX_SKILL_PUBLISH_BLOCK_ON_ADVISORY` — either blocks |
+| `require_eval` | bool | `FELIX_SKILL_PUBLISH_REQUIRE_EVAL` — either requires |
+| `min_eval_uplift` | int −100–100, or `null` to remove the tenant's floor | `FELIX_SKILL_PUBLISH_MIN_EVAL_UPLIFT` — the higher floor wins |
+
+**Tighten only.** The deployment's settings are a floor a tenant cannot go under. A value looser than
+a setting is stored and outvoted, and `source` reads `tenant+settings`, with `tenant_values` showing
+what the tenant set; `tenant` means the tenant's policy is at least as strict everywhere; `settings`
+means there is no tenant policy. `DELETE /-/policy` drops the tenant's values, so the settings alone
+decide. `min_eval_uplift` without `require_eval` still blocks a version that has no evaluation that
+counts. Changes are audited as `skill_policy_updated` and `skill_policy_deleted`.
+
+### Errors
+
+Every refusal is `{error, message}`, with `issues` on `invalid_bundle` and `reasons` on
+`publish_blocked`.
+
+| `error` | Status | When |
+|---|---|---|
+| `not_found` | `404` | The skill, version, file, feedback or evaluation is not in the library |
+| `invalid_bundle` | `422` | The files do not validate |
+| `publish_blocked` | `422` | The publish gate refused the version |
+| `invalid_cursor` | `422` | `cursor` is not one this route issued |
+| `invalid_path` | `422` | A file path outside the bundle allowlist |
+| `name_shadows_host_skill` | `409` | The name is a bundled or `FELIX_SKILLS_DIR` skill, or an operator upload at an unversioned key |
+| `skill_exists` | `409` | `POST /skill-library` for a name the library holds |
+| `parent_changed` | `409` | `parent_version` is not the newest version |
+| `parent_rejected` | `409` | An agent's edit named a rejected draft as its parent |
+| `version_conflict` | `409` | The version exists, is not newer than every existing one, or is in the wrong state |
+| `live_changed` | `409` | `expected_live_version` is not the live version |
+| `version_cap_reached` | `409` | The skill already holds 200 versions |
+| `feedback_conflict` | `409` | The feedback was already decided |
+| `eval_in_progress` | `409` | The version already has an evaluation queued or running |
+| `pending_cap_reached` | `429` | An agent's manifest holds `max_pending` undecided drafts |
+| `feedback_cap_reached` | `429` | An agent's manifest holds `max_pending` undecided feedback |
+| `skill_jobs_cap_reached` | `429` | The tenant's skill-job caps; see [Deploy](/guide/deploy/#skill-jobs) |
+| `version_corrupt` | `500` | The object store no longer holds the bytes the row recorded |
+
+A `429` drains as drafts, feedback and jobs are decided or run, so a retry later can succeed. A
+request body that fails schema validation is FastAPI's `422 {"detail": […]}`, not this shape. A
+missing scope is `403`, an unauthenticated caller `401`, as everywhere here.
 
 ## Jobs
 

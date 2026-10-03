@@ -21,9 +21,9 @@ Manifests use `apiVersion: felix/v1`, `kind: Agent` (Pydantic v2, `extra=forbid`
 
 1. **Validate** — re-check schema + cross-field rules (single vs multi-agent, pattern registry kind, durable + checkpointer constraints).
 
-2. **System prompt** — join soul (if enabled) + `system_prompt.base` + `inline`, then append activated skills.
+2. **System prompt** — join soul (if enabled) + `system_prompt.base` + `inline`.
 
-3. **Skills** — load `SKILL.md` metadata; fold declared tools/MCP/peers; apply per-tenant activation overlay (restriction-only).
+3. **Skills** — build the catalog (host directories, then the tenant library's live versions, then operator uploads for declared refs) and append it to the prompt as an `<available_skills>` block of names and descriptions; bind `list_skills` / `activate_skill` / `deactivate_skill` / `read_skill_file`, which return a body only on activation. With `spec.skill_authoring.enabled`, also bind `create_skill`, `update_skill` and `submit_skill_feedback` — before governance, so an approvals rule holds them.
 
 4. **External tools** — bind MCP servers (`server__tool`), A2A peers (`peer__name`), sandboxes, containers, queues (Valkey/Redis lists), browser tools (Playwright extra). Bind failures are logged; the rest of the agent still builds.
 

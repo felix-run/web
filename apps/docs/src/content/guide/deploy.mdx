@@ -236,7 +236,7 @@ Scheduled jobs (`PUT /jobs/{name}`) use standard **five-field** cron, evaluated 
 :::note
 The worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the sweep is *enqueued* by
 `felix-scheduler`. Run all three containers — API, worker **and** scheduler — or no job, retention
-sweep or memory consolidation ever fires. Durable runs are the exception: each worker polls for them
+sweep, memory consolidation, skill evaluation or skill improvement ever fires. Durable runs are the exception: each worker polls for them
 itself (below), and the scheduler's once-a-minute `fiber_scheduler` sweep is only the backstop.
 :::
 
@@ -286,6 +286,49 @@ Delivery runs in the worker's `webhook_delivery` cron, so it needs `felix-schedu
 other periodic task. Each attempt increments `felix_webhook_delivery{endpoint, outcome}` with
 `outcome` one of `delivered`, `retry`, `dead`. The payload and how to verify it:
 [REST API → Completion webhooks](/guide/rest-api/#completion-webhooks).
+
+## Skill library
+
+Agent Skills come from the image's bundled `skills/`, from `FELIX_SKILLS_DIR`, from `SKILL.md` keys
+an operator uploads to the object store, and from each tenant's skill library, which agents with
+`spec.skill_authoring` and operators with `skills:write` write through review. See
+[Concepts → Skill](/guide/concepts/#skill).
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SKILLS_DIR` | empty | An extra directory of `SKILL.md` packages, searched after the bundled `skills/`. The library refuses to save a name either one holds. |
+| `FELIX_SKILL_PUBLISH_MIN_QUALITY` | `0` | 0–100. Refuse a publish whose quality review scores below this; `0` turns the bar off. |
+| `FELIX_SKILL_PUBLISH_BLOCK_ON_ADVISORY` | `false` | Also refuse a version whose security scan is `advisory` (medium findings), not only `fail`. |
+| `FELIX_SKILL_PUBLISH_REQUIRE_EVAL` | `false` | Refuse a publish unless the version has a succeeded evaluation that counts. |
+| `FELIX_SKILL_PUBLISH_MIN_EVAL_UPLIFT` | unset | −100–100. Refuse a publish unless the version's latest counting evaluation has at least this uplift; unset is no floor. |
+
+A version whose security scan fails never publishes, whatever these say. They are the deployment's
+floor: a tenant's own policy (`PATCH /skill-library/-/policy`) can tighten every one and loosen none.
+A rollback is judged without the two evaluation settings.
+
+### Skill jobs
+
+Evaluations and AI improvements from accepted feedback run in the worker's `skill_jobs` task,
+enqueued every minute by **`felix-scheduler`** — run it alongside `felix-worker`, or a queued
+evaluation stays `queued` and accepted feedback is never rewritten. The API never enqueues to the
+worker directly. Each sweep runs at most five jobs of each kind, and one sweep runs at a time across
+every worker.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SKILL_IMPROVE_MODEL` | empty | The `FELIX_MODEL_ROUTES` id that rewrites a skill from accepted feedback; empty is `FELIX_DEFAULT_MODEL_ID`. The rewrite is saved as a draft, never published. |
+| `FELIX_SKILL_EVAL_MODEL` | empty | The route that answers each evaluation scenario, with and without the skill; empty is the default route. |
+| `FELIX_SKILL_EVAL_JUDGE_MODEL` | empty | The route that scores the answers; empty is the default route. |
+| `FELIX_SKILL_EVAL_MAX_SCENARIOS` | `10` | 1–10. Scenarios one evaluation runs; each is four model calls. |
+| `FELIX_SKILL_EVAL_MAX_TOKENS` | `2048` | 64–32000. Output-token cap on each evaluation call (answers, generated scenarios, judge scores). |
+| `FELIX_SKILL_IMPROVE_MAX_TOKENS` | `8192` | 256–64000. Output-token cap on the rewritten SKILL.md. |
+| `FELIX_SKILL_JOB_DEADLINE_SECONDS` | `1200` | 1–86400. Wall clock for one job; past it the job ends `failed`. |
+| `FELIX_SKILL_JOBS_MAX_QUEUED` | `20` | 1–10000. Per tenant: evaluations and accepted improvements queued or running at once. |
+| `FELIX_SKILL_JOBS_DAILY_LIMIT` | `200` | 1–100000. Per tenant: skill jobs created per UTC day. |
+
+Past either per-tenant cap, queueing another job is refused `429 skill_jobs_cap_reached`, which
+waiting fixes. Every job's model calls are metered to the skill's tenant like a turn. A job is
+claimed at most three times before it fails `attempts_exhausted`.
 
 ## Model routes
 

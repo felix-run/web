@@ -178,13 +178,106 @@ manifest declares those instead. See [Patterns](/internals/patterns/).
 
 ## Skill
 
-A `SKILL.md` file with YAML frontmatter, living under `skills/<name>/`. The frontmatter can fold
-extra tools, MCP servers and peers into any manifest that lists the skill; the body is appended to
-the system prompt under an `## Active Skills` header.
+An [Agent Skill](https://agentskills.io): a `SKILL.md` with YAML frontmatter (`name`,
+`description`, and optionally `license`, `compatibility`, `metadata`, `allowed-tools`) and a Markdown
+body, plus optional bundle files under `references/`, `scripts/`, `assets/` and `evals/`.
 
-Activation is per-tenant and **restriction-only**: a tenant overlay can disable skills the manifest
-declares, but can never enable ones it did not. Agents can manage their own overlay through
-`list_skills`, `activate_skill` and `deactivate_skill`.
+Skills are disclosed progressively. The compiled system prompt carries only the catalog, as an
+`<available_skills>` block of names and descriptions. `activate_skill` returns a skill's body to the
+model **as instructions**, and lists its bundle files; `read_skill_file(name, path)` reads one (text
+only, at most 64 KiB, with a `truncated` flag). `deactivate_skill` switches one off. Activation is
+per `(tenant, manifest)` and only reaches skills in the manifest's catalog.
+
+### Where skills come from
+
+| Source | Where | `source` | Written by |
+|---|---|---|---|
+| Bundled | the harness's `skills/` directory | `bundled` | the release |
+| Host directory | `FELIX_SKILLS_DIR` | `bundled` | the operator |
+| Operator upload | object-store keys `skills/{tenant}/{name}/SKILL.md` or `skills/{name}/SKILL.md`, and pinned `…/{name}/{version}/SKILL.md` | `store` | the operator, outside Felix |
+| Tenant library | the live version of each skill in the tenant's library, under `skill-library/` | `library` | an agent or an operator, through review |
+
+A catalog is built in this order, and the first source to hold a name answers it:
+
+1. **The host wins.** Bundled skills, then `FELIX_SKILLS_DIR` (a skill there replaces a bundled one
+   of the same name). The library refuses to save a host name, or a name an operator uploaded at an
+   unversioned key (`409 name_shadows_host_skill`).
+2. **The tenant library**, live versions only. Without `spec.skills_declared_only`, every live
+   library skill joins the catalog of every manifest in the tenant that builds one (any manifest
+   with `spec.skills`, a skill tool, or `spec.skill_authoring`); with it, only declared names do.
+3. **Operator uploads**, for a declared name nothing above holds: pinned key, then unversioned, the
+   tenant's keys before the shared ones.
+
+One exception to library-before-uploads: **an explicit version pin to an operator upload beats the
+library.** A `spec.skills` ref with `version: 0.1.0` is served `skills/{tenant}/{name}/0.1.0/SKILL.md`
+(or the shared `skills/{name}/0.1.0/SKILL.md`) when it exists, whatever the library's live version
+is. A pin no upload holds still gets the library's live version. The library reports
+`shadows_operator_upload` on a skill whose name is split this way.
+
+### Skills an agent writes
+
+A manifest with [`spec.skill_authoring.enabled`](/guide/manifest-reference/#specskill_authoring)
+gets three more tools:
+
+| Tool | Arguments | Does |
+|---|---|---|
+| `create_skill` | `name`, `description`, `body`, `reason` | Saves a new skill to the tenant library at `0.1.0` |
+| `update_skill` | `name`, `body`, `reason`, `parent_version`, `description?` | Saves a new version with a new body; every other file is kept from the parent |
+| `submit_skill_feedback` | `name`, `body`, `suggested_patch?` | Files feedback on a library skill in this agent's catalog; changes nothing |
+
+`parent_version` is required and must be the skill's newest version that was not a rejected draft
+(`newest_version` in `list_skills` and `activate_skill`). A stale one is refused `parent_changed`;
+naming a rejected draft is refused `parent_rejected`. Because it is an argument, an approval of the
+call binds it. Every refusal comes back to the model as `{"error": …}`.
+
+**Drafts are the default.** `activate_skill` hands a body to the model as instructions — a higher
+trust tier than recalled memory, which is fenced as reference. A skill an agent wrote from a turn
+that carried injected tool output would otherwise steer every later session in the tenant. So a save
+is an immutable draft that no catalog loads, and a person publishes it.
+
+<Steps>
+
+1. **Draft** — the save is validated, quality-reviewed (a 0–100 score) and security-scanned
+   (`pass`, `advisory` or `fail`), and written as a new semver version. `max_pending` caps one
+   manifest's undecided drafts.
+
+2. **Review** — an operator reads it in the review queue (`GET /skill-library/-/review`) and
+   publishes or rejects it with a note.
+
+3. **Publish** — the [publish gate](/internals/governance/#the-skill-publish-gate) re-reads the
+   bytes against their saved digests, re-validates and re-scans them, and applies the publish
+   policy. The version becomes `live_version`; the one it replaces is archived. A rollback makes a
+   once-published version live again.
+
+</Steps>
+
+`spec.skill_authoring.mode: publish` skips step 2: the draft is published at once if the gate passes,
+and stays a draft (with the reasons) if not. The manifest is refused unless an approvals rule gates
+every `create_skill` and `update_skill` call, so a person still reads each skill before it is saved.
+An agent's edit of a version an operator wrote waits for review in either mode.
+
+### Evaluations and feedback
+
+An **evaluation** asks whether answers get better with the skill. The worker answers each scenario
+twice with `FELIX_SKILL_EVAL_MODEL`, without the skill and with its body fenced as untrusted
+reference; `FELIX_SKILL_EVAL_JUDGE_MODEL` scores both 0–100, and uplift is with-skill minus
+baseline. Scenarios come from the bundle's `evals/`, else are generated from the SKILL.md, else are
+three defaults built around the description. The publish policy can require a succeeded evaluation
+(`require_eval`) and a minimum uplift (`min_eval_uplift`). Each evaluation says whether it
+`counts_for_gate`: for a version an agent wrote, only one on the bundle's own `evals/` scenarios
+counts, because generated and default scenarios are written from the agent's own text.
+`skill_authoring.auto_eval` queues one for every draft the agent saves.
+
+**Feedback** is filed by an agent (`submit_skill_feedback`) or an operator, on one version, and waits
+as `pending`. Only a person decides it. Accepting with `improve` (the default) queues an AI rewrite:
+the worker asks `FELIX_SKILL_IMPROVE_MODEL` for a revised SKILL.md and saves it as a **draft** for
+review. Nothing in the loop publishes. Evaluations and improvements run in the worker's `skill_jobs`
+task, so they need `felix-worker` and `felix-scheduler` running.
+
+chat-ui's Skills page is the operator surface over all of this: the library list, a review queue and
+feedback inbox, an editor with diff and versions, evaluations, and the tenant's publish policy. A
+`create_skill` or `update_skill` result renders in the chat as a proposal card with Approve and
+Reject. The routes underneath are in the [Management API](/guide/management-api/#skill-library).
 
 ## Tool
 
