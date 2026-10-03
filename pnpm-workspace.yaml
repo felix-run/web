@@ -16,7 +16,7 @@ catalog:
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
   cmdk: ^1.1.1
-  lucide-react: ^0.469.0
+  lucide-react: ^0.577.0
   radix-ui: ^1.6.0
   sonner: ^1.7.1
   tailwind-merge: ^3.0.2
@@ -49,3 +49,9 @@ catalog:
   # Cloudflare
   wrangler: ^4.90.1
   '@cloudflare/workers-types': ^4.20260511.1
+
+# react-jsx-parser (AI Elements' jsx-preview) lists React 18's DOM types as a hard
+# dependency, which pulls a second @types/react into chat-ui and breaks JSX types
+# repo-wide. Keep it on the React 19 types everything else uses.
+overrides:
+  'react-jsx-parser>@types/react-dom': ^19.2.0

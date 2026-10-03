@@ -1122,6 +1122,39 @@ near-black page). The block's own surface is ours: Shiki tries to pass its dark 
 The root `tsconfig.json` explicitly **excludes** `apps/chat-ui` and `apps/docs` (JSX / Astro virtual
 modules don't resolve under the workspace options); those apps type-check via their own configs.
 
+
+**AI Elements are vendored, not wired** (`apps/chat-ui/src/components/ai-elements/`, 48
+components, 2026-10-03). They are presentational shadcn components and **do not need the AI
+SDK at runtime**: twelve import from `ai`, and only *types* (`UIMessage`, `ToolUIPart`, …), so
+`ai` is a **dev** dependency pinned to `^6` — the version they are written against (v7 renamed
+`LanguageModelUsage` fields). `tests/ai-elements.test.tsx` mocks `ai` with a module that throws,
+so a component that starts importing it for real fails there. Using one with Felix means mapping
+`Turn`/`ToolCall` into those shapes (e.g. `type` as `tool-<name>`, `state` as `'output-available'`),
+not adopting `useChat`. `prompt-input.tsx` predates the rest and was **not** overwritten — it is
+the ported composer, edited heavily since. Four things were changed on the way in: `message.tsx`
+and `reasoning.tsx` drop Streamdown 2's `plugins` (this repo pins streamdown 1.6.11, where code,
+math and mermaid are built in); `conversation.tsx` uses `appendChild` (the Worker types in scope
+shadow DOM `append`); `jsx-preview.tsx` avoids ES2023's `toReversed`. `react-jsx-parser` ships
+React 18's DOM types as a hard dependency, so `pnpm-workspace.yaml` **overrides** it to 19 —
+without that a second `@types/react` broke JSX types in unrelated files. **`shadcn add` does not
+work in this monorepo** for a registry like this one: it resolved `@felix/ui` to `packages/ui`,
+installed every npm dependency there (plus a bogus `cn` package, the registry's import alias),
+rewrote the catalog in `pnpm-workspace.yaml` stripping its comments, and hung. Install by reading
+the registry JSON and writing files with imports rewritten, as this one was.
+
+**Only one is wired in: `FileTree`**, for the workspace's Files list, which was a flat column of
+up to 200 paths (`buildTree` in `src/lib/file-tree.ts` reads both stores' `d <path>` / `f <path>`
+entries — the old list printed those prefixes verbatim). Every other component either duplicates
+something chat-ui already renders with Felix-specific behaviour — message, conversation, tool,
+reasoning, attachments, confirmation (the approval card), context (the meter), model-selector
+(the agent picker), suggestion (starters), queue (the queued-messages tray), test-results (the
+eval run cards), speech-input — or has no Felix data to show (stack-trace, commit, package-info,
+environment-variables, the xyflow canvas). Adopting one of the first group means *replacing* a
+component its tests pin, not filling a gap. `file-tree.tsx` was edited on the way in: folder icons
+were `text-blue-500` (blue is `running` here), and each folder was three Tab stops — its wrapper,
+an unlabelled chevron and a name button that did nothing without `onSelect` — so a folder is now
+one stop, its name, which toggles it, and a file is a stop only when selecting does something.
+
 ### Docs
 
 Prose is MDX under `apps/docs/src/content/` — note **not** `src/content/docs/`; `content.config.ts`

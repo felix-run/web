@@ -62,9 +62,11 @@ export const GUARDED = [
     label: 'streamdown',
     path: 'apps/chat-ui/node_modules/streamdown/dist',
     // Renders every assistant message. Both canaries are pure Streamdown: the
-    // first carries Shiki's dark palette onto highlighted tokens, the second
-    // draws the line-number gutter.
-    canaries: ['dark:text-(--shiki-dark)!', 'before:content-[counter(line)]'],
+    // first carries Shiki's dark palette onto highlighted tokens, the second sizes
+    // the line-number gutter. The gutter's `before:content-[counter(line)]` used to
+    // be the second, until AI Elements' code-block.tsx used it too — a canary the
+    // app also emits passes with or without this line, so it proves nothing.
+    canaries: ['dark:text-(--shiki-dark)!', 'before:text-[13px]'],
   },
 ];
 

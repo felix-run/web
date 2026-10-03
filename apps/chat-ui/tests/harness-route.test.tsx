@@ -73,6 +73,10 @@ beforeEach(() => {
   stubFetch();
 });
 afterEach(() => {
+  // Unmount, not just empty the body: a tree left mounted never runs its effect
+  // cleanups, so Memory's search debounce fired after the environment had torn
+  // down `window` — an unhandled error that failed CI with every test passing.
+  cleanup();
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });

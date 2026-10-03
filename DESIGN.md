@@ -753,6 +753,10 @@ every second is noise.
   longer holds is `error`: an image-off icon, the failure-tinted border, and *Image no longer
   stored* wrapped to two lines rather than truncated. The composer draws pending files the same
   way, with a remove control that is always on screen.
+- **The workspace's files are a tree.** Mono 11px, folders before files, the icons muted —
+  never coloured, since colour here is state. It opens onto the work: folders holding a path
+  this thread wrote or edited start expanded and those files are in the foreground, the rest
+  muted and folded. A hairline guide runs down an open folder. One Tab stop per folder, its name.
 - **An agent's question is a one-item form.** `select` and `input` render as a `Questionnaire`:
   bordered choices (radio, numbered 1–9) or a field, then *Send answer* and *Decline to answer*.
   Choosing never sends, because a radio group moves on an arrow key. `confirm` stays as two
