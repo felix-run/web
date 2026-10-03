@@ -1,5 +1,5 @@
 import { Button } from '@felix/ui/button';
-import { ChevronRightIcon, FileIcon, FolderIcon, HardDriveIcon } from 'lucide-react';
+import { ChevronRightIcon, FileIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -166,58 +166,59 @@ export function WorkspaceSection({ className }: { className?: string }) {
     <section
       aria-labelledby="workspace-heading workspace-mount"
       data-slot="workspace-section"
-      className={cn('relative px-2 py-2', className)}
+      className={cn('px-2 py-2', className)}
     >
-      {/* The fold sits beside the header row rather than in it: the row says what
-          is mounted, and a control in it would make the value read as a button. */}
-      <button
-        type="button"
-        aria-expanded={!folded}
-        aria-controls="workspace-body"
-        aria-label={folded ? 'Show workspace' : 'Hide workspace'}
-        onClick={toggleFolded}
-        className="absolute top-2.5 right-3 grid size-6 coarse:size-9 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-      >
-        <ChevronRightIcon
-          aria-hidden
-          className={cn(
-            'size-3.5 transition-transform duration-200 ease-out motion-reduce:transition-none',
-            !folded && 'rotate-90',
-          )}
-        />
-      </button>
-      <div className="px-2 pr-8">
-        {/*
-          Icon · title · one value, like every other header. The value is what is
-          mounted, which is the question this header exists to answer; it used to
-          hold the Mount *action*, so the header said what to do rather than what
-          is, and in the narrow drawer that button sat against the close X. The
-          actions are a row of their own below.
-        */}
-        <div className="flex min-w-0 items-center gap-2">
-          {mountLabel ? (
-            <FolderIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          ) : (
-            <HardDriveIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          )}
-          <h2 id="workspace-heading" className="shrink-0 text-sm font-semibold">
+      {/*
+        The sidebar's section header, the same row the Harness section draws: a
+        small muted label, its one value, and the fold at the right edge — so the
+        three sections read as one list with three headings rather than three
+        components. It used to be an icon and a bold title, louder than both of
+        its neighbours for a section that is often folded. The value is what is
+        mounted, the question this header exists to answer.
+      */}
+      <div className="flex h-7 min-w-0 items-center px-2">
+        {/* The label and its value as one group with no control in it: the value
+            is a fact. The fold is the row's, beside the group. */}
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h2 id="workspace-heading" className="shrink-0 text-xs font-medium text-muted-foreground">
             Workspace
           </h2>
           {/* Mono for a folder name, because it is the filesystem's word; the
-              in-tab state is ours. A folder waiting on a reconnect is not mounted
-              yet, so until it is, the honest value is where tools run now. */}
+            in-tab state is ours. A folder waiting on a reconnect is not mounted
+            yet, so until it is, the honest value is where tools run now. */}
           <span
             id="workspace-mount"
             className={cn(
-              'min-w-0 truncate text-xs text-muted-foreground',
-              mountLabel && 'font-mono',
+              'min-w-0 truncate text-xs',
+              mountLabel ? 'font-mono text-foreground' : 'text-muted-foreground',
             )}
             title={mountLabel ?? undefined}
           >
             {mountLabel ?? 'in-tab'}
           </span>
         </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        {/* `-mr-[5px]` sets the chevron's glyph, not its box, on the Harness
+            fold's line: that one is a bare 14px icon at the row's padding, this
+            one is centred in a 24px target. */}
+        <button
+          type="button"
+          aria-expanded={!folded}
+          aria-controls="workspace-body"
+          aria-label={folded ? 'Show workspace' : 'Hide workspace'}
+          onClick={toggleFolded}
+          className="-mr-[5px] ml-auto grid size-6 shrink-0 coarse:size-9 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <ChevronRightIcon
+            aria-hidden
+            className={cn(
+              'size-3.5 transition-transform duration-200 ease-out motion-reduce:transition-none',
+              !folded && 'rotate-90',
+            )}
+          />
+        </button>
+      </div>
+      <div className="px-2">
+        <p className="truncate text-xs text-muted-foreground">
           {mountLabel ? 'Client tools run against this folder' : 'Client tools run in this tab'}
         </p>
 

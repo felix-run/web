@@ -7,7 +7,7 @@ import { WorkspaceSection } from '../src/components/workspace/workspace-section'
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
- * The workspace header's grammar: icon · title · one value, like every header.
+ * The workspace header's grammar: label · one value, the sidebar's section header.
  *
  * The value slot held the Mount *action*, so the header said what to do rather
  * than what is mounted — and in the narrow drawer that button sat against the

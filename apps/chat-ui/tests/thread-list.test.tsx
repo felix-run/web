@@ -238,3 +238,25 @@ describe('ThreadList rows', () => {
     expect(document.body.textContent).not.toMatch(/History|sessions|conversation/);
   });
 });
+
+/**
+ * A row's actions answer to *that row's* hover. The sidebar's root is an unnamed
+ * `group`, so a bare `group-hover` on a row matched the pointer anywhere in the
+ * sidebar and lit every row's actions at once. happy-dom applies no hover, so
+ * what is pinned is the shape: the row's group is named, and the reveal reads it.
+ * And the actions sit over the row rather than beside it, so an invisible pair
+ * of buttons no longer takes a third of every title's width.
+ */
+describe('a row and its actions', () => {
+  it('reveal on their own row only, laid over its end', () => {
+    setup();
+    const actions = screen
+      .getAllByRole('button', { name: 'Delete thread' })[0]
+      ?.closest('[data-slot="thread-actions"]') as HTMLElement;
+    const classes = actions.className.split(/\s+/);
+    expect(classes).toContain('[@media(hover:hover)]:group-hover/thread:opacity-100');
+    expect(classes.some((c) => /(^|:)group-hover:/.test(c))).toBe(false);
+    expect(classes).toContain('[@media(hover:hover)]:absolute');
+    expect((actions.parentElement as HTMLElement).className).toContain('group/thread');
+  });
+});
