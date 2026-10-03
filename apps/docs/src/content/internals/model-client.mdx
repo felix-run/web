@@ -119,9 +119,9 @@ Manifests declare `spec.model.id` as a **logical** id. Ops maps it via `FELIX_MO
 | `llama-3-pro` | `ollama` | `llama3.3:70b` |
 | `llama-3-fast` | `ollama` | `llama3.2` |
 | `kimi-k2-cf` | `workers_ai` | `@cf/moonshotai/kimi-k2.6` |
-| `gpt-oss-120b-cf` | `workers_ai` | `@cf/openai/gpt-oss-120b` |
-| `gpt-oss-20b-cf` | `workers_ai` | `@cf/openai/gpt-oss-20b` |
-| `glm-flash-cf` | `workers_ai` | `@cf/zai-org/glm-4.7-flash` |
+| `gpt-oss-120b-cf` | `workers_ai` | `@cf/openai/gpt-oss-120b` (text only) |
+| `gpt-oss-20b-cf` | `workers_ai` | `@cf/openai/gpt-oss-20b` (text only) |
+| `glm-flash-cf` | `workers_ai` | `@cf/zai-org/glm-4.7-flash` (text only) |
 
 Wire ids are complete as written — the Anthropic routes carry **no date suffix**. Two legacy logical
 ids, `claude-sonnet-4` and `claude-haiku-4`, still resolve so older manifests keep building; both now
@@ -130,6 +130,29 @@ snapshot they were named for. Prefer the unsuffixed ids in new manifests.
 
 Empty id → `FELIX_DEFAULT_MODEL_ID` (default `claude-sonnet`). An id that is in neither the baked-in
 table nor `FELIX_MODEL_ROUTES` fails the build.
+
+## Images and text-only routes
+
+The catalog says a model is text-only only where it can vouch for it — the `text_only` flag,
+set on the `gpt-oss`, GLM Flash, Llama 3.3 and Qwen3 Workers AI entries and on Jev. The
+`("text",)` modality every other entry inherits is a default, not a claim: the `llama` family key
+also matches `llama3.2-vision`. A route can state what it accepts itself, which wins over the
+catalog:
+
+```bash
+FELIX_MODEL_ROUTES='{"seer":{"provider":"ollama","model":"llava","modalities":["text","image"]}}'
+```
+
+When the primary route is vouched text-only:
+
+| Situation | What happens |
+|---|---|
+| `spec.model.vision_model` or `FELIX_DEFAULT_VISION_MODEL_ID` names a route that can see | Each call carrying an image goes to that route; every other call stays on the primary. Metering follows the route that answered, and the switch counts as `felix_model_switch{reason="vision"}`. |
+| Neither is set, and a user turn carries an image | `/chat` and `/v1/chat/completions` answer **422** naming the route, before the agent is built or any model called. |
+| An image reaches the route mid-run anyway (a fallback, a tool result) | It is replaced by `[image omitted: model route '…' does not accept images]` and counted in `felix_model_images_omitted`. |
+
+A route the catalog cannot vouch for either way is sent the image unchanged, as before this
+check existed. `felix doctor` notes a text-only default with no vision route.
 
 ## Client surface
 

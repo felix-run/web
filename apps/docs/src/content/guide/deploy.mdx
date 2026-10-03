@@ -322,6 +322,18 @@ FELIX_MODEL_ROUTES='{"llama-3-pro":{"provider":"workers_ai","model":"@cf/openai/
 FELIX_MEMORY_EMBEDDER=workers_ai
 ```
 
+`gpt-oss` and GLM Flash are text-only. A default that points at one should name a route that can
+see for turns that carry an image — Kimi is the Workers AI one — or every such turn is refused with a
+422 naming the route:
+
+```bash
+FELIX_DEFAULT_MODEL_ID=gpt-oss-120b-cf
+FELIX_DEFAULT_VISION_MODEL_ID=kimi-k2-cf
+```
+
+A route of your own declares `"modalities": ["text", "image"]` when the model behind it can see. See
+[Images and text-only routes](/internals/model-client/#images-and-text-only-routes).
+
 Provider names in `FELIX_MODEL_ROUTES` are resolved against the registry at startup, so a typo fails
 immediately rather than on the first request that happens to take that route. A manifest referring to
 `house-fast` works everywhere the route is defined. See [Model client](/internals/model-client/).
