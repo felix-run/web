@@ -1830,7 +1830,13 @@ export function AppShell() {
           {/* Full height, beside the header rather than under it, so its top edge
               can carry the brand on the header's own line. */}
           <AppSidebar />
-          <SidebarInset>
+          {/* The dot grid starts at the top of the inset, not below the header: the
+              header is part of the transcript's surface, so the texture runs
+              under both and the bar reads as the top of the page rather than a
+              strip on top of it. On the conversation only — `/harness` is rows to
+              scan, and the One Texture Rule keeps it plain. Everything on it
+              uses `bg-solid-*` tints (`tests/solid-over-dots.test.ts`). */}
+          <SidebarInset className={cn(!onHarness && 'bg-dots isolate')}>
             {/* The inset is added to the bar's height rather than taken out of it:
                 `--header-height` is read by the toaster and must stay the bar's own. */}
             <header className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-1 border-b border-border/60 px-3 pt-safe">
@@ -1895,7 +1901,7 @@ export function AppShell() {
                   <span
                     data-slot="run-state"
                     title="This thread's run is waiting on you"
-                    className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-state-blocked/10 px-2 py-0.5 text-xs font-medium text-state-blocked"
+                    className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-solid-state-blocked/10 px-2 py-0.5 text-xs font-medium text-state-blocked"
                   >
                     <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
                     <span className="sr-only">This thread's run: </span>
@@ -1905,7 +1911,7 @@ export function AppShell() {
                   <span
                     data-slot="run-state"
                     title="This thread's run is in progress"
-                    className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-state-running/10 px-2 py-0.5 text-xs font-medium text-state-running"
+                    className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-full border border-transparent bg-solid-state-running/10 px-2 py-0.5 text-xs font-medium text-state-running"
                   >
                     <span aria-hidden className="size-1.5 rounded-full bg-state-running" />
                     <span className="sr-only">This thread's run: </span>
@@ -1961,7 +1967,7 @@ export function AppShell() {
                             setVerbose(false);
                             menuTriggerRef.current?.focus();
                           }}
-                          className="cursor-pointer hover:bg-secondary/80"
+                          className="cursor-pointer hover:bg-solid-secondary/80"
                         >
                           <ScrollTextIcon aria-hidden className="sm:hidden" />
                           <span className="hidden sm:inline">Verbose</span>

@@ -78,7 +78,7 @@ export function Inspector({
       className={cn(
         // The panel is the thing worth widening on a large display, not the
         // transcript. Floor is the old fixed 22rem.
-        'flex h-full w-[clamp(22rem,24vw,30rem)] shrink-0 flex-col border-l border-border/60 bg-card/40',
+        'flex h-full w-[clamp(22rem,24vw,30rem)] shrink-0 flex-col border-l border-border/60 bg-solid-card/40',
         className,
       )}
     >

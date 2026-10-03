@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 /**
  * Nothing with a fill may let the dot grid through it.
  *
- * The grid is painted under the transcript's `<main>`, and an alpha tint such as
+ * The grid is painted under the conversation's whole inset — the header and the
+ * transcript both, on `/t` — and an alpha tint such as
  * `bg-muted/30` mixes its colour with *transparent* — so over the grid the dots run
  * straight through a tool card, a starter card or a button, as if it had no fill.
  * It compiles, it looks right on any page without the grid, and nothing reports
@@ -18,6 +19,10 @@ import { describe, expect, it } from 'vitest';
 const SRC = new URL('../src/', import.meta.url);
 
 const OVER_THE_GRID = [
+  // The header, the attention line and its queue sit on the grid's top edge,
+  // where it is strongest.
+  'app-shell.tsx',
+  'components/attention-line.tsx',
   'routes/workbench.tsx',
   'components/chat/conversation.tsx',
   'components/chat/greeting.tsx',
@@ -35,6 +40,9 @@ const OVER_THE_GRID = [
  * fine": it sits on an opaque parent, or it is a mark rather than a surface.
  */
 const ALLOWED: Record<string, string[]> = {
+  // The line's 6px state dot, a mark; and a queue row's countdown chip, which
+  // sits on the queue's own opaque fill.
+  'components/attention-line.tsx': ['bg-muted-foreground/50', 'bg-state-blocked/15'],
   // The header row's hover, inside the tool card's own opaque fill.
   'components/chat/tool.tsx': ['hover:bg-muted/40'],
   // A 6px state dot: a mark, not a surface anything is read through.
@@ -51,7 +59,8 @@ function read(path: string): string {
 describe('surfaces over the dot grid', () => {
   it('the grid is still where this list assumes it is', () => {
     // If the texture moves, the file list above is checking the wrong surfaces.
-    expect(read('routes/workbench.tsx')).toContain('bg-dots');
+    expect(read('app-shell.tsx')).toContain("'bg-dots isolate'");
+    expect(read('routes/workbench.tsx')).not.toContain('bg-dots');
   });
 
   it.each(OVER_THE_GRID)('%s has no alpha fill', (path) => {

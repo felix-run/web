@@ -331,15 +331,17 @@
   }
 }
 
-/* A dot grid behind the transcript that fades out as it falls toward the composer.
+/* A dot grid behind the header and transcript that fades out as it falls toward the composer.
    Painted on a pseudo-element under `isolate`, so it sits above the zone's own
    background and below every child without a z-index on any of them. The dot is
    drawn from `--foreground`, so it inverts with the theme; its strength is
    `--dot-grid-alpha`, which differs per theme because the contrast it costs does.
 
    This is the app's one decorative texture (DESIGN.md, "The One Texture Rule"): it
-   lives on the transcript's `<main>` and nowhere else — not behind the workspace,
-   the instrument, `/harness` or any panel, where rows are scanned rather than read. */
+   lives on the conversation's inset — the header and the transcript as one surface —
+   and nowhere else: not behind the sidebar, the instrument (opaque, so the grid
+   stops at its edge), `/harness` or any panel, where rows are scanned rather than
+   read. */
 @layer components {
   .bg-dots::before {
     content: "";

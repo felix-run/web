@@ -283,7 +283,7 @@ export function AttentionLine({
       data-slot="attention-queue"
       className={cn(
         'max-h-[40vh] shrink-0 overflow-y-auto border-b border-border/60',
-        blocked ? 'bg-state-blocked/5' : 'bg-muted/30',
+        blocked ? 'bg-solid-state-blocked/5' : 'bg-solid-muted/30',
       )}
     >
       <ul className="mx-auto max-w-3xl divide-y divide-border/40">
@@ -324,7 +324,11 @@ export function AttentionLine({
         title={summary}
         className={cn(
           'flex h-7 min-w-0 items-center gap-2 rounded-full px-2.5 text-sm',
-          blocked ? 'bg-state-blocked/10' : stale && !rechecking ? 'bg-state-failed/10' : undefined,
+          blocked
+            ? 'bg-solid-state-blocked/10'
+            : stale && !rechecking
+              ? 'bg-solid-state-failed/10'
+              : undefined,
           reviewable.length > 0 && 'pr-0.5',
         )}
       >

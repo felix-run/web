@@ -494,11 +494,13 @@ function of the tint behind it, and an approval's diff came out faintly amber be
 around it was.
 
 **The One Texture Rule.** The app has exactly one decorative texture: an 18px dot grid behind the
-transcript's `<main>` (`.bg-dots` in `index.css`), drawn from `--foreground` at
+conversation — the header and the transcript as one surface, painted on the `SidebarInset` on `/t`
+(`.bg-dots` in `index.css`), so the bar reads as the top of the page rather than a strip laid
+over it — drawn from `--foreground` at
 `--dot-grid-alpha` (7% light, 16% dark, because text crosses it and owes its contrast —
 `tests/dot-grid-contrast.test.ts` recomputes both) and masked to fade out by 65% of the column's
-height. Nowhere else: not behind the workspace, the instrument, `/harness` or any panel, where
-rows are scanned rather than read.
+height. Nowhere else: not behind the sidebar, the instrument (whose fill is solid, so the inset's
+grid stops at its edge), `/harness` or any panel, where rows are scanned rather than read.
 
 **The Solid-Over-Texture Rule.** Anything with a fill that sits over the grid is opaque. An alpha
 tint (`bg-muted/30`) mixes with *transparent*, so the grid runs straight through it — a tool card

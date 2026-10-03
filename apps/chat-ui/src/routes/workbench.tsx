@@ -125,7 +125,7 @@ export function Workbench() {
   return (
     <>
       <div className="flex min-h-0 flex-1">
-        <main className="bg-dots relative isolate flex min-w-0 flex-1 flex-col">
+        <main className="relative isolate flex min-w-0 flex-1 flex-col">
           <Conversation lastAnchorId={lastAnchorId}>
             {empty && (
               // Not a row: the scroller applies its opening position when rows first
