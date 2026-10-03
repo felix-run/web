@@ -13,7 +13,15 @@ import { clearApiKey, getApiKey, handleUnauthorized, setApiKey } from '../src/li
  */
 
 const unlocked = () => new Response('{"data":[]}', { status: 200 });
-const rejected = () => new Response('{"error":"unauthorized"}', { status: 401 });
+// The Worker's own refusal, which names its gate: that is what tells the page a
+// key would open it.
+const rejected = () => new Response('{"error":"unauthorized","gate":"chat_key"}', { status: 401 });
+
+/** A Worker that opens for `key` and refuses everything else, as a gated deployment does. */
+const keyed = (key: string) => async (_url: string, init?: RequestInit) =>
+  (init?.headers as Record<string, string> | undefined)?.['x-chat-key'] === key
+    ? unlocked()
+    : rejected();
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -38,10 +46,27 @@ const renderGate = () =>
   );
 
 describe('Gate', () => {
-  it('prompts for a key when none is stored', async () => {
+  it('prompts for a key when none is stored and the Worker gates on one', async () => {
+    fetchMock.mockResolvedValue(rejected());
     renderGate();
+    await waitFor(() => expect(screen.getByPlaceholderText('Access key')).toBeTruthy());
     expect(screen.queryByText('chat is open')).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // A deployment with no key and an injected upstream credential answers an
+  // uncredentialed request; there is nothing to ask for.
+  it('opens without asking when the deployment answers with nothing stored', async () => {
+    renderGate();
+    await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
+  });
+
+  // The harness refusing is not the Worker refusing: no key would answer it, so
+  // offering the key field would be a dead end that looks like a typo.
+  it('offers no key field when the refusal is the harness’s, not the Worker’s', async () => {
+    fetchMock.mockResolvedValue(new Response('{"error":"unauthorized"}', { status: 401 }));
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/offers no way to sign in/i)).toBeTruthy());
+    expect(screen.queryByPlaceholderText('Access key')).toBeNull();
   });
 
   // The flash: a stored key used to be checked *behind* the key prompt, so every
@@ -109,8 +134,9 @@ describe('Gate', () => {
   });
 
   it('accepts a key typed into the prompt and stores it', async () => {
+    fetchMock.mockImplementation(keyed('typed-key'));
     renderGate();
-    const input = screen.getByPlaceholderText('Access key') as HTMLInputElement;
+    const input = (await screen.findByPlaceholderText('Access key')) as HTMLInputElement;
     const form = input.closest('form') as HTMLFormElement;
 
     await act(async () => {
@@ -131,7 +157,7 @@ describe('Gate', () => {
   it('stays locked and shows an error when the Worker rejects a typed key', async () => {
     fetchMock.mockResolvedValue(rejected());
     renderGate();
-    const input = screen.getByPlaceholderText('Access key') as HTMLInputElement;
+    const input = (await screen.findByPlaceholderText('Access key')) as HTMLInputElement;
     const form = input.closest('form') as HTMLFormElement;
 
     await act(async () => {
@@ -178,6 +204,7 @@ describe('Gate', () => {
     renderGate();
     await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
 
+    fetchMock.mockResolvedValue(rejected());
     act(() => handleUnauthorized());
 
     await waitFor(() => expect(screen.queryByText('chat is open')).toBeNull());

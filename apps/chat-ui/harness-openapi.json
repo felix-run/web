@@ -285,6 +285,12 @@
     },
     "/auth/github/token": {
       "post": {}
+    },
+    "/auth/github/actions": {
+      "post": {}
+    },
+    "/auth/methods": {
+      "get": {}
     }
   }
 }

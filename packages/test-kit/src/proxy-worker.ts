@@ -40,15 +40,40 @@ export function describeProxyWorker(label: string, worker: ProxyWorker): void {
     ...over,
   });
 
+  /**
+   * What the harness answers the Worker's own `GET /auth/methods`. Unset is a
+   * 404 — an older harness — which must read as "does not verify bearers".
+   */
+  let methods: Response | (() => Response) | null;
+
+  /**
+   * A call the Worker made on its own behalf, to ask whether the harness verifies
+   * bearers, rather than one it proxied. Proxied requests are the only ones sent
+   * with `redirect: 'manual'`.
+   */
+  const isMethodsProbe = (call: unknown[]): boolean =>
+    (call[1] as RequestInit | undefined)?.redirect !== 'manual';
+
+  const proxiedCalls = () => upstream.mock.calls.filter((c) => !isMethodsProbe(c));
+  const probeCalls = () => upstream.mock.calls.filter(isMethodsProbe);
+
   /** The Request the Worker handed to the upstream fetch. */
   const upstreamCall = (): Request => {
-    expect(upstream).toHaveBeenCalledTimes(1);
-    const [input, init] = upstream.mock.calls[0] as [string, RequestInit];
+    const calls = proxiedCalls();
+    expect(calls).toHaveLength(1);
+    const [input, init] = calls[0] as [string, RequestInit];
     return new Request(input, init as RequestInit);
   };
 
   beforeEach(() => {
-    upstream = vi.fn(async () => new Response('upstream ok', { status: 200 }));
+    methods = null;
+    upstream = vi.fn(async (_input: string, init?: RequestInit) => {
+      if (init?.redirect !== 'manual') {
+        if (methods === null) return new Response('not found', { status: 404 });
+        return typeof methods === 'function' ? methods() : methods.clone();
+      }
+      return new Response('upstream ok', { status: 200 });
+    });
     assets = vi.fn(async () => new Response('<!doctype html>', { status: 200 }));
     vi.stubGlobal('fetch', upstream);
   });
@@ -119,7 +144,9 @@ export function describeProxyWorker(label: string, worker: ProxyWorker): void {
       it('rejects a missing key', async () => {
         const res = await worker.fetch(new Request('https://app.example.com/api/audit'), gated);
         expect(res.status).toBe(401);
-        expect(await res.json()).toMatchObject({ error: 'unauthorized' });
+        // `gate` is how the page tells the Worker's refusal from the harness's:
+        // only this one is answered by a key.
+        expect(await res.json()).toMatchObject({ error: 'unauthorized', gate: 'chat_key' });
         expect(upstream).not.toHaveBeenCalled();
       });
 
@@ -179,6 +206,145 @@ export function describeProxyWorker(label: string, worker: ProxyWorker): void {
           gated,
         );
         expect(upstreamCall().headers.get('x-chat-key')).toBeNull();
+      });
+    });
+
+    // The harness's GitHub login: the routes that hand out a bearer, and the
+    // bearer standing in for the shared key afterwards. The second is the one
+    // that can open a hole — under FELIX_AUTH_MODE=none the harness accepts any
+    // bearer, so the Worker may honour one only when the harness says it checks.
+    describe('caller credentials', () => {
+      const gated = env({ CHAT_UI_KEY: 'correct-horse', FELIX_API_KEY: 'sk-upstream' });
+      const verifies = (value: boolean) => () =>
+        Response.json({ github_device: true, bearer_required: value });
+      // The Worker caches the harness's answer per origin, for the life of the
+      // isolate. A fresh origin per test keeps one test's answer out of the next.
+      let n = 0;
+      const fresh = () => {
+        n += 1;
+        const origin = `https://h${n}.example.com`;
+        return { origin, env: { ...gated, FELIX_ORIGIN: origin } as Env };
+      };
+
+      for (const [method, path] of [
+        ['GET', '/auth/methods'],
+        ['POST', '/auth/github/device'],
+        ['POST', '/auth/github/token'],
+      ] as const) {
+        it(`lets ${method} ${path} through without the key, and with no credential of ours`, async () => {
+          const res = await worker.fetch(
+            new Request(`https://app.example.com/api${path}`, {
+              method,
+              headers: { authorization: 'Bearer stale' },
+              body: method === 'POST' ? '{}' : undefined,
+            }),
+            gated,
+          );
+          expect(res.status).toBe(200);
+          const sent = upstreamCall();
+          expect(sent.url).toBe(`${ORIGIN}${path}`);
+          expect(sent.headers.get('authorization')).toBeNull();
+        });
+      }
+
+      it('keeps the other /auth routes behind the key', async () => {
+        for (const [method, path] of [
+          ['POST', '/auth/methods'],
+          ['GET', '/auth/github/token'],
+          ['POST', '/auth/github/actions'],
+          ['POST', '/auth/github/device/x'],
+        ]) {
+          upstream.mockClear();
+          const res = await worker.fetch(
+            new Request(`https://app.example.com/api${path}`, {
+              method,
+              body: method === 'POST' ? '{}' : undefined,
+            }),
+            gated,
+          );
+          expect(res.status, `${method} ${path}`).toBe(401);
+          expect(proxiedCalls()).toHaveLength(0);
+        }
+      });
+
+      it('forwards a bearer in place of the key when the harness verifies bearers', async () => {
+        const { origin, env: e } = fresh();
+        methods = verifies(true);
+        const res = await worker.fetch(
+          new Request('https://app.example.com/api/audit', {
+            headers: { authorization: 'Bearer felix-jwt' },
+          }),
+          e,
+        );
+        expect(res.status).toBe(200);
+        const sent = upstreamCall();
+        expect(sent.url).toBe(`${origin}/audit`);
+        // The caller's own token, not the deployment's.
+        expect(sent.headers.get('authorization')).toBe('Bearer felix-jwt');
+      });
+
+      it('refuses a bearer when the harness does not verify bearers', async () => {
+        const { env: e } = fresh();
+        methods = verifies(false);
+        const res = await worker.fetch(
+          new Request('https://app.example.com/api/audit', {
+            headers: { authorization: 'Bearer anything' },
+          }),
+          e,
+        );
+        expect(res.status).toBe(401);
+        expect(proxiedCalls()).toHaveLength(0);
+      });
+
+      it('fails closed when the harness cannot say', async () => {
+        for (const answer of [
+          () => new Response('not found', { status: 404 }),
+          () => new Response('<html>', { status: 200 }),
+          () => {
+            throw new TypeError('network');
+          },
+        ]) {
+          const { env: e } = fresh();
+          methods = answer;
+          upstream.mockClear();
+          const res = await worker.fetch(
+            new Request('https://app.example.com/api/audit', {
+              headers: { authorization: 'Bearer anything' },
+            }),
+            e,
+          );
+          expect(res.status).toBe(401);
+          expect(proxiedCalls()).toHaveLength(0);
+        }
+      });
+
+      it('asks the harness once, not on every request', async () => {
+        const { env: e } = fresh();
+        methods = verifies(true);
+        for (let i = 0; i < 3; i++) {
+          await worker.fetch(
+            new Request('https://app.example.com/api/audit', {
+              headers: { authorization: 'Bearer felix-jwt' },
+            }),
+            e,
+          );
+        }
+        expect(probeCalls()).toHaveLength(1);
+        expect(proxiedCalls()).toHaveLength(3);
+      });
+
+      it('does not ask at all for a request carrying the key', async () => {
+        const { env: e } = fresh();
+        methods = verifies(true);
+        await worker.fetch(
+          new Request('https://app.example.com/api/audit', {
+            headers: { 'x-chat-key': 'correct-horse', authorization: 'Bearer felix-jwt' },
+          }),
+          e,
+        );
+        expect(probeCalls()).toHaveLength(0);
+        // The key path is unchanged: the deployment's credential, not the caller's.
+        expect(upstreamCall().headers.get('authorization')).toBe('Bearer sk-upstream');
       });
     });
 

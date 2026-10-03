@@ -54,7 +54,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Access is gated by a shared key, not a user account.
+            Who can sign in, and how, is set by whoever runs this harness.
           </p>
         </div>
       </aside>

@@ -17,7 +17,7 @@
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Loader2Icon } from 'lucide-react';
-import { type FormEvent, useEffect, useRef } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef } from 'react';
 
 export function AccessKeyForm({
   busy,
@@ -25,12 +25,15 @@ export function AccessKeyForm({
   error,
   onValueChange,
   onSubmit,
+  footer,
 }: {
   busy: boolean;
   value: string;
   error: string | null;
   onValueChange: (next: string) => void;
   onSubmit: (e: FormEvent) => void;
+  /** The way back to GitHub sign-in, when the harness offers it. */
+  footer?: ReactNode;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -93,6 +96,7 @@ export function AccessKeyForm({
           this browser.
         </p>
       </div>
+      {footer && <div className="border-t border-border/60 pt-4">{footer}</div>}
     </form>
   );
 }

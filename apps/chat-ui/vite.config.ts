@@ -67,6 +67,13 @@ function resolveApiKey(): string {
 
 const felixApiKey = resolveApiKey();
 
+/** The harness routes a caller uses to obtain a credential — the Worker's `LOGIN_ROUTES`. */
+const LOGIN_ROUTES = new Set([
+  'GET /auth/methods',
+  'POST /auth/github/device',
+  'POST /auth/github/token',
+]);
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -86,7 +93,22 @@ export default defineConfig({
         // worker/index.ts. The *other* half of the Worker's auth, the CHAT_UI_KEY
         // gate on `x-chat-key`, stays absent here on purpose: the Worker is not
         // in the loop under `vite dev`, so there is nothing to gate.
-        ...(felixApiKey ? { headers: { Authorization: `Bearer ${felixApiKey}` } } : {}),
+        //
+        // The Worker's other two rules are mirrored here, minus the check that
+        // the harness verifies bearers — with no gate, there is nothing for a
+        // bearer to get past. A browser's own bearer (from GitHub login) goes
+        // upstream in place of the dev key, and the login routes carry no
+        // credential at all.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const path = (req.url ?? '').replace(/^\/api/, '').split('?')[0];
+            if (LOGIN_ROUTES.has(`${req.method} ${path}`)) {
+              proxyReq.removeHeader('authorization');
+            } else if (felixApiKey && !/^bearer\s+\S/i.test(req.headers.authorization ?? '')) {
+              proxyReq.setHeader('authorization', `Bearer ${felixApiKey}`);
+            }
+          });
+        },
       },
     },
   },
