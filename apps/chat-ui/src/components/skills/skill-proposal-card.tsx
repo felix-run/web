@@ -254,6 +254,22 @@ function RefusedCall({
             since. Nothing was saved; the agent has to start from the newer version.
           </>
         );
+      case 'parent_rejected':
+        return (
+          <>
+            The agent edited {n} from{' '}
+            <span className="font-mono">{result.expected ?? parent ?? 'a version'}</span>, which a
+            person rejected. Nothing was saved. An agent builds only on versions that were not
+            rejected
+            {result.current ? (
+              <>
+                {' '}
+                — here <span className="font-mono">{result.current}</span>
+              </>
+            ) : null}
+            , so a rejected draft's changes never ride into the next one.
+          </>
+        );
       case 'skill_exists':
         return (
           <>The library already has {n}. Nothing was saved; an edit goes through update_skill.</>

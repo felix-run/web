@@ -21,7 +21,16 @@ export function policySentence(policy: SkillPolicy): string {
     policy.security_fail_blocks ? 'a security scan that does not fail' : 'any security result',
   );
   if (policy.block_on_advisory) parts.push('no advisory security finding');
-  return `Publishing needs ${parts.join(', ')}.`;
+  const uplift = policy.min_eval_uplift;
+  if (uplift != null) {
+    const signed = uplift > 0 ? `+${uplift}` : String(uplift);
+    parts.push(
+      `a succeeded evaluation that counts for the gate, with an uplift of at least ${signed}`,
+    );
+  } else if (policy.require_eval) {
+    parts.push('a succeeded evaluation that counts for the gate');
+  }
+  return `Publishing needs ${parts.join(', ')}. A rollback is held to the same gate, without the evaluation.`;
 }
 
 /**
@@ -69,6 +78,17 @@ export function RefusalNotice({
     version_corrupt: 'The stored bytes no longer match what was saved. This is a server fault.',
     payload_too_large: 'The save is over the harness’s request size limit.',
     not_found: 'The library no longer has this.',
+    live_changed:
+      'Another version went live while you were deciding. Nothing changed; check what is live and decide again.',
+    parent_rejected:
+      'The version this was based on has been rejected. Nothing was saved; start again from the newest version that was not.',
+    skill_jobs_cap_reached:
+      'Too many evaluations and AI improvements are queued for this tenant. Wait for some to finish.',
+    feedback_conflict: 'That feedback has already been decided — reload to see what became of it.',
+    feedback_cap_reached: 'Too much feedback is waiting on this skill. Decide some first.',
+    eval_in_progress:
+      'This version already has an evaluation queued or running. Wait for it to finish.',
+    invalid_address: 'That is not a skill, version or item the library could hold.',
   };
   return (
     <Notice action={action}>

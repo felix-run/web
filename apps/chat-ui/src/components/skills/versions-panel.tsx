@@ -179,9 +179,7 @@ function VersionRow({
           parentVersion={v.parent_version}
         />
       )}
-      {state === 'superseded' && (
-        <RollbackButton name={v.name} version={v.version} liveVersion={liveVersion} />
-      )}
+      {state === 'superseded' && <RollbackButton name={v.name} version={v.version} />}
     </li>
   );
 }

@@ -774,8 +774,16 @@ Flows worth knowing before editing the app:
   highlighter caps every spanning pattern and leaves lines over 4000 characters untokenized — a
   sticky regex runs at every position, so one unbounded span made a long line quadratic. The
   harness's `/harness` layout renders one tree at every width, so crossing 768px no longer
-  remounts a page (and its unsaved edits). Evals and feedback tabs are declared
-  `ready: false` in `SKILL_TABS` until the harness serves them.
+  remounts a page (and its unsaved edits). The quality loop is `management/skill-quality.ts`:
+  an **Evals** tab (queue an evaluation, re-read every 3s only while one is queued or running,
+  baseline → with-skill → uplift per scenario, and whether it `counts_for_gate` — an agent's
+  version counts only an evaluation on its bundle's own `evals/`), a **Feedback** tab (file,
+  accept with "improve with AI" on by default, reject with a note, follow an applied rewrite to
+  its draft and load it into the editor), a feedback inbox beside the review queue, and the
+  tenant policy form in Review, which shows what the tenant set against what is in force because
+  the policy is tighten-only (the deployment settings are a floor). Every publish and rollback
+  re-reads the skill before arming and sends `expected_live_version` — the live version its
+  question named — and a 409 `live_changed` re-asks naming the new one; it never retries.
 - **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and
   the snapshot's `labels` map reads them back. It was a write-only route here for a different reason
   than the rest: `SessionSnapshot` did not model the field the harness had always sent, so a label

@@ -16,6 +16,7 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
+import { FeedbackInbox } from './feedback-panel';
 import { LibraryList } from './library-list';
 import { invalidateLibrary, useReviewQueue } from './queries';
 import { QueryRoot } from './query-root';
@@ -75,6 +76,9 @@ export function SkillLibrary({
         meta={pending.count != null ? (pending.count === 0 ? 'none' : pending.text) : undefined}
       >
         <ReviewQueue linkTo={nav.linkTo} />
+      </PageSection>
+      <PageSection title="Feedback waiting for a decision">
+        <FeedbackInbox />
       </PageSection>
       <PageSection
         title="Library"

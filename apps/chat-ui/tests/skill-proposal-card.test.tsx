@@ -165,15 +165,17 @@ describe('SkillProposalCard', () => {
     expect(screen.getByText('Clearer steps')).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: 'Approve 0.1.1' }));
     // Armed, naming what goes live and what it replaces — from the library's data.
-    expect(screen.getByText(/roll-dice 0\.1\.1 goes live, replacing live 0\.1\.0/)).toBeTruthy();
+    expect(
+      await screen.findByText(/roll-dice 0\.1\.1 goes live, replacing live 0\.1\.0/),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Approve 0.1.1' }));
     await waitFor(() =>
       expect(
-        h.requests.some(
+        h.requests.find(
           (r) =>
             r.method === 'POST' && r.path === '/skill-library/roll-dice/versions/0.1.1/publish',
-        ),
-      ).toBe(true),
+        )?.body,
+      ).toEqual({ expected_live_version: '0.1.0' }),
     );
     // The refetch says it is live; the card stops offering a decision.
     expect(await screen.findByText('live')).toBeTruthy();
@@ -248,6 +250,7 @@ describe('SkillProposalCard', () => {
     });
     mountWithProviders(<Tool tool={tool(saved())} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Approve 0.1.1' }));
+    await screen.findByText(/goes live/);
     fireEvent.click(screen.getByRole('button', { name: 'Approve 0.1.1' }));
     expect(await screen.findByText(/approving or rejecting needs skills:write/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();

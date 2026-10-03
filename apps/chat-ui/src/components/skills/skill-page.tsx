@@ -1,11 +1,13 @@
 import { isSkillLibraryError } from '@felix/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { ArrowLeftIcon, SparklesIcon } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { PageHeader, Panel, PanelBody } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { EditPanel } from './edit-panel';
+import { EvalsPanel } from './evals-panel';
+import { FeedbackPanel } from './feedback-panel';
 import { useLibrarySkill } from './queries';
 import { ReviewPanel } from './review-panel';
 import { SkillBundleBrowser } from './skill-bundle-browser';
@@ -13,6 +15,7 @@ import { ShadowsUploadNotice } from './skill-status';
 import { EDITOR, leavesSkill, SKILL_TABS, type SkillAddress, type SkillTab } from './skill-tabs';
 import { UnsavedChangesGuard } from './unsaved-guard';
 import { useSkillEditor } from './use-skill-editor';
+import { VersionPicker } from './version-picker';
 import { VersionsPanel } from './versions-panel';
 
 /**
@@ -173,6 +176,30 @@ export function SkillPage({
                   </>
                 )}
               </TabsContent>
+              <TabsContent value="evals">
+                {version && (
+                  <EvalsPanel
+                    detail={detail}
+                    version={version}
+                    onVersion={(v) => onAddress({ version: v })}
+                  />
+                )}
+              </TabsContent>
+              <TabsContent value="feedback">
+                {version && (
+                  <FeedbackPanel
+                    detail={detail}
+                    version={detail.live_version ?? version}
+                    onApplyToEditor={(v) => {
+                      // A new edit based on the AI draft: the working copy is
+                      // replaced, and the next save names that draft as its parent.
+                      setEditing(true);
+                      editor.reloadFrom(v);
+                      onAddress({ tab: 'edit' });
+                    }}
+                  />
+                )}
+              </TabsContent>
             </>
           )}
         </PanelBody>
@@ -199,37 +226,6 @@ export function SkillNotFound({ name, backTo }: { name: string; backTo: string }
       >
         Back to the library
       </Link>
-    </div>
-  );
-}
-
-function VersionPicker({
-  versions,
-  value,
-  onChange,
-}: {
-  versions: string[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="flex items-center gap-2 text-xs">
-      <label htmlFor={id} className="text-muted-foreground">
-        Version
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
-      >
-        {versions.map((v) => (
-          <option key={v} value={v}>
-            {v}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

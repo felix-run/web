@@ -140,15 +140,15 @@ describe('version decisions', () => {
     const h = library(THREE(), '0.1.1');
     mountWithProviders(<SkillLibraryPage />, VERSIONS_AT);
     fireEvent.click(await screen.findByRole('button', { name: 'Roll back to this' }));
-    expect(screen.getByText('0.1.0 goes live again, replacing 0.1.1.')).toBeTruthy();
+    expect(await screen.findByText('0.1.0 goes live again, replacing 0.1.1.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Roll back to 0.1.0' }));
     await waitFor(() =>
       expect(
-        h.requests.some(
+        h.requests.find(
           (r) =>
             r.method === 'POST' && r.path === '/skill-library/roll-dice/versions/0.1.0/rollback',
-        ),
-      ).toBe(true),
+        )?.body,
+      ).toEqual({ expected_live_version: '0.1.1' }),
     );
     await waitFor(() => expect(document.body.textContent).toContain('live 0.1.0'));
   });
@@ -193,7 +193,13 @@ describe('the review queue', () => {
     mountWithProviders(<SkillLibrary />, '/harness/skills');
     const queue = await screen.findByRole('list', { name: 'Drafts waiting for review' });
     fireEvent.click(within(queue).getByRole('button', { name: 'Publish 0.1.1' }));
+    await within(queue).findByText(/goes live, replacing live 0\.1\.0/);
     fireEvent.click(within(queue).getByRole('button', { name: 'Publish 0.1.1' }));
+    await waitFor(() =>
+      expect(h.requests.find((r) => r.path.endsWith('/0.1.1/publish'))?.body).toEqual({
+        expected_live_version: '0.1.0',
+      }),
+    );
     expect(await screen.findByText('Nothing is waiting for review.')).toBeTruthy();
     expect(screen.queryByRole('list', { name: 'Drafts waiting for review' })).toBeNull();
   });

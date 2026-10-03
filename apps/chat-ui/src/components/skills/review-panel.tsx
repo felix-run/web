@@ -5,6 +5,7 @@ import { CircleCheckIcon, CircleXIcon } from 'lucide-react';
 import { PageSection } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
+import { PolicyEditor } from './policy-form';
 import { usePublishPolicy, useSkillPreview } from './queries';
 import { policySentence } from './refusal';
 import { ScoreReadout } from './score-readout';
@@ -68,7 +69,10 @@ export function ReviewPanel({
       >
         <GateVerdict preview={p} liveVersion={liveVersion} />
         {policy.data ? (
-          <p className="mt-2 text-xs text-muted-foreground">{policySentence(policy.data)}</p>
+          <>
+            <p className="mt-2 text-xs text-muted-foreground">{policySentence(policy.data)}</p>
+            <PolicyEditor policy={policy.data} />
+          </>
         ) : policy.error ? (
           <p className="mt-2 text-xs text-muted-foreground">
             The policy itself could not be read, so only the gate's verdict is shown.

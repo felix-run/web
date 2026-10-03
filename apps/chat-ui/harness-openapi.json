@@ -268,7 +268,9 @@
       "get": {}
     },
     "/skill-library/-/policy": {
-      "get": {}
+      "get": {},
+      "delete": {},
+      "patch": {}
     },
     "/skill-library/{name}": {
       "get": {},
@@ -294,6 +296,28 @@
     },
     "/skill-library/{name}/versions/{version}/reject": {
       "post": {}
+    },
+    "/skill-library/-/feedback": {
+      "get": {}
+    },
+    "/skill-library/-/feedback/{feedback_id}/accept": {
+      "post": {}
+    },
+    "/skill-library/-/feedback/{feedback_id}/reject": {
+      "post": {}
+    },
+    "/skill-library/{name}/feedback": {
+      "post": {},
+      "get": {}
+    },
+    "/skill-library/{name}/versions/{version}/eval": {
+      "post": {}
+    },
+    "/skill-library/{name}/evals": {
+      "get": {}
+    },
+    "/skill-library/{name}/evals/{eval_id}": {
+      "get": {}
     },
     "/a2a/": {
       "post": {}

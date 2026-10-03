@@ -176,11 +176,34 @@ export interface SkillPreview {
   reasons: string[];
 }
 
-export interface SkillPolicy {
+/** Where the policy in force came from — see `SkillPolicy.source`. */
+export type SkillPolicySource = 'settings' | 'tenant' | 'tenant+settings';
+
+/** The four fields a tenant sets, as it set them. */
+export interface SkillPolicyValues {
   min_quality: number;
   block_on_advisory: boolean;
+  require_eval: boolean;
+  min_eval_uplift: number | null;
+}
+
+/**
+ * The publish gate in force: the deployment's settings, tightened by the
+ * tenant's own policy when it has one. A tenant can raise the bar and never
+ * lower it — the settings are a floor.
+ */
+export interface SkillPolicy extends SkillPolicyValues {
+  /** Always true: a failing security scan blocks every publish. */
   security_fail_blocks: boolean;
-  source: string;
+  /**
+   * `settings`: no tenant policy. `tenant`: the tenant's is at least as strict
+   * everywhere. `tenant+settings`: a setting outvoted a looser tenant value.
+   */
+  source: SkillPolicySource;
+  /** What the tenant itself set; null while `source` is `settings`. */
+  tenant_values: SkillPolicyValues | null;
+  updated_at: number | null;
+  updated_by: string | null;
 }
 
 /** Every refusal the library sends. */
@@ -285,19 +308,19 @@ const VERSION_RE = /^\d+\.\d+\.\d+$/;
  * link, a tool result or a typo — and a `..` segment that reached `fetch` would
  * be normalised into a different route entirely.
  */
-function badAddress(what: string, value: string): SkillLibraryError {
+export function badAddress(what: string, value: string): SkillLibraryError {
   return new SkillLibraryError('skill-library', 400, {
     error: 'invalid_address',
     message: `${JSON.stringify(value.slice(0, 80))} is not a valid skill ${what}`,
   });
 }
 
-function nameSegment(name: string): string {
+export function nameSegment(name: string): string {
   if (name.length > 64 || !SKILL_NAME_RE.test(name)) throw badAddress('name', name);
   return name;
 }
 
-function versionSegment(version: string): string {
+export function versionSegment(version: string): string {
   if (version.length > 32 || !VERSION_RE.test(version)) throw badAddress('version', version);
   return version;
 }
@@ -316,7 +339,7 @@ export function isSkillName(name: string): boolean {
   return name.length <= 64 && SKILL_NAME_RE.test(name);
 }
 
-async function refusalOf(route: string, res: Response): Promise<SkillLibraryError> {
+export async function refusalOf(route: string, res: Response): Promise<SkillLibraryError> {
   const raw = await res.text().catch(() => '');
   let refusal: SkillRefusal | null = null;
   try {
@@ -384,11 +407,6 @@ export function createSkillLibraryClient(http: FelixHttp) {
       await chatFetch(`/skill-library/-/review?${q}`),
     );
     return { items: page.items ?? [], next_cursor: page.next_cursor ?? null };
-  }
-
-  /** GET /skill-library/-/policy → the gate every publish and rollback passes. */
-  async function getSkillPublishPolicy(): Promise<SkillPolicy> {
-    return read('skill-library/policy', await chatFetch('/skill-library/-/policy'));
   }
 
   /** GET /skill-library/{name} → the skill and every version, newest first. */
@@ -502,24 +520,49 @@ export function createSkillLibraryClient(http: FelixHttp) {
     );
   }
 
+  /**
+   * The body of a publish or rollback. `expectedLive` is the live version the
+   * operator was shown — null for "nothing was live" — and the harness refuses
+   * the move with 409 `live_changed` when another one is live by the time it
+   * lands. Left out, the move replaces whatever is live.
+   */
+  function makeLive(expectedLive: string | null | undefined): RequestInit {
+    if (expectedLive === undefined) return {};
+    if (expectedLive !== null) versionSegment(expectedLive);
+    return {
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ expected_live_version: expectedLive }),
+    };
+  }
+
   /** POST …/publish → the draft goes live; 422 `publish_blocked` with the gate's reasons. */
-  async function publishSkillVersion(name: string, version: string): Promise<SkillVersion> {
+  async function publishSkillVersion(
+    name: string,
+    version: string,
+    opts: { expectedLive?: string | null } = {},
+  ): Promise<SkillVersion> {
+    const init = makeLive(opts.expectedLive);
     return read(
       'skill-library/publish',
       await chatFetch(
         `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/publish`,
-        { method: 'POST' },
+        { method: 'POST', ...init },
       ),
     );
   }
 
   /** POST …/rollback → a once-live version live again, through the same gate. */
-  async function rollbackSkillVersion(name: string, version: string): Promise<SkillVersion> {
+  async function rollbackSkillVersion(
+    name: string,
+    version: string,
+    opts: { expectedLive?: string | null } = {},
+  ): Promise<SkillVersion> {
+    const init = makeLive(opts.expectedLive);
     return read(
       'skill-library/rollback',
       await chatFetch(
         `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/rollback`,
-        { method: 'POST' },
+        { method: 'POST', ...init },
       ),
     );
   }
@@ -554,7 +597,6 @@ export function createSkillLibraryClient(http: FelixHttp) {
   return {
     listLibrarySkills,
     listSkillReviewQueue,
-    getSkillPublishPolicy,
     getLibrarySkill,
     getSkillVersion,
     getSkillFile,

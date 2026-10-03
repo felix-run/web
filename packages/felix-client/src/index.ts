@@ -68,6 +68,17 @@ export {
   type PlanStepStatus,
   type PlanWire,
 } from './management/plans';
+export type {
+  EvalScenario,
+  EvalScenarioResult,
+  EvalStatus,
+  FeedbackSource,
+  FeedbackStatus,
+  ScenarioSource,
+  SkillEval,
+  SkillFeedback,
+  SkillPolicyPatch,
+} from './management/skill-quality';
 export {
   type BundleIssue,
   isSkillLibraryError,
@@ -88,6 +99,8 @@ export {
   SkillLibraryError,
   type SkillPage,
   type SkillPolicy,
+  type SkillPolicySource,
+  type SkillPolicyValues,
   type SkillPreview,
   type SkillRefusal,
   type SkillSecurityIssue,

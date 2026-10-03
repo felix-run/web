@@ -1,4 +1,11 @@
-import type { SkillPage, SkillSource } from '@felix/client';
+import type {
+  FeedbackStatus,
+  SkillEval,
+  SkillFeedback,
+  SkillPage,
+  SkillPolicyPatch,
+  SkillSource,
+} from '@felix/client';
 import {
   type QueryClient,
   useInfiniteQuery,
@@ -7,18 +14,27 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import {
+  acceptSkillFeedback,
   archiveLibrarySkill,
   getLibrarySkill,
   getSkillFile,
   getSkillPublishPolicy,
   getSkillVersion,
+  listFeedbackInbox,
   listLibrarySkills,
+  listSkillEvals,
+  listSkillFeedback,
   listSkillReviewQueue,
   previewSkillVersion,
   publishSkillVersion,
+  queueSkillEval,
   readSkillBundle,
+  rejectSkillFeedback,
   rejectSkillVersion,
+  resetSkillPublishPolicy,
   rollbackSkillVersion,
+  submitSkillFeedback,
+  updateSkillPublishPolicy,
 } from '@/api';
 
 /**
@@ -31,8 +47,11 @@ import {
  * what a write invalidates, so the list, the queue, the skill page and the
  * inline chat card all refetch together rather than each guessing what changed.
  *
- * Nothing here polls. A library changes when someone acts on it; the views
- * refetch on mount and after every write, and say how old they are otherwise.
+ * Almost nothing here polls. A library changes when someone acts on it; the
+ * views refetch on mount and after every write. The exception is work the
+ * worker is doing — an evaluation queued or running, an accepted improvement
+ * not yet applied — which is polled every few seconds while it is in flight
+ * and not a moment after.
  */
 
 export type LibraryFilter = {
@@ -51,7 +70,15 @@ export const skillKeys = {
   preview: (name: string, version: string) => [...skillKeys.all, 'preview', name, version] as const,
   file: (name: string, version: string, path: string) =>
     [...skillKeys.all, 'file', name, version, path] as const,
+  evals: (name: string, version: string | null) =>
+    [...skillKeys.all, 'evals', name, version ?? ''] as const,
+  feedback: (name: string, status: FeedbackStatus | null) =>
+    [...skillKeys.all, 'feedback', name, status ?? ''] as const,
+  inbox: (status: FeedbackStatus) => [...skillKeys.all, 'inbox', status] as const,
 };
+
+/** How often in-flight worker jobs are re-read. */
+export const JOB_POLL_MS = 3_000;
 
 /**
  * A stored version's bytes never change — a save makes a new version — so its
@@ -157,15 +184,24 @@ export function useSkillPreview(name: string, version: string | null | undefined
 }
 
 /** Publish, roll back and reject: each a state change on one version, then a refetch of all. */
+/** A move to live, pinned to the live version the operator was shown (`null`: nothing was). */
+export interface MakeLive {
+  name: string;
+  version: string;
+  expectedLive: string | null;
+}
+
 export function useVersionActions() {
   const client = useQueryClient();
   const after = { onSettled: () => invalidateLibrary(client) };
   const publish = useMutation({
-    mutationFn: (v: { name: string; version: string }) => publishSkillVersion(v.name, v.version),
+    mutationFn: (v: MakeLive) =>
+      publishSkillVersion(v.name, v.version, { expectedLive: v.expectedLive }),
     ...after,
   });
   const rollback = useMutation({
-    mutationFn: (v: { name: string; version: string }) => rollbackSkillVersion(v.name, v.version),
+    mutationFn: (v: MakeLive) =>
+      rollbackSkillVersion(v.name, v.version, { expectedLive: v.expectedLive }),
     ...after,
   });
   const reject = useMutation({
@@ -183,4 +219,96 @@ export function useArchiveSkill() {
     mutationFn: (name: string) => archiveLibrarySkill(name),
     onSettled: () => invalidateLibrary(client),
   });
+}
+
+/** The skill as it stands now, from the harness and never the cache — what a confirm must show. */
+export function useFreshSkill() {
+  const client = useQueryClient();
+  return (name: string) =>
+    client.fetchQuery({
+      queryKey: skillKeys.skill(name),
+      queryFn: () => getLibrarySkill(name),
+      staleTime: 0,
+    });
+}
+
+const inFlightEval = (e: SkillEval) => e.status === 'queued' || e.status === 'running';
+
+/** A version's evaluations, newest first, re-read every few seconds while one is in flight. */
+export function useSkillEvals(name: string, version: string | null, { poll = true } = {}) {
+  return useQuery({
+    queryKey: skillKeys.evals(name, version),
+    queryFn: () => listSkillEvals(name, version ? { version } : {}),
+    enabled: !!name,
+    // One poll per page: the harness rate-limits each caller, and a second view
+    // of the same in-flight row would double the requests for nothing.
+    refetchInterval: (query) =>
+      poll && query.state.data?.items.some(inFlightEval) ? JOB_POLL_MS : false,
+  });
+}
+
+export function useQueueEval() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string; version: string }) => queueSkillEval(v.name, v.version),
+    onSettled: () => invalidateLibrary(client),
+  });
+}
+
+/** An accepted improvement the worker has not finished: still worth re-reading. */
+const inFlightFeedback = (f: SkillFeedback) => f.status === 'accepted' && f.improve;
+
+export function useSkillFeedback(name: string, status: FeedbackStatus | null) {
+  return useQuery({
+    queryKey: skillKeys.feedback(name, status),
+    queryFn: () => listSkillFeedback(name, status ? { status } : {}),
+    enabled: !!name,
+    refetchInterval: (query) =>
+      query.state.data?.items.some(inFlightFeedback) ? JOB_POLL_MS : false,
+  });
+}
+
+/** Feedback across every skill in one status, oldest first. */
+export function useFeedbackInbox(status: FeedbackStatus = 'pending') {
+  return useInfiniteQuery({
+    queryKey: skillKeys.inbox(status),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => listFeedbackInbox({ status, cursor: pageParam }),
+    getNextPageParam: (last: SkillPage<unknown>) => last.next_cursor ?? undefined,
+  });
+}
+
+export function useFeedbackActions() {
+  const client = useQueryClient();
+  const after = { onSettled: () => invalidateLibrary(client) };
+  const submit = useMutation({
+    mutationFn: (v: {
+      name: string;
+      body: string;
+      suggested_patch?: string;
+      target_version?: string;
+    }) => submitSkillFeedback(v.name, v),
+    ...after,
+  });
+  const accept = useMutation({
+    mutationFn: (v: { id: string; improve: boolean; note?: string }) =>
+      acceptSkillFeedback(v.id, { improve: v.improve, note: v.note }),
+    ...after,
+  });
+  const reject = useMutation({
+    mutationFn: (v: { id: string; note: string }) => rejectSkillFeedback(v.id, v.note),
+    ...after,
+  });
+  return { submit, accept, reject };
+}
+
+export function usePolicyActions() {
+  const client = useQueryClient();
+  const after = { onSettled: () => invalidateLibrary(client) };
+  const update = useMutation({
+    mutationFn: (patch: SkillPolicyPatch) => updateSkillPublishPolicy(patch),
+    ...after,
+  });
+  const reset = useMutation({ mutationFn: () => resetSkillPublishPolicy(), ...after });
+  return { update, reset };
 }

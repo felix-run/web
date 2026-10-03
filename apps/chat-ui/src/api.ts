@@ -125,6 +125,16 @@ export const publishSkillVersion = felix.publishSkillVersion.bind(felix);
 export const rollbackSkillVersion = felix.rollbackSkillVersion.bind(felix);
 export const rejectSkillVersion = felix.rejectSkillVersion.bind(felix);
 export const archiveLibrarySkill = felix.archiveLibrarySkill.bind(felix);
+export const updateSkillPublishPolicy = felix.updateSkillPublishPolicy.bind(felix);
+export const resetSkillPublishPolicy = felix.resetSkillPublishPolicy.bind(felix);
+export const listFeedbackInbox = felix.listFeedbackInbox.bind(felix);
+export const listSkillFeedback = felix.listSkillFeedback.bind(felix);
+export const submitSkillFeedback = felix.submitSkillFeedback.bind(felix);
+export const acceptSkillFeedback = felix.acceptSkillFeedback.bind(felix);
+export const rejectSkillFeedback = felix.rejectSkillFeedback.bind(felix);
+export const queueSkillEval = felix.queueSkillEval.bind(felix);
+export const listSkillEvals = felix.listSkillEvals.bind(felix);
+export const getSkillEval = felix.getSkillEval.bind(felix);
 
 export type { StreamArgs, StreamHandlers } from '@felix/client';
 export { flattenPlan } from '@felix/client';
