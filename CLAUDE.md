@@ -1197,10 +1197,18 @@ resolver in `vite.config.ts` (`lazyKatex`) points that import at a no-op
 streamdown uses before loading KaTeX's CSS), then the list with it, keeping the order — sanitize and
 harden run after KaTeX. The swap is a **remount** (`key`): streamdown's top-level `memo` compares
 `children`, the theme, `mode` and `isAnimating` and nothing else, so a new `rehypePlugins` alone
-never reaches the blocks and inline math stayed as `code.language-math`. `rehype-katex` is a direct
-dependency only so that import resolves; keep it on the version streamdown uses. **Math has never
-rendered properly here, before or after this**: the default `rehype-sanitize` runs after KaTeX and
-strips its class names, so the formula shows as MathML, TeX source and glyphs run together. Shiki
+never reaches the blocks and inline math stayed as `code.language-math`. `rehype-katex` and `katex`
+are direct dependencies only so those imports resolve; keep them on the versions streamdown uses.
+**Math did not render at all until 2026-10-03**, for two reasons that each looked like the other.
+Streamdown's order runs `rehype-sanitize` *after* KaTeX, which stripped KaTeX's class names and
+left a formula as MathML, TeX source and glyphs run together; KaTeX now runs straight after
+sanitize instead — the model's HTML is sanitized as before, KaTeX's `trust` stays off so a formula
+cannot carry a link or a class, and harden still runs last. And KaTeX's stylesheet was never loaded
+in a production build: streamdown asks for it with a dynamic `import()` that the dev server
+honours and the build never makes, so `loadMathPlugins` loads it with the plugin. Without the
+stylesheet nothing hides the MathML, and every formula is followed by a plain-text copy.
+`tests/response.test.tsx` pins the markup, the order, the sanitizing and the refused `\href`; the
+stylesheet only by reading the source, because CSS imports are stubbed under Vitest. Shiki
 is the same kind of fix, simpler: `ai-elements/code-block.tsx` imports it inside the highlighter
 it already created asynchronously, rather than at the top of the module.
 
