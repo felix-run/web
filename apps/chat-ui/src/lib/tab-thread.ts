@@ -4,8 +4,8 @@
  * The address is the thread: `/t/:threadSuffix` chooses it, and `/` mints one.
  * Every *other* address keeps the thread the tab was already on — but after a
  * reload on `/harness` the tab has no "already", so the shell minted a fresh id
- * and the header's Chat link led to an empty thread instead of the one the
- * operator left.
+ * and the way back to the conversation led to an empty thread instead of the one
+ * the operator left.
  *
  * `sessionStorage`, not `localStorage`, and that difference is the design. The
  * old `felix.threadId` key was shared by every tab and read on every load, so it

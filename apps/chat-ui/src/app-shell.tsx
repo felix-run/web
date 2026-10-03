@@ -26,17 +26,15 @@ import {
   BirdIcon,
   CopyIcon,
   EllipsisIcon,
-  MessageSquareIcon,
   MonitorIcon,
   MoonIcon,
   PanelRightIcon,
   PlusIcon,
   ScrollTextIcon,
-  ServerIcon,
   SunIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Link, Outlet, useMatch, useNavigate } from 'react-router';
+import { Outlet, useMatch, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
   abortChat,
@@ -204,6 +202,8 @@ export function AppShell() {
   const harnessPanel = useMatch('/harness/*');
   const onHarness = harnessRoot !== null || harnessPanel !== null;
   const sidebarInline = useMediaQuery(WORKSPACE_INLINE);
+  /** The slot under the header the attention line's queue renders into. */
+  const [attentionHost, setAttentionHost] = useState<HTMLDivElement | null>(null);
   const [threads, setThreads] = useState<ThreadMeta[]>([]);
   // Canary rollout state for the selected manifest, from the `/manifests`
   // active pointer. Deliberately *not* "which side served this thread": that
@@ -2008,9 +2008,31 @@ export function AppShell() {
                 )}
               </div>
 
+              {/*
+          Always rendered, never conditional, and above the `<Outlet/>` so it is the
+          same line on both addresses. It answers the question an operator has
+          before they have navigated anywhere, which means it cannot be somewhere
+          they have to navigate to.
+        */}
+              {/* `ml-auto` puts it beside the controls; a shrink weight far above the
+            run cluster's makes it the first thing in the header to give way, so
+            the run state and the brand keep their room at every width. */}
+              <div className="ml-auto flex min-w-0 shrink-[100] items-center justify-end pl-2">
+                <AttentionLine
+                  approvals={tenantApprovals}
+                  streaming={streaming}
+                  handled={bannerOwned}
+                  bannerOnScreen={!onHarness}
+                  threadId={threadId}
+                  threads={threads}
+                  reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}
+                  question={uiPrompt?.prompt ?? null}
+                  queueHost={attentionHost}
+                />
+              </div>
               {/* `shrink-0`: the controls are what the left cluster yields to, never
                   the other way round. */}
-              <div className="ml-auto flex shrink-0 items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 {/* Conversation controls stay with the conversation. On `/harness` —
                     whose premise is what outlives every run — New chat, the instrument
                     and the Session menu's run verbs act on a transcript that is not on
@@ -2038,41 +2060,10 @@ export function AppShell() {
                     <span className="sr-only sm:not-sr-only">New chat</span>
                   </Button>
                 )}
-                {/*
-                  The second top-level address, and a real control rather than a menu
-                  item: the four workbenches behind the ellipsis were not hard to find,
-                  they had no home. This is the switch between the two things this
-                  client is — a conversation, and the harness behind it.
-                */}
-                {/* Always ghost: it links to the *other* address, so a "current" fill
-                    would mark the place you are leaving. The icon names the destination
-                    where there is room for it; below `sm` the door is its word alone,
-                    because the word is the part that cannot go and the icon's 22px is
-                    what lets the left cluster keep the wordmark and the run state. */}
-                <Button asChild variant="ghost" size="sm" className="gap-1.5">
-                  <Link
-                    to={onHarness ? `/t/${threadId}` : '/harness'}
-                    title={onHarness ? 'Chat' : 'Harness'}
-                  >
-                    {onHarness ? (
-                      <MessageSquareIcon className="hidden size-4 sm:block" aria-hidden />
-                    ) : (
-                      <ServerIcon className="hidden size-4 sm:block" aria-hidden />
-                    )}
-                    {/* The word at every width. Below `sm` it used to be `sr-only`, so
-                        on a phone the only route between the app's two addresses was a
-                        server glyph beside a panel glyph — two icons that say nothing
-                        about which is a place. New chat gives up its word there
-                        instead: a plus is the one icon here that names its action. */}
-                    <span>{onHarness ? 'Chat' : 'Harness'}</span>
-                  </Link>
-                </Button>
                 {onHarness ? (
-                  // The instrument toggle's slot, held empty so the door beside it
-                  // stays put: without it the door moved on every switch between the
-                  // two addresses. At every width — collapsing it
-                  // on a phone was tried, and a door that moves is a worse cost than
-                  // 32px of gap; the header does not overflow at 390px with it held.
+                  // The instrument toggle's slot, held empty so the attention line
+                  // beside it stays put: without it the line moved on every switch
+                  // between the two addresses.
                   <span
                     aria-hidden
                     data-slot="instrument-toggle-slot"
@@ -2184,22 +2175,9 @@ export function AppShell() {
               </div>
             </header>
 
-            {/*
-              Always rendered, never conditional, and above the `<Outlet/>` so it is the
-              same line on both addresses. It answers the question an operator has
-              before they have navigated anywhere, which means it cannot be somewhere
-              they have to navigate to.
-            */}
-            <AttentionLine
-              approvals={tenantApprovals}
-              streaming={streaming}
-              handled={bannerOwned}
-              bannerOnScreen={!onHarness}
-              threadId={threadId}
-              threads={threads}
-              reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}
-              question={uiPrompt?.prompt ?? null}
-            />
+            {/* The attention line's queue opens here, under the bar the line sits
+                on, in the flow — it pushes the page down rather than covering it. */}
+            <div ref={setAttentionHost} className="contents" />
 
             <Outlet />
           </SidebarInset>

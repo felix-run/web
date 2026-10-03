@@ -119,19 +119,18 @@ describe('the harness address', () => {
     await waitFor(() => expect(document.body.textContent).toContain('Ledger'));
     expect(address).toBe('/harness/ledger');
 
-    // The header's own way back still names the thread the tab was on.
-    const back = [...document.querySelectorAll('a')].map((a) => a.getAttribute('href'));
-    expect(back).toContain('/t/keep-me');
+    // The tab is still on the thread it was on: nothing minted a new one.
+    expect(sessionStorage.getItem('felix.tabThread')).toBe('keep-me');
   });
 
   /**
    * The same rule, across a reload. A cold load on `/harness` has no thread "the
-   * tab was already on" in memory, so the shell minted one and Chat led to an
-   * empty thread rather than back to the one the operator left. The tab's last
+   * tab was already on" in memory, so the shell minted one, and the way back to
+   * the conversation led to an empty thread rather than the one the operator left. The tab's last
    * thread is kept in `sessionStorage` — per tab, and read only where the address
    * names no thread and is not `/`.
    */
-  it('returns Chat to the thread this tab was on after a reload on /harness', async () => {
+  it('keeps the thread this tab was on across a reload on /harness', async () => {
     const first = mount('/t/before-reload');
     await waitFor(() => expect(address).toBe('/t/before-reload'));
     first.unmount();
@@ -139,17 +138,15 @@ describe('the harness address', () => {
     // The reload: a new shell, the same tab.
     mount('/harness/ledger');
     await waitFor(() => expect(document.body.textContent).toContain('Ledger'));
-    const hrefs = [...document.querySelectorAll('a')].map((a) => a.getAttribute('href'));
-    expect(hrefs).toContain('/t/before-reload');
+    expect(sessionStorage.getItem('felix.tabThread')).toBe('before-reload');
   });
 
-  it('still mints on a cold /harness load in a tab that has been on no thread', async () => {
+  it('remembers no thread for a tab that has been on none', async () => {
     mount('/harness/ledger');
     await waitFor(() => expect(document.body.textContent).toContain('Ledger'));
-    const chat = [...document.querySelectorAll('a')]
-      .map((a) => a.getAttribute('href'))
-      .find((h) => h?.startsWith('/t/'));
-    expect(chat).toMatch(/^\/t\/[0-9a-f-]{36}$/);
+    // It mints one to hold, but only an address writes the tab's memory, so a
+    // reload here does not come back to a thread nobody opened.
+    expect(sessionStorage.getItem('felix.tabThread')).toBeNull();
   });
 
   /**
@@ -272,20 +269,6 @@ describe('the harness address', () => {
         'Usage',
       ),
     );
-  });
-
-  it('shows the Chat door its word at every width', async () => {
-    mount('/harness/memory');
-    await waitFor(() => expect(document.querySelector('header a[href^="/t/"]')).not.toBeNull());
-    const door = document.querySelector('header a[href^="/t/"]') as HTMLElement;
-    // The word is on screen at every width: it was `sr-only` below `sm`, which
-    // left a phone a lone glyph for the route between the app's two addresses.
-    // The icon is what goes on a phone, and it is `aria-hidden` either way.
-    const word = [...door.querySelectorAll('span')].find((s) => s.textContent === 'Chat');
-    expect(word).toBeDefined();
-    expect(word?.className ?? '').not.toMatch(/sr-only|hidden/);
-    const icon = door.querySelector('svg');
-    expect(icon?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('leaves the conversation controls with the conversation', async () => {

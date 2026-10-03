@@ -8,7 +8,8 @@ import {
 } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { ChevronRightIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router';
 import { decideApproval } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
@@ -74,6 +75,7 @@ export function AttentionLine({
   threads,
   reasons = {},
   question = null,
+  queueHost = null,
 }: {
   /** The shell's tenant-wide `/approvals` poll — see `usePendingApprovals`. */
   approvals: PendingApprovals;
@@ -114,7 +116,16 @@ export function AttentionLine({
    * waiting on you" while the header said `blocked` and the run waited on an answer.
    */
   question?: string | null;
+  /**
+   * Where the expanded queue renders. The line itself sits in the header, which
+   * has no room for a list of cards, so the shell hands it the slot under the
+   * header and the queue opens there — in the flow, pushing the page down rather
+   * than covering it. Without a host the queue renders after the line, which is
+   * what a test mounting the line alone gets.
+   */
+  queueHost?: HTMLElement | null;
 }) {
+  const queueId = useId();
   const { pending, error, lastOkAt, failures, refresh, markDecided } = approvals;
   const [open, setOpen] = useState(() => {
     try {
@@ -215,6 +226,25 @@ export function AttentionLine({
       : stale && !rechecking
         ? `${failure} · a question is waiting on you on this thread`
         : 'A question is waiting on you on this thread';
+  /**
+   * The sentence in two words, for a phone's header. The full sentence stays the
+   * live region and the `title`; this is what is drawn below `sm`, because the
+   * dot alone would say the state in colour only.
+   */
+  const short =
+    waiting || asking
+      ? `${count + (asking ? 1 : 0)} waiting`
+      : stale && !rechecking
+        ? limited
+          ? 'Rate-limited'
+          : 'Unreachable'
+        : rechecking
+          ? 'Rechecking'
+          : unchecked
+            ? 'Checking'
+            : streaming
+              ? 'Working'
+              : 'Clear';
   // Outside the live region: it changes on every failed tick, and a screen
   // reader re-reading the sentence for a clock would bury the change that matters.
   const age =
@@ -243,15 +273,61 @@ export function AttentionLine({
         ? 'bg-state-running'
         : 'bg-muted-foreground/50';
 
-  return (
-    <section
-      aria-label="What is waiting"
+  const queue = reviewable.length > 0 && open && (
+    // Held to the transcript's reading measure and on its centre line, so the
+    // queue reads as the same column the decision continues in. Full-bleed, a
+    // grant sentence ran ~580 characters to a line and Approve was a 600px bar.
+    // The tint and rule are full width: they belong to the line, not the list.
+    <div
+      id={queueId}
+      data-slot="attention-queue"
       className={cn(
-        'shrink-0 border-b border-border/60 text-sm',
-        blocked ? 'bg-state-blocked/10' : 'bg-muted/30',
+        'max-h-[40vh] shrink-0 overflow-y-auto border-b border-border/60',
+        blocked ? 'bg-state-blocked/5' : 'bg-muted/30',
       )}
     >
-      <div className="flex items-center gap-2 px-3 py-1.5">
+      <ul className="mx-auto max-w-3xl divide-y divide-border/40">
+        {reviewable.map((a) => (
+          <QueueRow
+            key={a.id}
+            approval={a}
+            inBanner={owned.has(a.id)}
+            threadId={threadId}
+            threads={threads}
+            reason={reasons[a.id]}
+            onDecided={() => {
+              markDecided(a.id);
+              refresh();
+            }}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+
+  return (
+    <>
+      {/*
+        A pill in the header, before the controls: the answer to "is anything
+        waiting on me" sits on the bar every address shares, rather than taking a
+        row of its own under it. It shrinks before anything else in the header —
+        the sentence truncates, then below `sm` gives way to two words — and the
+        whole sentence stays the live region and the `title`.
+
+        Tinted only when it has something to say: amber while a person is being
+        asked, red while it cannot vouch for the list. At rest it is muted text on
+        no surface, because a pill that is always filled stops being read.
+      */}
+      <section
+        aria-label="What is waiting"
+        data-slot="attention-line"
+        title={summary}
+        className={cn(
+          'flex h-7 min-w-0 items-center gap-2 rounded-full px-2.5 text-sm',
+          blocked ? 'bg-state-blocked/10' : stale && !rechecking ? 'bg-state-failed/10' : undefined,
+          reviewable.length > 0 && 'pr-0.5',
+        )}
+      >
         <span
           aria-hidden
           data-attention-dot
@@ -266,9 +342,7 @@ export function AttentionLine({
           role="status"
           aria-live="polite"
           className={cn(
-            // Not `flex-1`: the age belongs beside the sentence it qualifies,
-            // and a growing paragraph pushed it to the far edge of the window.
-            'min-w-0 truncate',
+            'min-w-0 truncate max-sm:sr-only',
             blocked
               ? 'text-state-blocked'
               : stale && !rechecking
@@ -278,9 +352,22 @@ export function AttentionLine({
         >
           {summary}
         </p>
+        <span
+          aria-hidden
+          className={cn(
+            'shrink-0 sm:hidden',
+            blocked
+              ? 'font-medium text-state-blocked'
+              : stale && !rechecking
+                ? 'font-medium text-state-failed'
+                : 'text-muted-foreground',
+          )}
+        >
+          {short}
+        </span>
         {age && (
           <span
-            className="shrink-0 text-xs tabular-nums text-muted-foreground"
+            className="hidden shrink-0 text-xs tabular-nums text-muted-foreground md:inline"
             title={error instanceof Error ? error.message : undefined}
           >
             {age}
@@ -297,9 +384,10 @@ export function AttentionLine({
           <Button
             variant="ghost"
             size="sm"
-            className="ml-auto h-6 shrink-0 gap-1 px-2 text-xs"
+            className="h-6 shrink-0 gap-1 rounded-full px-2 text-xs"
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
+            aria-controls={open ? queueId : undefined}
             // The keyboard layer clicks this to expand the queue before focusing
             // it, so the shortcut and the pointer open it the same way.
             data-shortcut="review-approvals"
@@ -308,37 +396,15 @@ export function AttentionLine({
             <ChevronRightIcon
               className={cn('size-3.5 transition-transform duration-150', open && 'rotate-90')}
             />
-            {open ? 'Hide' : 'Review'}
+            {/* The chevron alone on a phone: the header has the brand, the
+                count and three controls to fit in 390px, and the word is the
+                part the count already implies. It stays the button's name. */}
+            <span className="max-sm:sr-only">{open ? 'Hide' : 'Review'}</span>
           </Button>
         )}
-      </div>
-
-      {reviewable.length > 0 && open && (
-        // Held to the transcript's reading measure and on its centre line, so
-        // the queue reads as the same column the decision continues in.
-        // Full-bleed, a grant sentence ran ~580 characters to a line and Approve
-        // was a 600px bar. The rule above stays full width: it belongs to the
-        // line, not to the list.
-        <div className="max-h-[40vh] overflow-y-auto border-t border-border/40">
-          <ul className="mx-auto max-w-3xl divide-y divide-border/40">
-            {reviewable.map((a) => (
-              <QueueRow
-                key={a.id}
-                approval={a}
-                inBanner={owned.has(a.id)}
-                threadId={threadId}
-                threads={threads}
-                reason={reasons[a.id]}
-                onDecided={() => {
-                  markDecided(a.id);
-                  refresh();
-                }}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
-    </section>
+      </section>
+      {queue && (queueHost ? createPortal(queue, queueHost) : queue)}
+    </>
   );
 }
 

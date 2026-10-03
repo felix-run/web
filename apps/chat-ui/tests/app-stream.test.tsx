@@ -367,19 +367,15 @@ describe('the header run-state slot', () => {
     // Not a second live region: the attention line already announces the change.
     expect(slot()?.closest('[aria-live]')).toBeNull();
 
-    const harness = document.querySelector<HTMLAnchorElement>('header a[href="/harness"]');
+    // To the other address by the sidebar, which is the way there now.
+    const harness = document.querySelector<HTMLAnchorElement>('a[href^="/harness/ledger"]');
     expect(harness).not.toBeNull();
     await act(async () => void (await userEvent.click(harness as HTMLAnchorElement)));
+    await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
 
-    const door = await waitFor(() => {
-      const found = document.querySelector<HTMLElement>('header a[href^="/t/"]');
-      expect(found).not.toBeNull();
-      return found as HTMLElement;
-    });
-    // The same slot on the other address, and a door that is plain navigation.
+    // The same slot on the other address.
     expect(slot()?.textContent).toContain('blocked');
     expect(slot()?.textContent).not.toContain('running');
-    expect(door.textContent).not.toMatch(/blocked|running/);
   });
 });
 
@@ -485,9 +481,7 @@ describe('the header with every mode on and a run blocked', () => {
     expect(cluster.className).toMatch(/(^|\s)min-w-0(\s|$)/);
     expect(cluster.className).toMatch(/(^|\s)overflow-hidden(\s|$)/);
 
-    // The door between the two addresses says where it goes at every width.
-    const door = header.querySelector<HTMLAnchorElement>('a[href="/harness"]');
-    expect(door?.textContent).toBe('Harness');
-    expect(door?.querySelector('.sr-only')).toBeNull();
+    // The header holds no door to `/harness`: the sidebar lists its pages.
+    expect(header.querySelector('a[href^="/harness"]')).toBeNull();
   });
 });

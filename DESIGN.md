@@ -359,11 +359,11 @@ focusable, goes `sr-only` and is still read; both return when the run settles. A
 part-way reads as broken, and one pushed off by overflow is a button focus can reach and
 nobody can see, which is why the yield is whole. Past all that the cluster clips at its own
 edge rather than running under the right cluster, which is `shrink-0`: at 320px the chip is
-clipped, a known limit. On the right: New chat, only where the sidebar is a drawer (from 1024 it is the sidebar's
-first row, expanded or as icons), and a plus alone below `sm`; the Harness
-door — plain navigation carrying no state of its own, and its **word at every width**, icon
-and word from `sm`, the word alone below it, because a server glyph beside a panel glyph said
-nothing on a phone about which one was a place; the instrument toggle; and one ellipsis menu named
+clipped, a known limit. There is **no door to `/harness`** in the header: the sidebar lists its
+eight pages, and a second way there in the bar was the same link twice. Before the controls sits
+the **attention line** (below). On the right: New chat, only where the sidebar is a drawer (from 1024 it is the sidebar's
+first row, expanded or as icons), and a plus alone below `sm`; the instrument toggle; and one
+ellipsis menu named
 **Session** that opens on what it is named for: *Session* (Continue run, disabled on an empty
 thread, and Copy thread id), then *View* (Verbose tools), then *Theme* under its own label as
 Light/Dark/System radio items. Theme is a set-once preference and holds no header slot of its
@@ -372,10 +372,17 @@ own; Thinking is in the composer.
 The workbench is **three zones**: the app sidebar (17rem expanded, 3rem as icons), the transcript at reading width
 (`max-w-3xl`, turns 24px apart) with the composer anchored beneath it, and the run instrument
 (`clamp(22rem, 24vw, 30rem)` — the panel is what widens on a large display, not the
-transcript). An attention line runs the inset's full width under the header on every address. At rest its
-dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach
+transcript). The **attention line** is a pill in the header, right-aligned before the instrument
+toggle and the menu, on every address — the answer to "is anything waiting on me" on the bar every
+address shares rather than a row of its own. It is the first thing in the header to give way (a
+shrink weight far above the run cluster's): the sentence truncates, and below `sm` it is two words
+(*1 waiting*, *Clear*, *Unreachable*) with *Review* as its chevron alone, the full sentence kept as
+the live region and the `title`. It is tinted only when it has something to say — `state-blocked`
+at `/10` while a person is asked, `state-failed` while it cannot vouch for the list — and is muted
+text on no surface at rest. At rest its dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach
 approvals* with the age of its last answer, in `state-failed`, and never the all-clear.
-Expanded, its queue is held to the transcript's measure (`max-w-3xl`) on the transcript's centre
+Expanded, its queue opens **under the header**, in the flow — it pushes the page down rather than
+covering it — and is held to the transcript's measure (`max-w-3xl`) on the transcript's centre
 line, and is **one line per call** — tool and target in mono, the thread, and a countdown chip
 that says what it counts down to (*Auto-denies in 4:20*; the clock alone below `sm`) — opening
 into the approval card on *Review*. It opens itself only for a call on this thread. A write from
@@ -631,10 +638,11 @@ its half), declared beside the destination and checked against the docs source b
 Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
-controls — New chat, the instrument toggle and the Session menu's run verbs — and keeps the door
-back to Chat as plain navigation; the run's state is the header's first slot, on both addresses. The ellipsis menu stays in the same slot on both addresses and the
-instrument toggle's slot is held empty at every width, so the right-hand cluster does not move
-between them — collapsing it below `sm` was tried, and a door that moves cost more than the gap;
+controls — New chat, the instrument toggle and the Session menu's run verbs; the way back to the
+conversation is its row in the sidebar's thread list, and the run's state is the header's first
+slot, on both addresses. The ellipsis menu stays in the same slot on both addresses and the
+instrument toggle's slot is held empty at every width, so the attention line beside it does not
+move between them;
 on `/harness` the menu is named **Theme** and holds only the Theme radio group. Two controls have
 one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Ledger's
 tabs) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
