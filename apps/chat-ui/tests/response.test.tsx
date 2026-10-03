@@ -159,39 +159,80 @@ describe('long content stays inside its own box', () => {
 });
 
 /**
- * Math is rendered by a KaTeX that loads with the first reply needing it
- * (`lib/katex-plugin.ts`), not with the app. What is pinned: a reply with `$$`
- * still ends up as KaTeX markup, and the list without KaTeX keeps streamdown's
- * other plugins in their order — sanitize and harden run after it, and dropping
- * one of those with the KaTeX slot would be a safety regression, not a size win.
+ * Math is rendered by a KaTeX that loads with the first reply needing it, and
+ * runs *after* the sanitizer (`lib/katex-plugin.ts`). Before that reorder the
+ * sanitizer scrubbed KaTeX's output, and a formula drew as MathML, TeX source and
+ * glyphs run together — so what is pinned is KaTeX's real markup, not merely
+ * that a `π` appeared somewhere, plus the two things the reorder must not cost:
+ * the model's own HTML is still sanitized, and a formula cannot carry a link.
  */
 describe('math in a reply', () => {
-  it('renders `$$` math once KaTeX has loaded, inline as well as on its own line', async () => {
-    // Asserted as KaTeX's output rather than its class names: the default
-    // `rehype-sanitize` runs after KaTeX and strips them, on main as here.
-    // Inline was the case that broke — streamdown's memo ignores a new plugin
-    // list, so without the remount the math stayed as `code.language-math`.
-    for (const md of ['Area: $$\\pi r^2$$', '$$\n\\pi r^2\n$$']) {
+  it('renders `$$` math as KaTeX markup, inline as well as on its own line', async () => {
+    // Inline is also the remount case: streamdown's memo ignores a new plugin
+    // list, so without it the math stayed as `code.language-math`.
+    for (const [md, display] of [
+      ['Area: $$\\pi r^2$$', false],
+      ['$$\n\\pi r^2\n$$', true],
+    ] as const) {
       const { container, unmount } = render(<Response>{md}</Response>);
-      await waitFor(() => {
-        expect(container.querySelector('code.language-math')).toBeNull();
-        expect(container.textContent).toContain('π');
-      });
+      await waitFor(() => expect(container.querySelector('.katex')).not.toBeNull());
+      expect(container.querySelector('code.language-math')).toBeNull();
+      // The MathML is kept for assistive tech and hidden by KaTeX's CSS through
+      // this class; without it the formula is read and drawn twice.
+      expect(container.querySelector('.katex-mathml math')).not.toBeNull();
+      expect(container.querySelector('.katex-html')?.textContent).toContain('π');
+      expect(container.querySelector('.katex-display') !== null).toBe(display);
       unmount();
     }
   });
 
-  it('keeps streamdown’s other rehype plugins, in order, without KaTeX', async () => {
+  it('still sanitizes the rest of a reply that has math in it', async () => {
+    const { container } = render(
+      <Response>
+        {'$$x$$ <img src="x" onerror="alert(1)"> <span style="color:red">hi</span>'}
+      </Response>,
+    );
+    await waitFor(() => expect(container.querySelector('.katex')).not.toBeNull());
+    expect(container.innerHTML).not.toContain('onerror');
+    expect(container.innerHTML).not.toContain('color:red');
+  });
+
+  it('refuses a link inside a formula — KaTeX keeps `trust` off', async () => {
+    const { container } = render(<Response>{'$$\\href{javascript:alert(1)}{click}$$'}</Response>);
+    await waitFor(() => expect(container.querySelector('.katex, .katex-error')).not.toBeNull());
+    expect(container.querySelector('a')).toBeNull();
+    // The source survives as *text* — KaTeX draws a refused command in the error
+    // colour, and the MathML annotation keeps the TeX — but never as a value an
+    // element acts on.
+    const attributes = [...container.querySelectorAll('*')].flatMap((el) =>
+      [...el.attributes].map((a) => a.value),
+    );
+    expect(attributes.some((v) => v.includes('javascript:'))).toBe(false);
+    expect(container.querySelector('.katex-html')?.textContent).toContain('\\href');
+  });
+
+  it('loads KaTeX’s stylesheet itself, with the plugin', () => {
+    // Read from the source because a test cannot see it work: CSS imports are
+    // stubbed here, and the failure only ever showed in a production build,
+    // where streamdown's own request for this file is never made. Without it
+    // nothing hides the MathML and every formula is followed by a copy of
+    // itself as plain text.
+    const source = readFileSync(join(__dirname, '../src/lib/katex-plugin.ts'), 'utf8');
+    expect(source).toMatch(
+      /Promise\.all\(\[\s*import\('rehype-katex'\),\s*import\('katex\/dist\/katex\.min\.css'\)/,
+    );
+  });
+
+  it('runs KaTeX straight after sanitize, and keeps every other plugin in streamdown’s order', async () => {
     const { defaultRehypePlugins } = await import('streamdown');
     const { WITHOUT_MATH, loadMathPlugins } = await import('../src/lib/katex-plugin');
     const { katex: _katex, ...rest } = defaultRehypePlugins;
     expect(WITHOUT_MATH).toEqual(Object.values(rest));
     const withMath = await loadMathPlugins();
-    expect(withMath).toHaveLength(Object.keys(defaultRehypePlugins).length);
-    expect(Object.keys(defaultRehypePlugins).indexOf('katex')).toBe(
-      withMath.findIndex(
-        (p) => Array.isArray(p) && (p[0] as { name?: string }).name === 'rehypeKatex',
-      ),
-    );
+    const isKatex = (p: unknown) =>
+      Array.isArray(p) && (p[0] as { name?: string }).name === 'rehypeKatex';
+    expect(withMath.filter(isKatex)).toHaveLength(1);
+    expect(withMath.filter((p) => !isKatex(p))).toEqual(Object.values(rest));
+    expect(withMath.findIndex(isKatex)).toBe(Object.keys(rest).indexOf('sanitize') + 1);
   });
 });
