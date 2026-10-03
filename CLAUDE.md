@@ -213,6 +213,18 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
   `localStorage`, the Worker compares it, then **deletes the header** before going upstream.
   A 401 anywhere drops the stored key and re-prompts via `src/lib/auth.ts` → `components/gate.tsx`.
 - `FELIX_API_KEY` (optional) is injected upstream as `Authorization: Bearer …`.
+- **A browser's own bearer stands in for the key** — the token from the harness's GitHub login
+  (`src/lib/github-login.ts`, the device flow, no redirect). The Worker forwards it untouched, skips
+  `CHAT_UI_KEY` and injects nothing, **only while `GET /auth/methods` says `bearer_required`**,
+  asked once per isolate and failing closed. Under `FELIX_AUTH_MODE=none` the harness accepts any
+  bearer, so without that check `Authorization: Bearer x` was a way past the deployment's only
+  lock. `GET /auth/methods`, `POST /auth/github/{device,token}` pass with no credential at all.
+- `src/lib/auth.ts` holds **one** credential, key or session, never both: storing one clears the
+  other, because the Worker would honour the key and silently run the person as the deployment.
+  The gate offers GitHub when `/auth/methods` does, and the key only when the Worker's own 401
+  says `gate: 'chat_key'` — a harness 401 is not answered by any key. The session lapses with no
+  refresh and no revocation, so the header's account chip (`components/account-chip.tsx`) renews
+  in a popover with the shell still mounted, and its Sign out says the token outlives it.
 - In `vite dev` the Worker is not in the loop, so the `CHAT_UI_KEY` gate is skipped entirely.
 
 The dev proxy in `apps/chat-ui/vite.config.ts` is a second copy of this contract — change one and

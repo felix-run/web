@@ -102,6 +102,7 @@ import {
 import { cn } from '@/lib/utils';
 import { NO_RUN, type RunClock, ShellProvider, type ShellValue } from '@/shell-context';
 import type { ChatMessage, ImageAttachment, ThinkingLevel, Turn, TurnFeedback } from '@/types';
+import { AccountChip } from './components/account-chip';
 
 const MANIFEST_KEY = 'felix.manifest';
 /** How long a deleted conversation can be restored, and how long the server delete waits. */
@@ -2248,6 +2249,9 @@ export function AppShell() {
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                {/* Last, past the menu: who this browser is, when it signed in with
+                    GitHub. Renders nothing under the shared key, which names no one. */}
+                <AccountChip />
               </div>
             </header>
 

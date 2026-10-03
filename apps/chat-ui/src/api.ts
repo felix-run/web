@@ -140,6 +140,102 @@ async function apiFetch(input: string, init: RequestInit = {}): Promise<Response
   return res;
 }
 
+// --- Signing in (/auth) ---
+//
+// Plain `fetch`, not `apiFetch`: these are how a browser *gets* a credential, so
+// they send none, and a 401 from one of them is not a stored credential going
+// stale. The Worker passes all three through without its key.
+
+/** `GET /auth/methods` — what the harness offers a browser with no credential. */
+export interface AuthMethods {
+  github_device: boolean;
+  /** Whether the harness verifies a bearer. The Worker honours one only when it does. */
+  bearer_required: boolean;
+}
+
+export interface GitHubDeviceStart {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface GitHubLoginToken {
+  access_token: string;
+  token_type: 'Bearer';
+  expires_in: number;
+  tenant: string;
+  scopes: string[];
+  /** Absent from a harness older than the field. */
+  github_login?: string;
+}
+
+/** Every refusal from the login routes. `interval` rides a 428/429, `tenants` a 409. */
+export interface GitHubLoginRefusal {
+  error: string;
+  message: string;
+  interval?: number;
+  tenants?: string[];
+}
+
+export type LoginResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; status: number; refusal: GitHubLoginRefusal | null };
+
+async function loginCall<T>(res: Response): Promise<LoginResult<T>> {
+  const body = (await res.json().catch(() => null)) as unknown;
+  if (res.ok && body && typeof body === 'object') return { ok: true, value: body as T };
+  const refusal =
+    body && typeof body === 'object' && typeof (body as GitHubLoginRefusal).error === 'string'
+      ? (body as GitHubLoginRefusal)
+      : null;
+  return { ok: false, status: res.status, refusal };
+}
+
+/**
+ * Null when the harness cannot say — an older one has no such route, and under
+ * `api_key` it 401s an anonymous caller — which reads as "no GitHub login".
+ */
+export async function getAuthMethods(): Promise<AuthMethods | null> {
+  try {
+    const res = await fetch('/api/auth/methods');
+    if (!res.ok) return null;
+    const body = (await res.json()) as Partial<AuthMethods>;
+    return {
+      github_device: body.github_device === true,
+      bearer_required: body.bearer_required === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** POST /auth/github/device → a code for the person to enter at GitHub. Throws only offline. */
+export async function startGitHubLogin(): Promise<LoginResult<GitHubDeviceStart>> {
+  return loginCall<GitHubDeviceStart>(await fetch('/api/auth/github/device', { method: 'POST' }));
+}
+
+/**
+ * POST /auth/github/token → a Felix bearer once the person has approved, or a
+ * refusal. `authorization_pending` (428) is the usual answer and means "ask
+ * again in `interval` seconds". Throws only offline.
+ */
+export async function redeemGitHubLogin(
+  deviceCode: string,
+  tenant?: string,
+): Promise<LoginResult<GitHubLoginToken>> {
+  return loginCall<GitHubLoginToken>(
+    await fetch('/api/auth/github/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(
+        tenant ? { device_code: deviceCode, tenant } : { device_code: deviceCode },
+      ),
+    }),
+  );
+}
+
 // --- Eval harness (/eval) ---
 
 async function evalFetch<T>(path: string, init?: RequestInit): Promise<T> {

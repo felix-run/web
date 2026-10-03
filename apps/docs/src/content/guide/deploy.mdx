@@ -376,7 +376,16 @@ it.
 Put a server-side proxy on the page's own origin instead. It holds the credential, adds
 `Authorization`, and forwards to Felix. The chat-ui Worker does exactly this: it forwards `/api/*`
 to `FELIX_ORIGIN`, and when `CHAT_UI_KEY` is set it first checks the browser's `x-chat-key`. An
-nginx or Caddy `location /api/` block that sets the header works the same way. The CLI,
+nginx or Caddy `location /api/` block that sets the header works the same way.
+
+With [GitHub login](/internals/auth/#github-login) on, the chat-ui gate leads with
+**Continue with GitHub** and keeps the access key behind it (when `CHAT_UI_KEY` is set). A signed-in
+browser sends its own bearer, and the Worker forwards it in place of both `x-chat-key` and
+`FELIX_API_KEY` — so each person runs as their org's tenant rather than as the deployment's key —
+but only while `GET /auth/methods` reports `bearer_required`. Under `FELIX_AUTH_MODE=none` any
+bearer would be accepted, and the Worker refuses to let one past its key there. The session is the
+harness's token, so it lasts `FELIX_GITHUB_LOGIN_TTL_SECONDS` and signing out of the page does not
+revoke it. The CLI,
 `felix-client`, curl and other services are not browsers, so none of this applies to them.
 
 ## Where to next

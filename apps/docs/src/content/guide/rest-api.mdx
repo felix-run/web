@@ -96,8 +96,15 @@ Setup and the rules (org → tenant, TTL, consent phishing) are in
 
 | Method | Path | Body | Answer |
 |---|---|---|---|
+| `GET` | `/auth/methods` | none | `{github_device, bearer_required}` |
 | `POST` | `/auth/github/device` | none | `{device_code, user_code, verification_uri, expires_in, interval}` |
-| `POST` | `/auth/github/token` | `{device_code, tenant?}` | `{access_token, token_type: "Bearer", expires_in, tenant, scopes}` |
+| `POST` | `/auth/github/token` | `{device_code, tenant?}` | `{access_token, token_type: "Bearer", expires_in, tenant, scopes, github_login}` |
+
+`/auth/methods` is public in every auth mode and answers without starting anything, which is how a
+client decides whether to offer GitHub at all — probing `/device` would start a real flow and spend
+from its hourly budget. `bearer_required` is `false` only under `FELIX_AUTH_MODE=none`, where any
+bearer is accepted; a proxy that lets a caller's own bearer stand in for its own lock must check it
+first. `github_login` names who signed in, and is `""` from `/auth/github/actions`.
 
 Show `user_code` and `verification_uri` to the person, then poll `/token` every `interval` seconds
 until it answers 200. A refusal is `{error, message, interval?, tenants?}`:
