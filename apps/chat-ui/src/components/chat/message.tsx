@@ -396,7 +396,7 @@ function AttachedImage({ url, alt }: { url: string; alt: string }) {
   // image" is the question each of them answers.
   const state = src === null ? 'error' : src === undefined ? 'processing' : 'done';
   return (
-    <Attachment state={state} orientation="vertical" size="sm">
+    <Attachment state={state} orientation="vertical">
       <AttachmentMedia variant={src ? 'image' : 'icon'}>
         {src ? (
           <img src={src} alt={alt} />

@@ -743,8 +743,9 @@ every second is noise.
   immediate buttons, Yes and No, beside the decline.
 - **The transcript scrolls by turn.** Each operator message is an anchor. When one is sent it
   lands near the top of the view and the reply grows beneath it. The view follows the stream only
-  while the reader is at the live edge. A thread opens on its newest question, not at its last
-  paragraph. *Scroll to latest* fades in, round and outlined, centred over the column's foot,
+  while the reader is at the live edge — never because the browser decided to keep some node in
+  view. A thread opens on its newest question, not at its last paragraph, and stays there while
+  the rest of the thread fills in above it. *Scroll to latest* fades in, round and outlined, centred over the column's foot,
   whenever there is more below.
 - **Long tokens wrap; wide blocks scroll in place.** Nothing in a turn may widen the column.
   Plain text — the operator's turn, a note, reasoning — wraps with `wrap-anywhere`, so a

@@ -137,8 +137,13 @@ export function Workbench() {
             {turns.map((t, i) => {
               const isLast = i === turns.length - 1;
               return (
-                <ConversationItem key={t.id} id={`turn-${i}`} anchor={t.role === 'user'}>
+                // The row is keyed by position and the message by turn: the scroller
+                // remembers which anchors it has handled by DOM element, so a
+                // snapshot rebuild that re-mints turn ids must not re-create the
+                // rows, or every anchor reads as new and the view jumps to the first.
+                <ConversationItem key={`turn-${i}`} id={`turn-${i}`} anchor={t.role === 'user'}>
                   <Message
+                    key={t.id}
                     turn={t}
                     streaming={streaming && isLast}
                     verbose={verbose}
