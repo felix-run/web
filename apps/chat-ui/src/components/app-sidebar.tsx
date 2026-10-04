@@ -48,6 +48,7 @@ export function AppSidebar() {
   const {
     threads,
     threadId,
+    watching,
     streaming,
     selectThread,
     newThread,
@@ -218,6 +219,7 @@ export function AppSidebar() {
               }}
               onCompact={compactThread}
               onExport={exportThread}
+              readOnlyId={watching ? threadId : undefined}
             />
             <SidebarSeparator />
             <WorkspaceSection />

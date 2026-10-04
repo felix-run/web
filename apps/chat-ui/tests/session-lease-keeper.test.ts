@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createLeaseKeeper,
   LEASE_RENEW_MS,
+  type LeaseAcquireResult,
   type LeaseApi,
   releaseOnPageExit,
 } from '../src/lib/session-lease';
@@ -17,7 +18,7 @@ type Acquire = Parameters<LeaseApi['acquire']>[0];
 function api() {
   const pending: Array<{
     args: Acquire;
-    resolve: (r: { ok: boolean; token?: string; error?: string }) => void;
+    resolve: (r: LeaseAcquireResult) => void;
   }> = [];
   const releases: Array<Parameters<LeaseApi['release']>[0]> = [];
   const fake: LeaseApi = {
@@ -98,17 +99,148 @@ describe('createLeaseKeeper', () => {
     expect(pending).toHaveLength(2);
   });
 
-  it('does not renew a shared hold, which would keep another tab’s lease alive', async () => {
+  describe('observing', () => {
+    /** Attach as a second tab on a thread another one drives: 409, then an observer token. */
+    async function observing(holder = 'tab-2') {
+      const harness = api();
+      const keeper = createLeaseKeeper(harness.fake, () => holder);
+      const detach = keeper.attach('t1');
+      await flush();
+      harness.pending[0]?.resolve({ ok: false, error: 'lease_held' });
+      await flush();
+      harness.pending[1]?.resolve({ ok: true, token: 'mine', held_by_other: true });
+      await flush();
+      return { ...harness, keeper, detach };
+    }
+
+    it('observes with a token of its own, and says someone else drives', async () => {
+      const { keeper, pending } = await observing();
+      expect(pending[1]?.args).toEqual({ threadId: 't1', holderId: 'tab-2', mode: 'shared' });
+      expect(keeper.state('t1')).toEqual({ mode: 'shared', heldByOther: true });
+      expect(keeper.token('t1')).toBe('mine');
+    });
+
+    it('renews the observer hold in shared mode with its own token, every interval', async () => {
+      const { pending } = await observing();
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS);
+      pending[2]?.resolve({ ok: false, error: 'lease_held' });
+      await flush();
+      expect(pending[3]?.args).toEqual({
+        threadId: 't1',
+        holderId: 'tab-2',
+        mode: 'shared',
+        token: 'mine',
+      });
+      pending[3]?.resolve({ ok: true, token: 'mine', held_by_other: true });
+      await flush();
+
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS);
+      pending[4]?.resolve({ ok: false, error: 'lease_held' });
+      await flush();
+      expect(pending[5]?.args).toMatchObject({ mode: 'shared', token: 'mine' });
+    });
+
+    it('tries to take the thread on every tick first — exclusive, with no token', async () => {
+      const { pending } = await observing();
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS);
+      expect(pending[2]?.args).toEqual({ threadId: 't1', holderId: 'tab-2', mode: 'exclusive' });
+    });
+
+    it('keeps observing when the takeover is refused', async () => {
+      const { keeper, pending, releases } = await observing();
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS);
+      pending[2]?.resolve({ ok: false, error: 'lease_held' });
+      await flush();
+      pending[3]?.resolve({ ok: true, token: 'mine', held_by_other: true });
+      await flush();
+      expect(keeper.state('t1')).toEqual({ mode: 'shared', heldByOther: true });
+      expect(keeper.token('t1')).toBe('mine');
+      expect(releases).toEqual([]);
+    });
+
+    it('takes over once the driver has gone, and releases the observer token', async () => {
+      const { keeper, pending, releases } = await observing();
+      const seen: Array<ReturnType<typeof keeper.state>> = [];
+      keeper.subscribe(() => seen.push(keeper.state('t1')));
+
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS);
+      pending[2]?.resolve({ ok: true, token: 'drive' });
+      await flush();
+
+      expect(keeper.state('t1')).toEqual({ mode: 'exclusive', heldByOther: false });
+      expect(seen).toEqual([{ mode: 'exclusive', heldByOther: false }]);
+      expect(keeper.token('t1')).toBe('drive');
+      expect(releases).toEqual([{ threadId: 't1', holderId: 'tab-2', token: 'mine' }]);
+      // No observer renewal after the takeover…
+      expect(pending).toHaveLength(3);
+      // …and from now on it renews as the driver, with the new token.
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS);
+      expect(pending[3]?.args).toEqual({
+        threadId: 't1',
+        holderId: 'tab-2',
+        mode: 'exclusive',
+        token: 'drive',
+      });
+    });
+
+    it('releases the token a takeover got, when the thread is let go mid-takeover', async () => {
+      const { pending, releases, detach } = await observing();
+      await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS);
+      detach();
+      await flush();
+      pending[2]?.resolve({ ok: true, token: 'drive' });
+      await flush();
+      await flush();
+      expect(releases.map((r) => r.token).sort()).toEqual(['drive', 'mine']);
+    });
+  });
+
+  it('observes when an exclusive renewal is refused — the thread is someone else’s now', async () => {
     const { fake, pending } = api();
-    const keeper = createLeaseKeeper(fake, () => 'tab-2');
+    const keeper = createLeaseKeeper(fake, () => 'tab-1');
     keeper.attach('t1');
     await flush();
-    pending[0]?.resolve({ ok: false, error: 'lease_held' });
+    pending[0]?.resolve({ ok: true, token: 'tok' });
     await flush();
-    pending[1]?.resolve({ ok: true, token: 'theirs' });
+    await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS);
+    pending[1]?.resolve({ ok: false, error: 'lease_held' });
     await flush();
-    await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS * 2);
-    expect(pending).toHaveLength(2);
+    expect(keeper.state('t1')).toEqual({ mode: 'shared', heldByOther: true });
+    expect(pending[2]?.args).toEqual({ threadId: 't1', holderId: 'tab-1', mode: 'shared' });
+    pending[2]?.resolve({ ok: true, token: 'watch', held_by_other: true });
+    await flush();
+    expect(keeper.token('t1')).toBe('watch');
+  });
+
+  it('demotes to observing when the harness refuses a driving request', async () => {
+    const { fake, pending } = api();
+    const keeper = createLeaseKeeper(fake, () => 'tab-1');
+    keeper.attach('t1');
+    await flush();
+    pending[0]?.resolve({ ok: true, token: 'tok' });
+    await flush();
+
+    keeper.demote('t1');
+    // Read-only on screen before the observer acquire has even answered.
+    expect(keeper.state('t1')).toEqual({ mode: 'shared', heldByOther: true });
+    expect(pending[1]?.args).toEqual({ threadId: 't1', holderId: 'tab-1', mode: 'shared' });
+    pending[1]?.resolve({ ok: true, token: 'watch', held_by_other: true });
+    await flush();
+    expect(keeper.token('t1')).toBe('watch');
+  });
+
+  it('hands out one state object per change, for useSyncExternalStore', async () => {
+    const { fake, pending } = api();
+    const keeper = createLeaseKeeper(fake, () => 'tab-1');
+    const before = keeper.state('t1');
+    keeper.attach('t1');
+    await flush();
+    expect(keeper.state('t1')).toBe(before);
+    pending[0]?.resolve({ ok: true, token: 'tok' });
+    await flush();
+    const driving = keeper.state('t1');
+    expect(driving).toEqual({ mode: 'exclusive', heldByOther: false });
+    expect(keeper.state('t1')).toBe(driving);
   });
 
   describe('releaseAllNow', () => {
@@ -130,16 +262,36 @@ describe('createLeaseKeeper', () => {
       ]);
     });
 
-    it('sends nothing for an acquire still on the wire, or for an observer hold', async () => {
+    it('releases observer holds too, each with its own token', async () => {
       const { fake, pending, releases } = api();
       const keeper = createLeaseKeeper(fake, () => 'tab-2');
+      keeper.attach('driven');
       keeper.attach('observed');
+      await flush();
+      pending[0]?.resolve({ ok: true, token: 'drive' });
+      pending[1]?.resolve({ ok: false, error: 'lease_held' });
+      await flush();
+      pending
+        .find((p) => p.args.mode === 'shared')
+        ?.resolve({
+          ok: true,
+          token: 'watch',
+          held_by_other: true,
+        });
+      await flush();
+
+      keeper.releaseAllNow();
+      expect(releases).toEqual([
+        { threadId: 'driven', holderId: 'tab-2', token: 'drive', keepalive: true },
+        { threadId: 'observed', holderId: 'tab-2', token: 'watch', keepalive: true },
+      ]);
+      expect(keeper.state('observed')).toEqual({ mode: null, heldByOther: false });
+    });
+
+    it('sends nothing for an acquire still on the wire', async () => {
+      const { fake, pending, releases } = api();
+      const keeper = createLeaseKeeper(fake, () => 'tab-2');
       keeper.attach('in-flight');
-      await flush();
-      pending[0]?.resolve({ ok: false, error: 'lease_held' });
-      await flush();
-      const observerAcquire = pending.find((p) => p.args.mode === 'shared');
-      observerAcquire?.resolve({ ok: true, token: 'theirs' });
       await flush();
 
       keeper.releaseAllNow();
@@ -150,7 +302,7 @@ describe('createLeaseKeeper', () => {
       await flush();
       await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS * 2);
       expect(releases).toEqual([]);
-      expect(pending).toHaveLength(3);
+      expect(pending).toHaveLength(1);
     });
 
     it('stops renewing', async () => {

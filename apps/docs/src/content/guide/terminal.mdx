@@ -358,7 +358,9 @@ a transcript readable when the harness rejects anonymous history reads, and the 
 manifest a thread used.
 
 Each client takes an exclusive lease on the session it opens, so two clients on one thread is
-reported rather than raced — open the same thread in the web UI and the second one says so.
+reported rather than raced — open the same thread in the web UI and the second one says so. The
+web UI then watches the thread read-only, and takes it over on its own once the terminal's lease
+is released or lapses.
 
 The status line says what the client believes about the harness. Where the host normally sits it
 reads `unreachable` when a request never arrived anywhere — usually the harness is not running, since

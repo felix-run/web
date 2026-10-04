@@ -112,6 +112,7 @@ export function ThreadList({
   onFork,
   onCompact,
   onExport,
+  readOnlyId,
   blocked = NO_BLOCKED,
   pinned = NO_PINS,
   onTogglePin,
@@ -142,6 +143,11 @@ export function ThreadList({
   onFork?: (id: string) => void;
   onCompact?: (id: string) => void;
   onExport?: (id: string) => void;
+  /**
+   * The thread this tab only watches — another client drives it — so the
+   * actions that write it (Rename, Compact context) are off for that row.
+   */
+  readOnlyId?: string;
   /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
@@ -378,6 +384,7 @@ export function ThreadList({
                   )}
                   {onRename && (
                     <DropdownMenuItem
+                      disabled={t.id === readOnlyId}
                       onSelect={() => {
                         renameJustStarted.current = true;
                         setRenaming({ id: t.id, draft: t.named ? t.title : '' });
@@ -395,7 +402,7 @@ export function ThreadList({
                   )}
                   {onCompact && (
                     <DropdownMenuItem
-                      disabled={t.onServer === false}
+                      disabled={t.onServer === false || t.id === readOnlyId}
                       onSelect={() => onCompact(t.id)}
                     >
                       <ShrinkIcon className="size-3.5" /> Compact context

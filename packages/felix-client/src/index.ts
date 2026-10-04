@@ -42,8 +42,13 @@ export {
   type SendArgs,
   STREAM_STALL_MS,
 } from './engine';
-export { type DescribedError, describeError } from './errors';
-export { createHttp, type FelixHttp } from './http';
+export {
+  type DescribedError,
+  describeError,
+  isLeaseRefusal,
+  LeaseRefusedError,
+} from './errors';
+export { createHttp, type FelixHttp, type LeaseRefusal } from './http';
 export { createManagementClient } from './management';
 export type { ArtifactContent } from './management/artifacts';
 export {
@@ -148,6 +153,8 @@ export {
   createFelixClient,
   type FelixClient,
   type FelixClientOptions,
+  type LeaseAcquireResult,
+  type LeaseStatus,
   type ManifestEntry,
   type ManifestGreeting,
   type ManifestStarter,

@@ -2,6 +2,7 @@ import type { BranchPoint, ChatEngine, ManifestEntry, ThreadMeta } from '@felix/
 import { createContext, type Dispatch, type SetStateAction, useContext } from 'react';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
+import type { Driver } from '@/components/chat/watching-banner';
 import type { SkillState } from '@/components/inspector/primitives';
 import type { MessageQueue } from '@/hooks/use-message-queue';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
@@ -65,6 +66,14 @@ export interface ShellValue {
 
   /** This thread. */
   threadId: string;
+  /**
+   * Another client drives this thread and this tab holds only an observer lease:
+   * the composer and every driving action are read-only until the keeper takes
+   * the thread over, which it does on its own once the thread is free.
+   */
+  watching: boolean;
+  /** Who drives it while `watching`, as far as the banner's wording needs. */
+  driver: Driver;
   labels: Record<string, string>;
   /** Edited messages' versions, by user event id (`branchPoints`). */
   branches?: Map<string, BranchPoint>;

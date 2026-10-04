@@ -612,8 +612,18 @@ Flows worth knowing before editing the app:
     (`threadSuffix`), because the harness rejects a suffix containing `:` outright.
   - `GET /chat/history/{id}` still rejects anonymous callers, which is why hydration prefers the
     snapshot route.
-- **Leases** — each tab mints a holder id and takes an exclusive lease
-  (`/chat/sessions/lease`, released best-effort on unload); a 409 means another tab holds the session.
+- **Leases** — each tab mints a holder id and takes an exclusive lease (`/chat/sessions/lease`,
+  released on `pagehide`). A 409 means another client drives the thread, and the keeper
+  (`src/lib/session-lease.ts`) takes a `shared` observer hold instead: the shell goes read-only
+  under a `role="status"` banner. Every hold has its own token, renewed and released with it — the
+  harness refuses either by holder id alone (`felix-run/felix#479`). While observing, each renewal
+  tick first tries `exclusive` with no token, so a watching tab takes over within one
+  `LEASE_RENEW_MS` of the driver leaving; observers are never promoted by the harness. Every
+  driving request carries the tab's token as `X-Felix-Lease-Token` (the `leaseToken` hook on
+  `@felix/client`, bound in `api.ts`), and a `409 lease_read_only` / `lease_held` arrives as a
+  `LeaseRefusedError` that flips the tab to watching rather than raising a toast.
+  `VITE_LEASE_RENEW_MS` shortens the interval for a live check; `tests/session-lease-watch.test.tsx`
+  imports `App` after stubbing it.
 - **Sticky interrupts** — `approval_required` and `ui_request` frames render as banners and are
   answered out-of-band (`/approvals/{id}/decide`, `/chat/ui`); the run is waiting on them.
   **Not answering an approval is answering it.** The harness calls `wait_for_decision` with the
