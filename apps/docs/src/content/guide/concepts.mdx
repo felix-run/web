@@ -200,7 +200,7 @@ per `(tenant, manifest)` and only reaches skills in the manifest's catalog.
 | Bundled | the harness's `skills/` directory | `bundled` | the release |
 | Host directory | `FELIX_SKILLS_DIR` | `bundled` | the operator |
 | Operator upload | object-store keys `skills/{tenant}/{name}/SKILL.md` or `skills/{name}/SKILL.md`, and pinned `…/{name}/{version}/SKILL.md` | `store` | the operator, outside Felix |
-| Tenant library | the live version of each skill in the tenant's library, under `skill-library/` | `library` | an agent or an operator, through review |
+| Tenant library | the live version of each skill in the tenant's library, under `skill-library/` | `library` | an agent, an operator, or an import from GitHub, through review |
 
 A catalog is built in this order, and the first source to hold a name answers it:
 
@@ -260,6 +260,18 @@ is an immutable draft that no catalog loads, and a person publishes it.
 and stays a draft (with the reasons) if not. The manifest is refused unless an approvals rule gates
 every `create_skill` and `update_skill` call, so a person still reads each skill before it is saved.
 An agent's edit of a version an operator wrote waits for review in either mode.
+
+### Skills from GitHub
+
+An operator can import a skill published on GitHub into the library (`felix skills add
+github:owner/repo/path`). The import is a draft pinned to one commit of the repository's own
+history, and it is published like any other, after review. Nothing resolves a GitHub ref when a
+manifest compiles. Imported text is a third party's, so it stays marked as such: the version and
+everything built on it carry `lineage_import`, the publish gate blocks it on an `advisory` scan
+whatever the policy says, the catalog and `list_skills` mark it `untrusted`, and what the skill tools
+relay of it is content-screened — at least by the injection markers even where the manifest turns
+screening off. A deployment allowlists the repositories each tenant may name, and can hold back
+files Felix first saw too recently. [Skill import](/guide/skill-import/) has the whole surface.
 
 ### Evaluations and feedback
 

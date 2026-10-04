@@ -1,0 +1,482 @@
+---
+title: "Skill import"
+description: "Bring Agent Skills published on GitHub into a tenant's skill library: browse a repository, import a skill as a draft pinned to one commit, review it, publish it through a stricter gate, and keep it current."
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Skills published on GitHub enter the [skill library](/guide/management-api/#skill-library) the same
+way an agent's do: as a **draft** that no catalog loads until a person publishes it. Felix fetches
+the skill itself, pinned to one commit of the repository's own history, from `api.github.com` only,
+through the [egress guard](/internals/governance/#egress). Nothing resolves a GitHub ref at manifest
+compile time — `spec.skills` and the catalog loader never call GitHub — so a compile never depends
+on GitHub being up.
+
+| Method | Path | Scope | Success | CLI |
+|---|---|---|---|---|
+| `GET` | `/skill-library/-/browse?source=&ref=` | `skills:read` | `200` | `felix skills browse` |
+| `POST` | `/skill-library/-/import` | `skills:write` | `201`, or `200` unchanged | `felix skills add` |
+
+Publishing is the library's ordinary
+`POST /skill-library/{name}/versions/{version}/publish`, after review. Checking an imported skill against its origin,
+diffing it and re-importing it are in [Update checks](#update-checks).
+
+<Aside type="caution">
+With `FELIX_AUTH_MODE=none` the scope checks are skipped entirely, so anyone who can reach the API
+can browse and import through the server's GitHub token, and publish what they imported.
+</Aside>
+
+## Quickstart
+
+For a deployment whose tenant `acme` keeps its skills in the GitHub repository `acme/skills`:
+
+<Steps>
+
+1. **Configure the API** and restart it. The token is optional for a public repository; with one
+   set, every allowlist entry must name a tenant and a literal owner, or boot refuses.
+
+   ```bash
+   FELIX_SKILL_IMPORT_GITHUB_TOKEN=...      # read-only Contents access to acme/skills
+   FELIX_SKILL_IMPORT_SOURCES=acme=github:acme/skills
+   ```
+
+2. **Browse** the repository. Each line is the `source` to import by, the skill's name, and its
+   description.
+
+   ```bash
+   felix skills browse github:acme/skills --url https://felix.example.com
+   ```
+
+3. **Import** one as a draft. A new skill starts at `0.1.0`.
+
+   ```bash
+   felix skills add github:acme/skills/skills/pdf-forms --url https://felix.example.com
+   ```
+
+4. **Review** the draft: its files (`GET /skill-library/pdf-forms/versions/0.1.0`) and what the gate
+   would say (`GET /skill-library/pdf-forms/versions/0.1.0/preview`), or the chat-ui Skills page's
+   review queue.
+
+5. **Publish** it. The publish gate holds an import to a [stricter bar](#review-and-publish).
+
+   ```bash
+   curl -s -X POST "$BASE_URL/skill-library/pdf-forms/versions/0.1.0/publish" \
+     -H "authorization: Bearer $FELIX_KEY" | jq
+   ```
+
+</Steps>
+
+The CLI authenticates with `--api-key` or `FELIX_API_KEY` (a key with `skills:read` to browse,
+`skills:write` to add), else the token `felix login --save` kept for that server. `--url` defaults
+to `http://localhost:8080`.
+
+## Sources and refs
+
+A **source** is `github:owner/repo[/path]`; the path is the directory holding the skill's
+`SKILL.md`, and a skill at the repository's root has none. Owner and repository are lowercased,
+since GitHub treats them case-insensitively, and a trailing `.git` is dropped. The owner is a
+GitHub owner name; the repository is `A-Z a-z 0-9 . _ -`; the path is at most 16 segments of
+`A-Z a-z 0-9 . _ -`, none of them `.` or `..`. Anything else is `422 invalid_source`. The source
+is at most 512 characters.
+
+A **ref** is separate — `ref` in the query or body, `--ref` on the CLI — at most 200 characters,
+and resolved to one commit before anything else is read. Every later call names that commit, so a
+branch that moves mid-import cannot mix two commits into one version.
+
+| Ref | Resolves as |
+|---|---|
+| omitted | The repository's default branch, looked up as `refs/heads/<default>` — so a default branch named like a commit id is still a branch |
+| hex, 7–64 characters, any case | A commit id and nothing else, never a branch or tag. GitHub must return a commit that starts with the hex given, or it is `422 ambiguous_ref` (a branch or tag of that name answered instead). The commit must then be **on the default branch** — its tip or an ancestor — or it is `422 commit_not_in_repo` |
+| `refs/heads/<name>`, `refs/tags/<name>` | That branch or tag, through the repository's own refs |
+| the default branch's name | That branch, as `refs/heads/<default>`, even when a tag shares the name. An import with no ref stores the default branch's name as its ref, so a later `main` tag cannot turn that stored ref ambiguous or into the tag |
+| any other name | Looked up as a tag and as a branch. One that is both is `422 ambiguous_ref`: spell it `refs/tags/<name>` or `refs/heads/<name>`, so a branch cannot shadow a release tag. One that is neither is `404 source_not_found` |
+
+The reachability check exists because GitHub serves any commit in a repository's fork network under
+the upstream's name: a commit pushed only to a fork would otherwise read as the upstream's, past an
+allowlist that trusts the upstream. A comparison GitHub cannot answer, or one too large to read,
+fails closed. An annotated tag is followed to its commit, at most four tags deep. Every file is
+read by blob id and checked against its git object id, and every commit is reported in full.
+
+## Browse
+
+`GET /skill-library/-/browse?source=github:acme/skills` lists the skills a repository offers at one
+commit: every directory holding a `SKILL.md` under one of these roots, anywhere in the tree.
+
+| Roots |
+|---|
+| `skills`, `.claude/skills`, `.claude/plugins/marketplaces`, `.agents/skills`, `.cursor/skills`, `.gemini/skills`, `.codex/skills`, `.vscode/skills` |
+
+A root counts as a path segment at any depth, so flat layouts (`skills/<slug>/SKILL.md`) and plugin
+and marketplace layouts (`plugins/<plugin>/skills/<slug>/SKILL.md`) are both found. With a path in
+the source, only skills under it are listed, and the path itself counts as a root, so a layout no
+default root covers can still be listed. A directory whose name is not a valid skill name, or whose
+path is not a valid source, is skipped; of two directories with one name, the first in tree order
+wins.
+
+The answer is `{source, ref, commit, license, min_age_days, items, found, truncated}`: `ref` is the
+ref asked for or the default branch, `commit` the full SHA every `SKILL.md` was read at, and
+`license` the repository's SPDX id, or `null`. Each item is:
+
+| Field | |
+|---|---|
+| `name`, `description` | From the `SKILL.md` frontmatter, read from its first 64 KiB only; `name` falls back to the directory name |
+| `path` | The directory in the repository |
+| `source` | What to import it by: `github:owner/repo/path` |
+| `first_seen_at`, `eligible_at` | When this tenant first saw these exact files (this browse, if never before), and when the [cooldown](#the-cooldown) lets them in, in epoch ms |
+| `eligible` | Whether an import now would pass the cooldown; always `true` with none |
+
+A browse lists at most 50 skills; `found` is how many there were and `truncated` says some were
+left out — name a path to narrow it. **A browse starts the cooldown clock** of every skill it lists.
+
+## Import
+
+```bash
+curl -s -X POST "$BASE_URL/skill-library/-/import" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"source":"github:acme/skills/skills/pdf-forms","ref":"v1.2.0"}' | jq
+```
+
+`POST /skill-library/-/import` takes `{source, ref, publish}` and saves the skill as a draft with
+`source: import`. `publish: true` is refused `422 publish_not_allowed`: an import is read first,
+then published by a separate request. The answer is the saved version's record — with `files`,
+`published: false` and `publish_blocked: null` — plus `unchanged` and `dropped_files`.
+
+- **The name is the folder's.** The skill is saved under the source's last path segment (the
+  repository's name for a skill at its root), and a `SKILL.md` naming anything else is
+  `422 invalid_bundle`.
+- **A new skill starts at `0.1.0`.** A skill the library already imported from the same source gets
+  a new version, built on its newest version that was not rejected.
+- **Unchanged files save nothing.** Change is judged by a digest of the kept files' tree entries
+  (path and blob id), not the commit: an unrelated commit, or a change to a file the import drops,
+  is not a new version. When the newest non-rejected version holds the same digest, the answer is
+  `200` with `unchanged: true` and that version.
+- **An import never takes over a name.** If the newest non-rejected version came from another
+  source, or an agent or an operator wrote it, the import is `409 origin_mismatch`. A name a bundled
+  or `FELIX_SKILLS_DIR` skill holds is `409 name_shadows_host_skill`, and so is a name an operator
+  upload holds at any key, pinned versions included: where an agent's or operator's save only gets
+  `shadows_operator_upload: true`, an import is refused.
+- Of two imports racing to one skill, one saves and the other is refused (`409 skill_exists` or
+  `409 parent_changed`) rather than stacked on it.
+
+Every version record carries the origin of an import: `origin_source` (canonical),
+`origin_ref` (as asked), `origin_commit`, `origin_tree_hash`, `origin_license`, and
+`origin_committed_at` — the committer date GitHub reports for the folder, which is provenance only,
+since the pusher sets it. Every other version has them `null`. The save is audited as
+`skill_draft_saved` with the reason `imported from <source>@<commit>`.
+
+### What is kept
+
+| Kept | Dropped, and listed in `dropped_files` |
+|---|---|
+| `SKILL.md`; `plugin.json` at the root; `scripts/`, `references/`, `assets/` | `evals/` — a third party's scenarios would count toward the gate as if the tenant wrote them |
+| a binary asset under `assets/`, stored as base64 | any other file (examples, tests, a `LICENSE`), dot-files and dot-directories, a binary file outside `assets/`, and text that is not UTF-8 |
+
+A `SKILL.md` description over 1,024 characters is clamped. The caps are the bundle format's, checked
+from the tree before any file is downloaded, and past any of them the import is
+`422 source_too_large`:
+
+| Cap | Limit |
+|---|---|
+| Kept files | 200 |
+| One file | 5 MiB |
+| All kept files | 8 MiB, a binary asset counted as its base64 |
+| The repository's tree | GitHub must list it in one call; a truncated tree is refused rather than read in part |
+
+One browse or import has 120 seconds of wall clock for all its GitHub calls, eight at a time;
+past it, the request is `502 upstream_error`.
+
+## Review and publish
+
+An import lands in the review queue like any draft. Read it with the library's routes — the version
+detail, each file, and `…/preview` for the gate's verdict — then publish or reject it.
+
+**The gate is stricter for imported text.** A version that is an import, or built on one, is
+judged as an import whoever saved it:
+
+- an `advisory` security scan blocks it, whatever the tenant's or the deployment's policy says
+  about advisories (a `fail` blocks every version);
+- only the bundle's own `evals/` scenarios count toward an evaluation requirement, and an import
+  drops its `evals/`;
+- an agent's edit of one always waits for a person, even under `skill_authoring.mode: publish`;
+- a rollback to one passes the same gate.
+
+**Lineage taint.** `lineage_import: true` on a version record marks an import and everything built on
+it: an agent's or operator's edit, an edit of that edit, an operator save naming no parent on a
+skill whose newest version is tainted, and an agent's save of any file byte-identical to a file of
+an import-lineage version anywhere in the tenant (an agent copying imported text under another
+name). Nothing clears the mark.
+
+## Imported text in front of the model
+
+When a manifest's catalog offers a live skill of import lineage:
+
+| Where | What happens |
+|---|---|
+| The system prompt's skill catalog | The skill is listed with `untrusted="true"` under a preamble saying such skills come from third parties. A description carrying the injection markers is withheld; the name is still listed |
+| `list_skills` | The item carries `"untrusted": true`; the same description rule applies |
+| `activate_skill`, `read_skill_file`, `list_skills` | Their output about that skill is marked as relayed from an untrusted author, and [content screening](/guide/manifest-reference/#speccontent_screening) (`spec.content_screening.enabled`) screens it as it screens an untrusted tool's: markers, the optional scoring model, quarantine or block |
+
+Operator and agent skills are not screened this way. A manifest **without** content screening still
+gets a floor for imported text: the free injection markers — no scoring model, no decider — run over
+what those three tools relay of an imported skill, and a match is quarantined. The compile logs a
+warning and increments `felix_imported_skills_unscreened{manifest_id}`, because markers alone miss a
+paraphrase: turn content screening on for agents that use imported skills.
+
+The skill suggester (`spec.skill_suggestion`) gives its decision model each skill's description and
+the start of its body to rank on, so imported text can steer which skill is hinted. The hint carries
+only the name, and the agent still activates the skill through the screening above.
+
+## The cooldown
+
+`FELIX_SKILL_IMPORT_MIN_AGE_DAYS` (0–365, default `0`) refuses an import of files **this tenant first
+saw** fewer than that many days ago: `403 too_recent`, nothing saved, no override. It gives a
+compromised upstream commit time to be noticed before anyone pulls it.
+
+- The clock is Felix's own (`skill_import_sighting`), never a commit date: a commit backdated by
+  years is still new to Felix.
+- "These files" is the digest of the kept files. Any change to a kept file is a new digest with its
+  own clock; the same files on another branch, tag or commit share one.
+- The first sighting is recorded by every browse that lists the skill and every import attempt —
+  including a refused one, and whether the cooldown is on or off. Browse first, import later.
+- A tenant can raise its own bar with `PATCH /skill-library/-/policy` `{"import_min_age_days": N}`,
+  never lower it below the setting; `GET /skill-library/-/policy` shows the value in force.
+- Sightings older than 366 days are pruned by the retention sweep, past the longest cooldown the
+  setting allows.
+
+## Allowlist and token
+
+`FELIX_SKILL_IMPORT_SOURCES` is a comma-separated list of `[<tenant>=]github:<owner>[/<repo>[/<path>]]`
+entries over canonical sources, globs allowed:
+
+| Entry | Covers |
+|---|---|
+| `acme=github:acme/*` | every repository of `acme`, for tenant `acme` only |
+| `acme=github:acme/skills` | `github:acme/skills` and everything under it (`github:acme/skills/skills/pdf-forms`), for tenant `acme` |
+| `github:anthropics/skills` | that repository, for every tenant |
+| empty (default) | any GitHub source, for every tenant |
+
+A browse or import naming a source no entry covers for the caller's tenant is `403
+source_not_allowed`, before GitHub is called. The tenant is the principal's: an API key with no
+`tenant_id`, and an anonymous caller, resolve to `default`, so a `default=` entry grants every such
+key — give keys a tenant before binding sources to one.
+
+**Boot refusals.** An entry that is not that shape, or names an invalid tenant id, stops the API at
+boot. With `FELIX_SKILL_IMPORT_GITHUB_TOKEN` set, boot also refuses:
+
+- an empty list;
+- any entry naming no tenant;
+- any entry whose owner is a glob (`github:*`).
+
+Each would let one tenant read whatever the token reads — another org's private repositories
+included. The one exception is a single person's box: `FELIX_ENVIRONMENT=development` **and**
+`FELIX_AUTH_MODE=none`. The environment alone is not enough, since Compose defaults it to
+`development`.
+
+**The token** (`FELIX_SKILL_IMPORT_GITHUB_TOKEN`, optional) reaches private repositories and lifts
+GitHub's limit from 60 calls an hour to 5,000; read-only Contents access is all it needs. It is
+hydrated from the secrets backend like any other credential (`SKILL_IMPORT_GITHUB_TOKEN`,
+`skill_import_github_token` or `felix/skill_import_github_token`), sent only in the `Authorization`
+header to `api.github.com` — never in a URL, a log line or a response — and masked wherever the
+redaction sinks see it. Without one, a private repository is `404 source_not_found`; a token GitHub
+refuses is `502 upstream_error`.
+
+## GitHub call budgets
+
+Every GitHub call — not every request — is charged first to the tenant's hourly budget, then to the
+deployment's. Past either, the request is `429 rate_limited`; GitHub's own limit running out is
+`502 upstream_rate_limited`, with the reset time in the message.
+
+| Setting | Default | Range | |
+|---|---|---|---|
+| `FELIX_SKILL_IMPORT_CALLS_PER_HOUR` | `500` | 1–100,000 | One tenant's calls per hour |
+| `FELIX_SKILL_IMPORT_CALLS_PER_HOUR_TOTAL` | `4000` | 1–1,000,000 | The whole deployment's, protecting the shared token's own limit |
+
+| Request | GitHub calls |
+|---|---|
+| Browse of 50 skills | 53: the repository, the branch, the tree and 50 `SKILL.md` heads |
+| Import | one per kept file, plus 4 |
+| Upstream check without a diff (the listing, the periodic check) | 3 |
+
+A bare branch or tag name is looked up as both, which adds one call to each: 54, files + 5, 4. A
+commit id costs extra calls to prove it is on the default branch, and an annotated tag one per hop.
+At the defaults, eight tenants spending their whole budget fill the deployment's. The buckets live in Redis
+when `FELIX_REDIS_URL` is set. When Redis is unreachable each replica falls back to in-process
+buckets, so both budgets multiply by the number of API replicas until it recovers — size `_TOTAL`
+for that, or keep Redis up.
+
+{/* Update checks: harness PR "Check imported skills against their origin" (branch
+feat/skill-import-updates), not merged when this was written. This section, the matching rows in
+management-api.mdx, deploy.mdx, internals/architecture.mdx, internals/persistence.mdx and
+internals/observability.mdx, and nothing else, land in one commit: revert it to hold them back. */}
+
+## Update checks
+
+An imported skill keeps its origin — source, ref, commit and kept-file digest — on its newest
+version, and three routes are built on it. None of them runs at compile time.
+
+| Method | Path | Scope | Success | CLI |
+|---|---|---|---|---|
+| `GET` | `/skill-library/{name}/-/upstream?ref=` | `skills:read`; `skills:write` with `ref` | `200` | `felix skills diff` |
+| `POST` | `/skill-library/{name}/-/update` | `skills:write` | `201`, or `200` unchanged | `felix skills update` |
+| `GET` | `/skill-library/-/upstream?refresh=&limit=&cursor=` | `skills:read` | `200` | `felix skills outdated` |
+
+The skill's newest version that was not rejected names the origin. A skill whose newest such
+version was not imported is `409 not_imported`; a name the library does not hold is `404 not_found`.
+Every route judges the source against the tenant's allowlist **as it is now**: a source the
+deployment has since unbound from the tenant is `403 source_not_allowed` before any GitHub call,
+whichever ref is named.
+
+### Checking one skill
+
+`GET /skill-library/{name}/-/upstream` re-resolves the stored ref — or `?ref=`, another branch, tag
+or commit of the same source — under the same [ref rules](#sources-and-refs) as an import. Checking
+the stored ref needs `skills:read`. Naming another ref needs `skills:write`, because it chooses what
+the deployment's token fetches and the tenant's budget pays for, as an import does.
+The answer is `{name, current, upstream, update_available, min_age_days, diff}`:
+
+| Field | |
+|---|---|
+| `current` | The newest non-rejected version and its origin: `{version, status, source, ref, commit, tree_hash, live_version}` |
+| `upstream` | What the ref names now: `{source, ref, commit, tree_hash, license, committed_at, first_seen_at, eligible_at, eligible}` |
+| `update_available` | The kept files' digest at the upstream commit differs from the newest version's |
+| `diff` | `{compared_with, files, diff_truncated}` against the live version, or the newest when nothing is live |
+
+Each item of `files` is `{path, change, binary, old_size, new_size, diff, truncated}`, with `change`
+`added`, `removed` or `modified`; unchanged files are left out. Only changed files are fetched — a
+stored file's git blob id is computed from its bytes and compared with the tree's — and only text:
+a binary asset is reported by size, never diffed. A fetched file is compared as an import would save
+it (a long description clamped, non-UTF-8 text absent). Two bounds apply:
+
+| Bound | Limit | Past it |
+|---|---|---|
+| The answer | 16,384 characters of diff per file, 131,072 in total | A file's diff is cut at a line boundary (`truncated`); past the total, a file is listed without a diff and not fetched (`diff_truncated`) |
+| The work | Either side of a file over 256 KiB (262,144 bytes), or 4,000 lines or more | The file is never diffed: listed by size with `truncated` set, and when the upstream side is the large one, never fetched |
+
+The second bound exists because the diff reads both whole sides before anything is cut; the diff
+also runs off the event loop. The diff is third-party text: it is secret-redacted as a file read is,
+and `felix skills diff` strips control and invisible characters from it line by line. A skill over the import [caps](#what-is-kept) is
+`422 source_too_large` rather than summarised.
+
+**Asking starts the clock.** A check stamps the sighting of what it finds, as a browse does, so an
+operator who sees an update today can take it once the cooldown has run from today. A check of the
+stored ref is also recorded for the listing; a check with another `?ref=` is a what-if and is not.
+A check under `skills:read` spends the tenant's GitHub budget and stamps sightings as a browse
+does; that is intended, and the budget is what bounds it. A single check costs the three calls
+above, one more for the folder's commit date, and one per changed text file it reads.
+
+### Updating
+
+`POST /skill-library/{name}/-/update`, with an optional body `{ref}`, is the import itself from the
+stored origin: a new draft (`201`), `200` with `unchanged: true`, `403 too_recent` inside the
+cooldown, `409 origin_mismatch` — the stricter gate and the lineage taint all as above. There is no
+`publish` field; a person publishes the draft after review. The answer is an import's plus `diff`:
+the saved draft against the live version, else the version it was built on, read from the library
+without a GitHub call. The draft's `skill_draft_saved` event carries the reason
+`updated from <source>@<commit>`. An update with `ref` saves that ref as the new version's
+`origin_ref`, so later checks follow it.
+
+### Listing every imported skill
+
+`GET /skill-library/-/upstream` lists the tenant's imported skills by name, each against its origin,
+without diffs: `{items, next_cursor, refreshed, min_age_days, stopped}`. Each item is `{name, version,
+live_version, origin_source, origin_ref, origin_commit, upstream_commit, upstream_tree_hash,
+update_available, first_seen_at, eligible_at, eligible, checked_at, error}`; `error` is the refusal
+code of the last check when it failed, with the upstream fields from the last good one. `limit` is
+1–25, default 25; follow `next_cursor` until it is `null` (`422 invalid_cursor` for one the route did
+not issue).
+
+| `refresh` | Does |
+|---|---|
+| `true` (default) | Checks each skill now and records it. A repository and ref shared by several skills is resolved once. No check starts 30 seconds after the first (`stopped: deadline`); a budget spent part way ends the page there (`stopped: rate_limited`), with `next_cursor` at the first skill not checked; a budget spent before the first check is `429 rate_limited` |
+| `false` | Reads the last recorded checks and calls GitHub not at all |
+
+The library detail, `GET /skill-library/{name}`, carries the same recorded state as `upstream` for an
+imported skill (`null` for any other), and never asks GitHub. Imports, updates, checks of the stored
+ref, the listing and the periodic check all write that record (`skill_upstream`).
+
+### Periodic checks
+
+`FELIX_SKILL_IMPORT_CHECK_HOURS` (0–168, default `0` = off) has the worker check every imported
+skill on that cadence, so the cooldown clock of an update starts without anyone asking and the
+listing's `refresh=false` stays current.
+
+- The worker's `skill_upstream_checks` task runs every ten minutes and tries up to 50 skills whose
+  last check is at least that many hours old, never-checked first, then the oldest check, across
+  every tenant. Within a tick, one tenant's skills from one repository and ref resolve once. One sweep runs at
+  a time across workers, held by its own `skill_job_lease` row. It needs `felix-scheduler`.
+- It charges the same tenant and deployment buckets as people do, but stops at **half** of each, so
+  the rest of the hour stays for people asking. It is fair across tenants: a tenant past its half is
+  left out of the rest of the tick and the due skills are read again without it, so one tenant's
+  backlog cannot fill the batch and leave every other tenant unchecked. The deployment's half, or
+  GitHub's own rate limit on the shared token, ends the tick. It shares the API's buckets only through Redis (`FELIX_REDIS_URL`); a worker without Redis spends
+  a budget of its own.
+- A refused check records its code as `error` and keeps the last good state. A folder past the
+  import caps is recorded as `source_too_large` rather than offered as an update no import could
+  take. A skill whose newest version is no longer an import is recorded as `not_imported`, and
+  checked again once it is one.
+- **The sweep runs on the worker's environment.** Give the worker the same
+  `FELIX_SKILL_IMPORT_SOURCES` and `FELIX_SKILL_IMPORT_GITHUB_TOKEN` as the API, or it judges
+  origins against another allowlist and reads GitHub with another token, or none. With
+  `FELIX_SKILL_IMPORT_CHECK_HOURS` set, `felix doctor` prints a note saying so, plus one when this
+  process has no allowlist (checks re-resolve any stored origin) or no token (anonymous, 60 calls an
+  hour for the whole server, private origins not found). Doctor can only see the process it runs
+  in, so run it on both.
+- Nothing notifies anyone of an update the sweep finds: it shows on the listing and the detail.
+
+### Update CLI
+
+| Command | Route | |
+|---|---|---|
+| `felix skills outdated [--cached]` | `GET /-/upstream` | Follows every page; one line per skill — version, origin and ref, stored commit `->` upstream commit, and `up to date`, `update available` (with the date the cooldown lets it in), `check failed: <code>` or `never checked`. `--cached` is `refresh=false`, spending no budget |
+| `felix skills diff <name> [--ref]` | `GET /{name}/-/upstream` | A `compared with <version>` line, then each changed file with its sizes. The CLI writes each file's `---`/`+++` header itself from the path and indents every hunk line two spaces, so a line of the file cannot pass for a header. `--ref` needs `skills:write` |
+| `felix skills update <name> [--ref]` | `POST /{name}/-/update` | Saves the draft, prints the dropped files, the diff and the routes to preview and publish it |
+
+The Python client has `FelixClient.check_skill_upstream(name, ref=)`, `update_skill(name, ref=)` and
+`list_skill_upstreams(cursor=, refresh=)`.
+
+| `error` | Status | When |
+|---|---|---|
+| `not_imported` | `409` | The skill's newest non-rejected version was not imported |
+| `not_found` | `404` | The library holds no skill of that name |
+| `invalid_cursor` | `422` | A listing cursor the route did not issue |
+
+Every import error above applies to a check and an update as well.
+
+## CLI
+
+`felix skills` talks to a running server; the server does the fetching, within its allowlist, so the
+CLI never reaches GitHub itself. Every string that came from a repository is stripped of control
+characters, bidi overrides and invisible characters before it reaches the terminal.
+
+| Command | Route | |
+|---|---|---|
+| `felix skills browse <source> [--ref]` | `GET /-/browse` | One line per skill: source, name, description, and `(too recent to import until <date>)` inside the cooldown |
+| `felix skills add <source> [--ref]` | `POST /-/import` | Saves a draft and prints the dropped files and the routes to preview and publish it; says so when nothing changed |
+
+Every command takes `--url` and `--api-key`. A refusal prints `<error>: <message>` on stderr and
+exits `1`. The Python client has the same calls: `FelixClient.browse_skills(source, ref=)` and
+`import_skill(source, ref=)`.
+
+## Errors
+
+Every refusal is `{error, message}`. A body or query that fails validation (an unknown field, a
+source over 512 characters) is FastAPI's `422` with `detail`.
+
+| `error` | Status | When |
+|---|---|---|
+| `invalid_source` | `422` | The source or ref is not the grammar above |
+| `ambiguous_ref` | `422` | A bare ref names both a tag and a branch, or a hex ref resolved to a branch or tag |
+| `commit_not_in_repo` | `422` | A commit id that is not on the repository's default branch |
+| `source_too_large` | `422` | Past a [cap](#what-is-kept), or a tree GitHub truncated |
+| `publish_not_allowed` | `422` | `publish: true` on an import |
+| `invalid_bundle` | `422` | The kept files do not validate, or the `SKILL.md` names another skill |
+| `source_not_allowed` | `403` | No allowlist entry covers the source for this tenant |
+| `too_recent` | `403` | Inside the cooldown |
+| `source_not_found` | `404` | No such repository, ref, path or `SKILL.md`, a private repository read without a token, or a repository that moved |
+| `origin_mismatch` | `409` | The name's newest version came from another source, an agent or an operator |
+| `name_shadows_host_skill` | `409` | The name is a host skill's or an operator upload's |
+| `skill_exists`, `parent_changed` | `409` | Another import of the same skill landed first |
+| `rate_limited` | `429` | The tenant's or the deployment's hourly call budget is spent |
+| `upstream_rate_limited` | `502` | GitHub's own rate limit is exhausted |
+| `upstream_error` | `502` | GitHub unreachable, answering in error, refusing the token, or past the 120-second deadline |
+| `egress_blocked` | `502` | The egress guard refused the connection |

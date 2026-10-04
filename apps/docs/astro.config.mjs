@@ -84,6 +84,7 @@ export default defineConfig({
             { label: 'Getting Started', slug: 'guide/getting-started' },
             { label: 'Concepts', slug: 'guide/concepts' },
             { label: 'Deploy', slug: 'guide/deploy' },
+            { label: 'Skill import', slug: 'guide/skill-import' },
             { label: 'Terminal client', slug: 'guide/terminal' },
             { label: 'Phones and iPads', slug: 'guide/phones-and-tablets' },
           ],
