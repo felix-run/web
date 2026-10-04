@@ -1,6 +1,6 @@
 import { isSkillLibraryError } from '@felix/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
-import { ArrowLeftIcon, SparklesIcon } from 'lucide-react';
+import { ArrowLeftIcon, PuzzleIcon } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { PageBack, PageHeader, Panel, PanelBody } from '@/components/harness/panel';
@@ -79,7 +79,7 @@ export function SkillPage({
             controls a row apart, to two places, read as one doubled. */}
         <PageBack.Provider value={layoutBack ? { to: backTo, label: 'Back to the library' } : null}>
           <PageHeader
-            icon={<SparklesIcon />}
+            icon={<PuzzleIcon />}
             title={name}
             value={
               detail

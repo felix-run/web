@@ -7,7 +7,7 @@ import {
   FlaskConicalIcon,
   GitBranchIcon,
   type LucideIcon,
-  SparklesIcon,
+  PuzzleIcon,
 } from 'lucide-react';
 import { Fragment, type KeyboardEvent, lazy, Suspense, useEffect } from 'react';
 import { Navigate, NavLink, Outlet, useMatch } from 'react-router';
@@ -97,7 +97,7 @@ export const HARNESS_DESTINATIONS: {
     path: 'skills',
     docs: `${MANAGEMENT_API}#skills`,
     label: 'Skills',
-    icon: SparklesIcon,
+    icon: PuzzleIcon,
     group: 'records',
     element: <HarnessPage path="skills" />,
   },
