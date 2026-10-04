@@ -44,6 +44,13 @@ const posts = (h: ReturnType<typeof harness>) =>
   h.requests.filter((r) => r.method === 'POST' && r.path === '/skill-library');
 
 describe('New skill form', () => {
+  it('shows the name format as a hint, not as a placeholder that reads as typed', () => {
+    harness();
+    const form = openForm();
+    expect(form.name.placeholder).toBe('');
+    expect(screen.getByText(/Lowercase letters, digits and hyphens/)).toBeTruthy();
+  });
+
   it('says the description is missing rather than sitting disabled', () => {
     const h = harness();
     const form = openForm();

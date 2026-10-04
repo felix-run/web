@@ -16,6 +16,7 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
+import { cn } from '@/lib/utils';
 import { FeedbackInbox } from './feedback-panel';
 import { LibraryList } from './library-list';
 import { invalidateLibrary, useReviewQueue } from './queries';
@@ -191,17 +192,24 @@ function NewSkillForm({
           id={nameId}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="release-notes"
           className="font-mono text-sm"
           aria-invalid={nameIssue ? true : undefined}
-          aria-describedby={nameIssue ? `${nameId}-issue` : undefined}
+          aria-describedby={`${nameId}-issue`}
           autoComplete="off"
         />
-        {nameIssue && (
-          <p id={`${nameId}-issue`} className="text-xs text-state-failed">
-            {nameIssue}
-          </p>
-        )}
+        {/* The format is a hint, not a placeholder: an example name in the field read as one
+            already typed, beside a Create button that would not say why it refused. */}
+        <p
+          id={`${nameId}-issue`}
+          className={cn('text-xs', nameIssue ? 'text-state-failed' : 'text-muted-foreground')}
+        >
+          {nameIssue ?? (
+            <>
+              Lowercase letters, digits and hyphens, e.g.{' '}
+              <span className="font-mono">release-notes</span>.
+            </>
+          )}
+        </p>
       </div>
       <div className="space-y-1">
         <label htmlFor={descId} className="block text-xs font-medium text-muted-foreground">
