@@ -90,6 +90,8 @@ export function Workbench() {
     feedback,
     rateTurn,
     submit,
+    kept,
+    takeKept,
     queue,
     steerQueued,
     stopRun,
@@ -323,6 +325,8 @@ export function Workbench() {
               onSubmit={submit}
               queue={queue}
               onSteerQueued={steerQueued}
+              kept={kept}
+              onKeptTaken={takeKept}
               onBackground={(message) => submit(message, 'background')}
               onStop={stopRun}
               onSlashCommand={onSlashCommand}

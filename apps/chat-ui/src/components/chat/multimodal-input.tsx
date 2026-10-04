@@ -67,6 +67,7 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import type { MessageQueue } from '@/hooks/use-message-queue';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
+import type { FileUIPart } from '@/lib/ai-types';
 import { toastProblem } from '@/lib/error-toast';
 import {
   ariaShortcut,
@@ -90,6 +91,27 @@ import { type SlashCommand, SlashCommandMenu, slashCommands } from './slash-comm
  * they are one string.
  */
 export const REATTACHING_REFUSAL = 'Rejoining this thread. Stop it first to send a new message.';
+
+/**
+ * A message the harness refused on the lease (`lease_held` / `lease_read_only`),
+ * handed back to the composer. The composer had already cleared — it clears when
+ * the send goes out, and the refusal arrives after — so without this the text was
+ * simply gone. `n` makes the same text kept twice a second restore.
+ */
+export type KeptMessage = { text: string; files: FileUIPart[]; n: number };
+
+/** Said once, when a refused message lands back in a composer that is now read-only. */
+export const KEPT_NOTICE = 'Your message was kept. It will be sendable when this tab drives again.';
+
+/** Queued and kept messages carry data URLs; the composer takes `File`s. */
+async function filesFromParts(parts: FileUIPart[]): Promise<File[]> {
+  return Promise.all(
+    parts.map(async (f) => {
+      const blob = await (await fetch(f.url)).blob();
+      return new File([blob], f.filename ?? 'image', { type: f.mediaType });
+    }),
+  );
+}
 
 const MAX_TEXT_LENGTH = 32_000;
 const MAX_FILES = 4;
@@ -200,6 +222,12 @@ export type MultimodalInputProps = {
    */
   queue?: MessageQueue;
   onSteerQueued?: (id: string) => void;
+  /**
+   * A message the harness turned away on the lease, to put back. Taken once:
+   * the composer calls `onKeptTaken` so a remount does not restore it again.
+   */
+  kept?: KeptMessage | null;
+  onKeptTaken?: () => void;
   placeholder?: string;
   className?: string;
 };
@@ -229,6 +257,8 @@ function MultimodalInputInner({
   context,
   queue,
   onSteerQueued,
+  kept = null,
+  onKeptTaken,
   thinkingLevels,
   thinkingLevel,
   onThinkingChange,
@@ -472,20 +502,35 @@ function MultimodalInputInner({
       const message = queue?.take(id);
       if (!message) return;
       controller.textInput.setInput(message.text);
-      if (message.files.length > 0) {
-        // Queued files are data URLs; the composer takes `File`s.
-        const files = await Promise.all(
-          message.files.map(async (f) => {
-            const blob = await (await fetch(f.url)).blob();
-            return new File([blob], f.filename ?? 'image', { type: f.mediaType });
-          }),
-        );
-        attachments.add(files);
-      }
+      if (message.files.length > 0) attachments.add(await filesFromParts(message.files));
       textareaRef.current?.focus();
     },
     [controller, attachments, queue],
   );
+
+  /**
+   * Put back a message the harness refused. Unlike `editQueued` this cannot
+   * decline over a draft — refusing would lose the kept message, and so would
+   * replacing — so anything typed since goes after it, one paragraph down.
+   */
+  const restored = useRef<KeptMessage | null>(null);
+  useEffect(() => {
+    // The ref, not only `onKeptTaken`: StrictMode runs a mount's effect twice
+    // before the parent's clear lands, and the second would paste it again.
+    if (!kept || restored.current === kept) return;
+    restored.current = kept;
+    onKeptTaken?.();
+    const typed = controller.textInput.value;
+    controller.textInput.setInput(typed.trim() ? `${kept.text}\n\n${typed}` : kept.text);
+    if (kept.files.length > 0) {
+      void filesFromParts(kept.files).then(
+        (files) => attachments.add(files),
+        () => toastProblem('The images on the message that was kept could not be restored.'),
+      );
+    }
+    // Only a new kept message restores; the controller and attachments change
+    // with every keystroke, and re-running on those would paste it again.
+  }, [kept]);
 
   const handleTextareaKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1274,6 +1319,7 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.context?.window !== next.context?.window) return false;
   // Changes with the items and with the thread, which also re-binds `onSteerQueued`.
   if (prev.queue !== next.queue) return false;
+  if (prev.kept !== next.kept) return false;
   if (!equal(prev.className, next.className)) return false;
   return true;
 });

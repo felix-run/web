@@ -24,7 +24,12 @@ import { type Mounted, mount, shows } from './render';
 
 /** Records every request and answers each route with something plausible. */
 function harness(routes: Record<string, unknown> = {}) {
-  const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+  const calls: Array<{
+    url: string;
+    method: string;
+    body?: unknown;
+    headers: Record<string, string>;
+  }> = [];
   const original = globalThis.fetch;
 
   globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
@@ -33,6 +38,7 @@ function harness(routes: Record<string, unknown> = {}) {
       url,
       method: init.method ?? 'GET',
       body: init.body ? JSON.parse(String(init.body)) : undefined,
+      headers: (init.headers ?? {}) as Record<string, string>,
     });
     const hit = Object.entries(routes).find(([path]) => url.includes(path));
     // A function answers with its own Response — how a route streams SSE.
@@ -561,6 +567,42 @@ describe('a durable run that finishes', () => {
         h.to('/chat/sessions/').some((c) => c.method === 'GET' && !c.url.includes('lease')),
       );
       await ui.until(() => frame().split(answer).length - 1 === 1);
+    } finally {
+      ui.stop();
+      h.restore();
+    }
+  });
+});
+
+describe('the session lease', () => {
+  const LEASE = { '/chat/sessions/lease': { ok: true, token: 'tok-tui', mode: 'exclusive' } };
+
+  it('sends the hold’s token on a write that drives the thread', async () => {
+    const { ui, h } = await run('hello', { routes: LEASE });
+    try {
+      await ui.until(() => h.to('/chat/stream').length > 0);
+      expect(h.to('/chat/stream')[0]?.headers['x-felix-lease-token']).toBe('tok-tui');
+    } finally {
+      ui.stop();
+      h.restore();
+    }
+  });
+
+  it('says another client took the thread when the harness refuses a write', async () => {
+    const { ui, h, frame } = await run('hello', {
+      routes: {
+        ...LEASE,
+        '/chat/stream': () =>
+          new Response(JSON.stringify({ detail: 'lease_held' }), {
+            status: 409,
+            headers: { 'content-type': 'application/json' },
+          }),
+      },
+    });
+    try {
+      await ui.until(() => shows(frame(), 'another client took over this thread'));
+      // Not an error: the engine drops the empty reply and reports nothing.
+      expect(frame()).not.toContain('409');
     } finally {
       ui.stop();
       h.restore();

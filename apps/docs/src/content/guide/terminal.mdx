@@ -362,6 +362,14 @@ reported rather than raced — open the same thread in the web UI and the second
 web UI then watches the thread read-only, and takes it over on its own once the terminal's lease
 is released or lapses.
 
+The terminal renews its lease at half the TTL for as long as the thread is open, so a web tab
+watching it does not take over while the terminal is still there; quitting or switching threads
+releases it. Every message it sends carries the lease token, so if another client does take the
+thread — the machine slept past the TTL, say — the harness refuses the terminal's sends rather than
+taking messages from two drivers, and the notice line says `another client took over this thread`.
+From then on, and whenever it opened a thread another client already held, the terminal asks for
+the thread once per renewal interval and takes it back as soon as it is free.
+
 The status line says what the client believes about the harness. Where the host normally sits it
 reads `unreachable` when a request never arrived anywhere — usually the harness is not running, since
 it is a process on the same machine — or `key rejected` after a 401. There is no re-prompt: this

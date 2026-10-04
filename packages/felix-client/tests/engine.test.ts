@@ -1076,3 +1076,26 @@ describe('a stream that went silent while the page was away', () => {
     expect(engine.checkLiveness(Date.now() + 60_000)).toBe(false);
   });
 });
+
+describe('a send the harness refuses on the lease', () => {
+  // `send` never rejects, so this outcome is the only way a caller still holding
+  // the message learns it was never taken — and can give it back.
+  it("resolves 'lease_refused', drops the empty reply, and sets no error", async () => {
+    const engine = engineOn([]);
+    stubFetch((url) =>
+      url.includes('/chat/stream')
+        ? new Response(JSON.stringify({ detail: 'lease_held' }), { status: 409 })
+        : new Response('{}'),
+    );
+    expect(await run(engine)).toBe('lease_refused');
+    expect(engine.state.turns.map((t) => t.id)).toEqual(['u1']);
+    expect(engine.state.error).toBeNull();
+    expect(engine.state.streaming).toBe(false);
+  });
+
+  it("resolves 'done' for a run that went out", async () => {
+    expect(await run(engineOn([delta('hi'), { event: 'final', data: { content: 'hi' } }]))).toBe(
+      'done',
+    );
+  });
+});

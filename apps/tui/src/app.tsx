@@ -45,7 +45,7 @@ import { explainError } from './errors.js';
 import type { PromptHistory } from './history.js';
 import { inspectorRows, SECTIONS, type SectionKey } from './inspector.js';
 import { type Overlay, route } from './keys.js';
-import { useLease } from './lease.js';
+import { type LeaseHold, useLease } from './lease.js';
 import { page, pagerCommand } from './pager.js';
 import { usePanel } from './panel.js';
 import { useTheme } from './theme.js';
@@ -153,6 +153,8 @@ export function App({
   } = writeGate;
 
   const engineRef = useRef<ChatEngine | null>(null);
+  /** The open thread's lease, for the client's hooks, which are built before it. */
+  const leaseRef = useRef<LeaseHold | null>(null);
   const clientRef = useRef<ReturnType<typeof createFelixClient> | null>(null);
   // Filled once `hydrate` exists, which is after the engine it hydrates.
   const hydrateRef = useRef<(id: string) => Promise<void>>(async () => {});
@@ -172,6 +174,16 @@ export function App({
       // the environment or a file, and has nowhere to put a new one. `errors.ts`
       // already writes what to do about that.
       onUnauthorized: () => setConnection('rejected'),
+      // Every write that drives the thread carries the hold's token, so the
+      // harness refuses it while another client drives (`409 lease_held`)
+      // instead of taking a second driver's message. Chat-ui does the same.
+      leaseToken: (id) =>
+        leaseRef.current?.threadId === id ? leaseRef.current.token() : undefined,
+      // A refused write means another client has the thread, whatever the last
+      // renewal said: stop renewing, and say so on the notice line.
+      onLeaseRefused: (id) => {
+        if (leaseRef.current?.threadId === id) leaseRef.current.lost();
+      },
     });
     clientRef.current = client;
     engineRef.current = createChatEngine({
@@ -272,7 +284,7 @@ export function App({
     void refreshThreads();
   }, [refreshThreads]);
 
-  useLease(client, threadId, setNotice);
+  useLease(client, threadId, setNotice, leaseRef);
 
   /**
    * Selecting text copies it.

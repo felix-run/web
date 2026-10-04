@@ -621,8 +621,13 @@ Flows worth knowing before editing the app:
   `LEASE_RENEW_MS` of the driver leaving; observers are never promoted by the harness. Every
   driving request carries the tab's token as `X-Felix-Lease-Token` (the `leaseToken` hook on
   `@felix/client`, bound in `api.ts`), and a `409 lease_read_only` / `lease_held` arrives as a
-  `LeaseRefusedError` that flips the tab to watching rather than raising a toast.
-  `VITE_LEASE_RENEW_MS` shortens the interval for a live check; `tests/session-lease-watch.test.tsx`
+  `LeaseRefusedError` that flips the tab to watching rather than raising a toast. A refused send
+  hands its message back: `engine.send` resolves `'lease_refused'` (the only outcome definite that
+  the message never reached the thread), the shell drops the unsent turn and restores the text and
+  images to the composer (`kept`), and a refused *queued* message goes back to the head of the queue.
+  The terminal (`apps/tui/src/lease.ts`) renews its exclusive hold at half the TTL it asked for,
+  keeps a taken hold's token for the header so its writes are refused, and asks for the thread back
+  once per interval. `VITE_LEASE_RENEW_MS` shortens the interval for a live check; `tests/session-lease-watch.test.tsx`
   imports `App` after stubbing it.
 - **Sticky interrupts** — `approval_required` and `ui_request` frames render as banners and are
   answered out-of-band (`/approvals/{id}/decide`, `/chat/ui`); the run is waiting on them.
