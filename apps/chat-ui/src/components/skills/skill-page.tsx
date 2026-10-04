@@ -1,9 +1,9 @@
 import { isSkillLibraryError } from '@felix/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { ArrowLeftIcon, SparklesIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { PageHeader, Panel, PanelBody } from '@/components/harness/panel';
+import { PageBack, PageHeader, Panel, PanelBody } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { EditPanel } from './edit-panel';
 import { EvalsPanel } from './evals-panel';
@@ -39,6 +39,7 @@ export function SkillPage({
   backTo: string;
 }) {
   const skill = useLibrarySkill(name);
+  const layoutBack = useContext(PageBack);
   const detail = skill.data;
   // Sticky: once the Edit tab has been opened, the working copy stays loaded.
   const [editing, setEditing] = useState(address.tab === 'edit');
@@ -72,45 +73,53 @@ export function SkillPage({
         onValueChange={(tab) => onAddress({ tab: tab as SkillTab })}
         className="min-h-0 flex-1 gap-0"
       >
-        <PageHeader
-          icon={<SparklesIcon />}
-          title={name}
-          value={
-            detail
-              ? detail.live_version
-                ? `live ${detail.live_version}`
-                : 'nothing live'
-              : undefined
-          }
-          valueMono
-          controls={
-            <>
-              <Link
-                to={backTo}
-                className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-              >
-                <ArrowLeftIcon aria-hidden className="size-3" />
-                Library
-              </Link>
-              <TabsList
-                aria-label={`${name} view`}
-                className="w-auto group-data-[orientation=horizontal]/tabs:h-8"
-              >
-                {SKILL_TABS.filter((t) => t.ready).map((t) => (
-                  <TabsTrigger key={t.id} value={t.id} className="px-2.5 text-xs">
-                    {t.label}
-                    {t.id === 'edit' && editor.bundle.dirty && (
-                      <>
-                        <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
-                        <span className="sr-only"> (unsaved)</span>
-                      </>
-                    )}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </>
-          }
-        />
+        {/* Narrow, the layout puts a way back in the icon's place — to the
+            Harness list. From a skill the step back is the library, so the
+            chevron goes there and the Library link stands down: two back
+            controls a row apart, to two places, read as one doubled. */}
+        <PageBack.Provider value={layoutBack ? { to: backTo, label: 'Back to the library' } : null}>
+          <PageHeader
+            icon={<SparklesIcon />}
+            title={name}
+            value={
+              detail
+                ? detail.live_version
+                  ? `live ${detail.live_version}`
+                  : 'nothing live'
+                : undefined
+            }
+            valueMono
+            controls={
+              <>
+                {!layoutBack && (
+                  <Link
+                    to={backTo}
+                    className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <ArrowLeftIcon aria-hidden className="size-3" />
+                    Library
+                  </Link>
+                )}
+                <TabsList
+                  aria-label={`${name} view`}
+                  className="w-auto group-data-[orientation=horizontal]/tabs:h-8"
+                >
+                  {SKILL_TABS.filter((t) => t.ready).map((t) => (
+                    <TabsTrigger key={t.id} value={t.id} className="px-2.5 text-xs">
+                      {t.label}
+                      {t.id === 'edit' && editor.bundle.dirty && (
+                        <>
+                          <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                          <span className="sr-only"> (unsaved)</span>
+                        </>
+                      )}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </>
+            }
+          />
+        </PageBack.Provider>
         <UnsavedChangesGuard
           when={editor.bundle.dirty}
           leaves={leavesSkill}

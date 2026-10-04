@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { PolicyEditor } from './policy-form';
 import { usePublishPolicy, useSkillPreview } from './queries';
 import { policySentence } from './refusal';
-import { ScoreReadout } from './score-readout';
+import { QualityMeta, SecurityMeta } from './score-readout';
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 } as const;
 
@@ -93,15 +93,15 @@ export function ReviewPanel({
         </PageSection>
       )}
 
+      {/* The value lives in the heading alone: a readout under it said the same number again. */}
       <PageSection
         title="Quality"
-        meta={p.quality_score != null ? `${p.quality_score}/100` : undefined}
+        meta={
+          p.quality_score != null ? (
+            <QualityMeta score={p.quality_score} min={policy.data?.min_quality} />
+          ) : undefined
+        }
       >
-        <ScoreReadout
-          quality={p.quality_score}
-          minQuality={policy.data?.min_quality}
-          className="mb-2"
-        />
         <ul aria-label="Review checks" className="space-y-1">
           {p.review_checks.map((c) => (
             <li key={c.id} className="flex items-start gap-2 text-sm">
@@ -120,7 +120,11 @@ export function ReviewPanel({
                   <span className="block text-xs text-muted-foreground">{c.message}</span>
                 ) : null}
               </span>
-              <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+              <span
+                title={`Weighs ${c.weight} in the score`}
+                className="ml-auto shrink-0 font-mono text-xs text-muted-foreground tabular-nums"
+              >
+                <span className="sr-only">weight </span>
                 {c.weight}
               </span>
             </li>
@@ -128,8 +132,10 @@ export function ReviewPanel({
         </ul>
       </PageSection>
 
-      <PageSection title="Security" meta={p.security_status ?? undefined}>
-        <ScoreReadout security={p.security_status} className="mb-2" />
+      <PageSection
+        title="Security"
+        meta={p.security_status ? <SecurityMeta status={p.security_status} /> : undefined}
+      >
         {p.security_issues.length === 0 ? (
           <p className="text-sm text-muted-foreground">The scan found nothing.</p>
         ) : (

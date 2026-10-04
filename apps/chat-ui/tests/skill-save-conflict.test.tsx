@@ -139,6 +139,23 @@ async function editAndSave() {
 
 const AT = '/harness/skills?skill=roll-dice&tab=edit';
 
+describe('an unchanged bundle', () => {
+  it('offers no save until something changes, so no version is minted as a copy', async () => {
+    const h = harness();
+    mountWithProviders(<SkillLibraryPage />, AT);
+    const source = (await screen.findByLabelText('SKILL.md source')) as HTMLTextAreaElement;
+    await waitFor(() => expect(source.value).toBe(ORIGINAL));
+    const save = screen.getByRole('button', { name: /Save version/ }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    // The shortcut is refused too, and says why rather than opening a dialog.
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(source, { target: { value: `${ORIGINAL}2. Read the total.\n` } });
+    expect(save.disabled).toBe(false);
+    expect(h.requests.filter((r) => r.method === 'PUT')).toHaveLength(0);
+  });
+});
+
 describe('a stale save', () => {
   it('stops at a choice, having saved nothing', async () => {
     const h = harness();

@@ -8,7 +8,7 @@ import {
 } from '@felix/skill-format';
 import { Button } from '@felix/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
-import { Columns2Icon } from 'lucide-react';
+import { ChevronRightIcon, Columns2Icon } from 'lucide-react';
 import { type Ref, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { AssetPreview, formatBytes } from './asset-preview';
@@ -219,8 +219,13 @@ export function SkillBundleEditor({
             )}
           </div>
           {previewable && (
-            <details className="border-t border-border/60 @5xl:hidden">
-              <summary className="cursor-pointer px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            <details className="group border-t border-border/60 @5xl:hidden">
+              {/* The chevron every other disclosure on these pages draws, not the UA triangle. */}
+              <summary className="flex cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+                <ChevronRightIcon
+                  aria-hidden
+                  className="size-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+                />
                 Preview
               </summary>
               <PreviewPane

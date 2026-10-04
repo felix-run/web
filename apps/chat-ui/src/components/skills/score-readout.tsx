@@ -64,3 +64,27 @@ export function ScoreReadout({
     </div>
   );
 }
+
+/**
+ * The same two values as a section heading's at-a-glance value, for a page
+ * whose heading already names them — `quality` and `security` again in front
+ * of the number would say the heading twice.
+ */
+export function QualityMeta({ score, min }: { score: number; min?: number | null }) {
+  const below = min != null && score < min;
+  return (
+    <span title={HELP.quality} className="font-mono">
+      <span className={cn('text-foreground', below && 'text-state-blocked')}>{score}</span>/100
+      {below && <span className="text-state-blocked"> · under {min}</span>}
+    </span>
+  );
+}
+
+export function SecurityMeta({ status }: { status: SecurityStatus | string }) {
+  const sec = SECURITY[status as SecurityStatus];
+  return (
+    <span title={HELP.security} className={cn('font-mono', sec?.tone)}>
+      {sec?.word ?? status}
+    </span>
+  );
+}
