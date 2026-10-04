@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
-import { vi } from 'vitest';
+import { expect, vi } from 'vitest';
 
 /**
  * Shared by the skill library suites: a fake harness at the `fetch` seam and a
@@ -91,4 +91,48 @@ export function fileBody(path: string, content: string) {
     sha256: 'f'.repeat(64),
     size: content.length,
   };
+}
+
+/**
+ * The two answers a draft gets are the same weight: one variant, one size, one
+ * set of sizing classes, and the same kind of slot in the row they share — a
+ * wrapper that sizes nothing. Publish sits in a wrapper (it arms in place), and
+ * that wrapper used to take the button's own padding and minimum height, so the
+ * bare Reject beside it stretched to the padded wrapper and stood taller — and,
+ * being a bare `flex-1` button beside a wrapper, came out wider as well.
+ * happy-dom does no layout, so this pins the classes that make the size.
+ */
+export function expectSameWeight(publish: HTMLElement, reject: HTMLElement) {
+  expect(publish.dataset.variant).toBe(reject.dataset.variant);
+  expect(publish.dataset.size).toBe(reject.dataset.size);
+  const classes = (el: HTMLElement | null) => (el?.className ?? '').split(/\s+/).filter(Boolean);
+  expect(classes(publish).sort()).toEqual(classes(reject).sort());
+  const slot = (button: HTMLElement) => {
+    let el = button;
+    while (el.parentElement && !el.parentElement.contains(button === publish ? reject : publish)) {
+      el = el.parentElement;
+    }
+    return el;
+  };
+  const publishSlot = slot(publish);
+  const rejectSlot = slot(reject);
+  expect(publishSlot.parentElement).toBe(rejectSlot.parentElement);
+  // A wrapper each: a bare `flex-1` button beside a wrapper gets its padding on
+  // top of an equal share, and is wider by that much.
+  expect(publishSlot).not.toBe(publish);
+  expect(rejectSlot).not.toBe(reject);
+  const layout = /^(flex|basis|grow|shrink|min-w|max-w|w)-|^flex$/;
+  const sizes = /^(p[xytb]?|min-h|h)-/;
+  expect(
+    classes(publishSlot)
+      .filter((c) => layout.test(c))
+      .sort(),
+  ).toEqual(
+    classes(rejectSlot)
+      .filter((c) => layout.test(c))
+      .sort(),
+  );
+  for (const s of [publishSlot, rejectSlot]) {
+    expect(classes(s).filter((c) => sizes.test(c))).toEqual([]);
+  }
 }

@@ -6,6 +6,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SkillLibrary, SkillLibraryPage } from '../src/components/skills/skill-library';
 import {
+  expectSameWeight,
   fakeHarness,
   fileBody,
   mountWithProviders,
@@ -192,6 +193,10 @@ describe('the review queue', () => {
     h.fn.mockClear();
     mountWithProviders(<SkillLibrary />, '/harness/skills');
     const queue = await screen.findByRole('list', { name: 'Drafts waiting for review' });
+    expectSameWeight(
+      within(queue).getByRole('button', { name: 'Publish 0.1.1' }),
+      within(queue).getByRole('button', { name: 'Reject…' }),
+    );
     fireEvent.click(within(queue).getByRole('button', { name: 'Publish 0.1.1' }));
     await within(queue).findByText(/goes live, replacing live 0\.1\.0/);
     fireEvent.click(within(queue).getByRole('button', { name: 'Publish 0.1.1' }));
