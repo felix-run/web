@@ -37,8 +37,10 @@ Use the `api-contract-change` skill for the full procedure.
   (`felix.threadId`, `felix.manifest`, …). Server state is authoritative:
   hydrate from `GET /chat/sessions/{id}`; the `localStorage` transcript mirror in
   `src/lib/threads.ts` exists only because `GET /chat/history/{id}` rejects anonymous callers.
-- Each tab mints a holder id and takes an exclusive session lease. A 409 means another tab holds it —
-  surface that, don't retry-loop.
+- Each tab mints a holder id and takes an exclusive session lease. A 409 means another client
+  drives the thread: the keeper observes (`shared`), the shell goes read-only, and the keeper
+  retries `exclusive` once per renewal tick — never in a tight loop. Driving requests carry the
+  tab's token as `X-Felix-Lease-Token`; a `LeaseRefusedError` means "watching", not an error toast.
 - Every `/api/*` call goes through the module's `apiFetch`, which attaches the `x-chat-key` header
   and drops the key on 401. Never call bare `fetch('/api/...')`.
 - TypeScript is strict with `noUnusedLocals`, `noUnusedParameters`, and (at workspace level)

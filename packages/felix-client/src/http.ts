@@ -34,7 +34,25 @@ export interface FelixClientOptions {
   onUnauthorized?: () => void;
   /** Injectable for tests and for a runtime whose fetch is not global. */
   fetch?: typeof globalThis.fetch;
+  /**
+   * This client's session-lease token for `threadId`, if it holds one. Sent as
+   * `X-Felix-Lease-Token` on every request that drives the thread, so the
+   * harness refuses it (`409 lease_read_only` / `lease_held`) unless it is the
+   * exclusive hold's. A hook rather than a value because the holder — chat-ui's
+   * lease keeper, say — swaps tokens on takeover, and the client knows nothing of
+   * it. Absent, or `undefined` for a thread, sends no header: leases stay advisory.
+   */
+  leaseToken?: (threadId: string) => string | undefined;
+  /**
+   * The harness refused a driving request because this client is not the
+   * thread's driver. Called before the `LeaseRefusedError` is thrown, so a client
+   * can flip to watching in one place rather than at every call site.
+   */
+  onLeaseRefused?: (threadId: string, code: LeaseRefusal) => void;
 }
+
+/** The two codes a driving route answers a lease token it will not honour with. */
+export type LeaseRefusal = 'lease_read_only' | 'lease_held';
 
 export interface FelixHttp {
   /** The origin every call is made against, for a client that reports it. */

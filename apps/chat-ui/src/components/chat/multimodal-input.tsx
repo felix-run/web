@@ -158,6 +158,12 @@ export type MultimodalInputProps = {
    * `streaming` from the outside, but there is no run behind it to steer.
    */
   reattaching?: boolean;
+  /**
+   * Why this composer is read-only, or null when it is not: another client
+   * drives the thread and this tab only watches. Nothing sends, the controls that
+   * set the next run are off, and Stop is too — aborting is driving.
+   */
+  readOnly?: string | null;
   onSubmit: (message: PromptInputMessage) => void | Promise<void>;
   onBackground?: (message: PromptInputMessage) => void | Promise<void>;
   onStop?: () => void;
@@ -210,6 +216,7 @@ function MultimodalInputInner({
   status,
   isConnected,
   reattaching,
+  readOnly = null,
   onSubmit,
   onBackground,
   onStop,
@@ -367,15 +374,17 @@ function MultimodalInputInner({
    * handler finds no submit button and calls `requestSubmit()` regardless. Every
    * guard downstream of that ran *after* the provider had taken the text away.
    */
-  const refusal: string | null = !isConnected
-    ? 'Not connected to the harness. Reconnecting…'
-    : // A reattach looks busy but has no run behind it to steer, so it must not
-      // offer to. Stop ends the reattach and frees the composer.
-      reattaching
-      ? REATTACHING_REFUSAL
-      : tooLong
-        ? `${(text.length - MAX_TEXT_LENGTH).toLocaleString()} characters over the ${MAX_TEXT_LENGTH.toLocaleString()} limit.`
-        : null;
+  const refusal: string | null = readOnly
+    ? readOnly
+    : !isConnected
+      ? 'Not connected to the harness. Reconnecting…'
+      : // A reattach looks busy but has no run behind it to steer, so it must not
+        // offer to. Stop ends the reattach and frees the composer.
+        reattaching
+        ? REATTACHING_REFUSAL
+        : tooLong
+          ? `${(text.length - MAX_TEXT_LENGTH).toLocaleString()} characters over the ${MAX_TEXT_LENGTH.toLocaleString()} limit.`
+          : null;
 
   const canSubmit = refusal === null && (trimmedText.length > 0 || files.length > 0);
   // Background only when idle (durable poll path).
@@ -434,6 +443,7 @@ function MultimodalInputInner({
 
       // These three are backstops. `refusal` above disables the send button and
       // blocks Enter, so reaching one means a path that bypassed both.
+      if (readOnly) refuseSubmit(readOnly);
       if (!isConnected) refuseSubmit('Not connected to the harness. Nothing was sent.');
       if (reattaching) refuseSubmit(REATTACHING_REFUSAL);
       // While streaming, submit queues the message (handled by the shell's submit).
@@ -446,7 +456,7 @@ function MultimodalInputInner({
       await onSubmit(message);
       if (isBusy) controller.textInput.clear();
     },
-    [isConnected, reattaching, isBusy, onSubmit, controller, handleSlashSelect],
+    [readOnly, isConnected, reattaching, isBusy, onSubmit, controller, handleSlashSelect],
   );
 
   /**
@@ -604,6 +614,7 @@ function MultimodalInputInner({
             data-shortcut-target="composer"
             maxLength={MAX_TEXT_LENGTH + 200 /* slack: going over is visible, not truncated */}
             aria-invalid={tooLong || undefined}
+            disabled={readOnly !== null}
             onKeyDown={handleTextareaKeyDown}
           />
 
@@ -616,7 +627,7 @@ function MultimodalInputInner({
                   recording: stopping has to be one click, and the recording state
                   has to be on screen rather than behind a trigger. */}
               <AddMenu
-                disabled={isBusy}
+                disabled={isBusy || readOnly !== null}
                 count={files.length}
                 max={MAX_FILES}
                 voice={speech.isSupported && !speech.isListening ? speech.start : null}
@@ -639,7 +650,7 @@ function MultimodalInputInner({
                   options={models}
                   value={modelId}
                   onChange={onModelChange}
-                  disabled={isBusy}
+                  disabled={isBusy || readOnly !== null}
                   // The agent's name is the one that gives way at a narrow width;
                   // the Thinking picker beside it is a few characters at most.
                   className="min-w-0"
@@ -669,6 +680,7 @@ function MultimodalInputInner({
                   listLabel="Token budget, from the next turn"
                   value={thinkingLevel}
                   onChange={onThinkingChange}
+                  disabled={readOnly !== null}
                   className="shrink-0"
                 />
               )}
@@ -718,7 +730,12 @@ function MultimodalInputInner({
                 />
               ) : null}
 
-              <SendOrStop canSubmit={canSubmit} isBusy={isBusy} onStop={onStop} />
+              <SendOrStop
+                canSubmit={canSubmit}
+                isBusy={isBusy}
+                onStop={onStop}
+                stopDisabled={readOnly !== null}
+              />
             </div>
           </PromptInputFooter>
 
@@ -732,7 +749,8 @@ function MultimodalInputInner({
           earlier={threadAgent}
         />
       )}
-      <KeyboardHint isBusy={isBusy} />
+      {/* No keys to name while nothing can be sent. */}
+      {readOnly === null && <KeyboardHint isBusy={isBusy} />}
     </div>
   );
 }
@@ -1011,10 +1029,13 @@ function SendOrStop({
   canSubmit,
   isBusy,
   onStop,
+  stopDisabled = false,
 }: {
   canSubmit: boolean;
   isBusy: boolean;
   onStop?: () => void;
+  /** Stopping is driving: off while this tab only watches the thread. */
+  stopDisabled?: boolean;
 }) {
   if (isBusy) {
     return (
@@ -1023,6 +1044,7 @@ function SendOrStop({
         size="icon-sm"
         variant="secondary"
         className="size-8 rounded-full shadow-sm transition-transform duration-150 active:scale-95"
+        disabled={stopDisabled}
         onClick={onStop}
         aria-label="Stop generating"
       >
@@ -1241,6 +1263,7 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.status !== next.status) return false;
   if (prev.isConnected !== next.isConnected) return false;
   if (prev.reattaching !== next.reattaching) return false;
+  if (prev.readOnly !== next.readOnly) return false;
   if (prev.placeholder !== next.placeholder) return false;
   if (prev.modelId !== next.modelId) return false;
   if (prev.models !== next.models) return false;

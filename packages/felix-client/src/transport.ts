@@ -25,6 +25,7 @@ import {
   type ThreadHistory,
 } from '@felix/protocol';
 import { type ApprovalRequest, isLapsedApproval } from './approvals';
+import { LeaseRefusedError } from './errors';
 import { createHttp, type FelixClientOptions } from './http';
 import { createManagementClient } from './management';
 import type { SessionSummary } from './session-log';
@@ -58,6 +59,35 @@ interface RawSessionRow {
 }
 
 export type { FelixClientOptions };
+
+/** `POST /chat/sessions/lease`'s answer, or `{ ok: false, error }` for its 409. */
+export interface LeaseAcquireResult {
+  ok: boolean;
+  /** This hold's own token. An observer's is never the exclusive one. */
+  token?: string;
+  error?: string;
+  /** The mode the hold was granted in. */
+  mode?: 'exclusive' | 'shared';
+  /** Another holder drives the thread: a `shared` hold granted here is read-only. */
+  held_by_other?: boolean;
+  renewed?: boolean;
+}
+
+/** `GET /chat/sessions/{thread_id}/lease` — the harness's `LeaseStatusOut`. */
+export interface LeaseStatus {
+  /** An exclusive holder is driving the thread. */
+  locked: boolean;
+  /** Anyone holds the thread, exclusively or as an observer. */
+  attached: boolean;
+  /** The exclusive holder; null when only observers hold it. */
+  holder_id: string | null;
+  mode: 'exclusive' | 'shared' | null;
+  observers: number;
+  /** Every live observer, by holder id, with its own expiry (epoch ms). */
+  observer_holds: Array<{ holder_id: string; expires_at: number }>;
+  expires_at: number | null;
+  token_hint: string | null;
+}
 
 /** One `/v1/models` row, as the harness builds it in `felix/usage/catalog.py`. */
 interface RawModelEntry {
@@ -167,6 +197,40 @@ export function createFelixClient(opts: FelixClientOptions) {
   const { baseUrl: base, chatFetch, rawFetch, detailOf } = http;
 
   /**
+   * `X-Felix-Lease-Token` for a request that drives `threadId`, when the caller
+   * holds a lease there (`FelixClientOptions.leaseToken`). Whatever token it
+   * holds, observer or exclusive: the harness decides, not this client.
+   */
+  const leaseHeader = (threadId: string | undefined): Record<string, string> => {
+    const token = threadId ? opts.leaseToken?.(threadId) : undefined;
+    return token ? { 'x-felix-lease-token': token } : {};
+  };
+
+  /**
+   * A driving route's `409 lease_read_only` / `lease_held` is "this client is
+   * watching", not a failure: tell the caller once, then throw the typed error
+   * every call site can recognise. Any other 409 falls through to the route's
+   * own handling. Read from a clone so that handling can still read the body.
+   */
+  const refuseIfLease = async (
+    res: Response,
+    route: string,
+    threadId: string | undefined,
+  ): Promise<void> => {
+    if (res.status !== 409 || !threadId) return;
+    const detail = await res
+      .clone()
+      .json()
+      .then(
+        (b: unknown) => (b as { detail?: unknown } | null)?.detail,
+        () => undefined,
+      );
+    if (detail !== 'lease_read_only' && detail !== 'lease_held') return;
+    opts.onLeaseRefused?.(threadId, detail);
+    throw new LeaseRefusedError(route, threadId, detail);
+  };
+
+  /**
    * GET /v1/models → each manifest with what the harness says about it.
    *
    * The route answers with OpenAI model objects whose `id` is the manifest
@@ -212,7 +276,7 @@ export function createFelixClient(opts: FelixClientOptions) {
     async streamChat(args: StreamArgs, handlers: StreamHandlers): Promise<void> {
       const res = await chatFetch('/chat/stream', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           manifest: args.manifest,
           messages: args.messages,
@@ -221,6 +285,7 @@ export function createFelixClient(opts: FelixClientOptions) {
         signal: args.signal,
       });
 
+      await refuseIfLease(res, 'chat/stream', args.threadId);
       if (!res.ok || !res.body) {
         throw new Error(`chat/stream: ${res.status} ${await detailOf(res)}`);
       }
@@ -279,7 +344,7 @@ export function createFelixClient(opts: FelixClientOptions) {
     }): Promise<void> {
       const res = await chatFetch('/chat/tool_result', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           thread_id: args.threadId,
           tool_call_id: args.toolCallId,
@@ -287,6 +352,7 @@ export function createFelixClient(opts: FelixClientOptions) {
           error: args.error ?? false,
         }),
       });
+      await refuseIfLease(res, 'tool_result', args.threadId);
       if (!res.ok) throw new Error(`tool_result: ${res.status} ${await detailOf(res)}`);
     },
 
@@ -299,7 +365,7 @@ export function createFelixClient(opts: FelixClientOptions) {
     }): Promise<{ kind: 'done'; final: ChatMessage } | { kind: 'durable'; resumeToken: string }> {
       const res = await chatFetch('/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           manifest: args.manifest,
           messages: args.messages,
@@ -308,6 +374,7 @@ export function createFelixClient(opts: FelixClientOptions) {
         signal: args.signal,
       });
 
+      await refuseIfLease(res, 'chat', args.threadId);
       if (res.status === 202) {
         const body = (await res.json()) as { resume_token?: string };
         if (!body.resume_token) throw new Error('durable chat missing resume_token');
@@ -360,13 +427,14 @@ export function createFelixClient(opts: FelixClientOptions) {
     }): Promise<void> {
       const res = await chatFetch('/chat/steer', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           thread_id: args.threadId,
           text: args.text,
           kind: args.kind ?? 'steer',
         }),
       });
+      await refuseIfLease(res, 'steer', args.threadId);
       if (!res.ok) throw new Error(`steer: ${res.status} ${await detailOf(res)}`);
     },
 
@@ -385,9 +453,10 @@ export function createFelixClient(opts: FelixClientOptions) {
     async abortChat(threadId: string): Promise<void> {
       const res = await chatFetch('/chat/abort', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(threadId) },
         body: JSON.stringify({ thread_id: threadId }),
       });
+      await refuseIfLease(res, 'abort', threadId);
       if (!res.ok) throw new Error(`abort: ${res.status} ${await detailOf(res)}`);
     },
 
@@ -399,13 +468,14 @@ export function createFelixClient(opts: FelixClientOptions) {
     }): Promise<unknown> {
       const res = await chatFetch('/chat/continue', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           thread_id: args.threadId,
           manifest: args.manifest,
           ...(args.model ? { model: args.model } : {}),
         }),
       });
+      await refuseIfLease(res, 'continue', args.threadId);
       if (!res.ok) throw new Error(`continue: ${res.status} ${await detailOf(res)}`);
       return res.json();
     },
@@ -417,23 +487,33 @@ export function createFelixClient(opts: FelixClientOptions) {
     }): Promise<void> {
       const res = await chatFetch('/chat/thinking', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           thread_id: args.threadId,
           thinking_level: args.thinkingLevel,
         }),
       });
+      await refuseIfLease(res, 'thinking', args.threadId);
       if (!res.ok) throw new Error(`thinking: ${res.status} ${await detailOf(res)}`);
     },
 
-    /** POST /chat/sessions/lease — exclusive/shared attach for multi-client. */
+    /**
+     * POST /chat/sessions/lease — take or renew a hold on a thread.
+     *
+     * `exclusive` drives the thread and is `409 lease_held` while another holder
+     * has it. `shared` always succeeds, with an observer token of its own, and
+     * `held_by_other: true` when someone else is driving (`felix-run/felix#479`).
+     * Renewing either kind needs that hold's `token`; the holder id alone is
+     * `lease_held`. A 409 comes back as `{ ok: false, error }` rather than a throw,
+     * because losing the race is an answer, not a failure.
+     */
     async acquireSessionLease(args: {
       threadId: string;
       holderId: string;
       mode?: 'exclusive' | 'shared';
       ttlSeconds?: number;
       token?: string;
-    }): Promise<{ ok: boolean; token?: string; error?: string }> {
+    }): Promise<LeaseAcquireResult> {
       const res = await chatFetch('/chat/sessions/lease', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -450,11 +530,27 @@ export function createFelixClient(opts: FelixClientOptions) {
         return { ok: false, error: body.detail || 'lease_held' };
       }
       if (!res.ok) throw new Error(`lease: ${res.status} ${await detailOf(res)}`);
-      return (await res.json()) as { ok: boolean; token?: string };
+      return (await res.json()) as LeaseAcquireResult;
     },
 
     /**
-     * POST /chat/sessions/lease/release
+     * GET /chat/sessions/{thread_id}/lease — who holds the thread: the exclusive
+     * holder (`holder_id`, only while one drives it) and every observer.
+     */
+    async getSessionLease(threadId: string): Promise<LeaseStatus> {
+      const res = await chatFetch(`/chat/sessions/${encodeURIComponent(threadId)}/lease`);
+      if (!res.ok) throw new Error(`lease: ${res.status} ${await detailOf(res)}`);
+      return (await res.json()) as LeaseStatus;
+    },
+
+    /**
+     * POST /chat/sessions/lease/release — drop the one hold `token` names.
+     *
+     * The token is required: the harness answers `403 token_required` without
+     * one, because a holder id is published and cannot be what releases a hold.
+     * `holderId`, when sent, must be that hold's. `409 lease_contended` means a
+     * Redis race kept it from landing. All of it is swallowed: a release is
+     * best-effort, and the hold lapses on its own TTL.
      *
      * `keepalive` lets the request outlive the page that sent it — a tab
      * closing releases its hold this way. It goes through the same wrapper as
@@ -464,7 +560,7 @@ export function createFelixClient(opts: FelixClientOptions) {
     async releaseSessionLease(args: {
       threadId: string;
       holderId?: string;
-      token?: string;
+      token: string;
       keepalive?: boolean;
     }): Promise<void> {
       try {
@@ -475,7 +571,7 @@ export function createFelixClient(opts: FelixClientOptions) {
           body: JSON.stringify({
             thread_id: args.threadId,
             ...(args.holderId ? { holder_id: args.holderId } : {}),
-            ...(args.token ? { token: args.token } : {}),
+            token: args.token,
           }),
         });
       } catch {
@@ -521,9 +617,10 @@ export function createFelixClient(opts: FelixClientOptions) {
     async renameSession(threadId: string, name: string): Promise<void> {
       const res = await chatFetch('/chat/sessions/name', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(threadId) },
         body: JSON.stringify({ thread_id: threadId, name }),
       });
+      await refuseIfLease(res, 'sessions/name', threadId);
       if (!res.ok) throw new Error(`sessions/name: ${res.status} ${await detailOf(res)}`);
     },
 
@@ -564,9 +661,10 @@ export function createFelixClient(opts: FelixClientOptions) {
     async compactSession(threadId: string, manifest: string): Promise<void> {
       const res = await chatFetch('/chat/compact', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(threadId) },
         body: JSON.stringify({ thread_id: threadId, manifest }),
       });
+      await refuseIfLease(res, 'chat/compact', threadId);
       if (!res.ok) throw new Error(`chat/compact: ${res.status} ${await detailOf(res)}`);
     },
 
@@ -614,13 +712,14 @@ export function createFelixClient(opts: FelixClientOptions) {
     }): Promise<void> {
       const res = await chatFetch('/chat/sessions/label', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           thread_id: args.threadId,
           event_id: args.eventId,
           label: args.label,
         }),
       });
+      await refuseIfLease(res, 'sessions/label', args.threadId);
       if (!res.ok) throw new Error(`sessions/label: ${res.status} ${await detailOf(res)}`);
     },
     /**
@@ -692,7 +791,7 @@ export function createFelixClient(opts: FelixClientOptions) {
     }): Promise<{ ok: boolean; leaf_id?: string }> {
       const res = await chatFetch('/chat/rewind', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           thread_id: args.threadId,
           event_id: args.eventId,
@@ -700,6 +799,7 @@ export function createFelixClient(opts: FelixClientOptions) {
           ...(args.manifest ? { manifest: args.manifest } : {}),
         }),
       });
+      await refuseIfLease(res, 'rewind', args.threadId);
       if (!res.ok) throw new Error(`rewind: ${res.status} ${await detailOf(res)}`);
       return (await res.json()) as { ok: boolean; leaf_id?: string };
     },
@@ -715,7 +815,7 @@ export function createFelixClient(opts: FelixClientOptions) {
     }): Promise<void> {
       const res = await chatFetch('/chat/ui', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
         body: JSON.stringify({
           thread_id: args.threadId,
           request_id: args.requestId,
@@ -724,6 +824,7 @@ export function createFelixClient(opts: FelixClientOptions) {
           note: args.note ?? '',
         }),
       });
+      await refuseIfLease(res, 'ui', args.threadId);
       if (!res.ok) throw new Error(`ui: ${res.status} ${await detailOf(res)}`);
     },
 
@@ -771,7 +872,12 @@ export function createFelixClient(opts: FelixClientOptions) {
     /** DELETE /chat/history/{thread_id} → erase the server transcript. Best-effort. */
     async deleteThreadHistory(threadId: string): Promise<void> {
       try {
-        await rawFetch(`/chat/history/${encodeURIComponent(threadId)}`, { method: 'DELETE' });
+        const res = await rawFetch(`/chat/history/${encodeURIComponent(threadId)}`, {
+          method: 'DELETE',
+          headers: leaseHeader(threadId),
+        });
+        // Still best-effort, but a refusal reaches `onLeaseRefused` first.
+        await refuseIfLease(res, 'history', threadId);
       } catch {
         // best-effort; the local copy is the source of truth in the demo
       }

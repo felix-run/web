@@ -18,6 +18,30 @@ export interface DescribedError {
   detail: string;
 }
 
+/**
+ * A driving request the harness refused because this client is not the thread's
+ * driver: the `X-Felix-Lease-Token` it presented was an observer's
+ * (`lease_read_only`), or another holder has the thread (`lease_held`).
+ *
+ * Not a failure to report as one. The client is watching; it should say so and
+ * stop offering to drive, not raise an error toast. The message keeps the
+ * transport's `route: status code` spelling for logs.
+ */
+export class LeaseRefusedError extends Error {
+  readonly code: 'lease_read_only' | 'lease_held';
+  readonly threadId: string;
+  constructor(route: string, threadId: string, code: 'lease_read_only' | 'lease_held') {
+    super(`${route}: 409 ${code}`);
+    this.name = 'LeaseRefusedError';
+    this.code = code;
+    this.threadId = threadId;
+  }
+}
+
+export function isLeaseRefusal(err: unknown): err is LeaseRefusedError {
+  return err instanceof LeaseRefusedError;
+}
+
 /** A network-layer failure, i.e. the request never reached the harness at all. */
 function isOffline(err: unknown): boolean {
   // fetch() rejects with a TypeError when DNS, TLS or the connection itself fails.
@@ -37,6 +61,13 @@ function statusOf(text: string): number | null {
  */
 export function describeError(err: unknown, doing: string): DescribedError {
   const detail = String((err as Error)?.message ?? err);
+
+  if (isLeaseRefusal(err)) {
+    return {
+      message: `Could not ${doing}: another tab or client is driving this conversation, so this one is watching read-only.`,
+      detail,
+    };
+  }
 
   if (isOffline(err)) {
     return {

@@ -42,6 +42,7 @@ import {
   abortChat,
   acquireSessionLease,
   addEvalItem,
+  bindLeases,
   compactSession,
   continueChat,
   decideApproval,
@@ -51,6 +52,7 @@ import {
   forkSession,
   getEvalDataset,
   getResolvedManifest,
+  getSessionLease,
   getSessionSnapshot,
   getThreadHistory,
   listManifestEntries,
@@ -72,6 +74,7 @@ import { AttentionLine } from '@/components/attention-line';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
 import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
+import type { Driver } from '@/components/chat/watching-banner';
 import type { SkillState } from '@/components/inspector/primitives';
 import { type Theme, useTheme } from '@/components/theme-provider';
 import { useMessageQueue } from '@/hooks/use-message-queue';
@@ -89,7 +92,7 @@ import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import { resyncPush } from '@/lib/push';
 import { lastResume, onResume } from '@/lib/resume';
-import { createLeaseKeeper, releaseOnPageExit } from '@/lib/session-lease';
+import { createLeaseKeeper, LEASE_RENEW_MS, releaseOnPageExit } from '@/lib/session-lease';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
 import {
@@ -152,11 +155,31 @@ function tabHolderId(): string {
   }
 }
 
+/**
+ * How often a hold is renewed — and so how soon a watching tab takes over once
+ * the driver leaves. `VITE_LEASE_RENEW_MS` shortens it for a live check; a build
+ * without it renews at half the TTL.
+ */
+function leaseRenewMs(): number {
+  const override = Number(import.meta.env.VITE_LEASE_RENEW_MS);
+  return Number.isFinite(override) && override > 0 ? override : LEASE_RENEW_MS;
+}
+
+/** How often a watching tab asks whether the thread has moved on. */
+const WATCH_POLL_MS = 5_000;
+
 /** One keeper for the tab, so a remounted shell finds the holds the last one left. */
 const sessionLeases = createLeaseKeeper(
   { acquire: acquireSessionLease, release: releaseSessionLease },
   tabHolderId,
+  leaseRenewMs(),
 );
+// Every driving request carries this tab's token for its thread, and a refusal
+// means the tab is watching, whatever the keeper last believed.
+bindLeases({
+  token: (threadId) => sessionLeases.token(threadId),
+  refused: (threadId) => sessionLeases.demote(threadId),
+});
 // Closing the tab unmounts nothing, so the keeper's own releases never run then.
 // Module scope, like the keeper: one pair of listeners for the life of the page.
 if (typeof window !== 'undefined') releaseOnPageExit(sessionLeases);
@@ -228,6 +251,34 @@ export function AppShell() {
   const markSent = useCallback((id: string) => {
     if (unsentRef.current.delete(id)) setSentEpoch((n) => n + 1);
   }, []);
+  /**
+   * Another client drives this thread and this tab only watches it: the keeper
+   * holds an observer lease here, because the harness said `held_by_other` or
+   * refused one of this tab's writes. The composer and every driving action go
+   * read-only, and the keeper takes the thread over on its own once it is free.
+   */
+  const leaseState = useSyncExternalStore(sessionLeases.subscribe, () =>
+    sessionLeases.state(threadId),
+  );
+  const watching = leaseable && leaseState.mode === 'shared';
+  const watchingRef = useRef(watching);
+  watchingRef.current = watching;
+  /** Who is driving, for the banner's wording — read once per watch, never shown as an id. */
+  const [driver, setDriver] = useState<Driver>('other');
+  useEffect(() => {
+    if (!watching) return;
+    let current = true;
+    getSessionLease(threadId).then(
+      (status) => {
+        // The terminal client's holder ids are `tui-<pid>`; a browser tab's are UUIDs.
+        if (current) setDriver(status.holder_id?.startsWith('tui-') ? 'terminal' : 'other');
+      },
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [watching, threadId]);
   useEffect(() => {
     if (routeThread) rememberTabThread(routeThread);
   }, [routeThread]);
@@ -564,6 +615,29 @@ export function AppShell() {
     },
     [engine],
   );
+
+  /**
+   * Re-read the thread when this tab starts or stops watching it. Starting: what
+   * is on screen may be this tab's own idea of a thread another client has since
+   * moved on. Stopping is the takeover, and the driver may have written a reply
+   * since the last poll below.
+   */
+  const watchedRef = useRef<{ threadId: string; watching: boolean } | null>(null);
+  useEffect(() => {
+    const previous = watchedRef.current;
+    watchedRef.current = { threadId, watching };
+    if (previous?.threadId === threadId && previous.watching !== watching) {
+      hydrateFromServer(threadId);
+    }
+  }, [threadId, watching, hydrateFromServer]);
+  /** Follow the driver while watching: only when the harness holds more than this tab shows. */
+  useEffect(() => {
+    if (!watching) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') void hydrateIfAhead(threadIdRef.current);
+    }, WATCH_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [watching, hydrateIfAhead]);
 
   // Mount-only: storage migration and the thread index. Everything thread-scoped
   // is `loadThread`'s, below, because it now has more than one way to happen.
@@ -1738,7 +1812,8 @@ export function AppShell() {
       queue.setPaused(true);
       return;
     }
-    if (draining.current || reattaching || !harnessReachable) return;
+    // A watching tab holds its queue: the harness would refuse every send.
+    if (draining.current || reattaching || !harnessReachable || watching) return;
     if (queue.paused || queue.items.length === 0) return;
     const next = queue.items[0];
     queue.take(next.id);
@@ -1759,7 +1834,7 @@ export function AppShell() {
         queue.setPaused(true);
       },
     );
-  }, [threadId, streaming, reattaching, harnessReachable, error, engine, queue, submit]);
+  }, [threadId, streaming, reattaching, harnessReachable, watching, error, engine, queue, submit]);
 
   /**
    * Hand one queued message to the run in flight. The harness cancels the
@@ -1848,6 +1923,8 @@ export function AppShell() {
     onUiRespond: (value) => void onUiRespond(value),
     onUiCancel: () => void onUiCancel(),
     threadId,
+    watching,
+    driver,
     labels,
     labelTurn,
     branches,
@@ -2206,7 +2283,7 @@ export function AppShell() {
                         {/* Disabled on an empty thread: there is no run to continue, and
                             the harness would start one from nothing. */}
                         <DropdownMenuItem
-                          disabled={streaming || turns.length === 0}
+                          disabled={streaming || watching || turns.length === 0}
                           onSelect={() => continueRun()}
                         >
                           Continue run

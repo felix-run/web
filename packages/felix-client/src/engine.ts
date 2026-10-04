@@ -25,6 +25,7 @@ import {
   type StreamEvent,
 } from '@felix/protocol';
 import { describeGate, type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
+import { isLeaseRefusal } from './errors';
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
@@ -760,7 +761,9 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
          */
         if (resumeToken && !ctrl.signal.aborted) await settleDurable(resumeToken);
       } catch (err) {
-        if (ctrl.signal.aborted) throw err;
+        // A lease refusal is the harness declining to start the run at all —
+        // nothing was torn down, so there is nothing to rejoin.
+        if (ctrl.signal.aborted || isLeaseRefusal(err)) throw err;
         // A durable run survives its stream. If one was accepted and has not yet
         // reported `final`, rejoin it by polling rather than reporting a failure
         // for work that is still going.
@@ -793,7 +796,19 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     try {
       await run();
     } catch (err) {
-      if (!ctrl.signal.aborted) set({ error: String((err as Error)?.message ?? err) });
+      if (isLeaseRefusal(err)) {
+        // Not an error to show: another client drives this thread, and the
+        // transport has already told the client (`onLeaseRefused`), which says
+        // so in its own terms. The placeholder reply would never be written.
+        const target = activeAssistantId;
+        set({
+          turns: state.turns.filter(
+            (t) => !(t.id === target && !t.content && !(t.tools ?? []).length),
+          ),
+        });
+      } else if (!ctrl.signal.aborted) {
+        set({ error: String((err as Error)?.message ?? err) });
+      }
     } finally {
       if (controller === ctrl) controller = null;
       // However the run ended — `final`, a settled poll, an abort, a thrown

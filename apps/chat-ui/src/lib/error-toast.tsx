@@ -1,4 +1,4 @@
-import { describeError } from '@felix/client';
+import { describeError, isLeaseRefusal } from '@felix/client';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 
@@ -53,6 +53,10 @@ function Detail({ children }: { children: string }): ReactNode {
 
 /** Report a failed call to the harness. `doing` completes "Could not …". */
 export function toastError(err: unknown, doing: string, options: ErrorToastOptions = {}): void {
+  // The harness refused because another client drives this thread. That is not a
+  // failure to acknowledge: the client was told (`onLeaseRefused`), the shell is
+  // watching now, and the banner above the composer says so in its own words.
+  if (isLeaseRefusal(err)) return;
   const { message, detail } = describeError(err, doing);
   toast.error(message, {
     description: <Detail>{detail}</Detail>,

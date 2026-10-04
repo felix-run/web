@@ -12,6 +12,7 @@ import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { PushHint } from '@/components/chat/push-hint';
 import { TurnCheckpoint } from '@/components/chat/turn-checkpoint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
+import { WATCHING_REFUSAL, WatchingBanner } from '@/components/chat/watching-banner';
 import { RailPresence } from '@/components/rail-presence';
 import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -102,6 +103,8 @@ export function Workbench() {
     manifestEntries,
     threads,
     threadId,
+    watching,
+    driver,
     thinkingLevel,
     thinkingLevels,
     chooseThinking,
@@ -132,6 +135,11 @@ export function Workbench() {
   }, [manifestOptions, manifestEntries]);
 
   const empty = turns.length === 0;
+  /**
+   * The driving actions, off while another client drives this thread. Rating a
+   * reply stays: the harness lets an observer give one, since it writes no turn.
+   */
+  const drives = !watching;
   // Rows are named by position (see `Conversation`), so the anchor is too.
   const lastUser = turns.map((t) => t.role).lastIndexOf('user');
   const lastAnchorId = lastUser === -1 ? undefined : `turn-${lastUser}`;
@@ -179,19 +187,27 @@ export function Workbench() {
                     {...(t.eventId && branches?.has(t.eventId)
                       ? { branch: branches.get(t.eventId) }
                       : {})}
-                    {...(!streaming && switchBranch ? { onSwitchBranch: switchBranch } : {})}
+                    {...(drives && !streaming && switchBranch
+                      ? { onSwitchBranch: switchBranch }
+                      : {})}
                     verbose={verbose}
-                    onRegenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
-                    onRewind={
-                      !streaming && t.eventId && !isLast ? () => rewindTo(t.eventId!) : undefined
+                    onRegenerate={
+                      drives && isLast && t.role === 'assistant' ? regenerate : undefined
                     }
-                    {...(!streaming && t.role === 'user' && (i > 0 || t.parentEventId)
+                    onRewind={
+                      drives && !streaming && t.eventId && !isLast
+                        ? () => rewindTo(t.eventId!)
+                        : undefined
+                    }
+                    {...(drives && !streaming && t.role === 'user' && (i > 0 || t.parentEventId)
                       ? { onEdit: (text: string) => void editTurn(t.id, text) }
                       : {})}
                     {...(t.eventId && labels[t.eventId] !== undefined
                       ? { label: labels[t.eventId] }
                       : {})}
-                    {...(t.eventId ? { onLabel: (next) => labelTurn(t.eventId!, next) } : {})}
+                    {...(drives && t.eventId
+                      ? { onLabel: (next) => labelTurn(t.eventId!, next) }
+                      : {})}
                     {...(t.role === 'assistant' && !(streaming && isLast)
                       ? {
                           onRate: (
@@ -206,12 +222,16 @@ export function Workbench() {
                   />
                   {/* A labelled turn is a restore point, so it says so where it is
                       rather than only in the hover-revealed actions. */}
-                  {t.eventId && labels[t.eventId] !== undefined && !streaming && !isLast && (
-                    <TurnCheckpoint
-                      label={labels[t.eventId] as string}
-                      onRestore={() => rewindTo(t.eventId as string)}
-                    />
-                  )}
+                  {drives &&
+                    t.eventId &&
+                    labels[t.eventId] !== undefined &&
+                    !streaming &&
+                    !isLast && (
+                      <TurnCheckpoint
+                        label={labels[t.eventId] as string}
+                        onRestore={() => rewindTo(t.eventId as string)}
+                      />
+                    )}
                 </ConversationItem>
               );
             })}
@@ -275,6 +295,7 @@ export function Workbench() {
               empty && 'rise:border-transparent rise:bg-transparent',
             )}
           >
+            {watching ? <WatchingBanner driver={driver} /> : null}
             {pending ? (
               <ApprovalBanner
                 pending={pending}
@@ -297,6 +318,7 @@ export function Workbench() {
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
               reattaching={reattaching}
+              readOnly={watching ? WATCHING_REFUSAL : null}
               isConnected={harnessReachable}
               onSubmit={submit}
               queue={queue}
