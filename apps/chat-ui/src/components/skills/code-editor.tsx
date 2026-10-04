@@ -12,6 +12,9 @@ import { highlight, languageForPath } from './highlight';
  * and Escape then Tab moves it on, so the textarea is never a keyboard trap.
  * The hint is the field's description, so a screen reader says how out.
  *
+ * `readOnly` keeps the same surface for a stored version: the text can still be
+ * focused, selected and copied, but Tab moves focus as it does anywhere else.
+ *
  * Under forced colours the browser repaints the transparent textarea's text in
  * the system colour, so the mirror is hidden there (`index.css`) rather than
  * drawn twice.
@@ -34,16 +37,21 @@ export function CodeEditor({
   path,
   value,
   onChange,
+  readOnly = false,
   errorLines,
   issuesId,
+  className,
   ref,
 }: {
   path: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
+  /** Viewable, selectable and copyable, but not editable. */
+  readOnly?: boolean;
   errorLines?: Set<number>;
   /** The id of the list of validation issues, when there are any. */
   issuesId?: string;
+  className?: string;
   ref?: React.Ref<CodeEditorHandle>;
 }) {
   const hintId = useId();
@@ -82,11 +90,12 @@ export function CodeEditor({
     const inserted = document.execCommand?.('insertText', false, text);
     if (!inserted) {
       textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
-      onChange(textarea.value);
+      onChange?.(textarea.value);
     }
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (readOnly) return;
     if (event.key === 'Escape') {
       setEscapePressed(true);
       return;
@@ -102,7 +111,10 @@ export function CodeEditor({
   return (
     <div
       ref={scrollerRef}
-      className="max-h-[560px] overflow-auto rounded-md border border-border/60 bg-code-surface"
+      className={cn(
+        'max-h-[560px] overflow-auto rounded-md border border-border/60 bg-code-surface',
+        className,
+      )}
     >
       <div className="flex w-max min-w-full">
         <div
@@ -135,14 +147,17 @@ export function CodeEditor({
           <textarea
             ref={textareaRef}
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => onChange?.(event.target.value)}
             onKeyDown={onKeyDown}
+            readOnly={readOnly}
             wrap="off"
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
             aria-label={`${path} source`}
-            aria-describedby={issuesId ? `${hintId} ${issuesId}` : hintId}
+            aria-describedby={
+              [readOnly ? null : hintId, issuesId].filter(Boolean).join(' ') || undefined
+            }
             aria-invalid={issuesId ? true : undefined}
             data-skill-source
             className={cn(
@@ -152,9 +167,11 @@ export function CodeEditor({
           />
         </div>
       </div>
-      <p id={hintId} className="sr-only">
-        Tab inserts two spaces; Escape then Tab leaves the editor.
-      </p>
+      {!readOnly && (
+        <p id={hintId} className="sr-only">
+          Tab inserts two spaces; Escape then Tab leaves the editor.
+        </p>
+      )}
     </div>
   );
 }
