@@ -41,6 +41,12 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
       toast.error(editor.saveBlocked);
       return;
     }
+    // A save always mints a version, so an unchanged bundle would be a second
+    // copy of the one it was loaded from under a new number.
+    if (!bundle.dirty) {
+      toast(`Nothing to save: this is ${parent} as it was saved.`);
+      return;
+    }
     if (issues.length > 0) {
       toast.error(
         `Fix ${issues.length} issue${issues.length === 1 ? '' : 's'} first: the harness would refuse this bundle.`,
@@ -166,9 +172,11 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
         )}
         <Button
           size="sm"
+          variant={bundle.dirty ? 'default' : 'outline'}
           className="ml-auto"
           onClick={openSave}
-          disabled={save.isPending}
+          disabled={save.isPending || !bundle.dirty}
+          title={bundle.dirty ? undefined : `No changes from ${parent} yet`}
           aria-keyshortcuts={isMacPlatform() ? 'Meta+S' : 'Control+S'}
         >
           Save version… <span className="ml-1 text-xs opacity-70">{shortcut}</span>
@@ -186,7 +194,9 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
 
       <PageSection
         title="Validation"
-        meta={issues.length ? `${issues.length} issue${issues.length === 1 ? '' : 's'}` : 'none'}
+        meta={
+          issues.length ? `${issues.length} issue${issues.length === 1 ? '' : 's'}` : 'no issues'
+        }
       >
         <ValidationPanel
           id={issuesId}

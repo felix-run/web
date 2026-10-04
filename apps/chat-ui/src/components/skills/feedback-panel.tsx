@@ -203,12 +203,18 @@ function FeedbackForm({ detail, version }: { detail: SkillDetail; version: strin
 export function FeedbackRow({
   feedback: f,
   showSkill = false,
+  showStatus = true,
   onApplyToEditor,
   onCheckAgain,
   now,
 }: {
   feedback: SkillFeedback;
   showSkill?: boolean;
+  /**
+   * Off in the inbox, which lists only pending feedback: an amber "pending" on
+   * every row there spent the state colour on something the heading already says.
+   */
+  showStatus?: boolean;
   now?: number;
   onApplyToEditor?: (version: string) => void;
   /** Re-read the list, for an improvement the page has stopped polling. */
@@ -226,18 +232,20 @@ export function FeedbackRow({
             {f.name}
           </Link>
         )}
-        <span
-          className={cn(
-            'rounded-full px-1.5 py-0.5 font-medium',
-            f.status === 'pending'
-              ? 'bg-state-blocked/15 text-state-blocked'
-              : f.status === 'failed'
-                ? 'bg-state-failed/15 text-state-failed'
-                : 'bg-muted text-foreground',
-          )}
-        >
-          {STATUS_WORD[f.status]}
-        </span>
+        {showStatus && (
+          <span
+            className={cn(
+              'rounded-full px-1.5 py-0.5 font-medium',
+              f.status === 'pending'
+                ? 'bg-state-blocked/15 text-state-blocked'
+                : f.status === 'failed'
+                  ? 'bg-state-failed/15 text-state-failed'
+                  : 'bg-muted text-foreground',
+            )}
+          >
+            {STATUS_WORD[f.status]}
+          </span>
+        )}
         <span className="inline-flex items-center gap-1 text-muted-foreground">
           <Icon aria-hidden className="size-3" />
           {f.source} <span className="font-mono">{f.author}</span>
@@ -476,7 +484,7 @@ export function FeedbackInbox() {
       ) : (
         <ul aria-label="Feedback waiting for a decision" className="divide-y divide-border/60">
           {items.map((f) => (
-            <FeedbackRow key={f.id} feedback={f} showSkill />
+            <FeedbackRow key={f.id} feedback={f} showSkill showStatus={false} />
           ))}
         </ul>
       )}
