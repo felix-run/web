@@ -11,6 +11,7 @@ import {
 } from '@/components/ai-elements/file-tree';
 import { ChangesSection } from '@/components/workspace/changes-list';
 import { FilePreview } from '@/components/workspace/file-preview';
+import { ThreadRepoSection } from '@/components/workspace/thread-repo';
 import { collectChanges, durableRunInFlight, runHasToolCalls } from '@/lib/changes';
 import {
   clearMount,
@@ -56,7 +57,7 @@ function readFolded(): boolean {
 }
 
 export function WorkspaceSection({ className }: { className?: string }) {
-  const { turns, streaming } = useShell();
+  const { turns, streaming, threadId } = useShell();
   const [folded, setFolded] = useState(readFolded);
   const toggleFolded = () =>
     setFolded((f) => {
@@ -307,6 +308,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
       </div>
 
       <div id="workspace-body" hidden={folded} className="mt-3 space-y-4 px-2">
+        <ThreadRepoSection threadId={threadId} />
         <ChangesSection changes={changes} durableGap={durableGap} />
 
         <section aria-labelledby="workspace-files-heading">

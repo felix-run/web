@@ -291,6 +291,9 @@ export function describeProxyWorker(label: string, worker: ProxyWorker): void {
         ['GET', '/auth/methods'],
         ['POST', '/auth/github/device'],
         ['POST', '/auth/github/token'],
+        ['GET', '/auth/github/authorize'],
+        ['GET', '/auth/github/callback'],
+        ['POST', '/auth/github/exchange'],
       ] as const) {
         it(`lets ${method} ${path} through without the key, and with no credential of ours`, async () => {
           const res = await worker.fetch(

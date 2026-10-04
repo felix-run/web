@@ -72,6 +72,12 @@ const LOGIN_ROUTES = new Set([
   'GET /auth/methods',
   'POST /auth/github/device',
   'POST /auth/github/token',
+  // Redirect sign-in: GitHub's return lands on the callback as a top-level GET, and the page
+  // collects its token with a same-origin POST. The callback's 302 and its HttpOnly cookies pass
+  // through untouched (`redirect: 'manual'`), so the sign-in cookies are this origin's.
+  'GET /auth/github/authorize',
+  'GET /auth/github/callback',
+  'POST /auth/github/exchange',
 ]);
 
 /**

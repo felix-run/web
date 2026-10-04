@@ -96,7 +96,10 @@ Setup and the rules (org → tenant, TTL, consent phishing) are in
 
 | Method | Path | Body | Answer |
 |---|---|---|---|
-| `GET` | `/auth/methods` | none | `{github_device, bearer_required}` |
+| `GET` | `/auth/methods` | none | `{github_device, github_redirect, bearer_required}` |
+| `GET` | `/auth/github/authorize` | `?return_to=&tenant=` | `302` to GitHub (redirect sign-in) |
+| `GET` | `/auth/github/callback` | from GitHub | `302` back to `return_to` with `#felix_login=ok` or `#felix_login_error=<code>` |
+| `POST` | `/auth/github/exchange` | none (the sign-in's cookie) | the same as `/auth/github/token`, once |
 | `POST` | `/auth/github/device` | none | `{device_code, user_code, verification_uri, expires_in, interval}` |
 | `POST` | `/auth/github/token` | `{device_code, tenant?}` | `{access_token, token_type: "Bearer", expires_in, tenant, scopes, github_login}` |
 

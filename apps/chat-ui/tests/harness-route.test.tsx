@@ -249,7 +249,7 @@ describe('the harness address', () => {
         (a) => a.querySelector('span')?.textContent,
       );
     // Agent is a record: it reads the resolved spec and changes nothing.
-    expect(inGroup(0)).toEqual(['Memory', 'Corpus', 'Skills', 'Ledger', 'Agent']);
+    expect(inGroup(0)).toEqual(['Memory', 'Corpus', 'Skills', 'Ledger', 'Agent', 'GitHub']);
     expect(inGroup(1)).toEqual(['Manifests', 'Jobs', 'Eval']);
   });
 
@@ -418,7 +418,7 @@ describe('the harness address', () => {
       expect(document.querySelector('nav[aria-label="Harness"] a')).not.toBeNull(),
     );
     const links = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Harness"] a')];
-    expect(links.length).toBe(8);
+    expect(links.length).toBe(HARNESS_DESTINATIONS.length);
     expect(links.every((a) => a.tabIndex === 0)).toBe(true);
   });
 

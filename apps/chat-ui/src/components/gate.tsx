@@ -25,7 +25,7 @@
 
 import { Spinner } from '@felix/ui/spinner';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
-import { getAuthMethods } from '@/api';
+import { getAuthMethods, githubAuthorizeUrl } from '@/api';
 import {
   authHeaders,
   type CredentialKind,
@@ -38,7 +38,7 @@ import {
   setRelockHandler,
   setSession,
 } from '@/lib/auth';
-import { useDeviceLogin } from '@/lib/github-login';
+import { completeRedirectSignIn, describeFailure, useDeviceLogin } from '@/lib/github-login';
 import { AccessKeyForm } from './auth/access-key-form';
 import { AuthLayout } from './auth/auth-layout';
 import { GitHubSignIn } from './auth/github-sign-in';
@@ -56,7 +56,11 @@ type Phase = 'checking' | 'locked' | 'open';
 /** What the deployment accepts from a browser with no credential. */
 interface Options {
   github: boolean;
+  /** GitHub sign-in by redirect, which leads when the harness offers it. */
+  redirect: boolean;
   key: boolean;
+  /** A redirect sign-in came back `tenant_ambiguous`: the tenants to choose between. */
+  tenants?: string[];
 }
 
 /**
@@ -164,6 +168,11 @@ function probeMessage(result: Extract<Probe, { ok: false }>, kind: CredentialKin
 
 type Check = { open: true } | { open: false; error: string | null; options: Options };
 
+/** Where a redirect sign-in comes back to: this page, without the fragment the harness writes. */
+function returnTo(): string {
+  return `${window.location.origin}${window.location.pathname}${window.location.search}`;
+}
+
 /**
  * Verify what is stored; failing that, ask the deployment what it offers. An
  * expired session is not sent at all, so it is reported here rather than spent
@@ -171,6 +180,16 @@ type Check = { open: true } | { open: false; error: string | null; options: Opti
  */
 async function check(): Promise<Check> {
   let error: string | null = null;
+  // The return from a redirect sign-in, if this load is one: store what it brought, or say why
+  // it brought nothing, before anything else is asked.
+  let tenants: string[] | undefined;
+  const returned = await completeRedirectSignIn();
+  if (returned.kind === 'signed-in') setSession(returned.session);
+  else if (returned.kind === 'failed') {
+    error = describeFailure(returned.failure).message;
+    tenants = returned.tenants;
+    if (tenants?.length) error = null;
+  }
   let kind = credentialKind();
   if (kind === 'none' && getSession()) {
     clearSession();
@@ -199,13 +218,18 @@ async function check(): Promise<Check> {
   return {
     open: false,
     error,
-    options: { github: methods?.github_device === true, key: keyGate ?? true },
+    options: {
+      github: methods?.github_device === true || methods?.github_redirect === true,
+      redirect: methods?.github_redirect === true,
+      key: keyGate ?? true,
+      tenants,
+    },
   };
 }
 
 export function Gate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>('checking');
-  const [options, setOptions] = useState<Options>({ github: false, key: true });
+  const [options, setOptions] = useState<Options>({ github: false, redirect: false, key: true });
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -304,6 +328,12 @@ export function Gate({ children }: { children: ReactNode }) {
       <GitHubSignIn
         login={login}
         error={error}
+        redirect={
+          options.redirect
+            ? (tenant?: string) => window.location.assign(githubAuthorizeUrl(returnTo(), tenant))
+            : undefined
+        }
+        tenants={options.tenants}
         alternative={options.key ? switchLink('Use an access key instead', true) : undefined}
       />
     );

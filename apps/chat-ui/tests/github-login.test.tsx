@@ -293,10 +293,19 @@ describe('the account chip', () => {
     setRelockHandler(relock);
     render(<AccountChip />);
     fireEvent.click(screen.getByRole('button', { name: /signed in as/i }));
-    expect(await screen.findByText(/still honours it until/i)).toBeTruthy();
+    expect(await screen.findByText(/is still honoured until/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => expect(relock).toHaveBeenCalledWith({ cause: 'signed-out' }));
     expect(getSession()).toBeNull();
-    expect(relock).toHaveBeenCalledWith({ cause: 'signed-out' });
+    // Leaving also forgets the GitHub connection the harness holds, asked with this session's
+    // own bearer while it still had one.
+    const forgot = calls.find(
+      (c) => c.url === '/api/github/connection' && c.init?.method === 'DELETE',
+    );
+    expect(forgot).toBeTruthy();
+    expect((forgot?.init?.headers as Record<string, string>).authorization).toBe(
+      'Bearer felix-jwt',
+    );
   });
 
   it('renews in place, replacing the token without relocking', async () => {
