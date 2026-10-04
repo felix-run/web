@@ -64,6 +64,17 @@ describe('SkillMarkdown', () => {
     const site = screen.getByRole('link', { name: 'site' });
     expect(site.getAttribute('rel')).toContain('noreferrer');
   });
+
+  it("keeps headings on the instrument ramp — 16px at most, never the renderer's display sizes", async () => {
+    render(<SkillMarkdown markdown={'# One\n\n## Two\n\n### Three\n\n#### Four\n\nBody.'} />);
+    const sizes = (level: number) =>
+      (document.querySelector(`h${level}`)?.className ?? '')
+        .split(/\s+/)
+        .filter((c) => /^text-(xs|sm|base|lg|[2-9]?xl)$/.test(c));
+    await screen.findByRole('heading', { level: 1, name: 'One' });
+    expect(sizes(1)).toEqual(['text-base']);
+    for (const level of [2, 3, 4]) expect(sizes(level)).toEqual(['text-sm']);
+  });
 });
 
 describe('asset data URLs', () => {
