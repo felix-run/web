@@ -103,6 +103,13 @@ export interface SendArgs {
   mode?: 'stream' | 'background';
 }
 
+/**
+ * How a `send` ended, as far as the message it carried is concerned. Only a lease
+ * refusal is definite about that message never reaching the thread: a failure
+ * after the request went out may have been appended first, so it is `done`.
+ */
+export type SendOutcome = 'done' | 'lease_refused';
+
 export interface ChatEngine {
   readonly state: EngineState;
   /** Fires after every state change. Returns an unsubscribe. */
@@ -115,8 +122,13 @@ export interface ChatEngine {
    * about not re-showing *this* thread's decisions.
    */
   reset(): void;
-  /** Open one turn and run it to completion. Never rejects. */
-  send(args: SendArgs): Promise<void>;
+  /**
+   * Open one turn and run it to completion. Never rejects. Resolves
+   * `'lease_refused'` when the harness declined to start the run because another
+   * client drives the thread — the message was never taken, so a caller holding
+   * it can give it back to the person who wrote it.
+   */
+  send(args: SendArgs): Promise<SendOutcome>;
   /** Apply one wire frame. Exposed for reattach, and for tests. */
   applyEvent(event: StreamEvent): Promise<void>;
   /**
@@ -650,7 +662,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       ? String((run.final as { content?: unknown }).content || '')
       : '';
 
-  const send = async (args: SendArgs): Promise<void> => {
+  const send = async (args: SendArgs): Promise<SendOutcome> => {
     const mode = args.mode ?? 'stream';
     activeAssistantId = args.assistantId;
 
@@ -793,10 +805,12 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       }
     };
 
+    let outcome: SendOutcome = 'done';
     try {
       await run();
     } catch (err) {
       if (isLeaseRefusal(err)) {
+        outcome = 'lease_refused';
         // Not an error to show: another client drives this thread, and the
         // transport has already told the client (`onLeaseRefused`), which says
         // so in its own terms. The placeholder reply would never be written.
@@ -829,6 +843,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         phase: state.phase === 'aborted' ? state.phase : 'idle',
       });
     }
+    return outcome;
   };
 
   return {

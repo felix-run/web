@@ -1,6 +1,7 @@
 import type { BranchPoint, ChatEngine, ManifestEntry, ThreadMeta } from '@felix/client';
 import { createContext, type Dispatch, type SetStateAction, useContext } from 'react';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
+import type { KeptMessage } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
 import type { SkillState } from '@/components/inspector/primitives';
@@ -90,6 +91,10 @@ export interface ShellValue {
   ): Promise<void>;
   send(text: string, attachments?: ImageAttachment[], mode?: 'stream' | 'background'): void;
   submit(message: PromptInputMessage, mode?: 'stream' | 'background'): Promise<void>;
+  /** A message the harness refused on the lease, for the composer to take back. */
+  kept: KeptMessage | null;
+  /** The composer has the kept message: forget it, so a remount does not restore it twice. */
+  takeKept(): void;
   /** Messages written mid-run, held until the thread is free or the operator steers with one. */
   queue: MessageQueue;
   /** Steer the run in flight with one queued message. Cancels the run's remaining tool calls. */

@@ -72,7 +72,11 @@ import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AttentionLine } from '@/components/attention-line';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
-import { REATTACHING_REFUSAL } from '@/components/chat/multimodal-input';
+import {
+  KEPT_NOTICE,
+  type KeptMessage,
+  REATTACHING_REFUSAL,
+} from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
 import type { SkillState } from '@/components/inspector/primitives';
@@ -1239,7 +1243,15 @@ export function AppShell() {
       // Steady state: send only the new user message; Felix replays the thread.
       const userMessage: ChatMessage = { role: 'user', content: text };
       if (hasAttachments) userMessage.attachments = attachments;
-      void streamInto([userMessage], assistantId, mode);
+      return streamInto([userMessage], assistantId, mode).then((outcome) => {
+        // The harness never took it: another client drives the thread. The turn
+        // on screen would read as sent until the next hydrate quietly dropped it,
+        // so it goes now, and whoever holds the message gives it back.
+        if (outcome === 'lease_refused') {
+          engine.setTurns(engine.state.turns.filter((t) => t.id !== userTurn.id));
+        }
+        return outcome;
+      });
     },
     [engine, streaming, manifest, threadId, turns, threads, streamInto],
   );
@@ -1731,6 +1743,21 @@ export function AppShell() {
     }
   }, [engine, uiPrompt]);
 
+  /**
+   * A message the harness refused on the lease, on its way back to the composer.
+   *
+   * The composer cleared when the send went out, which is the only moment it
+   * can: the refusal arrives after. Bumped `n`, so the same text kept twice is
+   * restored twice. The composer takes it and calls `takeKept`, so a remount
+   * does not restore it again.
+   */
+  const [kept, setKept] = useState<KeptMessage | null>(null);
+  const keepRefused = useCallback((message: PromptInputMessage) => {
+    setKept((was) => ({ text: message.text, files: message.files, n: (was?.n ?? 0) + 1 }));
+    toast.message(KEPT_NOTICE);
+  }, []);
+  const takeKept = useCallback(() => setKept(null), []);
+
   // Map a composer submission (text + browser File parts, already converted to
   // data URLs by PromptInput) onto our send(). Image parts become attachments.
   /**
@@ -1743,7 +1770,11 @@ export function AppShell() {
    * references.
    */
   const submit = useCallback(
-    async (message: PromptInputMessage, mode: 'stream' | 'background' = 'stream') => {
+    async (
+      message: PromptInputMessage,
+      mode: 'stream' | 'background' = 'stream',
+      onLeaseRefused: (message: PromptInputMessage) => void = keepRefused,
+    ) => {
       // Permission is asked for here, inside the click, and only for the mode
       // that needs it. Prompting on load is how a page trains people to say no.
       if (mode === 'background') void armNotifications();
@@ -1775,9 +1806,14 @@ export function AppShell() {
           toast.dismiss(pending);
         }
       }
-      send(message.text, attachments, mode);
+      // Resolving clears the composer, and it must, before the run is known to
+      // have been taken: a reply streams for minutes. So the message is held
+      // here instead, until the harness either starts the run or refuses it.
+      void send(message.text, attachments, mode)?.then((outcome) => {
+        if (outcome === 'lease_refused') onLeaseRefused(message);
+      });
     },
-    [send, streaming, queue.enqueue],
+    [send, streaming, queue.enqueue, keepRefused],
   );
 
   /**
@@ -1818,7 +1854,10 @@ export function AppShell() {
     const next = queue.items[0];
     queue.take(next.id);
     draining.current = true;
-    submit({ text: next.text, files: next.files }).then(
+    // Refused on the lease, it goes back to the head of the queue rather than
+    // into the composer, unpaused: the tab is watching now, which holds the queue,
+    // and the takeover sends it — once, since `restore` keys on its id.
+    submit({ text: next.text, files: next.files }, 'stream', () => queue.restore(next)).then(
       () => {
         // A send that was refused without throwing opens no run, and nothing
         // would ever clear the flag. Say so by pausing, with the message back.
@@ -1933,6 +1972,8 @@ export function AppShell() {
     rateTurn,
     send,
     submit,
+    kept,
+    takeKept,
     queue,
     steerQueued,
     stopRun,

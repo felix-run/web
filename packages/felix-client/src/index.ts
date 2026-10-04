@@ -40,6 +40,7 @@ export {
   type EnginePorts,
   type EngineState,
   type SendArgs,
+  type SendOutcome,
   STREAM_STALL_MS,
 } from './engine';
 export {

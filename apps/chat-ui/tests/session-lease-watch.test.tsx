@@ -6,6 +6,7 @@ import type { ComponentType } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThemeProvider } from '../src/components/theme-provider';
+import { Toaster } from '../src/components/toaster';
 import { leaseServer } from './lease-server';
 
 /**
@@ -36,6 +37,7 @@ function mount(at: string) {
       <ThemeProvider>
         <TooltipProvider>
           <App />
+          <Toaster />
         </TooltipProvider>
       </ThemeProvider>
     </MemoryRouter>,
@@ -189,5 +191,135 @@ describe('a second tab', () => {
     expect(server.drives).toMatchObject([
       { path: '/api/chat/continue', status: 409, leaseToken: expect.any(String) },
     ]);
+  });
+});
+
+describe('a send the harness refuses on the lease', () => {
+  /** The `/chat/stream` bodies that reached the server, by the message they carried. */
+  const streamed = (server: ReturnType<typeof leaseServer>) =>
+    server.requests
+      .filter((r) => r.startsWith('POST ') && r.includes('/chat/stream '))
+      .map((r) => {
+        const body = JSON.parse(r.slice(r.indexOf('{'))) as {
+          messages?: Array<{ content?: string }>;
+        };
+        return body.messages?.at(-1)?.content;
+      });
+
+  it('puts the message back in the composer, and sends it once after the takeover', async () => {
+    const server = leaseServer();
+    mount('/t/thread-k');
+    await waitFor(() => expect(server.leases.get('thread-k')?.mode).toBe('exclusive'));
+    const ours = server.leases.get('thread-k')?.token;
+
+    await act(async () => {
+      await userEvent.type(composer() as HTMLTextAreaElement, 'do not lose this');
+    });
+    // The hold lapsed while the tab slept, and another client took the thread:
+    // this tab still believes it drives, and its send carries a stale token. Taken
+    // just before Enter, so no renewal tick finds out first.
+    const lease = server.leases.get('thread-k');
+    if (!lease) throw new Error('no lease');
+    lease.holder = 'other-tab';
+    lease.token = 'tok-other';
+    await act(async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+    await waitFor(() => expect(banner()).toBeTruthy());
+    expect(server.drives.find((d) => d.path === '/api/chat/stream')).toMatchObject({
+      leaseToken: ours,
+      status: 409,
+    });
+    // Back in the composer, exactly, while it is read-only — and nowhere in the
+    // transcript as though it had been sent.
+    await waitFor(() => expect(composer()?.value).toBe('do not lose this'));
+    expect(composer()?.disabled).toBe(true);
+    expect(
+      await screen.findByText(
+        'Your message was kept. It will be sendable when this tab drives again.',
+      ),
+    ).toBeTruthy();
+    const transcript = document.querySelector('[data-slot="conversation"]');
+    expect(transcript?.textContent ?? '').not.toContain('do not lose this');
+
+    // The other client leaves; this tab takes over and the composer opens.
+    server.leave('thread-k');
+    await waitFor(() => expect(composer()?.disabled).toBe(false), { timeout: RENEW_MS * 4 });
+    const taken = server.leases.get('thread-k')?.token;
+
+    await act(async () => {
+      (composer() as HTMLTextAreaElement).focus();
+      await userEvent.keyboard('{Enter}');
+    });
+    await waitFor(() =>
+      expect(server.drives.filter((d) => d.path === '/api/chat/stream')).toMatchObject([
+        { status: 409 },
+        { status: 200, leaseToken: taken },
+      ]),
+    );
+    // A send that went through clears the composer, as it always has.
+    await waitFor(() => expect(composer()?.value).toBe(''));
+    await settle(RENEW_MS * 2);
+    expect(streamed(server)).toEqual(['do not lose this', 'do not lose this']);
+    expect(server.drives.filter((d) => d.path === '/api/chat/stream')).toHaveLength(2);
+  });
+
+  it('keeps a refused queued message in the queue, and sends it once after the takeover', async () => {
+    // The first run stays open until the test ends it, so a second message queues.
+    const enc = new TextEncoder();
+    let finish: () => void = () => {};
+    let opened = 0;
+    const server = leaseServer({
+      stream: () => {
+        opened += 1;
+        if (opened > 1) {
+          return new Response('data: [DONE]\n\n', {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          });
+        }
+        const body = new ReadableStream<Uint8Array>({
+          start(c) {
+            finish = () => {
+              c.enqueue(enc.encode('data: [DONE]\n\n'));
+              c.close();
+            };
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      },
+    });
+    const tray = () => document.querySelector('section[aria-label="Queued messages"]');
+    mount('/t/thread-q');
+    await waitFor(() => expect(server.leases.get('thread-q')?.mode).toBe('exclusive'));
+
+    await type('first');
+    await waitFor(() => expect(opened).toBe(1));
+    await type('queued next');
+    await waitFor(() => expect(tray()?.textContent).toContain('queued next'));
+
+    // Taken while the run is still going; the drain sends with the stale token.
+    const lease = server.leases.get('thread-q');
+    if (!lease) throw new Error('no lease');
+    lease.holder = 'other-tab';
+    lease.token = 'tok-other';
+    await act(async () => finish());
+
+    await waitFor(() => expect(banner()).toBeTruthy());
+    await waitFor(() => expect(tray()?.textContent).toContain('queued next'));
+    // Back in the queue, not the composer, and not paused: the takeover sends it.
+    expect(composer()?.value).toBe('');
+    expect(tray()?.textContent).not.toContain('Paused');
+
+    server.leave('thread-q');
+    await waitFor(() => expect(tray()).toBeNull(), { timeout: RENEW_MS * 6 });
+    await settle(RENEW_MS * 2);
+    expect(streamed(server)).toEqual(['first', 'queued next', 'queued next']);
+    expect(server.drives.filter((d) => d.path === '/api/chat/stream').map((d) => d.status)).toEqual(
+      [200, 409, 200],
+    );
   });
 });
