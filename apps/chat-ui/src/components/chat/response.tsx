@@ -57,7 +57,42 @@ export type Components = NonNullable<StreamdownProps['components']>;
  */
 const LIST = 'list-outside whitespace-normal pl-6 [li>&]:mt-1';
 
+/**
+ * Headings at the reply's own size. The renderer's run 30/24/20/18px, so a
+ * model's `# Summary` became the largest text on screen — larger than the
+ * empty thread's welcome, which DESIGN.md makes the one element above 16px.
+ * A reply is prose at 16px, so a heading cannot outsize it: `#` and `##` are
+ * the body size in semibold, `###` in medium, and the rest the 13px title,
+ * muted. Space above does the separating that size used to.
+ */
+const HEADING = {
+  h1: 'mt-6 mb-2 text-base font-semibold',
+  h2: 'mt-6 mb-2 text-base font-semibold',
+  h3: 'mt-5 mb-1.5 text-base font-medium',
+  h4: 'mt-4 mb-1 text-sm font-semibold text-muted-foreground',
+  h5: 'mt-4 mb-1 text-sm font-semibold text-muted-foreground',
+  h6: 'mt-4 mb-1 text-sm font-semibold text-muted-foreground',
+} as const;
+
 export const responseComponents: Components = {
+  h1: ({ node: _node, className, ...props }) => (
+    <h1 className={cn(HEADING.h1, 'first:mt-0', className)} {...props} />
+  ),
+  h2: ({ node: _node, className, ...props }) => (
+    <h2 className={cn(HEADING.h2, 'first:mt-0', className)} {...props} />
+  ),
+  h3: ({ node: _node, className, ...props }) => (
+    <h3 className={cn(HEADING.h3, 'first:mt-0', className)} {...props} />
+  ),
+  h4: ({ node: _node, className, ...props }) => (
+    <h4 className={cn(HEADING.h4, 'first:mt-0', className)} {...props} />
+  ),
+  h5: ({ node: _node, className, ...props }) => (
+    <h5 className={cn(HEADING.h5, 'first:mt-0', className)} {...props} />
+  ),
+  h6: ({ node: _node, className, ...props }) => (
+    <h6 className={cn(HEADING.h6, 'first:mt-0', className)} {...props} />
+  ),
   ul: ({ node: _node, className, ...props }) => (
     <ul className={cn(LIST, 'list-disc', className)} {...props} />
   ),

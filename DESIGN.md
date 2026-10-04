@@ -309,6 +309,12 @@ access gate's panel heading at 24px and the gate form's and error boundary's `h1
 headlines now. No other element uses `text-lg`, `text-xl` or `text-2xl`; reaching for one is
 adding a second display element, which this surface does not have.
 
+Markdown headings are held to the rule too, because the renderer's defaults (30/24/20/18px) are
+not. In a reply, at 16px prose, `#` and `##` are the body size in semibold, `###` in medium, and
+`####`–`######` the 13px title, muted. In a rendered skill file, at 13px, `#` is a headline (16px)
+and the rest are 13px, stepping down by weight and muting. Space above a heading does the
+separating that size used to.
+
 ## Layout
 
 A fixed-height application shell, never a scrolling page: `h-screen` with `flex-col`, one
