@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ErrorNotice } from '@/components/error-notice';
 import { ViewSwitch } from '@/components/harness/panel';
 import { AssetPreview, formatBytes } from './asset-preview';
+import { CodeEditor } from './code-editor';
 import { FileTree } from './file-tree';
 import { languageForPath } from './highlight';
 import { PreviewPane } from './preview-pane';
@@ -18,7 +19,7 @@ import { useSkillBundleFiles } from './queries';
  *
  * Markdown opens rendered (no raw HTML, no remote images) with the source a
  * switch away; an asset opens as a preview where it is a raster image; any
- * other file is source.
+ * other file is source, in the editor's surface made read-only.
  */
 export function SkillBundleBrowser({ name, version }: { name: string; version: string }) {
   const query = useSkillBundleFiles(name, version);
@@ -74,9 +75,7 @@ export function SkillBundleBrowser({ name, version }: { name: string; version: s
           ) : markdown && view === 'rendered' ? (
             <PreviewPane path={path} content={content} files={files} onOpenFile={setPath} />
           ) : (
-            <pre className="max-h-[560px] overflow-auto bg-code-surface p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words">
-              {content}
-            </pre>
+            <CodeEditor path={path} value={content} readOnly className="rounded-none border-0" />
           )}
         </div>
       </div>
