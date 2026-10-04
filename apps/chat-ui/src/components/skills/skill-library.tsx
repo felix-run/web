@@ -4,7 +4,7 @@ import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Textarea } from '@felix/ui/textarea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { createLibrarySkill } from '@/api';
@@ -128,6 +128,10 @@ export function SkillLibraryPage() {
  * `create_skill_template` writes, saved as an operator draft at 0.1.0, then
  * opened in the editor. The name is checked here against the harness's rule so
  * the obvious refusal never makes a round trip.
+ *
+ * Create stays enabled while the form is incomplete: a disabled button cannot
+ * say why, and an empty description had no message of its own. Pressing it
+ * names what is missing under the field and moves focus there.
  */
 function NewSkillForm({
   onCancel,
@@ -140,12 +144,19 @@ function NewSkillForm({
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [attempted, setAttempted] = useState(false);
   const nameId = useId();
   const descId = useId();
-  const nameIssue = useMemo(
-    () => (name ? (validateSkillName(name)[0]?.message ?? null) : null),
-    [name],
-  );
+  const nameRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  const nameIssue = useMemo(() => {
+    if (name) return validateSkillName(name)[0]?.message ?? null;
+    return attempted ? 'A name is required.' : null;
+  }, [name, attempted]);
+  const descIssue =
+    attempted && !description.trim()
+      ? 'A description is required — it is how an agent decides to use the skill.'
+      : null;
   const create = useMutation({
     mutationFn: () => createLibrarySkill({ files: createSkillTemplate(name, description.trim()) }),
     onSuccess: (result) => {
@@ -159,9 +170,16 @@ function NewSkillForm({
   return (
     <form
       className="space-y-3"
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        if (ready && !create.isPending) create.mutate();
+        if (create.isPending) return;
+        if (!ready) {
+          setAttempted(true);
+          (isValidSkillName(name) ? descRef : nameRef).current?.focus();
+          return;
+        }
+        create.mutate();
       }}
     >
       <div className="space-y-1">
@@ -169,6 +187,7 @@ function NewSkillForm({
           Name
         </label>
         <Input
+          ref={nameRef}
           id={nameId}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -189,16 +208,24 @@ function NewSkillForm({
           Description — what it does and when an agent should use it
         </label>
         <Textarea
+          ref={descRef}
           id={descId}
           value={description}
           maxLength={1024}
           onChange={(e) => setDescription(e.target.value)}
           className="min-h-16 text-sm"
+          aria-invalid={descIssue ? true : undefined}
+          aria-describedby={descIssue ? `${descId}-issue` : undefined}
         />
+        {descIssue && (
+          <p id={`${descId}-issue`} className="text-xs text-state-failed">
+            {descIssue}
+          </p>
+        )}
       </div>
       {create.error ? <RefusalNotice error={create.error} doing="create the skill" /> : null}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={!ready || create.isPending}>
+        <Button type="submit" size="sm" disabled={create.isPending}>
           {create.isPending ? 'Creating…' : 'Create draft'}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
