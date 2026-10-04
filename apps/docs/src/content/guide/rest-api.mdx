@@ -751,6 +751,11 @@ curl -s -X POST "$BASE_URL/chat/fork" -H "authorization: Bearer $FELIX_KEY" \
   -d '{"thread_id":"demo","new_thread_id":"demo-branch","from_event_id":"evt_123"}'
 ```
 
+`new_thread_id` must name a thread that does not exist yet: one with no events and no session
+metadata, and not the source thread itself. Otherwise the fork is refused with
+`409 {"detail": "thread_exists"}` and nothing is written. Mint a fresh id per fork (chat-ui and the
+TUI use a random UUID). Two forks racing to the same new id leave exactly one fork.
+
 `POST /chat/rewind` takes `{thread_id, event_id, summarize?, instructions?, manifest?}` and moves the
 active leaf back to `event_id`. Unless `summarize: false` (or `session.branch_summary: false`), the
 abandoned branch is summarized into a `branch_summary` event using the manifest's model.
