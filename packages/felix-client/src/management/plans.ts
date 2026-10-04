@@ -1,6 +1,7 @@
 /** Agent-authored plans (`GET /plans`, `DELETE /plans/{id}`). */
 
 import type { FelixHttp } from '../http';
+import { threadSuffix } from '../session-log';
 
 /**
  * `pending` is the harness's own default and `done` is what `plan_update_step`
@@ -46,6 +47,13 @@ export interface PlanWire {
   id: string;
   tenant_id: string;
   manifest_id: string;
+  /**
+   * The conversation the plan was written in, as `{tenant}:{suffix}`; `''` for a plan
+   * written outside a chat (`felix-run/felix#463`). **Absent** from a harness older
+   * than that, which is also one that ignores `?thread_id=` — so its presence on a row
+   * is the only evidence a thread-filtered list was actually filtered.
+   */
+  thread_id?: string;
   created_at: number;
   updated_at: number;
   expires_at?: number | null;
@@ -57,6 +65,8 @@ export interface Plan {
   id: string;
   tenant_id: string;
   manifest_id: string;
+  /** The thread's suffix, `''` for none, `undefined` when the harness does not say. */
+  thread_id?: string;
   title: string;
   steps: PlanStep[];
   created_at: number;
@@ -70,6 +80,10 @@ export function flattenPlan(row: PlanWire): Plan {
     id: row.id,
     tenant_id: row.tenant_id,
     manifest_id: row.manifest_id,
+    // Normalised to the suffix every client holds, as approvals' is.
+    ...(typeof row.thread_id === 'string'
+      ? { thread_id: row.thread_id ? threadSuffix(row.thread_id) : '' }
+      : {}),
     title: plan.title || 'Untitled plan',
     steps: (plan.steps ?? []).map((s, i) => ({
       id: String(s.id ?? i + 1),
@@ -91,11 +105,31 @@ export function flattenPlan(row: PlanWire): Plan {
  * shape `/approvals` returns — so both names are read rather than betting on one.
  */
 
+/**
+ * Whether a list fetched with `threadId` may be described as that thread's plans.
+ *
+ * A non-empty list must prove it: every row names that thread, which an older harness
+ * that ignored the filter cannot do. An empty one needs no proof — "no plans on this
+ * thread" is true on either harness, since an older one returning nothing has no plans
+ * anywhere.
+ */
+export function isThreadScoped(plans: readonly Plan[], threadId: string): boolean {
+  return plans.every((p) => p.thread_id === threadId);
+}
+
 export function createPlansClient(http: FelixHttp) {
   const { chatFetch } = http;
 
-  async function listPlans(limit = 25): Promise<Plan[]> {
-    const res = await chatFetch(`/plans?limit=${limit}`);
+  /**
+   * `threadId` (the suffix) asks for one conversation's plans. A harness older than
+   * `felix-run/felix#463` ignores the parameter and answers for the whole tenant, so a
+   * caller that wants to *say* "this thread" checks `isThreadScoped` on the result
+   * rather than trusting that it asked.
+   */
+  async function listPlans(limit = 25, opts: { threadId?: string } = {}): Promise<Plan[]> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (opts.threadId !== undefined) query.set('thread_id', opts.threadId);
+    const res = await chatFetch(`/plans?${query}`);
     if (!res.ok) throw new Error(`plans: ${res.status}`);
     const body = (await res.json()) as { plans?: PlanWire[]; items?: PlanWire[] };
     return (body.plans ?? body.items ?? []).map(flattenPlan);

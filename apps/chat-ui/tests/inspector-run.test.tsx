@@ -111,19 +111,24 @@ describe('the instrument and approvals', () => {
   });
 
   /**
-   * Two scopes, two headings. "This run" heads the readout; the tabs are
-   * tenant-wide — no route takes a thread filter — so they sit under a heading
-   * of their own rather than borrowing the run's and disclaiming it per tab.
+   * Each part says its own scope. "This run" heads the readout; the tabs sit
+   * under "Harness", and each tab's first line says whose rows it lists — Plans
+   * this thread's, Tools every thread's, since `/audit/metrics` has no filter.
    */
-  it('heads the tabs as the whole harness, apart from the run above them', async () => {
+  it('heads the tabs as the harness, apart from the run above them', async () => {
     stub([]);
     mount();
-    const harness = screen.getByRole('region', { name: 'Harness · all threads' });
+    const harness = screen.getByRole('region', { name: 'Harness' });
     expect(within(harness).getByRole('tablist')).toBeTruthy();
     expect(harness.contains(readout())).toBe(false);
     expect(screen.getByRole('heading', { name: 'This run' })).toBeTruthy();
-    // The per-tab line no longer repeats the scope the heading states.
-    expect(screen.queryByText(/^All threads/)).toBeNull();
+  });
+
+  it('labels the tool metrics as every thread’s', async () => {
+    stub([]);
+    mount();
+    await userEvent.click(screen.getByRole('tab', { name: 'Tools' }));
+    expect(await screen.findByText('All threads · last 60 minutes')).toBeTruthy();
   });
 
   it('says why the tool metrics are empty on a thread that has run tools', async () => {
@@ -288,5 +293,54 @@ describe('the readout helpers', () => {
     expect(formatElapsed(42_400)).toBe('42s');
     expect(formatElapsed(187_000)).toBe('3:07');
     expect(formatElapsed(3_729_000)).toBe('1:02:09');
+  });
+});
+
+/**
+ * Plans are this thread's (`/plans?thread_id=`, felix-run/felix#463). A harness
+ * older than that ignores the parameter and answers for the whole tenant, and
+ * the only evidence either way is a `thread_id` on each row — so the line says
+ * "This thread" when the rows prove it and "All threads" when they cannot.
+ */
+describe('the plans tab', () => {
+  const plan = (id: string, thread?: string) => ({
+    id,
+    tenant_id: 'default',
+    manifest_id: 'deep',
+    ...(thread === undefined ? {} : { thread_id: thread }),
+    created_at: 1,
+    updated_at: 2,
+    plan: { title: `Plan ${id}`, steps: [{ id: '1', title: 'Step', status: 'pending' }] },
+  });
+  function stubPlans(rows: unknown[]) {
+    const fn = vi.fn(async (input: unknown) =>
+      String(input).includes('/plans')
+        ? new Response(JSON.stringify({ items: rows }), { status: 200 })
+        : new Response(JSON.stringify({}), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fn);
+    return fn;
+  }
+
+  it('asks for this thread’s plans, by suffix', async () => {
+    const fetch = stubPlans([]);
+    mount({ threadId: 'here' });
+    await screen.findByText(/No plans on this thread/);
+    const url = String(fetch.mock.calls.find(([u]) => String(u).includes('/plans'))?.[0]);
+    expect(new URL(url, 'http://x').searchParams.get('thread_id')).toBe('here');
+  });
+
+  it('says "This thread" when every row names it', async () => {
+    stubPlans([plan('p1', 'default:here')]);
+    mount({ threadId: 'here' });
+    expect(await screen.findByText('This thread · newest 25')).toBeTruthy();
+    expect(screen.getByText('Plan p1')).toBeTruthy();
+  });
+
+  it('says "All threads" when the harness did not filter', async () => {
+    // An older harness: no `thread_id` on the rows, and the list is the tenant's.
+    stubPlans([plan('p1'), plan('p2')]);
+    mount({ threadId: 'here' });
+    expect(await screen.findByText('All threads · newest 25')).toBeTruthy();
   });
 });
