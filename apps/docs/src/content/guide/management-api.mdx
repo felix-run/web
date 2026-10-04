@@ -624,7 +624,7 @@ can publish a skill to every manifest in the tenant.
 | `GET` | `/skill-library/-/policy` | `skills:read` | `200` |
 | `GET` | `/skill-library/-/browse?source=&ref=` | `skills:read` | `200` |
 | `GET` | `/skill-library/-/upstream?refresh=&limit=&cursor=` | `skills:read` | `200` |
-| `GET` | `/skill-library/{name}/-/upstream?ref=` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}/-/upstream?ref=` | `skills:read`; `skills:write` with `ref` | `200` |
 | `GET` | `/skill-library/{name}` | `skills:read` | `200` |
 | `GET` | `/skill-library/{name}/versions/{version}` | `skills:read` | `200` |
 | `GET` | `/skill-library/{name}/versions/{version}/files/{path}` | `skills:read` | `200` |
@@ -757,7 +757,8 @@ through a stricter gate. A re-import whose files are unchanged saves nothing and
 `unchanged: true`; `dropped_files` lists what the import left out. Sources, refs, the allowlist,
 the cooldown and the call budgets are in [Skill import](/guide/skill-import/).
 
-An imported skill can be checked against its origin: `GET /{name}/-/upstream` re-resolves its ref and
+An imported skill can be checked against its origin: `GET /{name}/-/upstream` re-resolves its stored
+ref (`skills:read`; naming another with `?ref=` needs `skills:write`) and
 returns the upstream commit, whether its files moved, when the cooldown lets them in, and a per-file
 diff against the live version; `POST /{name}/-/update` re-imports it as a new draft, never published;
 `GET /-/upstream` lists every imported skill's state, 25 a page, checked now or as last recorded

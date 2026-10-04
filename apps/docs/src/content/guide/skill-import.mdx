@@ -88,6 +88,7 @@ branch that moves mid-import cannot mix two commits into one version.
 | omitted | The repository's default branch, looked up as `refs/heads/<default>` — so a default branch named like a commit id is still a branch |
 | hex, 7–64 characters, any case | A commit id and nothing else, never a branch or tag. GitHub must return a commit that starts with the hex given, or it is `422 ambiguous_ref` (a branch or tag of that name answered instead). The commit must then be **on the default branch** — its tip or an ancestor — or it is `422 commit_not_in_repo` |
 | `refs/heads/<name>`, `refs/tags/<name>` | That branch or tag, through the repository's own refs |
+| the default branch's name | That branch, as `refs/heads/<default>`, even when a tag shares the name. An import with no ref stores the default branch's name as its ref, so a later `main` tag cannot turn that stored ref ambiguous or into the tag |
 | any other name | Looked up as a tag and as a branch. One that is both is `422 ambiguous_ref`: spell it `refs/tags/<name>` or `refs/heads/<name>`, so a branch cannot shadow a release tag. One that is neither is `404 source_not_found` |
 
 The reachability check exists because GitHub serves any commit in a repository's fork network under
@@ -290,8 +291,15 @@ deployment's. Past either, the request is `429 rate_limited`; GitHub's own limit
 | `FELIX_SKILL_IMPORT_CALLS_PER_HOUR` | `500` | 1–100,000 | One tenant's calls per hour |
 | `FELIX_SKILL_IMPORT_CALLS_PER_HOUR_TOTAL` | `4000` | 1–1,000,000 | The whole deployment's, protecting the shared token's own limit |
 
-A browse of 50 skills is about 55 calls; an import is one call per kept file plus about five. At the
-defaults, eight tenants spending their whole budget fill the deployment's. The buckets live in Redis
+| Request | GitHub calls |
+|---|---|
+| Browse of 50 skills | 53: the repository, the branch, the tree and 50 `SKILL.md` heads |
+| Import | one per kept file, plus 4 |
+| Upstream check without a diff (the listing, the periodic check) | 3 |
+
+A bare branch or tag name is looked up as both, which adds one call to each: 54, files + 5, 4. A
+commit id costs extra calls to prove it is on the default branch, and an annotated tag one per hop.
+At the defaults, eight tenants spending their whole budget fill the deployment's. The buckets live in Redis
 when `FELIX_REDIS_URL` is set. When Redis is unreachable each replica falls back to in-process
 buckets, so both budgets multiply by the number of API replicas until it recovers — size `_TOTAL`
 for that, or keep Redis up.
@@ -308,7 +316,7 @@ version, and three routes are built on it. None of them runs at compile time.
 
 | Method | Path | Scope | Success | CLI |
 |---|---|---|---|---|
-| `GET` | `/skill-library/{name}/-/upstream?ref=` | `skills:read` | `200` | `felix skills diff` |
+| `GET` | `/skill-library/{name}/-/upstream?ref=` | `skills:read`; `skills:write` with `ref` | `200` | `felix skills diff` |
 | `POST` | `/skill-library/{name}/-/update` | `skills:write` | `201`, or `200` unchanged | `felix skills update` |
 | `GET` | `/skill-library/-/upstream?refresh=&limit=&cursor=` | `skills:read` | `200` | `felix skills outdated` |
 
@@ -321,8 +329,10 @@ whichever ref is named.
 ### Checking one skill
 
 `GET /skill-library/{name}/-/upstream` re-resolves the stored ref — or `?ref=`, another branch, tag
-or commit of the same source — under the same [ref rules](#sources-and-refs) as an import, and
-answers `{name, current, upstream, update_available, min_age_days, diff}`:
+or commit of the same source — under the same [ref rules](#sources-and-refs) as an import. Checking
+the stored ref needs `skills:read`. Naming another ref needs `skills:write`, because it chooses what
+the deployment's token fetches and the tenant's budget pays for, as an import does.
+The answer is `{name, current, upstream, update_available, min_age_days, diff}`:
 
 | Field | |
 |---|---|
@@ -335,15 +345,24 @@ Each item of `files` is `{path, change, binary, old_size, new_size, diff, trunca
 `added`, `removed` or `modified`; unchanged files are left out. Only changed files are fetched — a
 stored file's git blob id is computed from its bytes and compared with the tree's — and only text:
 a binary asset is reported by size, never diffed. A fetched file is compared as an import would save
-it (a long description clamped, non-UTF-8 text absent). A text diff is unified and capped at 16 Ki
-characters a file and 128 Ki in all; `truncated` and `diff_truncated` say when one was cut or left
-out. The diff is third-party text: it is secret-redacted as a file read is, and `felix skills diff`
-strips control characters from it line by line. A skill over the import [caps](#what-is-kept) is
+it (a long description clamped, non-UTF-8 text absent). Two bounds apply:
+
+| Bound | Limit | Past it |
+|---|---|---|
+| The answer | 16,384 characters of diff per file, 131,072 in total | A file's diff is cut at a line boundary (`truncated`); past the total, a file is listed without a diff and not fetched (`diff_truncated`) |
+| The work | Either side of a file over 256 KiB (262,144 bytes), or 4,000 lines or more | The file is never diffed: listed by size with `truncated` set, and when the upstream side is the large one, never fetched |
+
+The second bound exists because the diff reads both whole sides before anything is cut; the diff
+also runs off the event loop. The diff is third-party text: it is secret-redacted as a file read is,
+and `felix skills diff` strips control and invisible characters from it line by line. A skill over the import [caps](#what-is-kept) is
 `422 source_too_large` rather than summarised.
 
 **Asking starts the clock.** A check stamps the sighting of what it finds, as a browse does, so an
 operator who sees an update today can take it once the cooldown has run from today. A check of the
 stored ref is also recorded for the listing; a check with another `?ref=` is a what-if and is not.
+A check under `skills:read` spends the tenant's GitHub budget and stamps sightings as a browse
+does; that is intended, and the budget is what bounds it. A single check costs the three calls
+above, one more for the folder's commit date, and one per changed text file it reads.
 
 ### Updating
 
@@ -381,15 +400,27 @@ ref, the listing and the periodic check all write that record (`skill_upstream`)
 skill on that cadence, so the cooldown clock of an update starts without anyone asking and the
 listing's `refresh=false` stays current.
 
-- The worker's `skill_upstream_checks` task runs every ten minutes and checks up to 50 skills whose
-  last check is older than the setting, never-checked first, across every tenant. One sweep runs at
+- The worker's `skill_upstream_checks` task runs every ten minutes and tries up to 50 skills whose
+  last check is at least that many hours old, never-checked first, then the oldest check, across
+  every tenant. Within a tick, one tenant's skills from one repository and ref resolve once. One sweep runs at
   a time across workers, held by its own `skill_job_lease` row. It needs `felix-scheduler`.
-- It charges the same tenant and deployment buckets as people do, but stops at **half** of each: a
-  tenant past its half is skipped for the rest of the tick, and the deployment's half ends the tick.
-  It shares the API's buckets only through Redis (`FELIX_REDIS_URL`); a worker without Redis spends
+- It charges the same tenant and deployment buckets as people do, but stops at **half** of each, so
+  the rest of the hour stays for people asking. It is fair across tenants: a tenant past its half is
+  left out of the rest of the tick and the due skills are read again without it, so one tenant's
+  backlog cannot fill the batch and leave every other tenant unchecked. The deployment's half, or
+  GitHub's own rate limit on the shared token, ends the tick. It shares the API's buckets only through Redis (`FELIX_REDIS_URL`); a worker without Redis spends
   a budget of its own.
-- A refused check records its code and keeps the last good state. A skill no longer imported is
-  dropped from the record.
+- A refused check records its code as `error` and keeps the last good state. A folder past the
+  import caps is recorded as `source_too_large` rather than offered as an update no import could
+  take. A skill whose newest version is no longer an import is recorded as `not_imported`, and
+  checked again once it is one.
+- **The sweep runs on the worker's environment.** Give the worker the same
+  `FELIX_SKILL_IMPORT_SOURCES` and `FELIX_SKILL_IMPORT_GITHUB_TOKEN` as the API, or it judges
+  origins against another allowlist and reads GitHub with another token, or none. With
+  `FELIX_SKILL_IMPORT_CHECK_HOURS` set, `felix doctor` prints a note saying so, plus one when this
+  process has no allowlist (checks re-resolve any stored origin) or no token (anonymous, 60 calls an
+  hour for the whole server, private origins not found). Doctor can only see the process it runs
+  in, so run it on both.
 - Nothing notifies anyone of an update the sweep finds: it shows on the listing and the detail.
 
 ### Update CLI
@@ -397,7 +428,7 @@ listing's `refresh=false` stays current.
 | Command | Route | |
 |---|---|---|
 | `felix skills outdated [--cached]` | `GET /-/upstream` | Follows every page; one line per skill — version, origin and ref, stored commit `->` upstream commit, and `up to date`, `update available` (with the date the cooldown lets it in), `check failed: <code>` or `never checked`. `--cached` is `refresh=false`, spending no budget |
-| `felix skills diff <name> [--ref]` | `GET /{name}/-/upstream` | Each changed file with its sizes and unified diff |
+| `felix skills diff <name> [--ref]` | `GET /{name}/-/upstream` | A `compared with <version>` line, then each changed file with its sizes. The CLI writes each file's `---`/`+++` header itself from the path and indents every hunk line two spaces, so a line of the file cannot pass for a header. `--ref` needs `skills:write` |
 | `felix skills update <name> [--ref]` | `POST /{name}/-/update` | Saves the draft, prints the dropped files, the diff and the routes to preview and publish it |
 
 The Python client has `FelixClient.check_skill_upstream(name, ref=)`, `update_skill(name, ref=)` and
