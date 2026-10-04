@@ -153,9 +153,14 @@ replies stay on the session on the other branch, which is why the edit can be un
 
 ### Leases
 
-Two browser tabs on one session would race. Each client mints a holder id and takes a lease —
-`exclusive` (reported as `locked`) or `shared` (reported as `attached`). Contention returns `409`.
-Leases are Redis-backed, so they hold across replicas.
+Two browser tabs on one session would race. Each client mints a holder id and takes a lease. One
+client holds it `exclusive` and drives the thread (reported as `locked`); any number hold it `shared`
+and watch read-only (reported as `attached`), each with a token of its own. Contention returns `409`
+for an **exclusive** acquire only: a `shared` one always succeeds, with `held_by_other: true` when
+someone else is driving. Observers never block an exclusive acquire and are never promoted, so a
+watcher that wants to drive takes the exclusive hold itself once it is free. A client that presents
+its token on a write (`X-Felix-Lease-Token`) is refused unless it is the driver's — see
+[Leases](/guide/rest-api/#leases). Leases are Redis-backed, so they hold across replicas.
 
 ## Pattern
 

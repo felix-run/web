@@ -24,7 +24,7 @@
  * real auth, send an Authorization header (see README).
  */
 
-import { createFelixClient } from '@felix/client';
+import { createFelixClient, type LeaseRefusal } from '@felix/client';
 import { reportReachability } from '@/lib/connection';
 import { authHeaders, handleUnauthorized } from './lib/auth';
 import type {
@@ -52,11 +52,31 @@ import type {
  * this app's own concerns, which is exactly why the package takes them rather
  * than assuming them.
  */
+/**
+ * Where the client asks for a thread's lease token, and reports a refusal.
+ *
+ * The holder is the shell's lease keeper, which is built from this module's own
+ * acquire and release — so it cannot be handed to `createFelixClient` here
+ * without an import cycle. The shell binds it once, at module scope, through
+ * `bindLeases`; until then no token is sent and leases stay advisory.
+ */
+const leases: {
+  token: (threadId: string) => string | undefined;
+  refused: (threadId: string, code: LeaseRefusal) => void;
+} = { token: () => undefined, refused: () => {} };
+
+export function bindLeases(binding: typeof leases): void {
+  leases.token = binding.token;
+  leases.refused = binding.refused;
+}
+
 export const felix = createFelixClient({
   baseUrl: '/api',
   headers: authHeaders,
   onReachability: reportReachability,
   onUnauthorized: handleUnauthorized,
+  leaseToken: (threadId) => leases.token(threadId),
+  onLeaseRefused: (threadId, code) => leases.refused(threadId, code),
 });
 
 export const listManifestEntries = felix.listManifestEntries.bind(felix);
@@ -73,6 +93,7 @@ export const continueChat = felix.continueChat.bind(felix);
 export const setThinkingLevel = felix.setThinkingLevel.bind(felix);
 export const acquireSessionLease = felix.acquireSessionLease.bind(felix);
 export const releaseSessionLease = felix.releaseSessionLease.bind(felix);
+export const getSessionLease = felix.getSessionLease.bind(felix);
 export const listSessions = felix.listSessions.bind(felix);
 export const renameSession = felix.renameSession.bind(felix);
 export const forkSession = felix.forkSession.bind(felix);

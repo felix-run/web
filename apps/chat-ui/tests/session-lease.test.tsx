@@ -1,115 +1,19 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { ThemeProvider } from '../src/components/theme-provider';
+import { type Call, leaseServer } from './lease-server';
 
 /**
- * The shell's session lease, against a harness that answers the way
- * `felix/session/lease.py` does — not a stub that says 200 to everything, which
- * is how a release with the wrong token went unnoticed: the real one 403s it.
- *
- * Every request can be held in flight for a while before the "server" acts on
- * it, which is the reordering a real network does and the only way the races
- * here show up. All of it is mounted in `StrictMode`, as `main.tsx` mounts it.
+ * The shell's session lease, against `lease-server.ts` — a harness that answers
+ * the way `felix/session/lease.py` does. All of it is mounted in `StrictMode`, as
+ * `main.tsx` mounts it.
  */
-
-interface Lease {
-  holder: string;
-  token: string;
-  mode: 'exclusive' | 'shared';
-  observers: Set<string>;
-}
-interface Call {
-  route: 'acquire' | 'release';
-  thread: string;
-  status: number;
-  token?: string;
-}
-
-function leaseServer() {
-  const leases = new Map<string, Lease>();
-  const calls: Call[] = [];
-  /** Per route, how long the next requests sit on the wire before the server acts. */
-  const delays: Record<Call['route'], number[]> = { acquire: [], release: [] };
-  let minted = 0;
-
-  function acquire(b: Record<string, string>): [number, unknown] {
-    const existing = leases.get(b.thread_id);
-    const mode = b.mode === 'shared' ? 'shared' : 'exclusive';
-    if (existing) {
-      if (existing.mode === 'exclusive' && existing.holder !== b.holder_id) {
-        return [409, { detail: 'lease_held' }];
-      }
-      if (existing.holder === b.holder_id) {
-        existing.mode = mode;
-        if (b.token) existing.token = b.token;
-        return [200, { ok: true, renewed: true, token: existing.token }];
-      }
-      existing.observers.add(b.holder_id);
-      return [200, { ok: true, renewed: false, token: existing.token }];
-    }
-    const token = b.token || `tok-${++minted}`;
-    leases.set(b.thread_id, { holder: b.holder_id, token, mode, observers: new Set() });
-    return [200, { ok: true, renewed: false, token }];
-  }
-
-  function release(b: Record<string, string>): [number, unknown] {
-    const lease = leases.get(b.thread_id);
-    if (!lease) return [200, { ok: true, released: false }];
-    if (b.token && lease.token !== b.token) return [403, { detail: 'token_mismatch' }];
-    if (b.holder_id && lease.holder !== b.holder_id && !lease.observers.has(b.holder_id)) {
-      return [403, { detail: 'not_holder' }];
-    }
-    if (b.holder_id && lease.observers.has(b.holder_id) && lease.holder !== b.holder_id) {
-      lease.observers.delete(b.holder_id);
-      return [200, { ok: true, released: true }];
-    }
-    leases.delete(b.thread_id);
-    return [200, { ok: true, released: true }];
-  }
-
-  const requests: string[] = [];
-  /** Every release as it left the page — headers and `keepalive` included. */
-  const releaseInits: Array<{ url: string; init: RequestInit }> = [];
-  const fetchFn = vi.fn(async (input: unknown, init?: RequestInit) => {
-    const url = String(input);
-    requests.push(`${init?.method ?? 'GET'} ${url} ${String(init?.body ?? '')}`);
-    if (url.endsWith('/chat/sessions/lease/release')) releaseInits.push({ url, init: init ?? {} });
-    const route = url.endsWith('/chat/sessions/lease/release')
-      ? 'release'
-      : url.endsWith('/chat/sessions/lease')
-        ? 'acquire'
-        : null;
-    if (route) {
-      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, string>;
-      const wait = delays[route].shift() ?? 0;
-      if (wait) await new Promise((r) => setTimeout(r, wait));
-      const [status, payload] = route === 'acquire' ? acquire(body) : release(body);
-      calls.push({ route, thread: body.thread_id ?? '', status, token: body.token });
-      return new Response(JSON.stringify(payload), { status });
-    }
-    if (url.includes('/chat/stream')) {
-      return new Response('data: [DONE]\n\n', {
-        status: 200,
-        headers: { 'content-type': 'text/event-stream' },
-      });
-    }
-    if (url.includes('/chat/sessions')) {
-      return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
-    }
-    if (url.includes('/approvals')) {
-      return new Response(JSON.stringify({ requests: [] }), { status: 200 });
-    }
-    return new Response('{}', { status: 200 });
-  });
-  vi.stubGlobal('fetch', fetchFn);
-  return { leases, calls, delays, requests, releaseInits };
-}
 
 let address = '';
 let go: NavigateFunction = () => {};
@@ -174,9 +78,9 @@ describe('the session lease', () => {
     view.unmount();
     await settle();
     // Released with the token its own acquire returned, and nothing left behind.
-    expect(server.calls.filter((c) => c.route === 'release')).toEqual([
-      { route: 'release', thread: 'thread-x', status: 200, token: 'tok-1' },
-    ]);
+    const released = server.calls.filter((c) => c.route === 'release');
+    expect(released).toHaveLength(1);
+    expect(released[0]).toMatchObject({ thread: 'thread-x', status: 200, token: 'tok-1' });
     expect(server.leases.size).toBe(0);
   });
 
@@ -342,5 +246,36 @@ describe('the page going away', () => {
     expect(server.leases.get('thread-x')?.mode).toBe('exclusive');
     expect(server.calls.map((c) => c.route)).toEqual(['acquire', 'release', 'acquire']);
     expect(errors(server.calls)).toEqual([]);
+  });
+});
+
+describe('a refused driving request', () => {
+  /**
+   * The renewal interval here is the real 150s, so nothing but the refused
+   * request itself can be what flips the tab: the keeper still believes it drives.
+   */
+  it('flips a tab that believed it drove to watching, without an error', async () => {
+    const server = leaseServer();
+    mount('/t/thread-r');
+    await waitFor(() => expect(server.leases.get('thread-r')?.mode).toBe('exclusive'));
+
+    // Another client takes the thread while this tab still holds a stale token —
+    // a hold that lapsed while the laptop slept — and this tab sends.
+    const lease = server.leases.get('thread-r');
+    if (lease) lease.token = 'theirs';
+    if (lease) lease.holder = 'other-tab';
+    await waitFor(() => expect(document.querySelector('textarea')).toBeTruthy());
+    const box = document.querySelector('textarea') as HTMLTextAreaElement;
+    await act(async () => {
+      await userEvent.type(box, 'are you there');
+      await userEvent.keyboard('{Enter}');
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('watching-banner')).toBeTruthy());
+    expect(server.drives).toMatchObject([{ path: '/api/chat/stream', status: 409 }]);
+    expect((document.querySelector('textarea') as HTMLTextAreaElement).disabled).toBe(true);
+    // Read-only, not failed: no alert in the transcript and no error toast.
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Could not|409|lease_held/);
   });
 });
