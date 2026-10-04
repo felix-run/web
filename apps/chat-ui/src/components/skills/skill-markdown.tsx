@@ -1,5 +1,10 @@
 import { isBinaryAssetPath } from '@felix/skill-format';
-import { type AnchorHTMLAttributes, type ImgHTMLAttributes, useMemo } from 'react';
+import {
+  type AnchorHTMLAttributes,
+  type HTMLAttributes,
+  type ImgHTMLAttributes,
+  useMemo,
+} from 'react';
 import { defaultRehypePlugins, Streamdown } from 'streamdown';
 import {
   type Components,
@@ -51,6 +56,33 @@ export function resolveBundlePath(href: string): string | null {
 
 const SAFE_SCHEME = /^(https?:|mailto:)/i;
 
+/**
+ * Headings on the instrument ramp. The renderer's own run 30/24/20/18px, which
+ * over this 13px body put a SKILL.md's `# Title` at display size inside a
+ * panel — DESIGN.md keeps everything but the empty thread's welcome at 16px or
+ * under. So `#` is a headline (16px), `##` a title (13px semibold), and the
+ * rest step down by weight and muting rather than by size.
+ */
+const HEADING = {
+  h1: 'mt-5 mb-2 text-base font-semibold',
+  h2: 'mt-5 mb-1.5 text-sm font-semibold',
+  h3: 'mt-4 mb-1 text-sm font-medium',
+  h4: 'mt-4 mb-1 text-sm font-medium text-muted-foreground',
+  h5: 'mt-4 mb-1 text-sm font-medium text-muted-foreground',
+  h6: 'mt-4 mb-1 text-sm font-medium text-muted-foreground',
+} as const;
+
+type HeadingProps = HTMLAttributes<HTMLHeadingElement> & { node?: unknown };
+
+const headingComponents = Object.fromEntries(
+  (Object.keys(HEADING) as (keyof typeof HEADING)[]).map((Tag) => [
+    Tag,
+    ({ className, node: _node, ...props }: HeadingProps) => (
+      <Tag {...props} className={cn(HEADING[Tag], 'first:mt-0', className)} />
+    ),
+  ]),
+) as Pick<Components, keyof typeof HEADING>;
+
 export function SkillMarkdown({
   markdown,
   files,
@@ -66,6 +98,7 @@ export function SkillMarkdown({
   const components = useMemo<Components>(
     () => ({
       ...responseComponents,
+      ...headingComponents,
       a: ({
         href,
         children,
