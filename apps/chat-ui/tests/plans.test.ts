@@ -88,3 +88,30 @@ describe('plans client', () => {
     expect(plan?.steps[0]?.id).toBe('1');
   });
 });
+
+describe('a plan’s thread', () => {
+  it('is normalised to the suffix a client holds, and kept apart from "no thread"', async () => {
+    const { isThreadScoped } = await import('@felix/client');
+    stub({
+      items: [
+        { ...row({}), thread_id: 'default:abc' },
+        { ...row({}), id: 'p2', thread_id: '' },
+      ],
+    });
+    const [threaded, loose] = await listPlans();
+    expect(threaded?.thread_id).toBe('abc');
+    expect(loose?.thread_id).toBe('');
+    expect(isThreadScoped([threaded!], 'abc')).toBe(true);
+    expect(isThreadScoped([threaded!, loose!], 'abc')).toBe(false);
+  });
+
+  it('is absent, not empty, when the harness predates it', async () => {
+    const { isThreadScoped } = await import('@felix/client');
+    stub({ items: [row({})] });
+    const plans = await listPlans();
+    expect(plans[0]).not.toHaveProperty('thread_id');
+    expect(isThreadScoped(plans, 'abc')).toBe(false);
+    // Nothing to prove for an empty list: "no plans on this thread" is true either way.
+    expect(isThreadScoped([], 'abc')).toBe(true);
+  });
+});

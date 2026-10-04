@@ -7,8 +7,9 @@ import type { ToolCall } from './turns';
  * `plan_update_step`, `plan_get` — and each answers with the whole plan:
  * `{"id", "plan": {title, goal, steps: [{id, title, status, note?}], status}}`
  * (`felix/patterns/plan_tools.py`). So the transcript already carries every state a
- * plan went through, attributed to the thread by construction — which `/plans`
- * is not: it is tenant-wide, with no thread on a row.
+ * plan went through, attributed to the thread by construction. `/plans` can now be
+ * asked for one thread too (`?thread_id=`, `felix-run/felix#463`), but it holds only
+ * each plan's latest state; the transcript is what shows a plan where it was made.
  */
 export const PLAN_TOOLS = new Set(['plan_create', 'plan_update_step', 'plan_get']);
 

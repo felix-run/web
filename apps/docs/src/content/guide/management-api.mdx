@@ -348,13 +348,26 @@ The `deep` pattern records a plan and its step transitions.
 
 | Method | Path | Scope |
 |---|---|---|
-| `GET` | `/plans?limit=` | `plans:read` |
+| `GET` | `/plans?limit=&thread_id=` | `plans:read` |
 | `GET` | `/plans/{plan_id}` | `plans:read` |
 | `PUT` | `/plans/{plan_id}` | `plans:write` |
 | `DELETE` | `/plans/{plan_id}` | `plans:write` |
 
 `PUT` takes `{plan, manifest_id, expires_at}` where `plan` is the plan document and `expires_at` is
 epoch ms. `limit` is 1–200, default 50.
+
+Each plan names the conversation it was written in: `thread_id`, as `{tenant}:{suffix}`, or `''`
+for a plan written outside a chat or before the harness recorded it. `?thread_id=` narrows the list
+to one conversation and takes the thread's **suffix** — the same form every chat route takes; the
+harness adds the tenant itself, so a value naming another tenant answers 400 `invalid_thread_id`.
+An empty `?thread_id=` lists plans with no thread, which is different from omitting it.
+
+A harness older than the `thread_id` column ignores the parameter and lists the whole tenant, with
+no `thread_id` on any row. A client that wants to say "this thread's plans" checks that every row
+it got back names that thread rather than trusting that it asked — chat-ui's run panel does.
+
+The agent's `plan_get` with no `plan_id` reads the same way: the newest plan on its own
+conversation, not the tenant's newest, so one thread cannot pick up a plan another is following.
 
 ## Memory
 

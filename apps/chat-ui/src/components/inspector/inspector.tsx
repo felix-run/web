@@ -1,4 +1,4 @@
-import { describeGate, formatElapsed, relativeTime } from '@felix/client';
+import { describeGate, formatElapsed, isThreadScoped, relativeTime } from '@felix/client';
 import { promptTokens } from '@felix/protocol';
 import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
@@ -25,12 +25,14 @@ type SectionId = 'plans' | 'metrics';
  * Right-hand inspector: a readout of **this run**, then the harness's plans and
  * tool metrics.
  *
- * Two scopes, and each has its own heading. The readout is run-scoped: it is
- * derived from the engine the shell already holds, so it costs no request, and
- * "This run" heads it. The tabs are not: `/plans` and `/audit/metrics` take no
- * thread filter, so each lists the whole tenant, under a sub-heading of their
- * own, "Harness · all threads", and the per-tab line is left saying only what
- * the heading does not: the window a tab covers.
+ * Each part says its own scope, because they differ. The readout is run-scoped:
+ * it is derived from the engine the shell already holds, so it costs no request,
+ * and "This run" heads it. The tabs sit under "Harness", and each tab's first line
+ * says whose rows it lists and over what window. Plans asks for this thread's
+ * (`/plans?thread_id=`, `felix-run/felix#463`) and says *This thread* only when the
+ * rows prove the harness filtered them — an older one ignores the parameter and
+ * answers for the tenant, which the line then says. Tools stays *All threads*:
+ * `/audit/metrics` takes no thread filter.
  *
  * **There is no Approvals tab.** There was one, and it drew a second live
  * decision card for every approval the attention line was already offering —
@@ -56,8 +58,10 @@ type SectionId = 'plans' | 'metrics';
  * says that — and is absent where the list is simply everything pending.
  */
 const SECTIONS = [
-  { id: 'plans', label: 'Plans', window: 'Newest 25' },
-  { id: 'metrics', label: 'Tools', window: 'Last 60 minutes' },
+  // Plans draws its own line: whether it covers this thread or every thread is
+  // only known once the harness has answered.
+  { id: 'plans', label: 'Plans' },
+  { id: 'metrics', label: 'Tools', window: 'All threads · last 60 minutes' },
 ] as const satisfies readonly { id: SectionId; label: string; window?: string }[];
 
 export function Inspector({
@@ -94,9 +98,9 @@ export function Inspector({
       <RunReadout />
 
       {/*
-        The tabs' own heading. They are tenant-wide — no route here takes a thread
-        filter — so they must not sit under "This run" as though they were its
-        detail. Title size, not headline: this is a section of the rail, and the
+        The tabs' own heading. They read the harness, not the engine — so they must
+        not sit under "This run" as though they were its detail, and each says its
+        own scope on its first line. Title size, not headline: this is a section of the rail, and the
         rail's one headline is the run above it.
       */}
       <section aria-labelledby="inspector-harness-heading" className="flex min-h-0 flex-1 flex-col">
@@ -105,7 +109,6 @@ export function Inspector({
           className="flex shrink-0 items-baseline gap-1.5 px-3 pt-2.5 text-sm font-semibold"
         >
           Harness
-          <span className="text-xs font-normal text-muted-foreground">· all threads</span>
         </h3>
         {/*
         Tabs, not a stacked accordion. Two sections fit a 22rem strip where the
@@ -138,8 +141,7 @@ export function Inspector({
             <TabsContent key={section.id} value={section.id} className="min-h-0">
               <ScrollArea className="h-full">
                 <div className="p-3">
-                  {/* The heading above says "all threads"; this says the window,
-                    where there is one. */}
+                  {/* Whose rows, and over what window. */}
                   {'window' in section && (
                     <p className="mb-2 text-xs text-muted-foreground">{section.window}</p>
                   )}
@@ -157,9 +159,7 @@ export function Inspector({
                 */}
                   <PanelModeProvider chrome="tab">
                     <SectionBoundary title={section.label}>
-                      {section.id === 'plans' && (
-                        <PlansSection enabled={open} open onToggle={() => {}} />
-                      )}
+                      {section.id === 'plans' && <PlansSection enabled={open} />}
                       {section.id === 'metrics' && (
                         <MetricsSection enabled={open} open onToggle={() => {}} />
                       )}
@@ -482,25 +482,40 @@ const STEP_MARK: Record<string, string> = {
 
 const DONE_STATUSES = new Set(['done', 'completed', 'skipped']);
 
-function PlansSection({
-  enabled,
-  open,
-  onToggle,
-}: {
-  enabled: boolean;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const { data, error, loading, refresh } = usePoll(() => listPlans(), { enabled });
+const PLANS_LIMIT = 25;
+
+/**
+ * This thread's plans, keyed by thread so a switch remounts it: `usePoll` keeps
+ * its last answer and reads its fetcher through a ref, so without the remount the
+ * previous thread's plans stayed on screen, under this thread's label, until the
+ * next tick.
+ */
+function PlansSection({ enabled }: { enabled: boolean }) {
+  const { threadId } = useShell();
+  return <ThreadPlans key={threadId} threadId={threadId} enabled={enabled} />;
+}
+
+function ThreadPlans({ threadId, enabled }: { threadId: string; enabled: boolean }) {
+  const { data, error, loading, refresh } = usePoll(() => listPlans(PLANS_LIMIT, { threadId }), {
+    enabled,
+  });
+  // Said only when the rows prove it — see `isThreadScoped`. Before the first
+  // answer the line names the window alone.
+  const scoped = data ? isThreadScoped(data, threadId) : undefined;
+  const scope = scoped === undefined ? '' : scoped ? 'This thread · ' : 'All threads · ';
 
   return (
     <Section
       icon={<ListTodoIcon className="size-3.5" />}
       title="Plans"
       meta={data ? String(data.length) : undefined}
-      open={open}
-      onToggle={onToggle}
+      open
+      onToggle={() => {}}
     >
+      <p className="mb-2 text-xs text-muted-foreground">
+        {scope}
+        {scope ? 'newest' : 'Newest'} {PLANS_LIMIT}
+      </p>
       <SectionBody
         onRetry={refresh}
         doing="load plans"
@@ -511,7 +526,7 @@ function PlansSection({
         // list usually means no manifest in use runs that pattern. Named by
         // pattern rather than by manifest, because a manifest called `deep` is a
         // deployment's choice and may not exist here.
-        emptyText="No plans. They are written by manifests that run the deep pattern."
+        emptyText="No plans on this thread. They are written by manifests that run the deep pattern."
         status={data ? `${data.length} ${data.length === 1 ? 'plan' : 'plans'}` : undefined}
       >
         <div className="space-y-3">

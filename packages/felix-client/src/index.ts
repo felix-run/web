@@ -62,6 +62,7 @@ export {
 export type { MemoryHit, MemoryRecord } from './management/memory';
 export {
   flattenPlan,
+  isThreadScoped,
   type Plan,
   type PlanBody,
   type PlanStep,
