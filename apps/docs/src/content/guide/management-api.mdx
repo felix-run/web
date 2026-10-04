@@ -600,8 +600,8 @@ event.
 
 ## Skill library
 
-The tenant's own skills: every skill an agent drafted (`create_skill`, `update_skill`) or an operator
-saved, each version's review record, the feedback on it, its evaluations, and the publish policy.
+The tenant's own skills: every skill an agent drafted (`create_skill`, `update_skill`), an operator
+saved or a person imported from GitHub, each version's review record, the feedback on it, its evaluations, and the publish policy.
 `/skills/{manifest}` answers "what can this manifest's model reach"; this answers "what is in the
 library, and what is waiting on a person". [Concepts → Skill](/guide/concepts/#skill) has the model.
 
@@ -622,6 +622,7 @@ can publish a skill to every manifest in the tenant.
 | `GET` | `/skill-library/-/review?limit=&cursor=` | `skills:read` | `200` |
 | `GET` | `/skill-library/-/feedback?status=&limit=&cursor=` | `skills:read` | `200` |
 | `GET` | `/skill-library/-/policy` | `skills:read` | `200` |
+| `GET` | `/skill-library/-/browse?source=&ref=` | `skills:read` | `200` |
 | `GET` | `/skill-library/{name}` | `skills:read` | `200` |
 | `GET` | `/skill-library/{name}/versions/{version}` | `skills:read` | `200` |
 | `GET` | `/skill-library/{name}/versions/{version}/files/{path}` | `skills:read` | `200` |
@@ -631,6 +632,7 @@ can publish a skill to every manifest in the tenant.
 | `GET` | `/skill-library/{name}/evals/{eval_id}` | `skills:read` | `200` |
 | `POST` | `/skill-library` | `skills:write` | `201` |
 | `PUT` | `/skill-library/{name}/versions` | `skills:write` | `201` |
+| `POST` | `/skill-library/-/import` | `skills:write` | `201`, or `200` unchanged |
 | `POST` | `/skill-library/{name}/versions/{version}/publish` | `skills:write` | `200` |
 | `POST` | `/skill-library/{name}/versions/{version}/rollback` | `skills:write` | `200` |
 | `POST` | `/skill-library/{name}/versions/{version}/reject` | `skills:write` | `200` |
@@ -653,7 +655,7 @@ last page. `limit` is 1–100, default 50.
 
 | Listing | Order | Filters |
 |---|---|---|
-| `GET /skill-library` | by name | `status`: `live` (has a live version), `draft` (has drafts awaiting review), `archived` (neither); `source`: `agent` or `operator`, of the newest version |
+| `GET /skill-library` | by name | `status`: `live` (has a live version), `draft` (has drafts awaiting review), `archived` (neither); `source`: `agent`, `operator` or `import`, of the newest version |
 | `GET /-/review` | oldest draft first, across skills | — |
 | `GET /-/feedback` | oldest first | `status`, default `pending` |
 | `GET /{name}/feedback` | newest first | `status` |
@@ -671,8 +673,12 @@ security_status, created_at}`. A review-queue item is a version record plus the 
 `GET /{name}` returns the skill and its versions, newest first, metadata only. A **version record**
 is `{name, version, parent_version, status, source, author, origin_manifest_id, session_id, reason,
 description, quality_score, security_status, decided_by, decision_note, created_at, decided_at,
-published_at}`. `status` is `draft`, `published` (the live one) or `archived` (superseded, rejected,
-or taken out by an archive); `source` is `agent` or `operator`. `GET /{name}/versions/{version}` adds
+published_at, origin_source, origin_ref, origin_commit, origin_tree_hash, origin_license,
+origin_committed_at, lineage_import}`. `status` is `draft`, `published` (the live one) or `archived`
+(superseded, rejected, or taken out by an archive); `source` is `agent`, `operator` or `import`. The
+`origin_*` fields name where an import came from and are `null` on every other version;
+`lineage_import` marks an import and every version built on one, which the gate judges as an import
+(see [Skill import](/guide/skill-import/#review-and-publish)). `GET /{name}/versions/{version}` adds
 `review_checks`, `security_issues`, `files` (`{path, sha256, size}`) and `shadows_operator_upload`.
 
 `shadows_operator_upload: true` means an operator upload exists under the same name at a key a
@@ -738,6 +744,16 @@ optional `{expected_live_version}`: the live version the page showed, or `null` 
 live". It is checked under the skill row's lock, and another version being live by then is
 `409 live_changed`. Leave the body out to move whatever is live.
 
+### Importing from GitHub
+
+`GET /-/browse?source=github:owner/repo[/path]&ref=` lists the skills a repository offers at one
+resolved commit, and `POST /-/import` with `{source, ref}` fetches one as a draft with `source:
+import`, pinned to that commit. An import is never published in the same request (`publish: true` is
+`422 publish_not_allowed`); it is reviewed and then published with `…/publish` like any draft,
+through a stricter gate. A re-import whose files are unchanged saves nothing and answers `200` with
+`unchanged: true`; `dropped_files` lists what the import left out. Sources, refs, the allowlist,
+the cooldown and the call budgets are in [Skill import](/guide/skill-import/).
+
 ### Feedback
 
 `POST /{name}/feedback` takes `{body, suggested_patch, target_version}` — `body` 1–8000 characters,
@@ -783,7 +799,7 @@ bundle's own `evals/` scenarios.
 ### Publish policy
 
 `GET /-/policy` returns the gate in force: `{min_quality, block_on_advisory, security_fail_blocks,
-require_eval, min_eval_uplift, source, tenant_values, updated_at, updated_by}`. `security_fail_blocks`
+require_eval, min_eval_uplift, import_min_age_days, source, tenant_values, updated_at, updated_by}`. `security_fail_blocks`
 is always `true`.
 
 `PATCH /-/policy` sets fields of the tenant's own policy and returns the policy now in force. Only
@@ -795,6 +811,7 @@ the fields sent change.
 | `block_on_advisory` | bool | `FELIX_SKILL_PUBLISH_BLOCK_ON_ADVISORY` — either blocks |
 | `require_eval` | bool | `FELIX_SKILL_PUBLISH_REQUIRE_EVAL` — either requires |
 | `min_eval_uplift` | int −100–100, or `null` to remove the tenant's floor | `FELIX_SKILL_PUBLISH_MIN_EVAL_UPLIFT` — the higher floor wins |
+| `import_min_age_days` | int 0–365 | `FELIX_SKILL_IMPORT_MIN_AGE_DAYS` — the longer [cooldown](/guide/skill-import/#the-cooldown) wins |
 
 **Tighten only.** The deployment's settings are a floor a tenant cannot go under. A value looser than
 a setting is stored and outvoted, and `source` reads `tenant+settings`, with `tenant_values` showing
@@ -828,6 +845,12 @@ Every refusal is `{error, message}`, with `issues` on `invalid_bundle` and `reas
 | `feedback_cap_reached` | `429` | An agent's manifest holds `max_pending` undecided feedback |
 | `skill_jobs_cap_reached` | `429` | The tenant's skill-job caps; see [Deploy](/guide/deploy/#skill-jobs) |
 | `version_corrupt` | `500` | The object store no longer holds the bytes the row recorded |
+
+Browse and import add their own codes — `invalid_source`, `ambiguous_ref`, `commit_not_in_repo`,
+`source_too_large`, `publish_not_allowed` (`422`); `source_not_allowed`, `too_recent` (`403`);
+`source_not_found` (`404`); `origin_mismatch` (`409`); `rate_limited` (`429`);
+`upstream_rate_limited`, `upstream_error`, `egress_blocked` (`502`) — each explained in
+[Skill import → Errors](/guide/skill-import/#errors).
 
 A `429` drains as drafts, feedback and jobs are decided or run, so a retry later can succeed. A
 request body that fails schema validation is FastAPI's `422 {"detail": […]}`, not this shape. A

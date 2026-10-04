@@ -309,6 +309,26 @@ A version whose security scan fails never publishes, whatever these say. They ar
 floor: a tenant's own policy (`PATCH /skill-library/-/policy`) can tighten every one and loosen none.
 A rollback is judged without the two evaluation settings.
 
+### Skill imports
+
+Browsing and importing skills from GitHub (`GET /skill-library/-/browse`,
+`POST /skill-library/-/import`) runs on the API; every call goes to `api.github.com` through the
+egress guard. The settings are read at boot. See [Skill import](/guide/skill-import/).
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SKILL_IMPORT_GITHUB_TOKEN` | empty | Reaches private repositories and lifts GitHub's limit from 60 calls an hour to 5,000. Read-only Contents access is enough. Hydrated from the secrets backend and masked like any credential; sent only as a header to `api.github.com`. |
+| `FELIX_SKILL_IMPORT_SOURCES` | empty | Comma-separated `[<tenant>=]github:<owner>[/<repo>[/<path>]]` globs a browse or import may name; an entry with a tenant serves that tenant only, and one without a glob covers everything under it. Empty allows any GitHub source. |
+| `FELIX_SKILL_IMPORT_MIN_AGE_DAYS` | `0` | 0–365. Refuse (`403 too_recent`) files this tenant first saw fewer than this many days ago, by Felix's own clock. Tenants can raise it, never lower it. |
+| `FELIX_SKILL_IMPORT_CALLS_PER_HOUR` | `500` | 1–100000. GitHub calls one tenant's browses and imports may make per hour (`429 rate_limited`). |
+| `FELIX_SKILL_IMPORT_CALLS_PER_HOUR_TOTAL` | `4000` | 1–1000000. The same for the whole deployment, protecting the token's own limit. |
+
+A malformed `FELIX_SKILL_IMPORT_SOURCES` entry stops the API at boot. With the token set, boot also
+refuses an empty list, an entry naming no tenant, and an entry whose owner is a glob — each would
+let one tenant read whatever the token reads — unless `FELIX_ENVIRONMENT=development` and
+`FELIX_AUTH_MODE=none` together. The call budgets are shared across replicas through
+`FELIX_REDIS_URL`; without Redis each replica keeps its own.
+
 ### Skill jobs
 
 Evaluations and AI improvements from accepted feedback run in the worker's `skill_jobs` task,

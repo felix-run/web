@@ -193,6 +193,15 @@ A rollback is judged without `require_eval` and `min_eval_uplift`: it returns to
 already live, often under time pressure, and the requirement may have been set after it went live.
 The scan, validation and quality floor still apply. A blocked publish is audited with its reasons.
 
+**Imported text is judged as an import.** A version fetched from GitHub (`source: import`), and every
+version built on one (`lineage_import`) — an agent's or operator's edit, an operator save naming no
+parent, an agent's save of a file byte-identical to an imported one — is gated as an import whoever
+saved it: an `advisory` scan blocks it whatever `block_on_advisory` says, only the bundle's own
+`evals/` count toward an evaluation requirement, and an agent's edit of one always waits for a
+person. Nothing clears the mark. The skill tools mark what they relay of such a skill as untrusted,
+so content screening reads it as it reads an untrusted tool's output, and a manifest with screening
+off still gets the injection-marker floor over it. See [Skill import](/guide/skill-import/).
+
 ### Redaction on management reads
 
 `skills:read` is the lower scope, and an agent writes some of what it reads. So every
