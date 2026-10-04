@@ -1,5 +1,5 @@
 import { Button } from '@felix/ui/button';
-import { SparklesIcon } from 'lucide-react';
+import { PuzzleIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ErrorNotice } from '@/components/error-notice';
@@ -76,7 +76,7 @@ export function SkillsSection({
       : undefined;
   return (
     <Section
-      icon={<SparklesIcon className="size-3.5" />}
+      icon={<PuzzleIcon className="size-3.5" />}
       title="Skills"
       meta={pendingText ?? agentMeta}
       metaLead={pendingText ? agentMeta : undefined}
