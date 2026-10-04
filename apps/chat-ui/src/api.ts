@@ -176,6 +176,8 @@ async function apiFetch(input: string, init: RequestInit = {}): Promise<Response
 /** `GET /auth/methods` — what the harness offers a browser with no credential. */
 export interface AuthMethods {
   github_device: boolean;
+  /** Browser sign-in by redirect (`GET /auth/github/authorize`), through a GitHub App. */
+  github_redirect: boolean;
   /** Whether the harness verifies a bearer. The Worker honours one only when it does. */
   bearer_required: boolean;
 }
@@ -231,6 +233,7 @@ export async function getAuthMethods(): Promise<AuthMethods | null> {
     const body = (await res.json()) as Partial<AuthMethods>;
     return {
       github_device: body.github_device === true,
+      github_redirect: body.github_redirect === true,
       bearer_required: body.bearer_required === true,
     };
   } catch {
@@ -261,6 +264,171 @@ export async function redeemGitHubLogin(
       ),
     }),
   );
+}
+
+/**
+ * Where "Continue with GitHub" sends the browser: the harness's own redirect to GitHub, coming
+ * back to `returnTo` (an origin the harness allows). A navigation, not a fetch — GitHub's sign-in
+ * is a page, and the cookies that carry the sign-in's state are set on this origin on the way.
+ */
+export function githubAuthorizeUrl(returnTo: string, tenant?: string): string {
+  const params = new URLSearchParams({ return_to: returnTo });
+  if (tenant) params.set('tenant', tenant);
+  return `/api/auth/github/authorize?${params.toString()}`;
+}
+
+/**
+ * POST /auth/github/exchange → the token a redirect sign-in left waiting, once. The harness
+ * holds it in an HttpOnly cookie for one page load and clears it on this call, so a reload or a
+ * second call answers `expired_token`. Sends no credential: this is how the page gets one.
+ */
+export async function exchangeGitHubLogin(): Promise<LoginResult<GitHubLoginToken>> {
+  return loginCall<GitHubLoginToken>(
+    await fetch('/api/auth/github/exchange', { method: 'POST', credentials: 'same-origin' }),
+  );
+}
+
+// --- Your GitHub connection and repositories (/github, /chat/sessions/{t}/workspace/repo) ---
+
+export interface GitHubConnection {
+  github_user_id: number;
+  github_login: string;
+  status: 'active' | 'revoked';
+  created_at: number;
+  updated_at: number;
+  refresh_expires_at: number;
+}
+
+export interface GitHubConnectionState {
+  connected: boolean;
+  connection: GitHubConnection | null;
+}
+
+/** GET /github/connection → whether Felix holds a GitHub connection for you in this tenant. */
+export async function getGitHubConnection(): Promise<GitHubConnectionState> {
+  const res = await apiFetch('/api/github/connection');
+  if (!res.ok) throw await problem(res, 'github connection');
+  return (await res.json()) as GitHubConnectionState;
+}
+
+/**
+ * DELETE /github/connection → forget your GitHub connection here and withdraw the App's grant at
+ * GitHub. Your Felix sign-in is unaffected until it expires; this is what signing out also calls.
+ */
+export async function removeGitHubConnection(): Promise<void> {
+  const res = await apiFetch('/api/github/connection', { method: 'DELETE' });
+  if (!res.ok && res.status !== 404) throw await problem(res, 'remove github connection');
+}
+
+export interface GitHubRepo {
+  full_name: string;
+  private: boolean;
+  archived: boolean;
+  default_branch: string;
+  /** Whether you can push to it (and it is not archived). */
+  can_write: boolean;
+  size_kb: number;
+  installation_id: number | null;
+}
+
+export interface GitHubRepos {
+  installations: Array<{
+    id: number;
+    account: string;
+    account_type: string;
+    repository_selection: string;
+  }>;
+  repositories: GitHubRepo[];
+  /** More than one listing walks: filter by name instead. */
+  truncated: boolean;
+  /** Where to install the App on more repositories; null when the harness has no App slug. */
+  install_url: string | null;
+}
+
+/** GET /github/repos → the repositories your GitHub App authorization reaches, filtered by `q`. */
+export async function listMyRepos(q = ''): Promise<GitHubRepos> {
+  // The `?` is in the template, not a variable, so the path is unambiguous to `check-api-drift`.
+  const res = await apiFetch(`/api/github/repos?${new URLSearchParams(q ? { q } : {}).toString()}`);
+  if (!res.ok) throw await problem(res, 'github repos');
+  return (await res.json()) as GitHubRepos;
+}
+
+export interface ThreadRepo {
+  state: 'cloning' | 'ready' | 'failed' | 'expired';
+  repo: string;
+  base: string;
+  private: boolean;
+  opened_by: string;
+  created_at: number | null;
+  error: string | null;
+  branch: string | null;
+  ahead: number | null;
+  dirty: boolean | null;
+}
+
+/** POST /chat/sessions/{t}/workspace/repo → start cloning a repository into the thread's checkout. */
+export async function openThreadRepo(
+  threadSuffix: string,
+  fullName: string,
+  ref?: string,
+): Promise<ThreadRepo> {
+  const res = await apiFetch(
+    `/api/chat/sessions/${encodeURIComponent(threadSuffix)}/workspace/repo`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(ref ? { full_name: fullName, ref } : { full_name: fullName }),
+    },
+  );
+  if (!res.ok) throw await problem(res, 'open repository');
+  return (await res.json()) as ThreadRepo;
+}
+
+/** GET /chat/sessions/{t}/workspace/repo → the thread's checkout, or null when it has none. */
+export async function getThreadRepo(threadSuffix: string): Promise<ThreadRepo | null> {
+  const res = await apiFetch(
+    `/api/chat/sessions/${encodeURIComponent(threadSuffix)}/workspace/repo`,
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw await problem(res, 'thread repository');
+  return (await res.json()) as ThreadRepo;
+}
+
+/** DELETE /chat/sessions/{t}/workspace/repo → remove the thread's checkout. */
+export async function removeThreadRepo(threadSuffix: string): Promise<void> {
+  const res = await apiFetch(
+    `/api/chat/sessions/${encodeURIComponent(threadSuffix)}/workspace/repo`,
+    {
+      method: 'DELETE',
+    },
+  );
+  if (!res.ok && res.status !== 404) throw await problem(res, 'remove repository');
+}
+
+/**
+ * A refusal from the GitHub and repo routes, carrying the harness's code (`github_not_connected`,
+ * `repository_too_large`, …) so a caller can act on it rather than parse prose.
+ */
+export class RepoRouteError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'RepoRouteError';
+  }
+}
+
+async function problem(res: Response, what: string): Promise<RepoRouteError> {
+  const body = (await res.json().catch(() => null)) as {
+    error?: string;
+    message?: string;
+    detail?: string;
+  } | null;
+  const code =
+    body?.error ?? (typeof body?.detail === 'string' ? body.detail : `http_${res.status}`);
+  return new RepoRouteError(res.status, code, body?.message ?? `${what}: ${res.status}`);
 }
 
 // --- Eval harness (/eval) ---

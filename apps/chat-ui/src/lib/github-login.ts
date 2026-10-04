@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  exchangeGitHubLogin,
   type GitHubDeviceStart,
   type GitHubLoginToken,
   type LoginResult,
@@ -46,6 +47,7 @@ export type LoginFailure =
   | 'misconfigured'
   | 'disabled'
   | 'offline'
+  | 'stale'
   | 'unknown';
 
 export type LoginState =
@@ -67,6 +69,13 @@ export function describeFailure(
   switch (failure) {
     case 'expired':
       return { message: 'The code expired before it was approved.', retry: 'Get a new code' };
+    case 'stale':
+      // A redirect sign-in whose state this browser no longer holds: it expired on GitHub's
+      // screen, or it was started in another window.
+      return {
+        message: 'That sign-in expired or was started in another window.',
+        retry: 'Sign in again',
+      };
     case 'denied':
       return { message: 'Sign-in was cancelled on GitHub.', retry: 'Try again' };
     case 'not-member':
@@ -111,11 +120,15 @@ export function describeFailure(
   }
 }
 
-function failureOf(result: Extract<LoginResult<unknown>, { ok: false }>): LoginFailure {
-  switch (result.refusal?.error) {
+/** A harness refusal code (`not_a_member`, …) as the failure the card describes. */
+export function failureFromCode(code: string | undefined, status?: number): LoginFailure {
+  switch (code) {
     case 'expired_token':
     case 'invalid_device_code':
       return 'expired';
+    case 'state_mismatch':
+    case 'sign_in_expired':
+      return 'stale';
     case 'access_denied':
       return 'denied';
     case 'not_a_member':
@@ -131,9 +144,13 @@ function failureOf(result: Extract<LoginResult<unknown>, { ok: false }>): LoginF
     case 'github_config_error':
       return 'misconfigured';
   }
-  if (result.status === 404) return 'disabled';
-  if (result.status === 429) return 'rate-limited';
+  if (status === 404) return 'disabled';
+  if (status === 429) return 'rate-limited';
   return 'unknown';
+}
+
+function failureOf(result: Extract<LoginResult<unknown>, { ok: false }>): LoginFailure {
+  return failureFromCode(result.refusal?.error, result.status);
 }
 
 function rememberedTenant(): string | undefined {
@@ -161,6 +178,50 @@ export function sessionFrom(token: GitHubLoginToken, now = Date.now()): GitHubSe
     tenant: token.tenant,
     scopes: token.scopes ?? [],
   };
+}
+
+export type RedirectOutcome =
+  | { kind: 'none' }
+  | { kind: 'signed-in'; session: GitHubSession }
+  | { kind: 'failed'; failure: LoginFailure; tenants?: string[] };
+
+/**
+ * Finish a redirect sign-in, if this page load is the return from one.
+ *
+ * The harness comes back with a fragment — `#felix_login=ok`, or `#felix_login_error=<code>`
+ * (plus `tenants=` for an ambiguous membership) — and, on success, the token waiting in an
+ * HttpOnly cookie that `exchangeGitHubLogin` collects once. The fragment is cleared from the
+ * address at once, whatever it said, so a reload, a bookmark or a Back never replays it.
+ */
+export async function completeRedirectSignIn(): Promise<RedirectOutcome> {
+  const hash = typeof window === 'undefined' ? '' : window.location.hash.replace(/^#/, '');
+  if (!hash) return { kind: 'none' };
+  const params = new URLSearchParams(hash);
+  const ok = params.get('felix_login');
+  const error = params.get('felix_login_error');
+  if (ok === null && error === null) return { kind: 'none' };
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `${window.location.pathname}${window.location.search}`,
+  );
+  if (error !== null) {
+    const tenants = params.get('tenants');
+    return {
+      kind: 'failed',
+      failure: failureFromCode(error),
+      tenants: tenants ? tenants.split(',').filter(Boolean) : undefined,
+    };
+  }
+  let result: LoginResult<GitHubLoginToken>;
+  try {
+    result = await exchangeGitHubLogin();
+  } catch {
+    return { kind: 'failed', failure: 'offline' };
+  }
+  if (!result.ok)
+    return { kind: 'failed', failure: failureFromCode(result.refusal?.error, result.status) };
+  return { kind: 'signed-in', session: sessionFrom(result.value) };
 }
 
 export function useDeviceLogin(onSignedIn: (session: GitHubSession) => void) {

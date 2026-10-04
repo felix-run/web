@@ -93,6 +93,38 @@ only to the server that minted it. The file and its directory must be yours alon
 used. `felix login` refuses plain `http://` except to localhost, since the token comes back over
 that connection; `--insecure` overrides that.
 
+### Signing in from a browser
+
+With a GitHub App behind `FELIX_GITHUB_CLIENT_ID`, a browser signs in by redirect instead of a
+pasted code: `GET /auth/github/authorize?return_to=…` → GitHub → `/auth/github/callback` → back to
+the app, which collects its token once with `POST /auth/github/exchange`. It is on while
+`FELIX_GITHUB_CLIENT_SECRET`, `FELIX_GITHUB_TOKEN_KEY` (32 bytes, base64) and
+`FELIX_GITHUB_REDIRECT_ORIGINS` are all set, and `GET /auth/methods` then reports
+`github_redirect: true`.
+
+- **The only return target is an allowed origin.** `return_to` must be on an origin in
+  `FELIX_GITHUB_REDIRECT_ORIGINS`; the callback GitHub redirects to is
+  `<origin><FELIX_GITHUB_CALLBACK_PATH>` (behind chat-ui's proxy, `/api/auth/github/callback`), and
+  each such URL must be registered on the App.
+- **Only the browser that started a sign-in can finish it.** `state` and the PKCE verifier live in
+  a sealed, HttpOnly cookie; a callback carrying another `state` is refused.
+- **The token never rides a URL.** The callback leaves it in a sealed HttpOnly cookie for one page
+  load, and `/exchange` hands it over and clears it. Every outcome of the callback is a redirect
+  back with a fragment, `#felix_login=ok` or `#felix_login_error=<code>`, which never reaches a
+  server or a log.
+
+The device flow keeps working with the App's client id, for `felix login` and the terminal.
+
+### Revoking
+
+A sign-in through a GitHub App with expiring user tokens also keeps the person's GitHub refresh
+token, sealed with `FELIX_GITHUB_TOKEN_KEY` and bound to its tenant, user and column, so Felix can
+act as them on a repository they open (next section). `GET /github/connection` says whether Felix
+holds one for you; `DELETE /github/connection` forgets it and withdraws the App's grant at GitHub —
+chat-ui's sign-out calls it. An operator holding `github:admin` lists them with
+`GET /github/connections` and revokes anyone's with `DELETE /github/connections/{github_user_id}`.
+A Felix token itself still lasts its TTL: nothing revokes one early.
+
 ### GitHub Actions
 
 A workflow has no person to approve a code, but it does have an identity: a job granted
@@ -189,6 +221,34 @@ also writes `::add-mask::` on stderr, but mask the captured value yourself as we
 
 For machines outside GitHub Actions (cron, another CI), mint a token for them with
 `felix mint-jwt`.
+
+## Per-person repositories
+
+A person opens one of **their own** repositories in a thread, and the agent works on a checkout
+that belongs to that thread alone. Every GitHub read and the clone act as the person, with a token
+minted from their stored connection; no route returns a GitHub token.
+
+| Method | Path | Answer |
+|---|---|---|
+| `GET` | `/github/repos?q=` | the repositories your App authorization reaches, the App's installations, and `install_url` |
+| `POST` | `/chat/sessions/{thread_id}/workspace/repo` | `{full_name, ref?}` → `202 {state: "cloning", …}` |
+| `GET` | `/chat/sessions/{thread_id}/workspace/repo` | `{state, repo, base, branch, ahead, dirty, error}` |
+| `DELETE` | `/chat/sessions/{thread_id}/workspace/repo` | `204` |
+
+- **The intersection, and only that.** An App's user token sees repositories where the App is
+  installed *and* the person has access. A repository missing from the list is one the App was not
+  installed on: `install_url` (from `FELIX_GITHUB_APP_SLUG`) is where to fix that.
+- **The checkout is the thread's workspace.** Every harness workspace tool, and the shell tool,
+  works in it and nowhere else. A checkout still cloning, failed or expired stops the tools rather
+  than falling back to the shared `FELIX_WORKSPACE_ROOT`, and the checkout root
+  (`FELIX_REPO_CHECKOUT_ROOT`, default `FELIX_DATA_DIR/checkouts`) is never inside it.
+- **Publishing is as the person.** `github_publish: {auth: person, branch_prefix: …}` publishes to
+  the thread's repository with the opener's token, behind its approval as always.
+- **Bounded.** A repository over `FELIX_REPO_CLONE_MAX_MB` (500) is refused before cloning; a
+  checkout unused for `FELIX_REPO_CHECKOUT_TTL_DAYS` (14) is removed by the worker.
+
+In chat-ui, the workspace section's **Repository on the harness** opens one, and
+`/harness/github` shows your connection and what it reaches.
 
 ## Manifest gates
 

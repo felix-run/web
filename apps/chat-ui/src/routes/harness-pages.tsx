@@ -6,6 +6,7 @@ import { getResolvedManifest } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { DocumentsSection } from '@/components/harness/corpus';
+import { GitHubPage } from '@/components/harness/github';
 import {
   HarnessAgentPicker,
   keepAgent,
@@ -27,7 +28,7 @@ import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useSkillsAddress } from '@/components/skills/skills-address';
 import { threadLabel } from '@/lib/threads';
 import { useShell } from '@/shell-context';
-import { type HarnessPath, LEDGER_DOCS } from './harness';
+import { GITHUB_DOCS, type HarnessPath, LEDGER_DOCS } from './harness';
 
 /**
  * The harness: everything the tenant owns, at the lifetime it actually has.
@@ -283,6 +284,10 @@ function EvalPanel() {
   );
 }
 
+function GitHubPanel() {
+  return <GitHubPage docs={GITHUB_DOCS} />;
+}
+
 function AgentPanel() {
   const { agent } = useHarnessAgent();
   return (
@@ -306,6 +311,7 @@ const PAGES: Record<HarnessPath, () => React.ReactNode> = {
   skills: SkillsPanel,
   ledger: LedgerPanel,
   agent: AgentPanel,
+  github: GitHubPanel,
   manifests: ManifestsPanel,
   jobs: JobsPanel,
   eval: EvalPanel,

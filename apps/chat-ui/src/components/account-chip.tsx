@@ -20,6 +20,7 @@ import { cn } from '@felix/ui/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@felix/ui/popover';
 import { RefreshCwIcon } from 'lucide-react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { type GitHubConnectionState, getGitHubConnection, removeGitHubConnection } from '@/api';
 import {
   type GitHubSession,
   getSession,
@@ -157,6 +158,8 @@ export function AccountChip() {
           }
         />
 
+        <GitHubConnectionRow open={open} />
+
         <div className="space-y-1.5 border-t border-border/60 pt-3">
           <Button
             type="button"
@@ -166,17 +169,83 @@ export function AccountChip() {
             onClick={() => {
               cancel();
               setOpen(false);
-              signOut();
+              // Forget the stored GitHub connection while this session can still ask, then leave.
+              // Best effort: leaving must not wait on, or fail with, a harness that is not there.
+              void removeGitHubConnection()
+                .catch(() => undefined)
+                .finally(signOut);
             }}
           >
             Sign out
           </Button>
           <p className="text-xs text-muted-foreground">
-            Signing out forgets the token in this browser. The harness still honours it until{' '}
-            {timeOfDay(session.expiresAt)}.
+            Signing out forgets the token in this browser and the GitHub connection Felix holds.
+            Your Felix sign-in itself is still honoured until {timeOfDay(session.expiresAt)}.
           </p>
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * Whether Felix holds a GitHub connection for you — the token it keeps to act as you on a
+ * repository you open — with the one action on it: revoke. Asked when the popover opens, not
+ * polled: it changes when you sign in or revoke, both of which happen here.
+ */
+function GitHubConnectionRow({ open }: { open: boolean }) {
+  const [state, setState] = useState<GitHubConnectionState | 'unknown' | 'error'>('unknown');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    getGitHubConnection()
+      .then((next) => alive && setState(next))
+      .catch(() => alive && setState('error'));
+    return () => {
+      alive = false;
+    };
+  }, [open]);
+
+  if (state === 'unknown') return null;
+  if (state === 'error') {
+    return <p className="text-xs text-muted-foreground">Could not check your GitHub connection.</p>;
+  }
+  const { connected, connection } = state;
+  return (
+    <div data-slot="github-connection" className="space-y-1.5 border-t border-border/60 pt-3">
+      <p className="text-sm">
+        {connected
+          ? 'Connected to GitHub'
+          : connection?.status === 'revoked'
+            ? 'GitHub connection stopped working'
+            : 'Not connected to GitHub'}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {connected
+          ? 'Felix keeps a token to act as you on repositories you open in a thread.'
+          : connection?.status === 'revoked'
+            ? 'GitHub refused Felix’s stored token. Sign in again to reconnect.'
+            : 'Repositories you open in a thread need a GitHub connection; sign in with GitHub to make one.'}
+      </p>
+      {connected && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            removeGitHubConnection()
+              .then(() => setState({ connected: false, connection: null }))
+              .catch(() => setState('error'))
+              .finally(() => setBusy(false));
+          }}
+        >
+          Revoke GitHub access
+        </Button>
+      )}
+    </div>
   );
 }

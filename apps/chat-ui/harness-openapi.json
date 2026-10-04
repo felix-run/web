@@ -75,6 +75,9 @@
     "/chat/sessions/search": {
       "get": {}
     },
+    "/chat/sessions/{thread_id}/lease": {
+      "get": {}
+    },
     "/chat/sessions/{thread_id}": {
       "get": {}
     },
@@ -374,6 +377,14 @@
       "get": {}
     },
     "/github/connections/{github_user_id}": {
+      "delete": {}
+    },
+    "/github/repos": {
+      "get": {}
+    },
+    "/chat/sessions/{thread_id}/workspace/repo": {
+      "post": {},
+      "get": {},
       "delete": {}
     }
   }

@@ -6,6 +6,7 @@ import {
   ClockIcon,
   FlaskConicalIcon,
   GitBranchIcon,
+  GithubIcon,
   type LucideIcon,
   PuzzleIcon,
 } from 'lucide-react';
@@ -42,6 +43,7 @@ export type HarnessPath =
   | 'skills'
   | 'ledger'
   | 'agent'
+  | 'github'
   | 'manifests'
   | 'jobs'
   | 'eval';
@@ -61,6 +63,9 @@ export type HarnessPath =
  */
 const MANAGEMENT_API = `${DOCS_ORIGIN}/guide/management-api/`;
 const MANIFEST_REFERENCE = `${DOCS_ORIGIN}/guide/manifest-reference/`;
+
+/** Where the GitHub page's reference lives: the connection and per-person repositories. */
+export const GITHUB_DOCS = `${DOCS_ORIGIN}/internals/auth/#per-person-repositories`;
 
 /** The Ledger's two halves read different routes, documented in different sections. */
 export const LEDGER_DOCS = {
@@ -117,6 +122,16 @@ export const HARNESS_DESTINATIONS: {
     icon: BotIcon,
     group: 'records',
     element: <HarnessPage path="agent" />,
+  },
+  // A record: your GitHub connection and what it reaches. Opening a repository is a thread's
+  // act and happens in the workspace section, not here.
+  {
+    path: 'github',
+    docs: GITHUB_DOCS,
+    label: 'GitHub',
+    icon: GithubIcon,
+    group: 'records',
+    element: <HarnessPage path="github" />,
   },
   {
     path: 'manifests',

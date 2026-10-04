@@ -285,7 +285,9 @@ async function fetchLiveSpec(origin) {
       signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
-    console.error(`✗ could not reach ${url}: ${err?.cause?.code ?? err?.cause?.message ?? err?.message ?? err}`);
+    console.error(
+      `✗ could not reach ${url}: ${err?.cause?.code ?? err?.cause?.message ?? err?.message ?? err}`,
+    );
     exit(2);
   }
   if (!res.ok) {

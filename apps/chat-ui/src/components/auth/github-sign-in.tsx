@@ -201,10 +201,16 @@ export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: Rea
 export function GitHubSignIn({
   login,
   error,
+  redirect,
+  tenants,
   alternative,
 }: {
   login: DeviceLogin;
   error: string | null;
+  /** Sign in by redirect instead of a code; given a tenant, sign in to that one. */
+  redirect?: (tenant?: string) => void;
+  /** A redirect sign-in found several tenants: offer one button each. */
+  tenants?: string[];
   alternative?: ReactNode;
 }) {
   const starting = login.state.phase === 'starting';
@@ -228,11 +234,32 @@ export function GitHubSignIn({
                 {error}
               </p>
             )}
+            {redirect && tenants && tenants.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Your organizations open more than one tenant. Choose the one to sign in to.
+                </p>
+                <ul className="space-y-2">
+                  {tenants.map((tenant) => (
+                    <li key={tenant}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 w-full justify-start font-mono"
+                        onClick={() => redirect(tenant)}
+                      >
+                        {tenant}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <Button
               type="button"
               className="h-10 w-full"
               disabled={starting}
-              onClick={() => void login.start()}
+              onClick={() => (redirect ? redirect() : void login.start())}
             >
               {starting ? (
                 <Loader2Icon className="size-4 animate-spin" />
@@ -243,7 +270,8 @@ export function GitHubSignIn({
             </Button>
             <p className="text-xs text-muted-foreground">
               Felix checks which of your GitHub organizations it admits and signs you in to that
-              organization’s tenant. It does not keep GitHub’s token.
+              organization’s tenant. Anything it keeps from GitHub, you can revoke from the account
+              menu.
             </p>
           </div>
         }
