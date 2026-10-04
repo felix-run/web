@@ -55,6 +55,23 @@ describe('Response lists', () => {
   });
 });
 
+describe('Response headings', () => {
+  const sizes = (el: Element | null) =>
+    (el?.className ?? '').split(/\s+/).filter((c) => /^text-(xs|sm|base|lg|[2-9]?xl)$/.test(c));
+
+  it('never sets a heading above the 16px body — the welcome is the one display element', () => {
+    const { container } = render(
+      <Response>{'# One\n\n## Two\n\n### Three\n\n#### Four\n\n###### Six\n\nBody.'}</Response>,
+    );
+    for (const level of [1, 2, 3]) {
+      expect(sizes(container.querySelector(`h${level}`))).toEqual(['text-base']);
+    }
+    for (const level of [4, 6]) {
+      expect(sizes(container.querySelector(`h${level}`))).toEqual(['text-sm']);
+    }
+  });
+});
+
 describe('Response line breaks', () => {
   it('breaks a line where the model put a newline', () => {
     // A haiku is the shortest thing that proves it: three lines, two bare newlines,
