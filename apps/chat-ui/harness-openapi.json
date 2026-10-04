@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.6.1"
+    "version": "0.6.2"
   },
   "paths": {
     "/health": {
@@ -260,6 +260,12 @@
     "/skills/{manifest_name}/activations/recent": {
       "get": {}
     },
+    "/skill-library/-/browse": {
+      "get": {}
+    },
+    "/skill-library/-/import": {
+      "post": {}
+    },
     "/skill-library": {
       "get": {},
       "post": {}
@@ -348,8 +354,27 @@
     "/auth/github/actions": {
       "post": {}
     },
+    "/auth/github/authorize": {
+      "get": {}
+    },
+    "/auth/github/callback": {
+      "get": {}
+    },
+    "/auth/github/exchange": {
+      "post": {}
+    },
     "/auth/methods": {
       "get": {}
+    },
+    "/github/connection": {
+      "get": {},
+      "delete": {}
+    },
+    "/github/connections": {
+      "get": {}
+    },
+    "/github/connections/{github_user_id}": {
+      "delete": {}
     }
   }
 }
