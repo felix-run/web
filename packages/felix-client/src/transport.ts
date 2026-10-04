@@ -453,15 +453,24 @@ export function createFelixClient(opts: FelixClientOptions) {
       return (await res.json()) as { ok: boolean; token?: string };
     },
 
-    /** POST /chat/sessions/lease/release */
+    /**
+     * POST /chat/sessions/lease/release
+     *
+     * `keepalive` lets the request outlive the page that sent it — a tab
+     * closing releases its hold this way. It goes through the same wrapper as
+     * every other call (unlike `sendBeacon`, which cannot set headers), so the
+     * credential is still attached.
+     */
     async releaseSessionLease(args: {
       threadId: string;
       holderId?: string;
       token?: string;
+      keepalive?: boolean;
     }): Promise<void> {
       try {
         await chatFetch('/chat/sessions/lease/release', {
           method: 'POST',
+          ...(args.keepalive ? { keepalive: true } : {}),
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             thread_id: args.threadId,

@@ -74,9 +74,12 @@ function leaseServer() {
   }
 
   const requests: string[] = [];
+  /** Every release as it left the page — headers and `keepalive` included. */
+  const releaseInits: Array<{ url: string; init: RequestInit }> = [];
   const fetchFn = vi.fn(async (input: unknown, init?: RequestInit) => {
     const url = String(input);
     requests.push(`${init?.method ?? 'GET'} ${url} ${String(init?.body ?? '')}`);
+    if (url.endsWith('/chat/sessions/lease/release')) releaseInits.push({ url, init: init ?? {} });
     const route = url.endsWith('/chat/sessions/lease/release')
       ? 'release'
       : url.endsWith('/chat/sessions/lease')
@@ -105,7 +108,7 @@ function leaseServer() {
     return new Response('{}', { status: 200 });
   });
   vi.stubGlobal('fetch', fetchFn);
-  return { leases, calls, delays, requests };
+  return { leases, calls, delays, requests, releaseInits };
 }
 
 let address = '';
@@ -278,5 +281,66 @@ describe('a page load', () => {
       minted,
     ]);
     expect(server.leases.get(minted)?.mode).toBe('exclusive');
+  });
+});
+
+describe('the page going away', () => {
+  /**
+   * Closing a tab unmounts nothing, so the shell's cleanup never released and a
+   * closed tab held the thread exclusively until the TTL — a new tab on it got
+   * 409 and observed for five minutes. The release has to leave on `pagehide`,
+   * outlive the page (`keepalive`), and carry the credential the proxy wants.
+   */
+  it('releases the exclusive hold on pagehide, keepalive, with the credential', async () => {
+    localStorage.setItem('felix.apiKey', 'k-test');
+    const server = leaseServer();
+    mount('/t/thread-x');
+    await settle();
+    expect(server.leases.get('thread-x')?.mode).toBe('exclusive');
+
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: false }));
+    });
+    expect(server.releaseInits).toHaveLength(1);
+    const sent = server.releaseInits[0];
+    expect(sent?.url).toBe('/api/chat/sessions/lease/release');
+    expect(sent?.init).toMatchObject({
+      method: 'POST',
+      keepalive: true,
+      headers: { 'content-type': 'application/json', 'x-chat-key': 'k-test' },
+    });
+    expect(JSON.parse(String(sent?.init.body))).toEqual({
+      thread_id: 'thread-x',
+      holder_id: sessionStorage.getItem('felix.holderId'),
+      token: 'tok-1',
+    });
+    await settle();
+    expect(server.leases.size).toBe(0);
+    expect(errors(server.calls)).toEqual([]);
+  });
+
+  /**
+   * A page put in the back/forward cache can come back. It released its hold on
+   * the way into the cache, so on the way back out it must take the thread again
+   * — or it would sit on a thread it believes it holds while another tab takes it.
+   */
+  it('takes the thread again when the page comes back from the back/forward cache', async () => {
+    const server = leaseServer();
+    mount('/t/thread-x');
+    await settle();
+
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true }));
+    });
+    await settle();
+    expect(server.leases.size).toBe(0);
+
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    });
+    await settle();
+    expect(server.leases.get('thread-x')?.mode).toBe('exclusive');
+    expect(server.calls.map((c) => c.route)).toEqual(['acquire', 'release', 'acquire']);
+    expect(errors(server.calls)).toEqual([]);
   });
 });

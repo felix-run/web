@@ -89,7 +89,7 @@ import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import { resyncPush } from '@/lib/push';
 import { lastResume, onResume } from '@/lib/resume';
-import { createLeaseKeeper } from '@/lib/session-lease';
+import { createLeaseKeeper, releaseOnPageExit } from '@/lib/session-lease';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
 import {
@@ -157,6 +157,9 @@ const sessionLeases = createLeaseKeeper(
   { acquire: acquireSessionLease, release: releaseSessionLease },
   tabHolderId,
 );
+// Closing the tab unmounts nothing, so the keeper's own releases never run then.
+// Module scope, like the keeper: one pair of listeners for the life of the page.
+if (typeof window !== 'undefined') releaseOnPageExit(sessionLeases);
 
 function readBool(key: string, fallback: boolean): boolean {
   const raw = localStorage.getItem(key);
