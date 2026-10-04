@@ -623,6 +623,8 @@ can publish a skill to every manifest in the tenant.
 | `GET` | `/skill-library/-/feedback?status=&limit=&cursor=` | `skills:read` | `200` |
 | `GET` | `/skill-library/-/policy` | `skills:read` | `200` |
 | `GET` | `/skill-library/-/browse?source=&ref=` | `skills:read` | `200` |
+| `GET` | `/skill-library/-/upstream?refresh=&limit=&cursor=` | `skills:read` | `200` |
+| `GET` | `/skill-library/{name}/-/upstream?ref=` | `skills:read` | `200` |
 | `GET` | `/skill-library/{name}` | `skills:read` | `200` |
 | `GET` | `/skill-library/{name}/versions/{version}` | `skills:read` | `200` |
 | `GET` | `/skill-library/{name}/versions/{version}/files/{path}` | `skills:read` | `200` |
@@ -633,6 +635,7 @@ can publish a skill to every manifest in the tenant.
 | `POST` | `/skill-library` | `skills:write` | `201` |
 | `PUT` | `/skill-library/{name}/versions` | `skills:write` | `201` |
 | `POST` | `/skill-library/-/import` | `skills:write` | `201`, or `200` unchanged |
+| `POST` | `/skill-library/{name}/-/update` | `skills:write` | `201`, or `200` unchanged |
 | `POST` | `/skill-library/{name}/versions/{version}/publish` | `skills:write` | `200` |
 | `POST` | `/skill-library/{name}/versions/{version}/rollback` | `skills:write` | `200` |
 | `POST` | `/skill-library/{name}/versions/{version}/reject` | `skills:write` | `200` |
@@ -754,6 +757,14 @@ through a stricter gate. A re-import whose files are unchanged saves nothing and
 `unchanged: true`; `dropped_files` lists what the import left out. Sources, refs, the allowlist,
 the cooldown and the call budgets are in [Skill import](/guide/skill-import/).
 
+An imported skill can be checked against its origin: `GET /{name}/-/upstream` re-resolves its ref and
+returns the upstream commit, whether its files moved, when the cooldown lets them in, and a per-file
+diff against the live version; `POST /{name}/-/update` re-imports it as a new draft, never published;
+`GET /-/upstream` lists every imported skill's state, 25 a page, checked now or as last recorded
+(`refresh=false`). `GET /{name}` carries the last recorded check as `upstream` for an imported skill,
+`null` otherwise. A check or update of a skill whose newest version was not imported is
+`409 not_imported`. See [Skill import → Update checks](/guide/skill-import/#update-checks).
+
 ### Feedback
 
 `POST /{name}/feedback` takes `{body, suggested_patch, target_version}` — `body` 1–8000 characters,
@@ -848,7 +859,7 @@ Every refusal is `{error, message}`, with `issues` on `invalid_bundle` and `reas
 
 Browse and import add their own codes — `invalid_source`, `ambiguous_ref`, `commit_not_in_repo`,
 `source_too_large`, `publish_not_allowed` (`422`); `source_not_allowed`, `too_recent` (`403`);
-`source_not_found` (`404`); `origin_mismatch` (`409`); `rate_limited` (`429`);
+`source_not_found` (`404`); `origin_mismatch`, `not_imported` (`409`); `rate_limited` (`429`);
 `upstream_rate_limited`, `upstream_error`, `egress_blocked` (`502`) — each explained in
 [Skill import → Errors](/guide/skill-import/#errors).
 

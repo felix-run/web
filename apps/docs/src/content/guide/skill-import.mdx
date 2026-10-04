@@ -1,6 +1,6 @@
 ---
 title: "Skill import"
-description: "Bring Agent Skills published on GitHub into a tenant's skill library: browse a repository, import a skill as a draft pinned to one commit, review it, and publish it through a stricter gate."
+description: "Bring Agent Skills published on GitHub into a tenant's skill library: browse a repository, import a skill as a draft pinned to one commit, review it, publish it through a stricter gate, and keep it current."
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -18,7 +18,8 @@ on GitHub being up.
 | `POST` | `/skill-library/-/import` | `skills:write` | `201`, or `200` unchanged | `felix skills add` |
 
 Publishing is the library's ordinary
-`POST /skill-library/{name}/versions/{version}/publish`, after review.
+`POST /skill-library/{name}/versions/{version}/publish`, after review. Checking an imported skill against its origin,
+diffing it and re-importing it are in [Update checks](#update-checks).
 
 <Aside type="caution">
 With `FELIX_AUTH_MODE=none` the scope checks are skipped entirely, so anyone who can reach the API
@@ -294,6 +295,121 @@ defaults, eight tenants spending their whole budget fill the deployment's. The b
 when `FELIX_REDIS_URL` is set. When Redis is unreachable each replica falls back to in-process
 buckets, so both budgets multiply by the number of API replicas until it recovers — size `_TOTAL`
 for that, or keep Redis up.
+
+{/* Update checks: harness PR "Check imported skills against their origin" (branch
+feat/skill-import-updates), not merged when this was written. This section, the matching rows in
+management-api.mdx, deploy.mdx, internals/architecture.mdx, internals/persistence.mdx and
+internals/observability.mdx, and nothing else, land in one commit: revert it to hold them back. */}
+
+## Update checks
+
+An imported skill keeps its origin — source, ref, commit and kept-file digest — on its newest
+version, and three routes are built on it. None of them runs at compile time.
+
+| Method | Path | Scope | Success | CLI |
+|---|---|---|---|---|
+| `GET` | `/skill-library/{name}/-/upstream?ref=` | `skills:read` | `200` | `felix skills diff` |
+| `POST` | `/skill-library/{name}/-/update` | `skills:write` | `201`, or `200` unchanged | `felix skills update` |
+| `GET` | `/skill-library/-/upstream?refresh=&limit=&cursor=` | `skills:read` | `200` | `felix skills outdated` |
+
+The skill's newest version that was not rejected names the origin. A skill whose newest such
+version was not imported is `409 not_imported`; a name the library does not hold is `404 not_found`.
+Every route judges the source against the tenant's allowlist **as it is now**: a source the
+deployment has since unbound from the tenant is `403 source_not_allowed` before any GitHub call,
+whichever ref is named.
+
+### Checking one skill
+
+`GET /skill-library/{name}/-/upstream` re-resolves the stored ref — or `?ref=`, another branch, tag
+or commit of the same source — under the same [ref rules](#sources-and-refs) as an import, and
+answers `{name, current, upstream, update_available, min_age_days, diff}`:
+
+| Field | |
+|---|---|
+| `current` | The newest non-rejected version and its origin: `{version, status, source, ref, commit, tree_hash, live_version}` |
+| `upstream` | What the ref names now: `{source, ref, commit, tree_hash, license, committed_at, first_seen_at, eligible_at, eligible}` |
+| `update_available` | The kept files' digest at the upstream commit differs from the newest version's |
+| `diff` | `{compared_with, files, diff_truncated}` against the live version, or the newest when nothing is live |
+
+Each item of `files` is `{path, change, binary, old_size, new_size, diff, truncated}`, with `change`
+`added`, `removed` or `modified`; unchanged files are left out. Only changed files are fetched — a
+stored file's git blob id is computed from its bytes and compared with the tree's — and only text:
+a binary asset is reported by size, never diffed. A fetched file is compared as an import would save
+it (a long description clamped, non-UTF-8 text absent). A text diff is unified and capped at 16 Ki
+characters a file and 128 Ki in all; `truncated` and `diff_truncated` say when one was cut or left
+out. The diff is third-party text: it is secret-redacted as a file read is, and `felix skills diff`
+strips control characters from it line by line. A skill over the import [caps](#what-is-kept) is
+`422 source_too_large` rather than summarised.
+
+**Asking starts the clock.** A check stamps the sighting of what it finds, as a browse does, so an
+operator who sees an update today can take it once the cooldown has run from today. A check of the
+stored ref is also recorded for the listing; a check with another `?ref=` is a what-if and is not.
+
+### Updating
+
+`POST /skill-library/{name}/-/update`, with an optional body `{ref}`, is the import itself from the
+stored origin: a new draft (`201`), `200` with `unchanged: true`, `403 too_recent` inside the
+cooldown, `409 origin_mismatch` — the stricter gate and the lineage taint all as above. There is no
+`publish` field; a person publishes the draft after review. The answer is an import's plus `diff`:
+the saved draft against the live version, else the version it was built on, read from the library
+without a GitHub call. The draft's `skill_draft_saved` event carries the reason
+`updated from <source>@<commit>`. An update with `ref` saves that ref as the new version's
+`origin_ref`, so later checks follow it.
+
+### Listing every imported skill
+
+`GET /skill-library/-/upstream` lists the tenant's imported skills by name, each against its origin,
+without diffs: `{items, next_cursor, refreshed, min_age_days, stopped}`. Each item is `{name, version,
+live_version, origin_source, origin_ref, origin_commit, upstream_commit, upstream_tree_hash,
+update_available, first_seen_at, eligible_at, eligible, checked_at, error}`; `error` is the refusal
+code of the last check when it failed, with the upstream fields from the last good one. `limit` is
+1–25, default 25; follow `next_cursor` until it is `null` (`422 invalid_cursor` for one the route did
+not issue).
+
+| `refresh` | Does |
+|---|---|
+| `true` (default) | Checks each skill now and records it. A repository and ref shared by several skills is resolved once. No check starts 30 seconds after the first (`stopped: deadline`); a budget spent part way ends the page there (`stopped: rate_limited`), with `next_cursor` at the first skill not checked; a budget spent before the first check is `429 rate_limited` |
+| `false` | Reads the last recorded checks and calls GitHub not at all |
+
+The library detail, `GET /skill-library/{name}`, carries the same recorded state as `upstream` for an
+imported skill (`null` for any other), and never asks GitHub. Imports, updates, checks of the stored
+ref, the listing and the periodic check all write that record (`skill_upstream`).
+
+### Periodic checks
+
+`FELIX_SKILL_IMPORT_CHECK_HOURS` (0–168, default `0` = off) has the worker check every imported
+skill on that cadence, so the cooldown clock of an update starts without anyone asking and the
+listing's `refresh=false` stays current.
+
+- The worker's `skill_upstream_checks` task runs every ten minutes and checks up to 50 skills whose
+  last check is older than the setting, never-checked first, across every tenant. One sweep runs at
+  a time across workers, held by its own `skill_job_lease` row. It needs `felix-scheduler`.
+- It charges the same tenant and deployment buckets as people do, but stops at **half** of each: a
+  tenant past its half is skipped for the rest of the tick, and the deployment's half ends the tick.
+  It shares the API's buckets only through Redis (`FELIX_REDIS_URL`); a worker without Redis spends
+  a budget of its own.
+- A refused check records its code and keeps the last good state. A skill no longer imported is
+  dropped from the record.
+- Nothing notifies anyone of an update the sweep finds: it shows on the listing and the detail.
+
+### Update CLI
+
+| Command | Route | |
+|---|---|---|
+| `felix skills outdated [--cached]` | `GET /-/upstream` | Follows every page; one line per skill — version, origin and ref, stored commit `->` upstream commit, and `up to date`, `update available` (with the date the cooldown lets it in), `check failed: <code>` or `never checked`. `--cached` is `refresh=false`, spending no budget |
+| `felix skills diff <name> [--ref]` | `GET /{name}/-/upstream` | Each changed file with its sizes and unified diff |
+| `felix skills update <name> [--ref]` | `POST /{name}/-/update` | Saves the draft, prints the dropped files, the diff and the routes to preview and publish it |
+
+The Python client has `FelixClient.check_skill_upstream(name, ref=)`, `update_skill(name, ref=)` and
+`list_skill_upstreams(cursor=, refresh=)`.
+
+| `error` | Status | When |
+|---|---|---|
+| `not_imported` | `409` | The skill's newest non-rejected version was not imported |
+| `not_found` | `404` | The library holds no skill of that name |
+| `invalid_cursor` | `422` | A listing cursor the route did not issue |
+
+Every import error above applies to a check and an update as well.
 
 ## CLI
 

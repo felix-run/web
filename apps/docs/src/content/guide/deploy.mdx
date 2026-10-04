@@ -322,6 +322,7 @@ egress guard. The settings are read at boot. See [Skill import](/guide/skill-imp
 | `FELIX_SKILL_IMPORT_MIN_AGE_DAYS` | `0` | 0–365. Refuse (`403 too_recent`) files this tenant first saw fewer than this many days ago, by Felix's own clock. Tenants can raise it, never lower it. |
 | `FELIX_SKILL_IMPORT_CALLS_PER_HOUR` | `500` | 1–100000. GitHub calls one tenant's browses and imports may make per hour (`429 rate_limited`). |
 | `FELIX_SKILL_IMPORT_CALLS_PER_HOUR_TOTAL` | `4000` | 1–1000000. The same for the whole deployment, protecting the token's own limit. |
+| `FELIX_SKILL_IMPORT_CHECK_HOURS` | `0` | 0–168; `0` is off. Check every imported skill against its origin this often, from the worker's `skill_upstream_checks` task, spending at most half of each budget above. Needs `felix-scheduler`. |
 
 A malformed `FELIX_SKILL_IMPORT_SOURCES` entry stops the API at boot. With the token set, boot also
 refuses an empty list, an entry naming no tenant, and an entry whose owner is a glob — each would

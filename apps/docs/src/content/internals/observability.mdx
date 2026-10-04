@@ -202,7 +202,7 @@ operator's save — and their payloads name `skill`, `version`, `source`, `autho
 | `event_type` | Emitted | `status` | Payload adds |
 |---|---|---|---|
 | `skill_activation` | `activate_skill` / `deactivate_skill` | `ok`, `unknown_skill` | `action`, `skill`, `thread_id`, `tool_call_id` |
-| `skill_draft_saved` | Every save, agent, operator or import (reason `imported from <source>@<commit>`) | `ok` | `parent`, `reason` (first 200 chars, redacted), `shadows_operator_upload`, `principal` |
+| `skill_draft_saved` | Every save, agent, operator or import (reason `imported from <source>@<commit>`, or `updated from …` for an update) | `ok` | `parent`, `reason` (first 200 chars, redacted), `shadows_operator_upload`, `principal` |
 | `skill_published` | A publish | `ok`, `blocked` | `previous`, or `reasons` when blocked |
 | `skill_rolled_back` | A rollback | `ok`, `blocked` | `previous`, or `reasons` when blocked |
 | `skill_rejected` | A draft rejected | `ok` | `note` (first 200 chars) |
