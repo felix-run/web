@@ -62,8 +62,18 @@ function newLease(): Lease {
   };
 }
 
+/** A `/chat/stream` POST as it reached the server, for a `stream` answer to look at. */
+export interface StreamRequest {
+  headers: Record<string, string>;
+  body: string;
+}
+
 export function leaseServer(
-  opts: { stream?: () => Response; sessions?: Array<{ id: string; sessionName?: string }> } = {},
+  opts: {
+    /** Answers `/chat/stream`; throwing stands in for a request that never got an answer. */
+    stream?: (req: StreamRequest) => Response | Promise<Response>;
+    sessions?: Array<{ id: string; sessionName?: string }>;
+  } = {},
 ) {
   const leases = new Map<string, Lease>();
   const calls: Call[] = [];
@@ -229,8 +239,12 @@ export function leaseServer(
       if (refusal) return new Response(JSON.stringify({ detail: refusal }), { status: 409 });
     }
     if (url.includes('/chat/stream') && method === 'POST') {
+      const req: StreamRequest = {
+        headers: (init?.headers ?? {}) as Record<string, string>,
+        body: String(init?.body ?? ''),
+      };
       return (
-        opts.stream?.() ??
+        (await opts.stream?.(req)) ??
         new Response('data: [DONE]\n\n', {
           status: 200,
           headers: { 'content-type': 'text/event-stream' },

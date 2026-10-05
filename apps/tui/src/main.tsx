@@ -18,6 +18,7 @@ import { createAttention } from './attention.js';
 import { insecureOrigin, resolveConfig, USAGE } from './config.js';
 import type { EpilogueSlot } from './epilogue.js';
 import { createPromptHistory } from './history.js';
+import { settleReleases } from './lease.js';
 import { createThreadStore } from './threads.js';
 
 const { config, firstMessage } = resolveConfig(process.argv.slice(2));
@@ -99,10 +100,14 @@ const root = createRoot(renderer);
  */
 const exit = () => {
   attention.dispose();
+  // The app has started releasing the thread's lease, and the release is a
+  // request: exiting at once would drop it unsent. Waited for after the screen is
+  // given back, so leaving never looks slow, and bounded, so a harness that has
+  // gone away cannot hold the terminal open.
   root.unmount();
   renderer.destroy();
   if (epilogue.text) process.stdout.write(`${epilogue.text}\n`);
-  process.exit(0);
+  void settleReleases().finally(() => process.exit(0));
 };
 
 root.render(

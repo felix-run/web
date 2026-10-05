@@ -42,6 +42,33 @@ export function isLeaseRefusal(err: unknown): err is LeaseRefusedError {
   return err instanceof LeaseRefusedError;
 }
 
+/**
+ * `POST /chat/stream` refused a resend under an `Idempotency-Key` whose first
+ * request is still streaming (`409 idempotency_in_progress`). Nothing ran for
+ * this request; the first one's turn is the one to watch, and
+ * `GET /chat/stream/{thread_id}` reattaches to it.
+ */
+export class StreamInProgressError extends Error {
+  readonly threadId: string;
+  constructor(threadId: string) {
+    super('chat/stream: 409 idempotency_in_progress');
+    this.name = 'StreamInProgressError';
+    this.threadId = threadId;
+  }
+}
+
+/**
+ * `POST /chat/stream` refused an `Idempotency-Key` it had already seen with a
+ * different body (`422 idempotency_key_reused`). Nothing ran, and the key can
+ * never send this body: a resend has to go out as a new message, under a new key.
+ */
+export class IdempotencyKeyReusedError extends Error {
+  constructor() {
+    super('chat/stream: 422 idempotency_key_reused');
+    this.name = 'IdempotencyKeyReusedError';
+  }
+}
+
 /** A network-layer failure, i.e. the request never reached the harness at all. */
 function isOffline(err: unknown): boolean {
   // fetch() rejects with a TypeError when DNS, TLS or the connection itself fails.

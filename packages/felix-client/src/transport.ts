@@ -25,7 +25,7 @@ import {
   type ThreadHistory,
 } from '@felix/protocol';
 import { type ApprovalRequest, isLapsedApproval } from './approvals';
-import { LeaseRefusedError } from './errors';
+import { IdempotencyKeyReusedError, LeaseRefusedError, StreamInProgressError } from './errors';
 import { createHttp, type FelixClientOptions } from './http';
 import { createManagementClient } from './management';
 import type { SessionSummary } from './session-log';
@@ -41,6 +41,14 @@ export interface StreamHandlers {
   onCursor?: (lastEventId: string) => void;
   /** Every chunk, keep-alive comments included; see `ReadSseOptions.onActivity`. */
   onActivity?: (info: { keepAlive: boolean }) => void;
+  /**
+   * The harness answered 200 and the body is about to be read. `replayed` is its
+   * `Idempotent-Replayed: true`: this is a resend under a key whose first request
+   * already ended, and the body is that request's record, not a new turn — its
+   * session events as `session_event` frames, its error frame if it had one, then
+   * `[DONE]`. Called before the first frame, so a caller can prepare to fold them.
+   */
+  onOpen?: (info: { replayed: boolean }) => void;
 }
 
 export interface StreamArgs {
@@ -48,6 +56,14 @@ export interface StreamArgs {
   messages: ChatMessage[];
   threadId?: string;
   signal?: AbortSignal;
+  /**
+   * Sent as `Idempotency-Key`, so a resend of the same message never runs a
+   * second turn (`felix-run/felix#488`). One per logical message, reused only
+   * with a byte-identical body — the harness fingerprints the body and answers a
+   * different one under the same key with `422 idempotency_key_reused`. Needs
+   * `threadId`: the harness scopes the key to the thread and refuses one without.
+   */
+  idempotencyKey?: string;
 }
 
 interface RawSessionRow {
@@ -274,9 +290,14 @@ export function createFelixClient(opts: FelixClientOptions) {
      * event rather than as silence.
      */
     async streamChat(args: StreamArgs, handlers: StreamHandlers): Promise<void> {
+      const keyed = args.idempotencyKey && args.threadId ? args.idempotencyKey : undefined;
       const res = await chatFetch('/chat/stream', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        headers: {
+          'content-type': 'application/json',
+          ...leaseHeader(args.threadId),
+          ...(keyed ? { 'idempotency-key': keyed } : {}),
+        },
         body: JSON.stringify({
           manifest: args.manifest,
           messages: args.messages,
@@ -286,14 +307,44 @@ export function createFelixClient(opts: FelixClientOptions) {
       });
 
       await refuseIfLease(res, 'chat/stream', args.threadId);
+      if (keyed && (res.status === 409 || res.status === 422)) {
+        // The lease's 409s were taken above; these are the key's own answers.
+        const detail = await res
+          .clone()
+          .json()
+          .then(
+            (b: unknown) => (b as { detail?: unknown } | null)?.detail,
+            () => undefined,
+          );
+        if (res.status === 409 && detail === 'idempotency_in_progress') {
+          throw new StreamInProgressError(args.threadId ?? '');
+        }
+        if (res.status === 422 && detail === 'idempotency_key_reused') {
+          throw new IdempotencyKeyReusedError();
+        }
+      }
       if (!res.ok || !res.body) {
         throw new Error(`chat/stream: ${res.status} ${await detailOf(res)}`);
       }
 
-      await readSseStream(res, handlers.onEvent, {
-        onCursor: handlers.onCursor,
-        onActivity: handlers.onActivity,
+      handlers.onOpen?.({
+        replayed: res.headers.get('idempotent-replayed')?.toLowerCase() === 'true',
       });
+      let failed = false;
+      const finished = await readSseStream(
+        res,
+        (ev) => {
+          if (ev.event === 'on_error') failed = true;
+          return handlers.onEvent(ev);
+        },
+        { onCursor: handlers.onCursor, onActivity: handlers.onActivity },
+      );
+      // A keyed send has a resend to fall back on, so a body that stopped short of
+      // `[DONE]` is reported as the drop it was rather than as a finished turn —
+      // unless it had already said how the turn ended, with its error frame.
+      if (keyed && !finished && !failed) {
+        throw new Error('chat/stream: the stream ended before [DONE]');
+      }
     },
 
     /**

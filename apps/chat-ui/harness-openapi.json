@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.6.2"
+    "version": "0.7.0"
   },
   "paths": {
     "/health": {
@@ -267,6 +267,15 @@
       "get": {}
     },
     "/skill-library/-/import": {
+      "post": {}
+    },
+    "/skill-library/-/upstream": {
+      "get": {}
+    },
+    "/skill-library/{name}/-/upstream": {
+      "get": {}
+    },
+    "/skill-library/{name}/-/update": {
       "post": {}
     },
     "/skill-library": {

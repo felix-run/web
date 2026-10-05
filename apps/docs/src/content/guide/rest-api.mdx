@@ -405,6 +405,73 @@ it reports status and the final answer and carries no transcript. A client polli
 tool calls reattaches to `GET /chat/stream/{thread_id}`.
 :::
 
+### Resending safely: `Idempotency-Key`
+
+A streamed send that fails in the client — no answer, a proxy's `5xx`, a connection that dropped
+mid-reply — may or may not have reached the turn, and the client cannot tell which. Send an
+**`Idempotency-Key`** header and a resend of the same message never runs a second turn or appends a
+second user message:
+
+```bash
+curl -N -X POST "$BASE_URL/chat/stream" \
+  -H "authorization: Bearer $FELIX_KEY" \
+  -H 'content-type: application/json' \
+  -H "idempotency-key: $(uuidgen)" \
+  -d '{"manifest":"quick","thread_id":"demo","messages":[{"role":"user","content":"Hi"}]}'
+```
+
+- **The key** is visible ASCII, at most 255 characters, with no `{` or `}`; anything else is
+  `400 invalid_idempotency_key`. It needs a `thread_id` in the body — a threadless stream writes no
+  log a retry could be answered from — and is `400 idempotency_key_requires_thread_id` without one.
+  It is scoped to the tenant, the principal and the thread, and lives for
+  `FELIX_IDEMPOTENCY_TTL_SECONDS`.
+- **Mint one per message, not per request.** Every resend of a message reuses its key, with a
+  **byte-identical body**: the key is bound to a fingerprint of the body, and the same key with a
+  different one is **`422 idempotency_key_reused`**. Re-uploading an image hands back a new file id,
+  so a client keeps what it sent and sends that again. An edited message is a new message, under a
+  new key.
+
+What a resend gets depends on where the first request is:
+
+| First request | Resend gets |
+|---|---|
+| Still streaming | **`409 idempotency_in_progress`**. Nothing runs; reattach with [`GET /chat/stream/{thread_id}`](#get-chatstreamthread_id), as after any dropped stream. |
+| Ended, having appended to the thread | **`200`** with **`Idempotent-Replayed: true`**, and a replay instead of a turn (below). |
+| Ended having appended nothing — it failed before its turn began, or the client left before the body was sent | The key was released, so the resend **runs normally**. |
+| Started a durable run | A reattach to that run's stream, with `Idempotent-Replayed: true`. |
+
+The replay is what the first request itself wrote to the thread — each event it appended is stamped
+with its origin, so a label, a steer or another client's turn that landed meanwhile is not in it —
+in the shape a reattach uses, then that request's error frame if it ended in one, then `[DONE]`:
+
+```
+id: 5
+data: {"event":"session_event","data":{"id":"…","seq":4,"kind":"message","role":"user","content":"Hi"}}
+
+id: 6
+data: {"event":"session_event","data":{"id":"…","seq":5,"kind":"message","role":"assistant","content":"Hello!"}}
+
+event: error
+data: {"error":{"message":"…","type":"stream_error"}}
+
+data: [DONE]
+```
+
+It is finite, carries no deltas, and runs nothing, so fold it with the code that folds a reattach's
+`session_event` frames. A transient turn is torn down when its client disconnects, so a first
+request cut off mid-reply often replays its user message and nothing after it: the message landed
+once, and the conversation goes on with [`POST /chat/continue`](#abort-continue-thinking-compact) or a
+new message. The key is claimed after inbound auth, screening and the [lease check](#presenting-the-token-on-writes),
+so a resend is judged as the first request was, and a refused one is never stored as the key's answer.
+
+`POST /chat` takes the header too, scoped to the principal alone: a resend after the first finished
+gets its stored response back with `Idempotent-Replayed: true`, one while it runs is
+`409 idempotency_in_progress`, and a different body is `422 idempotency_key_reused`.
+
+chat-ui sends a fresh key with every message. When a send fails it puts the message back in the
+composer, and sending it again unchanged reuses the key, so the transcript shows what the first
+attempt left — once.
+
 ### Frame format
 
 Almost every frame is a bare `data:` line, and the stream ends with a literal
@@ -804,11 +871,28 @@ the exclusive hold's token:
 | `lease_read_only` | The token is an observer's: this client is watching. |
 | `lease_held` | Another holder has the thread exclusively — this client's hold lapsed or was never the driver's. |
 
-A request without the header is not checked, so a script, the [OpenAI-compatible surface](#openai-compatible-surface)
-and A2A are unaffected. That also means the header protects a client from its own mistakes, not the
-thread from a caller that leaves it off. `/chat/fork` only reads its source and
+Under the default, **`FELIX_LEASE_ENFORCE=advisory`**, a request without the header is not checked,
+so a script, the [OpenAI-compatible surface](#openai-compatible-surface) and A2A are unaffected.
+That also means the header protects a client from its own mistakes, not the thread from a caller
+that leaves it off. `/chat/fork` only reads its source and
 `/chat/sessions/feedback` rates a reply without writing the log, so neither checks it; approvals are
 decided through `/approvals`, gated on the `approvals:write` scope.
+
+**`FELIX_LEASE_ENFORCE=strict`** makes the lease binding on those same routes. A request *without*
+the header is then **`409 lease_held`** while another holder has the thread exclusively. A thread
+nobody holds, or one only observers hold, still takes a request without a token, so scripts keep
+working whenever no client is driving; with the header the table above applies unchanged.
+`/v1/chat/completions` is checked too when it sends `user`, because `user` names the same thread a
+chat `thread_id` does (`{tenant}:{user}`): it is refused, with an OpenAI-shaped error, on a thread a
+chat client drives, and may send `X-Felix-Lease-Token` itself. A2A threads (`{tenant}:a2a:{task}`)
+and MCP calls cannot reach a chat thread and are not checked. Strict is still a consistency control
+between cooperating clients, not an authorization boundary: every caller in the tenant may acquire a
+lease.
+
+A client refused the exclusive hold should therefore watch rather than go without one: take a
+`shared` hold and send *its* token, so the harness answers `lease_read_only` — a refusal that says
+"you are watching" — rather than `lease_held` under strict or, under advisory, nothing at all.
+chat-ui and the [terminal](/guide/terminal/) both do.
 
 Leases are Redis-backed, so they hold across replicas, and every change is one `WATCH`/`MULTI`
 transaction, so two replicas cannot both grant the exclusive hold. Without Redis they fall back to

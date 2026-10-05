@@ -41,8 +41,13 @@ function harness(routes: Record<string, unknown> = {}) {
       headers: (init.headers ?? {}) as Record<string, string>,
     });
     const hit = Object.entries(routes).find(([path]) => url.includes(path));
-    // A function answers with its own Response — how a route streams SSE.
-    if (typeof hit?.[1] === 'function') return (hit[1] as () => Response)();
+    // A function answers with its own Response — how a route streams SSE, or
+    // answers by what the request asked for.
+    if (typeof hit?.[1] === 'function') {
+      return (hit[1] as (call: (typeof calls)[number]) => Response)(
+        calls[calls.length - 1] as (typeof calls)[number],
+      );
+    }
     return new Response(JSON.stringify(hit ? hit[1] : {}), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -603,6 +608,62 @@ describe('the session lease', () => {
       await ui.until(() => shows(frame(), 'another client took over this thread'));
       // Not an error: the engine drops the empty reply and reports nothing.
       expect(frame()).not.toContain('409');
+    } finally {
+      ui.stop();
+      h.restore();
+    }
+  });
+});
+
+/**
+ * Refused at startup, the terminal used to hold nothing at all, so every write it
+ * made went out with no `X-Felix-Lease-Token`: a confusing `409 lease_held` under
+ * `FELIX_LEASE_ENFORCE=strict`, and a second driver nobody refused under the
+ * default advisory mode. It watches now, as chat-ui does — an observer hold of
+ * its own, whose token the harness refuses as `lease_read_only`.
+ */
+describe('a terminal refused the thread at startup', () => {
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+  const HELD = {
+    '/chat/sessions/lease': (call: { url: string; body?: unknown }) => {
+      if (call.url.endsWith('/release')) return json({ ok: true, released: true });
+      const { mode } = (call.body ?? {}) as { mode?: string };
+      return mode === 'shared'
+        ? json({ ok: true, token: 'tok-obs', mode: 'shared', held_by_other: true })
+        : json({ detail: 'lease_held' }, 409);
+    },
+    '/chat/thinking': () => json({ detail: 'lease_read_only' }, 409),
+  };
+
+  it('takes an observer hold, and a write carries its token', async () => {
+    const { ui, h } = await run('/think high', { routes: HELD });
+    try {
+      await ui.until(() => h.to('/chat/thinking').length > 0);
+      // Not header-less: the observer's token, for the harness to refuse.
+      expect(h.to('/chat/thinking')[0]?.headers['x-felix-lease-token']).toBe('tok-obs');
+      const acquires = h.to('/chat/sessions/lease').filter((c) => !c.url.endsWith('/release'));
+      expect(acquires.map((c) => (c.body as { mode?: string }).mode)).toEqual([
+        'exclusive',
+        'shared',
+      ]);
+    } finally {
+      ui.stop();
+      h.restore();
+    }
+  });
+
+  it('holds a message back while watching, and gives it back to the composer', async () => {
+    const { ui, h, frame } = await run('do not drive', { routes: HELD });
+    try {
+      await ui.until(() => shows(frame(), 'watching read-only, your message is back'));
+      expect(h.to('/chat/stream')).toEqual([]);
+      // In the field again, not in the transcript as though it were sent.
+      expect(frame().split('do not drive').length - 1).toBe(1);
+      expect(shows(frame(), 'watching — another client drives this thread')).toBe(true);
     } finally {
       ui.stop();
       h.restore();

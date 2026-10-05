@@ -25,7 +25,12 @@ import {
   type StreamEvent,
 } from '@felix/protocol';
 import { describeGate, type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
-import { isLeaseRefusal } from './errors';
+import {
+  describeError,
+  IdempotencyKeyReusedError,
+  isLeaseRefusal,
+  StreamInProgressError,
+} from './errors';
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
@@ -101,14 +106,34 @@ export interface SendArgs {
   assistantId: string;
   /** `background` posts to /chat and polls the durable run instead of streaming. */
   mode?: 'stream' | 'background';
+  /**
+   * `Idempotency-Key` for a streamed send: one per logical message, minted when
+   * the message is written and reused, with a byte-identical body, by every
+   * resend of it. With one, a failure that may have reached the harness resolves
+   * `'failed'` rather than rejoining the thread, so the caller can hand the
+   * message back; and a resend is answered from what the first attempt did — a
+   * replay of its events, or a reattach while it is still running — never by a
+   * second turn. Ignored in `background` mode.
+   */
+  idempotencyKey?: string;
 }
 
 /**
- * How a `send` ended, as far as the message it carried is concerned. Only a lease
- * refusal is definite about that message never reaching the thread: a failure
- * after the request went out may have been appended first, so it is `done`.
+ * How a `send` ended, as far as the message it carried is concerned.
+ *
+ * - `done`: the run went out, or what it left is on screen. A failure of a send
+ *   with no `idempotencyKey` is `done` too: it may have been appended before it
+ *   failed, and without a key a resend could not tell, so the thread is rejoined.
+ * - `lease_refused`: another client drives the thread; the message never landed.
+ * - `failed`: a keyed send failed — no answer, a 5xx, a stream that dropped — and
+ *   may or may not have landed. Its turns are left for the caller to take back
+ *   with the message; resending it under the same key with the same body is safe,
+ *   because the harness answers that from the first attempt instead of running it.
+ * - `key_reused`: the harness already holds this key for a different body
+ *   (`422 idempotency_key_reused`). Nothing ran; the message can only go again
+ *   as a new one, under a new key.
  */
-export type SendOutcome = 'done' | 'lease_refused';
+export type SendOutcome = 'done' | 'lease_refused' | 'failed' | 'key_reused';
 
 export interface ChatEngine {
   readonly state: EngineState;
@@ -278,6 +303,42 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    */
   let durableEvents: SessionEvent[] = [];
   let durablePrefix: Turn[] | null = null;
+
+  /**
+   * A resend the harness answered from its first attempt (`Idempotent-Replayed`).
+   *
+   * The body is that attempt's own session events, as `session_event` frames —
+   * the reattach stream's shape — so they are folded the way a durable run's are:
+   * through `eventsToTurns`, after the transcript as it stood before this send's
+   * user message. The local user turn and the empty reply are replaced, not added
+   * to, because the replay carries the user message the harness stored: keeping
+   * both is the duplicate the key exists to prevent. Null outside a replay, which
+   * keeps these frames inert on an ordinary stream.
+   */
+  let replayEvents: SessionEvent[] = [];
+  let replayPrefix: Turn[] | null = null;
+  /** This send's stream carried `run_accepted`: whatever happens next, it was taken. */
+  let runAccepted = false;
+
+  /**
+   * Everything before the in-flight run's user message. The user message is left
+   * out on purpose: both a durable run's tail and a replay start at a cursor read
+   * before that message was appended, so the log re-supplies it. Guarded on the
+   * role rather than assumed, because `assistantId` is the only turn `send` is
+   * contracted to know about.
+   */
+  const beforeRun = (): Turn[] => {
+    const at = state.turns.findIndex((t) => t.id === activeAssistantId);
+    const head = at < 0 ? state.turns.length : at;
+    return state.turns.slice(0, state.turns[head - 1]?.role === 'user' ? head - 1 : head);
+  };
+
+  const renderReplay = () => {
+    if (replayPrefix === null) return;
+    // Deterministic, for the reason `renderDurable` gives.
+    let n = 0;
+    set({ turns: [...replayPrefix, ...eventsToTurns(replayEvents, () => `replay-${n++}`)] });
+  };
 
   /**
    * The harness's last word on a durable run — `running`, `pending` — or null
@@ -536,20 +597,17 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         // Held so a dropped connection can rejoin the run instead of abandoning
         // it: the run itself outlives this stream.
         if (data.resume_token) resumeToken = data.resume_token;
+        runAccepted = true;
         set({ phase: 'durable' });
         durableStatus = ACCEPTED;
         patch((t) => (t.content ? t : sayStatus(t, ACCEPTED)));
-        // Everything before the in-flight turn. The user message is dropped from
-        // the prefix on purpose: the harness captured its cursor *before* the run
-        // was enqueued, so the log re-supplies that message and keeping the local
-        // copy too would render it twice. Guarded on the role rather than assumed,
-        // because `assistantId` is the only turn `send` is contracted to know about.
-        const at = state.turns.findIndex((t) => t.id === activeAssistantId);
-        const head = at < 0 ? state.turns.length : at;
-        durablePrefix = state.turns.slice(
-          0,
-          state.turns[head - 1]?.role === 'user' ? head - 1 : head,
-        );
+        // Everything before the in-flight turn, without its user message: the
+        // harness captured its cursor *before* the run was enqueued, so the log
+        // re-supplies that message and keeping the local copy too would render it
+        // twice.
+        durablePrefix = beforeRun();
+        // A replayed durable send reattaches to the run; its frames are the run's.
+        replayPrefix = null;
         durableEvents = [];
         break;
       }
@@ -577,13 +635,20 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       // Tailed from the thread's session log. On a **durable run** they are this
       // client's only view of the work behind the answer, so they are folded here
       // — through `eventsToTurns`, the same function `reattachThread` uses, rather
-      // than a second synthesis path. Outside one, `durablePrefix` is null and
-      // these stay inert: on a reattach stream `reattachThread` owns them, and it
-      // folds the same rows the same way.
+      // than a second synthesis path. On a **replayed resend** they are the whole
+      // of what the first attempt did, folded the same way. Outside both, the
+      // prefixes are null and these stay inert: on a reattach stream
+      // `reattachThread` owns them, and it folds the same rows the same way.
       case 'session_event': {
-        if (durablePrefix === null) break;
-        durableEvents = [...durableEvents, ev.data as SessionEvent];
-        renderDurable();
+        const row = ev.data as SessionEvent;
+        if (durablePrefix !== null) {
+          durableEvents = [...durableEvents, row];
+          renderDurable();
+        } else if (replayPrefix !== null) {
+          if (replayEvents.some((e) => e.seq === row.seq)) break;
+          replayEvents = [...replayEvents, row];
+          renderReplay();
+        }
         break;
       }
       // Only `GET /chat/stream/{thread_id}` sends this, and only `reattachThread`
@@ -672,6 +737,12 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     resumeToken = null;
     durableStatus = null;
     lastEventId = undefined;
+    replayPrefix = null;
+    replayEvents = [];
+    runAccepted = false;
+    const keyed = mode === 'stream' ? args.idempotencyKey : undefined;
+    /** The harness answered 200 and the body began: a failure now is a dropped stream. */
+    let opened = false;
 
     const run = async () => {
       if (mode === 'background') {
@@ -742,8 +813,15 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
               messages: args.messages,
               threadId: ports.threadId(),
               signal: stream.abort.signal,
+              ...(keyed ? { idempotencyKey: keyed } : {}),
             },
             {
+              onOpen: ({ replayed }) => {
+                opened = true;
+                if (!replayed) return;
+                replayPrefix = beforeRun();
+                replayEvents = [];
+              },
               onEvent: (ev) => applyEvent(ev),
               onCursor: (id) => {
                 lastEventId = id;
@@ -776,6 +854,33 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         // A lease refusal is the harness declining to start the run at all —
         // nothing was torn down, so there is nothing to rejoin.
         if (ctrl.signal.aborted || isLeaseRefusal(err)) throw err;
+        // A resend under a key whose first attempt is still streaming: that
+        // attempt's turn is the one running, so watch it rather than start one.
+        // Cold, from a snapshot, which replaces the transcript whole — this
+        // send's local copy of the message included, so it is not shown twice.
+        if (err instanceof StreamInProgressError) {
+          const threadId = ports.threadId();
+          set({ reattaching: true });
+          try {
+            await reattachThread({
+              client: ports.client,
+              threadId,
+              signal: ctrl.signal,
+              onTurns: (rebuilt) => set({ turns: rebuilt }),
+              onPhase: (phase) => set({ phase }),
+              onEvent: (ev) => applyEvent(ev),
+            });
+          } finally {
+            set({ reattaching: false });
+          }
+          return;
+        }
+        // A keyed send that failed before a durable run took it goes back to
+        // the caller instead of rejoining: it may or may not have landed, and a
+        // resend under its key is what finds out — a replay of what landed, or
+        // the run it never got. Rejoining as well would put the message on screen
+        // and in the composer at once.
+        if (keyed && !runAccepted) throw err;
         // A durable run survives its stream. If one was accepted and has not yet
         // reported `final`, rejoin it by polling rather than reporting a failure
         // for work that is still going.
@@ -820,11 +925,28 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
             (t) => !(t.id === target && !t.content && !(t.tools ?? []).length),
           ),
         });
+      } else if (err instanceof IdempotencyKeyReusedError) {
+        outcome = 'key_reused';
+        set({
+          error:
+            'The harness refused this resend: its retry key was already used for a different message, so nothing was sent.',
+        });
       } else if (!ctrl.signal.aborted) {
-        set({ error: String((err as Error)?.message ?? err) });
+        if (keyed && !runAccepted) {
+          outcome = 'failed';
+          set({
+            error: opened
+              ? 'The connection dropped before the reply finished.'
+              : describeError(err, 'send this message').message,
+          });
+        } else {
+          set({ error: String((err as Error)?.message ?? err) });
+        }
       }
     } finally {
       if (controller === ctrl) controller = null;
+      replayPrefix = null;
+      replayEvents = [];
       // However the run ended — `final`, a settled poll, an abort, a thrown
       // error — nothing is in flight to report on any more, so an approval
       // answered after this must not rewrite the turn it left behind.

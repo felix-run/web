@@ -108,7 +108,11 @@ function toErrorEvent(payload: unknown): StreamEvent {
 /**
  * Drain `res` into `onEvent`, one decoded frame at a time.
  *
- * Returns when the stream ends or `[DONE]` arrives. Unparseable frames are
+ * Returns when the stream ends or `[DONE]` arrives, resolving `true` only for
+ * the second. The harness ends every stream with `[DONE]`, an errored one
+ * included, so a body that simply stopped was cut off — by a proxy, or a
+ * connection that closed cleanly mid-reply — and a caller that must know
+ * whether the turn finished can tell. Unparseable frames are
  * skipped rather than tearing down the run — a single malformed frame should
  * not cost the user the rest of a reply.
  *
@@ -124,8 +128,8 @@ export async function readSseStream(
   res: Response,
   onEvent: (event: StreamEvent) => void | Promise<void>,
   opts: ReadSseOptions = {},
-): Promise<void> {
-  if (!res.body) return;
+): Promise<boolean> {
+  if (!res.body) return false;
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -137,7 +141,7 @@ export async function readSseStream(
 
   while (true) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done) return false;
 
     let chunk = decoder.decode(value, { stream: true });
     if (heldCr) {
@@ -163,7 +167,7 @@ export async function readSseStream(
         if (/^:/m.test(raw)) opts.onActivity?.({ keepAlive: true });
         continue;
       }
-      if (frame.data === '[DONE]') return;
+      if (frame.data === '[DONE]') return true;
 
       if (frame.id !== undefined) opts.onCursor?.(frame.id);
 

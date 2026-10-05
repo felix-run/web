@@ -76,6 +76,8 @@ import {
   KEPT_NOTICE,
   type KeptMessage,
   REATTACHING_REFUSAL,
+  REKEYED_NOTICE,
+  RESEND_NOTICE,
 } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
@@ -145,6 +147,27 @@ const LEFT_APP_WINDOW_MS = 10_000;
 const LIVENESS_CHECK_MS = 15_000;
 /** How long past an approval's deadline to re-ask, so the harness has denied it by then. */
 const LAPSE_GRACE_MS = 2_000;
+
+/** A composer or queued message, with the `Idempotency-Key` it goes out under when it has one. */
+type KeyedMessage = PromptInputMessage & { key?: string };
+
+/** Why a message came back: the lease, a send that failed, or a key the harness refused. */
+type KeptReason = 'lease' | 'failed' | 'key_reused';
+
+/** What a failed streamed send carried, so a resend under its key is the same body. */
+interface UnsettledSend {
+  threadId: string;
+  manifest: string;
+  text: string;
+  /** The composer's own file parts, by data URL: how an unchanged resend is recognised. */
+  fileUrls: string[];
+  /** What the upload returned, which a resend sends again rather than uploading anew. */
+  attachments: ImageAttachment[];
+}
+
+function sameFiles(urls: string[], files: PromptInputMessage['files']): boolean {
+  return urls.length === files.length && files.every((f, i) => f.url === urls[i]);
+}
 
 function tabHolderId(): string {
   try {
@@ -890,11 +913,18 @@ export function AppShell() {
       messagesToSend: ChatMessage[],
       assistantId: string,
       mode: 'stream' | 'background' = 'stream',
+      idempotencyKey?: string,
     ) => {
       setLeftApp(false);
       setDropped(false);
       markSent(threadIdRef.current);
-      return engine.send({ manifest, messages: messagesToSend, assistantId, mode });
+      return engine.send({
+        manifest,
+        messages: messagesToSend,
+        assistantId,
+        mode,
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+      });
     },
     [engine, manifest, markSent],
   );
@@ -1191,7 +1221,12 @@ export function AppShell() {
   });
 
   const send = useCallback(
-    (text: string, attachments?: ImageAttachment[], mode: 'stream' | 'background' = 'stream') => {
+    (
+      text: string,
+      attachments?: ImageAttachment[],
+      mode: 'stream' | 'background' = 'stream',
+      idempotencyKey?: string,
+    ) => {
       // A reattach keeps `streaming` true, but there is no run to steer — this
       // one was torn down when the connection dropped. Queueing a steer here
       // would report "Steer queued" and then sit unread until some later turn
@@ -1243,13 +1278,18 @@ export function AppShell() {
       // Steady state: send only the new user message; Felix replays the thread.
       const userMessage: ChatMessage = { role: 'user', content: text };
       if (hasAttachments) userMessage.attachments = attachments;
-      return streamInto([userMessage], assistantId, mode).then((outcome) => {
+      return streamInto([userMessage], assistantId, mode, idempotencyKey).then((outcome) => {
         // The harness never took it: another client drives the thread. The turn
         // on screen would read as sent until the next hydrate quietly dropped it,
         // so it goes now, and whoever holds the message gives it back.
         if (outcome === 'lease_refused') {
           engine.setTurns(engine.state.turns.filter((t) => t.id !== userTurn.id));
         }
+        // It may or may not have landed, and the message is going back to whoever
+        // holds it. The attempt goes from the transcript with it — whatever it had
+        // streamed included — so the message is in one place at a time, and a
+        // resend's replay is what shows what the harness actually kept.
+        if (outcome === 'failed' || outcome === 'key_reused') engine.setTurns(turns);
         return outcome;
       });
     },
@@ -1752,11 +1792,33 @@ export function AppShell() {
    * does not restore it again.
    */
   const [kept, setKept] = useState<KeptMessage | null>(null);
-  const keepRefused = useCallback((message: PromptInputMessage) => {
+  /**
+   * The message last handed back to the composer, with the key it went out
+   * under. Sent again unchanged it is the same message, so it reuses the key;
+   * edited, it is a new one. Read by `submit` and cleared by it either way.
+   */
+  const keptKeyRef = useRef<{ key: string; text: string; fileUrls: string[] } | null>(null);
+  const keepRefused = useCallback((message: KeyedMessage, reason: KeptReason = 'lease') => {
+    keptKeyRef.current = message.key
+      ? { key: message.key, text: message.text, fileUrls: message.files.map((f) => f.url) }
+      : null;
     setKept((was) => ({ text: message.text, files: message.files, n: (was?.n ?? 0) + 1 }));
-    toast.message(KEPT_NOTICE);
+    toast.message(
+      reason === 'lease' ? KEPT_NOTICE : reason === 'failed' ? RESEND_NOTICE : REKEYED_NOTICE,
+    );
   }, []);
   const takeKept = useCallback(() => setKept(null), []);
+
+  /**
+   * Streamed sends that failed after they may have reached the harness, by key.
+   *
+   * A resend must be byte-identical under its key, or the harness answers
+   * `422 idempotency_key_reused`. Text is, but images are uploaded per send and
+   * come back under new ids, so what went out — the uploaded attachments, and the
+   * thread and agent the body named — is kept here and sent again instead.
+   * Dropped once the key has an answer: the run went out, or the key was refused.
+   */
+  const unsettled = useRef(new Map<string, UnsettledSend>());
 
   // Map a composer submission (text + browser File parts, already converted to
   // data URLs by PromptInput) onto our send(). Image parts become attachments.
@@ -1771,22 +1833,48 @@ export function AppShell() {
    */
   const submit = useCallback(
     async (
-      message: PromptInputMessage,
+      message: KeyedMessage,
       mode: 'stream' | 'background' = 'stream',
-      onLeaseRefused: (message: PromptInputMessage) => void = keepRefused,
+      onKept: (message: KeyedMessage, reason: KeptReason) => void = keepRefused,
     ) => {
       // Permission is asked for here, inside the click, and only for the mode
       // that needs it. Prompting on load is how a page trains people to say no.
       if (mode === 'background') void armNotifications();
+      // The message's `Idempotency-Key`, one per message rather than per request.
+      // A queued message brings the one it was given when queued; the message last
+      // handed back to the composer keeps its own if it comes back unchanged; and
+      // anything else — an edit of it included — is a new message.
+      const restored = keptKeyRef.current;
+      keptKeyRef.current = null;
+      let key =
+        message.key ??
+        (restored && restored.text === message.text && sameFiles(restored.fileUrls, message.files)
+          ? restored.key
+          : crypto.randomUUID());
       // Mid-run, a message waits its turn rather than steering. The composer
       // clears because this resolved, which is right: it is on screen, queued.
       if (streaming && mode === 'stream') {
-        queue.enqueue({ text: message.text, files: message.files });
+        queue.enqueue({ text: message.text, files: message.files, key });
         return;
       }
+      // What a failed attempt under this key sent, which a resend sends again.
+      // The same words to another thread or agent are another request: new key.
+      const before = unsettled.current.get(key);
+      const resend =
+        before &&
+        before.threadId === threadId &&
+        before.manifest === manifest &&
+        before.text === message.text &&
+        sameFiles(before.fileUrls, message.files)
+          ? before
+          : null;
+      if (before && !resend) {
+        unsettled.current.delete(key);
+        key = crypto.randomUUID();
+      }
       const images = message.files.filter((f) => f.mediaType.startsWith('image/'));
-      let attachments: ImageAttachment[] = [];
-      if (images.length && !streaming) {
+      let attachments: ImageAttachment[] = resend?.attachments ?? [];
+      if (images.length && !streaming && !resend) {
         const pending = toast.loading(
           images.length === 1 ? 'Uploading the image…' : `Uploading ${images.length} images…`,
         );
@@ -1809,11 +1897,27 @@ export function AppShell() {
       // Resolving clears the composer, and it must, before the run is known to
       // have been taken: a reply streams for minutes. So the message is held
       // here instead, until the harness either starts the run or refuses it.
-      void send(message.text, attachments, mode)?.then((outcome) => {
-        if (outcome === 'lease_refused') onLeaseRefused(message);
+      const sent = { text: message.text, files: message.files, key };
+      void send(message.text, attachments, mode, key)?.then((outcome) => {
+        if (outcome === 'done') unsettled.current.delete(key);
+        else if (outcome === 'lease_refused') onKept(sent, 'lease');
+        else if (outcome === 'failed') {
+          unsettled.current.set(key, {
+            threadId,
+            manifest,
+            text: message.text,
+            fileUrls: message.files.map((f) => f.url),
+            attachments,
+          });
+          onKept(sent, 'failed');
+        } else {
+          // The harness will never send this body under this key.
+          unsettled.current.delete(key);
+          onKept({ text: message.text, files: message.files }, 'key_reused');
+        }
       });
     },
-    [send, streaming, queue.enqueue, keepRefused],
+    [send, streaming, queue.enqueue, keepRefused, threadId, manifest],
   );
 
   /**
@@ -1856,8 +1960,18 @@ export function AppShell() {
     draining.current = true;
     // Refused on the lease, it goes back to the head of the queue rather than
     // into the composer, unpaused: the tab is watching now, which holds the queue,
-    // and the takeover sends it — once, since `restore` keys on its id.
-    submit({ text: next.text, files: next.files }, 'stream', () => queue.restore(next)).then(
+    // and the takeover sends it — once, since `restore` keys on its id. A send
+    // that failed goes back the same way, under its key, but paused: the run it
+    // was queued behind has ended badly, and resuming is the operator's call. One
+    // whose key was refused goes back under a new one.
+    submit({ text: next.text, files: next.files, key: next.key }, 'stream', (_, reason) => {
+      if (reason === 'lease') {
+        queue.restore(next);
+        return;
+      }
+      queue.restore(reason === 'key_reused' ? { ...next, key: crypto.randomUUID() } : next);
+      queue.setPaused(true);
+    }).then(
       () => {
         // A send that was refused without throwing opens no run, and nothing
         // would ever clear the flag. Say so by pausing, with the message back.
