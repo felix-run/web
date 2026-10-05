@@ -33,6 +33,14 @@ function stubFetch() {
     'fetch',
     vi.fn(async (input: unknown) => {
       const url = String(input);
+      // Ended as the harness ends every stream: a body without `[DONE]` is a drop,
+      // and a dropped send goes back to the composer rather than clearing it.
+      if (url.includes('/chat/stream')) {
+        return new Response('data: [DONE]\n\n', {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }
       if (url.includes('/chat/sessions')) {
         return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
       }

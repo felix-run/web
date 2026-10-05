@@ -12,7 +12,17 @@ import type { FileUIPart } from '@/lib/ai-types';
  * message they could no longer change. Holding it here keeps every one of
  * those decisions open until the operator makes it.
  */
-export type QueuedMessage = { id: string; text: string; files: FileUIPart[] };
+export type QueuedMessage = {
+  id: string;
+  text: string;
+  files: FileUIPart[];
+  /**
+   * The message's `Idempotency-Key`, minted when it was queued: a queued message
+   * is a message already written, and every send of it — a retry after a failure
+   * included — goes under this one key.
+   */
+  key: string;
+};
 
 type ThreadQueue = { items: QueuedMessage[]; paused: boolean };
 
@@ -38,8 +48,14 @@ export function useMessageQueue(threadId: string) {
   );
 
   const enqueue = useCallback(
-    (message: Omit<QueuedMessage, 'id'>) =>
-      update((q) => ({ ...q, items: [...q.items, { ...message, id: crypto.randomUUID() }] })),
+    (message: Omit<QueuedMessage, 'id' | 'key'> & { key?: string }) =>
+      update((q) => ({
+        ...q,
+        items: [
+          ...q.items,
+          { ...message, id: crypto.randomUUID(), key: message.key ?? crypto.randomUUID() },
+        ],
+      })),
     [update],
   );
 

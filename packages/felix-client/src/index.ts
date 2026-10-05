@@ -46,8 +46,10 @@ export {
 export {
   type DescribedError,
   describeError,
+  IdempotencyKeyReusedError,
   isLeaseRefusal,
   LeaseRefusedError,
+  StreamInProgressError,
 } from './errors';
 export { createHttp, type FelixHttp, type LeaseRefusal } from './http';
 export { createManagementClient } from './management';

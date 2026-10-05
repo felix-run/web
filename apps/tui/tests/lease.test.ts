@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'bun:test';
-import { BLOCKED_NOTICE, DRIVING_NOTICE, holdLease, TAKEN_NOTICE } from '../src/lease';
+import {
+  BLOCKED_NOTICE,
+  DRIVING_NOTICE,
+  holdLease,
+  settleReleases,
+  TAKEN_NOTICE,
+} from '../src/lease';
 
 /**
  * The terminal's lease against the harness's rules since `felix-run/felix#479`:
@@ -45,17 +51,37 @@ function fakeClient() {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe('holdLease', () => {
-  it('sends no release at all when blocked — never a token-less one', async () => {
+  it('watches when blocked: an observer hold of its own, whose token its writes carry', async () => {
     const fake = fakeClient();
     const notices: string[] = [];
-    const hold = holdLease(fake.client, 'thread-a', 'tui-1', (m) => notices.push(m));
+    const watching: boolean[] = [];
+    const hold = holdLease(fake.client, 'thread-a', 'tui-1', (m) => notices.push(m), {
+      onWatching: (w) => watching.push(w),
+    });
     await tick();
     fake.acquires[0]?.resolve({ ok: false, error: 'lease_held' });
     await tick();
     expect(notices).toEqual([BLOCKED_NOTICE]);
+    expect(hold.watching()).toBe(true);
+    expect(watching).toEqual([true]);
 
+    // Refused exclusive, it asks to observe — with no token, since it holds none.
+    expect(fake.acquires[1]?.args).toEqual({
+      threadId: 'thread-a',
+      holderId: 'tui-1',
+      mode: 'shared',
+      ttlSeconds: 300,
+    });
+    fake.acquires[1]?.resolve({ ok: true, token: 'tok-obs' });
+    await hold.settled();
+    // What `X-Felix-Lease-Token` carries now: the harness refuses it as
+    // `lease_read_only`, rather than taking a header-less write as a driver's.
+    expect(hold.token()).toBe('tok-obs');
+    expect(hold.driving()).toBe(false);
+
+    // On exit, the observer hold goes with its own token — never a token-less release.
     await hold.release();
-    expect(fake.releases).toEqual([]);
+    expect(fake.releases).toEqual([{ threadId: 'thread-a', holderId: 'tui-1', token: 'tok-obs' }]);
   });
 
   it('releases with the token its own acquire returned, even when that lands after the cleanup', async () => {
@@ -92,6 +118,38 @@ describe('holdLease', () => {
     expect(fake.acquires[1]?.args).toMatchObject({ threadId: 'thread-a', mode: 'exclusive' });
     void second.release();
     fake.acquires[1]?.resolve({ ok: false });
+    // Refused, it asks to watch; answered, so its release is not left on the wire.
+    await tick();
+    fake.acquires[2]?.resolve({ ok: true, token: 'tok-obs' });
+    await tick();
+    fake.landRelease();
+  });
+});
+
+describe('settleReleases', () => {
+  it('waits for a release still on the wire, so exiting does not drop it unsent', async () => {
+    const fake = fakeClient();
+    fake.holdReleases();
+    const hold = holdLease(fake.client, 'thread-exit', 'tui-1', () => {});
+    await tick();
+    fake.acquires[0]?.resolve({ ok: false, error: 'lease_held' });
+    await tick();
+    fake.acquires[1]?.resolve({ ok: true, token: 'tok-obs' });
+    await hold.settled();
+
+    void hold.release();
+    let settled = false;
+    const waiting = settleReleases(5_000).then(() => {
+      settled = true;
+    });
+    await tick();
+    expect(fake.releases).toEqual([
+      { threadId: 'thread-exit', holderId: 'tui-1', token: 'tok-obs' },
+    ]);
+    expect(settled).toBe(false);
+    fake.landRelease();
+    await waiting;
+    expect(settled).toBe(true);
   });
 });
 
@@ -199,36 +257,52 @@ describe('holdLease renewal', () => {
 
     expect(notices).toEqual([TAKEN_NOTICE]);
     expect(hold.driving()).toBe(false);
-    // Still sent as `X-Felix-Lease-Token`, so the harness refuses this client's
-    // writes while the other one drives.
+    expect(hold.watching()).toBe(true);
+    // Until the observer hold answers, the lost token is still what goes out, so
+    // a write in that moment is `lease_held` rather than header-less.
     expect(hold.token()).toBe('tok-1');
+    expect(fake.acquires[2]?.args).toMatchObject({ mode: 'shared' });
+    expect(fake.acquires[2]?.args).not.toHaveProperty('token');
+    fake.acquires[2]?.resolve({ ok: true, token: 'tok-obs' });
+    await flush();
+    expect(hold.token()).toBe('tok-obs');
 
-    // The next tick asks to take the thread back, with no token: never a renewal.
+    // The next tick asks to take the thread back, with no token — never a
+    // renewal — and, refused, renews the observer hold with its own.
     vi.advanceTimersByTime(150_000);
     await flush();
-    expect(fake.acquires).toHaveLength(3);
-    expect(fake.acquires[2]?.args).not.toHaveProperty('token');
-    fake.acquires[2]?.resolve({ ok: false, error: 'lease_held' });
+    expect(fake.acquires[3]?.args).toMatchObject({ mode: 'exclusive' });
+    expect(fake.acquires[3]?.args).not.toHaveProperty('token');
+    fake.acquires[3]?.resolve({ ok: false, error: 'lease_held' });
+    await flush();
+    expect(fake.acquires[4]?.args).toMatchObject({ mode: 'shared', token: 'tok-obs' });
+    fake.acquires[4]?.resolve({ ok: true, token: 'tok-obs' });
     await flush();
     expect(notices).toEqual([TAKEN_NOTICE]);
 
     // The other client lets go: the thread is taken back, and the line says so.
     vi.advanceTimersByTime(150_000);
     await flush();
-    fake.acquires[3]?.resolve({ ok: true, token: 'tok-2' });
+    fake.acquires[5]?.resolve({ ok: true, token: 'tok-2' });
     await flush();
     expect(hold.driving()).toBe(true);
+    expect(hold.watching()).toBe(false);
     expect(hold.token()).toBe('tok-2');
     expect(notices).toEqual([TAKEN_NOTICE, DRIVING_NOTICE]);
+    // The observer hold is a separate entry: dropped with its own token.
+    expect(fake.releases).toEqual([{ threadId: 'thread-z', holderId: 'tui-1', token: 'tok-obs' }]);
     // And it renews the new token from here.
     vi.advanceTimersByTime(150_000);
     await flush();
-    expect(fake.acquires[4]?.args).toMatchObject({ token: 'tok-2' });
-    fake.acquires[4]?.resolve({ ok: true, token: 'tok-2' });
+    expect(fake.acquires[6]?.args).toMatchObject({ mode: 'exclusive', token: 'tok-2' });
+    fake.acquires[6]?.resolve({ ok: true, token: 'tok-2' });
     await flush();
 
     await hold.release();
-    expect(fake.releases).toEqual([{ threadId: 'thread-z', holderId: 'tui-1', token: 'tok-2' }]);
+    expect(fake.releases).toEqual([
+      { threadId: 'thread-z', holderId: 'tui-1', token: 'tok-obs' },
+      { threadId: 'thread-z', holderId: 'tui-1', token: 'tok-2' },
+    ]);
   });
 
   it('a renewal that never arrived is not a refusal', async () => {
@@ -253,14 +327,23 @@ describe('holdLease renewal', () => {
     hold.lost();
     expect(notices).toEqual([TAKEN_NOTICE]);
     expect(hold.driving()).toBe(false);
+    // It watches at once, rather than at the next tick.
+    expect(fake.acquires[1]?.args).toMatchObject({ mode: 'shared' });
+    fake.acquires[1]?.resolve({ ok: true, token: 'tok-obs' });
+    await flush();
+    expect(hold.token()).toBe('tok-obs');
     vi.advanceTimersByTime(150_000);
     await flush();
-    expect(fake.acquires[1]?.args).not.toHaveProperty('token');
-    fake.acquires[1]?.resolve({ ok: false, error: 'lease_held' });
+    expect(fake.acquires[2]?.args).toMatchObject({ mode: 'exclusive' });
+    expect(fake.acquires[2]?.args).not.toHaveProperty('token');
+    fake.acquires[2]?.resolve({ ok: false, error: 'lease_held' });
+    await flush();
+    fake.acquires[3]?.resolve({ ok: true, token: 'tok-obs' });
     await flush();
     await hold.release();
-    // The token is someone else's hold now, or nobody's: releasing it is not ours to do.
-    expect(fake.releases).toEqual([]);
+    // The exclusive token is someone else's hold now, or nobody's: releasing it is
+    // not ours to do. The observer hold is, with its own token.
+    expect(fake.releases).toEqual([{ threadId: 'thread-w', holderId: 'tui-1', token: 'tok-obs' }]);
   });
 
   it('a blocked terminal takes the thread once it is free', async () => {
@@ -271,15 +354,52 @@ describe('holdLease renewal', () => {
     await flush();
     fake.acquires[0]?.resolve({ ok: false, error: 'lease_held' });
     await flush();
-    expect(hold.token()).toBeUndefined();
+    fake.acquires[1]?.resolve({ ok: true, token: 'tok-obs' });
+    await flush();
+    expect(hold.token()).toBe('tok-obs');
 
     vi.advanceTimersByTime(150_000);
     await flush();
-    fake.acquires[1]?.resolve({ ok: true, token: 'tok-b' });
+    expect(fake.acquires[2]?.args).toMatchObject({ mode: 'exclusive' });
+    expect(fake.acquires[2]?.args).not.toHaveProperty('token');
+    fake.acquires[2]?.resolve({ ok: true, token: 'tok-b' });
     await flush();
     expect(notices).toEqual([BLOCKED_NOTICE, DRIVING_NOTICE]);
     expect(hold.token()).toBe('tok-b');
+    expect(hold.watching()).toBe(false);
+    // The observer hold, dropped on the takeover; the exclusive one, on exit.
     await hold.release();
-    expect(fake.releases).toEqual([{ threadId: 'thread-b', holderId: 'tui-1', token: 'tok-b' }]);
+    expect(fake.releases).toEqual([
+      { threadId: 'thread-b', holderId: 'tui-1', token: 'tok-obs' },
+      { threadId: 'thread-b', holderId: 'tui-1', token: 'tok-b' },
+    ]);
+  });
+
+  it('a watching terminal renews its observer hold while the other client drives', async () => {
+    vi.useFakeTimers();
+    const fake = fakeClient();
+    const hold = holdLease(fake.client, 'thread-o', 'tui-1', () => {});
+    await flush();
+    fake.acquires[0]?.resolve({ ok: false, error: 'lease_held' });
+    await flush();
+    fake.acquires[1]?.resolve({ ok: true, token: 'tok-obs' });
+    await flush();
+
+    for (let round = 0; round < 2; round++) {
+      vi.advanceTimersByTime(150_000);
+      await flush();
+      const take = fake.acquires[2 + round * 2];
+      expect(take?.args).toMatchObject({ mode: 'exclusive' });
+      take?.resolve({ ok: false, error: 'lease_held' });
+      await flush();
+      const renew = fake.acquires[3 + round * 2];
+      expect(renew?.args).toMatchObject({ mode: 'shared', token: 'tok-obs' });
+      renew?.resolve({ ok: true, token: 'tok-obs' });
+      await flush();
+    }
+    expect(hold.watching()).toBe(true);
+    expect(hold.token()).toBe('tok-obs');
+    await hold.release();
+    expect(fake.releases).toEqual([{ threadId: 'thread-o', holderId: 'tui-1', token: 'tok-obs' }]);
   });
 });

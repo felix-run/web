@@ -367,8 +367,22 @@ watching it does not take over while the terminal is still there; quitting or sw
 releases it. Every message it sends carries the lease token, so if another client does take the
 thread — the machine slept past the TTL, say — the harness refuses the terminal's sends rather than
 taking messages from two drivers, and the notice line says `another client took over this thread`.
-From then on, and whenever it opened a thread another client already held, the terminal asks for
-the thread once per renewal interval and takes it back as soon as it is free.
+
+**When another client already drives the thread, the terminal watches it**, as the web UI does.
+Opening a held thread — or losing one mid-session — it takes an observer hold of its own: the notice
+line says `another client holds this thread — following read-only`, and the composer's hint says it
+is watching. A message typed then is not sent; it goes back into the field with
+`another client is driving this thread — watching read-only, your message is back in the composer`,
+so nothing is lost. Slash commands still work, and a write one makes — `/think`, say — carries the
+observer's token, which the harness refuses as `lease_read_only`. Before this, a terminal refused at
+startup held no token at all, so its writes went out bare: refused with a confusing `lease_held`
+under [`FELIX_LEASE_ENFORCE=strict`](/guide/deploy/#session-leases-and-retried-sends), and accepted
+as a second driver under the default.
+
+While watching, the terminal asks for the thread once per renewal interval and renews its observer
+hold when the answer is no. As soon as the thread is free it takes it, drops the observer hold, and
+says `this terminal drives the thread again`. Quitting or switching threads releases whichever hold
+it has, each with its own token.
 
 The status line says what the client believes about the harness. Where the host normally sits it
 reads `unreachable` when a request never arrived anywhere — usually the harness is not running, since

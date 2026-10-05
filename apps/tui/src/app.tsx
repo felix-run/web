@@ -45,7 +45,7 @@ import { explainError } from './errors.js';
 import type { PromptHistory } from './history.js';
 import { inspectorRows, SECTIONS, type SectionKey } from './inspector.js';
 import { type Overlay, route } from './keys.js';
-import { type LeaseHold, useLease } from './lease.js';
+import { type LeaseHold, useLease, WATCHING_NOTICE } from './lease.js';
 import { page, pagerCommand } from './pager.js';
 import { usePanel } from './panel.js';
 import { useTheme } from './theme.js';
@@ -89,7 +89,17 @@ export function App({
   const renderer = useRenderer();
   const theme = useTheme();
   const { width, height } = useTerminalDimensions();
-  const exit = onExit;
+  /**
+   * Leave, releasing the open thread's lease first. Unmounting would release it
+   * too, but React runs that cleanup after the process has already been told to
+   * exit, so the request never went out and a quit terminal stayed listed —
+   * driving or watching — until the hold's TTL. Started here, the release is on
+   * the wire before `onExit` waits for it (`settleReleases`).
+   */
+  const exit = useCallback(() => {
+    void leaseRef.current?.release();
+    onExit();
+  }, [onExit]);
 
   const [threadId, setThreadId] = useState(() => config.thread ?? crypto.randomUUID());
   const [threads, setThreads] = useState<ThreadMeta[]>(() => store.list());
@@ -284,7 +294,9 @@ export function App({
     void refreshThreads();
   }, [refreshThreads]);
 
-  useLease(client, threadId, setNotice, leaseRef);
+  /** Another client drives the open thread, and this one follows it read-only. */
+  const [watching, setWatching] = useState(false);
+  useLease(client, threadId, setNotice, leaseRef, setWatching);
 
   /**
    * Selecting text copies it.
@@ -372,11 +384,20 @@ export function App({
           .catch((err) => engine.setError(explainError(err, 'steer the run', config)));
         return;
       }
+      // Watching: the harness would refuse it (`lease_read_only`), so it is not
+      // sent, and it goes back in the field rather than being lost. Read off the
+      // hold rather than the state, which can be a render behind the acquire.
+      if (leaseRef.current?.threadId === threadIdRef.current && leaseRef.current.watching()) {
+        setNotice(WATCHING_NOTICE);
+        fill(text);
+        return;
+      }
       const assistantId = crypto.randomUUID();
+      const userId = crypto.randomUUID();
       const firstTurn = turns.length === 0;
       engine.setTurns([
         ...turns,
-        { id: crypto.randomUUID(), role: 'user', content: text },
+        { id: userId, role: 'user', content: text },
         { id: assistantId, role: 'assistant', content: '', tools: [] },
       ]);
       store.index({
@@ -393,12 +414,25 @@ export function App({
           messages: [{ role: 'user', content: text }],
           assistantId,
         })
-        .then(refreshThreads);
+        .then((outcome) => {
+          // Refused on the lease: it never landed, so it leaves the transcript and
+          // goes back in the field. The notice is already said if this client
+          // believed it drove (`lost`); said here if it already knew it watched.
+          if (outcome === 'lease_refused') {
+            engine.setTurns(engine.state.turns.filter((t) => t.id !== userId));
+            fill(text);
+            if (leaseRef.current?.watching() && !leaseRef.current.driving()) {
+              setNotice((was) => was ?? WATCHING_NOTICE);
+            }
+          }
+          return refreshThreads();
+        });
     },
     [
       client,
       config,
       engine,
+      fill,
       manifest,
       reattaching,
       refreshThreads,
@@ -611,13 +645,18 @@ export function App({
     [command, history, send],
   );
 
-  // The first message from argv, once the engine exists.
+  // The first message from argv, once the engine exists — and once the lease has
+  // answered, so it goes out driving, or is held back watching, rather than
+  // header-less in the moment before anyone knows which.
   const sentFirst = useRef(false);
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
   useEffect(() => {
     if (sentFirst.current || !firstMessage) return;
     sentFirst.current = true;
-    submit(firstMessage);
-  }, [firstMessage, submit]);
+    const hold = leaseRef.current;
+    void (hold ? hold.settled() : Promise.resolve()).then(() => submitRef.current(firstMessage));
+  }, [firstMessage]);
 
   /**
    * The keys the app owns, above everything drawn inside it.
@@ -902,7 +941,13 @@ export function App({
         history={recent}
         onEdit={editPrompt}
         prefill={prefill}
-        hint={streaming ? 'steer the run…' : 'ask, /help, ctrl+e to open $EDITOR'}
+        hint={
+          watching
+            ? 'watching — another client drives this thread; /help still works'
+            : streaming
+              ? 'steer the run…'
+              : 'ask, /help, ctrl+e to open $EDITOR'
+        }
         theme={theme}
       />
       <StatusLine

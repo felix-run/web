@@ -103,6 +103,19 @@ export type KeptMessage = { text: string; files: FileUIPart[]; n: number };
 /** Said once, when a refused message lands back in a composer that is now read-only. */
 export const KEPT_NOTICE = 'Your message was kept. It will be sendable when this tab drives again.';
 
+/**
+ * Said when a send failed — no answer, a 5xx, a stream that dropped — and its
+ * message came back. It went out under an `Idempotency-Key`, and sending it again
+ * unchanged reuses that key, so the harness answers from the first attempt
+ * rather than taking the message twice.
+ */
+export const RESEND_NOTICE =
+  'Your message is back in the composer. Send it again to retry; it will not be sent twice.';
+
+/** Said when the harness refused a resend's key (`422 idempotency_key_reused`). */
+export const REKEYED_NOTICE =
+  'Your message is back in the composer. Sending it again sends it as a new message.';
+
 /** Queued and kept messages carry data URLs; the composer takes `File`s. */
 async function filesFromParts(parts: FileUIPart[]): Promise<File[]> {
   return Promise.all(
