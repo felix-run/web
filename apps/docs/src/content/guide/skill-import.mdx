@@ -304,11 +304,6 @@ when `FELIX_REDIS_URL` is set. When Redis is unreachable each replica falls back
 buckets, so both budgets multiply by the number of API replicas until it recovers — size `_TOTAL`
 for that, or keep Redis up.
 
-{/* Update checks: harness PR "Check imported skills against their origin" (branch
-feat/skill-import-updates), not merged when this was written. This section, the matching rows in
-management-api.mdx, deploy.mdx, internals/architecture.mdx, internals/persistence.mdx and
-internals/observability.mdx, and nothing else, land in one commit: revert it to hold them back. */}
-
 ## Update checks
 
 An imported skill keeps its origin — source, ref, commit and kept-file digest — on its newest
@@ -421,7 +416,138 @@ listing's `refresh=false` stays current.
   process has no allowlist (checks re-resolve any stored origin) or no token (anonymous, 60 calls an
   hour for the whole server, private origins not found). Doctor can only see the process it runs
   in, so run it on both.
-- Nothing notifies anyone of an update the sweep finds: it shows on the listing and the detail.
+- An update the sweep finds shows on the listing and the detail, and is announced to the tenant's
+  webhook only when `FELIX_SKILL_UPDATE_WEBHOOKS` binds one: see
+  [Update notifications](#update-notifications).
+
+### Update notifications
+
+`FELIX_SKILL_UPDATE_WEBHOOKS` announces an imported skill's new upstream content to an endpoint the
+operator registered in `FELIX_WEBHOOK_ENDPOINTS` — the
+[completion-webhook](/guide/deploy/#completion-webhooks) registry — as one signed
+`skill.update_available` event per new digest. It is off by default, and a tenant it does not name
+gets nothing.
+
+```bash
+FELIX_SKILL_UPDATE_WEBHOOKS=acme=ops,acme=ci,beta=beta-hook
+```
+
+The value is comma-separated `tenant=endpoint_id`, a tenant named once per endpoint. Each id must be
+a `FELIX_WEBHOOK_ENDPOINTS` endpoint whose `tenants` include that tenant (a list naming it, or
+`"*"`). There is no wildcard on either side, so one tenant's skill names and sources never reach an
+endpoint bound only to another. The process refuses to boot on:
+
+| Value | Boot error |
+|---|---|
+| An entry without `=`, or with either side empty | `FELIX_SKILL_UPDATE_WEBHOOKS: entry '<entry>' must be tenant=endpoint_id` |
+| `*` as the tenant, or in the endpoint id | `FELIX_SKILL_UPDATE_WEBHOOKS: entry '<entry>': there is no wildcard; bind each tenant to its endpoint` |
+| An id `FELIX_WEBHOOK_ENDPOINTS` does not hold, or whose `tenants` leave this tenant out | `FELIX_SKILL_UPDATE_WEBHOOKS: <tenant>=<id>: no FELIX_WEBHOOK_ENDPOINTS endpoint '<id>' registered for '<tenant>'` |
+| A tenant that is not a usable tenant id | `FELIX_SKILL_UPDATE_WEBHOOKS (<tenant>) is not a usable tenant id: …` |
+
+Checks run on the API (a check of one skill, the listing) and on the worker (the periodic sweep),
+and only the worker delivers, so give both the same `FELIX_SKILL_UPDATE_WEBHOOKS` and
+`FELIX_WEBHOOK_ENDPOINTS`. Both are read again at send time: an endpoint unbound from the tenant,
+removed from the registry, or no longer open to the tenant goes `dead` for that event without a
+request.
+
+**When an event is queued.** Only a **recorded** check queues one: the periodic sweep, a check of
+the stored ref (`GET /skill-library/{name}/-/upstream` without `ref`), and the listing with
+`refresh=true`. It queues when the kept-file digest it finds is not the skill's newest version's
+and not the digest already queued for that skill — once per digest — and a check older than the one
+that queued what is there replaces nothing.
+
+- A `?ref=` check is a what-if: it is never recorded, so it never notifies.
+- An import or update records the digest it imported and never queues, since that digest is the
+  newest version's own. It can only supersede an event queued before it.
+- Queuing is all a check does. The worker's `skill_update_notifications` task sends the event, so
+  no check, listing or import waits on a receiver or fails because of one.
+- An event changes nothing on its own: it does not import, publish, or start a cooldown the check
+  had not already started.
+
+Each queued event is audited as `skill_update_notification_queued`.
+
+**Superseded.** An event that is no longer news is marked `superseded` and never sent:
+
+- a newer digest is found before it was delivered, and replaces it; a delivery of the older one
+  that finishes after that cannot overwrite the newer one;
+- the origin has moved on from its digest, or the skill's newest version already holds it (someone
+  imported it). This is checked before every delivery, and by every recorded check that finds the
+  newest version current.
+
+A superseded digest that the origin returns to is queued again as a new event: A, then B, then A is
+three events.
+
+**The payload** is metadata only — never a file, a diff or a description, because upstream text is
+untrusted and the body leaves the deployment:
+
+```json
+{
+  "type": "skill.update_available",
+  "tenant_id": "acme",
+  "skill": "pdf-tools",
+  "source": "github:acme/skills/pdf-tools",
+  "ref": "main",
+  "current": {"version": "1.2.0", "commit": "9f2c…", "tree_hash": "4b1e…"},
+  "upstream": {
+    "commit": "c07a…",
+    "tree_hash": "e81d…",
+    "committed_at": 1790000000000,
+    "first_seen_at": 1790000500000
+  },
+  "eligible_at": 1790605300000,
+  "checked_at": 1790000500000,
+  "changed_files": 2
+}
+```
+
+| Field | |
+|---|---|
+| `type` | Always `skill.update_available` |
+| `tenant_id`, `skill` | Whose skill, by library name |
+| `source`, `ref` | The stored origin's canonical source and ref |
+| `current` | The skill's newest non-rejected version and the origin commit and digest it holds |
+| `upstream.commit`, `upstream.tree_hash` | What the ref names now |
+| `upstream.committed_at` | The commit date GitHub reports, epoch ms; `null` unless a check of one skill read it. Provenance only — the pusher sets it |
+| `upstream.first_seen_at` | When this tenant first saw these files, epoch ms: the [cooldown](#the-cooldown)'s clock |
+| `eligible_at` | When the cooldown lets an import take them, epoch ms; equal to `first_seen_at` with no cooldown |
+| `checked_at` | When the check that queued it ran, epoch ms |
+| `changed_files` | Present only when a check of one skill diffed the upstream files against the newest version: how many files differ |
+
+The body is compact, key-sorted JSON, built once when the event is queued, so every retry sends the
+same bytes.
+
+**Signing and dedupe.** Delivery is the completion webhooks' own: the same
+[Standard Webhooks](/guide/rest-api/#completion-webhooks) headers and signature, egress guard,
+`user-agent: Felix-Webhooks/1`, and secret. `webhook-id` is `skill_update_` plus 32 hex characters
+of a SHA-256 over the tenant, skill name, digest and the row's queue generation. It is the same on
+every retry of one event and on every endpoint it goes to, and new each time the skill queues one —
+so **dedupe on `webhook-id`**, not on the skill and digest, or the A, B, A case above loses its
+third event. `webhook-timestamp` is the time of each attempt, so the signature differs between
+retries of the same body.
+
+**Shared receivers.** Run and skill events can arrive at one endpoint under one secret, so a
+receiver **dispatches on `type`** (`run.*` or `skill.update_available`), never on the body's shape.
+An endpoint bound to several tenants (`acme=ops,beta=ops`) receives all of their events, told apart
+only by `tenant_id`.
+
+**Retries and dead letters.** A non-2xx answer, a redirect, a transport error or no answer within
+`FELIX_WEBHOOK_TIMEOUT_SECONDS` is a failed attempt, retried after 1m, 2m, 4m … up to 1h, and that
+endpoint goes `dead` after `FELIX_WEBHOOK_MAX_ATTEMPTS` (8). The event is `delivered` when every
+endpoint took it, `dead` when none is left pending and any did not. The state lives on the skill's
+`skill_upstream` row, which no route returns: watch
+`felix_webhook_delivery{kind="skill_update", outcome="dead"}`.
+
+**Fairness.** The `skill_update_notifications` task runs every minute, one sweep at a time across
+workers (its own `skill_job_lease` row). Each tick claims at most 50 due events, earliest due first,
+and **at most 10 of one tenant's**, so one tenant's backlog or slow receiver cannot hold every other
+tenant's events behind it. Each claim lasts 120 seconds, so a sweep that dies mid-batch leaves its
+events to the next; no endpoint is tried after the first 60 seconds of a tick, and what is left
+stays pending for the next. It needs `felix-scheduler`.
+
+| Metric | |
+|---|---|
+| `felix_skill_update_notification{outcome}` | `enqueued` when a check queues an event; `superseded` when one is never sent |
+| `felix_webhook_delivery{kind="skill_update", endpoint, outcome}` | Each attempt: `delivered`, `retry` or `dead` |
 
 ### Update CLI
 
