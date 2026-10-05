@@ -119,6 +119,7 @@ the following ever fires:
 | `skill_jobs` | `* * * * *` | Run accepted skill improvements (each into a draft) and queued skill evaluations, at most five of each per sweep |
 | `continuous_eval` | `*/10 * * * *` | Continuous eval tick |
 | `skill_upstream_checks` | `*/10 * * * *` | Check up to 50 imported skills due under `FELIX_SKILL_IMPORT_CHECK_HOURS` against their origins; off at `0` |
+| `skill_update_notifications` | `* * * * *` | Send queued `skill.update_available` events to the endpoints `FELIX_SKILL_UPDATE_WEBHOOKS` binds to each tenant: up to 50 a tick, at most 10 of one tenant's, one sweep at a time on its own `skill_job_lease` row |
 | `consolidate_memory` | `*/15 * * * *` | Memory consolidation |
 | `anomaly_scan` | `*/30 * * * *` | Error-rate scan and canary auto-rollback |
 | `retention_sweep` | `0 3 * * *` | Prune expired rows and objects |

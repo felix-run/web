@@ -68,6 +68,8 @@ out of a non-empty allowlist is never registered at all.
 | `felix_untrusted_tools_unscreened` | `manifest_id` | Untrusted tool output reached the model without content screening |
 | `felix_imported_skills_unscreened` | `manifest_id` | A compile offered an imported skill with content screening off, so only the injection markers screen it |
 | `felix_worker_task` | `task`, `status` | Once per periodic worker sweep |
+| `felix_webhook_delivery` | `kind` (`run` / `skill_update`), `endpoint`, `outcome` (`delivered` / `retry` / `dead`) | One signed webhook attempt: a finished durable run's completion webhook, or a queued `skill.update_available`. `dead` is out of tries, or an endpoint no longer registered for — or, for `skill_update`, no longer bound to — the tenant. `kind` arrived with skill update notifications: a query that ignores it counts both, `{kind="run"}` counts runs alone. **Watch `dead`**: nobody waiting on that webhook heard about it |
+| `felix_skill_update_notification` | `outcome` (`enqueued` / `superseded`) | A `skill.update_available` event before it is sent: `enqueued` when a check queues one, `superseded` when one never will be — a newer digest replaced it, the origin moved on, or the skill's newest version already holds it |
 | `felix_buffer_dropped` | `buffer` | Audit or usage rows dropped because a buffer hit its cap |
 
 ### Histograms
@@ -212,6 +214,7 @@ operator's save — and their payloads name `skill`, `version`, `source`, `autho
 | `skill_feedback_applied` / `skill_feedback_failed` | The worker's improvement | `ok` | `result_version`, `model`, `error` |
 | `skill_eval_queued` / `skill_eval_finished` | An evaluation queued / run | `ok`, `failed` | `skill`, `version`, `eval_id`, `eval_status`, `scenario_source`, `baseline_score`, `with_skill_score`, `uplift`, `error` |
 | `skill_policy_updated` / `skill_policy_deleted` | `PATCH` / `DELETE /skill-library/-/policy` | `ok` | `before`, `after` (each with `source`), `tenant` |
+| `skill_update_notification_queued` | A recorded check queued a `skill.update_available` (principal `skill-upstream`) | `ok` | `skill`, `source`, `version`, `upstream_commit`, `upstream_tree_hash`, `endpoints`, `superseded` (it replaced an undelivered one) |
 
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
 truncation marker) so a runaway loop cannot flood storage.

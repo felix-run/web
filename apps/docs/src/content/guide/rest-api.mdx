@@ -330,11 +330,15 @@ def verify(secret: str, headers: dict[str, str], body: bytes) -> bool:
 - **Dedupe on `webhook-id`.** It is stable across retries, and a receiver may see one delivery
   twice.
 - **Reject stale timestamps**, a few minutes either way, so a captured delivery cannot be replayed.
-- **Answer 2xx.** Anything else, a redirect, or no answer within `FELIX_WEBHOOK_TIMEOUT_SECONDS` is
-  a failed attempt: it is retried after 1m, 2m, 4m … up to 1h, and marked `dead` after
+- **Answer 2xx.** Anything else, a redirect, or no answer within `FELIX_WEBHOOK_TIMEOUT_SECONDS`
+  (10 s by default, at most 60) is a failed attempt: it is retried after 1m, 2m, 4m … up to 1h, and marked `dead` after
   `FELIX_WEBHOOK_MAX_ATTEMPTS` (8). The response body is ignored.
 - **Check `tenant_id`** on an endpoint registered for `"*"`: any tenant can produce a run signed
   with its secret.
+- **Dispatch on `type`.** An endpoint can also receive `skill.update_available` events, under the
+  same secret, when `FELIX_SKILL_UPDATE_WEBHOOKS` binds it to a tenant — see
+  [Skill import → Update notifications](/guide/skill-import/#update-notifications). Those carry a
+  `webhook-id` of `skill_update_<hex>` and no `run`.
 
 ## `POST /chat/stream`
 
