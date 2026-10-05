@@ -304,11 +304,6 @@ when `FELIX_REDIS_URL` is set. When Redis is unreachable each replica falls back
 buckets, so both budgets multiply by the number of API replicas until it recovers — size `_TOTAL`
 for that, or keep Redis up.
 
-{/* Update checks: harness PR "Check imported skills against their origin" (branch
-feat/skill-import-updates), not merged when this was written. This section, the matching rows in
-management-api.mdx, deploy.mdx, internals/architecture.mdx, internals/persistence.mdx and
-internals/observability.mdx, and nothing else, land in one commit: revert it to hold them back. */}
-
 ## Update checks
 
 An imported skill keeps its origin — source, ref, commit and kept-file digest — on its newest
@@ -424,11 +419,6 @@ listing's `refresh=false` stays current.
 - An update the sweep finds shows on the listing and the detail, and is announced to the tenant's
   webhook only when `FELIX_SKILL_UPDATE_WEBHOOKS` binds one: see
   [Update notifications](#update-notifications).
-
-{/* Update notifications: harness PR #486 (branch feat/skill-update-webhooks), not merged when this
-was written. This section, the matching rows in deploy.mdx, rest-api.mdx,
-internals/architecture.mdx, internals/persistence.mdx and internals/observability.mdx, and nothing
-else, land in one commit: revert it to hold them back. */}
 
 ### Update notifications
 
