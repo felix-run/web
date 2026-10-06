@@ -1,4 +1,4 @@
-import { REQUEST_BODY_LIMIT_BYTES, type SkillBump } from '@felix/client';
+import { SKILL_BUNDLE_BODY_LIMIT_BYTES, type SkillBump } from '@felix/client';
 import { bumpSemver } from '@felix/skill-format';
 import { Button } from '@felix/ui/button';
 import {
@@ -56,8 +56,8 @@ export function SaveDialog({
   const [publish, setPublish] = useState(false);
   const reasonId = useId();
   const publishId = useId();
-  const over = bodyBytes > REQUEST_BODY_LIMIT_BYTES;
-  const near = bodyBytes > REQUEST_BODY_LIMIT_BYTES * 0.8;
+  const over = bodyBytes > SKILL_BUNDLE_BODY_LIMIT_BYTES;
+  const near = bodyBytes > SKILL_BUNDLE_BODY_LIMIT_BYTES * 0.8;
   const next = parent ? bumpSemver(parent, bump) : '0.1.0';
 
   return (
@@ -151,7 +151,7 @@ export function SaveDialog({
               role={over ? 'alert' : undefined}
             >
               This save is {formatBytes(bodyBytes)} as sent; the harness refuses requests over{' '}
-              {formatBytes(REQUEST_BODY_LIMIT_BYTES)}.
+              {formatBytes(SKILL_BUNDLE_BODY_LIMIT_BYTES)}.
               {over && ' Remove or shrink a large file to save.'}
             </p>
           )}

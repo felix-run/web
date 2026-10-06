@@ -99,6 +99,7 @@ export {
   requestBodyBytes,
   type SecuritySeverity,
   type SecurityStatus,
+  SKILL_BUNDLE_BODY_LIMIT_BYTES,
   type SkillArchived,
   type SkillBump,
   type SkillBundleWrite,
