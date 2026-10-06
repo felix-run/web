@@ -3,6 +3,7 @@ import { describeError } from '../src/errors';
 import {
   isStaleWrite,
   REQUEST_BODY_LIMIT_BYTES,
+  SKILL_BUNDLE_BODY_LIMIT_BYTES,
   SkillLibraryError,
 } from '../src/management/skills';
 import { createFelixClient } from '../src/transport';
@@ -165,14 +166,24 @@ describe('skill library writes', () => {
 
   it('refuses an oversized save before sending it, and says by how much', async () => {
     const { calls, client } = stub(() => ({ body: {} }));
-    const big = 'x'.repeat(REQUEST_BODY_LIMIT_BYTES);
+    const big = 'x'.repeat(SKILL_BUNDLE_BODY_LIMIT_BYTES);
     const err = await client
       .saveSkillVersion('s', { files: { 'SKILL.md': big }, parent_version: '0.1.0' })
       .catch((e: unknown) => e);
     expect(calls).toHaveLength(0);
     expect(err).toBeInstanceOf(SkillLibraryError);
     expect((err as SkillLibraryError).code).toBe('payload_too_large');
-    expect((err as SkillLibraryError).refusal?.message).toMatch(/1\.00 MiB/);
+    expect((err as SkillLibraryError).refusal?.message).toMatch(/12\.00 MiB/);
+  });
+
+  it('sends a save over the core cap but under the bundle cap', async () => {
+    // The harness gives the two bundle writes 12 MiB; a 2 MiB save must go out, not be
+    // refused against the 1 MiB core cap every other route keeps.
+    const { calls, client } = stub(() => ({ status: 201, body: {} }));
+    const files = { 'SKILL.md': 'x'.repeat(REQUEST_BODY_LIMIT_BYTES * 2) };
+    await client.saveSkillVersion('s', { files, parent_version: '0.1.0' }).catch(() => undefined);
+    await client.createLibrarySkill({ files }).catch(() => undefined);
+    expect(calls).toHaveLength(2);
   });
 
   it('names the harness 413 too, when a body slips past the client check', async () => {
@@ -181,7 +192,7 @@ describe('skill library writes', () => {
       .createLibrarySkill({ files: { 'SKILL.md': 'x' } })
       .catch((e: unknown) => e)) as SkillLibraryError;
     expect(err.status).toBe(413);
-    expect(err.refusal?.message).toContain('1 MiB');
+    expect(err.refusal?.message).toContain('too large');
   });
 });
 

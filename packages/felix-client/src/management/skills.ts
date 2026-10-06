@@ -34,6 +34,13 @@ import type { FelixHttp } from '../http';
 /** The harness's global request-body cap (`CORE_BODY_LIMIT_BYTES`), 1 MiB. */
 export const REQUEST_BODY_LIMIT_BYTES = 1024 * 1024;
 
+/**
+ * The larger cap the harness gives the two bundle writes — `POST /skill-library` and
+ * `PUT /skill-library/{name}/versions` (`SKILL_BUNDLE_BODY_LIMIT_BYTES`, 12 MiB): room for a
+ * full 8 MiB bundle with its assets base64-encoded. Every other route keeps the 1 MiB cap.
+ */
+export const SKILL_BUNDLE_BODY_LIMIT_BYTES = 12 * 1024 * 1024;
+
 export type SkillStatus = 'draft' | 'published' | 'archived';
 export type SkillSource = 'agent' | 'operator';
 export type SecurityStatus = 'pass' | 'advisory' | 'fail';
@@ -293,7 +300,7 @@ function tooLarge(route: string, bytes: number): SkillLibraryError {
     error: 'payload_too_large',
     message:
       `This save is ${mib(bytes)} as sent, and the harness refuses any request over ` +
-      `${mib(REQUEST_BODY_LIMIT_BYTES)}. Remove or shrink a large file (base64 assets ` +
+      `${mib(SKILL_BUNDLE_BODY_LIMIT_BYTES)} for a skill save. Remove or shrink a large file (base64 assets ` +
       'grow by a third on the wire) and save again.',
   });
 }
@@ -351,7 +358,7 @@ export async function refusalOf(route: string, res: Response): Promise<SkillLibr
           typeof parsed.message === 'string'
             ? parsed.message
             : parsed.error === 'payload_too_large'
-              ? `The harness refused a request over ${REQUEST_BODY_LIMIT_BYTES / (1024 * 1024)} MiB.`
+              ? 'The harness refused the request as too large.'
               : parsed.error,
         issues: parsed.issues ?? null,
         reasons: parsed.reasons ?? null,
@@ -479,7 +486,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
    */
   function sized(route: string, body: unknown): RequestInit {
     const bytes = requestBodyBytes(body);
-    if (bytes > REQUEST_BODY_LIMIT_BYTES) throw tooLarge(route, bytes);
+    if (bytes > SKILL_BUNDLE_BODY_LIMIT_BYTES) throw tooLarge(route, bytes);
     return { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
   }
 
