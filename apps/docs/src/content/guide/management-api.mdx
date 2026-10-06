@@ -30,7 +30,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `documents:read` / `documents:write` | search and list the corpus / ingest and delete |
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 | `files:read` / `files:write` | read an upload back / upload and delete |
-| `skills:read` / `skills:write` | `/skills/{manifest_name}` and every `/skill-library` read / save, publish, roll back, reject, archive, decide feedback, queue evaluations and set the publish policy |
+| `skills:read` / `skills:write` | `/skills/{manifest_name}` and every `/skill-library` read / save, publish, roll back, reject, archive, adopt an import, decide feedback, queue evaluations and set the publish policy |
 
 Three rules make this practical:
 
@@ -639,6 +639,7 @@ can publish a skill to every manifest in the tenant.
 | `POST` | `/skill-library/{name}/versions/{version}/publish` | `skills:write` | `200` |
 | `POST` | `/skill-library/{name}/versions/{version}/rollback` | `skills:write` | `200` |
 | `POST` | `/skill-library/{name}/versions/{version}/reject` | `skills:write` | `200` |
+| `POST` | `/skill-library/{name}/versions/{version}/adopt` | `skills:write` | `201` |
 | `DELETE` | `/skill-library/{name}` | `skills:write` | `200` |
 | `POST` | `/skill-library/{name}/versions/{version}/eval` | `skills:write` | `202` |
 | `POST` | `/skill-library/{name}/feedback` | `skills:write` | `201` |
@@ -677,11 +678,13 @@ security_status, created_at}`. A review-queue item is a version record plus the 
 is `{name, version, parent_version, status, source, author, origin_manifest_id, session_id, reason,
 description, quality_score, security_status, decided_by, decision_note, created_at, decided_at,
 published_at, origin_source, origin_ref, origin_commit, origin_tree_hash, origin_license,
-origin_committed_at, lineage_import}`. `status` is `draft`, `published` (the live one) or `archived`
+origin_committed_at, lineage_import, adopted_from}`. `status` is `draft`, `published` (the live one) or `archived`
 (superseded, rejected, or taken out by an archive); `source` is `agent`, `operator` or `import`. The
 `origin_*` fields name where an import came from and are `null` on every other version;
 `lineage_import` marks an import and every version built on one, which the gate judges as an import
-(see [Skill import](/guide/skill-import/#review-and-publish)). `GET /{name}/versions/{version}` adds
+(see [Skill import](/guide/skill-import/#review-and-publish)); `adopted_from` names the import-lineage
+version an operator adopted into this one, and is `null` on every other version. The review queue's
+items carry both. `GET /{name}/versions/{version}` adds
 `review_checks`, `security_issues`, `files` (`{path, sha256, size}`) and `shadows_operator_upload`.
 
 `shadows_operator_upload: true` means an operator upload exists under the same name at a key a
@@ -766,6 +769,16 @@ diff against the live version; `POST /{name}/-/update` re-imports it as a new dr
 `null` otherwise. A check or update of a skill whose newest version was not imported is
 `409 not_imported`. See [Skill import → Update checks](/guide/skill-import/#update-checks).
 
+`POST /{name}/versions/{version}/adopt` with `{reason}` (1–2000 characters, required) makes an
+import-lineage version the operator's own: its files saved byte for byte as a new operator draft
+with `parent_version` and `adopted_from` set to `version` and `lineage_import` false, answered `201`
+with the record a save returns. The versions before it keep their mark, and the adopt never publishes.
+It is refused for a version with no imported text (`409 not_imported`), an agent's draft no person
+has decided (`409 agent_draft`), a rejected draft (`409 parent_rejected`), anything but the skill's
+newest non-rejected version (`409 parent_changed`, naming who wrote the newer one), and a
+whitespace-only reason (`422 reason_required`). Audited as `skill_adopted`. See
+[Skill import → Adopting an import](/guide/skill-import/#adopting-an-import).
+
 ### Feedback
 
 `POST /{name}/feedback` takes `{body, suggested_patch, target_version}` — `body` 1–8000 characters,
@@ -844,12 +857,16 @@ Every refusal is `{error, message}`, with `issues` on `invalid_bundle` and `reas
 | `publish_blocked` | `422` | The publish gate refused the version |
 | `invalid_cursor` | `422` | `cursor` is not one this route issued |
 | `invalid_path` | `422` | A file path outside the bundle allowlist |
+| `reason_required` | `422` | An adopt whose `reason` is only whitespace |
 | `name_shadows_host_skill` | `409` | The name is a bundled or `FELIX_SKILLS_DIR` skill, or an operator upload at an unversioned key |
 | `skill_exists` | `409` | `POST /skill-library` for a name the library holds |
-| `parent_changed` | `409` | `parent_version` is not the newest version |
-| `parent_rejected` | `409` | An agent's edit named a rejected draft as its parent |
+| `parent_changed` | `409` | `parent_version` is not the newest version, or an adopt named anything but the newest non-rejected version |
+| `parent_rejected` | `409` | An agent's edit named a rejected draft as its parent, or an adopt named a rejected draft |
 | `version_conflict` | `409` | The version exists, is not newer than every existing one, or is in the wrong state |
 | `live_changed` | `409` | `expected_live_version` is not the live version |
+| `not_imported` | `409` | An upstream check or update of a skill whose newest version was not imported, or an adopt of a version with no imported text |
+| `agent_draft` | `409` | An adopt of an agent's draft no person has decided |
+| `adopt_mismatch` | `409` | A save carrying `adopted_from` whose parent or files are not that version's |
 | `version_cap_reached` | `409` | The skill already holds 200 versions |
 | `feedback_conflict` | `409` | The feedback was already decided |
 | `eval_in_progress` | `409` | The version already has an evaluation queued or running |
