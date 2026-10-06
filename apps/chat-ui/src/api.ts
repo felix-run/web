@@ -415,6 +415,36 @@ export async function getThreadRepo(threadSuffix: string): Promise<ThreadRepo | 
   return (await res.json()) as ThreadRepo;
 }
 
+/** One path in a thread's checkout, relative to its root. */
+export interface ThreadRepoFile {
+  path: string;
+  /** `missing` is a path git knows (a staged deletion) with nothing on disk. A symlink is never followed. */
+  kind: 'file' | 'symlink' | 'missing';
+  size: number | null;
+  status: 'clean' | 'modified' | 'added' | 'deleted' | 'untracked' | 'conflicted';
+}
+
+export interface ThreadRepoFiles {
+  state: 'ready' | 'failed' | 'expired';
+  files: ThreadRepoFile[];
+  /** More paths than the limit; the harness cut the list. */
+  truncated: boolean;
+}
+
+/**
+ * GET /chat/sessions/{t}/workspace/repo/files → the checkout's tracked and untracked (not
+ * ignored) files with their git status, or null when the thread has no checkout. A clone still
+ * running is a 409 `checkout_cloning`, thrown as a `RepoRouteError`.
+ */
+export async function listThreadRepoFiles(threadSuffix: string): Promise<ThreadRepoFiles | null> {
+  const res = await apiFetch(
+    `/api/chat/sessions/${encodeURIComponent(threadSuffix)}/workspace/repo/files`,
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw await problem(res, 'repository files');
+  return (await res.json()) as ThreadRepoFiles;
+}
+
 /** DELETE /chat/sessions/{t}/workspace/repo → remove the thread's checkout. */
 export async function removeThreadRepo(threadSuffix: string): Promise<void> {
   const res = await apiFetch(

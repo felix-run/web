@@ -233,6 +233,7 @@ minted from their stored connection; no route returns a GitHub token.
 | `GET` | `/github/repos?q=` | the repositories your App authorization reaches, the App's installations, and `install_url` |
 | `POST` | `/chat/sessions/{thread_id}/workspace/repo` | `{full_name, ref?}` → `202 {state: "cloning", …}` |
 | `GET` | `/chat/sessions/{thread_id}/workspace/repo` | `{state, repo, base, branch, ahead, dirty, error}` |
+| `GET` | `/chat/sessions/{thread_id}/workspace/repo/files?prefix=&limit=` | `{state, files: [{path, kind, size, status}], truncated}` |
 | `DELETE` | `/chat/sessions/{thread_id}/workspace/repo` | `204` |
 
 - **The intersection, and only that.** An App's user token sees repositories where the App is
@@ -247,8 +248,16 @@ minted from their stored connection; no route returns a GitHub token.
 - **Bounded.** A repository over `FELIX_REPO_CLONE_MAX_MB` (500) is refused before cloning; a
   checkout unused for `FELIX_REPO_CHECKOUT_TTL_DAYS` (14) is removed by the worker.
 
-In chat-ui, the workspace section's **Repository on the harness** opens one, and
-`/harness/github` shows your connection and what it reaches.
+- **The files are listed, not served.** The listing is git's: tracked files and untracked ones it
+  does not ignore, each with its `lstat` size and status (`clean`, `modified`, `added`, `deleted`,
+  `untracked`, `conflicted`). A symlink is listed as one and never followed. `prefix` names a
+  directory (a literal path, never a glob); `limit` defaults to 2,000 and caps at 10,000, with
+  `truncated` saying the list was cut. A clone still running is `409 checkout_cloning`.
+
+In chat-ui, the workspace section's **Repository on the harness** opens one and, once it is
+ready, draws its files as a tree opened onto what git reports changed, re-read when each run
+settles. Files there do not open: no route serves a checkout file's contents. `/harness/github`
+shows your connection and what it reaches.
 
 ## Manifest gates
 
