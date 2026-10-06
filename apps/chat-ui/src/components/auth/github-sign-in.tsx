@@ -177,7 +177,7 @@ export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: Rea
     );
   }
 
-  const { message, retry } = describeFailure(state.failure, state.status);
+  const { message, retry } = describeFailure(state.failure, state.status, state.login);
   return (
     <div className="space-y-4">
       <p role="alert" className="text-sm text-state-failed">
@@ -203,6 +203,7 @@ export function GitHubSignIn({
   error,
   redirect,
   tenants,
+  signup = 'off',
   alternative,
 }: {
   login: DeviceLogin;
@@ -211,6 +212,8 @@ export function GitHubSignIn({
   redirect?: (tenant?: string) => void;
   /** A redirect sign-in found several tenants: offer one button each. */
   tenants?: string[];
+  /** Whether an account in no admitted organization may sign in, by invitation. */
+  signup?: 'off' | 'invite';
   alternative?: ReactNode;
 }) {
   const starting = login.state.phase === 'starting';
@@ -221,7 +224,9 @@ export function GitHubSignIn({
           <span className="uppercase tracking-wider">Felix</span> chat
         </h1>
         <p className="text-sm text-muted-foreground">
-          Sign in with the GitHub account your organization uses.
+          {signup === 'invite'
+            ? 'Sign in with GitHub. Felix is invite-only for now.'
+            : 'Sign in with the GitHub account your organization uses.'}
         </p>
       </div>
 
@@ -269,9 +274,10 @@ export function GitHubSignIn({
               {starting ? 'Asking GitHub for a code…' : 'Continue with GitHub'}
             </Button>
             <p className="text-xs text-muted-foreground">
-              Felix checks which of your GitHub organizations it admits and signs you in to that
-              organization’s tenant. Anything it keeps from GitHub, you can revoke from the account
-              menu.
+              {signup === 'invite'
+                ? 'A member of an organization Felix admits signs in to that organization’s tenant; an invited account gets a tenant of its own.'
+                : 'Felix checks which of your GitHub organizations it admits and signs you in to that organization’s tenant.'}{' '}
+              Anything it keeps from GitHub, you can revoke from the account menu.
             </p>
           </div>
         }

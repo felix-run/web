@@ -39,8 +39,9 @@ or let people get their own with [GitHub login](#github-login).
 A person runs `felix login`, enters a code at github.com, and gets a short-lived Felix JWT for the
 tenant their GitHub org maps to. GitHub OAuth apps issue no OIDC ID token, so there is nothing for
 a verifier to point at. Felix runs the device flow on the caller's behalf instead, checks
-membership, and mints a self-issued token. The GitHub token is used for two reads and dropped. No
-user table: the org map is the whole user model.
+membership, and mints a self-issued token. The GitHub token is used for two reads and dropped.
+There is no user table: the org map says who gets in, and [signup](#signup), when it is on, adds
+the accounts the operator invited.
 
 ```bash
 FELIX_AUTH_MODE=jwt
@@ -92,6 +93,38 @@ request themselves, and keep the TTL short.
 only to the server that minted it. The file and its directory must be yours alone, or it is not
 used. `felix login` refuses plain `http://` except to localhost, since the token comes back over
 that connection; `--insecure` overrides that.
+
+### Signup
+
+An account in none of the mapped orgs is `not_a_member` — unless signup is on. With
+`FELIX_GITHUB_SIGNUP=invite`, the accounts the operator lists sign in to a **personal tenant** of
+their own, and anyone else outside the orgs is refused with `403 not_invited`.
+
+```bash
+FELIX_GITHUB_SIGNUP=invite                      # default off
+FELIX_GITHUB_SIGNUP_LOGINS=octocat:583231,hubot  # login, or login:<numeric id>
+FELIX_GITHUB_SIGNUP_SCOPES=memory:read,audit:read
+```
+
+- **The tenant is `gh-<numeric GitHub id>`**, never the login: a login can be renamed and then
+  registered by someone else, and a tenant must not follow it.
+- **Pin each invite as `login:<id>`** (`gh api users/octocat --jq .id`). A pinned invite matches on
+  the id alone, so a renamed account keeps it and a re-registered login does not inherit it. A bare
+  login matches case-insensitively, and each match logs the id to pin.
+- **Org membership wins.** An invited account that is also an active member of a mapped org signs
+  in to the org's tenant, as it did before.
+- **Only Felix's own sign-in can claim a personal tenant.** It is in no `FELIX_ALLOWED_TENANTS`, so
+  the verifier admits a `gh-<id>` claim only from a `self:felix-self` token with `idp: github` and
+  subject `github:<id>`. Any other issuer, or any other subject, is refused.
+- **Startup refuses** `invite` with an empty list, signup without scopes, `admin` or `*` among
+  them (they are what a stranger's token carries), and any configured tenant shaped like a
+  personal one.
+- **There is no `open` mode yet.** Every personal tenant spends the deployment's model credentials,
+  and nothing caps one tenant's total spend; admitting any GitHub account waits for that cap.
+
+Changing the list is a config edit and a restart. `GET /auth/methods` reports the mode as
+`github_signup`, and chat-ui's sign-in card says when a deployment is invite-only. The first
+`github_login` audited in a personal tenant carries `signup: true`.
 
 ### Signing in from a browser
 
