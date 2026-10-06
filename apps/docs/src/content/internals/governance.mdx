@@ -195,12 +195,35 @@ The scan, validation and quality floor still apply. A blocked publish is audited
 
 **Imported text is judged as an import.** A version fetched from GitHub (`source: import`), and every
 version built on one (`lineage_import`) — an agent's or operator's edit, an operator save naming no
-parent, an agent's save of a file byte-identical to an imported one — is gated as an import whoever
+parent, an agent's save carrying a copy of a file of imported text — is gated as an import whoever
 saved it: an `advisory` scan blocks it whatever `block_on_advisory` says, only the bundle's own
 `evals/` count toward an evaluation requirement, and an agent's edit of one always waits for a
-person. Nothing clears the mark. The skill tools mark what they relay of such a skill as untrusted,
-so content screening reads it as it reads an untrusted tool's output, and a manifest with screening
-off still gets the injection-marker floor over it. See [Skill import](/guide/skill-import/).
+person. The skill tools mark what they relay of such a skill as untrusted, so content screening
+reads it as it reads an untrusted tool's output, and a manifest with screening off still gets the
+injection-marker floor over it. The skill suggester's decision model sees such a skill only by its
+listed description, fenced as third-party text, never by its body. See
+[Skill import](/guide/skill-import/).
+
+**The copy rule** (`skills/copy_rule.py`) decides what counts as a copy in an agent's save. A file
+matches a file of imported text by its bytes (every non-empty binary asset, every text file that is
+not empty or whitespace-only), or by a digest of its normalized text: NFKC, format characters
+(`Cf`) removed, casefolded, whitespace runs collapsed, stripped, over a `SKILL.md`'s body alone, and
+only from 32 normalized characters. A file kept byte for byte from a parent that carries no
+imported text is not a copy. A paraphrase, a partial copy and any change of a non-whitespace
+character (a look-alike letter included) pass. Both digests are a stored format on `skill_file`:
+changing how either is computed needs a migration that re-hashes the rows. Versions saved before
+migration `0032` match by bytes only.
+
+**Adopting clears the mark going forward.** `POST /skill-library/{name}/versions/{version}/adopt`
+(`skills:write`, a required reason, audited `skill_adopted`) saves the version's files unchanged as
+an operator draft with `adopted_from` set and `lineage_import` false. From there the gate judges it
+by the tenant's own policy, the skill tools stop marking it untrusted, so content screening and the
+marker floor no longer apply to it, and the suggester describes it like any operator skill. Edits
+built on it stay clean. The adopted version and everything before it keep the mark; an adopted
+version's files still count as imported text to the copy rule, so an agent copying them into
+another skill is still caught. `save_draft` holds any save carrying `adopted_from` to the version it
+names (its parent, an adoptable version, exactly its files) whoever calls it, and no agent tool
+reaches the adopt.
 
 ### Redaction on management reads
 

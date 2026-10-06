@@ -267,7 +267,7 @@ An operator can import a skill published on GitHub into the library (`felix skil
 github:owner/repo/path`). The import is a draft pinned to one commit of the repository's own
 history, and it is published like any other, after review. Nothing resolves a GitHub ref when a
 manifest compiles. Imported text is a third party's, so it stays marked as such: the version and
-everything built on it carry `lineage_import`, the publish gate blocks it on an `advisory` scan
+everything built on it carry `lineage_import` until an operator adopts a version, the publish gate blocks it on an `advisory` scan
 whatever the policy says, the catalog and `list_skills` mark it `untrusted`, and what the skill tools
 relay of it is content-screened — at least by the injection markers even where the manifest turns
 screening off. A deployment allowlists the repositories each tenant may name, and can hold back

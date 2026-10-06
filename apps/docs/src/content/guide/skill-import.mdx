@@ -16,10 +16,12 @@ on GitHub being up.
 |---|---|---|---|---|
 | `GET` | `/skill-library/-/browse?source=&ref=` | `skills:read` | `200` | `felix skills browse` |
 | `POST` | `/skill-library/-/import` | `skills:write` | `201`, or `200` unchanged | `felix skills add` |
+| `POST` | `/skill-library/{name}/versions/{version}/adopt` | `skills:write` | `201` | `felix skills adopt` |
 
 Publishing is the library's ordinary
 `POST /skill-library/{name}/versions/{version}/publish`, after review. Checking an imported skill against its origin,
-diffing it and re-importing it are in [Update checks](#update-checks).
+diffing it and re-importing it are in [Update checks](#update-checks); making an import the
+operator's own is [Adopting an import](#adopting-an-import).
 
 <Aside type="caution">
 With `FELIX_AUTH_MODE=none` the scope checks are skipped entirely, so anyone who can reach the API
@@ -202,9 +204,78 @@ judged as an import whoever saved it:
 
 **Lineage taint.** `lineage_import: true` on a version record marks an import and everything built on
 it: an agent's or operator's edit, an edit of that edit, an operator save naming no parent on a
-skill whose newest version is tainted, and an agent's save of any file byte-identical to a file of
-an import-lineage version anywhere in the tenant (an agent copying imported text under another
-name). Nothing clears the mark.
+skill whose newest version is tainted, and an agent's save carrying a copy of a file of imported
+text anywhere in the tenant (an agent copying imported text under another name; see
+[the copy rule](#the-copy-rule)). Only an [adopt](#adopting-an-import) clears the mark, and only
+going forward.
+
+### The copy rule
+
+An agent's save is checked file by file against every file of imported text in the tenant: every
+import-lineage version's, and every adopted version's. An operator's save is not checked. Two
+digests are compared, each against its own kind:
+
+| Digest | Covers | Matches |
+|---|---|---|
+| Bytes (`skill_file.sha256`) | Every text file that is not empty or whitespace-only, and every non-empty binary asset | An exact copy, however short: a one-line installer is caught. A tiny file many skills share (`[]`, a license id) matches too, and taints the save that copies it |
+| Normalized text (`skill_file.normalized_sha256`) | Text files only, when the normalized text is 32 characters or more | A copy that only re-spaces, re-cases, swaps Unicode compatibility forms (full-width letters, ligatures, non-breaking spaces) or inserts invisible format characters |
+
+Normalized text is the file after Unicode NFKC, with every format character (category `Cf`:
+zero-width spaces and joiners, the soft hyphen, the BOM, bidi controls) removed, casefolded, every
+run of whitespace collapsed to one space, and stripped. For a `SKILL.md` it covers the body alone,
+without the frontmatter, so a SKILL.md copied under another `name` still matches.
+
+A file the save keeps byte for byte from the version it edits is not a copy, when that version
+carries no imported text: it was vouched for there. So the agent tools and the feedback improver,
+which carry every other file of the parent along, do not re-mark an adopted skill.
+
+**Not caught:**
+
+- a paraphrase — the rule compares text, not meaning, so an agent rewording imported text launders it;
+- a partial copy;
+- any change to a non-whitespace character, a look-alike letter from another script included;
+- for versions saved before migration `0032`, imports included, anything but an exact byte copy.
+  Their files have no normalized digest and never gain one (a version's rows are immutable, and the
+  migration does not backfill).
+
+### Adopting an import
+
+`POST /skill-library/{name}/versions/{version}/adopt` with `{reason}` (`skills:write`; `felix skills
+adopt <name> <version> --reason ...`; `FelixClient.adopt_skill_version(name, version, reason=)`) is
+an operator vouching for an import-lineage version. It saves a new draft whose files are
+byte-identical to that version's, as an operator's: `source: operator`, `parent_version` and
+`adopted_from` the adopted version, `author` the adopter, `reason` theirs, `lineage_import` false,
+and no `origin_*` fields. It answers `201` with the new version's record.
+
+- **Never published.** The draft goes live through the ordinary `…/publish`, and the gate now judges
+  it by the tenant's own policy. Once live, the catalog, `list_skills`, `activate_skill` and
+  `read_skill_file` no longer mark it untrusted, and the suggester describes it like any operator
+  skill.
+- **Forward only.** Versions are immutable: the adopted version and every version before it keep
+  `lineage_import`, so a rollback to one is still judged as an import.
+- **Edits stay clean.** An operator's edit, an agent tool's edit and the feedback improver's do not
+  inherit the mark. An agent's save copying an adopted file into another skill is still caught.
+- **It leaves its origin.** The adopted skill's newest version is no longer an import, so an update
+  check or update is `409 not_imported` and a re-import is `409 origin_mismatch`.
+- **Audited** as `skill_adopted` (principal, the redacted reason, the version adopted and the one
+  saved), beside the save's own `skill_draft_saved`. Under `FELIX_AUTH_MODE=none` the recorded
+  principal is whatever the request claimed.
+- **No agent tool reaches it.**
+
+`reason` is 1–2000 characters; one of only whitespace is `422 reason_required`. Refusals:
+
+| `error` | Status | When |
+|---|---|---|
+| `not_imported` | `409` | The version carries no imported text: nothing to adopt |
+| `agent_draft` | `409` | An agent's draft no person has decided; reject or publish it first |
+| `parent_rejected` | `409` | The version was rejected |
+| `parent_changed` | `409` | The version is not the skill's newest non-rejected one. The message names who wrote the newer version, so read that one before adopting anything |
+| `adopt_mismatch` | `409` | Any save carrying `adopted_from` whose parent is not that version or whose files are not exactly its files |
+| `reason_required` | `422` | A whitespace-only reason |
+| `not_found` | `404` | No such skill or version |
+
+An operator saving the same bytes through the ordinary save still inherits the mark: the exemption
+belongs to the adopt alone. Adopt shares `skills:write` with every library write.
 
 ## Imported text in front of the model
 
@@ -222,9 +293,15 @@ what those three tools relay of an imported skill, and a match is quarantined. T
 warning and increments `felix_imported_skills_unscreened{manifest_id}`, because markers alone miss a
 paraphrase: turn content screening on for agents that use imported skills.
 
-The skill suggester (`spec.skill_suggestion`) gives its decision model each skill's description and
-the start of its body to rank on, so imported text can steer which skill is hinted. The hint carries
-only the name, and the agent still activates the skill through the screening above.
+The skill suggester (`spec.skill_suggestion`) gives its decision model each skill's description to
+rank on, and in its rerank the start of the skill's body. An imported skill reaches it the way it
+reaches the catalog, in both rounds: by its listed description only — withheld when it carries the
+injection markers — quoted, fenced as third-party text, and never by its body. Operator, agent and
+bundled skills are described as before. The decision model returns probabilities and runs no tool,
+so imported text there can bias which skill is hinted, not execute anything; a paraphrased injection
+in a description can still tilt the ranking. The skill's name — a validated slug, but one the third
+party chose — still reaches the model. The hint carries only the name, and the agent still activates
+the skill through the screening above.
 
 ## The cooldown
 
@@ -578,10 +655,11 @@ characters, bidi overrides and invisible characters before it reaches the termin
 |---|---|---|
 | `felix skills browse <source> [--ref]` | `GET /-/browse` | One line per skill: source, name, description, and `(too recent to import until <date>)` inside the cooldown |
 | `felix skills add <source> [--ref]` | `POST /-/import` | Saves a draft and prints the dropped files and the routes to preview and publish it; says so when nothing changed |
+| `felix skills adopt <name> <version> --reason TEXT` | `POST /{name}/versions/{version}/adopt` | Saves the operator draft, prints `<name>@<version> saved as an operator draft adopted from <version>.`, then the routes to preview and publish it. `--reason` is required |
 
 Every command takes `--url` and `--api-key`. A refusal prints `<error>: <message>` on stderr and
-exits `1`. The Python client has the same calls: `FelixClient.browse_skills(source, ref=)` and
-`import_skill(source, ref=)`.
+exits `1`. The Python client has the same calls: `FelixClient.browse_skills(source, ref=)`,
+`import_skill(source, ref=)` and `adopt_skill_version(name, version, reason=)`.
 
 ## Errors
 
