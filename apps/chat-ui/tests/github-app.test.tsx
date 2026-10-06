@@ -228,6 +228,76 @@ describe("the thread's repository on the harness", () => {
     expect(screen.queryByText('Cloning on the harness…')).toBeNull();
   });
 
+  it("draws the checkout's files, opened onto what git reports changed", async () => {
+    signedInAsOcto();
+    routes['/api/chat/sessions/t1/workspace/repo'] = () =>
+      json({
+        repo: 'acme/widgets',
+        base: 'main',
+        private: false,
+        opened_by: 'github:42',
+        created_at: 1,
+        error: null,
+        state: 'ready',
+        branch: 'main',
+        ahead: 0,
+        dirty: true,
+      });
+    routes['/api/chat/sessions/t1/workspace/repo/files'] = () =>
+      json({
+        state: 'ready',
+        truncated: true,
+        files: [
+          { path: 'README.md', kind: 'missing', size: null, status: 'deleted' },
+          { path: 'docs/guide.md', kind: 'file', size: 10, status: 'clean' },
+          { path: 'link', kind: 'symlink', size: 11, status: 'clean' },
+          { path: 'src/app.py', kind: 'file', size: 9, status: 'modified' },
+          { path: 'src/new.py', kind: 'file', size: 6, status: 'untracked' },
+        ],
+      });
+    render(<ThreadRepoSection threadId="t1" />);
+    const tree = await screen.findByRole('tree', { name: 'Repository files' });
+    // The folder holding a change opens; the one without stays folded.
+    expect(tree.textContent).toContain('app.py, modified');
+    expect(tree.textContent).toContain('new.py, untracked');
+    expect(tree.textContent).toContain('README.md, deleted');
+    expect(tree.textContent).not.toContain('guide.md');
+    expect(tree.textContent).toContain('link, symbolic link');
+    // Nothing opens a checkout file, so no file is a Tab stop.
+    for (const item of tree.querySelectorAll('[role="treeitem"]')) {
+      if (!item.querySelector('button')) expect(item.getAttribute('tabindex')).toBe('-1');
+    }
+    expect(screen.getByText(/Showing the first 5 files; the repository has more/)).toBeTruthy();
+  });
+
+  it('re-reads the checkout when a run settles', async () => {
+    signedInAsOcto();
+    let listed = 0;
+    routes['/api/chat/sessions/t1/workspace/repo'] = () =>
+      json({
+        repo: 'acme/widgets',
+        base: 'main',
+        private: false,
+        opened_by: 'github:42',
+        created_at: 1,
+        error: null,
+        state: 'ready',
+        branch: 'main',
+        ahead: 0,
+        dirty: false,
+      });
+    routes['/api/chat/sessions/t1/workspace/repo/files'] = () => {
+      listed++;
+      return json({ state: 'ready', truncated: false, files: [] });
+    };
+    const { rerender } = render(<ThreadRepoSection threadId="t1" streaming={false} />);
+    await screen.findByText('The repository has no files.');
+    expect(listed).toBe(1);
+    rerender(<ThreadRepoSection threadId="t1" streaming />);
+    rerender(<ThreadRepoSection threadId="t1" streaming={false} />);
+    await vi.waitFor(() => expect(listed).toBe(2));
+  });
+
   it('turns a refusal into what to do about it', async () => {
     signedInAsOcto();
     routes['/api/chat/sessions/t1/workspace/repo'] = () =>

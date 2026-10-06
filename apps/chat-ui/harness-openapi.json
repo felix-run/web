@@ -315,6 +315,9 @@
     "/skill-library/{name}/versions/{version}/reject": {
       "post": {}
     },
+    "/skill-library/{name}/versions/{version}/adopt": {
+      "post": {}
+    },
     "/skill-library/-/feedback": {
       "get": {}
     },
@@ -395,6 +398,9 @@
       "post": {},
       "get": {},
       "delete": {}
+    },
+    "/chat/sessions/{thread_id}/workspace/repo/files": {
+      "get": {}
     }
   }
 }

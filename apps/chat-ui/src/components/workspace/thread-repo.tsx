@@ -22,12 +22,15 @@ import {
   type GitHubRepos,
   getThreadRepo,
   listMyRepos,
+  listThreadRepoFiles,
   openThreadRepo,
   RepoRouteError,
   removeThreadRepo,
   type ThreadRepo,
+  type ThreadRepoFiles,
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
+import { RepoFileTree } from '@/components/workspace/repo-files';
 import { getSession, subscribeCredentials } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
@@ -49,14 +52,25 @@ function refusalText(err: unknown): string {
   return 'Could not reach the server.';
 }
 
-export function ThreadRepoSection({ threadId }: { threadId: string }) {
+export function ThreadRepoSection({
+  threadId,
+  streaming = false,
+}: {
+  threadId: string;
+  /** Whether a run is going; its end re-reads the checkout. */
+  streaming?: boolean;
+}) {
   const session = useSyncExternalStore(subscribeCredentials, getSession);
   const [repo, setRepo] = useState<ThreadRepo | null | undefined>(undefined);
+  const [files, setFiles] = useState<ThreadRepoFiles | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      setRepo(await getThreadRepo(threadId));
+      const next = await getThreadRepo(threadId);
+      setRepo(next);
+      // The files only once the clone is done: while cloning the route answers 409.
+      setFiles(next?.state === 'ready' ? await listThreadRepoFiles(threadId) : null);
       setError(null);
     } catch (err) {
       setError(refusalText(err));
@@ -67,10 +81,18 @@ export function ThreadRepoSection({ threadId }: { threadId: string }) {
 
   // Only for a GitHub sign-in: under the shared key nothing here can act, and a page load must not
   // ask the harness about a thread before a message has made it one (`tests/session-lease`).
+  // Re-read when a run settles, too: the agent's tools and shell change the checkout, and the
+  // branch, commits ahead and the files' status are the harness's to report.
   useEffect(() => {
     setRepo(undefined);
+    setFiles(null);
     if (signedIn) void refresh();
   }, [refresh, signedIn]);
+  const wasStreaming = useRef(streaming);
+  useEffect(() => {
+    if (wasStreaming.current && !streaming && signedIn) void refresh();
+    wasStreaming.current = streaming;
+  }, [streaming, signedIn, refresh]);
 
   // A clone finishes in the background: ask until it says how it went.
   useEffect(() => {
@@ -105,10 +127,12 @@ export function ThreadRepoSection({ threadId }: { threadId: string }) {
       ) : (
         <RepoStatus
           repo={repo}
+          files={files}
           onRemove={async () => {
             try {
               await removeThreadRepo(threadId);
               setRepo(null);
+              setFiles(null);
             } catch (err) {
               setError(refusalText(err));
             }
@@ -119,7 +143,15 @@ export function ThreadRepoSection({ threadId }: { threadId: string }) {
   );
 }
 
-function RepoStatus({ repo, onRemove }: { repo: ThreadRepo; onRemove: () => Promise<void> }) {
+function RepoStatus({
+  repo,
+  files,
+  onRemove,
+}: {
+  repo: ThreadRepo;
+  files: ThreadRepoFiles | null;
+  onRemove: () => Promise<void>;
+}) {
   const facts =
     repo.state === 'ready'
       ? [
@@ -150,6 +182,7 @@ function RepoStatus({ repo, onRemove }: { repo: ThreadRepo; onRemove: () => Prom
           <span className="truncate">{facts.join(' · ')}</span>
         </p>
       )}
+      {repo.state === 'ready' && files && <RepoFileTree key={repo.repo} listing={files} />}
       {repo.state === 'failed' && (
         <p role="alert" className="text-xs text-state-failed">
           The clone failed: {repo.error ?? 'no reason given'}.

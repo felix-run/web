@@ -308,7 +308,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
       </div>
 
       <div id="workspace-body" hidden={folded} className="mt-3 space-y-4 px-2">
-        <ThreadRepoSection threadId={threadId} />
+        <ThreadRepoSection threadId={threadId} streaming={streaming} />
         <ChangesSection changes={changes} durableGap={durableGap} />
 
         <section aria-labelledby="workspace-files-heading">
