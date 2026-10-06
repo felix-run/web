@@ -469,7 +469,8 @@ Putting it together, one `POST /chat`:
 
 <Steps>
 
-1. **Middleware** — request id, then body limit (1 MiB), then per-tenant rate limit, then
+1. **Middleware** — request id, then body limit (1 MiB; 12 MiB on the two skill-library routes
+   that carry a whole bundle), then per-tenant rate limit, then
    authentication. All four are pure ASGI, so a streamed response is not copied between layers.
 
 2. **Resolve** — walk the four manifest layers, pick the canary variant, check the compile pin.

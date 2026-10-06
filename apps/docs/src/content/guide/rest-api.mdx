@@ -56,7 +56,7 @@ one is generated.
 
 | Condition | Response |
 |---|---|
-| Body over 1 MiB, declared or streamed | `413 {"error":"payload_too_large"}` |
+| Body over 1 MiB, declared or streamed (12 MiB for `POST /skill-library` and `PUT /skill-library/{name}/versions`, which carry a whole skill bundle) | `413 {"error":"payload_too_large"}` |
 | Per-tenant rate limit exceeded | `429 {"error":"rate_limited"}` |
 | Missing or bad credentials | `401 {"error":"unauthorized","reason":"missing_credentials"\|"invalid_api_key"}` |
 | Manifest requires a scope the caller lacks | `403` |
