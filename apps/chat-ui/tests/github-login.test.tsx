@@ -215,6 +215,32 @@ describe('the gate, when the harness offers GitHub', () => {
     expect(screen.getByRole('button', { name: /try another account/i })).toBeTruthy();
   });
 
+  it('names the refused account when an invite-only harness turns it away', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    routes['/api/auth/github/token'] = () =>
+      json({ error: 'not_invited', message: 'no', github_login: 'octo' }, 403);
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
+    await screen.findByText('WDJB-MJHT');
+    await tick(5_000);
+    await screen.findByText(/The GitHub account octo isn’t on the invite list/);
+    expect(screen.getByRole('button', { name: /try another account/i })).toBeTruthy();
+  });
+
+  it('says how an invite-only harness admits people before anyone signs in', async () => {
+    routes['/api/auth/methods'] = () =>
+      json({ github_device: true, bearer_required: true, github_signup: 'invite' });
+    renderGate();
+    await screen.findByText('Sign in with GitHub. Felix is invite-only for now.');
+    expect(screen.getByText(/an invited account gets a tenant of its own/)).toBeTruthy();
+  });
+
+  it('keeps the organization wording on a harness that admits only its organizations', async () => {
+    renderGate();
+    await screen.findByText('Sign in with the GitHub account your organization uses.');
+    expect(screen.queryByText(/invite-only/)).toBeNull();
+  });
+
   it('has nothing to retry when the harness is misconfigured', async () => {
     routes['/api/auth/github/device'] = () =>
       json({ error: 'github_config_error', message: 'misconfigured' }, 503);

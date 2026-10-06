@@ -143,6 +143,13 @@ describe('sign-in by redirect', () => {
     expect(calls.some((c) => c.url === '/api/auth/github/exchange')).toBe(false);
   });
 
+  it('names the account an invite-only harness refused, from the fragment', async () => {
+    window.history.replaceState(null, '', '/#felix_login_error=not_invited&login=octo');
+    renderGate();
+    await screen.findByText(/The GitHub account octo isn’t on the invite list/);
+    expect(window.location.hash).toBe('');
+  });
+
   it('offers a tenant per button when membership grants several', async () => {
     window.history.replaceState(
       null,

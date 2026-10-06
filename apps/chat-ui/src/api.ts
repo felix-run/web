@@ -201,6 +201,12 @@ export interface AuthMethods {
   github_redirect: boolean;
   /** Whether the harness verifies a bearer. The Worker honours one only when it does. */
   bearer_required: boolean;
+  /**
+   * Who may sign in without belonging to an organization the harness maps: nobody (`off`), or
+   * the accounts the operator invited (`invite`), each into a tenant of its own. `off` from a
+   * harness older than the field, and for any value this client does not know.
+   */
+  github_signup: 'off' | 'invite';
 }
 
 export interface GitHubDeviceStart {
@@ -227,6 +233,8 @@ export interface GitHubLoginRefusal {
   message: string;
   interval?: number;
   tenants?: string[];
+  /** The GitHub account that was refused, once GitHub had said who signed in. */
+  github_login?: string;
 }
 
 export type LoginResult<T> =
@@ -256,6 +264,7 @@ export async function getAuthMethods(): Promise<AuthMethods | null> {
       github_device: body.github_device === true,
       github_redirect: body.github_redirect === true,
       bearer_required: body.bearer_required === true,
+      github_signup: body.github_signup === 'invite' ? 'invite' : 'off',
     };
   } catch {
     return null;

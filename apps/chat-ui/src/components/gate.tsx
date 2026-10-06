@@ -61,6 +61,8 @@ interface Options {
   key: boolean;
   /** A redirect sign-in came back `tenant_ambiguous`: the tenants to choose between. */
   tenants?: string[];
+  /** Whether the harness admits invited accounts from outside its organizations. */
+  signup?: 'off' | 'invite';
 }
 
 /**
@@ -186,7 +188,7 @@ async function check(): Promise<Check> {
   const returned = await completeRedirectSignIn();
   if (returned.kind === 'signed-in') setSession(returned.session);
   else if (returned.kind === 'failed') {
-    error = describeFailure(returned.failure).message;
+    error = describeFailure(returned.failure, undefined, returned.login).message;
     tenants = returned.tenants;
     if (tenants?.length) error = null;
   }
@@ -223,6 +225,7 @@ async function check(): Promise<Check> {
       redirect: methods?.github_redirect === true,
       key: keyGate ?? true,
       tenants,
+      signup: methods?.github_signup ?? 'off',
     },
   };
 }
@@ -334,6 +337,7 @@ export function Gate({ children }: { children: ReactNode }) {
             : undefined
         }
         tenants={options.tenants}
+        signup={options.signup}
         alternative={options.key ? switchLink('Use an access key instead', true) : undefined}
       />
     );

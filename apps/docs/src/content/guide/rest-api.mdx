@@ -96,9 +96,9 @@ Setup and the rules (org → tenant, TTL, consent phishing) are in
 
 | Method | Path | Body | Answer |
 |---|---|---|---|
-| `GET` | `/auth/methods` | none | `{github_device, github_redirect, bearer_required}` |
+| `GET` | `/auth/methods` | none | `{github_device, github_redirect, bearer_required, github_signup}` |
 | `GET` | `/auth/github/authorize` | `?return_to=&tenant=` | `302` to GitHub (redirect sign-in) |
-| `GET` | `/auth/github/callback` | from GitHub | `302` back to `return_to` with `#felix_login=ok` or `#felix_login_error=<code>` |
+| `GET` | `/auth/github/callback` | from GitHub | `302` back to `return_to` with `#felix_login=ok` or `#felix_login_error=<code>` (plus `&login=<account>` once GitHub said who signed in) |
 | `POST` | `/auth/github/exchange` | none (the sign-in's cookie) | the same as `/auth/github/token`, once |
 | `POST` | `/auth/github/device` | none | `{device_code, user_code, verification_uri, expires_in, interval}` |
 | `POST` | `/auth/github/token` | `{device_code, tenant?}` | `{access_token, token_type: "Bearer", expires_in, tenant, scopes, github_login}` |
@@ -107,10 +107,13 @@ Setup and the rules (org → tenant, TTL, consent phishing) are in
 client decides whether to offer GitHub at all — probing `/device` would start a real flow and spend
 from its hourly budget. `bearer_required` is `false` only under `FELIX_AUTH_MODE=none`, where any
 bearer is accepted; a proxy that lets a caller's own bearer stand in for its own lock must check it
-first. `github_login` names who signed in, and is `""` from `/auth/github/actions`.
+first. `github_signup` is `off`, or `invite` when accounts outside the mapped orgs can be invited
+([Signup](/internals/auth/#signup)); a harness older than the field omits it, which means `off`.
+`github_login` names who signed in, and is `""` from `/auth/github/actions`.
 
 Show `user_code` and `verification_uri` to the person, then poll `/token` every `interval` seconds
-until it answers 200. A refusal is `{error, message, interval?, tenants?}`:
+until it answers 200. A refusal is `{error, message, interval?, tenants?, github_login?}`, where
+`github_login` is the account refused, present once GitHub had said who it was:
 
 | Status | `error` | Do |
 |---|---|---|
@@ -119,6 +122,7 @@ until it answers 200. A refusal is `{error, message, interval?, tenants?}`:
 | 400 | `expired_token`, `invalid_device_code` | The code is spent or expired. Start again |
 | 403 | `access_denied` | The person declined on GitHub |
 | 403 | `not_a_member`, `org_access_restricted`, `tenant_not_granted` | No configured org grants access (or the chosen tenant) |
+| 403 | `not_invited` | Signup is invite-only and this account, in no mapped org, is not on the list. Sign in with the invited one |
 | 409 | `tenant_ambiguous` | Orgs map to several tenants, listed in `tenants`. **The flow is spent**: start a new one passing `tenant` |
 | 429 | `rate_limited` | Too many flows started from this address. `Retry-After` says how long |
 | 502 | `github_unavailable` | GitHub failed or could not be reached. Try again |

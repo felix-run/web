@@ -40,6 +40,7 @@ export type LoginFailure =
   | 'expired'
   | 'denied'
   | 'not-member'
+  | 'not-invited'
   | 'restricted'
   | 'tenant-not-granted'
   | 'rate-limited'
@@ -55,13 +56,17 @@ export type LoginState =
   | { phase: 'starting' }
   | { phase: 'waiting'; code: GitHubDeviceStart; expiresAt: number; tenant?: string }
   | { phase: 'choose-tenant'; tenants: string[] }
-  | { phase: 'failed'; failure: LoginFailure; status?: number }
+  | { phase: 'failed'; failure: LoginFailure; status?: number; login?: string }
   | { phase: 'done' };
 
-/** What the card says, and whether trying again could help. */
+/**
+ * What the card says, and whether trying again could help. `login` is the GitHub account the
+ * harness refused, when it said: naming it is how someone signed in to the wrong one finds out.
+ */
 export function describeFailure(
   failure: LoginFailure,
   status?: number,
+  login?: string,
 ): {
   message: string;
   retry: string | null;
@@ -80,8 +85,14 @@ export function describeFailure(
       return { message: 'Sign-in was cancelled on GitHub.', retry: 'Try again' };
     case 'not-member':
       return {
-        message:
-          'That GitHub account is not in an organization this deployment admits. Ask whoever runs it which one to join.',
+        message: `${login ? `The GitHub account ${login} is` : 'That GitHub account is'} not in an organization this deployment admits. Ask whoever runs it which one to join.`,
+        retry: 'Try another account',
+      };
+    case 'not-invited':
+      return {
+        // The card's subtitle already says the deployment is invite-only; this says what is
+        // specific to the refusal — which account, and the one way past it.
+        message: `${login ? `The GitHub account ${login}` : 'That GitHub account'} isn’t on the invite list. If you were invited under another account, switch to it on GitHub first.`,
         retry: 'Try another account',
       };
     case 'restricted':
@@ -133,6 +144,8 @@ export function failureFromCode(code: string | undefined, status?: number): Logi
       return 'denied';
     case 'not_a_member':
       return 'not-member';
+    case 'not_invited':
+      return 'not-invited';
     case 'org_access_restricted':
       return 'restricted';
     case 'tenant_not_granted':
@@ -183,13 +196,13 @@ export function sessionFrom(token: GitHubLoginToken, now = Date.now()): GitHubSe
 export type RedirectOutcome =
   | { kind: 'none' }
   | { kind: 'signed-in'; session: GitHubSession }
-  | { kind: 'failed'; failure: LoginFailure; tenants?: string[] };
+  | { kind: 'failed'; failure: LoginFailure; tenants?: string[]; login?: string };
 
 /**
  * Finish a redirect sign-in, if this page load is the return from one.
  *
  * The harness comes back with a fragment — `#felix_login=ok`, or `#felix_login_error=<code>`
- * (plus `tenants=` for an ambiguous membership) — and, on success, the token waiting in an
+ * (plus `tenants=` for an ambiguous membership, and `login=` once GitHub said who it was) — and, on success, the token waiting in an
  * HttpOnly cookie that `exchangeGitHubLogin` collects once. The fragment is cleared from the
  * address at once, whatever it said, so a reload, a bookmark or a Back never replays it.
  */
@@ -211,6 +224,7 @@ export async function completeRedirectSignIn(): Promise<RedirectOutcome> {
       kind: 'failed',
       failure: failureFromCode(error),
       tenants: tenants ? tenants.split(',').filter(Boolean) : undefined,
+      login: params.get('login') || undefined,
     };
   }
   let result: LoginResult<GitHubLoginToken>;
@@ -322,7 +336,7 @@ export function useDeviceLogin(onSignedIn: (session: GitHubSession) => void) {
       // A remembered tenant the account has lost: forget it, so trying again
       // asks rather than failing the same way.
       if (failure === 'tenant-not-granted') rememberTenant(null);
-      setState({ phase: 'failed', failure, status: result.status });
+      setState({ phase: 'failed', failure, status: result.status, login: refusal?.github_login });
     }
 
     schedule(interval);
