@@ -392,28 +392,32 @@ manifests stay portable across deployments:
 FELIX_DEFAULT_MODEL_ID=claude-sonnet
 FELIX_MODEL_ROUTES='{
   "claude-sonnet": {"provider": "anthropic", "model": "claude-sonnet-5"},
-  "house-fast":    {"provider": "ollama",    "model": "llama3.2"}
+  "house-fast":    {"provider": "workers_ai", "model": "@cf/zai-org/glm-5.3-flash"}
 }'
 ```
 
-Providers are `anthropic`, `openai`, `ollama`, `workers_ai` (Cloudflare Workers AI), `groq`,
+Providers are `anthropic`, `openai`, `workers_ai` (Cloudflare Workers AI), `groq`,
 `together`, `deepseek`, `cerebras`, `fireworks`, `openrouter`, `xai`, `mistral` and `google`, plus any
-registered by a plugin. Point `FELIX_OLLAMA_BASE_URL` or `FELIX_LITELLM_BASE_URL` at a local gateway to
-keep traffic in your own network. Everything past the first three is configured through
+registered by a plugin. Point `FELIX_LITELLM_BASE_URL` at a local gateway to keep traffic in your own
+network. Everything past the first two is configured through
 `FELIX_MODEL_PROVIDER_OPTIONS`:
 
 ```bash
 FELIX_MODEL_PROVIDER_OPTIONS='{"workers_ai":{"api_key":"...","account_id":"...","gateway_id":"default"}}'
 ```
 
-That one entry is all the built-in Workers AI routes need: `kimi-k2-cf` (Kimi K2.6, 262K window),
-`gpt-oss-120b-cf`, `gpt-oss-20b-cf` and `glm-flash-cf`. All four call tools and are priced, so
-`limits.max_cost_usd` is enforced on them. To run on Workers AI wherever a manifest names no model,
-and move the Ollama ids and the memory embedder there as well:
+That one entry is all the built-in Workers AI routes need: `glm-5.3-cf` (GLM-5.3, 1M window),
+`glm-5.3-flash-cf` (GLM-5.3 Flash, 1M window, vision), `deepseek-v4-pro-cf` and
+`deepseek-v4-flash-cf` (DeepSeek V4, 1M window), `qwen3.8-27b-cf` (Qwen 3.8 27B, 262K window, vision),
+`kimi-k2.7-code-cf` (Kimi K2.7 Code, 262K window, vision), `kimi-k2-cf` (Kimi K2.6, 262K window),
+`gpt-oss-120b-cf`, `gpt-oss-20b-cf` and `glm-flash-cf`. The legacy `llama-3-pro` and `llama-3-fast`
+ids, which used to route to a local Ollama, now point at GLM-5.3 and GLM-5.3 Flash. All of them call
+tools and are priced, so `limits.max_cost_usd` is enforced on them; GLM-5.3, DeepSeek V4 and Kimi
+K2.7 Code need the Workers Paid plan or AI Gateway credits. To run on open weights wherever a manifest names no model,
+and move the memory embedder there as well:
 
 ```bash
-FELIX_DEFAULT_MODEL_ID=kimi-k2-cf
-FELIX_MODEL_ROUTES='{"llama-3-pro":{"provider":"workers_ai","model":"@cf/openai/gpt-oss-120b"},"llama-3-fast":{"provider":"workers_ai","model":"@cf/zai-org/glm-4.7-flash"}}'
+FELIX_DEFAULT_MODEL_ID=glm-5.3-cf
 FELIX_MEMORY_EMBEDDER=workers_ai
 ```
 
@@ -441,7 +445,7 @@ One embedder per deployment serves the vector channel of memory recall and of th
 
 | Setting | Default | Notes |
 |---|---|---|
-| `FELIX_MEMORY_EMBEDDER` | `auto` | `auto` embeds locally with `sentence_transformers` when `felix-harness[embeddings]` is installed, and otherwise runs no vector channel. `none` turns it off. `sentence_transformers` requires the extra. Any registered provider that serves `/embeddings` (`openai`, `ollama`, …) is also accepted, resolved through the same descriptor as its model client. An unregistered name fails startup validation. |
+| `FELIX_MEMORY_EMBEDDER` | `auto` | `auto` embeds locally with `sentence_transformers` when `felix-harness[embeddings]` is installed, and otherwise runs no vector channel. `none` turns it off. `sentence_transformers` requires the extra. Any registered provider that serves `/embeddings` (`openai`, `workers_ai`, `google`) is also accepted, resolved through the same descriptor as its model client. An unregistered name fails startup validation. |
 | `FELIX_MEMORY_EMBEDDING_MODEL` | `bge-base-en-v1.5` | The local model. For a provider embedder, only an explicitly set value is sent; unset, the provider's own default embedding model is used. |
 | `FELIX_MEMORY_EMBEDDING_DIM` | `768` | Declares the width of the `memory_vectors.embedding` column, which is `vector(768)` from the baseline migration. Changing it means re-embedding every row, not flipping a setting. |
 
