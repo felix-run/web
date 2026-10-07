@@ -95,7 +95,7 @@ pnpm --filter @felix/chat-ui exec wrangler secret put CHAT_UI_KEY   # once
 pnpm --filter @felix/chat-ui exec wrangler deploy
 ```
 
-Production today: `chat.felix.run` → `FELIX_ORIGIN=https://api.felix.run`. Enter the
+Production today: `make.felix.run` → `FELIX_ORIGIN=https://api.felix.run`. Enter the
 `CHAT_UI_KEY` in the Gate when prompted. Rotate with `wrangler secret put CHAT_UI_KEY`.
 
 ## Files

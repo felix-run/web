@@ -18,5 +18,5 @@
     // Public origin of the self-hosted Python Felix harness.
     "FELIX_ORIGIN": "https://api.felix.run"
   },
-  "routes": [{ "pattern": "chat.felix.run", "custom_domain": true }]
+  "routes": [{ "pattern": "make.felix.run", "custom_domain": true }]
 }
