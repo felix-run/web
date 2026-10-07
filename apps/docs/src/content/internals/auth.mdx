@@ -274,7 +274,7 @@ minted from their stored connection; no route returns a GitHub token.
   installed on: `install_url` (from `FELIX_GITHUB_APP_SLUG`) is where to fix that.
 - **The checkout is the thread's workspace.** Every harness workspace tool, and the shell tool,
   works in it and nowhere else. A checkout still cloning, failed or expired stops the tools rather
-  than falling back to the shared `FELIX_WORKSPACE_ROOT`, and the checkout root
+  than falling back to the thread's workspace scope under `FELIX_WORKSPACE_ROOT`, and the checkout root
   (`FELIX_REPO_CHECKOUT_ROOT`, default `FELIX_DATA_DIR/checkouts`) is never inside it.
 - **Publishing is as the person.** `github_publish: {auth: person, branch_prefix: …}` publishes to
   the thread's repository with the opener's token, behind its approval as always.
