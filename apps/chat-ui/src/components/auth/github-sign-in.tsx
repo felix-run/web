@@ -216,7 +216,21 @@ export function GitHubSignIn({
   signup?: 'off' | 'invite';
   alternative?: ReactNode;
 }) {
+  // A redirect leaves the page, but not at once: hold the button until it does.
+  // Which tenant was asked for, or '' for none, so only that button spins.
+  const [redirecting, setRedirecting] = useState<string | null>(null);
+  useEffect(() => {
+    // Back from GitHub restores this page from the back/forward cache, state and all.
+    const reset = (e: PageTransitionEvent) => e.persisted && setRedirecting(null);
+    window.addEventListener('pageshow', reset);
+    return () => window.removeEventListener('pageshow', reset);
+  }, []);
+  const go = (tenant?: string) => {
+    setRedirecting(tenant ?? '');
+    redirect?.(tenant);
+  };
   const starting = login.state.phase === 'starting';
+  const busy = starting || redirecting !== null;
   return (
     <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6">
       <div className="space-y-1.5">
@@ -251,8 +265,11 @@ export function GitHubSignIn({
                         type="button"
                         variant="outline"
                         className="h-10 w-full justify-start font-mono"
-                        onClick={() => redirect(tenant)}
+                        disabled={busy}
+                        aria-busy={redirecting === tenant}
+                        onClick={() => go(tenant)}
                       >
+                        {redirecting === tenant && <Loader2Icon className="size-4 animate-spin" />}
                         {tenant}
                       </Button>
                     </li>
@@ -263,15 +280,20 @@ export function GitHubSignIn({
             <Button
               type="button"
               className="h-10 w-full"
-              disabled={starting}
-              onClick={() => (redirect ? redirect() : void login.start())}
+              disabled={busy}
+              aria-busy={starting || redirecting === ''}
+              onClick={() => (redirect ? go() : void login.start())}
             >
-              {starting ? (
+              {starting || redirecting === '' ? (
                 <Loader2Icon className="size-4 animate-spin" />
               ) : (
                 <GitHubMark className="size-4" />
               )}
-              {starting ? 'Asking GitHub for a code…' : 'Continue with GitHub'}
+              {starting
+                ? 'Asking GitHub for a code…'
+                : redirecting === ''
+                  ? 'Opening GitHub…'
+                  : 'Continue with GitHub'}
             </Button>
             <p className="text-xs text-muted-foreground">
               {signup === 'invite'

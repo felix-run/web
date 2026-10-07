@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountChip } from '../src/components/account-chip';
@@ -123,6 +123,25 @@ describe('sign-in by redirect', () => {
     expect(target.searchParams.get('return_to')).toBe(`${window.location.origin}/t/abc?x=1`);
     // No device flow was started: the redirect replaces the code.
     expect(calls.some((c) => c.url === '/api/auth/github/device')).toBe(false);
+  });
+
+  it('holds the button while the browser leaves, and lets go on a return from the cache', async () => {
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
+    const button = screen.getByRole('button', { name: /opening github/i });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    // A second click while the first is still leaving sends nothing more.
+    fireEvent.click(button);
+    expect(assigned).toHaveLength(1);
+
+    act(() => {
+      // happy-dom's PageTransitionEvent ignores `persisted`, so build one that carries it.
+      window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    });
+    expect(
+      (screen.getByRole('button', { name: /continue with github/i }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it('collects the token once on the way back, and clears the fragment', async () => {
