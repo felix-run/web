@@ -34,6 +34,7 @@ vi.mock('../src/lib/cowork', async () => ({
   // The shell hands these to the engine at mount; no test here runs a tool.
   executeClientTool: async () => ({}),
   readWorkspaceFile: async () => null,
+  readWorkspaceBytes: async () => null,
   supportsDirectoryPicker: () => false,
   // The real one: which arguments count as "touched" is the rule under test.
   collectTouchedPaths: (

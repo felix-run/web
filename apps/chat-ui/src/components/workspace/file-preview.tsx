@@ -1,11 +1,24 @@
 import { Button } from '@felix/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@felix/ui/sheet';
 import { CheckIcon, CopyIcon, RotateCwIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { CodeBlock } from '@/components/ai-elements/code-block';
-import { readWorkspaceFile } from '@/lib/cowork';
-import { languageFor, type Preview, previewOf } from '@/lib/file-preview';
+import { readWorkspaceBytes } from '@/lib/cowork';
+import {
+  isMarkdown,
+  languageFor,
+  type MediaKind,
+  type Preview,
+  previewOfBytes,
+} from '@/lib/file-preview';
 import { cn } from '@/lib/utils';
+
+// The skill library's renderer, because it is the one that already trusts its
+// input less than the transcript does: no inline HTML becomes an element, and no
+// remote image is fetched. Lazy, since it and its imports ride in that chunk.
+const SkillMarkdown = lazy(() =>
+  import('@/components/skills/skill-markdown').then((m) => ({ default: m.SkillMarkdown })),
+);
 
 type Read = { status: 'loading' } | { status: 'missing' } | { status: 'ready'; preview: Preview };
 
@@ -20,8 +33,10 @@ type Read = { status: 'loading' } | { status: 'missing' } | { status: 'ready'; p
  * here would go through nothing.
  *
  * The file is read from whichever store the tools are running against — the
- * mounted folder, or the in-tab one — through the same `readExisting` the
- * approval diff uses, so the preview and the diff never disagree about a file.
+ * mounted folder, or the in-tab one — with the same precedence the approval
+ * diff uses, so the preview and the diff never disagree about a file. It is
+ * read as bytes, so an image, a PDF, audio or video is drawn as itself; markdown
+ * opens rendered with its source a toggle away. HTML and SVG stay source.
  * It is re-read when a run settles, since that is when a write can have landed
  * under an open preview.
  */
@@ -44,9 +59,11 @@ export function FilePreview({
   const load = useCallback(async (p: string) => {
     asked.current = p;
     setRead({ status: 'loading' });
-    const text = await readWorkspaceFile(p);
+    const bytes = await readWorkspaceBytes(p);
     if (asked.current !== p) return;
-    setRead(text === null ? { status: 'missing' } : { status: 'ready', preview: previewOf(text) });
+    setRead(
+      bytes === null ? { status: 'missing' } : { status: 'ready', preview: previewOfBytes(bytes) },
+    );
   }, []);
 
   useEffect(() => {
@@ -61,6 +78,8 @@ export function FilePreview({
   const name = path?.split('/').pop() ?? '';
   const language = path ? languageFor(path) : null;
   const preview = read.status === 'ready' ? read.preview : null;
+  const markdown = !!path && isMarkdown(path) && preview?.kind === 'text' && preview.text !== '';
+  const [view, setView] = useState<'rendered' | 'source'>('rendered');
 
   return (
     <Sheet open={path !== null} onOpenChange={(open) => !open && onClose()}>
@@ -84,6 +103,7 @@ export function FilePreview({
               {[
                 changed ? 'Changed on this thread' : null,
                 preview?.kind === 'text' ? `${preview.lines.toLocaleString()} lines` : null,
+                preview?.kind === 'media' ? mediaLabel(preview.type, preview.bytes.length) : null,
                 'Read-only',
               ]
                 .filter(Boolean)
@@ -91,6 +111,28 @@ export function FilePreview({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {markdown && (
+              <div
+                role="group"
+                aria-label="Markdown view"
+                className="mr-1 flex gap-0.5 text-xs text-muted-foreground"
+              >
+                {(['rendered', 'source'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    onClick={() => setView(v)}
+                    className={cn(
+                      'rounded px-1.5 py-0.5 capitalize',
+                      view === v ? 'bg-muted text-foreground' : 'hover:text-foreground',
+                    )}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            )}
             {preview?.kind === 'text' && <CopyButton text={preview.text} />}
             <Button
               variant="ghost"
@@ -117,8 +159,21 @@ export function FilePreview({
             <p className="text-sm text-muted-foreground">
               Binary file — not shown. Open it from the folder on disk.
             </p>
+          ) : read.preview.kind === 'media' ? (
+            <MediaView
+              key={path}
+              name={name}
+              media={read.preview.media}
+              type={read.preview.type}
+              bytes={read.preview.bytes}
+            />
           ) : read.preview.text === '' ? (
             <p className="text-sm text-muted-foreground">This file is empty.</p>
+          ) : markdown && view === 'rendered' ? (
+            <Suspense fallback={<p className="text-xs text-muted-foreground">Reading…</p>}>
+              <SkillMarkdown markdown={read.preview.text} />
+              {read.preview.truncated && <TruncatedNote shown={read.preview.text.length} />}
+            </Suspense>
           ) : (
             <>
               {language ? (
@@ -137,17 +192,80 @@ export function FilePreview({
                   {withoutFinalNewline(read.preview.text)}
                 </pre>
               )}
-              {read.preview.truncated && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Showing the first {(read.preview.text.length / 1000).toFixed(0)} KB. The rest is
-                  in the file.
-                </p>
-              )}
+              {read.preview.truncated && <TruncatedNote shown={read.preview.text.length} />}
             </>
           )}
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function TruncatedNote({ shown }: { shown: number }) {
+  return (
+    <p className="mt-2 text-xs text-muted-foreground">
+      Showing the first {(shown / 1000).toFixed(0)} KB. The rest is in the file.
+    </p>
+  );
+}
+
+/** `PNG image · 48 KB`: what the bytes said, and how many there are. */
+function mediaLabel(type: string, size: number): string {
+  const sub = type.split('/')[1] ?? type;
+  const format = sub === 'mpeg' ? 'MP3' : sub === 'quicktime' ? 'MOV' : sub.toUpperCase();
+  const noun = type.startsWith('image/')
+    ? 'image'
+    : type.startsWith('audio/')
+      ? 'audio'
+      : type.startsWith('video/')
+        ? 'video'
+        : 'document';
+  const kb = size < 1024 ? `${size} B` : `${Math.round(size / 1024).toLocaleString()} KB`;
+  return `${format} ${noun} · ${kb}`;
+}
+
+/**
+ * Media through an object URL, made when the file is shown and revoked when it
+ * is not — a re-read or another file makes a new one, so nothing leaks while a
+ * preview is left open across a run that keeps rewriting the file.
+ */
+function MediaView({
+  name,
+  media,
+  type,
+  bytes,
+}: {
+  name: string;
+  media: MediaKind;
+  type: string;
+  bytes: Uint8Array;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const next = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [bytes, type]);
+  if (!url) return null;
+  if (media === 'image') {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className="mx-auto max-h-[70vh] max-w-full rounded-md border bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px]"
+      />
+    );
+  }
+  if (media === 'pdf') {
+    return <iframe src={url} title={name} className="h-[75vh] w-full rounded-md border" />;
+  }
+  if (media === 'audio') {
+    // biome-ignore lint/a11y/useMediaCaption: a workspace file has no captions to offer.
+    return <audio src={url} controls className="w-full" />;
+  }
+  return (
+    // biome-ignore lint/a11y/useMediaCaption: a workspace file has no captions to offer.
+    <video src={url} controls className="max-h-[70vh] w-full rounded-md border bg-black" />
   );
 }
 

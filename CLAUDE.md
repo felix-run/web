@@ -1293,11 +1293,16 @@ with no model to price against, which reads as free rather than unpriced. `file-
 were `text-blue-500` (blue is `running` here), and each folder was three Tab stops — its wrapper,
 an unlabelled chevron and a name button that did nothing without `onSelect` — so a folder is now
 one stop, its name, which toggles it, and a file is a stop only when selecting does something.
-A file opens in a read-only drawer (`components/workspace/file-preview.tsx`), read through
-`readWorkspaceFile` — the same `readExisting` the approval diff uses, so the two never disagree
-about a file — and re-read when a run settles. Both stores return a string whatever the bytes, so
-`previewOf` (`src/lib/file-preview.ts`) calls a NUL in the first 8 KB binary and shows the head of
-anything over 200 KB; `languageFor` is a short extension table rather than Shiki's map, because a
+A file opens in a read-only drawer (`components/workspace/file-preview.tsx`), read as **bytes**
+through `readWorkspaceBytes` — `readExistingBytes`, with the same mount-first precedence as the
+`readExisting` the approval diff uses, so the two never disagree about a file — and re-read when a
+run settles. It reads bytes because `File.text()` turns an image into replacement characters:
+`sniffMedia` (`src/lib/file-preview.ts`) recognises images, PDF, audio and video by **magic number,
+never extension**, and the drawer draws them through an object URL it revokes on close. Markdown
+opens rendered through the lazy `SkillMarkdown` (no inline HTML, no remote images) with a Source
+toggle. **HTML and SVG are only ever shown as source** — both can carry script, and rendering
+either would run it in this origin. Anything else is decoded as text; a NUL in the first 8 KB is
+binary, and over 200 KB shows the head; `languageFor` is a short extension table rather than Shiki's map, because a
 language Shiki lacks makes `createHighlighter` reject and the code block does not catch it.
 
 ### Docs
