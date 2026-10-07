@@ -20,7 +20,7 @@ around it.
 
 | App | Script | Route |
 |---|---|---|
-| `@felix/chat-ui` | `pnpm chat:deploy` | `chat.felix.run` |
+| `@felix/chat-ui` | `pnpm chat:deploy` | `make.felix.run` |
 | `@felix/docs` | `pnpm docs:deploy` | `docs.felix.run` |
 
 Each `*:deploy` script is `pnpm build && wrangler deploy` inside that package.
@@ -69,8 +69,8 @@ pnpm chat:deploy     # or docs:deploy
 ## 4. Verify — actually check, don't assume
 
 ```bash
-curl -sS -o /dev/null -w 'spa=%{http_code}\n' https://chat.felix.run/
-curl -sS -o /dev/null -w 'api=%{http_code}\n' https://chat.felix.run/api/v1/models   # 401 expected when the gate is on
+curl -sS -o /dev/null -w 'spa=%{http_code}\n' https://make.felix.run/
+curl -sS -o /dev/null -w 'api=%{http_code}\n' https://make.felix.run/api/v1/models   # 401 expected when the gate is on
 ```
 
 Then in a browser: the SPA loads, the Gate accepts the key, a chat turn streams, and the Inspector

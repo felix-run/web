@@ -33,8 +33,10 @@ Each app deploys as its own Worker: `pnpm <app>:deploy` = build then `wrangler d
   A fresh clone cannot deploy until that copy exists.
 - `vars.FELIX_ORIGIN` is public config. `CHAT_UI_KEY` and `FELIX_API_KEY` are **secrets** —
   `wrangler secret put`, never `vars`.
-- Custom domains: `chat.felix.run`, `docs.felix.run`. (`float.felix.run` served the removed float
-  app; the Worker `felix-float` may still exist in Cloudflare — deleting it is a human decision.)
+- Custom domains: `make.felix.run`, `docs.felix.run`. `chat.felix.run` is chat-ui's previous name,
+  served alongside while browsers move over (sign-in, pins, push and installed apps are per origin).
+  (`float.felix.run` served the removed float app; the Worker `felix-float` may still exist in
+  Cloudflare — deleting it is a human decision.)
 - Rollback is a redeploy of the previous build, or Cloudflare's deployment rollback — know which one
   you are recommending before you recommend it.
 
