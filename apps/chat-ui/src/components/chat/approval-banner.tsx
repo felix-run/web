@@ -1,4 +1,4 @@
-import { approvalRuleLabel, type PendingApproval } from '@felix/client';
+import { approvalRuleLabel, fileToolOp, type PendingApproval } from '@felix/client';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 import { ariaShortcut, isMacPlatform } from '@/lib/shortcuts';
 
@@ -50,7 +50,7 @@ export function ApprovalBanner({
           toolName={pending.toolName}
           args={pending.args}
           // `before` is only meaningful for a write; anything else has no before/after.
-          before={pending.toolName === 'write_file' ? (pending.before ?? null) : undefined}
+          before={fileToolOp(pending.toolName) === 'write' ? (pending.before ?? null) : undefined}
           // The rule that gated the call, in the slot already built for a quiet
           // subtitle beside the tool name.
           // A screening gate's id is `command:<reason>`, so the id is trimmed to the

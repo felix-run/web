@@ -23,7 +23,7 @@
  * Which calls count at all is `collectTouchedPaths`' allowlist — a workspace
  * tool's path argument and nothing else — never the mention heuristic.
  */
-import { classifyToolResult, type ToolCall, type Turn } from '@felix/client';
+import { classifyToolResult, fileToolOp, type ToolCall, type Turn } from '@felix/client';
 import { collectTouchedPaths } from '@felix/cowork-client';
 
 /** The prefix the engine gives a call the browser ran (`client · local_shell`). */
@@ -95,17 +95,11 @@ function record(input: unknown): Record<string, unknown> {
 }
 
 function kindOf(name: string, args: Record<string, unknown>): CallKind | null {
+  // The harness's workspace tools and the client's `local_*` file tools, as one set.
+  const op = fileToolOp(name);
+  if (op === 'write') return args.append === true ? 'append' : 'write';
+  if (op) return op;
   switch (name) {
-    case 'write_file':
-      return args.append === true ? 'append' : 'write';
-    case 'edit_file':
-      return 'edit';
-    case 'read_file':
-      return 'read';
-    case 'list_dir':
-      return 'list';
-    case 'search_files':
-      return 'search';
     case 'local_shell':
       return 'shell';
     case 'local_open':

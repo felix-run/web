@@ -1,6 +1,7 @@
 import {
   type ApprovalRequest,
   approvalRuleLabel,
+  fileToolOp,
   formatCountdown,
   msUntilDecision,
   relativeTime,
@@ -62,7 +63,7 @@ import { cn } from '@/lib/utils';
  * arguments *are* the change (old text and new), and a shell command's are the
  * whole of it, so those stay decidable in place.
  */
-const NEEDS_ITS_THREAD = new Set(['write_file', 'client · write_file']);
+const needsItsThread = (toolName: string) => fileToolOp(toolName) === 'write';
 
 const OPEN_KEY = 'felix.attentionOpen';
 
@@ -421,7 +422,7 @@ export function AttentionLine({
  * card says and a line cannot. A call on this thread opens as its card. A call
  * from another thread starts as its line, and a write from another thread never
  * becomes a card here at all — it links to its thread, where the banner can draw
- * what the write replaces (`NEEDS_ITS_THREAD`).
+ * what the write replaces (`needsItsThread`).
  *
  * One clock per call on screen: the line shows the countdown while it is
  * collapsed and hands it to the card's chip when expanded.
@@ -451,7 +452,7 @@ function QueueRow({
     : null;
   // An unattributed write has nowhere to route to, so it stays decidable here:
   // refusing to offer it would leave a call nobody can answer from this tab.
-  const route = inBanner || (elsewhere && NEEDS_ITS_THREAD.has(a.tool_name));
+  const route = inBanner || (elsewhere && needsItsThread(a.tool_name));
   // The banner's own call is this thread's, wherever its row says it came from.
   const routeTo = inBanner ? threadId : a.thread_id;
   const bodyId = `queue-${a.id}`;

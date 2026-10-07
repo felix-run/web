@@ -1,4 +1,4 @@
-import { describeError, parseTabular, summarizeToolArgs } from '@felix/client';
+import { describeError, fileToolOp, parseTabular, summarizeToolArgs } from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
@@ -495,7 +495,8 @@ function formatDuration(ms: number): string {
 }
 
 /** Tools with a sentence in `summarizeToolArgs`; everything else falls back to JSON there. */
-const SUMMARIZED = new Set(['write_file', 'local_shell', 'local_open']);
+const summarized = (name: string) =>
+  fileToolOp(name) === 'write' || name === 'local_shell' || name === 'local_open';
 
 /**
  * The argument names that say what a call is *about*, in the order they are
@@ -558,7 +559,7 @@ export function toolTarget(name: string, input: unknown): string | null {
   if (typeof args !== 'object' || args === null || Array.isArray(args)) return null;
   const o = args as Record<string, unknown>;
   if (Object.keys(o).length === 0) return null;
-  if (SUMMARIZED.has(name)) return oneLine(summarizeToolArgs(name, o));
+  if (summarized(name)) return oneLine(summarizeToolArgs(name, o));
 
   const repo = repoRef(o);
   if (repo) {

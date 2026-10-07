@@ -798,6 +798,33 @@ spec:
 | `timeout_seconds` | float, `0 < x ≤ 3600` | `null` → 120 s | |
 | `fatal` | bool | `false` | |
 
+### The user's folder: `local_*` file tools
+
+Both bundled clients answer five file tools by name, against the folder the person has open — in
+chat-ui the mounted folder (or the tab's own files when none is mounted), in the terminal client
+its working directory. Declare them under `client_tools` and the agent works on that folder rather
+than on the server's workspace. The bundled `cowork` manifest does exactly this.
+
+| Name | Arguments | Answers |
+|---|---|---|
+| `local_list` | `path?`, `recursive?` | One path per line, directories ending in `/`. A recursive listing skips `.git` and `node_modules`, and stops at 1,000 entries, saying so. |
+| `local_read` | `path`, `offset?`, `limit?` | The file's text, 100,000 characters unless `limit` says otherwise, with a line naming the next `offset` when there is more. |
+| `local_search` | `query`, `path?`, `regex?`, `max_hits?` | `path:line:text` per matching line, binaries and `.git`/`node_modules` skipped, 20 hits unless `max_hits` (at most 200) says otherwise. |
+| `local_write` | `path`, `content`, `append?` | `wrote N chars to <path>`. |
+| `local_edit` | `path`, `old_string`, `new_string`, `replace_all?` | `{"path", "replacements"}`, the shape `edit_file` reports. Refused when `old_string` is missing, or appears more than once without `replace_all`. |
+
+The arguments are the workspace tools' own, so the changes list and the approval diff treat both
+families alike. A failure comes back as `error: …`, which both clients draw as a failed call.
+Gate `local_write` and `local_edit` with an [approval](#specapprovals): chat-ui writes once the
+banner is approved, while the terminal client also asks on its own prompt, naming the absolute
+path, and refuses `.git/`, `.husky/`, `node_modules/` and executable files outright.
+
+On a [durable](#specexecution) run the agent is in the worker, not the process serving the stream,
+so the harness records each pending request and the durable stream announces it as the same
+`tool_request` frame a streamed run sends. A harness older than that (`felix-run/felix#513`)
+cannot run client tools on a durable run at all: the request never reaches the client, and the
+call times out.
+
 When the model calls one, the harness emits a `tool_request` frame and **blocks** until the client
 answers with `POST /chat/tool_result`. A client that never answers stalls the run until the timeout,
 which returns `[error/timeout] client tool timed out` as the tool result. See

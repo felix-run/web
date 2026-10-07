@@ -1,4 +1,5 @@
 import {
+  fileToolOp,
   formatArgsForEditing,
   formatCountdown,
   msUntilDecision,
@@ -100,9 +101,6 @@ export interface ApprovalDecisionProps {
 export const DECISION_BUTTON =
   'h-auto min-h-8 min-w-0 flex-1 py-1.5 whitespace-normal wrap-anywhere';
 
-/** Tools whose arguments are a whole file body. See `editable`. */
-const WHOLE_FILE_WRITES = new Set(['write_file', 'client · write_file']);
-
 /**
  * The one place a gated tool call is approved or denied.
  *
@@ -153,7 +151,8 @@ export function ApprovalDecision({
    * the banner. A whole file body in a textarea is not the affordance anyone
    * wants, wherever the write is decided.
    */
-  const editable = !WHOLE_FILE_WRITES.has(toolName);
+  // A whole file body (`write_file`, `local_write`) is not offered for editing.
+  const editable = fileToolOp(toolName) !== 'write';
   const summary = oneLine(summarizeToolArgs(toolName, args));
 
   // Re-read every second while the card is up, and only then. The deadline is

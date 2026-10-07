@@ -52,6 +52,16 @@ export {
   StreamInProgressError,
 } from './errors';
 export { createHttp, type FelixHttp, type LeaseRefusal } from './http';
+export {
+  DEFAULT_READ_CHARS,
+  type FileToolOp,
+  fileToolOp,
+  isLocalFileTool,
+  type LocalEntry,
+  type LocalFs,
+  MAX_LIST_ENTRIES,
+  runLocalFileTool,
+} from './local-files';
 export { createManagementClient } from './management';
 export type { ArtifactContent } from './management/artifacts';
 export {

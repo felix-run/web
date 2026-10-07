@@ -12,6 +12,7 @@
  * not reporting one.
  */
 import { describeRefusal, parseApprovalOutcome } from './approvals';
+import { fileToolOp } from './local-files';
 
 export interface ToolResultIssue {
   /** `failed`: the call ran into an error. `refused`: a control stopped it before it ran. */
@@ -26,17 +27,10 @@ export interface ToolResultIssue {
 
 /**
  * Workspace tools on a harness older than `felix-run/felix#308` returned failures as plain
- * `error: …` text with no marker. Production ran such a harness when this was written, so the
- * spelling is honoured — but only for these tools, since `error:` at the start of an arbitrary
- * tool's output is not a convention anything else follows.
+ * `error: …` text with no marker, and the client file tools (`local_read`, …) answer that way
+ * by design. The spelling is honoured for file tools only (`fileToolOp`), since `error:` at
+ * the start of an arbitrary tool's output is not a convention anything else follows.
  */
-const LEGACY_ERROR_TOOLS = new Set([
-  'list_dir',
-  'read_file',
-  'write_file',
-  'edit_file',
-  'search_files',
-]);
 
 /** Controls that stop a call before it runs, by the prefix the harness gives their denial. */
 const REFUSAL_PREFIXES: ReadonlyArray<readonly [prefix: string, control: string]> = [
@@ -110,7 +104,7 @@ export function classifyToolResult(toolName: string, output: unknown): ToolResul
     }
   }
 
-  if (LEGACY_ERROR_TOOLS.has(toolName) && output.startsWith('error: ')) {
+  if (fileToolOp(toolName) !== null && output.startsWith('error: ')) {
     const message = output.slice('error: '.length);
     return {
       kind: 'failed',

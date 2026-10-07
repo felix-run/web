@@ -19,6 +19,28 @@ describe('executeClientTool', () => {
     expect(result).toEqual({ content: 'one\n' });
   });
 
+  it('answers the local_* file tools from the tab VFS when nothing is mounted', async () => {
+    vfs.write('notes/todo.md', 'one\n');
+    const read = await executeClientTool(
+      { id: 'r', name: 'local_read', args: { path: 'notes/todo.md' } },
+      vfs,
+    );
+    expect(read).toEqual({ content: 'one\n' });
+
+    await executeClientTool(
+      {
+        id: 'e',
+        name: 'local_edit',
+        args: { path: 'notes/todo.md', old_string: 'one', new_string: 'two' },
+      },
+      vfs,
+    );
+    expect(vfs.read('notes/todo.md')).toBe('two\n');
+
+    const listed = await executeClientTool({ id: 'l', name: 'local_list', args: {} }, vfs);
+    expect(listed.content).toBe('notes/');
+  });
+
   it('reports an unknown tool as an error rather than throwing', async () => {
     const result = await executeClientTool({ id: 't2', name: 'nope', args: {} }, vfs);
     expect(result.error).toBe(true);
