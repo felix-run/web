@@ -217,24 +217,39 @@ export async function mountMkdir(path: string): Promise<void> {
   }
 }
 
+/**
+ * Folders the walk leaves out entirely: repository internals and installed
+ * dependencies, either of which can outnumber the project itself by orders of
+ * magnitude. Every other dotfile and dot-folder is listed.
+ */
+const SKIPPED = new Set(['.git', 'node_modules']);
+
+/**
+ * Every entry under the mount, hidden ones included, up to `limit`.
+ *
+ * Breadth-first, so a cap cuts the deepest entries rather than whole top-level
+ * folders: depth-first, one `.git` spent two hundred entries on its objects and
+ * the rest of the repository never appeared.
+ */
 export async function mountTree(limit = 200): Promise<string[]> {
   if (!root) return [];
   const out: string[] = [];
+  const queue: [DirHandle, string][] = [[root, '']];
 
-  async function walk(dir: DirHandle, prefix: string): Promise<void> {
+  for (let next = queue.shift(); next; next = queue.shift()) {
+    const [dir, prefix] = next;
     for await (const [name, handle] of dir.entries()) {
-      if (out.length >= limit) return;
+      if (out.length >= limit) return out;
+      if (SKIPPED.has(name)) continue;
       const rel = prefix ? `${prefix}/${name}` : name;
       if (handle.kind === 'directory') {
         out.push(`d ${rel}`);
-        await walk(handle as DirHandle, rel);
+        queue.push([handle as DirHandle, rel]);
       } else {
         out.push(`f ${rel}`);
       }
     }
   }
-
-  await walk(root, '');
   return out;
 }
 

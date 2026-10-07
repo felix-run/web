@@ -255,6 +255,30 @@ describe('listing and walking', () => {
     expect((await mountTree(2)).length).toBeLessThanOrEqual(2);
   });
 
+  it('lists hidden files and folders', async () => {
+    await mountWrite('.env.example', 'x');
+    await mountWrite('.github/workflows/ci.yml', 'x');
+    const tree = await mountTree();
+    expect(tree).toContain('f .env.example');
+    expect(tree).toContain('d .github');
+    expect(tree).toContain('f .github/workflows/ci.yml');
+  });
+
+  it('leaves out .git and node_modules entirely', async () => {
+    await mountWrite('.git/HEAD', 'x');
+    await mountWrite('node_modules/react/index.js', 'x');
+    const tree = await mountTree();
+    expect(tree.filter((e) => /\.git|node_modules/.test(e))).toEqual([]);
+  });
+
+  it('reaches every top-level entry before a deep folder spends the cap', async () => {
+    for (let i = 0; i < 50; i++) await mountWrite(`dir/deep/f${i}.txt`, 'x');
+    await mountWrite('zz-last.txt', 'x');
+    const tree = await mountTree(10);
+    expect(tree).toContain('f top.txt');
+    expect(tree).toContain('f zz-last.txt');
+  });
+
   it('returns nothing when no folder is mounted', async () => {
     clearMount();
     expect(await mountTree()).toEqual([]);
