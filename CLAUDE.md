@@ -352,11 +352,16 @@ reading — and the count that matters is in the attention line, tenant-wide. Th
 inspector's old "approvals always polls while the panel is open" exception is gone: the attention
 line took that job. **And so is the Approvals tab.** It drew a second live `ApprovalDecision` for
 every row the attention line was already offering — two Approve buttons and two countdowns a second
-apart for one call — so the instrument is Plans and Tools, and decides nothing.
+apart for one call — so the instrument is Changes, Plans and Tools, and decides nothing.
+**Changes is first and open by default** (2026-10-06): it is derived from the transcript, so opening
+the rail asks the harness for nothing until another tab is chosen. It moved there from the
+sidebar's workspace section, which keeps *where* tools work — the mount, the thread's repository,
+the files — while the instrument holds what this thread's calls did. The tabs no longer sit under a
+"Harness" heading, since Changes reads no harness route; each tab's first line says its scope.
 `tests/inspector-run.test.tsx` pins that it neither renders a decision nor asks `/approvals`.
 
-**`Changes on this thread` is a workspace tool's path argument, and nothing else.** The zone
-derives it from `Turn.tools[]` through `collectChanges` (`src/lib/changes.ts`), which is gated by
+**The Changes tab is a workspace tool's path argument, and nothing else.** `ThreadChanges`
+(`components/workspace/changes-list.tsx`) derives it from `Turn.tools[]` through `collectChanges` (`src/lib/changes.ts`), which is gated by
 `collectTouchedPaths` in `@felix/cowork-client`: `path` for the harness's five workspace tools, `cwd`
 for `local_shell`, `target` for `local_open`, by an allowlist of names. It used to run
 `collectToolCallPaths` — the mention heuristic, which walks *every* string — and so listed the files

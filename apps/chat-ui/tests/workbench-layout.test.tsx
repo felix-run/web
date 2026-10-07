@@ -141,6 +141,16 @@ function mountZone(over: Partial<ShellValue> = {}) {
   );
 }
 
+function mountInstrument(over: Partial<ShellValue> = {}) {
+  return render(
+    <TooltipProvider>
+      <ShellProvider value={shell(over)}>
+        <Inspector open onClose={() => {}} />
+      </ShellProvider>
+    </TooltipProvider>,
+  );
+}
+
 beforeEach(() => {
   localStorage.clear();
   vi.stubGlobal(
@@ -236,8 +246,8 @@ describe('the sidebar', () => {
 });
 
 describe('the workspace section', () => {
-  it('lists what this thread changed, from the tool calls themselves', async () => {
-    mountZone({
+  it('lists what this thread changed in the instrument, from the tool calls themselves', async () => {
+    mountInstrument({
       turns: [
         {
           id: 't1',
@@ -268,7 +278,7 @@ describe('the workspace section', () => {
       ] as ShellValue['turns'],
     });
 
-    await waitFor(() => expect(screen.getByText('Changes on this thread')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('This thread · from its tool calls')).toBeTruthy());
     // The row's text is split so the filename survives truncation; the full path
     // is its title.
     const rows = (path: string) => document.querySelectorAll(`[title="${path}"]`);
@@ -337,7 +347,7 @@ describe('the run instrument', () => {
     );
 
     const tabs = await screen.findAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Plans', 'Tools']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools']);
 
     for (const tab of tabs) {
       const id = tab.getAttribute('aria-controls');
@@ -366,8 +376,8 @@ describe('the run instrument', () => {
       </TooltipProvider>,
     );
 
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Plans' })).toBeTruthy());
-    expect(screen.getByRole('tab', { name: 'Plans' }).getAttribute('aria-selected')).toBe('true');
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Changes' })).toBeTruthy());
+    expect(screen.getByRole('tab', { name: 'Changes' }).getAttribute('aria-selected')).toBe('true');
 
     // An inactive panel renders its element for the association and *not* its
     // children — which is the poll economy, not a rendering detail.
@@ -381,7 +391,9 @@ describe('the run instrument', () => {
     await waitFor(() =>
       expect(screen.getByRole('tab', { name: 'Tools' }).getAttribute('aria-selected')).toBe('true'),
     );
-    expect(screen.getByRole('tab', { name: 'Plans' }).getAttribute('aria-selected')).toBe('false');
+    expect(screen.getByRole('tab', { name: 'Changes' }).getAttribute('aria-selected')).toBe(
+      'false',
+    );
   });
 });
 

@@ -3,7 +3,9 @@ import type { ApprovalRequest, ToolCall, Turn } from '@felix/client';
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ThreadChanges } from '../src/components/workspace/changes-list';
 import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import { collectChanges, countLines, durableRunInFlight } from '../src/lib/changes';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
@@ -177,15 +179,18 @@ describe('collectChanges', () => {
   });
 });
 
-function mount({
-  turns = [],
-  streaming = false,
-  pending = [],
-}: {
-  turns?: Turn[];
-  streaming?: boolean;
-  pending?: ApprovalRequest[];
-}) {
+function mount(
+  {
+    turns = [],
+    streaming = false,
+    pending = [],
+  }: {
+    turns?: Turn[];
+    streaming?: boolean;
+    pending?: ApprovalRequest[];
+  },
+  node: ReactNode = <WorkspaceSection />,
+) {
   const value = {
     turns,
     threads: [],
@@ -209,35 +214,54 @@ function mount({
   } as unknown as ShellValue;
   return render(
     <TooltipProvider>
-      <ShellProvider value={value}>
-        <WorkspaceSection />
-      </ShellProvider>
+      <ShellProvider value={value}>{node}</ShellProvider>
     </TooltipProvider>,
   );
 }
 
 afterEach(() => cleanup());
 
-describe('the Changes section', () => {
-  it('is absent on a thread with no workspace calls and no run', () => {
-    mount({});
-    expect(screen.queryByRole('region', { name: 'Changes on this thread' })).toBeNull();
+/** The instrument's Changes tab, which moved there from the sidebar's workspace. */
+const changesTab = (over: Parameters<typeof mount>[0]) => mount(over, <ThreadChanges />);
+
+describe('the Changes tab', () => {
+  it('says so on a thread with no workspace calls and no run', () => {
+    const { container } = changesTab({});
+    expect(container.textContent).toBe('No tool on this thread has touched a workspace file yet.');
+  });
+
+  it('is no longer drawn in the sidebar', () => {
+    mount({
+      turns: [assistant([call('write_file', { path: 'notes.md', content: 'hi' }, OK_WRITE)])],
+    });
+    expect(screen.queryByText('Changes on this thread')).toBeNull();
+    expect(screen.queryByRole('button', { name: /notes\.md/ })).toBeNull();
+  });
+
+  it('lists every path rather than the first eight', () => {
+    const tools = Array.from({ length: 12 }, (_, i) =>
+      call('read_file', { path: `f${i}.txt` }, '{}'),
+    );
+    changesTab({ turns: [assistant(tools)] });
+    for (let i = 0; i < 12; i++) {
+      expect(document.querySelectorAll(`[title="f${i}.txt"]`)).toHaveLength(1);
+    }
+    expect(screen.queryByText(/more$/)).toBeNull();
   });
 
   it('says changes are coming while a durable run is in flight', () => {
-    mount({
+    const { container } = changesTab({
       streaming: true,
       turns: [
         { id: 'u', role: 'user', content: 'go' },
         assistant([], { content: 'Background · running…', runStatus: 'running' }),
       ],
     });
-    const section = screen.getByRole('region', { name: 'Changes on this thread' });
-    expect(section.textContent).toContain('Changes appear when the run finishes.');
+    expect(container.textContent).toBe('Changes appear when the run finishes.');
   });
 
   it('drops the durable line once the run has reported a tool call', () => {
-    mount({
+    const { container } = changesTab({
       streaming: true,
       turns: [
         { id: 'u', role: 'user', content: 'go' },
@@ -245,13 +269,12 @@ describe('the Changes section', () => {
         assistant([], { content: 'Background · running…', runStatus: 'running' }),
       ],
     });
-    const section = screen.getByRole('region', { name: 'Changes on this thread' });
-    expect(section.textContent).not.toContain('Changes appear');
-    expect(section.textContent).toContain('a.txt');
+    expect(container.textContent).not.toContain('appear when the run finishes');
+    expect(container.textContent).toContain('a.txt');
   });
 
   it('opens a write row from the keyboard to show what was written', async () => {
-    mount({
+    changesTab({
       turns: [
         assistant([
           call('write_file', { path: 'docs/notes.md', content: 'hello there' }, OK_WRITE),
@@ -273,7 +296,7 @@ describe('the Changes section', () => {
   });
 
   it('draws a failed write as the word failed, in the failure colour', () => {
-    mount({
+    changesTab({
       turns: [
         assistant([
           call(
@@ -298,12 +321,12 @@ describe('the Changes section', () => {
     mount({
       turns: [assistant([call('write_file', { path: 'notes.md', content: 'hi' }, OK_WRITE)])],
     });
-    expect(await screen.findByText(/The writes above ran on the harness/)).toBeTruthy();
+    expect(await screen.findByText(/This thread's writes ran on the harness/)).toBeTruthy();
     expect(screen.queryByText('Nothing written yet.')).toBeNull();
   });
 
   it('never labels a call that was not applied as written', async () => {
-    mount({
+    changesTab({
       turns: [
         assistant([
           call(

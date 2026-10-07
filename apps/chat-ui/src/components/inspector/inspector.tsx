@@ -13,22 +13,27 @@ import {
   SectionBody,
   SectionBoundary,
 } from '@/components/inspector/primitives';
+import { ThreadChanges } from '@/components/workspace/changes-list';
 import { usePoll } from '@/hooks/usePoll';
 import { callTarget } from '@/lib/call-target';
 import { cn } from '@/lib/utils';
 import { type ShellValue, useShell } from '@/shell-context';
 import type { Plan, Turn } from '@/types';
 
-type SectionId = 'plans' | 'metrics';
+type SectionId = 'changes' | 'plans' | 'metrics';
 
 /**
- * Right-hand inspector: a readout of **this run**, then the harness's plans and
- * tool metrics.
+ * Right-hand inspector: a readout of **this run**, then three tabs — what this
+ * thread's tool calls changed in the workspace, the harness's plans, and its tool
+ * metrics.
  *
  * Each part says its own scope, because they differ. The readout is run-scoped:
  * it is derived from the engine the shell already holds, so it costs no request,
- * and "This run" heads it. The tabs sit under "Harness", and each tab's first line
- * says whose rows it lists and over what window. Plans asks for this thread's
+ * and "This run" heads it. Each tab's first line says whose rows it lists and
+ * over what window. Changes is derived from the transcript too, which is why it
+ * is first and open by default: opening the rail costs nothing until another
+ * tab is chosen. (The tabs used to sit under a "Harness" heading, which stopped
+ * being true when Changes, which reads no harness route, joined them.) Plans asks for this thread's
  * (`/plans?thread_id=`, `felix-run/felix#463`) and says *This thread* only when the
  * rows prove the harness filtered them — an older one ignores the parameter and
  * answers for the tenant, which the line then says. Tools stays *All threads*:
@@ -47,7 +52,8 @@ type SectionId = 'plans' | 'metrics';
  * (activity, usage, memory, corpus, skills): they outlive any one run and answer
  * questions about the harness rather than about what is on screen, so they are
  * `/harness` now. Approvals went to the attention line (above), which leaves the
- * two that belong beside a transcript.
+ * two that belong beside a transcript — joined by Changes, which moved here from
+ * the sidebar's workspace (see `ThreadChanges`).
  *
  * Only the visible tab fetches. The count that must be true before anyone looks
  * is the attention line's, which polls on its own.
@@ -58,6 +64,7 @@ type SectionId = 'plans' | 'metrics';
  * says that — and is absent where the list is simply everything pending.
  */
 const SECTIONS = [
+  { id: 'changes', label: 'Changes', window: 'This thread · from its tool calls' },
   // Plans draws its own line: whether it covers this thread or every thread is
   // only known once the harness has answered.
   { id: 'plans', label: 'Plans' },
@@ -74,7 +81,7 @@ export function Inspector({
   /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
-  const [active, setActive] = useState<SectionId>('plans');
+  const [active, setActive] = useState<SectionId>('changes');
 
   return (
     <aside
@@ -97,21 +104,9 @@ export function Inspector({
 
       <RunReadout />
 
-      {/*
-        The tabs' own heading. They read the harness, not the engine — so they must
-        not sit under "This run" as though they were its detail, and each says its
-        own scope on its first line. Title size, not headline: this is a section of the rail, and the
-        rail's one headline is the run above it.
-      */}
-      <section aria-labelledby="inspector-harness-heading" className="flex min-h-0 flex-1 flex-col">
-        <h3
-          id="inspector-harness-heading"
-          className="flex shrink-0 items-baseline gap-1.5 px-3 pt-2.5 text-sm font-semibold"
-        >
-          Harness
-        </h3>
+      <div className="flex min-h-0 flex-1 flex-col pt-1">
         {/*
-        Tabs, not a stacked accordion. Two sections fit a 22rem strip where the
+        Tabs, not a stacked accordion. Three sections fit a 22rem strip where the
         original eight did not, and one on screen is one poll rather than one per
         expanded section.
 
@@ -155,10 +150,11 @@ export function Inspector({
                   hold zero child nodes, and nine seconds on Plans issued three
                   `/plans` requests and none to the tool metrics. That is the
                   one-section-one-poll economy tabs were chosen for, and
-                  `forceMount` would silently undo it by mounting both.
+                  `forceMount` would silently undo it by mounting all three.
                 */}
                   <PanelModeProvider chrome="tab">
                     <SectionBoundary title={section.label}>
+                      {section.id === 'changes' && <ThreadChanges />}
                       {section.id === 'plans' && <PlansSection enabled={open} />}
                       {section.id === 'metrics' && (
                         <MetricsSection enabled={open} open onToggle={() => {}} />
@@ -170,7 +166,7 @@ export function Inspector({
             </TabsContent>
           ))}
         </Tabs>
-      </section>
+      </div>
     </aside>
   );
 }

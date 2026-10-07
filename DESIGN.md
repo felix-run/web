@@ -676,8 +676,15 @@ edge, on the Harness fold's line, kept outside the label-and-value group so the 
 control; it remembers that it was folded. It was an icon and a semibold title, louder than both of
 its neighbours for a section that is often folded.
 
-Under the header, **Changes on this thread** lists each workspace path a tool call named and what
-was done to it — rows, not cards. The path is mono with the directory truncating before the
+Under the header: the thread's repository on the harness, then **Files**. What this thread's calls
+did to the workspace is not here — it is the instrument's **Changes** tab (below), because the
+sidebar holds *where* tools work, across threads, and the instrument holds what this thread did.
+
+### Changes tab
+
+The instrument's first tab, and the one it opens on, because it is derived from the transcript and
+costs no request. Its first line is its scope, *This thread · from its tool calls*. It lists each
+workspace path a tool call named and what was done to it — rows, not cards. The path is mono with the directory truncating before the
 filename, so rows under one deep folder stay told apart by the part that differs, and the full
 path is the row's `title`. The stat is mono, tabular, right-aligned, and claims only what the call
 proves: an edit is `+N −M`, the line counts of the text it replaced and the text it put there; a
@@ -686,11 +693,12 @@ holds the before-state; a read is its verb (`read`, `listed`, `searched`, `opene
 with `×3` for a repeat. A call the harness marked as failed or refused changed nothing and reads
 `failed`/`refused` in `state-failed` — a word, not only a colour. A call in flight reads
 `writing…`/`editing…` in muted. Paths a write or edit was attempted on sort first, then the rest,
-each newest first; eight are shown, then `and N more`. A row a write or edit was attempted on is a
+each newest first; every path is listed, since the tab scrolls. A row a write or edit was attempted on is a
 disclosure — the one chevron in the list marks the rows that open — and shows that call's
 evidence through the approval card's own folding pane: the replaced and replacing text for an
 edit, the written content for a write. While a durable run is in flight and has reported no call,
-the section is one muted line, *Changes appear when the run finishes.*, rather than absent.
+the tab is one muted line, *Changes appear when the run finishes.*; with nothing at all it says
+*No tool on this thread has touched a workspace file yet.*
 
 ### Sidebar
 
