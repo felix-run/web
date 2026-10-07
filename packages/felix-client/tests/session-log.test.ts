@@ -85,6 +85,31 @@ describe('eventsToTurns — rebuilding a transcript from the server log', () => 
     ]);
   });
 
+  it('reads the images a tool result carried', () => {
+    const [turn] = eventsToTurns([
+      ev({
+        seq: 1,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'a', name: 'browser_screenshot', args: {} }],
+      }),
+      ev({
+        seq: 2,
+        kind: 'tool_result',
+        role: 'tool',
+        tool_call_id: 'a',
+        content: 'Screenshot',
+        metadata: {
+          attachments: [
+            { url: 'felix-file://f1', media_type: 'image/png', filename: '', detail: 'auto' },
+            { url: 'http://elsewhere.example/x.png', media_type: 'image/png' },
+          ],
+        },
+      }),
+    ]);
+    expect(turn?.tools?.[0]?.images).toEqual([{ url: 'felix-file://f1', media_type: 'image/png' }]);
+  });
+
   it('pairs user and assistant messages in order', () => {
     const turns = eventsToTurns([
       ev({ seq: 1, role: 'user', content: 'question' }),

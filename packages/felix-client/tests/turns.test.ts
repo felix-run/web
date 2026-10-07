@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolCall } from '../src/turns';
-import { closeTool, findOpenTool, interleaveTurn, markToolPhase } from '../src/turns';
+import { closeTool, findOpenTool, interleaveTurn, markToolPhase, toolImages } from '../src/turns';
 
 const call = (over: Partial<ToolCall>): ToolCall => ({ name: 'read_file', done: false, ...over });
 
@@ -223,6 +223,37 @@ describe('interleaveTurn — reasoning', () => {
     expect(interleaveTurn('short', [], [{ text: 'hmm', at: 999 }])).toEqual([
       { kind: 'text', text: 'short' },
       { kind: 'reasoning', text: 'hmm' },
+    ]);
+  });
+});
+
+describe('toolImages', () => {
+  it('keeps stored references and inline rasters, and nothing that would fetch', () => {
+    expect(
+      toolImages([
+        { url: 'felix-file://a1', media_type: 'image/jpeg' },
+        { url: 'data:image/webp;base64,UklGR', media_type: 'image/webp' },
+        { url: 'data:image/png,raw' },
+        { url: 'https://cdn.example/a.png' },
+        { url: '//cdn.example/a.png' },
+        { url: 'data:image/svg+xml;base64,PHN2Zz4=' },
+        { url: 'data:text/html,<script>' },
+        { url: 'felix-file://a/../b' },
+        { url: '' },
+        null,
+        'felix-file://bare-string',
+      ]).map((i) => i.url),
+    ).toEqual(['felix-file://a1', 'data:image/webp;base64,UklGR', 'data:image/png,raw']);
+  });
+
+  it('reads nothing from a missing or malformed list', () => {
+    expect(toolImages(undefined)).toEqual([]);
+    expect(toolImages({ url: 'felix-file://a' })).toEqual([]);
+  });
+
+  it('defaults an unlabelled image to PNG, as the user-side reader does', () => {
+    expect(toolImages([{ url: 'felix-file://a' }])).toEqual([
+      { url: 'felix-file://a', media_type: 'image/png' },
     ]);
   });
 });

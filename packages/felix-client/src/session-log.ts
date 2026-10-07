@@ -14,7 +14,7 @@ import {
   type SessionSnapshot,
   type TokenUsage,
 } from '@felix/protocol';
-import type { ReasoningBlock, ToolCall, Turn } from './turns';
+import { type ReasoningBlock, type ToolCall, type Turn, toolImages } from './turns';
 
 /**
  * One row from GET /chat/sessions — the tenant's threads, as the harness knows
@@ -259,6 +259,8 @@ export function eventsToTurns(
       if (t) {
         t.output = ev.content;
         t.done = true;
+        const images = toolImages(ev.metadata?.attachments);
+        if (images.length) t.images = images;
       }
       continue;
     }
