@@ -1,16 +1,12 @@
 /**
  * The Felix mark — one geometry, every rendering of it.
  *
- * An F drawn as a stem and a top arm, with the middle arm replaced by a dot:
- * the same state dot every run readout, chip and approval in chat-ui draws. The
- * dot is where the mark carries state. At rest it is the glyph's own ink and the
- * mark reads as a plain F; in a tab whose run is working or waiting on a person
- * it takes that state's hue, so the tab strip says what the title says.
- *
- * Drawn on a 32-unit grid with every straight edge on an even unit, so at 16px —
- * the size a tab actually shows — each edge lands on a whole pixel instead of
- * smearing across two. The dot is 8 units: 4px at 16, the smallest that still
- * reads as a dot rather than a speck once the browser downsamples it.
+ * A paw print: four toe pads over a main pad. The main pad is where the mark
+ * carries state. At rest it is the glyph's own ink and the mark reads as a plain
+ * paw; in a tab whose run is working or waiting on a person it takes that
+ * state's hue, so the tab strip says what the title says. It is the largest
+ * shape in the glyph, which is what keeps the hue legible once the browser
+ * downsamples the mark to 16px.
  *
  * Colour is not decoration here (DESIGN.md's State-Only Rule): the tile and
  * glyph are neutral ink, and the only hue the mark ever shows is a state's.
@@ -25,23 +21,18 @@ export const MARK_GRID = 32;
 /** The rounded square the glyph sits on. */
 export const MARK_TILE = { size: MARK_GRID, radius: 7 } as const;
 
-/**
- * Stem and top arm, as one path: x 10–24, y 6–26, a 4-unit stroke (2px at 16).
- * A 6-unit stroke was tried first and read as a corner bracket rather than a
- * letter: the dot sank into the pocket the two heavy bars made. The glyph's box
- * sits one unit right of centre on purpose — an F's weight is all in its stem,
- * so a box centred on the tile looks shifted left.
- */
-export const MARK_GLYPH_PATH = 'M10 6h14v4H14v16h-4z';
+/** The four toe pads, left to right. Always the glyph's ink. */
+export const MARK_TOES = [
+  { cx: 8.5, cy: 13, r: 3 },
+  { cx: 15, cy: 9.5, r: 3 },
+  { cx: 21.5, cy: 10, r: 3 },
+  { cx: 27, cy: 14, r: 3 },
+] as const;
 
-/**
- * The dot that stands where the middle arm would be: on the tile's vertical
- * centre, 2 units clear of both the stem and the top arm, its right edge flush
- * with the arm's.
- */
-export const MARK_DOT = { cx: 20, cy: 16, r: 4 } as const;
+/** The main pad, which takes the run state's hue. */
+export const MARK_PAD = { cx: 16, cy: 21, rx: 6.5, ry: 5 } as const;
 
-/** The three states `presence.ts` tracks. `idle` draws the dot in glyph ink. */
+/** The three states `presence.ts` tracks. `idle` draws the pad in glyph ink. */
 export type MarkState = 'idle' | 'working' | 'blocked';
 
 /**
@@ -53,7 +44,7 @@ export type MarkState = 'idle' | 'working' | 'blocked';
  */
 export const MARK_INK = { tile: NEUTRAL[950], glyph: NEUTRAL[50] } as const;
 
-export const MARK_DOT_FILL: Record<MarkState, string> = {
+export const MARK_PAD_FILL: Record<MarkState, string> = {
   idle: MARK_INK.glyph,
   working: STATE_DARK.running,
   blocked: STATE_DARK.blocked,
@@ -90,7 +81,7 @@ export function markSvg({
 }: MarkSvgOptions = {}): string {
   const tile = inverted ? MARK_INK.glyph : MARK_INK.tile;
   const glyph = inverted ? MARK_INK.tile : MARK_INK.glyph;
-  const dot = inverted ? glyph : MARK_DOT_FILL[state];
+  const pad = inverted ? glyph : MARK_PAD_FILL[state];
   const box = MARK_GRID + inset * 2;
   const rx = square ? 0 : (MARK_TILE.radius * box) / MARK_GRID;
   const label = title
@@ -99,8 +90,8 @@ export function markSvg({
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-inset} ${-inset} ${box} ${box}"${label}`,
     `<rect x="${-inset}" y="${-inset}" width="${box}" height="${box}" rx="${rx}" fill="${tile}"/>`,
-    `<path d="${MARK_GLYPH_PATH}" fill="${glyph}"/>`,
-    `<circle cx="${MARK_DOT.cx}" cy="${MARK_DOT.cy}" r="${MARK_DOT.r}" fill="${dot}"/>`,
+    ...MARK_TOES.map((t) => `<circle cx="${t.cx}" cy="${t.cy}" r="${t.r}" fill="${glyph}"/>`),
+    `<ellipse cx="${MARK_PAD.cx}" cy="${MARK_PAD.cy}" rx="${MARK_PAD.rx}" ry="${MARK_PAD.ry}" fill="${pad}"/>`,
     '</svg>',
   ].join('');
 }
