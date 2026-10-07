@@ -211,8 +211,9 @@ a file into `\n`, and writing the result back would rewrite every line ending in
 edit never touched. Use it instead of `write_file` on any file the model did not just create: it is
 the only one of the two that cannot lose a byte the model failed to reproduce.
 
-The five workspace tools resolve every path under `FELIX_WORKSPACE_ROOT`, rejecting absolute paths
-and any traversal that escapes the root. With the variable unset they fail with
+The five workspace tools resolve every path under the manifest's workspace scope
+([`spec.workspace`](#specworkspace)), a directory under `FELIX_WORKSPACE_ROOT`, rejecting absolute
+paths and any traversal that escapes it. With the variable unset they fail with
 `workspace_root is not configured (set FELIX_WORKSPACE_ROOT)`.
 
 They never follow a symlink. Each path is opened one component at a time from the root with
@@ -224,6 +225,47 @@ writing the workspace swap a directory for a link between the two. `list_dir` re
 
 Patterns contribute their own tools: `plan_create` / `plan_update_step` / `plan_get` (`deep`), and
 `remember_procedure` when procedural memory is on.
+
+## `spec.workspace`
+
+Which directory the workspace tools, [`shell_tools`](#specshell_tools), an image tool's `path` and
+[`publish_commits`](#specgithub_publish) work in. Each is a directory under `FELIX_WORKSPACE_ROOT`:
+
+```yaml
+workspace:
+  scope: thread      # thread (default) | tenant | deployment
+```
+
+| `scope` | Directory | For |
+|---|---|---|
+| `thread` | `<root>/.felix-scopes/<tenant>/<hash of tenant and thread>` | a conversation's files are its own |
+| `tenant` | `<root>/.felix-scopes/<tenant>/shared` | agents meant to share one workspace across a tenant's threads |
+| `deployment` | `<root>` itself | the self-build manifests (`contributor`, `triage`), whose root is a real checkout |
+
+- **No thread, no `thread` workspace.** A call that carries no thread — an MCP or A2A call that
+  names none — is refused under `scope: thread` rather than given a shared directory.
+- **`deployment` is the operator's.** The root holds every other scope, so it is honoured only for
+  the tenants in `FELIX_WORKSPACE_DEPLOYMENT_TENANTS` (comma-separated, default `default`). Any other
+  tenant running a manifest that asks for it is refused, never given the root.
+- **The scope is set per call, outermost**, so an approval's preview reads the same directory the
+  call will write.
+- **A thread with its own repository** (`POST /chat/sessions/{thread}/workspace/repo`) works in that
+  checkout instead, whatever the scope.
+- **Instruction files** (`AGENTS.md`, `SYSTEM.md`) are read from the root, which only the
+  `deployment` scope can write.
+
+Scopes keep one tenant's *paths* out of another's. They do not separate *processes*: every tenant's
+tools run as the same user on the same host, so code [`shell_tools`](#specshell_tools) runs can reach
+past the path checks. A deployment that admits tenants it does not trust binds no `shell_tools`.
+
+**Upgrading from a release before scopes.** Files agents wrote at the root are visible only to the
+`deployment` scope afterwards. Move them, once, into the `default` tenant's `shared` scope where the
+workspace is mounted — `--keep` leaves a name at the root, and nothing is overwritten:
+
+```bash
+docker compose exec api felix workspace migrate --dry-run
+docker compose exec api felix workspace migrate --keep AGENTS.md
+```
 
 ## `spec.tool_guidance`
 
@@ -432,7 +474,7 @@ Container-backed code execution (the `sandbox` extra, Docker).
 
 ## `spec.shell_tools`
 
-Exec an allowlisted argv in the `FELIX_WORKSPACE_ROOT` checkout — the tool that lets a coding agent
+Exec an allowlisted argv in the manifest's workspace scope ([`spec.workspace`](#specworkspace)) — the tool that lets a coding agent
 run the repository's own gates. No shell interpreter: `&&`, `|` and `;` are literal arguments. It
 runs as a child of the API process, or in a separate shell runner when `FELIX_SHELL_RUNNER_URL` is
 set (below).
@@ -470,8 +512,9 @@ database credentials, any token the API holds. Run untrusted work through a runn
 
 **The shell runner.** `felix-shell-runner` executes shell tools in a container of its own. With
 `FELIX_SHELL_RUNNER_URL` set, the API runs every check above, then sends the argv to the runner;
-the runner checks the argv against its own `FELIX_SHELL_ALLOWED_COMMANDS` and the `cwd` against its
-own `FELIX_WORKSPACE_ROOT` again, and kills the process group at the deadline or when the API goes
+the runner checks the argv against its own `FELIX_SHELL_ALLOWED_COMMANDS` and the `cwd` against the
+same scope under its own `FELIX_WORKSPACE_ROOT` again (the API sends the scope, and the runner accepts
+only that shape; run the runner on the same release as the API), and kills the process group at the deadline or when the API goes
 away. A runner that is down, errors, times out or answers anything malformed fails the call — it
 never falls back to running the command in the API.
 
@@ -540,8 +583,8 @@ pixels, not its file id, so every op except `list` takes `image`:
 - a `felix-file://` reference the thread holds.
 
 A reference to any other upload is refused. A tool whose entry sets `allow_path: true` also takes
-`path`, a file under `FELIX_WORKSPACE_ROOT`. That directory is shared by every tenant on the host,
-which is why reading it is opt-in. The ops' own arguments:
+`path`, a file in the manifest's workspace scope ([`spec.workspace`](#specworkspace)). Reading it is
+opt-in, as with `read_file`. The ops' own arguments:
 
 | Op | Arguments | Returns |
 |---|---|---|
