@@ -11,8 +11,8 @@ import { Button } from '@felix/ui/button';
 import { ButtonGroup, ButtonGroupText } from '@felix/ui/button-group';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { ChevronLeftIcon, ChevronRightIcon, ImageOffIcon, OctagonPauseIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { drawableUrl } from '@/lib/image-upload';
+import { useState } from 'react';
+import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { cn } from '@/lib/utils';
 import type { Turn, TurnFeedback } from '@/types';
 import { MessageActions } from './message-actions';
@@ -402,24 +402,7 @@ function UsageLine({ usage }: { usage: NonNullable<Turn['usage']> }) {
  * broken-image glyph that reads as a rendering bug.
  */
 function AttachedImage({ url, alt }: { url: string; alt: string }) {
-  const immediate = drawableUrl(url);
-  const [src, setSrc] = useState<string | null | undefined>(
-    typeof immediate === 'string' ? immediate : undefined,
-  );
-  useEffect(() => {
-    const next = drawableUrl(url);
-    if (typeof next === 'string') {
-      setSrc(next);
-      return;
-    }
-    let live = true;
-    void next.then((resolved) => {
-      if (live) setSrc(resolved);
-    });
-    return () => {
-      live = false;
-    };
-  }, [url]);
+  const src = useDrawableUrl(url);
 
   // One card in three states: fetching the bytes reads as processing (the title
   // sweeps), an upload the harness no longer holds is an error said in words, and

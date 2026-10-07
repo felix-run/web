@@ -7,6 +7,7 @@ import {
   CheckCircle2Icon,
   ChevronDownIcon,
   CircleAlertIcon,
+  ImageOffIcon,
   LoaderIcon,
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
@@ -20,6 +21,7 @@ import {
   TerminalHeader,
   TerminalTitle,
 } from '@/components/ai-elements/terminal';
+import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { parseSkillCall } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
@@ -146,6 +148,9 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
           )}
         />
       </CollapsibleTrigger>
+      {/* Outside the fold: a screenshot is the result a person wants to see, and
+          hiding it behind the chevron made every browser call read as text. */}
+      {tool.images?.length ? <ToolImages images={tool.images} label={target ?? tool.name} /> : null}
       <CollapsibleContent className="space-y-2 border-t border-border/50 px-3 py-2.5">
         <Field label="Input" value={tool.input} />
         {shell ? (
@@ -174,6 +179,65 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
       </Suspense>
       {card}
     </div>
+  );
+}
+
+/**
+ * The images a tool returned, drawn in the card rather than named in its output.
+ * Each one fits a fixed height so a full-page screenshot does not push the
+ * conversation off the screen, and opens to its own width on a click.
+ */
+function ToolImages({ images, label }: { images: NonNullable<ToolCall['images']>; label: string }) {
+  return (
+    <div className="flex flex-wrap gap-2 border-t border-border/50 px-3 py-2.5">
+      {images.map((image, i) => (
+        <ToolImage
+          key={image.url}
+          url={image.url}
+          alt={images.length === 1 ? `Image from ${label}` : `Image ${i + 1} from ${label}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ToolImage({ url, alt }: { url: string; alt: string }) {
+  const src = useDrawableUrl(url);
+  const [full, setFull] = useState(false);
+  if (src === null) {
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <ImageOffIcon aria-hidden className="size-3.5" />
+        Image no longer stored
+      </p>
+    );
+  }
+  if (src === undefined) {
+    return (
+      <div
+        role="img"
+        aria-label={`${alt}, loading`}
+        className="h-40 w-64 max-w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none"
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-pressed={full}
+      title={full ? 'Fit to the card' : 'Show at full size'}
+      onClick={() => setFull((v) => !v)}
+      className={cn(
+        'overflow-auto rounded-md border border-border/60 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
+        full ? 'w-full cursor-zoom-out' : 'cursor-zoom-in',
+      )}
+    >
+      <img
+        src={src}
+        alt={alt}
+        className={cn('block', full ? 'max-w-none' : 'max-h-72 max-w-full object-contain')}
+      />
+    </button>
   );
 }
 

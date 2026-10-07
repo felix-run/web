@@ -35,7 +35,35 @@ export interface ToolCall {
    * which is exactly the old behaviour.
    */
   at?: number;
+  /**
+   * Images the tool returned beside its text — a browser screenshot, an MCP
+   * server's image block, a generated picture. The harness stores each one and
+   * hands back a `felix-file://` reference, so a renderer fetches it the way it
+   * fetches an uploaded image. Only `toolImages` fills this, and it keeps only
+   * what a client may draw without asking anyone else for it.
+   */
+  images?: ImageAttachment[];
 }
+
+/**
+ * The images a tool result carried, as the harness sends them — the session log's
+ * `metadata.attachments`, or the `attachments` on a `tool_end` frame — keeping
+ * only what can be drawn without a request leaving for somewhere else: a stored
+ * reference, or an inline raster `data:` URL. A remote URL is dropped rather
+ * than drawn, because an `<img>` pointed at it is a request the tool's author
+ * chose, made from the operator's browser the moment the card renders.
+ */
+export function toolImages(raw: unknown): ImageAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((a) => {
+    if (!a || typeof a !== 'object') return [];
+    const { url, media_type } = a as Record<string, unknown>;
+    if (typeof url !== 'string' || !DRAWABLE.test(url)) return [];
+    return [{ url, media_type: typeof media_type === 'string' ? media_type : 'image/png' }];
+  });
+}
+
+const DRAWABLE = /^(felix-file:\/\/[^/\s]+$|data:image\/(png|jpeg|gif|webp)[;,])/i;
 
 /**
  * A stretch of model reasoning, and where in the prose it happened.
@@ -145,12 +173,13 @@ export function closeTool(
   name: string,
   output: unknown,
   callId?: string,
+  images: ImageAttachment[] = [],
 ): ToolCall[] {
   const next = [...(tools ?? [])];
   const i = findOpenTool(next, name, callId);
   const open = i === -1 ? undefined : next[i];
   if (!open) return next;
-  next[i] = { ...open, output, done: true };
+  next[i] = { ...open, output, done: true, ...(images.length ? { images } : {}) };
   return next;
 }
 

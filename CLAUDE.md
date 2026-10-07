@@ -728,6 +728,15 @@ Flows worth knowing before editing the app:
   positive mangles output that was fine. The first draft read three lines of comma-laden prose as
   a CSV; header cells must now be label-like and no line may end like a sentence. A failed call
   and a `local_shell` result keep their own rendering.
+- **A tool's images are drawn in its card** (`ToolImages` in `components/chat/tool.tsx`), outside
+  the fold, because a screenshot hidden behind the chevron made every browser call read as text.
+  `ToolCall.images` is filled by `toolImages` in `@felix/client` from a tool result's
+  `metadata.attachments` (the snapshot and a durable run's `session_event`s) and from
+  `tool_end.attachments` (`felix-run/felix#500`; an older harness sends none, so its images appear
+  on the next hydrate). `toolImages` keeps a `felix-file://` reference or an inline raster `data:`
+  URL and **drops anything else**: a remote URL in an `<img>` is a request the tool's author chose,
+  made from the operator's browser as the card renders. References resolve through
+  `useDrawableUrl` (`hooks/use-drawable-url.ts`), the same fetch-once path a message's attachments use.
 - **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
   with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
   `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only

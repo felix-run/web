@@ -223,6 +223,37 @@ describe('tool cards', () => {
   });
 
   /**
+   * A screenshot is the point of a browser tool's card. The frame names the
+   * stored image; an image pointing anywhere else is a request the tool's author
+   * chose, made from the operator's browser, and is dropped.
+   */
+  it('carries the images a tool returned, and only the drawable ones', async () => {
+    const engine = engineOn([
+      { event: 'tool_start', data: { name: 'browser_screenshot', id: 'c1' } },
+      {
+        event: 'tool_end',
+        data: {
+          name: 'browser_screenshot',
+          output: 'Screenshot of example.com (1280×800)',
+          id: 'c1',
+          attachments: [
+            { url: 'felix-file://abc123', media_type: 'image/png' },
+            { url: 'https://tracker.example/pixel.png', media_type: 'image/png' },
+            { url: 'data:image/svg+xml,<svg/>', media_type: 'image/svg+xml' },
+          ],
+        },
+      },
+      { event: 'tool_start', data: { name: 'read_file', id: 'c2' } },
+      { event: 'tool_end', data: { name: 'read_file', output: 'text', id: 'c2' } },
+    ]);
+    await run(engine);
+
+    const [shot, read] = engine.state.turns.at(-1)?.tools ?? [];
+    expect(shot?.images).toEqual([{ url: 'felix-file://abc123', media_type: 'image/png' }]);
+    expect(read && 'images' in read).toBe(false);
+  });
+
+  /**
    * A spinner that outlives the run reads as work still going. An aborted run
    * sends no `done`, so nothing else settles these.
    */

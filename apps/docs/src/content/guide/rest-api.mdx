@@ -522,8 +522,8 @@ present, else `data.text` or `data.delta`, else `""`.
   <dd>Right after `tool_start`</dd>
   <dd class="event-data">`{"name":str,"id":str,"status":"running"}`</dd>
   <dt>`tool_end`</dt>
-  <dd>A tool returned</dd>
-  <dd class="event-data">`{"name":str,"output":str,"id":str}`</dd>
+  <dd>A tool returned. `attachments` is present only when it returned images, each a stored `felix-file://` reference to fetch from `GET /files/{id}` (felix-run/felix#500)</dd>
+  <dd class="event-data">`{"name":str,"output":str,"id":str,"attachments"?:[{"url","media_type"}]}`</dd>
   <dt>`tool_execution_update`</dt>
   <dd>Right after `tool_end`</dd>
   <dd class="event-data">`{"name":str,"id":str,"status":"complete"}`</dd>

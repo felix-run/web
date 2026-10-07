@@ -34,7 +34,7 @@ import {
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
-import { closeTool, markToolPhase, type Turn } from './turns';
+import { closeTool, markToolPhase, type Turn, toolImages } from './turns';
 
 export interface EngineState {
   turns: Turn[];
@@ -465,9 +465,18 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       }
       case 'on_tool_end':
       case 'tool_end': {
-        const data = ev.data as { name?: string; output?: unknown; id?: string };
+        const data = ev.data as {
+          name?: string;
+          output?: unknown;
+          id?: string;
+          attachments?: unknown;
+        };
         const name = String(data.name ?? 'tool');
-        patch((t) => ({ ...t, tools: closeTool(t.tools, name, data.output, data.id) }));
+        // `attachments` is the images the tool returned. A harness that predates
+        // sending them on the frame sends none, and the images arrive with the
+        // session log instead — on the next hydrate, or as a durable run's events.
+        const images = toolImages(data.attachments);
+        patch((t) => ({ ...t, tools: closeTool(t.tools, name, data.output, data.id, images) }));
         captureSkills(name, data.output);
         break;
       }
