@@ -1085,13 +1085,13 @@ each consumer opts in with its own flag, and each keeps its previous behaviour a
 ```yaml
 spec:
   decider:
-    id: jev              # a FELIX_DECISION_ROUTES id
+    id: clef             # a FELIX_DECISION_ROUTES id
     min_confidence: 0.5
 ```
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `id` | string | `""` | Off when empty. `jev` (TypeSafe) and `jev-cf` (Jev on Workers AI) are built in; an id not in `FELIX_DECISION_ROUTES` fails the compile. |
+| `id` | string | `""` | Off when empty. `clef` and `clef-flash` (Cloudflare's, on Workers AI), `jev` (TypeSafe) and `jev-cf` (Jev on Workers AI) are built in; an id not in `FELIX_DECISION_ROUTES` fails the compile. |
 | `min_confidence` | float 0–1 | `0.5` | Below this a consumer treats the decision as unsure and takes its fallback. |
 
 | Consumer | Flag | What the decider decides |
