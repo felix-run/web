@@ -5,7 +5,7 @@
  * reports as changed start expanded, a changed file is drawn in the foreground with its status,
  * and everything else is muted and folded. The status is git's, read on the harness — modified,
  * added, deleted, untracked, conflicted — so it covers what the agent's shell did as well as its
- * workspace tools, which *Changes on this thread* (built from tool arguments) cannot.
+ * workspace tools, which the instrument's *Changes* tab (built from tool arguments) cannot.
  *
  * Nothing here opens a file: the harness lists a checkout but serves none of its contents, so a
  * file is not a tab stop (the tree makes one only when selecting does something).

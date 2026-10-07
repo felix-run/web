@@ -9,10 +9,9 @@ import {
   FileTreeIcon,
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
-import { ChangesSection } from '@/components/workspace/changes-list';
 import { FilePreview } from '@/components/workspace/file-preview';
 import { ThreadRepoSection } from '@/components/workspace/thread-repo';
-import { collectChanges, durableRunInFlight, runHasToolCalls } from '@/lib/changes';
+import { collectChanges } from '@/lib/changes';
 import {
   clearMount,
   getMountLabel,
@@ -34,8 +33,10 @@ import { useShell } from '@/shell-context';
  * It was the whole left zone, with threads hung off its header in a popover —
  * which made that popover the only door to another conversation at any width.
  * The sidebar gave threads back a list of their own, so this is one section of
- * it: what is mounted, what this thread's calls changed, and the files. It
- * folds, and remembers that it did, because on a thread with no workspace work
+ * it: what is mounted, the thread's repository on the harness, and the files —
+ * *where* tools work. What this thread's calls *did* there is the run
+ * instrument's Changes tab (`ThreadChanges`), which changes with every thread
+ * and is the instrument's question rather than this one's. It folds, and remembers that it did, because on a thread with no workspace work
  * it is a tall block between the thread list and the harness.
  *
  * Its first state on many mornings is not a tree. `restoreMount()` can only
@@ -106,28 +107,9 @@ export function WorkspaceSection({ className }: { className?: string }) {
   }, [streaming, refresh]);
 
   /**
-   * What this thread's tool calls did to the workspace, per path.
-   *
-   * Derived from the transcript rather than tracked separately: the tool calls
-   * are already the record of what the agent did, and a second list would be a
-   * second thing to keep true. `collectChanges` says what a row may claim.
-   *
-   * A path is a workspace tool's *path argument* — `collectTouchedPaths`, not
-   * the mention heuristic. The heuristic walks every string a call carries, so a
-   * `github__create_pull_request` whose body listed the files it changed put
-   * `./scripts/test.sh` here as though the agent had opened it.
-   *
-   * It covers the whole thread as hydrated, not this tab's visit to it — which is
-   * why the heading says "this thread": on a thread from two days ago "this
-   * session" read as "since I opened the tab", and the list is older than that.
-   *
-   * **It is empty during a durable run until the harness says otherwise.** A
-   * durable manifest's stream carries `run_accepted` → `run_status` → `final` and
-   * no tool frames, so `Turn.tools` stays empty while the agent works unless the
-   * harness tails its session events onto the stream; otherwise the calls arrive
-   * when the thread is hydrated after the run settles. Measured against `cowork`
-   * on 2026-09-12: `write_file` was invisible here until a reload. So the section
-   * says the list is coming rather than showing nothing — `durableGap`.
+   * Which files this thread's calls changed, so the tree can open onto them and
+   * draw them in the foreground. The list itself is the instrument's Changes tab;
+   * see `collectChanges` for what counts as a change.
    */
   const changes = useMemo(() => collectChanges(turns), [turns]);
   /** Paths a write or edit landed on, normalised to the tree's spelling. */
@@ -135,7 +117,6 @@ export function WorkspaceSection({ className }: { className?: string }) {
     () => new Set(changes.filter((c) => c.changed).map((c) => normalisePath(c.path))),
     [changes],
   );
-  const durableGap = durableRunInFlight(turns, streaming) && !runHasToolCalls(turns);
 
   /**
    * Must stay inside the click handler: the permission prompt is only allowed to
@@ -309,7 +290,6 @@ export function WorkspaceSection({ className }: { className?: string }) {
 
       <div id="workspace-body" hidden={folded} className="mt-3 space-y-4 px-2">
         <ThreadRepoSection threadId={threadId} streaming={streaming} />
-        <ChangesSection changes={changes} durableGap={durableGap} />
 
         <section aria-labelledby="workspace-files-heading">
           <h3
@@ -326,15 +306,15 @@ export function WorkspaceSection({ className }: { className?: string }) {
               onOpenFile={setPreviewing}
             />
           ) : (
-            // Files is this tab's own store; Changes above is every workspace
-            // call on the thread, including the harness's own tools, which never
-            // touch it. "Nothing written yet" under "+5 written" read as a
-            // contradiction, so an empty store says which store it is.
+            // Files is this tab's own store; the instrument's Changes is every
+            // workspace call on the thread, including the harness's own tools,
+            // which never touch it. "Nothing written yet" beside "+5 written" read
+            // as a contradiction, so an empty store says which store it is.
             <p className="text-xs text-muted-foreground">
               {mountLabel
                 ? 'This folder is empty.'
                 : changes.some((c) => c.changed)
-                  ? 'Nothing in this tab. The writes above ran on the harness.'
+                  ? "Nothing in this tab. This thread's writes ran on the harness."
                   : 'Nothing written in this tab yet.'}
             </p>
           )}
@@ -365,7 +345,7 @@ function normalisePath(path: string): string {
  *
  * It opens onto the work: the folders holding a path this thread wrote or edited
  * start expanded, and those paths are drawn in the foreground while the rest stay
- * muted — the same distinction *Changes on this thread* draws above, carried into
+ * muted — the same distinction the instrument's *Changes* tab draws, carried into
  * the place an operator looks for a file. Everything else starts folded, so a
  * mounted repository is one row per top-level entry instead of two hundred paths.
  * A file opens in the preview drawer; a folder's name still folds it.

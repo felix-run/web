@@ -111,17 +111,21 @@ describe('the instrument and approvals', () => {
   });
 
   /**
-   * Each part says its own scope. "This run" heads the readout; the tabs sit
-   * under "Harness", and each tab's first line says whose rows it lists — Plans
-   * this thread's, Tools every thread's, since `/audit/metrics` has no filter.
+   * Each part says its own scope. "This run" heads the readout; each tab's first
+   * line says whose rows it lists. Changes comes first and open, because it reads
+   * the transcript rather than the harness, so opening the rail asks for nothing.
    */
-  it('heads the tabs as the harness, apart from the run above them', async () => {
-    stub([]);
+  it('opens on this thread’s changes, below the run and apart from it', async () => {
+    const fetch = stub([]);
     mount();
-    const harness = screen.getByRole('region', { name: 'Harness' });
-    expect(within(harness).getByRole('tablist')).toBeTruthy();
-    expect(harness.contains(readout())).toBe(false);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools']);
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(readout().contains(screen.getByRole('tablist'))).toBe(false);
     expect(screen.getByRole('heading', { name: 'This run' })).toBeTruthy();
+    expect(await screen.findByText('This thread · from its tool calls')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Harness' })).toBeNull();
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('/plans'))).toBe(false);
   });
 
   it('labels the tool metrics as every thread’s', async () => {
@@ -312,6 +316,7 @@ describe('the plans tab', () => {
     updated_at: 2,
     plan: { title: `Plan ${id}`, steps: [{ id: '1', title: 'Step', status: 'pending' }] },
   });
+  const openPlans = () => userEvent.click(screen.getByRole('tab', { name: 'Plans' }));
   function stubPlans(rows: unknown[]) {
     const fn = vi.fn(async (input: unknown) =>
       String(input).includes('/plans')
@@ -325,6 +330,7 @@ describe('the plans tab', () => {
   it('asks for this thread’s plans, by suffix', async () => {
     const fetch = stubPlans([]);
     mount({ threadId: 'here' });
+    await openPlans();
     await screen.findByText(/No plans on this thread/);
     const url = String(fetch.mock.calls.find(([u]) => String(u).includes('/plans'))?.[0]);
     expect(new URL(url, 'http://x').searchParams.get('thread_id')).toBe('here');
@@ -333,6 +339,7 @@ describe('the plans tab', () => {
   it('says "This thread" when every row names it', async () => {
     stubPlans([plan('p1', 'default:here')]);
     mount({ threadId: 'here' });
+    await openPlans();
     expect(await screen.findByText('This thread · newest 25')).toBeTruthy();
     expect(screen.getByText('Plan p1')).toBeTruthy();
   });
@@ -341,6 +348,7 @@ describe('the plans tab', () => {
     // An older harness: no `thread_id` on the rows, and the list is the tenant's.
     stubPlans([plan('p1'), plan('p2')]);
     mount({ threadId: 'here' });
+    await openPlans();
     expect(await screen.findByText('All threads · newest 25')).toBeTruthy();
   });
 });

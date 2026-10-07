@@ -1,59 +1,72 @@
 import { ChevronRightIcon } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { CodePane } from '@/components/approval/approval-decision';
-import type { ChangeEvidence, PathChange } from '@/lib/changes';
+import {
+  type ChangeEvidence,
+  collectChanges,
+  durableRunInFlight,
+  type PathChange,
+  runHasToolCalls,
+} from '@/lib/changes';
 import { cn } from '@/lib/utils';
-
-/** How many paths to list before the footer says what was left out. */
-export const CHANGES_VISIBLE = 8;
+import { useShell } from '@/shell-context';
 
 /**
  * "Changes on this thread": each workspace path a tool call named, and what was
  * done to it. See `collectChanges` for what a stat is allowed to claim.
  *
+ * A tab of the run instrument rather than a section of the sidebar. The sidebar's
+ * workspace says *where* tools work — the folder, the thread's repository, the
+ * files — and holds across threads; this says what this thread's calls *did*,
+ * which is the instrument's question and changes with every thread. The rail is
+ * also wider, and it scrolls, so every path is listed rather than the first
+ * eight and a count nobody could expand.
+ *
+ * Derived from the transcript, so the tab costs no request — the one tab of the
+ * instrument that does not poll.
+ *
  * Rows rather than cards, and a chevron only on the rows that open — the ones a
  * write or edit was attempted on, which have evidence to show. A read has none
  * beyond its path, so it is a plain row.
  */
-export function ChangesSection({
+export function ThreadChanges() {
+  const { turns, streaming } = useShell();
+  const changes = useMemo(() => collectChanges(turns), [turns]);
+  // A durable run's stream carries no tool frames until the harness tails its
+  // session events onto it, so an empty list mid-run is the run loop and not the
+  // absence of work — said as such, rather than as nothing.
+  const durableGap = durableRunInFlight(turns, streaming) && !runHasToolCalls(turns);
+  return <ChangesList changes={changes} durableGap={durableGap} />;
+}
+
+function ChangesList({
   changes,
   durableGap,
 }: {
   changes: readonly PathChange[];
-  /**
-   * A durable run is in flight and has reported no tool call yet. Its stream
-   * carries none until the harness folds them in, so an empty list here is the
-   * run loop and not the absence of work — said as such, rather than as nothing.
-   */
   durableGap: boolean;
 }) {
-  if (changes.length === 0 && !durableGap) return null;
+  if (durableGap && changes.length === 0) {
+    return <p className="text-xs text-muted-foreground">Changes appear when the run finishes.</p>;
+  }
+  if (changes.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No tool on this thread has touched a workspace file yet.
+      </p>
+    );
+  }
   return (
-    // Named: a `<section>` with no accessible name is announced as an anonymous
-    // region, which is worse than no landmark at all.
-    <section aria-labelledby="workspace-changes-heading">
-      <h3
-        id="workspace-changes-heading"
-        className="mb-1.5 text-xs font-semibold text-muted-foreground"
-      >
-        Changes on this thread
-      </h3>
+    <>
       {durableGap && (
-        <p className="mb-1 text-xs text-muted-foreground">Changes appear when the run finishes.</p>
+        <p className="mb-1 text-xs text-muted-foreground">More appear when the run finishes.</p>
       )}
-      {changes.length > 0 && (
-        <ul className="-mx-1 space-y-px">
-          {changes.slice(0, CHANGES_VISIBLE).map((change) => (
-            <ChangeRow key={change.path} change={change} />
-          ))}
-        </ul>
-      )}
-      {changes.length > CHANGES_VISIBLE && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          and {changes.length - CHANGES_VISIBLE} more
-        </p>
-      )}
-    </section>
+      <ul className="-mx-1 space-y-px">
+        {changes.map((change) => (
+          <ChangeRow key={change.path} change={change} />
+        ))}
+      </ul>
+    </>
   );
 }
 
