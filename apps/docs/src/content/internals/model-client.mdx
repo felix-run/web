@@ -36,7 +36,6 @@ adding one is a row rather than a module. Providers register at import time:
 |---|---|---|
 | `anthropic` | Anthropic Messages | `FELIX_ANTHROPIC_API_KEY` |
 | `openai` | OpenAI Chat Completions | `FELIX_OPENAI_API_KEY`, optional `FELIX_LITELLM_BASE_URL` |
-| `ollama` | OpenAI Chat Completions | `FELIX_OLLAMA_BASE_URL` (local, and billed as free) |
 | `workers_ai` | OpenAI Chat Completions | `api_key`, `account_id`, optional `gateway_id` |
 | `groq` `together` `deepseek` `cerebras` `fireworks` `openrouter` `xai` `mistral` `google` | OpenAI Chat Completions | `api_key` |
 
@@ -92,15 +91,13 @@ parameters, and rates. **An entry that does not state rates does not have them**
 the model contributes zero to spend, and `is_priced()` reports it as unmeterable. The hosted tier
 ships without per-token rates, deliberately, with one exception: Workers AI. Cloudflare meters it in
 neurons but publishes a per-token rate for each model, so the catalog carries those rates under
-`@cf/` keys, which the same weights served by Ollama or Groq never match. The 10,000 free neurons a
+`@cf/` keys, which the same weights served by Groq or Together never match. The 10,000 free neurons a
 day are not subtracted, so spend reads high rather than low.
 
 A manifest that *declares* `limits.max_cost_usd` on a model with no known rates is **refused at
 compile**, pointing at `spec.model.price`. Only a declared cap is refused; an unset one is filled from
-`ABSOLUTE_LIMITS`, and refusing on that would break every local deployment over a ceiling the author
-never asked for. `ollama` is exempt because a local runtime genuinely costs nothing — that is a
-property of the provider (`bills_per_token`), not of the model's name, since Llama also runs on four
-paid hosted providers and the catalog matches ids by substring.
+`ABSOLUTE_LIMITS`, and refusing on that would break every deployment on an unpriced model over a ceiling the
+author never asked for.
 
 Costs are keyed on the **wire** model, while reporting keeps the logical route name.
 
@@ -116,12 +113,18 @@ Manifests declare `spec.model.id` as a **logical** id. Ops maps it via `FELIX_MO
 | `claude-fable` | `anthropic` | `claude-fable-5` |
 | `gpt-4.1` | `openai` | `gpt-4.1` |
 | `gpt-4.1-mini` | `openai` | `gpt-4.1-mini` |
-| `llama-3-pro` | `ollama` | `llama3.3:70b` |
-| `llama-3-fast` | `ollama` | `llama3.2` |
+| `glm-5.3-cf` | `workers_ai` | `@cf/zai-org/glm-5.3` (text only) |
+| `glm-5.3-flash-cf` | `workers_ai` | `@cf/zai-org/glm-5.3-flash` |
+| `deepseek-v4-pro-cf` | `workers_ai` | `@cf/deepseek-ai/deepseek-v4-pro-0813` (text only) |
+| `deepseek-v4-flash-cf` | `workers_ai` | `@cf/deepseek-ai/deepseek-v4-flash-0731` (text only) |
+| `qwen3.8-27b-cf` | `workers_ai` | `@cf/qwen/qwen3.8-27b` |
+| `kimi-k2.7-code-cf` | `workers_ai` | `@cf/moonshotai/kimi-k2.7-code` |
 | `kimi-k2-cf` | `workers_ai` | `@cf/moonshotai/kimi-k2.6` |
 | `gpt-oss-120b-cf` | `workers_ai` | `@cf/openai/gpt-oss-120b` (text only) |
 | `gpt-oss-20b-cf` | `workers_ai` | `@cf/openai/gpt-oss-20b` (text only) |
 | `glm-flash-cf` | `workers_ai` | `@cf/zai-org/glm-4.7-flash` (text only) |
+| `llama-3-pro` | `workers_ai` | `@cf/zai-org/glm-5.3` (legacy id) |
+| `llama-3-fast` | `workers_ai` | `@cf/zai-org/glm-5.3-flash` (legacy id) |
 
 Wire ids are complete as written — the Anthropic routes carry **no date suffix**. Two legacy logical
 ids, `claude-sonnet-4` and `claude-haiku-4`, still resolve so older manifests keep building; both now
@@ -140,7 +143,7 @@ also matches `llama3.2-vision`. A route can state what it accepts itself, which 
 catalog:
 
 ```bash
-FELIX_MODEL_ROUTES='{"seer":{"provider":"ollama","model":"llava","modalities":["text","image"]}}'
+FELIX_MODEL_ROUTES='{"seer":{"provider":"workers_ai","model":"@cf/meta/llama-3.2-11b-vision-instruct","modalities":["text","image"]}}'
 ```
 
 When the primary route is vouched text-only:
@@ -258,5 +261,5 @@ the run's first model call and never writes it to the session log. The skill hin
 procedures travel this way.
 
 :::tip
-For local/OSS-only stacks, point routes at Ollama (see bundled `oss-only` / `hybrid-router` manifests) and leave cloud keys unset.
+For an open-weight stack, give `workers_ai` an entry in `FELIX_MODEL_PROVIDER_OPTIONS` and point routes at the `-cf` ids (see the bundled `oss-only` / `hybrid-router` manifests); Anthropic and OpenAI keys can stay unset.
 :::
