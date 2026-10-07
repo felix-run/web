@@ -83,6 +83,13 @@ describe('collectTouchedPaths', () => {
     ).toEqual([]);
   });
 
+  it('takes the path of a local_* file tool the client ran', () => {
+    expect(
+      collectTouchedPaths('client · local_write', { path: 'notes/a.md', content: '' }),
+    ).toEqual(['notes/a.md']);
+    expect(collectTouchedPaths('local_edit', { path: 'src/x.ts' })).toEqual(['src/x.ts']);
+  });
+
   it("does not take a remote tool's own path argument for a workspace path", () => {
     expect(
       collectTouchedPaths('github__create_or_update_file', { path: 'src/remote.ts', content: '' }),

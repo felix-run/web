@@ -80,7 +80,8 @@ export function collectToolCallPaths(args: unknown): string[] {
  * names; every other string it carries is text.
  *
  * The names are the harness's workspace tools (`felix/tools/workspace.py`, all of
- * which take `path`) and the two client tools the cowork manifest declares.
+ * which take `path`), the cowork manifest's file tools that run against the user's
+ * folder (`local_list`, …, the same arguments), and its two other client tools.
  * `local_shell` contributes its `cwd` and never its `command`: which files a
  * command touched is not something its text can tell us, and guessing is how
  * this list came to report files nobody opened.
@@ -95,6 +96,11 @@ const PATH_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {
   write_file: ['path'],
   edit_file: ['path'],
   search_files: ['path'],
+  local_list: ['path'],
+  local_read: ['path'],
+  local_write: ['path'],
+  local_edit: ['path'],
+  local_search: ['path'],
   local_shell: ['cwd'],
   local_open: ['target'],
 };

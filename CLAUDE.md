@@ -362,8 +362,14 @@ the files — while the instrument holds what this thread's calls did. The tabs 
 
 **The Changes tab is a workspace tool's path argument, and nothing else.** `ThreadChanges`
 (`components/workspace/changes-list.tsx`) derives it from `Turn.tools[]` through `collectChanges` (`src/lib/changes.ts`), which is gated by
-`collectTouchedPaths` in `@felix/cowork-client`: `path` for the harness's five workspace tools, `cwd`
-for `local_shell`, `target` for `local_open`, by an allowlist of names. It used to run
+`collectTouchedPaths` in `@felix/cowork-client`: `path` for the harness's five workspace tools and
+the client's five `local_*` file tools, `cwd` for `local_shell`, `target` for `local_open`, by an
+allowlist of names. **The two file-tool families are one set by `fileToolOp`** (`@felix/client`,
+`src/local-files.ts`): `write_file` and `local_write` are both `write`, and every place that cares
+what a call did to a file — this list, the approval diff, the failure badge — asks it rather than
+matching a name. `runLocalFileTool` there answers the `local_*` family over a `LocalFs` each client
+supplies (the mount or the tab VFS; the terminal's cwd, behind `resolveWithin` and its write prompt),
+so the browser and the terminal give the model the same answers. It used to run
 `collectToolCallPaths` — the mention heuristic, which walks *every* string — and so listed the files
 a `github__create_pull_request` body mentioned as files the agent had touched. That walker still
 exists for what it was written for, resolving a prose mention; a shell command's text no longer

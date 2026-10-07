@@ -2,6 +2,9 @@ import {
   type ClientToolOptions,
   type ClientToolRequest,
   type ClientToolResult,
+  isLocalFileTool,
+  type LocalFs,
+  runLocalFileTool,
   settleClientTool,
 } from '@felix/client';
 import {
@@ -92,6 +95,26 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
 }
 
 /**
+ * The folder the `local_*` file tools work on: the mounted one when there is one, else this
+ * tab's own files — the same precedence every other client tool uses, decided per call so a
+ * mount picked mid-run is what the next call sees.
+ *
+ * No confirmation here, unlike the terminal client: the cowork manifest gates `local_write`
+ * and `local_edit` with an approval, so a write reaches this point only after a person said
+ * yes on the banner, which is where the diff is drawn.
+ */
+export function workspaceFs(vfs: VirtualFs): LocalFs {
+  return {
+    list: async (path) => (hasMount() ? await mountList(path || '.') : vfs.list(path || '.')),
+    read: async (path) => (hasMount() ? await mountRead(path) : vfs.read(path)),
+    write: async (path, content, { append }) => {
+      if (hasMount()) await mountWrite(path, content, append);
+      else vfs.write(path, content, append);
+    },
+  };
+}
+
+/**
  * Open a workspace file in a new tab.
  *
  * Shared by the `local_open` tool and by clicking a file mention in the
@@ -129,6 +152,7 @@ export async function executeClientTool(
 
 async function runClientTool(req: ClientToolRequest, vfs: VirtualFs): Promise<ClientToolResult> {
   try {
+    if (isLocalFileTool(req.name)) return await runLocalFileTool(req, workspaceFs(vfs));
     if (req.name === 'local_shell') {
       const command = asString(req.args.command);
       const cwd = asString(req.args.cwd);

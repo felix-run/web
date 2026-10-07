@@ -32,6 +32,7 @@
 import { constants } from 'node:fs';
 import {
   access,
+  appendFile,
   lstat,
   mkdir,
   readdir,
@@ -41,7 +42,14 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { type ClientToolRequest, type ClientToolResult, settleClientTool } from '@felix/client';
+import {
+  type ClientToolRequest,
+  type ClientToolResult,
+  isLocalFileTool,
+  type LocalFs,
+  runLocalFileTool,
+  settleClientTool,
+} from '@felix/client';
 
 /**
  * Asked before anything is written, with the **absolute** path it would touch.
@@ -63,6 +71,11 @@ export interface WorkspaceOptions {
 const MAX_ENTRIES = 200;
 /** Beyond this a file is reported by size rather than pasted into the transcript. */
 const MAX_READ_BYTES = 200_000;
+/**
+ * The largest file `local_read` and `local_search` will open. Larger than `MAX_READ_BYTES`
+ * because those page through a file (`offset`/`limit`) rather than pasting it whole.
+ */
+const MAX_FILE_TOOL_BYTES = 5_000_000;
 
 /**
  * Trees a write is refused into outright.
@@ -275,8 +288,49 @@ async function runShell(command: string, opts: WorkspaceOptions): Promise<string
   }
 }
 
+/**
+ * The working directory as the `local_*` file tools see it, under the same three rules as the
+ * shell verbs above: every path through `resolveWithin`, every write through `assertWritable`
+ * and the confirm prompt, and a refusal thrown so it reaches the model as `error: …`.
+ */
+function workingDirFs(opts: WorkspaceOptions): LocalFs {
+  const realRoot = () => realpath(opts.root);
+  return {
+    list: async (path) => {
+      const root = await realRoot();
+      const target = await resolveWithin(root, path || '.');
+      const entries = await readdir(target, { withFileTypes: true });
+      return entries
+        .map((e) => ({
+          path: relative(root, join(target, e.name)).split(sep).join('/'),
+          type: e.isDirectory() ? ('dir' as const) : ('file' as const),
+        }))
+        .sort((a, b) => a.path.localeCompare(b.path));
+    },
+    read: async (path) => {
+      const target = await resolveWithin(await realRoot(), path);
+      const info = await stat(target);
+      if (info.isDirectory()) throw new Error(`${path} is a directory`);
+      if (info.size > MAX_FILE_TOOL_BYTES) {
+        throw new Error(`${path} is ${info.size} bytes, too large to read`);
+      }
+      return await readFile(target, 'utf8');
+    },
+    write: async (path, content, { append, summary }) => {
+      const root = await realRoot();
+      const target = await resolveWithin(root, path);
+      await assertWritable(root, target);
+      if (!(await opts.confirm(`${summary} ${target}`))) throw new Error('refused by the user');
+      await mkdir(dirname(target), { recursive: true });
+      if (append) await appendFile(target, content, 'utf8');
+      else await writeFile(target, content, 'utf8');
+    },
+  };
+}
+
 async function run(req: ClientToolRequest, opts: WorkspaceOptions): Promise<ClientToolResult> {
   try {
+    if (isLocalFileTool(req.name)) return await runLocalFileTool(req, workingDirFs(opts));
     if (req.name === 'local_shell') {
       const command = typeof req.args.command === 'string' ? req.args.command : '';
       const content = await runShell(command, opts);

@@ -93,6 +93,38 @@ describe('collectChanges', () => {
     expect(row?.stat.text).toBe('+2 written · +2 −1');
   });
 
+  it("counts the client's local_* file tools the same as the harness's", () => {
+    const rows = collectChanges([
+      assistant([
+        call(
+          'client · local_edit',
+          { path: 'src/a.ts', old_string: 'one\n', new_string: 'two\nthree\n' },
+          JSON.stringify({ path: 'src/a.ts', replacements: 1 }),
+        ),
+        call(
+          'client · local_write',
+          { path: 'notes.md', content: 'a\nb' },
+          'wrote 3 chars to notes.md',
+        ),
+        call('client · local_read', { path: 'README.md' }, '# hi'),
+      ]),
+    ]);
+    const by = Object.fromEntries(rows.map((r) => [r.path, r]));
+    expect(by['src/a.ts']?.stat.text).toBe('+2 −1');
+    expect(by['notes.md']?.stat.text).toBe('+2 written');
+    expect(by['README.md']?.changed).toBe(false);
+  });
+
+  it('does not count a local write the user refused as a change', () => {
+    const [row] = collectChanges([
+      assistant([
+        call('client · local_write', { path: 'x.md', content: 'x' }, 'error: refused by the user'),
+      ]),
+    ]);
+    expect(row?.changed).toBe(false);
+    expect(row?.stat.tone).toBe('failed');
+  });
+
   it('does not count a failed write as a change', () => {
     const [row] = collectChanges([
       assistant([

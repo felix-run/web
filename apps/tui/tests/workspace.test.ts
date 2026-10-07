@@ -268,3 +268,59 @@ describe('readForDiff', () => {
     await expect(permissive().readForDiff('src')).resolves.toBeNull();
   });
 });
+
+describe('the local_* file tools', () => {
+  it('reads and searches under the root without asking', async () => {
+    const confirm = vi.fn(async () => true);
+    const ws = createWorkspace({ root, confirm });
+    expect((await ws.execute(call('local_read', { path: 'src/api.ts' }))).content).toBe(
+      'export const x = 1;\n',
+    );
+    expect((await ws.execute(call('local_search', { query: 'const x' }))).content).toBe(
+      'src/api.ts:1:export const x = 1;',
+    );
+    expect((await ws.execute(call('local_list', {}))).content).toBe('src/');
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('asks before a write, naming the absolute path, and writes on yes', async () => {
+    const summaries: string[] = [];
+    const ws = createWorkspace({
+      root,
+      confirm: async (s) => {
+        summaries.push(s);
+        return true;
+      },
+    });
+    await ws.execute(call('local_write', { path: 'notes/a.md', content: 'hi' }));
+    expect(summaries).toEqual([`write 2 chars to ${join(root, 'notes', 'a.md')}`]);
+    expect(readFileSync(join(root, 'notes', 'a.md'), 'utf8')).toBe('hi');
+  });
+
+  it('edits only on yes, and leaves the file alone on no', async () => {
+    const refused = await createWorkspace({ root, confirm: async () => false }).execute(
+      call('local_edit', { path: 'src/api.ts', old_string: '1', new_string: '2' }),
+    );
+    expect(refused).toEqual({ content: 'error: refused by the user', error: true });
+    expect(readFileSync(join(root, 'src', 'api.ts'), 'utf8')).toBe('export const x = 1;\n');
+
+    await permissive().execute(
+      call('local_edit', { path: 'src/api.ts', old_string: '1', new_string: '2' }),
+    );
+    expect(readFileSync(join(root, 'src', 'api.ts'), 'utf8')).toBe('export const x = 2;\n');
+  });
+
+  it('refuses to read or write outside the root, and into .git', async () => {
+    writeFileSync(join(outside, 'secret'), 'nope');
+    const ws = permissive();
+    const read = await ws.execute(call('local_read', { path: join(outside, 'secret') }));
+    expect(read.error).toBe(true);
+    const climbed = await ws.execute(call('local_write', { path: '../x', content: 'x' }));
+    expect(climbed.error).toBe(true);
+    const git = await ws.execute(
+      call('local_write', { path: '.git/hooks/pre-commit', content: 'x' }),
+    );
+    expect(git.content).toContain('inside .git/');
+    expect(existsSync(join(root, '.git'))).toBe(false);
+  });
+});

@@ -9,6 +9,7 @@
  * one, which is why the poll lives here — beside the engine, in reach of every
  * client — rather than in one app's component tree.
  */
+import { fileToolOp } from './local-files';
 
 /**
  * One row from GET /approvals.
@@ -182,10 +183,13 @@ export function approvalRuleLabel(ruleId?: string, reason?: string): string | un
  * JSON, which is not a summary — callers that need one line collapse it.
  */
 export function summarizeToolArgs(toolName: string, args: Record<string, unknown>): string {
-  if (toolName === 'write_file') {
+  if (fileToolOp(toolName) === 'write') {
     const path = typeof args.path === 'string' ? args.path : '?';
     const len = typeof args.content === 'string' ? args.content.length : 0;
     return `Write ${path} (${len} chars)${args.append ? ' append' : ''}`;
+  }
+  if (fileToolOp(toolName) === 'edit') {
+    return `Edit ${typeof args.path === 'string' ? args.path : '?'}`;
   }
   if (toolName === 'local_shell') {
     return `Shell: ${typeof args.command === 'string' ? args.command : JSON.stringify(args)}`;
@@ -210,7 +214,8 @@ export function summarizeToolArgs(toolName: string, args: Record<string, unknown
  * exists. So an unknown tool contributes its name and nothing else.
  */
 export function describeGate(toolName: string, args: Record<string, unknown>): string {
-  return toolName === 'write_file' || toolName === 'local_shell' || toolName === 'local_open'
+  const op = fileToolOp(toolName);
+  return op === 'write' || op === 'edit' || toolName === 'local_shell' || toolName === 'local_open'
     ? summarizeToolArgs(toolName, args)
     : toolName;
 }
@@ -373,7 +378,11 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
     opts.seen.add(item.id);
     const args = item.args ?? {};
     let before: string | null = null;
-    if (item.tool_name === 'write_file' && typeof args.path === 'string' && opts.readForDiff) {
+    if (
+      fileToolOp(item.tool_name) === 'write' &&
+      typeof args.path === 'string' &&
+      opts.readForDiff
+    ) {
       before = await opts.readForDiff(args.path);
     }
     entries.push({

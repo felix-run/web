@@ -31,6 +31,7 @@ import {
   isLeaseRefusal,
   StreamInProgressError,
 } from './errors';
+import { fileToolOp } from './local-files';
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
@@ -490,7 +491,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         };
         const args = data.args ?? {};
         let before: string | null = null;
-        if (data.tool_name === 'write_file' && typeof args.path === 'string') {
+        if (fileToolOp(data.tool_name) === 'write' && typeof args.path === 'string') {
           before = (await ports.clientTools?.readForDiff?.(args.path)) ?? null;
         }
         if (seenApprovals.has(data.approval_id)) break;
