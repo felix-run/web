@@ -458,6 +458,49 @@ The default image is built lean, without the `embeddings` extra, so `auto` there
 channel. Build with `--build-arg FELIX_EXTRAS=embeddings` to turn it on. On an image that has the
 extra, set `FELIX_MEMORY_EMBEDDER=none` to keep full-text-only recall.
 
+## Hosted workspaces
+
+By default a [workspace scope](/guide/manifest-reference/#specworkspace) is a directory under
+`FELIX_WORKSPACE_ROOT` on the host. With **`FELIX_WORKSPACE_BACKEND=hosted`** each scope instead
+lives in its own sandbox: a Cloudflare Container (a Firecracker microVM) started with the internet
+off and an empty environment, reached through a gateway Worker that ships with the harness
+(`deploy/cloudflare/workspace-gateway`). Nothing a model writes or runs touches the host.
+
+- **The tools answer as they do locally.** The file operations run in the sandbox with the local
+  backend's own code (no symlink followed, ranged reads, edit by rename); a conformance test holds
+  the two backends to identical answers.
+- **`shell_tools` run in the sandbox,** after the same allowlist and command screening as on the
+  host, and never fall back to the host. The image is slim Debian with Python: a command that is not
+  installed there fails as a missing binary.
+- **Files persist in R2.** A sandbox stops after 10 idle minutes and its disk goes with it, so
+  `/workspace` is backed up to an R2 bucket when a run that wrote files ends (and before the idle
+  stop), and restored when the sandbox next starts. A restore that fails refuses the call rather than
+  serving the scope empty.
+- **Not served under `hosted`,** and refused rather than run on the host: an image tool's `path`,
+  `publish_commits` and a thread's repository checkout, for any scope but `deployment`, which stays
+  on the host. A scope starts empty on `hosted`; files from the local backend are not copied across.
+
+To turn it on, deploy the gateway, then point the harness at it:
+
+```bash
+cd deploy/cloudflare/workspace-gateway          # in the felix-run/felix checkout
+cp wrangler.example.jsonc wrangler.jsonc && npm ci
+npx wrangler r2 bucket create felix-workspaces
+openssl rand -hex 32 > gateway-token            # keep it; it goes to both sides
+npx wrangler secret put WORKSPACE_GATEWAY_TOKEN < gateway-token
+npx wrangler deploy                             # builds the image: needs Docker
+```
+
+| Setting (API and worker) | Value |
+|---|---|
+| `FELIX_WORKSPACE_BACKEND` | `hosted` |
+| `FELIX_WORKSPACE_GATEWAY_URL` | the Worker's https URL |
+| `FELIX_WORKSPACE_GATEWAY_TOKEN` | the same token, 32+ characters |
+
+Boot refuses `hosted` without an https URL (plain http only for localhost) and a long enough token.
+Measured on the reference deployment: a sandbox's cold start took 2.6–11s, a warm operation about
+0.5s, and a backup about 2s.
+
 ## Chat UI / docs Workers
 
 Frontends live in [felix-run/web](https://github.com/felix-run/web). Deploy chat-ui with

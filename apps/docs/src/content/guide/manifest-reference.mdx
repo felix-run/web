@@ -254,9 +254,12 @@ workspace:
 - **Instruction files** (`AGENTS.md`, `SYSTEM.md`) are read from the root, which only the
   `deployment` scope can write.
 
-Scopes keep one tenant's *paths* out of another's. They do not separate *processes*: every tenant's
-tools run as the same user on the same host, so code [`shell_tools`](#specshell_tools) runs can reach
-past the path checks. A deployment that admits tenants it does not trust binds no `shell_tools`.
+On the default `local` backend, scopes keep one tenant's *paths* out of another's. They do not
+separate *processes*: every tenant's tools run as the same user on the same host, so code
+[`shell_tools`](#specshell_tools) runs can reach past the path checks. The
+[hosted backend](/guide/deploy/#hosted-workspaces) separates them: each scope gets its own sandbox,
+and `shell_tools` run there. A deployment that admits tenants it does not trust binds `shell_tools`
+only under `hosted`.
 
 **Upgrading from a release before scopes.** Files agents wrote at the root are visible only to the
 `deployment` scope afterwards. Move them, once, into the `default` tenant's `shared` scope where the
