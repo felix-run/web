@@ -177,6 +177,19 @@ export async function mountRead(path: string): Promise<string> {
   return file.text();
 }
 
+/**
+ * A mounted file's bytes, undecoded. `mountRead` goes through `File.text()`,
+ * which turns an image into a page of replacement characters; a preview that
+ * wants to know what a file *is* has to see what is actually in it.
+ */
+export async function mountReadBytes(path: string): Promise<Uint8Array> {
+  const { parent, name } = await resolve(path);
+  if (!name) throw new Error('not a file');
+  const fileHandle = await parent.getFileHandle(name);
+  const file = await fileHandle.getFile();
+  return new Uint8Array(await file.arrayBuffer());
+}
+
 export async function mountWrite(path: string, content: string, append = false): Promise<void> {
   const { parent, name } = await resolve(path, { create: true });
   if (!name) throw new Error('not a file');
@@ -238,6 +251,26 @@ export async function readExisting(
   try {
     if (hasMount()) return await mountRead(cleaned);
     return vfs.read(cleaned);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `readExisting`, as bytes: the same precedence (mount first, then the in-tab
+ * store) and the same null for a file that is not there, so a preview drawn
+ * from bytes and an approval diff drawn from text never disagree about which
+ * file they mean. The in-tab store only ever held strings, so its bytes are
+ * that string encoded.
+ */
+export async function readExistingBytes(
+  path: string,
+  vfs: { read: (p: string) => string },
+): Promise<Uint8Array | null> {
+  const cleaned = path.replace(/^\//, '');
+  try {
+    if (hasMount()) return await mountReadBytes(cleaned);
+    return new TextEncoder().encode(vfs.read(cleaned));
   } catch {
     return null;
   }

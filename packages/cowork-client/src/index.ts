@@ -20,8 +20,10 @@ export {
   mountList,
   mountMkdir,
   mountRead,
+  mountReadBytes,
   mountWrite,
   readExisting,
+  readExistingBytes,
   reconnectMount,
   restoreMount,
 } from './fs-mount';

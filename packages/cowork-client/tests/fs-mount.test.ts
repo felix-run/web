@@ -6,10 +6,12 @@ import {
   mountList,
   mountMkdir,
   mountRead,
+  mountReadBytes,
   mountTree,
   mountWrite,
   pickDirectory,
   readExisting,
+  readExistingBytes,
   supportsDirectoryPicker,
 } from '../src/fs-mount';
 
@@ -29,12 +31,16 @@ class MockFileHandle {
   readonly kind = 'file';
   constructor(
     readonly name: string,
-    public content = '',
+    public content: string | Uint8Array = '',
   ) {}
 
   async getFile() {
     const content = this.content;
-    return { text: async () => content };
+    const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
+    return {
+      text: async () => new TextDecoder().decode(bytes),
+      arrayBuffer: async () => bytes.slice().buffer,
+    };
   }
 
   async createWritable() {
@@ -284,5 +290,35 @@ describe('readExisting', () => {
 
   it('returns null rather than leaking an escape attempt to the caller', async () => {
     expect(await readExisting('../outside', vfs)).toBeNull();
+  });
+});
+
+describe('readExistingBytes', () => {
+  const vfs = {
+    read: (p: string) => {
+      if (p === 'from-vfs.txt') return 'vfs ✓';
+      throw new Error('not a file');
+    },
+  };
+  // A PNG's signature: 0x89 is not valid UTF-8 on its own, so a text read
+  // would hand back U+FFFD in its place.
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  it('hands back a mounted file undecoded', async () => {
+    root.children.set('pic.png', new MockFileHandle('pic.png', PNG));
+    expect(await mountReadBytes('pic.png')).toEqual(PNG);
+    expect(await readExistingBytes('/pic.png', vfs)).toEqual(PNG);
+    expect((await mountRead('pic.png')).charCodeAt(0)).toBe(0xfffd);
+  });
+
+  it('encodes the in-tab store as UTF-8 with no mount', async () => {
+    clearMount();
+    const bytes = await readExistingBytes('from-vfs.txt', vfs);
+    expect(bytes && new TextDecoder().decode(bytes)).toBe('vfs ✓');
+  });
+
+  it('returns null for a missing file or an escape, like readExisting', async () => {
+    expect(await readExistingBytes('nowhere.png', vfs)).toBeNull();
+    expect(await readExistingBytes('../outside', vfs)).toBeNull();
   });
 });

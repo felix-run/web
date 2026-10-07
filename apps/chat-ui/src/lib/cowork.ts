@@ -12,6 +12,7 @@ import {
   mountTree,
   pickDirectory,
   readExisting,
+  readExistingBytes,
   reconnectMount,
   restoreMount,
   supportsDirectoryPicker,
@@ -25,6 +26,14 @@ export async function executeClientTool(req: ClientToolRequest) {
 
 export async function readWorkspaceFile(path: string): Promise<string | null> {
   return readExisting(path, vfs);
+}
+
+/**
+ * The same file as `readWorkspaceFile`, undecoded — for the preview, which has
+ * to see an image's bytes to know it is one.
+ */
+export async function readWorkspaceBytes(path: string): Promise<Uint8Array | null> {
+  return readExistingBytes(path, vfs);
 }
 
 export {
