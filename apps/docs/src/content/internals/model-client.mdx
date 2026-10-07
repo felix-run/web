@@ -137,7 +137,7 @@ table nor `FELIX_MODEL_ROUTES` fails the build.
 ## Images and text-only routes
 
 The catalog says a model is text-only only where it can vouch for it — the `text_only` flag,
-set on the `gpt-oss`, GLM Flash, Llama 3.3 and Qwen3 Workers AI entries and on Jev. The
+set on the `gpt-oss`, GLM Flash, Llama 3.3 and Qwen3 Workers AI entries and on Jev and Clef. The
 `("text",)` modality every other entry inherits is a default, not a claim: the `llama` family key
 also matches `llama3.2-vision`. A route can state what it accepts itself, which wins over the
 catalog:
@@ -232,14 +232,22 @@ provider of the same name:
 
 | Route | Provider | Wire model | Configured with |
 |---|---|---|---|
+| `clef` | `workers_ai` — `…/accounts/{account_id}/ai/run/@cf/cloudflare/clef` | `@cf/cloudflare/clef` | `api_key`, `account_id`, optional `gateway_id` |
+| `clef-flash` | `workers_ai` — `…/ai/run/@cf/cloudflare/clef-flash` | `@cf/cloudflare/clef-flash` | as `clef` |
 | `jev` | `typesafe` — `api.typesafe.ai/v1/systemone` | `jev-latest` | `api_key` (refused at compile without one) |
 | `jev-cf` | `workers_ai` — `…/accounts/{account_id}/ai/run` | `typesafe/jev` | `api_key`, `account_id`, optional `gateway_id` |
 | *(yours)* | `llm` | any `FELIX_MODEL_ROUTES` id | the chat provider's own |
 
 `llm` answers the same questions with a chat model through `output_schema`, so nothing depends on a
 second vendor; it reports its pick with no confidence, because a chat model's self-assessed certainty
-is not calibrated, and consumers treat that as "no signal" rather than as sure. Jev is priced at
-$0.042 per million input tokens with output unbilled, and HTTP 529 is retried like 429.
+is not calibrated, and consumers treat that as "no signal" rather than as sure.
+
+Clef is Cloudflare's open-weight decision model and speaks Jev's API, so both run through one
+client. They differ only in how Workers AI is called: a Cloudflare-hosted `@cf/` model is run by
+path, with `state` and `questions` at the top of the body and its short name (`clef`,
+`clef-flash`) in `model`; a partner model like `typesafe/jev` is posted to `/ai/run` with its
+fields nested under `input`. Clef costs $0.24 per million input tokens and `clef-flash` $0.09, Jev
+$0.042; output is unbilled for all three, and HTTP 529 is retried like 429.
 
 The harness half, `felix.decisions`, builds a **`MeteredDecider`** per compile. Every decision goes
 through `record_usage` — the same path as a turn, so it counts against `limits.max_cost_usd` — and
