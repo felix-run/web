@@ -45,7 +45,12 @@ import { useShell } from '@/shell-context';
  * resting state here, not an error.
  */
 
-const TREE_VISIBLE = 200;
+/**
+ * How many entries the Files tree reads. It used to be 200, which a mounted repository
+ * spent before reaching most of its own top level; one more is asked for so the tree can
+ * say it stopped rather than pass a cut list off as the folder.
+ */
+const TREE_VISIBLE = 5_000;
 
 const FOLD_KEY = 'felix.sidebar.workspaceFolded';
 
@@ -78,7 +83,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
   const canMount = supportsDirectoryPicker();
 
   const refresh = useCallback(async () => {
-    setFiles(hasMount() ? await mountTree() : vfs.tree());
+    setFiles(hasMount() ? await mountTree(TREE_VISIBLE + 1) : vfs.tree(TREE_VISIBLE + 1));
   }, []);
 
   useEffect(() => {
@@ -320,7 +325,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
           )}
           {files.length > TREE_VISIBLE && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Showing {TREE_VISIBLE} of {files.length} files
+              Showing the first {TREE_VISIBLE.toLocaleString()} entries; the folder holds more.
             </p>
           )}
         </section>
