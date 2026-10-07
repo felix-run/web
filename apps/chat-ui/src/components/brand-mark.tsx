@@ -1,4 +1,4 @@
-import { MARK_DOT, MARK_GLYPH_PATH, MARK_GRID, MARK_TILE } from '@felix/design/mark';
+import { MARK_GRID, MARK_PAD, MARK_TILE, MARK_TOES } from '@felix/design/mark';
 import { cn } from '@felix/ui/lib/utils';
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
@@ -8,7 +8,7 @@ import type { ComponentProps } from 'react';
  *
  * The tile is `currentColor` and the glyph is the page, so it is `primary`'s
  * inversion rather than a fixed colour: dark on a light page, light on a dark
- * one, with no theme branch. The dot is always the glyph's ink. A coloured dot
+ * one, with no theme branch. The pad is always the glyph's ink. A coloured pad
  * would repeat the header's run-state slot right beside it, and colour here
  * means state (DESIGN.md's State-Only Rule).
  *
@@ -28,8 +28,16 @@ export function BrandMark({ className }: { className?: string }) {
         rx={MARK_TILE.radius}
         fill="currentColor"
       />
-      <path d={MARK_GLYPH_PATH} fill="var(--background)" />
-      <circle cx={MARK_DOT.cx} cy={MARK_DOT.cy} r={MARK_DOT.r} fill="var(--background)" />
+      {MARK_TOES.map((t) => (
+        <circle key={t.cx} cx={t.cx} cy={t.cy} r={t.r} fill="var(--background)" />
+      ))}
+      <ellipse
+        cx={MARK_PAD.cx}
+        cy={MARK_PAD.cy}
+        rx={MARK_PAD.rx}
+        ry={MARK_PAD.ry}
+        fill="var(--background)"
+      />
     </svg>
   );
 }

@@ -8,7 +8,7 @@
  *
  * Three channels, deliberately cheap:
  *   - `document.title`, which is always in the tab strip;
- *   - the favicon, whose dot takes the state's hue (`@felix/design/mark`) — the
+ *   - the favicon, whose main pad takes the state's hue (`@felix/design/mark`) — the
  *     one channel that still reads once a crowded strip has cut the title
  *     down to its icon;
  *   - an OS notification, only when the tab is hidden and permission was

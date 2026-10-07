@@ -54,19 +54,19 @@ describe('presence', () => {
     expect(document.title).toBe('Felix');
   });
 
-  it('paints the state into the favicon dot, and restores the static file at rest', () => {
+  it('paints the state into the favicon pad, and restores the static file at rest', () => {
     document.head.innerHTML =
       '<link rel="icon" href="/favicon.svg" type="image/svg+xml" />' +
       '<link rel="icon" href="/favicon.ico" sizes="48x48" />';
     const svg = document.querySelector<HTMLLinkElement>('link[type="image/svg+xml"]');
     const ico = document.querySelector<HTMLLinkElement>('link[sizes]');
-    const dot = () =>
-      decodeURIComponent(svg?.getAttribute('href') ?? '').match(/<circle[^>]*fill="([^"]+)"/)?.[1];
+    const pad = () =>
+      decodeURIComponent(svg?.getAttribute('href') ?? '').match(/<ellipse[^>]*fill="([^"]+)"/)?.[1];
 
     setPresence('working');
-    expect(dot()).toBe(STATE_DARK.running);
+    expect(pad()).toBe(STATE_DARK.running);
     setPresence('blocked');
-    expect(dot()).toBe(STATE_DARK.blocked);
+    expect(pad()).toBe(STATE_DARK.blocked);
     setPresence('idle');
     expect(svg?.getAttribute('href')).toBe('/favicon.svg');
     // The .ico is the fallback for clients that cannot draw the SVG; it never moves.
