@@ -278,6 +278,10 @@ describe('a run when the operator switches threads', () => {
     await act(async () => void (await userEvent.click(actions)));
     const del = await screen.findByRole('menuitem', { name: 'Delete' });
     await act(async () => void (await userEvent.click(del)));
+    // A thread with a run going asks before deleting stops it.
+    expect(net.posted('/chat/abort')).toHaveLength(0);
+    const confirm = await screen.findByRole('button', { name: 'Stop and delete' });
+    await act(async () => void (await userEvent.click(confirm)));
     await waitFor(() =>
       expect(net.posted('/chat/abort').map((c) => c.body.thread_id)).toEqual(['thread-a']),
     );

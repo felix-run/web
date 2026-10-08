@@ -273,8 +273,8 @@ and panels, which are scanned; 16 for the transcript, which is read.
 
 ### Hierarchy
 
-- **Headline** (600, 16px, 1.6): the heading of a whole rail — the instrument's "This run", the
-  thread list — the header wordmark, which alone is set uppercase with wide tracking, and the
+- **Headline** (600, 16px, 1.6): the heading of a whole rail — the instrument's "This run" — the
+  header wordmark, which alone is set uppercase with wide tracking, and the
   headings of the two screens that render instead of the app: the access gate and the crash
   screen.
 - **Display** (600, 24px → 28px at `md`, tight tracking): the empty thread's welcome headline,
@@ -703,23 +703,48 @@ the tab is one muted line, *Changes appear when the run finishes.*; with nothing
 ### Sidebar
 
 The sidebar has one order on both addresses: **New chat** (an outline row, the sidebar's only
-bordered control), then **Threads**, then the workspace section, then **Harness**, with hairline
-separators between them. Threads has a sticky label and search field, then its groups: *Pinned*
-(labelled *this browser* at the right, because pins are local), *Today*, *Yesterday*, *Previous 7
-days*, and *Older*. Older is a disclosure showing its count, and it starts folded unless it holds the
-thread on screen. Group labels are 11px muted, and empty groups are not drawn. A search drops the
-groups. Each row is the thread's title over one 11px line — *Waiting on you* in `state-blocked`
-first when an approval names that thread, then the agent in mono, then how long ago. The current row
-sits on `accent` with `aria-current`. A row's actions (the ⋯ menu and Delete) lie *over* the end of
-the row, revealed by that row's hover or focus (`group/thread` — the sidebar's root is an unnamed
-`group`, and a bare `group-hover` lit every row at once) on a gradient of the row's own colour, so
-at rest the title has the full width; beside the title, two invisible buttons cost it a third. On
-touch, where nothing reveals them, they stay in the row, visible. Harness keeps its two labelled runs, *Records* and
-*Workbenches*, and its glances (*1 failing*); those poll only while the rows are on screen.
+bordered control, never disabled by a run — a new thread leaves the run going), then **Threads**,
+then the workspace section, then **Harness**, with hairline separators between them.
 
-Collapsed to icons, the column is New chat, Search, Threads, Workspace, then the eight destinations.
-Search and Threads expand the sidebar and put the caret in the search field. When any thread is
-waiting on approval, Threads carries a 6px `state-blocked` dot, which is spoken as well.
+Threads is a heading and search field that stay put above a list that scrolls inside itself. The
+section shrinks to the room Workspace and Harness leave, so they never scroll out of reach, but keeps
+at least 40% of the viewport (12rem at the least) and never more than its rows need. Its groups rank
+by state, then recency: *Waiting on you* (`state-blocked`, dot and words), *Running* (`state-running`,
+the runs this tab carries, including ones kept going after a thread switch), *Pinned* (labelled *this
+browser* at the right, because pins are local), *Today*, *Yesterday*, *Previous 7 days*, and *Older*.
+Older is a disclosure showing its count and starts folded; open, it is cut by calendar month, each
+with its own count. Folded, it still draws the thread on screen if that is one of its own — that
+row only, in a group named for it. Group labels are 11px muted and stick to the top of the list
+while their rows scroll under them, Older's months one label-height lower. Empty groups are not
+drawn.
+
+Each row is the thread's title over one 11px line: *Waiting on you* or *Running* first when the row
+is not already under that group, then the agent in mono, then how long ago, then *local only* for a
+thread the harness has never seen. A thread with no title is listed by its id in muted mono, cut
+from the middle at 30 characters, so a row the operator can read ranks above one they would have
+to recall. The current row sits on `accent` with `aria-current`. A row's ⋯ menu lies *over* the end
+of the row, revealed by that row's hover or focus (`group/thread` — the sidebar's root is an unnamed
+`group`, and a bare `group-hover` lit every row at once) on a gradient of the row's own colour, so at
+rest the title has the full width. On touch, where nothing reveals it, it stays in the row, visible.
+The menu is Pin, Rename and Fork; then Compact context and Export JSONL; then any reason an item is
+unavailable; then Delete, in the destructive colour. Deleting a thread with a run going or something
+waiting asks first, in the row — *Stop and delete* / *Keep* — because Undo restores the transcript
+and never the run; any other delete is immediate and undoable from a toast that names the thread.
+
+The list is one Tab stop. Arrows, Home and End move between rows, → reaches a row's menu and ←
+returns, Shift+F10 or a right click opens it, Delete deletes. A search drops the groups; a row whose
+messages matched shows the words around the match, the match set in the foreground, and how long
+ago. When the harness returns as many message hits as were asked for, the list says so and offers
+more.
+
+Harness keeps its two labelled runs, *Records* and *Workbenches*, and its glances (*1 failing*);
+those poll only while the rows are on screen, which includes the collapsed column.
+
+Collapsed to icons, the column is New chat, Threads, Workspace, then the eight destinations. Threads
+expands the sidebar and puts the caret in the search field. It carries one 6px dot for the most
+urgent state — `state-blocked` when something waits on a person, else `state-running` while a run
+is going — and says it as well. Jobs and the Ledger carry a `state-failed` dot when their glance
+reports a failure, with the glance's own sentence for a reader.
 
 ### Run readout
 

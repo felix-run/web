@@ -313,8 +313,9 @@ on screen. A send that fails after its thread was left goes back into **that thr
 paused, not into the composer on screen. Returning to a live run keeps its own start time in
 the run clock. **Stop** still stops, and **deleting** a thread aborts a run on it wherever it
 is. The shell context exposes `runningThreads` (foreground included) and `blockedThreads`; the
-sidebar marks the first *Running* and folds the second into its *Waiting on you* group beside the
-`/approvals` rows, since a background run's question appears nowhere else. New chat is never
+sidebar groups the first under *Running* and folds the second into its *Waiting on you* group beside
+the `/approvals` rows, since a background run's question appears nowhere else; collapsed, the
+Threads icon's dot says the more urgent of the two. New chat is never
 disabled by a run, because starting a thread no longer stops one.
 `tests/run-survives-thread-switch.test.tsx` pins it at the wire.
 
@@ -367,9 +368,9 @@ one; `tests/harness-route.test.tsx` and `tests/workbench-layout.test.tsx` pin th
 one. New chat is in the header only where the sidebar is a drawer.
 
 **The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
-New chat; the threads, grouped as Waiting on you, Pinned, Today, Yesterday, Previous 7 days and Older
-(Older starts folded, showing its count, and folded still draws the current thread if it is there —
-never the other fifty); the workspace section (`src/components/workspace/workspace-section.tsx`);
+New chat; the threads, grouped as Waiting on you, Running, Pinned, Today, Yesterday, Previous 7 days
+and Older (Older starts folded, showing its count, is cut by month when open, and folded still draws
+the current thread if it is there — never the other fifty — in a group named for it); the workspace section (`src/components/workspace/workspace-section.tsx`);
 and the eight harness destinations with their glances. It replaced three earlier things: a threads
 popover off the workspace header, which had been the *only* way to switch threads; the workspace
 zone; and `/harness`'s resident nav rail, which is drawn now only between 768 and 1024, where the
@@ -390,7 +391,13 @@ natural height, which a `ResizeObserver` passes in as `--thread-list-h` — a ba
 space under a short list, and `calc-size()` is not in Safari — before, an opened Older pushed the workspace and the harness's pages fifty rows
 down. The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
 Shift+F10 or a right click for the menu, Delete with the toast's undo); Delete lives in the menu,
-not as a one-click icon beside it. **A message-search hit on a listed thread is a result**, drawn
+not as a one-click icon beside it. **A thread with a run going or something waiting asks before it
+is deleted** — inline, *Stop and delete* / *Keep* — because the abort is immediate and Undo restores
+the transcript, never the run. Undo also puts a pin back (`removeThread` drops it), the toast names
+the thread, a delete the harness refuses is said (`deleteThreadHistory(id, { reportFailure: true })`,
+which every other caller leaves best-effort), and deleting the thread on screen goes back to the one
+the tab showed before it rather than to the newest. Group labels stick while their rows scroll under
+them. Message search asks for 12 hits and says when it got that many, offering 50. **A message-search hit on a listed thread is a result**, drawn
 with the matched words (`matchExcerpt`) as its second line: the merged list holds every thread the
 harness returned, so the first version, which kept only hits on threads it did *not* list, showed
 none and said "No matches". A failed message search says so rather than reading as an empty one.

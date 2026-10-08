@@ -228,7 +228,7 @@ describe('ThreadList rows', () => {
     // off — which drew `c9471ae6-345f-4288-a933-6…`, dropping the tail two UUIDs
     // differ in.
     const drawn = row.querySelector('[aria-hidden]')?.textContent ?? '';
-    expect(drawn.length).toBeLessThanOrEqual(24);
+    expect(drawn.length).toBeLessThanOrEqual(30);
     expect(drawn.startsWith('c9471ae6')).toBe(true);
     expect(drawn.endsWith('6f1e2d3c4b5a')).toBe(true);
     expect(screen.getByRole('button', { name: new RegExp(`^${uuid}`) })).toBeTruthy();
@@ -346,9 +346,45 @@ describe('grouping by state', () => {
     expect(screen.getByText('Old other')).toBeTruthy();
   });
 
-  it('marks a thread with a live run', () => {
-    setup({ threads: [thread()], running: new Set(['t1']) });
+  it('groups a thread with a live run under Running, below Waiting', () => {
+    setup({
+      threads: [thread(), thread({ id: 'w', title: 'Blocked one' })],
+      running: new Set(['t1']),
+      blocked: new Set(['w']),
+    });
+    const groups = screen.getAllByRole('group');
+    expect(groups[0]?.textContent).toContain('Waiting on you');
+    expect(groups[1]?.textContent).toMatch(/^Running/);
+    expect(groups[1]?.textContent).toContain('Local title');
+  });
+
+  it('marks a running thread in words where it is not under its own group', async () => {
+    const { user } = setup({ threads: [thread()], running: new Set(['t1']) });
+    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'local');
     expect(screen.getByRole('button', { name: /^Local title/ }).textContent).toContain('Running');
+  });
+
+  it('cuts Older into months, each with its count', async () => {
+    const now = new Date(2026, 9, 7).getTime();
+    vi.setSystemTime(now);
+    try {
+      const { user } = setup({
+        threads: [
+          thread({ id: 's', title: 'September one', updatedAt: new Date(2026, 8, 10).getTime() }),
+          thread({ id: 'a', title: 'August one', updatedAt: new Date(2026, 7, 3).getTime() }),
+          thread({ id: 'b', title: 'August two', updatedAt: new Date(2026, 7, 2).getTime() }),
+        ],
+        currentId: 'x',
+      });
+      await user.click(screen.getByRole('button', { name: /^Older/ }));
+      const september = screen.getByRole('group', { name: /^September/ });
+      const august = screen.getByRole('group', { name: /^August/ });
+      expect(september.textContent).toContain('September one');
+      expect(august.textContent).toContain('August two');
+      expect(august.textContent).not.toContain('September one');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -400,5 +436,71 @@ describe('the keyboard', () => {
     await waitFor(() => expect(document.activeElement).toBe(field));
     await user.keyboard('{Enter}');
     expect(onRename).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Deleting a thread with a run going stops the run at once, and Undo brings the
+ * transcript back but never the run — so that one, and only that one, asks.
+ */
+describe('deleting a thread something is happening on', () => {
+  it('asks before deleting a thread with a live run, by the key or the menu', async () => {
+    const { user, onDelete } = setup({
+      threads: [thread({ id: 'a', title: 'Alpha' })],
+      currentId: 'x',
+      running: new Set(['a']),
+    });
+    document.querySelector<HTMLElement>('[data-thread-row="a"]')?.focus();
+    await user.keyboard('{Delete}');
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByText('Deleting stops the run on “Alpha”.')).toBeTruthy();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByText(/Deleting stops the run/)).toBeNull();
+
+    await openMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await user.click(await screen.findByRole('button', { name: 'Stop and delete' }));
+    expect(onDelete).toHaveBeenCalledWith('a');
+  });
+
+  it('asks for a thread something is waiting on, and not for an idle one', async () => {
+    const { user, onDelete } = setup({
+      threads: [thread({ id: 'w', title: 'Blocked' }), thread({ id: 'i', title: 'Idle' })],
+      currentId: 'x',
+      blocked: new Set(['w']),
+    });
+    document.querySelector<HTMLElement>('[data-thread-row="w"]')?.focus();
+    await user.keyboard('{Delete}');
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByText('“Blocked” has something waiting on you.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Keep' }));
+
+    document.querySelector<HTMLElement>('[data-thread-row="i"]')?.focus();
+    await user.keyboard('{Delete}');
+    expect(onDelete).toHaveBeenCalledWith('i');
+  });
+});
+
+describe('search, past its first page', () => {
+  it('says when the message matches were capped, and asks for more', async () => {
+    search.mockImplementation(async (_q: string, limit = 12) =>
+      Array.from({ length: limit }, (_, i) => ({ thread_id: `default:h${i}`, content: 'readme' })),
+    );
+    const { user } = setup({ threads: [thread()] });
+    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'readme');
+    expect(await screen.findByText('Showing the first 12 message matches.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Search more' }));
+    expect(await screen.findByText('Showing the first 50 message matches.')).toBeTruthy();
+    expect(search).toHaveBeenLastCalledWith('readme', 50);
+    expect(screen.queryByRole('button', { name: 'Search more' })).toBeNull();
+  });
+
+  it('keeps how long ago beside a matched message', async () => {
+    search.mockResolvedValue([{ thread_id: 'default:t2', content: 'the README line' }]);
+    const { user } = setup({ threads: [thread(), thread({ id: 't2', title: 'Other' })] });
+    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'readme');
+    const row = await screen.findByRole('button', { name: /^Other/ });
+    expect(row.textContent).toContain('README');
+    expect(row.textContent).toMatch(/· just now/);
   });
 });
