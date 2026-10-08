@@ -113,13 +113,6 @@ export interface EnginePorts {
   onRunAccepted?: (resumeToken: string) => void;
   /** The run `onRunAccepted` reported is over (or was stopped): forget its token. */
   onRunSettled?: () => void;
-  /**
-   * Re-read the transcript while a durable run is only being *polled* — the stream
-   * that carried its session events has closed, so nothing else shows its work.
-   * Called at most every `DURABLE_PROGRESS_MS`. Safe for the reason
-   * `onDurableComplete` is: a durable turn has no streamed detail to lose.
-   */
-  onDurableProgress?: () => void;
 }
 
 export interface SendArgs {
@@ -230,9 +223,6 @@ export interface ChatEngine {
 /** Three missed 15-second heartbeats. */
 export const STREAM_STALL_MS = 45_000;
 
-/** How often a polled durable run re-reads the transcript (`onDurableProgress`). */
-export const DURABLE_PROGRESS_MS = 5_000;
-
 /**
  * The durable stream's own deadline, not the run's end. The harness closes a durable
  * `POST /chat/stream` at the run's `expires_at` with `run_expired:<token>` whether or
@@ -263,6 +253,14 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
   let state: EngineState = { ...IDLE };
   const listeners = new Set<(s: EngineState) => void>();
   const seenApprovals = new Set<string>();
+  /**
+   * `tool_request` ids this engine has already taken. A durable run's request is announced
+   * once *per stream* (felix-run/felix#530), and a run can be followed on two at once — its
+   * own `POST /chat/stream` and a held reattach, or a reattach that reconnected — so the same
+   * request arrives twice. Running it twice runs the tool twice: two writes to the user's
+   * folder for one call.
+   */
+  const takenToolRequests = new Set<string>();
 
   let controller: AbortController | null = null;
   /**
@@ -580,6 +578,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       }
       case 'tool_request': {
         const data = ev.data as { id: string; name: string; args?: Record<string, unknown> };
+        if (data.id) {
+          if (takenToolRequests.has(data.id)) break;
+          takenToolRequests.add(data.id);
+        }
         patch((t) => ({
           ...t,
           tools: [
@@ -797,10 +799,15 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    * Finish a durable run by polling it, and say so when it lands.
    *
    * Shared by every way a run can be left without a stream: the stream dropped, it
-   * ended cleanly without `final` (the harness closes it at the run's deadline), the
-   * run was started in the background, or a reload is picking it back up. A poll
-   * carries no frames, so while it runs the transcript is re-read every
-   * `DURABLE_PROGRESS_MS` — otherwise a run still working reads as one that stopped.
+   * ended cleanly without `final`, the run was started in the background, or a reload is
+   * picking it back up.
+   *
+   * The poll says when the run is over; it carries no frames. So the thread's reattach
+   * stream is held open beside it, for as long as the poll runs: it brings the run's work
+   * as it lands, and — since felix-run/felix#530 — what the run is blocked on. Without it a
+   * cowork write the run asked for after its stream closed reached no client and timed out.
+   * `holdOpen`, because the thread's phase reads `idle` throughout a durable run and would
+   * end an ordinary reattach at its first snapshot.
    *
    * A run that ended without an answer is an error with a sentence, not a status line
    * left saying `Background · expired…`; the transcript is re-read either way, since
@@ -808,19 +815,48 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    */
   const settleDurable = async (token: string, signal: AbortSignal) => {
     set({ phase: 'durable' });
-    let progressAt = Date.now();
-    const run = await ports.client.pollDurableRun(token, {
-      signal,
-      onTick: (r) => {
-        tick(r.status || 'pending');
-        if (ports.onDurableProgress && Date.now() - progressAt >= DURABLE_PROGRESS_MS) {
-          progressAt = Date.now();
-          ports.onDurableProgress();
-        }
-      },
-    });
+    const follow = new AbortController();
+    const stopFollowing = () => follow.abort();
+    signal.addEventListener('abort', stopFollowing, { once: true });
+    const threadId = ports.threadId();
+    const followed = threadId
+      ? reattachThread({
+          client: ports.client,
+          threadId,
+          signal: follow.signal,
+          holdOpen: true,
+          onTurns: adoptTurns,
+          onEvent: (ev) => applyEvent(ev),
+        })
+      : Promise.resolve();
+    let run: DurableRun;
+    try {
+      run = await ports.client.pollDurableRun(token, {
+        signal,
+        onTick: (r) => tick(r.status || 'pending'),
+      });
+    } finally {
+      signal.removeEventListener('abort', stopFollowing);
+      follow.abort();
+      await followed;
+    }
     finishDurable(run);
   };
+
+  /**
+   * Replace the transcript, keeping a polled durable run's status turn last.
+   *
+   * A transcript rebuilt while a durable run is being settled (the held reattach, a
+   * hydrate) carries no status turn: the harness never logged one. Without this the run
+   * reads as finished until its next status change.
+   */
+  function adoptTurns(turns: Turn[]): void {
+    const status =
+      durableStatus !== null && state.streaming
+        ? state.turns.find((t) => t.id === activeAssistantId)
+        : undefined;
+    set({ turns: status && !turns.some((t) => t.id === status.id) ? [...turns, status] : turns });
+  }
 
   const finishDurable = (run: DurableRun) => {
     resumeToken = null;
@@ -1111,16 +1147,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    setTurns(turns) {
-      // A transcript re-read while a durable run is only being polled (the progress
-      // refresh, a hydrate) carries no status turn: the harness never logged one. Keep
-      // ours last, or the run reads as finished until its next status change.
-      const status =
-        durableStatus !== null && state.streaming
-          ? state.turns.find((t) => t.id === activeAssistantId)
-          : undefined;
-      set({ turns: status && !turns.some((t) => t.id === status.id) ? [...turns, status] : turns });
-    },
+    setTurns: adoptTurns,
     reset() {
       seenApprovals.clear();
       activeAssistantId = '';

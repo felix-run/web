@@ -619,8 +619,17 @@ Flows worth knowing before editing the app:
   `run_expired:` with a token in hand is not an error; a failed poll read is retried, a 404 ends
   it. `onRunAccepted`/`onRunSettled` let chat-ui keep the token per thread
   (`src/lib/durable-runs.ts`, `localStorage`), and `loadThread` calls `engine.rejoinRun`, which
-  marks the thread streaming — so the composer queues — polls, re-reads the transcript every 5s
-  (`onDurableProgress`; the status turn survives a `setTurns`), and settles as `send` does.
+  marks the thread streaming — so the composer queues — polls, and settles as `send` does.
+  **While it polls it holds the thread's reattach stream open** (`reattachThread({ holdOpen })`,
+  2026-10-08, `felix-run/felix#534`): the poll carries no frames, and since #534 the reattach
+  stream announces what the run is blocked on — its client tool requests and approvals — as well
+  as its transcript. Without it a cowork `local_write` the run asked for after its own stream
+  closed reached no client and timed out. `holdOpen` ignores the phase (a durable run's thread
+  reads `idle` throughout) and stops only when the poll ends. It replaced a 5s snapshot re-read
+  (`onDurableProgress`, removed). The status turn survives the rebuilds because every transcript
+  replacement goes through `adoptTurns`. **A `tool_request` can now arrive on two streams** — the
+  run's own and the reattach, or two reattaches — so the engine takes each id once
+  (`takenToolRequests`); running one twice is two writes to the user's folder.
   **The harness now says so itself** (`felix-run/felix#533`): the snapshot carries `activeRun`
   (`{resumeToken, status, expiresAt}` or null), and a send into a busy thread is
   `409 run_in_progress:<token>`. `rejoinActiveRun` in the shell reads `activeRun` when the key is
