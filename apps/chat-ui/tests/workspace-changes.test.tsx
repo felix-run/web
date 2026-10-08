@@ -4,7 +4,7 @@ import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadChanges } from '../src/components/workspace/changes-list';
 import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import { collectChanges, countLines, durableRunInFlight } from '../src/lib/changes';
@@ -379,6 +379,25 @@ describe('the Changes tab', () => {
 });
 
 describe('the workspace file tree', () => {
+  // Files starts folded; these are about the tree once it is open.
+  beforeEach(() => localStorage.setItem('felix.sidebar.filesOpen', '1'));
+  afterEach(() => localStorage.removeItem('felix.sidebar.filesOpen'));
+
+  // Folded by default: a mounted repository's tree was taller than the region
+  // it shares with the harness's pages, which then sat a scroll away on every
+  // load. The choice is remembered.
+  it('starts folded, and remembers being opened', async () => {
+    localStorage.removeItem('felix.sidebar.filesOpen');
+    tab.files = ['notes/one.md', 'README.md'];
+    mount({ turns: [] });
+    const toggle = await screen.findByRole('button', { name: /^Files/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('tree', { name: 'Files' })).toBeNull();
+    await userEvent.click(toggle);
+    expect(await screen.findByRole('tree', { name: 'Files' })).toBeTruthy();
+    expect(localStorage.getItem('felix.sidebar.filesOpen')).toBe('1');
+  });
+
   /**
    * The Files list was a flat column of up to 200 paths. As a tree it opens onto
    * the work: folders holding a path this thread changed start expanded, and those

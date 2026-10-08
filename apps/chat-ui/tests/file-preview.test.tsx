@@ -70,6 +70,8 @@ beforeEach(() => {
     return typeof body === 'string' ? new TextEncoder().encode(body) : body;
   });
   localStorage.clear();
+  // Files starts folded; these are about what opens from the tree.
+  localStorage.setItem('felix.sidebar.filesOpen', '1');
 });
 afterEach(() => {
   cleanup();

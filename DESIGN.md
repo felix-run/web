@@ -710,7 +710,8 @@ Threads is a heading and search field that stay put above a list that scrolls in
 takes the height the region below leaves. Workspace and Harness are that region: one block, at most
 40% of the viewport, with one scroll of its own. The sidebar itself never scrolls when expanded, so
 there are never two scrollbars side by side, and the file trees inside Workspace do not scroll
-separately. Its groups rank
+separately. Workspace's *Files* is a disclosure with its entry count, folded until opened and
+remembered either way. Its groups rank
 by state, then recency: *Waiting on you* (`state-blocked`, dot and words), *Running* (`state-running`,
 the runs this tab carries, including ones kept going after a thread switch), *Pinned* (labelled *this
 browser* at the right, because pins are local), *Today*, *Yesterday*, *Previous 7 days*, and *Older*.

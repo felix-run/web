@@ -392,7 +392,10 @@ search that do not scroll; the workspace and the harness's pages are one region 
 workspace and the harness's pages fifty rows down. Then the list scrolled but the sidebar did too,
 and on production a mounted folder's file tree — itself a third scroller — put three scrollbars
 side by side, left the list eight rows and pushed the harness's pages off the bottom. The file
-trees no longer scroll on their own for the same reason: they sit inside the lower region's scroll. The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
+trees no longer scroll on their own for the same reason: they sit inside the lower region's scroll.
+**Files starts folded** (`felix.sidebar.filesOpen`, remembered): even inside the one region, a
+mounted repository's tree held ~880px above the harness's pages, which were then a scroll away on
+every load. The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
 Shift+F10 or a right click for the menu, Delete with the toast's undo); Delete lives in the menu,
 not as a one-click icon beside it. **A thread with a run going or something waiting asks before it
 is deleted** — inline, *Stop and delete* / *Keep* — because the abort is immediate and Undo restores
