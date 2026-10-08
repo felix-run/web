@@ -331,8 +331,9 @@ one; `tests/harness-route.test.tsx` and `tests/workbench-layout.test.tsx` pin th
 one. New chat is in the header only where the sidebar is a drawer.
 
 **The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
-New chat; the threads, grouped as Pinned, Today, Yesterday, Previous 7 days and Older (Older starts
-folded, showing its count); the workspace section (`src/components/workspace/workspace-section.tsx`);
+New chat; the threads, grouped as Waiting on you, Pinned, Today, Yesterday, Previous 7 days and Older
+(Older starts folded, showing its count, and folded still draws the current thread if it is there —
+never the other fifty); the workspace section (`src/components/workspace/workspace-section.tsx`);
 and the eight harness destinations with their glances. It replaced three earlier things: a threads
 popover off the workspace header, which had been the *only* way to switch threads; the workspace
 zone; and `/harness`'s resident nav rail, which is drawn now only between 768 and 1024, where the
@@ -345,6 +346,16 @@ ones an operator keeps near. `removeThread` drops a deleted thread's pin. The pr
 the header rather than fixed to the viewport; and there is no `Mod+B`, because Ctrl+B opens a Firefox
 sidebar. The binding is `Mod+\`, and `Mod+K` lands in the thread search. Both work on `/harness`
 too.
+
+**The thread list scrolls inside itself** (2026-10-07). It is `shrink!` with `min-h-48` in the
+sidebar's one scroller, and its rows sit in their own `overflow-y-auto` under a heading and search
+that do not scroll — before, an opened Older pushed the workspace and the harness's pages fifty rows
+down. The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
+Shift+F10 or a right click for the menu, Delete with the toast's undo); Delete lives in the menu,
+not as a one-click icon beside it. **A message-search hit on a listed thread is a result**, drawn
+with the matched words (`matchExcerpt`) as its second line: the merged list holds every thread the
+harness returned, so the first version, which kept only hits on threads it did *not* list, showed
+none and said "No matches". A failed message search says so rather than reading as an empty one.
 
 The instrument is **tabs**, not the old accordion: one section on screen is one poll. The strip
 carries no counts, because populating them would mean every section fetching for a label nobody is

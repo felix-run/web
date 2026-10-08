@@ -11,13 +11,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@felix/ui/sidebar';
-import {
-  ChevronRightIcon,
-  FolderIcon,
-  MessagesSquareIcon,
-  PlusIcon,
-  SearchIcon,
-} from 'lucide-react';
+import { ChevronRightIcon, FolderIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react';
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
@@ -93,6 +87,12 @@ export function AppSidebar() {
     return ids;
   }, [tenantApprovals.pending]);
 
+  /** The thread with a live run — this tab's own, while it streams. */
+  const running = useMemo<ReadonlySet<string>>(
+    () => (streaming ? new Set([threadId]) : new Set()),
+    [streaming, threadId],
+  );
+
   /** Expand, then put the caret in the thread search — the collapsed icons' one job. */
   const openSearch = useCallback(() => {
     setOpen(true);
@@ -157,19 +157,16 @@ export function AppSidebar() {
           {collapsed && (
             <>
               <SidebarMenuItem>
+                {/* One icon for the threads, landing in their search: a second,
+                    "Search threads", did exactly the same thing. Marked when
+                    something is waiting on a thread, so the collapsed column still
+                    says there is a reason to open it. */}
                 <SidebarMenuButton
-                  tooltip={`Search threads (${shortcutLabel('open-threads', mac)})`}
+                  tooltip={`Threads (${shortcutLabel('open-threads', mac)})`}
                   aria-keyshortcuts={ariaShortcut('open-threads', mac)}
                   onClick={openSearch}
+                  className="relative"
                 >
-                  <SearchIcon aria-hidden />
-                  <span>Search threads</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                {/* Marked when something is waiting on another thread, so the
-                    collapsed column still says there is a reason to open it. */}
-                <SidebarMenuButton tooltip="Threads" onClick={openSearch} className="relative">
                   <MessagesSquareIcon aria-hidden />
                   <span>Threads</span>
                   {blocked.size > 0 && (
@@ -201,9 +198,9 @@ export function AppSidebar() {
               threads={threads}
               currentId={onHarness ? '' : threadId}
               blocked={blocked}
+              running={running}
               pinned={pinned}
               onTogglePin={togglePin}
-              disabled={streaming}
               onSelect={(id) => {
                 // On `/harness` the current thread is still the tab's thread, and
                 // `selectThread` ignores it; picking it is a way back to it.

@@ -1,9 +1,9 @@
 import { relativeTime, type ThreadMeta, threadSuffix } from '@felix/client';
-import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
@@ -15,19 +15,28 @@ import {
   PencilIcon,
   PinIcon,
   PinOffIcon,
-  PlusIcon,
   SearchIcon,
   ShrinkIcon,
   Trash2Icon,
 } from 'lucide-react';
-import { type Ref, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { searchSessions } from '@/api';
 import { CutId } from '@/components/cut-id';
-import { groupThreads, threadLabel } from '@/lib/threads';
+import { groupThreads, matchExcerpt, type ThreadGroupKey, threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 
 const NO_BLOCKED: ReadonlySet<string> = new Set();
 const NO_PINS: ReadonlySet<string> = new Set();
+const NO_RUNNING: ReadonlySet<string> = new Set();
 
 /**
  * Characters of an id a row draws. A UUID is 36; this keeps eleven of its head
@@ -38,7 +47,7 @@ const ID_CHARS = 24;
 /**
  * A row's actions, laid over the end of the row rather than beside it.
  *
- * Beside it, two buttons held ~56px of every row while invisible, so at rest a
+ * Beside it, the buttons held ~56px of every row while invisible, so at rest a
  * title cut off a third of the way across a sidebar that had room for it. Over
  * it, the title takes the full width and the actions fade in on its tail, on a
  * gradient of the row's own colour (`--row-bg`) so the words they cover go
@@ -72,41 +81,56 @@ const ROW_LIT = cn(
   'has-[[data-state=open]]:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
 );
 
+/** A row to draw: the thread, and the stretch of a message that matched a search, if one did. */
+type Row = { thread: ThreadMeta; excerpt?: string };
+
 /**
  * Every thread this client can reach, as the sidebar's Threads section.
  *
- * Grouped the way a returning operator looks for one: what they pinned, then by
- * last activity — Today, Yesterday, Previous 7 days, Older. Older starts folded
- * with its count showing, because on a long-lived harness it is most of the list
- * and the reason the other sections would scroll out of reach. A search drops
- * the groups: a match is a match, whenever it last moved.
+ * Grouped the way a returning operator looks for one: what is waiting on them,
+ * what they pinned, then by last activity — Today, Yesterday, Previous 7 days,
+ * Older. Older starts folded with its count showing, because on a long-lived
+ * harness it is most of the list. A search drops the groups: a match is a match,
+ * whenever it last moved.
+ *
+ * **The list scrolls inside itself.** The sidebar's other sections — the
+ * workspace and the harness's pages — sit below it, and with the list in the
+ * sidebar's one scroller an opened Older pushed them fifty rows down. The section
+ * shrinks to the room they leave (never below a few rows), so they stay on screen
+ * whatever the list holds; the heading and search stay above the scroll.
  *
  * One noun: **thread**. This list was headed "History", searched "sessions" and
  * deleted "conversations" while its trigger said "Threads" — four names for the
- * object a returning operator is trying to find. "New chat" stays as the action's
- * name, because it is a verb phrase for starting one rather than a second noun.
+ * object a returning operator is trying to find.
  *
  * The list is `GET /chat/sessions` merged over the localStorage index, so a
  * thread started in another browser shows up here — see `mergeSessions`. A row
  * the harness does not know is marked local-only rather than hidden, because
  * its transcript may exist nowhere else.
  *
- * Selecting a thread loads its cached transcript and hydrates it from the server
- * event log; the trash icon removes it locally (and best-effort server-side).
- * Search queries local titles first, then the server FTS index when available.
+ * Search matches what a row shows (title, id, agent) at once, then the harness's
+ * message index. **A message hit on a listed thread is a result** — the merged
+ * list holds every thread the harness returned, so an earlier version that kept
+ * only hits on threads it did not list showed none, and said "No matches" about
+ * a word the harness had found. Such a row carries the matched words as its
+ * second line.
+ *
+ * The keyboard: the list is one Tab stop. Arrow keys move between rows, → reaches
+ * a row's actions and ← comes back, Shift+F10 (or the context-menu key, or a
+ * right click) opens them, and Delete deletes — undoable from the toast, as the
+ * menu's Delete is. ↓ from the search field enters the results and Enter there
+ * opens the first.
  *
  * A row is read by someone coming back, so what it says has to tell rows apart
  * without hovering: the best title there is (see `threadLabel`), the agent when
- * this client knows it, how long ago, and whether a call on that thread is
+ * this client knows it, how long ago, and whether the thread is running or
  * waiting on a person. There is no per-row icon — an icon on every row marks a
  * row, not a kind, and the width is worth more as title.
  */
 export function ThreadList({
   threads,
   currentId,
-  disabled,
   onSelect,
-  onNew,
   onDelete,
   onRename,
   onFork,
@@ -114,6 +138,7 @@ export function ThreadList({
   onExport,
   readOnlyId,
   blocked = NO_BLOCKED,
+  running = NO_RUNNING,
   pinned = NO_PINS,
   onTogglePin,
   searchRef,
@@ -127,16 +152,15 @@ export function ThreadList({
    * evidence marks a row: an approval with no thread marks none.
    */
   blocked?: ReadonlySet<string>;
+  /** Threads with a run this tab is carrying, by suffix. */
+  running?: ReadonlySet<string>;
   /** Pinned thread ids, from this browser's own store (`readPins`). */
   pinned?: ReadonlySet<string>;
   /** Pin or unpin a thread. Omit to hide the action. */
   onTogglePin?: (id: string) => void;
   /** The search field, so a shortcut can land focus there rather than on New chat. */
   searchRef?: Ref<HTMLInputElement>;
-  disabled?: boolean;
   onSelect: (id: string) => void;
-  /** Draws New chat beside the heading. The sidebar omits it: its own header holds New chat. */
-  onNew?: () => void;
   onDelete: (id: string) => void;
   /** Persist a name via POST /chat/sessions/name. Omit to hide the action. */
   onRename?: (id: string, name: string) => void;
@@ -148,7 +172,6 @@ export function ThreadList({
    * actions that write it (Rename, Compact context) are off for that row.
    */
   readOnlyId?: string;
-  /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
   const [query, setQuery] = useState('');
@@ -182,10 +205,17 @@ export function ThreadList({
     return () => cancelAnimationFrame(frame);
   }, [renaming?.id]);
 
+  /** The row whose actions menu is open. Controlled, so the keyboard and a right click can open it. */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  /** The row that holds the list's one Tab stop, once the reader has moved it. */
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
   const [hits, setHits] = useState<
     Array<{ thread_id: string; content: string; event_id?: string }>
   >([]);
   const [searching, setSearching] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
 
   // Keyed on the list, not the query: a placeholder-titled row reads its cached
   // transcript once per index change rather than once per keystroke.
@@ -206,6 +236,7 @@ export function ThreadList({
 
   useEffect(() => {
     const q = query.trim();
+    setSearchFailed(false);
     if (q.length < 2) {
       setHits([]);
       setSearching(false);
@@ -219,7 +250,12 @@ export function ThreadList({
           if (!cancelled) setHits(rows);
         })
         .catch(() => {
-          if (!cancelled) setHits([]);
+          // Said, not swallowed: an empty list here would read as "nothing
+          // matched" about a search that never ran.
+          if (!cancelled) {
+            setHits([]);
+            setSearchFailed(true);
+          }
         })
         .finally(() => {
           if (!cancelled) setSearching(false);
@@ -231,51 +267,146 @@ export function ThreadList({
     };
   }, [query]);
 
-  const remoteOnly = useMemo(() => {
-    const localIds = new Set(threads.map((t) => t.id));
+  /**
+   * Search results: what matched on the row first, then threads whose messages
+   * matched, each with the words that did; and last, hits on threads this list
+   * does not hold at all.
+   */
+  const { results, elsewhere } = useMemo(() => {
+    const q = query.trim();
+    const byId = new Map(threads.map((t) => [t.id, t]));
+    const listed = new Set(localFiltered.map((t) => t.id));
+    const rows: Row[] = localFiltered.map((thread) => ({ thread }));
+    const outside: Array<{ id: string; excerpt: string }> = [];
     const seen = new Set<string>();
-    const out: Array<{ id: string; snippet: string }> = [];
     for (const hit of hits) {
       const id = threadSuffix(hit.thread_id);
-      if (localIds.has(id) || seen.has(id)) continue;
+      if (listed.has(id) || seen.has(id)) continue;
       seen.add(id);
-      out.push({ id, snippet: hit.content });
+      const excerpt = matchExcerpt(hit.content, q);
+      const thread = byId.get(id);
+      if (thread) rows.push({ thread, excerpt });
+      else outside.push({ id, excerpt });
     }
-    return out;
-  }, [hits, threads]);
+    return { results: rows, elsewhere: outside };
+  }, [threads, localFiltered, hits, query]);
 
   const filtering = query.trim() !== '';
-  const groups = useMemo(() => groupThreads(threads, pinned), [threads, pinned]);
-  const currentIsOlder = groups.some(
-    (g) => g.key === 'older' && g.threads.some((t) => t.id === currentId),
+  const groups = useMemo(
+    () => groupThreads(threads, pinned, Date.now(), blocked),
+    [threads, pinned, blocked],
   );
   const [olderOpen, setOlderOpen] = useState(false);
-  // The thread on screen is never folded away: arriving on an old thread from a
-  // link would otherwise leave the sidebar with no row marked current.
-  const olderShown = olderOpen || currentIsOlder;
   const ids = useId();
 
-  function renderRow(t: ThreadMeta) {
+  /**
+   * What is drawn, in order: one list the arrow keys walk. A folded Older still
+   * draws the thread on screen when it is one of them — arriving on an old thread
+   * from a link would otherwise leave no row marked current — and only that one,
+   * so being on an old thread does not hold fifty others open.
+   */
+  const sections = useMemo(
+    () =>
+      groups.map((g) => {
+        const folded = g.key === 'older' && !olderOpen;
+        const rows = folded ? g.threads.filter((t) => t.id === currentId) : g.threads;
+        return { group: g, folded, rows: rows.map((thread): Row => ({ thread })) };
+      }),
+    [groups, olderOpen, currentId],
+  );
+  const order = filtering
+    ? [...results.map((r) => r.thread.id), ...elsewhere.map((r) => r.id)]
+    : sections.flatMap((s) => s.rows.map((r) => r.thread.id));
+  const tabStop =
+    activeId && order.includes(activeId)
+      ? activeId
+      : order.includes(currentId)
+        ? currentId
+        : order[0];
+
+  const rowButtons = () =>
+    Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-thread-row]') ?? []);
+  const focusRow = (id: string) =>
+    rowButtons()
+      .find((b) => b.dataset.threadRow === id)
+      ?.focus();
+
+  function onRowKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
+    const target = e.currentTarget;
+    const id = target.dataset.threadRow;
+    if (!id) return;
+    const buttons = rowButtons();
+    const at = buttons.indexOf(target);
+    const move = (to: number) => {
+      e.preventDefault();
+      buttons[Math.max(0, Math.min(buttons.length - 1, to))]?.focus();
+    };
+    if (e.key === 'ArrowDown') move(at + 1);
+    else if (e.key === 'ArrowUp') move(at - 1);
+    else if (e.key === 'Home') move(0);
+    else if (e.key === 'End') move(buttons.length - 1);
+    else if (e.key === 'ArrowRight') {
+      const menu = target
+        .closest('[data-thread]')
+        ?.querySelector<HTMLElement>('[data-thread-menu]');
+      if (menu) {
+        e.preventDefault();
+        menu.focus();
+      }
+    } else if ((e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') {
+      if (!threads.some((t) => t.id === id)) return;
+      e.preventDefault();
+      setMenuFor(id);
+    } else if (e.key === 'Delete' && threads.some((t) => t.id === id)) {
+      e.preventDefault();
+      // The focus goes to the row that takes this one's place, not to the page.
+      const next = buttons[at + 1] ?? buttons[at - 1];
+      onDelete(id);
+      if (next?.dataset.threadRow) {
+        const nextId = next.dataset.threadRow;
+        requestAnimationFrame(() => focusRow(nextId));
+      }
+    }
+  }
+
+  function onSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      const first = rowButtons()[0];
+      if (first) {
+        e.preventDefault();
+        first.focus();
+      }
+    } else if (e.key === 'Enter' && filtering && order[0]) {
+      e.preventDefault();
+      onSelect(order[0]);
+    }
+  }
+
+  function renderRow({ thread: t, excerpt }: Row, inGroup?: ThreadGroupKey) {
     const label = labels.get(t.id) ?? { text: t.title, isId: false };
     const waiting = blocked.has(t.id);
+    const live = running.has(t.id);
     const isPinned = pinned.has(t.id);
+    const local = t.onServer === false;
+    const readOnly = t.id === readOnlyId;
     return (
       // `group/thread`, named: the sidebar's root is an unnamed `group`, so a bare
       // `group-hover` here matched the pointer anywhere in the sidebar and lit
-      // every row's actions at once.
+      // every row's actions at once. The focus ring is the row's, not the
+      // button's: the actions are laid over the button's end and would cover it.
       <div
         key={t.id}
+        data-thread={t.id}
         className={cn(
           'group/thread relative flex items-center gap-2 rounded-md bg-(--row-bg) px-2 py-1.5 text-sm',
+          'has-[[data-thread-row]:focus-visible]:ring-[3px] has-[[data-thread-row]:focus-visible]:ring-ring',
           t.id === currentId ? '[--row-bg:var(--accent)]' : ROW_LIT,
         )}
       >
         {renaming?.id === t.id ? (
           <input
             // Renaming is a text edit, so it happens in place rather than in
-            // a dialog: the row already shows the name being changed. Focus
-            // moves here via a stable callback ref rather than `autoFocus`,
-            // which only reads as helpful because the user just asked for it.
+            // a dialog: the row already shows the name being changed.
             ref={renameInputRef}
             aria-label="Thread name"
             value={renaming.draft}
@@ -291,21 +422,32 @@ export function ThreadList({
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 const name = renaming.draft.trim();
-                if (name) onRename?.(t.id, name);
+                if (name && name !== t.title) onRename?.(t.id, name);
                 setRenaming(null);
+                requestAnimationFrame(() => focusRow(t.id));
               }
-              if (e.key === 'Escape') setRenaming(null);
+              if (e.key === 'Escape') {
+                setRenaming(null);
+                requestAnimationFrame(() => focusRow(t.id));
+              }
             }}
             className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1.5 py-1 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         ) : (
           <button
             type="button"
-            className="min-w-0 flex-1 truncate text-left"
+            data-thread-row={t.id}
+            tabIndex={t.id === tabStop ? 0 : -1}
+            onFocus={() => setActiveId(t.id)}
+            onKeyDown={onRowKeyDown}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenuFor(t.id);
+            }}
+            className="min-w-0 flex-1 truncate text-left outline-none"
             aria-current={t.id === currentId ? 'page' : undefined}
-            // The full title only: everything else the old tooltip carried is
-            // on the row now, and a truncated title is the one thing that
-            // still needs a way to be read whole.
+            // The full title only: everything else is on the row, and a
+            // truncated title is the one thing that needs a way to be read whole.
             title={label.text}
             onClick={() => onSelect(t.id)}
           >
@@ -319,147 +461,164 @@ export function ThreadList({
             ) : (
               <span className="block truncate font-medium">{label.text}</span>
             )}
-            <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-              {/*
-              First, because it is the one fact on the row that asks
-              something of the reader. A word beside the dot, never the
-              dot alone. From `/approvals`' `thread_id`, so it marks the
-              thread that first asked — an identical call elsewhere shares
-              the row.
-            */}
-              {waiting && (
-                <span className="flex shrink-0 items-center gap-1 text-state-blocked">
-                  <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
-                  Waiting on you ·
-                </span>
-              )}
-              <span className="min-w-0 truncate">
-                {/* A thread from another browser has no local manifest
-                  record; the row says nothing rather than a placeholder. */}
-                {t.manifest && (
-                  <>
-                    <span className="font-mono">{t.manifest}</span> ·{' '}
-                  </>
-                )}
-                {relativeTime(t.updatedAt)}
-                {t.onServer === false && ' · local only'}
+            {excerpt ? (
+              // A message matched, so the second line is why: the words around
+              // the match, marked, rather than the agent and the time.
+              <span className="block truncate text-xs text-muted-foreground">
+                <Marked text={excerpt} query={query} />
               </span>
-            </span>
+            ) : (
+              <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                {/*
+                  First, because it is the one fact on the row that asks
+                  something of the reader. A word beside the dot, never the
+                  dot alone. Under its own group's label it would only repeat it.
+                */}
+                {waiting && inGroup !== 'waiting' && (
+                  <StateMark className="text-state-blocked">Waiting on you</StateMark>
+                )}
+                {live && !waiting && <StateMark className="text-state-running">Running</StateMark>}
+                <span className="min-w-0 truncate">
+                  {/* A thread from another browser has no local manifest
+                      record; the row says nothing rather than a placeholder. */}
+                  {t.manifest && (
+                    <>
+                      <span className="font-mono">{t.manifest}</span> ·{' '}
+                    </>
+                  )}
+                  {relativeTime(t.updatedAt)}
+                  {local && ' · local only'}
+                </span>
+              </span>
+            )}
           </button>
         )}
         {renaming?.id !== t.id && (
           <div data-slot="thread-actions" className={ROW_ACTIONS}>
-            {(onTogglePin || onRename || onFork || onCompact || onExport) && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={`Actions for ${label.text}`}
-                    className="grid size-6 shrink-0 coarse:size-10 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-accent data-[state=open]:text-foreground"
-                  >
-                    <MoreHorizontalIcon className="size-3.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="w-44"
-                  onCloseAutoFocus={(e) => {
-                    if (!renameJustStarted.current) return;
-                    renameJustStarted.current = false;
-                    e.preventDefault();
-                  }}
-                >
-                  {onTogglePin && (
-                    <DropdownMenuItem onSelect={() => onTogglePin(t.id)}>
-                      {isPinned ? (
-                        <>
-                          <PinOffIcon className="size-3.5" /> Unpin
-                        </>
-                      ) : (
-                        <>
-                          <PinIcon className="size-3.5" /> Pin
-                        </>
-                      )}
-                    </DropdownMenuItem>
-                  )}
-                  {onRename && (
-                    <DropdownMenuItem
-                      disabled={t.id === readOnlyId}
-                      onSelect={() => {
-                        renameJustStarted.current = true;
-                        setRenaming({ id: t.id, draft: t.named ? t.title : '' });
-                      }}
-                    >
-                      <PencilIcon className="size-3.5" /> Rename
-                    </DropdownMenuItem>
-                  )}
-                  {/* The three below all act on server state, so a thread the
-                  harness has never seen cannot offer them. */}
-                  {onFork && (
-                    <DropdownMenuItem disabled={t.onServer === false} onSelect={() => onFork(t.id)}>
-                      <GitBranchIcon className="size-3.5" /> Duplicate
-                    </DropdownMenuItem>
-                  )}
-                  {onCompact && (
-                    <DropdownMenuItem
-                      disabled={t.onServer === false || t.id === readOnlyId}
-                      onSelect={() => onCompact(t.id)}
-                    >
-                      <ShrinkIcon className="size-3.5" /> Compact context
-                    </DropdownMenuItem>
-                  )}
-                  {onExport && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        disabled={t.onServer === false}
-                        onSelect={() => onExport(t.id)}
-                      >
-                        <DownloadIcon className="size-3.5" /> Export JSONL
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <button
-              type="button"
-              aria-label="Delete thread"
-              className="grid size-6 shrink-0 coarse:size-10 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-state-failed focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-              onClick={() => onDelete(t.id)}
+            <DropdownMenu
+              open={menuFor === t.id}
+              onOpenChange={(open) => setMenuFor(open ? t.id : null)}
             >
-              <Trash2Icon className="size-3.5" />
-            </button>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  data-thread-menu
+                  // Reached with → from the row, not with Tab: the list is one
+                  // Tab stop, and three per row put 167 between the search and
+                  // the workspace.
+                  tabIndex={-1}
+                  aria-label={`Actions for ${label.text}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowLeft') {
+                      e.preventDefault();
+                      focusRow(t.id);
+                    }
+                  }}
+                  className="grid size-6 shrink-0 coarse:size-10 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-accent data-[state=open]:text-foreground"
+                >
+                  <MoreHorizontalIcon className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-56"
+                onCloseAutoFocus={(e) => {
+                  e.preventDefault();
+                  if (renameJustStarted.current) {
+                    renameJustStarted.current = false;
+                    return;
+                  }
+                  // Back to the row, which holds the list's Tab stop, rather
+                  // than to a trigger the Tab order skips.
+                  focusRow(t.id);
+                }}
+              >
+                {onTogglePin && (
+                  <DropdownMenuItem onSelect={() => onTogglePin(t.id)}>
+                    {isPinned ? (
+                      <>
+                        <PinOffIcon className="size-3.5" /> Unpin
+                      </>
+                    ) : (
+                      <>
+                        <PinIcon className="size-3.5" /> Pin
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                )}
+                {onRename && (
+                  <DropdownMenuItem
+                    disabled={readOnly}
+                    onSelect={() => {
+                      renameJustStarted.current = true;
+                      setRenaming({ id: t.id, draft: t.named ? t.title : '' });
+                    }}
+                  >
+                    <PencilIcon className="size-3.5" /> Rename
+                  </DropdownMenuItem>
+                )}
+                {/* The three below all act on server state, so a thread the
+                    harness has never seen cannot offer them. */}
+                {onFork && (
+                  <DropdownMenuItem disabled={local} onSelect={() => onFork(t.id)}>
+                    <GitBranchIcon className="size-3.5" /> Fork
+                  </DropdownMenuItem>
+                )}
+                {onCompact && (
+                  <DropdownMenuItem disabled={local || readOnly} onSelect={() => onCompact(t.id)}>
+                    <ShrinkIcon className="size-3.5" /> Compact context
+                  </DropdownMenuItem>
+                )}
+                {onExport && (
+                  <DropdownMenuItem disabled={local} onSelect={() => onExport(t.id)}>
+                    <DownloadIcon className="size-3.5" /> Export JSONL
+                  </DropdownMenuItem>
+                )}
+                {/* A greyed item with no reason reads as broken. */}
+                {(local || readOnly) && (
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    {local
+                      ? 'The harness has no record of this thread yet, so it cannot be forked, compacted or exported.'
+                      : 'Another client is driving this thread, so it cannot be renamed or compacted here.'}
+                  </DropdownMenuLabel>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onSelect={() => onDelete(t.id)}>
+                  <Trash2Icon className="size-3.5" /> Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>
     );
   }
 
+  const count = results.length + elsewhere.length;
+  const status = !filtering
+    ? ''
+    : searching
+      ? 'Searching message text…'
+      : searchFailed
+        ? 'Message search failed. Showing title matches only.'
+        : '';
+
   return (
     <section
       aria-labelledby="history-heading"
       data-slot="thread-list"
-      className={cn('flex min-h-0 flex-col', className)}
+      className={cn(
+        // Shrinks to what the sections below leave, never under ~5 rows; its
+        // own list scrolls. `shrink!` beats the sidebar's `*:shrink-0`.
+        'flex min-h-48 shrink! flex-col',
+        className,
+      )}
     >
-      {/* Heading and search ride the top of the scroller, so a long list never
-          scrolls away the way to find something in it. */}
-      <div className="sticky top-0 z-10 bg-background px-2 pt-1 pb-2">
-        <div className="flex h-7 items-center justify-between px-2">
+      <div className="shrink-0 px-2 pt-1 pb-2">
+        <div className="flex h-7 items-center px-2">
           <h2 id="history-heading" className="text-xs font-medium text-muted-foreground">
             Threads
           </h2>
-          {onNew && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1"
-              disabled={disabled}
-              onClick={onNew}
-            >
-              <PlusIcon className="size-3.5" /> New chat
-            </Button>
-          )}
         </div>
         <label className="relative mt-1 block">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -470,30 +629,43 @@ export function ThreadList({
             data-shortcut-target="thread-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search threads…"
+            onKeyDown={onSearchKeyDown}
+            placeholder="Search titles and messages…"
             className="h-8 w-full rounded-md border border-border/60 bg-background pr-2 pl-7 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
           />
         </label>
+        {status && <p className="px-2 pt-1.5 text-xs text-muted-foreground">{status}</p>}
+        {/* What a search found, said to a reader once it settles. */}
+        <p role="status" className="sr-only">
+          {filtering && !searching
+            ? `${count === 0 ? 'No' : count} ${count === 1 ? 'thread matches' : 'threads match'}${searchFailed ? '; message search failed' : ''}`
+            : ''}
+        </p>
       </div>
-      <div className="px-2 pb-2">
-        {localFiltered.length === 0 && remoteOnly.length === 0 && (
+      <div
+        ref={listRef}
+        data-slot="thread-scroll"
+        className="min-h-0 flex-1 scroll-fade-b overflow-y-auto overscroll-contain px-2 pt-0.5 pb-2"
+      >
+        {count === 0 && (filtering || threads.length === 0) && (
           <div className="px-2 py-6 text-center">
             <p className="text-sm text-muted-foreground">
-              {filtering ? (searching ? 'Searching…' : 'No matches') : 'No threads yet'}
+              {filtering
+                ? searching
+                  ? 'No title matches yet.'
+                  : `No thread matches “${query.trim()}”.`
+                : 'No threads yet'}
             </p>
             {!filtering && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {onNew ? 'Start one with New chat above.' : 'Your first message starts one.'}
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Your first message starts one.</p>
             )}
           </div>
         )}
         {filtering ? (
-          <div className="space-y-0.5">{localFiltered.map(renderRow)}</div>
+          <div className="space-y-0.5">{results.map((r) => renderRow(r))}</div>
         ) : (
-          groups.map((g) => {
+          sections.map(({ group: g, folded, rows }) => {
             const labelId = `${ids}-${g.key}`;
-            const folded = g.key === 'older' && !olderShown;
             return (
               <div key={g.key} role="group" aria-labelledby={labelId} className="pt-2 first:pt-0">
                 {g.key === 'older' ? (
@@ -503,9 +675,8 @@ export function ThreadList({
                     type="button"
                     id={labelId}
                     aria-expanded={!folded}
-                    disabled={currentIsOlder}
                     onClick={() => setOlderOpen((o) => !o)}
-                    className="flex h-6 w-full items-center gap-1 rounded-md px-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none disabled:cursor-default disabled:hover:text-muted-foreground"
+                    className="flex h-6 w-full items-center gap-1 rounded-md px-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                   >
                     <ChevronRightIcon
                       aria-hidden
@@ -520,46 +691,95 @@ export function ThreadList({
                 ) : (
                   <p
                     id={labelId}
-                    className="flex h-6 items-center px-2 text-xs font-medium text-muted-foreground"
+                    className={cn(
+                      'flex h-6 items-center gap-1 px-2 text-xs font-medium',
+                      g.key === 'waiting' ? 'text-state-blocked' : 'text-muted-foreground',
+                    )}
                   >
+                    {g.key === 'waiting' && (
+                      <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                    )}
                     {g.label}
                     {g.key === 'pinned' && (
                       <span className="ml-auto font-normal">this browser</span>
                     )}
                   </p>
                 )}
-                {!folded && <div className="space-y-0.5">{g.threads.map(renderRow)}</div>}
+                {rows.length > 0 && (
+                  <div className="space-y-0.5">{rows.map((r) => renderRow(r, g.key))}</div>
+                )}
               </div>
             );
           })
         )}
-        {remoteOnly.length > 0 && (
-          <div className="pt-2">
-            <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Server</p>
-            {remoteOnly.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={cn(
-                  'flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-accent/50',
-                  t.id === currentId && 'bg-accent',
-                )}
-                onClick={() => onSelect(t.id)}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{t.snippet.slice(0, 48)}</span>
-                  <span
-                    className="block truncate font-mono text-xs text-muted-foreground"
+        {elsewhere.length > 0 && (
+          <div role="group" aria-labelledby={`${ids}-elsewhere`} className="pt-2">
+            {/* Hits on threads past the end of the index this client fetched. */}
+            <p
+              id={`${ids}-elsewhere`}
+              className="flex h-6 items-center px-2 text-xs font-medium text-muted-foreground"
+            >
+              More on the harness
+            </p>
+            <div className="space-y-0.5">
+              {elsewhere.map((t) => (
+                <div
+                  key={t.id}
+                  className={cn(
+                    'rounded-md bg-(--row-bg) px-2 py-1.5 text-sm',
+                    'has-[[data-thread-row]:focus-visible]:ring-[3px] has-[[data-thread-row]:focus-visible]:ring-ring',
+                    t.id === currentId ? '[--row-bg:var(--accent)]' : ROW_LIT,
+                  )}
+                >
+                  <button
+                    type="button"
+                    data-thread-row={t.id}
+                    tabIndex={t.id === tabStop ? 0 : -1}
+                    onFocus={() => setActiveId(t.id)}
+                    onKeyDown={onRowKeyDown}
+                    className="block w-full min-w-0 text-left outline-none"
                     title={t.id}
+                    onClick={() => onSelect(t.id)}
                   >
-                    <CutId id={t.id} max={ID_CHARS} />
-                  </span>
-                </span>
-              </button>
-            ))}
+                    <span className="block truncate font-mono font-medium">
+                      <CutId id={t.id} max={ID_CHARS} />
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      <Marked text={t.excerpt} query={query} />
+                    </span>
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+/** A state word with its dot, ahead of a row's metadata. */
+function StateMark({ className, children }: { className: string; children: ReactNode }) {
+  return (
+    <span className={cn('flex shrink-0 items-center gap-1', className)}>
+      <span aria-hidden className="size-1.5 rounded-full bg-current" />
+      {children} ·
+    </span>
+  );
+}
+
+/** `text` with the first occurrence of `query` set in the foreground, so the match is what the eye lands on. */
+function Marked({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  const at = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if (at < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="bg-transparent font-medium text-foreground">
+        {text.slice(at, at + q.length)}
+      </mark>
+      {text.slice(at + q.length)}
+    </>
   );
 }

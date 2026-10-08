@@ -135,7 +135,7 @@ export function writePins(ids: Iterable<string>): void {
   }
 }
 
-export type ThreadGroupKey = 'pinned' | 'today' | 'yesterday' | 'week' | 'older';
+export type ThreadGroupKey = 'waiting' | 'pinned' | 'today' | 'yesterday' | 'week' | 'older';
 
 export interface ThreadGroup {
   key: ThreadGroupKey;
@@ -146,17 +146,26 @@ export interface ThreadGroup {
 const DAY_MS = 86_400_000;
 
 /**
- * The sidebar's sections: pinned first, then by last activity.
+ * The sidebar's sections: what is waiting on a person, then pinned, then by last
+ * activity.
  *
- * Bucketed on `updatedAt` — the last time this client or the harness saw the
- * thread move — against local midnight, so "Today" means the operator's day
- * rather than the last twenty-four hours. A pinned thread appears only under
- * Pinned. Empty groups are left out rather than drawn with no rows under them.
+ * Waiting comes first because it is the one state that asks something of the
+ * reader, and an instrument ranks by state before recency: sorted by date alone, a
+ * thread blocked on an approval could sit under a folded Older and say nothing.
+ * `waiting` is the shell's tenant-wide `/approvals` poll, by suffix — positive
+ * evidence only, so an approval with no thread moves none.
+ *
+ * The rest is bucketed on `updatedAt` — the last time this client or the harness
+ * saw the thread move — against local midnight, so "Today" means the operator's
+ * day rather than the last twenty-four hours. A thread appears in one group only,
+ * the first that claims it. Empty groups are left out rather than drawn with no
+ * rows under them.
  */
 export function groupThreads(
   threads: readonly ThreadMeta[],
   pinned: ReadonlySet<string>,
   now: number = Date.now(),
+  waiting: ReadonlySet<string> = new Set(),
 ): ThreadGroup[] {
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
@@ -165,6 +174,7 @@ export function groupThreads(
   const week = today - 7 * DAY_MS;
 
   const groups: ThreadGroup[] = [
+    { key: 'waiting', label: 'Waiting on you', threads: [] },
     { key: 'pinned', label: 'Pinned', threads: [] },
     { key: 'today', label: 'Today', threads: [] },
     { key: 'yesterday', label: 'Yesterday', threads: [] },
@@ -174,11 +184,38 @@ export function groupThreads(
   const at = (key: ThreadGroupKey) => groups.find((g) => g.key === key)!.threads;
 
   for (const t of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
-    if (pinned.has(t.id)) at('pinned').push(t);
+    if (waiting.has(t.id)) at('waiting').push(t);
+    else if (pinned.has(t.id)) at('pinned').push(t);
     else if (t.updatedAt >= today) at('today').push(t);
     else if (t.updatedAt >= yesterday) at('yesterday').push(t);
     else if (t.updatedAt >= week) at('week').push(t);
     else at('older').push(t);
   }
   return groups.filter((g) => g.threads.length > 0);
+}
+
+/**
+ * The stretch of a message-search hit around what was searched for, on one line.
+ *
+ * A hit is a whole message — often a tool's JSON — so its head says nothing about
+ * why it matched; the row shows the words either side of the match instead.
+ * JSON's escapes are read back (a hit inside a tool's JSON otherwise shows
+ * `\\n` and `\\u2014` as text), whitespace is collapsed so a pretty-printed payload
+ * reads as a line, and the cut ends say they are cuts. Falls back to the head when the query does not
+ * occur verbatim (the index stems and tokenises; this does not).
+ */
+export function matchExcerpt(content: string, query: string, width = 64): string {
+  const text = content
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) =>
+      String.fromCharCode(Number.parseInt(hex, 16)),
+    )
+    .replace(/\\[nrt]/g, ' ')
+    .replace(/\\(["\\/])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length <= width) return text;
+  const at = text.toLowerCase().indexOf(query.trim().toLowerCase());
+  const start = at < 0 ? 0 : Math.max(0, Math.min(at - 16, text.length - width));
+  const end = Math.min(text.length, start + width);
+  return `${start > 0 ? '…' : ''}${text.slice(start, end).trim()}${end < text.length ? '…' : ''}`;
 }
