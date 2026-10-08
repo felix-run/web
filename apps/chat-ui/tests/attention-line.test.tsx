@@ -101,6 +101,22 @@ function QuestionLine({ bannerOnScreen = true }: { bannerOnScreen?: boolean }) {
   );
 }
 
+/** A run kept going on another thread is asking; nothing on this one is. */
+function ElsewhereQuestionLine() {
+  const approvals = usePendingApprovals();
+  return (
+    <AttentionLine
+      approvals={approvals}
+      streaming={false}
+      handled={[]}
+      bannerOnScreen
+      threadId="here"
+      threads={THREADS}
+      elsewhereQuestions={[{ threadId: 'elsewhere', prompt: 'Which region?' }]}
+    />
+  );
+}
+
 const mountQuestion = (bannerOnScreen = true) =>
   render(
     <MemoryRouter>
@@ -435,6 +451,47 @@ describe('the attention line', () => {
     mountQuestion(false);
     const link = await screen.findByRole('link', { name: 'Answer it' });
     expect(link.getAttribute('href')).toBe('/t/here');
+  });
+
+  /**
+   * A run left going on another thread can ask too. Its engine is not the one on
+   * screen and `/approvals` never lists a question, so the line is the only
+   * place in the page that can say so — and it must not say "on this thread".
+   */
+  it('says a question on another thread is waiting, and links to that thread', async () => {
+    stub([]);
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <ElsewhereQuestionLine />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'A question is waiting on you on another thread',
+      ),
+    );
+    expect(document.querySelector('[data-attention-dot]')?.className).toContain('bg-state-blocked');
+    const link = screen.getByRole('link', { name: 'Answer it' });
+    expect(link.getAttribute('href')).toBe('/t/elsewhere');
+    expect(link.getAttribute('title')).toBe('Answer the question on Overnight batch');
+  });
+
+  it('says an approval here and a question elsewhere apart, not both as here', async () => {
+    stub([approval({ thread_id: 'here' })]);
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <ElsewhereQuestionLine />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        '1 call is waiting on you on this thread · and a question on another thread',
+      ),
+    );
   });
 
   it("carries the rule's reason to the card when this tab saw it by frame", async () => {

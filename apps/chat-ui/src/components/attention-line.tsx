@@ -76,6 +76,7 @@ export function AttentionLine({
   threads,
   reasons = {},
   question = null,
+  elsewhereQuestions = [],
   queueHost = null,
 }: {
   /** The shell's tenant-wide `/approvals` poll — see `usePendingApprovals`. */
@@ -117,6 +118,15 @@ export function AttentionLine({
    * waiting on you" while the header said `blocked` and the run waited on an answer.
    */
   question?: string | null;
+  /**
+   * Questions open on runs this tab keeps going on **other** threads — the
+   * operator switched away mid-run and the run carried on, then asked. The
+   * engine on screen does not hold them and `/approvals` never lists them, so
+   * without this the only sign was the tab title. Never this thread's: that one
+   * is `question`. Named as elsewhere, and linked to, because the banner that
+   * answers it is on its own thread.
+   */
+  elsewhereQuestions?: ReadonlyArray<{ threadId: string; prompt: string }>;
   /**
    * Where the expanded queue renders. The line itself sits in the header, which
    * has no room for a list of cards, so the shell hands it the slot under the
@@ -201,7 +211,27 @@ export function AttentionLine({
   const limited = stale && /:\s*429\b/.test(String((error as Error)?.message ?? error));
   const failure = limited ? 'Approvals rate-limited' : "Can't reach approvals";
   const asking = question != null;
-  const alsoAsking = ' · and a question on this thread';
+  const othersAsking = elsewhereQuestions.length;
+  const anyAsking = asking || othersAsking > 0;
+  /** The questions elsewhere, as a noun phrase: never "on this thread". */
+  const elsewherePhrase =
+    othersAsking === 1
+      ? 'a question on another thread'
+      : `${othersAsking} questions on other threads`;
+  const questionPhrase = asking
+    ? othersAsking > 0
+      ? `a question on this thread and ${elsewherePhrase}`
+      : 'a question on this thread'
+    : elsewherePhrase;
+  const alsoAsking = ` · and ${questionPhrase}`;
+  /** The questions as a sentence of their own, for when no approval is waiting. */
+  const questionsWaiting = asking
+    ? othersAsking > 0
+      ? `A question is waiting on you on this thread, and ${elsewherePhrase.replace(/^a question/, 'one')}`
+      : 'A question is waiting on you on this thread'
+    : othersAsking === 1
+      ? 'A question is waiting on you on another thread'
+      : `${othersAsking} questions are waiting on you on other threads`;
   const base = rechecking
     ? waiting
       ? `${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where} · rechecking`
@@ -220,21 +250,21 @@ export function AttentionLine({
   // A question is known locally, from the stream, so it is said even when the
   // approvals poll has not answered — "Checking approvals…" over an open question
   // would hide the one thing this line is certain of.
-  const summary = !asking
+  const summary = !anyAsking
     ? base
     : waiting
       ? `${base}${alsoAsking}`
       : stale && !rechecking
-        ? `${failure} · a question is waiting on you on this thread`
-        : 'A question is waiting on you on this thread';
+        ? `${failure} · ${questionsWaiting.charAt(0).toLowerCase()}${questionsWaiting.slice(1)}`
+        : questionsWaiting;
   /**
    * The sentence in two words, for a phone's header. The full sentence stays the
    * live region and the `title`; this is what is drawn below `sm`, because the
    * dot alone would say the state in colour only.
    */
   const short =
-    waiting || asking
-      ? `${count + (asking ? 1 : 0)} waiting`
+    waiting || anyAsking
+      ? `${count + (asking ? 1 : 0) + othersAsking} waiting`
       : stale && !rechecking
         ? limited
           ? 'Rate-limited'
@@ -265,7 +295,17 @@ export function AttentionLine({
    * Resting is neutral, matching the run readout's idle: idle is not on the ramp,
    * and green would claim a finished state this line has no evidence of.
    */
-  const blocked = waiting || asking;
+  const blocked = waiting || anyAsking;
+  /**
+   * Where "Answer it" goes: this thread's question when its banner is off screen
+   * (on `/harness`), otherwise the first question on another thread — whose
+   * banner is never on screen here.
+   */
+  const answerAt = asking && !bannerOnScreen ? threadId : (elsewhereQuestions[0]?.threadId ?? null);
+  const answerTitle =
+    answerAt && answerAt !== threadId
+      ? `Answer the question on ${threads.find((t) => t.id === answerAt)?.title ?? 'another thread'}`
+      : undefined;
   const dot = blocked
     ? 'bg-state-blocked'
     : stale && !rechecking
@@ -378,11 +418,14 @@ export function AttentionLine({
             {age}
           </span>
         )}
-        {asking && !bannerOnScreen && (
-          // Off the workbench the question's banner is not on screen, so a sentence
-          // with no way to the answer would be amber with no verb.
+        {answerAt && (
+          // A question whose banner is not on screen — this thread's, off the
+          // workbench, or another thread's anywhere — needs a way to it, or the
+          // sentence is amber with no verb.
           <Button asChild variant="ghost" size="sm" className="h-6 shrink-0 px-2 text-xs">
-            <Link to={`/t/${threadId}`}>Answer it</Link>
+            <Link to={`/t/${answerAt}`} title={answerTitle}>
+              Answer it
+            </Link>
           </Button>
         )}
         {reviewable.length > 0 && (

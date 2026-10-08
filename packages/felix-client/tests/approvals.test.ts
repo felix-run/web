@@ -295,6 +295,25 @@ describe('syncApprovals thread scoping', () => {
     expect(added.map((x) => x.approvalId)).toEqual(['a']);
   });
 
+  /**
+   * A run kept going off screen adopts only what names its thread. An
+   * unattributed row would otherwise be adopted by every engine holding a run,
+   * and deciding it from one banner left the others with a stale card.
+   */
+  it('leaves unattributed rows alone when asked for attributed ones only', async () => {
+    const { added } = await syncApprovals({
+      listPending: async () => [
+        row({ id: 'a' }),
+        row({ id: 'b', thread_id: '' }),
+        row({ id: 'c', thread_id: 'here' }),
+      ],
+      seen: new Set(),
+      threadId: 'here',
+      attributedOnly: true,
+    });
+    expect(added.map((x) => x.approvalId)).toEqual(['c']);
+  });
+
   /** The deadline map covers every row: the engine backfills frame-delivered ones from it. */
   it('still reports deadlines for the approvals it did not adopt', async () => {
     const { added, deadlines } = await sync([row({ id: 'a', thread_id: 'elsewhere' })], 'here');

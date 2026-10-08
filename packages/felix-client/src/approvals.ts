@@ -284,6 +284,16 @@ export interface ApprovalSyncOptions {
    * looking at. On the one surface in this app that authorises a write to disk.
    */
   threadId?: string;
+  /**
+   * Adopt only rows that name `threadId`, leaving unattributed ones alone.
+   *
+   * For a client holding more than one thread's run at once — chat-ui keeps a run
+   * going in the background after the operator switches threads. An unattributed
+   * row has no thread to belong to, so every engine would adopt it, and deciding
+   * it from one banner left the others holding a stale card. The thread on screen
+   * adopts them as before; a background run passes this.
+   */
+  attributedOnly?: boolean;
   /** Ids already on screen, however they got there. Mutated as new ones adopt. */
   seen: Set<string>;
   /** The pre-edit file text for a `write_file` diff, where a client can read one. */
@@ -367,8 +377,10 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
    * The deadline map still covers every row, because the engine backfills those
    * onto approvals that arrived by frame.
    */
-  const mine = items.filter(
-    (item) => !item.thread_id || !opts.threadId || item.thread_id === opts.threadId,
+  const mine = items.filter((item) =>
+    opts.attributedOnly
+      ? Boolean(item.thread_id) && item.thread_id === opts.threadId
+      : !item.thread_id || !opts.threadId || item.thread_id === opts.threadId,
   );
   const fresh = mine.filter((item) => !opts.seen.has(item.id));
   if (!fresh.length) return { added: [], deadlines, listed: true };
