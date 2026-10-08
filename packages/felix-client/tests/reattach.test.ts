@@ -249,3 +249,40 @@ describe('reattachThread', () => {
     ]);
   });
 });
+
+describe('reattachThread, held open for a durable run', () => {
+  /**
+   * A durable run's thread reads `idle` from start to finish, so the phase cannot say when
+   * to stop: an ordinary reattach let go at the first snapshot, and with it the only stream
+   * that announces what the run is blocked on (felix-run/felix#530). Held open, it comes
+   * back however the stream ends and stops only when its caller aborts.
+   */
+  it('reconnects past an idle snapshot until aborted, with the cursor it was given', async () => {
+    const calls = stubFetch([
+      sse(snapshotFrame('idle') + DONE),
+      sse(sessionEventFrame(3, 'more') + DONE),
+      sse(DONE),
+    ]);
+    const stop = new AbortController();
+    const turns: string[][] = [];
+    let waits = 0;
+    await reattachThread({
+      client,
+      threadId: 't1',
+      holdOpen: true,
+      signal: stop.signal,
+      onTurns: (t) => turns.push(t.map((x) => x.content)),
+      wait: async () => {
+        if (++waits === 3) stop.abort();
+      },
+    });
+
+    const resumes = calls.filter((c) => c.url.includes('/chat/stream/t1'));
+    expect(resumes).toHaveLength(3);
+    // The second attempt picks up where the snapshot left off rather than starting cold.
+    expect(resumes[1]?.headers['last-event-id']).toBe('3');
+    // The phase never ended it, and no snapshot read was made to ask.
+    expect(calls.some((c) => c.url.includes('/chat/sessions/'))).toBe(false);
+    expect(turns.at(-1)).toEqual(['hello', 'partial answer', 'more']);
+  });
+});

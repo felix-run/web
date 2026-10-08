@@ -423,6 +423,16 @@ watches the run that refused it. A harness older than this sends no `activeRun` 
 client then falls back to the token it kept in `localStorage` (`felix.durableRuns`) for runs it
 started itself.
 
+**What a durable run is blocked on reaches a reattach too.** A durable run can outlive its own
+stream (a reload, a dropped connection), and its client tool requests and approvals used to be
+announced only there. [`GET /chat/stream/{thread_id}`](#get-chatstreamthread_id) now announces the
+thread's pending `tool_request` frames, and its `approval_required` frames for a caller with
+`approvals:read`, each once per stream. It also stays open while a durable run is in flight. The
+durable stream itself stays open past `expires_at` while a worker still holds the run. Since one
+gate can arrive on more than one stream, **dedupe by id**: a client that runs a `tool_request`
+twice runs the tool twice. The web client holds a reattach open for as long as it polls a
+durable run, and takes each request id once.
+
 `GET /chat/runs/{resume_token}` is unchanged and stays coarse: it is a status read, not a stream, so
 it reports status and the final answer and carries no transcript. A client polling it that wants the
 tool calls reattaches to `GET /chat/stream/{thread_id}`.

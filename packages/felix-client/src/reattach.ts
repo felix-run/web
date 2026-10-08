@@ -44,11 +44,36 @@ export interface ReattachOptions {
    * the reattach stream emits the same way any other stream does.
    */
   onEvent?: (event: StreamEvent) => void | Promise<void>;
+  /**
+   * Keep reattaching until `signal` aborts, whatever the thread's phase says.
+   *
+   * For a durable run, whose thread reads `idle` from start to finish — its agent is in
+   * the worker, which writes no phase — so the phase cannot say when to stop, and the
+   * caller decides by aborting instead (the run's own status, polled). Without it the
+   * loop let go at the first snapshot, and with it the only stream that carries what the
+   * run is blocked on (felix-run/felix#530): its client tool requests and approvals.
+   */
+  holdOpen?: boolean;
   /** Injected so tests do not sleep. Defaults to setTimeout. */
   wait?: (ms: number) => Promise<void>;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** `p`, or sooner if `signal` aborts first. */
+const abortable = (p: Promise<void>, signal?: AbortSignal): Promise<void> =>
+  signal
+    ? new Promise<void>((resolve) => {
+        // Removed either way: a held-open reattach waits once per reconnect, for as long as
+        // the run takes, and a listener left on the signal each time would accumulate.
+        const done = () => {
+          signal.removeEventListener('abort', done);
+          resolve();
+        };
+        signal.addEventListener('abort', done, { once: true });
+        p.then(done, done);
+      })
+    : p;
 
 /**
  * Reattach, and keep reattaching while the thread is still working.
@@ -79,7 +104,10 @@ export async function reattachThread(opts: ReattachOptions): Promise<void> {
     if (turns.length) opts.onTurns(turns);
   };
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+  // Consecutive failed attempts, for `holdOpen`'s backoff: a clean end is the harness
+  // closing an idle stream, and is answered by coming straight back.
+  let failures = 0;
+  for (let attempt = 0; opts.holdOpen || attempt < MAX_ATTEMPTS; attempt++) {
     if (opts.signal?.aborted) return;
 
     // Its own abort, so a snapshot that says the thread has stopped can end this
@@ -107,7 +135,9 @@ export async function reattachThread(opts: ReattachOptions): Promise<void> {
               seenSnapshot = true;
               if (snap.phase) opts.onPhase?.(snap.phase);
               render();
-              if (snap.phase && !WORKING_PHASES.has(snap.phase)) attemptAbort.abort();
+              if (!opts.holdOpen && snap.phase && !WORKING_PHASES.has(snap.phase)) {
+                attemptAbort.abort();
+              }
               return;
             }
             if (ev.event === 'session_event') {
@@ -128,14 +158,20 @@ export async function reattachThread(opts: ReattachOptions): Promise<void> {
           },
         },
       );
+      failures = 0;
     } catch {
       // A failed reattach is not worth surfacing on its own; the phase check
       // below decides whether it is worth another try.
+      failures++;
     } finally {
       opts.signal?.removeEventListener('abort', onOuterAbort);
     }
 
     if (opts.signal?.aborted) return;
+    if (opts.holdOpen) {
+      await abortable(wait(failures ? Math.min(1000 * 2 ** failures, 15_000) : 250), opts.signal);
+      continue;
+    }
 
     const snap = await opts.client.getSessionSnapshot(opts.threadId).catch(() => null);
     const phase = snap?.phase ?? '';

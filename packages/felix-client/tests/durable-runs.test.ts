@@ -299,3 +299,82 @@ describe('a send the harness refuses for the run already on the thread', () => {
     expect(fetched.some((u) => u.includes('/chat/runs/'))).toBe(false);
   });
 });
+
+describe('what a durable run is blocked on, after its stream has closed', () => {
+  /**
+   * felix-run/felix#530. The poll that settles a durable run carries no frames, so a client
+   * tool the run asked for after its stream closed reached no client and timed out. The
+   * engine now holds the thread's reattach stream open while it polls, and the harness
+   * announces the run's pending requests there.
+   */
+  it('runs the client tool the reattach asks for, and answers it', async () => {
+    let answered = false;
+    const posted: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/chat/tool_result')) {
+          answered = true;
+          posted.push(JSON.parse(String(init?.body)));
+          return json({ ok: true });
+        }
+        if (url.includes('/chat/stream/t1')) {
+          return sse([
+            {
+              event: 'tool_request',
+              data: { id: 'call_w', name: 'local_write', args: { path: 'a.md' } },
+            },
+          ]);
+        }
+        if (url.includes('/chat/runs/fib_7')) {
+          return json(
+            answered
+              ? { status: 'completed', final: { content: 'wrote it' } }
+              : { status: 'running' },
+          );
+        }
+        return json({});
+      }),
+    );
+    const execute = vi.fn(async () => ({ content: 'wrote 5 chars to a.md' }));
+    const engine = engineWith({ clientTools: { execute } });
+
+    await engine.rejoinRun('fib_7');
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith({
+      id: 'call_w',
+      name: 'local_write',
+      args: { path: 'a.md' },
+    });
+    expect(posted).toEqual([
+      expect.objectContaining({ tool_call_id: 'call_w', content: 'wrote 5 chars to a.md' }),
+    ]);
+    expect(engine.state.turns.at(-1)?.content).toBe('wrote it');
+  }, 10_000);
+
+  it('runs a request once, however many streams announce it', async () => {
+    const answers: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        if (String(input).includes('/chat/tool_result')) answers.push(String(input));
+        return json({ ok: true });
+      }),
+    );
+    const execute = vi.fn(async () => ({ content: 'ok' }));
+    const engine = engineWith({ clientTools: { execute } });
+    const request = {
+      event: 'tool_request',
+      data: { id: 'call_once', name: 'local_write', args: { path: 'a.md' } },
+    };
+
+    // The run's own stream and a reattach, each announcing it once.
+    await engine.applyEvent(request);
+    await engine.applyEvent(request);
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(answers).toHaveLength(1);
+  });
+});

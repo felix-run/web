@@ -432,7 +432,6 @@ export function AppShell() {
           // Kept so a reload can rejoin the run (`lib/durable-runs.ts`).
           onRunAccepted: (token) => rememberDurableRun(id, token),
           onRunSettled: () => forgetDurableRun(id),
-          onDurableProgress: () => hydrateFromServerRef.current(id),
         });
         // Seeded from the thread *the address names*, so the first paint is this
         // thread's transcript rather than an empty one — and, on a deep link, not
