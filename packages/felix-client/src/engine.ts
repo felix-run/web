@@ -31,6 +31,7 @@ import {
   describeError,
   IdempotencyKeyReusedError,
   isLeaseRefusal,
+  RunInProgressError,
   StreamInProgressError,
 } from './errors';
 import { fileToolOp } from './local-files';
@@ -151,11 +152,14 @@ export interface SendArgs {
  *   may or may not have landed. Its turns are left for the caller to take back
  *   with the message; resending it under the same key with the same body is safe,
  *   because the harness answers that from the first attempt instead of running it.
+ * - `run_in_progress`: the thread already has a durable run in flight, and the harness
+ *   will not start a second beside it. The message never landed; the engine attaches to
+ *   that run (`rejoinRun`), so the thread reads as running and a resend queues behind it.
  * - `key_reused`: the harness already holds this key for a different body
  *   (`422 idempotency_key_reused`). Nothing ran; the message can only go again
  *   as a new one, under a new key.
  */
-export type SendOutcome = 'done' | 'lease_refused' | 'failed' | 'key_reused';
+export type SendOutcome = 'done' | 'lease_refused' | 'run_in_progress' | 'failed' | 'key_reused';
 
 export interface ChatEngine {
   readonly state: EngineState;
@@ -988,7 +992,8 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       } catch (err) {
         // A lease refusal is the harness declining to start the run at all —
         // nothing was torn down, so there is nothing to rejoin.
-        if (ctrl.signal.aborted || isLeaseRefusal(err)) throw err;
+        if (ctrl.signal.aborted || isLeaseRefusal(err) || err instanceof RunInProgressError)
+          throw err;
         // A resend under a key whose first attempt is still streaming: that
         // attempt's turn is the one running, so watch it rather than start one.
         // Cold, from a snapshot, which replaces the transcript whole — this
@@ -1046,10 +1051,21 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     };
 
     let outcome: SendOutcome = 'done';
+    let refusedFor: string | null = null;
     try {
       await run();
     } catch (err) {
-      if (isLeaseRefusal(err)) {
+      if (err instanceof RunInProgressError) {
+        outcome = 'run_in_progress';
+        refusedFor = err.resumeToken;
+        // As a lease refusal: nothing was taken, so the placeholder reply goes.
+        const target = activeAssistantId;
+        set({
+          turns: state.turns.filter(
+            (t) => !(t.id === target && !t.content && !(t.tools ?? []).length),
+          ),
+        });
+      } else if (isLeaseRefusal(err)) {
         outcome = 'lease_refused';
         // Not an error to show: another client drives this thread, and the
         // transport has already told the client (`onLeaseRefused`), which says
@@ -1081,6 +1097,9 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     } finally {
       endRun(ctrl);
     }
+    // Watch the run that refused this one: the thread reads as running, approvals arrive,
+    // and the answer lands — rather than a thread that looks idle inviting another send.
+    if (refusedFor) void rejoinRun(refusedFor);
     return outcome;
   };
 

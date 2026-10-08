@@ -410,9 +410,18 @@ on, so treat it as "stop watching here" and poll
 [`GET /chat/runs/{resume_token}`](#get-chatrunsresume_token) until the status is terminal:
 `completed`, `failed`, `expired` or `dead`. Only `completed` carries an answer, and `expired`
 arrives with an empty `error`. The web client polls on that frame, and on any stream end that has
-not seen `final`. It also keeps each thread's token in `localStorage` (`felix.durableRuns`), so a
-reload picks the run back up rather than showing a thread that looks finished — the snapshot's
-`phase` reads `idle` while a durable run works, and no route lists a thread's runs.
+not seen `final`.
+
+**One durable run per thread.** A send to a thread whose durable run is still in flight —
+`POST /chat` or `POST /chat/stream`, durable or not — is refused with
+`409 run_in_progress:<resume_token>` rather than starting a second run beside it. A resend under
+the `Idempotency-Key` of the message that started the run is still answered from its key. The
+snapshot's `phase` reads `idle` while a durable run works, so the
+[session snapshot](#the-session-snapshot) names the run as `activeRun` instead. The web client
+rejoins that run when it loads a thread, and on a refused send it hands the message back and
+watches the run that refused it. A harness older than this sends no `activeRun` key; the web
+client then falls back to the token it kept in `localStorage` (`felix.durableRuns`) for runs it
+started itself.
 
 `GET /chat/runs/{resume_token}` is unchanged and stays coarse: it is a status read, not a stream, so
 it reports status and the final answer and carries no transcript. A client polling it that wants the
@@ -776,12 +785,15 @@ deliberately:
   "transcript": [ { "id","seq","kind","role","content","timestamp","status","metadata",
                     "toolCallId","toolName","toolCalls","usage" } ],
   "queuedSteer": [], "queuedSteerCount": 0,
-  "wake": { "fresh": true, "headSeq": 41, "endedOnAssistant": true, "pendingToolCalls": [] }
+  "wake": { "fresh": true, "headSeq": 41, "endedOnAssistant": true, "pendingToolCalls": [] },
+  "activeRun": { "resumeToken": "fib_…", "status": "running", "expiresAt": 1760000000000 }
 }
 ```
 
 `phase` is one of `idle`, `turn`, `compaction`, `branch_summary`, `retry`, `aborted`. An `idle`
-phase with pending tool calls is reported as `turn`.
+phase with pending tool calls is reported as `turn`. A durable run writes no phase — its agent is
+in the worker — so the thread reads `idle` while one works; `activeRun` is that run, or `null`.
+Its `resumeToken` is what [`GET /chat/runs/{resume_token}`](#get-chatrunsresume_token) takes.
 
 Session event kinds: `message`, `tool_call`, `tool_result`, `thinking`, `audit`, `compaction`,
 `model_change`, `thinking_level_change`, `branch_summary`, `custom`, `label`, `session_info`.

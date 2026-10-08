@@ -78,6 +78,7 @@ import {
   REATTACHING_REFUSAL,
   REKEYED_NOTICE,
   RESEND_NOTICE,
+  RUN_BUSY_NOTICE,
 } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
@@ -116,7 +117,14 @@ import {
 } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { NO_RUN, type RunClock, ShellProvider, type ShellValue } from '@/shell-context';
-import type { ChatMessage, ImageAttachment, ThinkingLevel, Turn, TurnFeedback } from '@/types';
+import type {
+  ChatMessage,
+  ImageAttachment,
+  SessionSnapshot,
+  ThinkingLevel,
+  Turn,
+  TurnFeedback,
+} from '@/types';
 import { AccountChip } from './components/account-chip';
 
 const MANIFEST_KEY = 'felix.manifest';
@@ -157,7 +165,7 @@ const LAPSE_GRACE_MS = 2_000;
 type KeyedMessage = PromptInputMessage & { key?: string };
 
 /** Why a message came back: the lease, a send that failed, or a key the harness refused. */
-type KeptReason = 'lease' | 'failed' | 'key_reused';
+type KeptReason = 'lease' | 'run' | 'failed' | 'key_reused';
 
 /** What a failed streamed send carried, so a resend under its key is the same body. */
 interface UnsettledSend {
@@ -650,11 +658,33 @@ export function AppShell() {
    * one on screen (a durable run that finished in the background); the shell's
    * own state is touched only while the thread is still the one showing.
    */
-  const hydrateFromServer = useCallback((id: string, opts: { transcript?: boolean } = {}) => {
-    const withTranscript = opts.transcript ?? true;
-    void (async () => {
+  /**
+   * Pick up the durable run in flight on `id`, if there is one and its engine is idle.
+   *
+   * The harness says, when it is new enough to (`felix-run/felix#533`): `activeRun` is the
+   * run, or null for none — and null also clears this browser's own record, which can only
+   * be stale by then. A harness that sends no `activeRun` key cannot say, and the record of
+   * a run this browser started is the only answer (`lib/durable-runs.ts`); so is a snapshot
+   * that could not be read. Rejoining marks the thread running, so the composer queues
+   * rather than sending a message the harness would refuse.
+   */
+  const rejoinActiveRun = useCallback((id: string, snap: SessionSnapshot | null) => {
+    const target = poolRef.current?.peek(id);
+    if (!target || target.state.streaming) return;
+    let token: string | null;
+    if (snap && 'activeRun' in snap) {
+      token = snap.activeRun?.resumeToken || null;
+      if (!token) forgetDurableRun(id);
+    } else {
+      token = recallDurableRun(id);
+    }
+    if (token) void target.rejoinRun(token);
+  }, []);
+
+  /** Fold a snapshot (or, without one, the history) into `id`'s engine and side maps. */
+  const applySnapshot = useCallback(
+    async (id: string, snap: SessionSnapshot | null, withTranscript: boolean): Promise<void> => {
       try {
-        const snap = await getSessionSnapshot(id);
         if (snap && id === threadIdRef.current) {
           setLabels(snap.labels ?? {});
           setFeedback(snap.feedback ?? {});
@@ -689,8 +719,22 @@ export function AppShell() {
       } catch {
         // local cache remains source of truth
       }
-    })();
-  }, []);
+    },
+    [],
+  );
+
+  const hydrateFromServer = useCallback(
+    (id: string, opts: { transcript?: boolean; rejoin?: boolean } = {}) => {
+      const withTranscript = opts.transcript ?? true;
+      void (async () => {
+        const snap = await getSessionSnapshot(id).catch(() => null);
+        await applySnapshot(id, snap, withTranscript);
+        // After the transcript, so the run's status turn lands below it.
+        if (opts.rejoin) rejoinActiveRun(id, snap);
+      })();
+    },
+    [applySnapshot, rejoinActiveRun],
+  );
   hydrateFromServerRef.current = hydrateFromServer;
 
   /**
@@ -700,16 +744,25 @@ export function AppShell() {
    * (a turn's usage, among others), so an unconditional one on every return
    * would cost the tab what it already had to learn nothing new.
    */
-  const hydrateIfAhead = useCallback(async (id: string) => {
-    const snap = await getSessionSnapshot(id).catch(() => null);
-    const target = poolRef.current?.peek(id);
-    if (!snap?.transcript?.length || id !== threadIdRef.current || !target) return;
-    const rebuilt = eventsToTurns(snapshotToEvents(snap));
-    if (rebuilt.length <= target.state.turns.length || target.state.streaming) return;
-    target.setTurns(rebuilt);
-    saveTurns(id, rebuilt);
-    if (snap.phase) target.setPhase(snap.phase);
-  }, []);
+  const hydrateIfAhead = useCallback(
+    async (id: string, opts: { rejoin?: boolean } = {}) => {
+      const snap = await getSessionSnapshot(id).catch(() => null);
+      const target = poolRef.current?.peek(id);
+      if (snap?.transcript?.length && id === threadIdRef.current && target) {
+        const rebuilt = eventsToTurns(snapshotToEvents(snap));
+        if (rebuilt.length > target.state.turns.length && !target.state.streaming) {
+          target.setTurns(rebuilt);
+          saveTurns(id, rebuilt);
+          if (snap.phase) target.setPhase(snap.phase);
+        }
+      }
+      // Coming back to a thread a run started on while the page was away — from another
+      // tab, or the terminal — is the same as loading it: watch the run rather than offer
+      // to send. After the rebuild, so the run's status turn lands below it.
+      if (opts.rejoin && snap && id === threadIdRef.current) rejoinActiveRun(id, snap);
+    },
+    [rejoinActiveRun],
+  );
 
   /**
    * Re-read the thread when this tab starts or stops watching it. Starting: what
@@ -803,12 +856,9 @@ export function AppShell() {
       setLabels({});
       setFeedback({});
       setBranches(new Map());
-      if (hydrate || running) hydrateFromServer(id, { transcript: !running });
-      // A durable run this browser left going on this thread — a reload, or the tab
-      // closed and reopened. Rejoining marks the thread running, so the composer
-      // queues rather than starting a second run beside it.
-      const pending = running ? null : recallDurableRun(id);
-      if (pending) void target.rejoinRun(pending);
+      // A durable run still going on this thread — after a reload, or started by another
+      // tab or client — is rejoined once the snapshot says so (`rejoinActiveRun`).
+      if (hydrate || running) hydrateFromServer(id, { transcript: !running, rejoin: !running });
     },
     [pool, hydrateFromServer],
   );
@@ -1310,7 +1360,7 @@ export function AppShell() {
           !engine.state.streaming &&
           !unsentRef.current.has(threadIdRef.current)
         ) {
-          void hydrateIfAhead(threadIdRef.current);
+          void hydrateIfAhead(threadIdRef.current, { rejoin: true });
         }
       }),
     [engine, pool, syncLive, hydrateIfAhead],
@@ -1479,7 +1529,9 @@ export function AppShell() {
         // The harness never took it: another client drives the thread. The turn
         // on screen would read as sent until the next hydrate quietly dropped it,
         // so it goes now, and whoever holds the message gives it back.
-        if (outcome === 'lease_refused') {
+        // Refused for a run already going on the thread: the same — it never landed — and
+        // the engine is now watching that run.
+        if (outcome === 'lease_refused' || outcome === 'run_in_progress') {
           engine.setTurns(engine.state.turns.filter((t) => t.id !== userTurn.id));
         }
         // It may or may not have landed, and the message is going back to whoever
@@ -2010,7 +2062,13 @@ export function AppShell() {
       : null;
     setKept((was) => ({ text: message.text, files: message.files, n: (was?.n ?? 0) + 1 }));
     toast.message(
-      reason === 'lease' ? KEPT_NOTICE : reason === 'failed' ? RESEND_NOTICE : REKEYED_NOTICE,
+      reason === 'lease'
+        ? KEPT_NOTICE
+        : reason === 'run'
+          ? RUN_BUSY_NOTICE
+          : reason === 'failed'
+            ? RESEND_NOTICE
+            : REKEYED_NOTICE,
     );
   }, []);
   const takeKept = useCallback(() => setKept(null), []);
@@ -2123,7 +2181,11 @@ export function AppShell() {
         void send(message.text, attachments, mode, key)?.then((outcome) => {
           if (outcome === 'done') unsettled.current.delete(key);
           else if (outcome === 'lease_refused') giveBack(sent, 'lease');
-          else if (outcome === 'failed') {
+          else if (outcome === 'run_in_progress') {
+            // Nothing ran under the key, and the harness released it.
+            unsettled.current.delete(key);
+            giveBack(sent, 'run');
+          } else if (outcome === 'failed') {
             unsettled.current.set(key, {
               threadId,
               manifest,
@@ -2198,7 +2260,9 @@ export function AppShell() {
     // was queued behind has ended badly, and resuming is the operator's call. One
     // whose key was refused goes back under a new one.
     submit({ text: next.text, files: next.files, key: next.key }, 'stream', (_, reason) => {
-      if (reason === 'lease') {
+      // Refused for a run still going: back to the head, unpaused, and the engine is now
+      // watching that run — so this drains when it finishes, which is what queuing meant.
+      if (reason === 'lease' || reason === 'run') {
         queue.restore(next);
         return;
       }

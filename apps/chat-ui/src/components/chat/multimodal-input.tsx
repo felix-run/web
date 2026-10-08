@@ -112,6 +112,14 @@ export const KEPT_NOTICE = 'Your message was kept. It will be sendable when this
 export const RESEND_NOTICE =
   'Your message is back in the composer. Send it again to retry; it will not be sent twice.';
 
+/**
+ * Said when the harness refused the send because a durable run is still going on the
+ * thread (`409 run_in_progress`). The tab is now watching that run, so sending again
+ * queues the message behind it rather than starting a second run beside it.
+ */
+export const RUN_BUSY_NOTICE =
+  'A run is still going on this conversation. Your message is back in the composer; sending it again queues it until the run finishes.';
+
 /** Said when the harness refused a resend's key (`422 idempotency_key_reused`). */
 export const REKEYED_NOTICE =
   'Your message is back in the composer. Sending it again sends it as a new message.';

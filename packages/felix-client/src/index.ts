@@ -50,6 +50,7 @@ export {
   IdempotencyKeyReusedError,
   isLeaseRefusal,
   LeaseRefusedError,
+  RunInProgressError,
   StreamInProgressError,
 } from './errors';
 export { createHttp, type FelixHttp, type LeaseRefusal } from './http';

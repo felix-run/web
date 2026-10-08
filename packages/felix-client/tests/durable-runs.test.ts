@@ -227,3 +227,75 @@ describe('a durable run the tab can find again', () => {
     expect(settled).toHaveBeenCalledOnce();
   });
 });
+
+describe('a send the harness refuses for the run already on the thread', () => {
+  /**
+   * felix-run/felix#529: the harness refuses a second run on a thread whose durable run is
+   * still going, naming that run. The message never landed — as with a lease refusal it goes
+   * back to the caller — and the engine watches the run that refused it, so the thread reads
+   * as running instead of idle, which is what invited the second send in the first place.
+   */
+  it('hands the message back and watches the run that refused it', async () => {
+    let polled = '';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes('/chat/stream')) {
+          return json({ detail: 'run_in_progress:fib_busy' }, 409);
+        }
+        if (url.includes('/chat/runs/')) {
+          polled = url;
+          return json({ status: 'completed', final: { content: 'the first run, finished' } });
+        }
+        return json({});
+      }),
+    );
+    const engine = engineWith();
+
+    const outcome = await send(engine);
+    expect(outcome).toBe('run_in_progress');
+    // The placeholder reply is gone; the status turn of the run being watched replaces it.
+    expect(engine.state.turns.some((t) => t.id === 'a1')).toBe(false);
+    expect(engine.state.error).toBeNull();
+
+    await until(() => !engine.state.streaming && polled !== '');
+    expect(polled).toContain('/chat/runs/fib_busy');
+    expect(engine.state.turns.at(-1)?.content).toBe('the first run, finished');
+  });
+
+  it('is the same refusal from a background send', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.endsWith('/chat')) return json({ detail: 'run_in_progress:fib_busy' }, 409);
+        if (url.includes('/chat/runs/'))
+          return json({ status: 'completed', final: { content: 'ok' } });
+        return json({});
+      }),
+    );
+    const engine = engineWith();
+    const outcome = await engine.send({
+      manifest: 'cowork',
+      messages: [{ role: 'user', content: 'hello' }],
+      assistantId: 'a1',
+      mode: 'background',
+    });
+    expect(outcome).toBe('run_in_progress');
+  });
+
+  it('reads no other 409 as a run to watch', async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        fetched.push(String(input));
+        return json({ detail: 'manifest_drift' }, 409);
+      }),
+    );
+    const engine = engineWith();
+    expect(await send(engine)).toBe('done');
+    expect(fetched.some((u) => u.includes('/chat/runs/'))).toBe(false);
+  });
+});
