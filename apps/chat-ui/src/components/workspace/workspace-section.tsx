@@ -408,7 +408,7 @@ function WorkspaceFileTree({
       onSelect={(path) => {
         if (filePaths.has(path)) onOpenFile(path);
       }}
-      className="max-h-64 overflow-y-auto rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
+      className="rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
     >
       {render(tree)}
     </FileTree>

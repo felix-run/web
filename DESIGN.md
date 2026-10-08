@@ -706,9 +706,11 @@ The sidebar has one order on both addresses: **New chat** (an outline row, the s
 bordered control, never disabled by a run — a new thread leaves the run going), then **Threads**,
 then the workspace section, then **Harness**, with hairline separators between them.
 
-Threads is a heading and search field that stay put above a list that scrolls inside itself. The
-section shrinks to the room Workspace and Harness leave, so they never scroll out of reach, but keeps
-at least 40% of the viewport (12rem at the least) and never more than its rows need. Its groups rank
+Threads is a heading and search field that stay put above a list that scrolls inside itself, and it
+takes the height the region below leaves. Workspace and Harness are that region: one block, at most
+40% of the viewport, with one scroll of its own. The sidebar itself never scrolls when expanded, so
+there are never two scrollbars side by side, and the file trees inside Workspace do not scroll
+separately. Its groups rank
 by state, then recency: *Waiting on you* (`state-blocked`, dot and words), *Running* (`state-running`,
 the runs this tab carries, including ones kept going after a thread switch), *Pinned* (labelled *this
 browser* at the right, because pins are local), *Today*, *Yesterday*, *Previous 7 days*, and *Older*.
