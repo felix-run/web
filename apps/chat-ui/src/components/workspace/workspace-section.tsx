@@ -62,6 +62,22 @@ function readFolded(): boolean {
   }
 }
 
+const FILES_OPEN_KEY = 'felix.sidebar.filesOpen';
+
+/**
+ * Files starts folded, and stays however it was last left. Open, a mounted
+ * repository's tree was taller than the sidebar region it shares with the
+ * harness's pages, so those were a scroll away on every load — and the tree is
+ * there to look something up in, not to watch.
+ */
+function readFilesOpen(): boolean {
+  try {
+    return localStorage.getItem(FILES_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function WorkspaceSection({ className }: { className?: string }) {
   const { turns, streaming, threadId } = useShell();
   const [folded, setFolded] = useState(readFolded);
@@ -73,6 +89,17 @@ export function WorkspaceSection({ className }: { className?: string }) {
         // Storage blocked: the fold lasts for this page.
       }
       return !f;
+    });
+
+  const [filesOpen, setFilesOpen] = useState(readFilesOpen);
+  const toggleFiles = () =>
+    setFilesOpen((o) => {
+      try {
+        localStorage.setItem(FILES_OPEN_KEY, o ? '0' : '1');
+      } catch {
+        // Storage blocked: the fold lasts for this page.
+      }
+      return !o;
     });
 
   const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
@@ -297,37 +324,58 @@ export function WorkspaceSection({ className }: { className?: string }) {
         <ThreadRepoSection threadId={threadId} streaming={streaming} />
 
         <section aria-labelledby="workspace-files-heading">
-          <h3
-            id="workspace-files-heading"
-            className="mb-1.5 text-xs font-semibold text-muted-foreground"
-          >
-            Files
+          <h3 id="workspace-files-heading" className="mb-1.5">
+            <button
+              type="button"
+              aria-expanded={filesOpen}
+              aria-controls="workspace-files"
+              onClick={toggleFiles}
+              className="flex w-full items-center gap-1 rounded-md text-left text-xs font-semibold text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              <ChevronRightIcon
+                aria-hidden
+                className={cn(
+                  'size-3 transition-transform duration-200 ease-out motion-reduce:transition-none',
+                  filesOpen && 'rotate-90',
+                )}
+              />
+              Files
+              {files.length > 0 && (
+                <span className="ml-auto font-normal tabular-nums">
+                  {files.length > TREE_VISIBLE
+                    ? `${TREE_VISIBLE.toLocaleString()}+`
+                    : files.length.toLocaleString()}
+                </span>
+              )}
+            </button>
           </h3>
-          {files.length ? (
-            <WorkspaceFileTree
-              paths={files.slice(0, TREE_VISIBLE)}
-              changed={changedPaths}
-              selected={previewing}
-              onOpenFile={setPreviewing}
-            />
-          ) : (
-            // Files is this tab's own store; the instrument's Changes is every
-            // workspace call on the thread, including the harness's own tools,
-            // which never touch it. "Nothing written yet" beside "+5 written" read
-            // as a contradiction, so an empty store says which store it is.
-            <p className="text-xs text-muted-foreground">
-              {mountLabel
-                ? 'This folder is empty.'
-                : changes.some((c) => c.changed)
-                  ? "Nothing in this tab. This thread's writes ran on the harness."
-                  : 'Nothing written in this tab yet.'}
-            </p>
-          )}
-          {files.length > TREE_VISIBLE && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Showing the first {TREE_VISIBLE.toLocaleString()} entries; the folder holds more.
-            </p>
-          )}
+          <div id="workspace-files" hidden={!filesOpen}>
+            {files.length ? (
+              <WorkspaceFileTree
+                paths={files.slice(0, TREE_VISIBLE)}
+                changed={changedPaths}
+                selected={previewing}
+                onOpenFile={setPreviewing}
+              />
+            ) : (
+              // Files is this tab's own store; the instrument's Changes is every
+              // workspace call on the thread, including the harness's own tools,
+              // which never touch it. "Nothing written yet" beside "+5 written" read
+              // as a contradiction, so an empty store says which store it is.
+              <p className="text-xs text-muted-foreground">
+                {mountLabel
+                  ? 'This folder is empty.'
+                  : changes.some((c) => c.changed)
+                    ? "Nothing in this tab. This thread's writes ran on the harness."
+                    : 'Nothing written in this tab yet.'}
+              </p>
+            )}
+            {files.length > TREE_VISIBLE && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Showing the first {TREE_VISIBLE.toLocaleString()} entries; the folder holds more.
+              </p>
+            )}
+          </div>
         </section>
       </div>
       <FilePreview
