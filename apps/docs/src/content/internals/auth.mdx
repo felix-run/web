@@ -267,7 +267,7 @@ minted from their stored connection; no route returns a GitHub token.
 | `POST` | `/chat/sessions/{thread_id}/workspace/repo` | `{full_name, ref?}` → `202 {state: "cloning", …}` |
 | `GET` | `/chat/sessions/{thread_id}/workspace/repo` | `{state, repo, base, branch, ahead, dirty, error}` |
 | `GET` | `/chat/sessions/{thread_id}/workspace/repo/files?prefix=&limit=` | `{state, files: [{path, kind, size, status}], truncated}` |
-| `DELETE` | `/chat/sessions/{thread_id}/workspace/repo` | `204` |
+| `DELETE` | `/chat/sessions/{thread_id}/workspace/repo` | `204`; `503 workspace_unavailable` when a hosted sandbox could not be cleared (the checkout is kept) |
 
 - **The intersection, and only that.** An App's user token sees repositories where the App is
   installed *and* the person has access. A repository missing from the list is one the App was not
@@ -280,6 +280,9 @@ minted from their stored connection; no route returns a GitHub token.
   the thread's repository with the opener's token, behind its approval as always.
 - **Bounded.** A repository over `FELIX_REPO_CLONE_MAX_MB` (500) is refused before cloning; a
   checkout unused for `FELIX_REPO_CHECKOUT_TTL_DAYS` (14) is removed by the worker.
+- **Under the [hosted backend](/guide/deploy/#hosted-workspaces) the checkout is the thread's
+  sandbox.** It is cloned there (into an empty workspace only), listed and published from there,
+  and destroyed with it on removal or expiry. Nothing of the repository is on the harness host.
 
 - **The files are listed, not served.** The listing is git's: tracked files and untracked ones it
   does not ignore, each with its `lstat` size and status (`clean`, `modified`, `added`, `deleted`,
