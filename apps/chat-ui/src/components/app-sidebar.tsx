@@ -43,7 +43,6 @@ export function AppSidebar() {
     threads,
     threadId,
     watching,
-    streaming,
     selectThread,
     newThread,
     deleteThread,
@@ -52,6 +51,8 @@ export function AppSidebar() {
     compactThread,
     exportThread,
     tenantApprovals,
+    runningThreads,
+    blockedThreads,
   } = useShell();
   const { state, open, isMobile, setOpen, setOpenMobile, toggleSidebar } = useSidebar();
   const collapsed = state === 'collapsed' && !isMobile;
@@ -76,22 +77,18 @@ export function AppSidebar() {
   }, []);
 
   /**
-   * Threads with a pending approval, from the shell's tenant-wide poll. The last
-   * list that arrived, so a failed tick keeps the marks it had — an approval does
-   * not stop waiting because a request failed, and the attention line is where
-   * the staleness is said.
+   * Threads waiting on a person: a pending approval from the shell's tenant-wide
+   * poll, or a question an agent asked a run this tab carries — which
+   * `/approvals` never lists, and which a run kept going in the background can
+   * ask after the operator has moved on. The poll's last list stands through a
+   * failed tick: an approval does not stop waiting because a request failed, and
+   * the attention line is where the staleness is said.
    */
   const blocked = useMemo(() => {
-    const ids = new Set<string>();
+    const ids = new Set<string>(blockedThreads);
     for (const a of tenantApprovals.pending) if (a.thread_id) ids.add(a.thread_id);
     return ids;
-  }, [tenantApprovals.pending]);
-
-  /** The thread with a live run — this tab's own, while it streams. */
-  const running = useMemo<ReadonlySet<string>>(
-    () => (streaming ? new Set([threadId]) : new Set()),
-    [streaming, threadId],
-  );
+  }, [tenantApprovals.pending, blockedThreads]);
 
   /** Expand, then put the caret in the thread search — the collapsed icons' one job. */
   const openSearch = useCallback(() => {
@@ -143,7 +140,6 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="New chat"
-              disabled={streaming}
               onClick={() => {
                 newThread();
                 done();
@@ -198,7 +194,7 @@ export function AppSidebar() {
               threads={threads}
               currentId={onHarness ? '' : threadId}
               blocked={blocked}
-              running={running}
+              running={runningThreads}
               pinned={pinned}
               onTogglePin={togglePin}
               onSelect={(id) => {

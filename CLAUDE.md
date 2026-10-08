@@ -312,7 +312,10 @@ engine for the thread the message was written on, marking *that* thread sent rat
 on screen. A send that fails after its thread was left goes back into **that thread's** queue,
 paused, not into the composer on screen. Returning to a live run keeps its own start time in
 the run clock. **Stop** still stops, and **deleting** a thread aborts a run on it wherever it
-is. The shell context exposes `runningThreads` (foreground included) and `blockedThreads`.
+is. The shell context exposes `runningThreads` (foreground included) and `blockedThreads`; the
+sidebar marks the first *Running* and folds the second into its *Waiting on you* group beside the
+`/approvals` rows, since a background run's question appears nowhere else. New chat is never
+disabled by a run, because starting a thread no longer stops one.
 `tests/run-survives-thread-switch.test.tsx` pins it at the wire.
 
 **The address is the thread.** `/` mints a thread and *replaces* itself with `/t/:threadSuffix`, so

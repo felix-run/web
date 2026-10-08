@@ -88,6 +88,15 @@ export const GUARDED = [
     serializer: 'felix/approvals/store.py:_approval_dict',
   },
   {
+    // The thread index row. Every field is optional on the client, because an
+    // older harness sends no `preview` or `manifest` and a row from before a
+    // thread was named has no `sessionName` — but a field made required later
+    // has to be one the serializer writes.
+    type: 'RawSessionRow',
+    file: 'packages/felix-client/src/transport.ts',
+    serializer: 'felix/session/thread_state.py:_session_index_dict',
+  },
+  {
     type: 'UsageEvent',
     file: 'packages/felix-client/src/management/usage.ts',
     serializer: 'felix/usage/store.py:_event_dict',

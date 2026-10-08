@@ -70,6 +70,8 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
       markDecided: () => {},
     },
     runClock: { startedAt: null, endedAt: null },
+    runningThreads: new Set<string>(),
+    blockedThreads: new Set<string>(),
     onDecide: async () => {},
     uiPrompt: null,
     uiResolving: false,
@@ -174,6 +176,29 @@ describe('the sidebar', () => {
     const current = await screen.findByRole('button', { name: /^Current thread/ });
     expect(current.getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('button', { name: /^The other one/ })).toBeTruthy();
+  });
+
+  // A run kept going after the operator switched away is still this tab's, and
+  // the rail is where they go to find it; a question it asks never reaches
+  // `/approvals`, so the shell's own record of it is the only one.
+  it('marks a run going in the background, and a question it is waiting on', async () => {
+    mountSidebar({
+      runningThreads: new Set(['now', 'other']),
+      blockedThreads: new Set(['other']),
+    });
+    const waiting = await screen.findByRole('group', { name: /^Waiting on you/ });
+    expect(waiting.textContent).toContain('The other one');
+    expect(screen.getByRole('button', { name: /^Current thread/ }).textContent).toContain(
+      'Running',
+    );
+  });
+
+  // Starting a thread no longer stops the run on this one, so nothing about a
+  // run in flight is a reason to refuse it.
+  it('offers New chat while a run is streaming', () => {
+    mountSidebar({ streaming: true, runningThreads: new Set(['now']) });
+    const button = screen.getByRole('button', { name: /^New chat/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
   });
 
   it('marks a thread an approval is waiting on, from the shell poll it already has', async () => {

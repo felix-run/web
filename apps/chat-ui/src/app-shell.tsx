@@ -2560,14 +2560,14 @@ export function AppShell() {
                     or as icons, so a second one here was the same button twice. It
                     stays here where the sidebar is a drawer, because there it would
                     be two clicks away. */}
-                {/* Below `sm` it steps aside while a run is showing: it is disabled
-                    for the whole of a run anyway, and the drawer holds it. */}
+                {/* Below `sm` it steps aside while a run is showing, for the room
+                    the run's status needs; the drawer holds it. Never disabled: a
+                    new thread leaves the run going on its own. */}
                 {!onHarness && !sidebarInline && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={newThread}
-                    disabled={streaming}
                     className={cn('gap-1.5', runShown && 'max-sm:hidden')}
                     title="New chat"
                   >

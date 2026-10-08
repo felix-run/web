@@ -66,7 +66,8 @@ export interface StreamArgs {
   idempotencyKey?: string;
 }
 
-interface RawSessionRow {
+/** One row of `GET /chat/sessions` as the harness sends it — guarded by check-payload-shapes. */
+export interface RawSessionRow {
   id?: string;
   sessionName?: string | null;
   createdAt?: number;
