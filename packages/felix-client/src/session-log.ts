@@ -37,6 +37,14 @@ export interface SessionSummary {
   updatedAt?: number;
   /** Set on a thread created by POST /chat/fork. */
   parentSessionId?: string | null;
+  /**
+   * The thread's first user message, masked and cut to 120 characters by the
+   * harness — what lets a thread started on another client be told apart from
+   * the others. Null for a thread from before the harness recorded it.
+   */
+  preview?: string | null;
+  /** The manifest the thread's newest turn ran under. Null when unknown. */
+  manifest?: string | null;
 }
 
 /** A client's index entry for one thread. */
@@ -122,22 +130,6 @@ export function titleFromText(text: string): string {
 }
 
 /**
- * Fold the harness's thread list into the local index.
- *
- * The harness is authoritative for which threads exist and what they are
- * *named*; the local index is the only record of which manifest a thread used,
- * and holds a title derived from the first user turn for threads nobody has
- * named. Neither side is a superset, so this is a merge rather than a swap:
- *
- * - **Named on the server** wins over any local title, always. Someone typed it.
- * - **A thread only on the server** (another browser, another device) appears
- *   with no manifest — it is unknown until the thread is opened and hydrated.
- * - **A thread only in local storage** is kept, not dropped. It may be a
- *   conversation that never reached the harness, or this harness may simply be
- *   a different deployment than the one it was created against. Dropping it
- *   would destroy the only copy of a transcript.
- */
-/**
  * The title `mergeSessions` gives a server thread nobody named and this client
  * has no local guess for. Exported so a renderer can recognise it as a
  * placeholder and say something more useful — a list where every row reads the
@@ -145,6 +137,27 @@ export function titleFromText(text: string): string {
  */
 export const UNTITLED_THREAD_TITLE = 'Untitled conversation';
 
+/** Titles that say nothing about which thread a row is. */
+const PLACEHOLDER_TITLES = new Set([UNTITLED_THREAD_TITLE, titleFromText(''), '']);
+
+/**
+ * Fold the harness's thread list into the local index.
+ *
+ * The harness is authoritative for which threads exist, what they are *named*,
+ * and — since `felix-run/felix#521` — how each began and which manifest it last
+ * ran; the local index holds a title derived from the first user turn and the
+ * manifest this client last sent with. Neither side is a superset, so this is a
+ * merge rather than a swap:
+ *
+ * - **Named on the server** wins over any local title, always. Someone typed it.
+ * - **A thread only on the server** (another browser, another device) is titled
+ *   from the harness's `preview` and shows its `manifest`; from an older harness,
+ *   which sends neither, it appears untitled and with no manifest.
+ * - **A thread only in local storage** is kept, not dropped. It may be a
+ *   conversation that never reached the harness, or this harness may simply be
+ *   a different deployment than the one it was created against. Dropping it
+ *   would destroy the only copy of a transcript.
+ */
 export function mergeSessions(local: ThreadMeta[], server: SessionSummary[]): ThreadMeta[] {
   const byId = new Map<string, ThreadMeta>();
   for (const t of local) byId.set(t.id, { ...t, onServer: false });
@@ -153,12 +166,20 @@ export function mergeSessions(local: ThreadMeta[], server: SessionSummary[]): Th
     if (!row.id) continue;
     const existing = byId.get(row.id);
     const named = Boolean(row.name?.trim());
+    const guessed =
+      existing && !PLACEHOLDER_TITLES.has(existing.title.trim()) ? existing.title : '';
     byId.set(row.id, {
       id: row.id,
       // A server name is a deliberate act; a local title is a guess from the
-      // first message. The guess never overrides the act.
-      title: named ? (row.name as string) : (existing?.title ?? UNTITLED_THREAD_TITLE),
-      manifest: existing?.manifest ?? '',
+      // first message. The guess never overrides the act. With neither — a
+      // thread started on another client — the harness's preview of that first
+      // message is the same guess, made where the message was.
+      title: named
+        ? (row.name as string)
+        : guessed || (row.preview ? titleFromText(row.preview) : UNTITLED_THREAD_TITLE),
+      // The harness's is the newest turn's, wherever it was sent from; the
+      // local one only knows the turns sent from here.
+      manifest: row.manifest || existing?.manifest || '',
       updatedAt: row.updatedAt ?? existing?.updatedAt ?? 0,
       onServer: true,
       named,
