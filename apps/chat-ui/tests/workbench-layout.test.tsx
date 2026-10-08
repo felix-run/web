@@ -253,7 +253,9 @@ describe('the sidebar', () => {
   it('keeps the sections below the threads in reach, however long the list', () => {
     mountSidebar();
     const section = document.querySelector('[data-slot="thread-list"]') as HTMLElement;
-    expect(section.className.split(/\s+/)).toEqual(expect.arrayContaining(['shrink!', 'min-h-48']));
+    expect(section.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['shrink!', 'min-h-[min(var(--thread-list-h),max(12rem,40svh))]']),
+    );
     const scroller = section.querySelector('[data-slot="thread-scroll"]') as HTMLElement;
     expect(scroller.className).toContain('overflow-y-auto');
     expect(scroller.contains(screen.getByRole('searchbox', { name: 'Search threads' }))).toBe(

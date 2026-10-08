@@ -347,9 +347,11 @@ the header rather than fixed to the viewport; and there is no `Mod+B`, because C
 sidebar. The binding is `Mod+\`, and `Mod+K` lands in the thread search. Both work on `/harness`
 too.
 
-**The thread list scrolls inside itself** (2026-10-07). It is `shrink!` with `min-h-48` in the
+**The thread list scrolls inside itself** (2026-10-07). It is `shrink!` in the
 sidebar's one scroller, and its rows sit in their own `overflow-y-auto` under a heading and search
-that do not scroll — before, an opened Older pushed the workspace and the harness's pages fifty rows
+that do not scroll. The section's floor is 40% of the viewport (12rem at least) capped at its
+natural height, which a `ResizeObserver` passes in as `--thread-list-h` — a bare floor held empty
+space under a short list, and `calc-size()` is not in Safari — before, an opened Older pushed the workspace and the harness's pages fifty rows
 down. The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
 Shift+F10 or a right click for the menu, Delete with the toast's undo); Delete lives in the menu,
 not as a one-click icon beside it. **A message-search hit on a listed thread is a result**, drawn
