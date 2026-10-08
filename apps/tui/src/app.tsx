@@ -46,6 +46,11 @@ import type { PromptHistory } from './history.js';
 import { inspectorRows, SECTIONS, type SectionKey } from './inspector.js';
 import { type Overlay, route } from './keys.js';
 import { type LeaseHold, useLease, WATCHING_NOTICE } from './lease.js';
+
+/** The harness refused a send because a durable run is still going on the thread. */
+const RUN_BUSY_NOTICE =
+  'a run is still going on this thread — your message is back; send it when it finishes';
+
 import { page, pagerCommand } from './pager.js';
 import { usePanel } from './panel.js';
 import { useTheme } from './theme.js';
@@ -424,6 +429,13 @@ export function App({
             if (leaseRef.current?.watching() && !leaseRef.current.driving()) {
               setNotice((was) => was ?? WATCHING_NOTICE);
             }
+          }
+          // Refused for a durable run still going on the thread. It never landed either;
+          // the engine is watching that run now, so the next send waits for it.
+          if (outcome === 'run_in_progress') {
+            engine.setTurns(engine.state.turns.filter((t) => t.id !== userId));
+            fill(text);
+            setNotice(RUN_BUSY_NOTICE);
           }
           return refreshThreads();
         });

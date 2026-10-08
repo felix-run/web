@@ -58,6 +58,21 @@ export class StreamInProgressError extends Error {
 }
 
 /**
+ * The thread already has a durable run in flight, so the harness refused to start
+ * another beside it (`409 run_in_progress:<resume_token>`, felix-run/felix#529). Nothing
+ * ran and the message never landed; `resumeToken` is the run to watch instead. Two runs
+ * on one thread each re-did what the other was doing, which is why this is refused.
+ */
+export class RunInProgressError extends Error {
+  readonly resumeToken: string;
+  constructor(route: string, resumeToken: string) {
+    super(`${route}: 409 run_in_progress`);
+    this.name = 'RunInProgressError';
+    this.resumeToken = resumeToken;
+  }
+}
+
+/**
  * `POST /chat/stream` refused an `Idempotency-Key` it had already seen with a
  * different body (`422 idempotency_key_reused`). Nothing ran, and the key can
  * never send this body: a resend has to go out as a new message, under a new key.

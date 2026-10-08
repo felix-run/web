@@ -621,6 +621,15 @@ Flows worth knowing before editing the app:
   (`src/lib/durable-runs.ts`, `localStorage`), and `loadThread` calls `engine.rejoinRun`, which
   marks the thread streaming — so the composer queues — polls, re-reads the transcript every 5s
   (`onDurableProgress`; the status turn survives a `setTurns`), and settles as `send` does.
+  **The harness now says so itself** (`felix-run/felix#533`): the snapshot carries `activeRun`
+  (`{resumeToken, status, expiresAt}` or null), and a send into a busy thread is
+  `409 run_in_progress:<token>`. `rejoinActiveRun` in the shell reads `activeRun` when the key is
+  present (null also clears the local record) and falls back to `localStorage` only when it is
+  absent — an older harness — or the snapshot could not be read. It runs after the transcript is
+  rebuilt, on `loadThread` and on resume. The refusal is `RunInProgressError`, surfacing as the
+  `SendOutcome` `'run_in_progress'`: the engine drops the placeholder and `rejoinRun`s the token
+  it names; chat-ui hands the message back (`RUN_BUSY_NOTICE`) or, from the queue, restores it to
+  the head unpaused so it drains when the run ends; the TUI puts it back in the field.
   **What it cannot do is run a cowork client tool after the stream has closed**: only the durable
   arm of `POST /chat/stream` announces `tool_request`, not `GET /chat/stream/{thread_id}` and not
   the poll, so a `local_*` call issued after that times out. That needs the harness.

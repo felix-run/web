@@ -11,6 +11,7 @@ export {
 export type { ReadSseOptions } from './stream';
 export { readSseStream } from './stream';
 export type {
+  ActiveRun,
   ChatMessage,
   DurableRun,
   DurableRunAccepted,

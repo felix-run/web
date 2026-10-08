@@ -26,12 +26,19 @@ import {
 } from '@felix/protocol';
 import { type ApprovalRequest, isLapsedApproval } from './approvals';
 import { DurableRunFetchError, isDurableRunOver, MAX_POLL_FAILURES } from './durable-runs';
-import { IdempotencyKeyReusedError, LeaseRefusedError, StreamInProgressError } from './errors';
+import {
+  IdempotencyKeyReusedError,
+  LeaseRefusedError,
+  RunInProgressError,
+  StreamInProgressError,
+} from './errors';
 import { createHttp, type FelixClientOptions } from './http';
 import { createManagementClient } from './management';
 import type { SessionSummary } from './session-log';
 import { threadSuffix } from './session-log';
 
+/** The `detail` prefix of the harness's refusal to start a second run on a thread. */
+const RUN_IN_PROGRESS = 'run_in_progress:';
 export interface StreamHandlers {
   onEvent: (event: StreamEvent) => void | Promise<void>;
   /**
@@ -251,6 +258,23 @@ export function createFelixClient(opts: FelixClientOptions) {
   };
 
   /**
+   * `409 run_in_progress:<resume_token>`: the thread has a durable run in flight and the
+   * harness will not start a second beside it. Checked on both routes that start a turn.
+   */
+  const refuseIfRunInProgress = async (res: Response, route: string): Promise<void> => {
+    if (res.status !== 409) return;
+    const detail = await res
+      .clone()
+      .json()
+      .then(
+        (b: unknown) => (b as { detail?: unknown } | null)?.detail,
+        () => undefined,
+      );
+    if (typeof detail !== 'string' || !detail.startsWith(RUN_IN_PROGRESS)) return;
+    throw new RunInProgressError(route, detail.slice(RUN_IN_PROGRESS.length));
+  };
+
+  /**
    * GET /v1/models → each manifest with what the harness says about it.
    *
    * The route answers with OpenAI model objects whose `id` is the manifest
@@ -311,6 +335,7 @@ export function createFelixClient(opts: FelixClientOptions) {
       });
 
       await refuseIfLease(res, 'chat/stream', args.threadId);
+      await refuseIfRunInProgress(res, 'chat/stream');
       if (keyed && (res.status === 409 || res.status === 422)) {
         // The lease's 409s were taken above; these are the key's own answers.
         const detail = await res
@@ -430,6 +455,7 @@ export function createFelixClient(opts: FelixClientOptions) {
       });
 
       await refuseIfLease(res, 'chat', args.threadId);
+      await refuseIfRunInProgress(res, 'chat');
       if (res.status === 202) {
         const body = (await res.json()) as { resume_token?: string };
         if (!body.resume_token) throw new Error('durable chat missing resume_token');

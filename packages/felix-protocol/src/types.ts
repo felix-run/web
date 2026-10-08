@@ -219,10 +219,27 @@ export interface DurableRunAccepted {
  * camelCase on purpose — the harness builds this one payload for clients and
  * spells it in the client's idiom, unlike every other route.
  */
+/**
+ * The durable run in flight on a thread (`activeRun` on the snapshot, felix-run/felix#529).
+ * Its `resumeToken` is what `GET /chat/runs/{token}` takes.
+ */
+export interface ActiveRun {
+  resumeToken: string;
+  status?: string;
+  /** Epoch ms. */
+  expiresAt?: number | null;
+}
+
 export interface SessionSnapshot {
   id: string;
   name?: string | null;
+  /** `idle` throughout a durable run, whose agent writes no thread phase: see `activeRun`. */
   phase?: string;
+  /**
+   * The durable run in flight, or null. Absent on a harness older than felix-run/felix#533,
+   * which is how a client tells "no run" from "cannot say".
+   */
+  activeRun?: ActiveRun | null;
   thinkingLevel?: string;
   locked?: boolean;
   attached?: boolean;
