@@ -43,7 +43,7 @@ export function useHarnessAgent(): {
 /**
  * The params a page wants, plus the `agent` the address already carries.
  *
- * Memory, Corpus and the Ledger write their own view into the query string, and
+ * Memory, Documents and the Activity page write their own view into the query string, and
  * each built it from scratch — which would silently drop `?agent=` the moment a
  * view changed and put the page back on the chat's agent.
  */
@@ -96,7 +96,7 @@ export function ManifestItem({ id, providerModel }: { id: string; providerModel?
  * nowhere else.
  *
  * It headed the whole nav, where it read as filtering every page below it;
- * Memory, Corpus, the Ledger and the Manifests and Jobs lists are tenant-wide
+ * Memory, Documents, the Activity page and the Manifests and Jobs lists are tenant-wide
  * and ignored it, so Usage listed every agent's spend under a picker reading
  * `cowork`. A control belongs on the things it changes.
  *

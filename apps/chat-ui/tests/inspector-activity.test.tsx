@@ -4,11 +4,11 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ActivitySection } from '../src/components/harness/ledger';
+import { EventsSection } from '../src/components/harness/activity';
 import { middleTruncate } from '../src/lib/format';
 
 /**
- * The Activity feed's keyboard path and its drill-down.
+ * The Events feed's keyboard path and its drill-down.
  *
  * Both exist because of the same gap: the rows used to be `<li>` elements with no
  * control in them, so tabbing through the inspector skipped the entire list and
@@ -48,13 +48,13 @@ function stubHarness(events: unknown[]) {
 }
 
 function renderInspector() {
-  // The feed is a `/harness/ledger` half now rather than an inspector row, so this
+  // The feed is a `/harness/activity` half now rather than an inspector row, so this
   // mounts the section itself. `open` is the disclosure state it still carries for
   // the inspector's sake; the keyboard path under test is the same either way.
   // In a router: a row's thread is a link now.
   return render(
     <MemoryRouter>
-      <ActivitySection enabled open onToggle={() => {}} />
+      <EventsSection enabled open onToggle={() => {}} />
     </MemoryRouter>,
   );
 }
@@ -246,7 +246,7 @@ describe('a denial says which layer refused it', () => {
   });
 
   it('filters the window to denials by one layer, and only denials', async () => {
-    const { filterActivity } = await import('../src/components/harness/ledger');
+    const { filterActivity } = await import('../src/components/harness/activity');
     const rows = [
       auditRow({ id: 'ok', payload_json: { tool: 'read_file', control: 'approvals' } }),
       auditRow({

@@ -368,7 +368,7 @@ describe('the header run-state slot', () => {
     expect(slot()?.closest('[aria-live]')).toBeNull();
 
     // To the other address by the sidebar, which is the way there now.
-    const harness = document.querySelector<HTMLAnchorElement>('a[href^="/harness/ledger"]');
+    const harness = document.querySelector<HTMLAnchorElement>('a[href^="/harness/activity"]');
     expect(harness).not.toBeNull();
     await act(async () => void (await userEvent.click(harness as HTMLAnchorElement)));
     await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { errorCodeOf, eventHelp, recentFailures } from '../src/components/harness/ledger';
+import { errorCodeOf, eventHelp, recentFailures } from '../src/components/harness/activity';
 import { glanceOf } from '../src/routes/harness';
 
 /**
@@ -46,7 +46,7 @@ describe('glanceOf', () => {
       { data: [1, 2, 3], error: RATE_LIMITED, lastOkAt: ago(120_000) },
       3,
       'failed',
-      'the ledger',
+      'activity',
     );
     expect(g).toMatchObject({ text: '3 failed', age: '2m', tone: 'failed' });
     expect(g?.title).toMatch(/as of 2m ago — the latest check failed/);
@@ -62,7 +62,7 @@ describe('glanceOf', () => {
       { data: [1], error: null, lastOkAt: ago(1000) },
       1,
       'failed',
-      'the ledger',
+      'activity',
       '24h',
     );
     expect(g).toEqual({
@@ -85,7 +85,7 @@ describe('glanceOf', () => {
 });
 
 /**
- * The Ledger's glance is bounded by time. Counted over the page's last sixty
+ * The Activity page's glance is bounded by time. Counted over the page's last sixty
  * events instead, one failure on a quiet tenant kept the rail red for weeks.
  */
 describe('recentFailures', () => {

@@ -320,7 +320,7 @@ export function JobsSheet({
           </div>
         )}
 
-        {/* Rows divided by hairlines, as the Ledger's are. Each job was a bordered
+        {/* Rows divided by hairlines, as the Activity page's are. Each job was a bordered
             card, which made a list of one kind of thing look like a pile of
             separate things, and spent a border on every row saying so. */}
         <div>
@@ -386,7 +386,7 @@ export function JobsSheet({
                     “{j.payload.prompt}”
                   </span>
                 )}
-                {/* The status as the Ledger draws one — word and dot — rather
+                {/* The status as the Activity page draws one — word and dot — rather
                     than plain muted text that read the same whether it passed. */}
                 {j.last_status && (
                   <span className="inline-flex items-center gap-1">

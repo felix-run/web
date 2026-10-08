@@ -8,7 +8,7 @@ import {
   usageHeader,
   usd,
   windowDays,
-} from '../src/components/harness/ledger';
+} from '../src/components/harness/activity';
 
 /**
  * What a usage total is allowed to claim.

@@ -111,7 +111,7 @@ export function ContextMeter({
   );
   // AI Elements' Context hover card, for what the percentage is made of. No cost
   // line: its footer prices tokens from a third-party catalog, and the harness
-  // prices them with its own — the Ledger's figure, where an unpriced model reads
+  // prices them with its own — the Activity page's figure, where an unpriced model reads
   // `$0`. Two prices for one call would be worse than one.
   return (
     <Context usedTokens={Math.min(used, window)} maxTokens={window} usage={sdkUsage(usage)}>

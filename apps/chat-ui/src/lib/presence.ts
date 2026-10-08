@@ -37,7 +37,7 @@ const PREFIX: Record<Presence, string> = {
 
 let current: Presence = 'idle';
 /**
- * Where the tab is, when that is not the conversation: `Ledger`, `Memory`.
+ * Where the tab is, when that is not the conversation: `Activity`, `Memory`.
  * Every `/harness` page read "Felix chat" in the tab strip and in history, so
  * eight open destinations were eight identical tabs. The run state still leads,
  * because it is the thing a glance at the tab strip is for.

@@ -72,7 +72,7 @@ export function SectionBoundary({ title, children }: { title: string; children: 
  * Whether a `Section` is being read as a disclosure row or as a whole page.
  *
  * A context rather than a prop because the answer belongs to the *surface*, not
- * to the section: the same Memory or Ledger component is a row in the inspector's
+ * to the section: the same Memory or Activity component is a row in the inspector's
  * stack and a page under `/harness`, and threading a flag through every one of
  * them would be a prop that exists only to be forwarded. It also means a section
  * moved between the two surfaces needs no edit at all.
@@ -82,7 +82,7 @@ type SectionChrome =
   | 'disclosure'
   /** A `/harness` page: static heading, body fills the panel. */
   | 'panel'
-  /** A `/harness` page whose *host* draws the heading — see the Ledger. */
+  /** A `/harness` page whose *host* draws the heading — see the Activity page. */
   | 'bare'
   /**
    * An instrument tab: the tab is the heading, as with `bare`, but it lives in a
@@ -104,7 +104,7 @@ export interface SectionMeta {
 /**
  * Where a `bare` section sends the header value it no longer draws.
  *
- * The Ledger draws one header for two halves, so its halves draw none — but the
+ * The Activity page draws one header for two halves, so its halves draw none — but the
  * value each computes is the thing a header is *for*, and it comes from data the
  * half already polled. Reporting it upward lets the host's header carry it
  * without a second request made only to fill a label.
@@ -142,7 +142,7 @@ export function Section({
   /**
    * Set when the latest read failed: when `meta`'s figures were last true. The
    * header keeps the value and says its age, rather than presenting a count the
-   * page can no longer vouch for as if it were current — Corpus read "0
+   * page can no longer vouch for as if it were current — Documents read "0
    * documents" over a failed read, which is "empty" and "broken" at once.
    */
   metaAsOf?: number | null;
@@ -172,7 +172,7 @@ export function Section({
     if (chrome === 'bare' || chrome === 'tab') sink?.({ meta, metaLead, metaAsOf, metaTone });
   }, [chrome, sink, meta, metaLead, metaAsOf, metaTone]);
 
-  // The Ledger draws one heading for two halves, so its halves draw none: a
+  // The Activity page draws one heading for two halves, so its halves draw none: a
   // section heading under a tab strip that already names the same thing is the
   // label repeated, and it costs a row on every screen. The value still reaches
   // that heading, through `SectionMetaSink`.
@@ -353,7 +353,7 @@ export function SectionBody({
  * The one line a page shows above rows it could not refresh: what failed, how
  * old the rows are, and a way to try again. Shared, so every polled page keeps
  * what it last knew the same way — Jobs drew a full error box over its kept rows
- * while Memory, Corpus and the Ledger drew this.
+ * while Memory, Documents and the Activity page drew this.
  */
 export function StaleNotice({
   error,
@@ -476,7 +476,7 @@ export function StatusDot({ status }: { status: string }) {
   const bad = status === 'error' || status === 'failed' || status === 'denied';
   // OK is the routine majority, so it is a muted word with a muted dot. A feed of
   // eleven green dots and one red made the red slower to find — the badging-the-
-  // majority fault the Ledger's own tone rule was written against. Colour is
+  // majority fault the Activity page's own tone rule was written against. Colour is
   // kept for what went wrong: failed or denied.
   return (
     <span

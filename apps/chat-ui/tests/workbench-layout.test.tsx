@@ -259,9 +259,9 @@ describe('the sidebar', () => {
   it('keeps every section reachable when collapsed to icons', async () => {
     mountSidebar({}, { open: false });
     expect(screen.queryByRole('searchbox', { name: 'Search threads' })).toBeNull();
-    for (const name of ['New chat', 'Threads', 'Workspace', 'Ledger']) {
+    for (const name of ['New chat', 'Threads', 'Workspace', 'Activity']) {
       expect(
-        screen.getByRole(name === 'Ledger' ? 'link' : 'button', { name: new RegExp(`^${name}`) }),
+        screen.getByRole(name === 'Activity' ? 'link' : 'button', { name: new RegExp(`^${name}`) }),
       ).toBeTruthy();
     } // The Harness label is faded out when collapsed; its fold button must not
     // linger as a Tab stop nobody can see.

@@ -247,7 +247,7 @@ function readFolded(): boolean {
 
 /**
  * The harness's eight pages, in the two runs `/harness` has always sorted them
- * into. Its glances — failing jobs, recent Ledger failures — poll only while the
+ * into. Its glances — failing jobs, recent Activity failures — poll only while the
  * rows are on screen, so a folded section costs nothing.
  */
 function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigate: () => void }) {

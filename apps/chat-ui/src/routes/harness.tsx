@@ -21,10 +21,10 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import {
   ACTIVITY_FETCH,
+  ACTIVITY_GLANCE_SPAN,
   AUDIT_POLL_KEY,
   failing,
   JOBS_POLL_KEY,
-  LEDGER_GLANCE_SPAN,
   recentFailures,
 } from '@/lib/harness-glances';
 import { setPresencePlace } from '@/lib/presence';
@@ -39,9 +39,9 @@ const HarnessPage = lazy(() => import('./harness-pages'));
 
 export type HarnessPath =
   | 'memory'
-  | 'corpus'
+  | 'documents'
   | 'skills'
-  | 'ledger'
+  | 'activity'
   | 'agent'
   | 'github'
   | 'manifests'
@@ -67,9 +67,9 @@ const MANIFEST_REFERENCE = `${DOCS_ORIGIN}/guide/manifest-reference/`;
 /** Where the GitHub page's reference lives: the connection and per-person repositories. */
 export const GITHUB_DOCS = `${DOCS_ORIGIN}/internals/auth/#per-person-repositories`;
 
-/** The Ledger's two halves read different routes, documented in different sections. */
-export const LEDGER_DOCS = {
-  activity: `${MANAGEMENT_API}#audit`,
+/** The Activity page's two halves read different routes, documented in different sections. */
+export const ACTIVITY_DOCS = {
+  events: `${MANAGEMENT_API}#audit`,
   usage: `${MANAGEMENT_API}#usage`,
 } as const;
 
@@ -91,12 +91,12 @@ export const HARNESS_DESTINATIONS: {
     element: <HarnessPage path="memory" />,
   },
   {
-    path: 'corpus',
+    path: 'documents',
     docs: `${MANAGEMENT_API}#documents`,
-    label: 'Corpus',
+    label: 'Documents',
     icon: BookOpenIcon,
     group: 'records',
-    element: <HarnessPage path="corpus" />,
+    element: <HarnessPage path="documents" />,
   },
   {
     path: 'skills',
@@ -107,12 +107,12 @@ export const HARNESS_DESTINATIONS: {
     element: <HarnessPage path="skills" />,
   },
   {
-    path: 'ledger',
+    path: 'activity',
     docs: `${MANAGEMENT_API}#audit`,
-    label: 'Ledger',
+    label: 'Activity',
     icon: ActivityIcon,
     group: 'records',
-    element: <HarnessPage path="ledger" />,
+    element: <HarnessPage path="activity" />,
   },
   // A record, not a workbench: it reads the resolved spec and changes nothing.
   {
@@ -191,12 +191,12 @@ export function walkNav(event: KeyboardEvent<HTMLElement>) {
 
 /**
  * The two states on the rail worth a glance: jobs that are failing, and recent
- * failures in the Ledger — from the same reads those pages make. They poll
+ * failures in the Activity page — from the same reads those pages make. They poll
  * behind two links, which the rail used to avoid on purpose; the trade is that
  * someone coming back sees where to go first without opening eight pages, which
  * is what "legible on return" asks.
  *
- * The Ledger's is bounded by time, where its page's header is bounded by count.
+ * The Activity page's is bounded by time, where its page's header is bounded by count.
  * The page counts failures in its last `ACTIVITY_FETCH` events, which is right
  * for a page you are reading and wrong for a marker that means "go look": on a
  * quiet tenant sixty events can span weeks, so one failure from last month kept
@@ -270,7 +270,7 @@ export function glanceOf(
 }
 
 export function useNavGlances(enabled = true): Record<string, Glance | undefined> {
-  // Shared reads: on the Jobs page or the Ledger these ride the page's own
+  // Shared reads: on the Jobs page or the Activity page these ride the page's own
   // faster poll rather than sending the same request a second time.
   const jobs = useSharedPoll(JOBS_POLL_KEY, listJobs, { enabled, intervalMs: 30_000 });
   const audit = useSharedPoll(AUDIT_POLL_KEY, () => listAudit({ limit: ACTIVITY_FETCH }), {
@@ -283,7 +283,7 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
   const failedEvents = recentFailures(audit.data ?? [], Date.now());
   return {
     jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
-    ledger: glanceOf(audit, failedEvents, 'failed', 'the ledger', LEDGER_GLANCE_SPAN),
+    activity: glanceOf(audit, failedEvents, 'failed', 'activity', ACTIVITY_GLANCE_SPAN),
   };
 }
 
@@ -409,10 +409,10 @@ export function HarnessLayout() {
   }, [place]);
   useEffect(() => () => setPresencePlace(null), []);
 
-  // The Ledger, not the first entry in the list. `/harness` is where an operator
-  // comes back to, and the Ledger is the page that answers "what happened while
+  // The Activity page, not the first entry in the list. `/harness` is where an operator
+  // comes back to, and the Activity page is the page that answers "what happened while
   // I was away"; Memory — first in the list — is empty for most tenants.
-  if (atIndex && wide) return <Navigate to={{ pathname: 'ledger', search }} replace />;
+  if (atIndex && wide) return <Navigate to={{ pathname: 'activity', search }} replace />;
 
   // Every shape below puts the destination in a `<main>`. The layout had a header
   // and a nav and no main, so a screen reader's landmark list offered every way

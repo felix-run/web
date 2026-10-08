@@ -234,7 +234,7 @@ export function MemorySection({
           rows.length ? `${rows.length} ${rows.length === 1 ? 'memory' : 'memories'}` : undefined
         }
       >
-        {/* Rows between hairlines, as the Ledger's are. Each was a bordered box
+        {/* Rows between hairlines, as the Activity page's are. Each was a bordered box
             at 11px — the generated default this product names as its nearest
             anti-reference, on the page `/harness` used to open to — with the
             fact itself, the thing being read, at the smallest size on the page. */}

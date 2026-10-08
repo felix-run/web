@@ -4,7 +4,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
  * `usePoll`, but one request for everyone asking the same question.
  *
  * The `/harness` rail's glances and the pages they summarise read the same
- * routes: the Jobs glance and the Jobs page both list jobs, and the Ledger glance
+ * routes: the Jobs glance and the Jobs page both list jobs, and the Activity page glance
  * and the Activity half both read the last 60 audit events. Each polled on its
  * own, so on those pages every read went out twice — on a harness that answers
  * 429 when it is hammered, which it was, visibly, while this was being built.

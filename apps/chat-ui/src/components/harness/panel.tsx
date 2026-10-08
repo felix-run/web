@@ -51,7 +51,7 @@ export function Panel({
  * away. One constant so a page's rows and its header's row cannot drift apart —
  * they did, which is how a switch ended up nowhere near the rows it switched.
  *
- * **It is the default, not an opt-in.** The Ledger opted in and the four
+ * **It is the default, not an opt-in.** The Activity page opted in and the four
  * workbenches did not, so Agent drew its labels ~1200px from their values and
  * Manifests parked its only button across the pane from the field it submits —
  * the same fault the constant was written to fix, back on four pages because
@@ -111,7 +111,7 @@ export const DOCS_ORIGIN = 'https://docs.felix.run';
  * The docs page for whatever `/harness` destination is on screen, which its
  * header links to. A context, set by the layout from the destination's own
  * entry, so no page has to thread a URL through to the header it draws; a page
- * whose reference depends on its own state (the Ledger's two halves) passes
+ * whose reference depends on its own state (the Activity page's two halves) passes
  * `docs` to `PageHeader` instead.
  */
 export const PageDocs = createContext<string | null>(null);
@@ -123,7 +123,7 @@ export const PageDocs = createContext<string | null>(null);
  * breakpoint.
  *
  * It exists because the eight pages had arrived at three grammars. Memory drew
- * an icon, its title and a bare `0` at the far edge; the Ledger a title and a
+ * an icon, its title and a bare `0` at the far edge; the Activity page a title and a
  * segmented control with no icon; Jobs an icon, a title the nav did not use and
  * a descriptive subline. Each was reasonable alone, and together they made the
  * same place look like three products.
@@ -141,7 +141,7 @@ export const PageDocs = createContext<string | null>(null);
  * The row takes the page's measure (`useMeasure`) while the rule under it stays
  * full width, because the rule separates the header from the pane and the row
  * belongs to the content: the controls end where the rows they act on end.
- * Unmeasured, the Ledger's Activity/Usage switch sat at the far edge of a 1300px
+ * Unmeasured, the Activity page's Events/Usage switch sat at the far edge of a 1300px
  * pane with every row it switched ~500px to its left.
  */
 export function PageHeader({
@@ -159,7 +159,7 @@ export function PageHeader({
   title: string;
   value?: string | undefined;
   /**
-   * The neutral part of a toned value, drawn before its chip. The Ledger's
+   * The neutral part of a toned value, drawn before its chip. The Activity page's
    * `last 60 events · 3 failed` was one red pill, so the window — a denominator,
    * not a fault — was coloured as alarm too.
    */
@@ -233,7 +233,7 @@ export function PageHeader({
           // `flex-wrap` + `justify-end`: the header wraps this group onto its own
           // row when the title leaves no room, but the group itself did not wrap,
           // so at 320px Eval's picker, New dataset and Docs ran 72px off the edge
-          // and the whole page scrolled sideways (Memory 41px, Corpus 29px).
+          // and the whole page scrolled sideways (Memory 41px, Documents 29px).
           <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
             {controls}
             {/*
@@ -267,12 +267,12 @@ export function PageHeader({
 /**
  * A page's view switch, drawn in its header.
  *
- * It looks like the Ledger's Activity/Usage switch because it sits in the same
+ * It looks like the Activity page's Events/Usage switch because it sits in the same
  * place and does a comparable job, but it is a toggle group rather than tabs:
- * Memory's and Corpus's views change the *input* above one shared list, so
+ * Memory's and Documents' views change the *input* above one shared list, so
  * there is no panel per view for a `tabpanel` to name. `aria-pressed` in a
  * named group promises only what this is. It lived in the page body while the
- * Ledger's lived in the header — two places for one kind of control.
+ * Activity page's lived in the header — two places for one kind of control.
  */
 export function ViewSwitch<T extends string>({
   label,
@@ -323,7 +323,7 @@ export const CREATE_FORM = 'mb-5 border-b border-border/60 pb-5';
  * The one way a `/harness` page offers to create something: a header toggle
  * whose form opens as the page's first section.
  *
- * There were four — a header toggle on Jobs, an "Add" in Memory's and Corpus's
+ * There were four — a header toggle on Jobs, an "Add" in Memory's and Documents'
  * view strips, an always-open row on Eval, a section at the foot of Manifests —
  * so the operator relearned where "add" lived on every page.
  *
@@ -406,7 +406,7 @@ export function PanelBody({ children, className }: { children: ReactNode; classN
   return (
     // Padding outside the measure, as `PageHeader` has it: inside, the rows
     // came out 32px narrower than the header row and ended short of the
-    // controls that act on them. The Ledger's tabs were the one page right.
+    // controls that act on them. The Activity page's tabs were the one page right.
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
       <div className={cn(measure, className)}>{children}</div>
     </div>
@@ -420,7 +420,7 @@ export function PanelBody({ children, className }: { children: ReactNode; classN
  * stacked on Agent — which is the scaffolded-card default this product names as
  * its nearest failure, and which made a page of *parts* look like a page of
  * *things*. A part is separated by a rule and ranked by its heading instead, the
- * way the Ledger's rows are, so the eye goes to what the heading says rather than
+ * way the Activity page's rows are, so the eye goes to what the heading says rather than
  * to how many boxes there are.
  *
  * The heading is a real `h3`. Agent's were `div`s, so the page had one heading

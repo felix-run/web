@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DOCS_ORIGIN } from '../src/components/harness/panel';
-import { HARNESS_DESTINATIONS, LEDGER_DOCS } from '../src/routes/harness';
+import { ACTIVITY_DOCS, HARNESS_DESTINATIONS } from '../src/routes/harness';
 
 /**
  * Every `/harness` page links to its reference on the docs site, and a link to a
@@ -33,8 +33,8 @@ function anchorsOf(file: string): Set<string> {
 
 const links = [
   ...HARNESS_DESTINATIONS.map((d) => [d.label, d.docs] as const),
-  ['Ledger · Activity', LEDGER_DOCS.activity] as const,
-  ['Ledger · Usage', LEDGER_DOCS.usage] as const,
+  ['Activity · Events', ACTIVITY_DOCS.events] as const,
+  ['Activity · Usage', ACTIVITY_DOCS.usage] as const,
 ];
 
 describe('the /harness docs links', () => {

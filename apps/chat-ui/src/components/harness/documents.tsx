@@ -103,7 +103,7 @@ export function DocumentsSection({
   return (
     <Section
       icon={<BookOpenIcon className="size-3.5" />}
-      title="Corpus"
+      title="Documents"
       // A search hit is a chunk, not a document, so the two views count different
       // things and say so. Nothing while the first fetch is in flight.
       meta={
@@ -118,15 +118,19 @@ export function DocumentsSection({
       onToggle={onToggle}
       controls={
         <>
-          <ViewSwitch label="Corpus view" value={mode} options={VIEWS} onChange={setMode} />
-          <CreateToggle open={adding} onToggle={() => setAdding((a) => !a)} controls="corpus-add">
+          <ViewSwitch label="Documents view" value={mode} options={VIEWS} onChange={setMode} />
+          <CreateToggle
+            open={adding}
+            onToggle={() => setAdding((a) => !a)}
+            controls="documents-add"
+          >
             Add document
           </CreateToggle>
         </>
       }
     >
       {adding && (
-        <div id="corpus-add" className={CREATE_FORM}>
+        <div id="documents-add" className={CREATE_FORM}>
           <PageSection title="New document">
             <AddDocumentForm
               onCancel={() => setAdding(false)}
@@ -142,9 +146,9 @@ export function DocumentsSection({
 
       {mode === 'search' && (
         <div className="mb-3">
-          <Label htmlFor="corpus-search">What would it retrieve?</Label>
+          <Label htmlFor="documents-search">What would it retrieve?</Label>
           <Input
-            id="corpus-search"
+            id="documents-search"
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -177,7 +181,7 @@ export function DocumentsSection({
               : undefined
         }
       >
-        {/* Rows between hairlines, as the Ledger's and Memory's are; they were
+        {/* Rows between hairlines, as the Activity page's and Memory's are; they were
             bordered boxes at 11px. */}
         {mode === 'search' ? (
           <ul>
@@ -299,9 +303,9 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <Label htmlFor="corpus-title">Title</Label>
+          <Label htmlFor="documents-title">Title</Label>
           <Input
-            id="corpus-title"
+            id="documents-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={DOCUMENT_LIMITS.title}
@@ -309,9 +313,9 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
           />
         </div>
         <div>
-          <Label htmlFor="corpus-source">Source (optional)</Label>
+          <Label htmlFor="documents-source">Source (optional)</Label>
           <Input
-            id="corpus-source"
+            id="documents-source"
             value={source}
             onChange={(e) => setSource(e.target.value)}
             placeholder="wiki/runbooks"
@@ -329,16 +333,16 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
         The same source and title replaces what is already there.
       </p>
       <div>
-        <Label htmlFor="corpus-text">Text</Label>
+        <Label htmlFor="documents-text">Text</Label>
         <Textarea
-          id="corpus-text"
+          id="documents-text"
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={6}
-          aria-describedby="corpus-text-count"
+          aria-describedby="documents-text-count"
           className="mt-1 resize-y text-sm"
         />
-        <p id="corpus-text-count" className="mt-1 font-mono text-xs text-muted-foreground">
+        <p id="documents-text-count" className="mt-1 font-mono text-xs text-muted-foreground">
           {textValue.length.toLocaleString()} / {DOCUMENT_LIMITS.text.toLocaleString()}
         </p>
       </div>

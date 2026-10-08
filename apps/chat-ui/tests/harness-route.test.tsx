@@ -117,11 +117,11 @@ describe('the harness address', () => {
     await waitFor(() => expect(address).toBe('/t/keep-me'));
 
     await act(async () => {
-      go('/harness/ledger');
+      go('/harness/activity');
     });
 
-    await waitFor(() => expect(document.body.textContent).toContain('Ledger'));
-    expect(address).toBe('/harness/ledger');
+    await waitFor(() => expect(document.body.textContent).toContain('Activity'));
+    expect(address).toBe('/harness/activity');
 
     // The tab is still on the thread it was on: nothing minted a new one.
     expect(sessionStorage.getItem('felix.tabThread')).toBe('keep-me');
@@ -140,14 +140,14 @@ describe('the harness address', () => {
     first.unmount();
 
     // The reload: a new shell, the same tab.
-    mount('/harness/ledger');
-    await waitFor(() => expect(document.body.textContent).toContain('Ledger'));
+    mount('/harness/activity');
+    await waitFor(() => expect(document.body.textContent).toContain('Activity'));
     expect(sessionStorage.getItem('felix.tabThread')).toBe('before-reload');
   });
 
   it('remembers no thread for a tab that has been on none', async () => {
-    mount('/harness/ledger');
-    await waitFor(() => expect(document.body.textContent).toContain('Ledger'));
+    mount('/harness/activity');
+    await waitFor(() => expect(document.body.textContent).toContain('Activity'));
     // It mints one to hold, but only an address writes the tab's memory, so a
     // reload here does not come back to a thread nobody opened.
     expect(sessionStorage.getItem('felix.tabThread')).toBeNull();
@@ -176,19 +176,19 @@ describe('the harness address', () => {
     brand();
 
     await act(async () => {
-      go('/harness/ledger');
+      go('/harness/activity');
     });
-    await waitFor(() => expect(address).toBe('/harness/ledger'));
+    await waitFor(() => expect(address).toBe('/harness/activity'));
     brand();
   });
 
-  it("carries the visible Ledger half's value in the page header, not a second poll's", async () => {
-    mount('/harness/ledger');
-    // Reported up from the Activity half's own `/audit` poll; the halves draw no
+  it("carries the visible Activity half's value in the page header, not a second poll's", async () => {
+    mount('/harness/activity');
+    // Reported up from the Events half's own `/audit` poll; the halves draw no
     // heading of their own, so without the sink this value had nowhere to go.
     await waitFor(() => {
       const header = document.querySelector('main header');
-      expect(header?.textContent).toContain('Ledger');
+      expect(header?.textContent).toContain('Activity');
       expect(header?.textContent).toContain('0 events ·');
       expect(header?.textContent).toContain('0 failed');
     });
@@ -197,14 +197,14 @@ describe('the harness address', () => {
   it.each(
     HARNESS_DESTINATIONS.map((d) => [d.path] as const),
   )('holds /harness/%s to the reading measure, header row and body alike', async (path) => {
-    // The measure is the default, not an opt-in. The Ledger opted in and the
+    // The measure is the default, not an opt-in. The Activity page opted in and the
     // four workbenches did not, so their labels sat ~1200px from their values —
     // the fault the constant was written to fix, on every page that forgot it.
     mount(`/harness/${path}`);
     await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
     const header = document.querySelector('main header') as HTMLElement;
     expect(header.firstElementChild?.className).toContain(READING_MEASURE);
-    // The Ledger's halves measure themselves inside their tab panels, once their
+    // The Activity page's halves measure themselves inside their tab panels, once their
     // first poll has answered; every other page's body carries it under the
     // scroller from the first render.
     await waitFor(() =>
@@ -212,8 +212,8 @@ describe('the harness address', () => {
     );
   });
 
-  it("keeps the Ledger's switch inside the measured header row", async () => {
-    mount('/harness/ledger');
+  it("keeps the Activity page's switch inside the measured header row", async () => {
+    mount('/harness/activity');
     await waitFor(() => expect(document.querySelector('main [role="tablist"]')).not.toBeNull());
     const row = document.querySelector('main header')?.firstElementChild;
     expect(row?.contains(document.querySelector('main [role="tablist"]'))).toBe(true);
@@ -249,13 +249,13 @@ describe('the harness address', () => {
         (a) => a.querySelector('span')?.textContent,
       );
     // Agent is a record: it reads the resolved spec and changes nothing.
-    expect(inGroup(0)).toEqual(['Memory', 'Corpus', 'Skills', 'Ledger', 'Agent', 'GitHub']);
+    expect(inGroup(0)).toEqual(['Memory', 'Documents', 'Skills', 'Activity', 'Agent', 'GitHub']);
     expect(inGroup(1)).toEqual(['Manifests', 'Jobs', 'Eval']);
   });
 
   it('names the page in the tab title, and gives it back on the way out', async () => {
-    mount('/harness/ledger');
-    await waitFor(() => expect(document.title).toBe('Ledger — Felix'));
+    mount('/harness/activity');
+    await waitFor(() => expect(document.title).toBe('Activity — Felix'));
     await act(async () => {
       go('/harness/memory');
     });
@@ -266,8 +266,8 @@ describe('the harness address', () => {
     await waitFor(() => expect(document.title).toBe('Felix'));
   });
 
-  it("keeps the Ledger's half in the address, so Usage can be linked", async () => {
-    mount('/harness/ledger?view=usage');
+  it("keeps the Activity page's half in the address, so Usage can be linked", async () => {
+    mount('/harness/activity?view=usage');
     await waitFor(() =>
       expect(document.querySelector('main [role="tab"][aria-selected="true"]')?.textContent).toBe(
         'Usage',
@@ -332,8 +332,8 @@ describe('the harness address', () => {
     expect(screen.getByLabelText('What would it recall?')).toBe(input);
   });
 
-  it('lands on the Ledger when wide, and stays the list when narrow', async () => {
-    // The Ledger answers "what happened while I was away"; Memory, first in the
+  it('lands on the Activity page when wide, and stays the list when narrow', async () => {
+    // The Activity page answers "what happened while I was away"; Memory, first in the
     // list, is empty for most tenants.
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query.includes('min-width: 768px'),
@@ -341,7 +341,7 @@ describe('the harness address', () => {
       removeEventListener: () => {},
     }));
     mount('/harness');
-    await waitFor(() => expect(address).toBe('/harness/ledger'));
+    await waitFor(() => expect(address).toBe('/harness/activity'));
   });
 
   it("reads Memory's view and turn from the address, so a turn can be linked", async () => {
@@ -359,7 +359,7 @@ describe('the harness address', () => {
 
   it.each([
     ['memory', 'Add memory'],
-    ['corpus', 'Add document'],
+    ['documents', 'Add document'],
     ['jobs', 'New job'],
     ['eval', 'New dataset'],
     ['manifests', 'Import'],
@@ -486,12 +486,12 @@ describe('the harness address', () => {
   });
 
   it('puts the agent picker only on the pages it scopes', async () => {
-    // It headed the nav, where it read as filtering the Ledger and Memory too.
+    // It headed the nav, where it read as filtering the Activity page and Memory too.
     for (const [path, scoped] of [
       ['skills', true],
       ['eval', true],
       ['agent', true],
-      ['ledger', false],
+      ['activity', false],
       ['memory', false],
       ['jobs', false],
     ] as const) {
@@ -524,7 +524,7 @@ describe('the harness address', () => {
   /**
    * Jobs' rows are read across too — name, schedule, manifest, Runs at the far
    * end — and its New job button sat ~1200px from the empty-state sentence that
-   * names it. The page holds header and rows to one measure now, like the Ledger.
+   * names it. The page holds header and rows to one measure now, like the Activity page.
    */
   it('holds Jobs to the reading measure, header and rows alike', async () => {
     mount('/harness/jobs');

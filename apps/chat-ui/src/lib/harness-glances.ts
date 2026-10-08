@@ -3,7 +3,7 @@ import { isFailure, tsToMs } from '@/components/inspector/primitives';
 /**
  * What the sidebar's glances read, apart from the pages that also read it.
  *
- * The Jobs and Ledger pages share their polls with the rail's glance under
+ * The Jobs and Activity pages share their polls with the rail's glance under
  * these keys, and the rail is in the entry chunk while the pages load with
  * `/harness`. Kept in their own module so the glance does not pull either page
  * in with it — importing `failing` from `jobs-sheet.tsx` was enough to put the
@@ -27,17 +27,17 @@ export function failing(j: { last_status?: string | null; last_error?: string | 
 export const ACTIVITY_FETCH = 60;
 
 /**
- * The rail's Ledger glance counts failures in this window, where the page counts
+ * The rail's Activity glance counts failures in this window, where the page counts
  * them over its last `ACTIVITY_FETCH` events — on a quiet tenant those span weeks,
  * and one old failure kept the rail red for all of them. The header states both
  * so the two numbers cannot read as a contradiction.
  */
-export const LEDGER_GLANCE_MS = 24 * 60 * 60 * 1000;
-export const LEDGER_GLANCE_SPAN = '24h';
+export const ACTIVITY_GLANCE_MS = 24 * 60 * 60 * 1000;
+export const ACTIVITY_GLANCE_SPAN = '24h';
 
-/** Failures in the Ledger glance's window, which ends at `now`. */
+/** Failures in the Activity page glance's window, which ends at `now`. */
 export function recentFailures(events: { status: string; ts: number }[], now: number): number {
-  const since = now - LEDGER_GLANCE_MS;
+  const since = now - ACTIVITY_GLANCE_MS;
   return events.filter((e) => isFailure(e.status) && e.ts != null && tsToMs(e.ts) >= since).length;
 }
 

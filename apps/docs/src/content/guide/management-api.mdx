@@ -109,7 +109,7 @@ no `tool` — `inbound_screening` carries `surface` (`turn` or `tool_arguments`)
 pending approvals all return a deny marker the loop records under this one name. The row's
 `payload.control` names the layer — one of `policy`, `limits`, `guardrails`, `approvals`,
 `command`, `screening` — so `GET /audit?event_type=policy_deny` filtered on it answers "every
-call approvals blocked this week" without correlating counters. The web UI's Ledger names the
+call approvals blocked this week" without correlating counters. The web UI's Activity page names the
 layer on the row and filters its window to one layer; a row from a harness that predates the
 field reads as plain `Blocked`. The Prometheus counters —
 `felix_policy_deny`, `felix_approval_required`, `felix_content_screening`,
