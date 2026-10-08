@@ -874,37 +874,44 @@ export function ThreadList({
                       )}
                     </p>
                   )}
-                  {folded && rows.length > 0 ? (
-                    // The thread on screen, kept in view from a folded group —
-                    // said, so a collapsed group holding a row is not a puzzle.
-                    <div role="group" aria-label="This thread, from Older" className="space-y-0.5">
-                      {rows.map((r) => renderRow(r, g.key))}
-                    </div>
-                  ) : g.months && g.months.length > 1 ? (
-                    g.months.map((m) => (
-                      <div
-                        key={m.key}
-                        role="group"
-                        aria-labelledby={`${labelId}-${m.key}`}
-                        className="pt-1"
-                      >
-                        <p
-                          id={`${labelId}-${m.key}`}
-                          className={cn(STICKY_LABEL, 'top-6 z-[9] pl-6 font-normal')}
+                  {folded
+                    ? // Folded draws nothing of the group but the thread on screen,
+                      // when it is one of its own — every branch below is the open
+                      // group, so none of them may be reached from here.
+                      rows.length > 0 && (
+                        // The thread on screen, kept in view from a folded group —
+                        // said, so a collapsed group holding a row is not a puzzle.
+                        <div
+                          role="group"
+                          aria-label="This thread, from Older"
+                          className="space-y-0.5"
                         >
-                          {m.label}
-                          <span className="ml-auto tabular-nums">{m.threads.length}</span>
-                        </p>
-                        <div className="space-y-0.5">
-                          {m.threads.map((thread) => renderRow({ thread }, g.key))}
+                          {rows.map((r) => renderRow(r, g.key))}
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    rows.length > 0 && (
-                      <div className="space-y-0.5">{rows.map((r) => renderRow(r, g.key))}</div>
-                    )
-                  )}
+                      )
+                    : g.months && g.months.length > 1
+                      ? g.months.map((m) => (
+                          <div
+                            key={m.key}
+                            role="group"
+                            aria-labelledby={`${labelId}-${m.key}`}
+                            className="pt-1"
+                          >
+                            <p
+                              id={`${labelId}-${m.key}`}
+                              className={cn(STICKY_LABEL, 'top-6 z-[9] pl-6 font-normal')}
+                            >
+                              {m.label}
+                              <span className="ml-auto tabular-nums">{m.threads.length}</span>
+                            </p>
+                            <div className="space-y-0.5">
+                              {m.threads.map((thread) => renderRow({ thread }, g.key))}
+                            </div>
+                          </div>
+                        ))
+                      : rows.length > 0 && (
+                          <div className="space-y-0.5">{rows.map((r) => renderRow(r, g.key))}</div>
+                        )}
                 </div>
               );
             })
