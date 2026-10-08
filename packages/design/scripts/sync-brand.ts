@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MARK_INK, MARK_PAD, MARK_TILE, MARK_TOES, markSvg } from '../src/mark';
+import { MARK_INK, MARK_PAD_PATH, MARK_TILE, MARK_TOES, markSvg } from '../src/mark';
 import { DARK } from '../src/tokens';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -130,7 +130,7 @@ function socialCard(): string {
   <g transform="translate(${x} ${y}) scale(${k})">
     <rect width="${MARK_TILE.size}" height="${MARK_TILE.size}" rx="${MARK_TILE.radius}" fill="${MARK_INK.tile}" stroke="#262626" stroke-width="${1.5 / k}"/>
     ${MARK_TOES.map((t) => `<circle cx="${t.cx}" cy="${t.cy}" r="${t.r}" fill="${MARK_INK.glyph}"/>`).join('')}
-    <ellipse cx="${MARK_PAD.cx}" cy="${MARK_PAD.cy}" rx="${MARK_PAD.rx}" ry="${MARK_PAD.ry}" fill="${MARK_INK.glyph}"/>
+    <path d="${MARK_PAD_PATH}" fill="${MARK_INK.glyph}"/>
   </g>
   <text x="${x - 4}" y="410" font-family="${sans}" font-size="88" font-weight="600" letter-spacing="6" fill="#ffffff">FELIX</text>
   <text x="${x}" y="470" font-family="${sans}" font-size="32" fill="#d4d4d4">The operator's manual for a self-hosted agent harness.</text>
