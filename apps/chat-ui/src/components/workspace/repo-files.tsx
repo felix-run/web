@@ -101,7 +101,7 @@ export function RepoFileTree({ listing }: { listing: ThreadRepoFiles }) {
         aria-label="Repository files"
         expanded={expanded}
         onExpandedChange={setExpanded}
-        className="max-h-64 overflow-y-auto rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
+        className="rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
       >
         {render(tree)}
       </FileTree>

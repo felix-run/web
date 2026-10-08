@@ -384,12 +384,15 @@ the header rather than fixed to the viewport; and there is no `Mod+B`, because C
 sidebar. The binding is `Mod+\`, and `Mod+K` lands in the thread search. Both work on `/harness`
 too.
 
-**The thread list scrolls inside itself** (2026-10-07). It is `shrink!` in the
-sidebar's one scroller, and its rows sit in their own `overflow-y-auto` under a heading and search
-that do not scroll. The section's floor is 40% of the viewport (12rem at least) capped at its
-natural height, which a `ResizeObserver` passes in as `--thread-list-h` — a bare floor held empty
-space under a short list, and `calc-size()` is not in Safari — before, an opened Older pushed the workspace and the harness's pages fifty rows
-down. The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
+**The sidebar has two scroll regions, one above the other, and does not scroll as a whole**
+(2026-10-08). The thread list is `flex-1 min-h-0` and scrolls its own rows under a heading and
+search that do not scroll; the workspace and the harness's pages are one region below it
+(`data-slot="sidebar-lower"`), `max-h-[40svh]` with its own `overflow-y-auto`; and the expanded
+`SidebarContent` is `overflow-y-hidden`. Before the list scrolled at all, an opened Older pushed the
+workspace and the harness's pages fifty rows down. Then the list scrolled but the sidebar did too,
+and on production a mounted folder's file tree — itself a third scroller — put three scrollbars
+side by side, left the list eight rows and pushed the harness's pages off the bottom. The file
+trees no longer scroll on their own for the same reason: they sit inside the lower region's scroll. The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
 Shift+F10 or a right click for the menu, Delete with the toast's undo); Delete lives in the menu,
 not as a one-click icon beside it. **A thread with a run going or something waiting asks before it
 is deleted** — inline, *Stop and delete* / *Keep* — because the abort is immediate and Undo restores

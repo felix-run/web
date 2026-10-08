@@ -294,13 +294,28 @@ describe('the sidebar', () => {
     mountSidebar();
     const section = document.querySelector('[data-slot="thread-list"]') as HTMLElement;
     expect(section.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(['shrink!', 'min-h-[min(var(--thread-list-h),max(12rem,40svh))]']),
+      expect.arrayContaining(['shrink!', 'flex-1', 'min-h-0']),
     );
     const scroller = section.querySelector('[data-slot="thread-scroll"]') as HTMLElement;
     expect(scroller.className).toContain('overflow-y-auto');
     expect(scroller.contains(screen.getByRole('searchbox', { name: 'Search threads' }))).toBe(
       false,
     );
+  });
+
+  // The workspace and the harness's pages are one region with one scroll, and
+  // the sidebar does not scroll as a whole: with a mounted folder, three
+  // scrollbars stood side by side and the harness's pages went off the bottom.
+  it('scrolls the workspace and the harness as one region, and the sidebar not at all', () => {
+    mountSidebar();
+    const lower = document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement;
+    expect(lower.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['max-h-[40svh]', 'overflow-y-auto']),
+    );
+    expect(lower.querySelector('[data-slot="workspace-section"]')).toBeTruthy();
+    expect(lower.querySelector('nav[aria-label="Harness"]')).toBeTruthy();
+    const content = lower.closest('[data-sidebar="content"]') as HTMLElement;
+    expect(content.className).toContain('overflow-y-hidden');
   });
 });
 

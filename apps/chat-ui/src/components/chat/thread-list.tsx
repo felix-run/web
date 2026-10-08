@@ -21,14 +21,11 @@ import {
   Trash2Icon,
 } from 'lucide-react';
 import {
-  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
   type Ref,
-  useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -113,8 +110,8 @@ type Row = { thread: ThreadMeta; excerpt?: string };
  * **The list scrolls inside itself.** The sidebar's other sections — the
  * workspace and the harness's pages — sit below it, and with the list in the
  * sidebar's one scroller an opened Older pushed them fifty rows down. The section
- * shrinks to the room they leave (never below 40% of the viewport, unless it is
- * shorter than that), so they stay in reach whatever the list holds; the heading and search stay above the scroll.
+ * takes the room they leave — they are one region of their own, capped at 40% of the
+ * viewport — so they stay in reach whatever the list holds; the heading and search stay above the scroll.
  *
  * One noun: **thread**. This list was headed "History", searched "sessions" and
  * deleted "conversations" while its trigger said "Threads" — four names for the
@@ -227,29 +224,6 @@ export function ThreadList({
   /** The row that holds the list's one Tab stop, once the reader has moved it. */
   const [activeId, setActiveId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
-  /**
-   * The section's natural height — heading, search and every row drawn — which
-   * caps its floor (see the section's class).
-   */
-  const headRef = useRef<HTMLDivElement | null>(null);
-  const listContentRef = useRef<HTMLDivElement | null>(null);
-  const [naturalHeight, setNaturalHeight] = useState(0);
-  const measureNatural = useCallback(() => {
-    const head = headRef.current;
-    const list = listContentRef.current;
-    // 10px: the scroller's own vertical padding, around the rows.
-    if (head && list) setNaturalHeight(Math.ceil(head.offsetHeight + list.offsetHeight) + 10);
-  }, []);
-  // Anything else that resizes it — a font loading, the sidebar's width.
-  useEffect(() => {
-    const head = headRef.current;
-    const list = listContentRef.current;
-    if (!head || !list || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measureNatural);
-    observer.observe(head);
-    observer.observe(list);
-    return () => observer.disconnect();
-  }, [measureNatural]);
 
   const [hits, setHits] = useState<
     Array<{ thread_id: string; content: string; event_id?: string }>
@@ -376,17 +350,6 @@ export function ThreadList({
       : order.includes(currentId)
         ? currentId
         : order[0];
-
-  // Before paint, whenever the rows drawn change: a ResizeObserver reports a
-  // frame later, and a page the browser is not rendering (a background tab)
-  // gets no report at all until it is.
-  useLayoutEffect(measureNatural, [
-    measureNatural,
-    order.length,
-    filtering,
-    searching,
-    searchFailed,
-  ]);
 
   const rowButtons = () =>
     Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-thread-row]') ?? []);
@@ -746,21 +709,12 @@ export function ThreadList({
     <section
       aria-labelledby="history-heading"
       data-slot="thread-list"
-      // Shrinks to what the sections below leave, so they stay in reach, but
-      // keeps at least 40% of the viewport (12rem at the least) — at 12rem
-      // alone a phone's drawer kept two rows and gave the rest to the harness's
-      // pages — and never more than it has rows for, or a short list would
-      // hold empty space above the workspace. CSS has no portable "floor, up to
-      // the content" (`calc-size` is not in Safari), so the natural height
-      // comes in as `--thread-list-h`. Past the floor the sidebar scrolls as a
-      // whole. `shrink!` beats the sidebar's `*:shrink-0`.
-      style={{ '--thread-list-h': `${naturalHeight}px` } as CSSProperties}
-      className={cn(
-        'flex min-h-[min(var(--thread-list-h),max(12rem,40svh))] shrink! flex-col',
-        className,
-      )}
+      // Takes whatever height the sidebar's lower region (the workspace and the
+      // harness's pages, capped at 40% of the viewport) leaves, and scrolls its
+      // own rows inside that. `shrink!` beats the sidebar's `*:shrink-0`.
+      className={cn('flex min-h-0 flex-1 shrink! flex-col', className)}
     >
-      <div ref={headRef} className="shrink-0 px-2 pt-1 pb-2">
+      <div className="shrink-0 px-2 pt-1 pb-2">
         <div className="flex h-7 items-center px-2">
           <h2 id="history-heading" className="text-xs font-medium text-muted-foreground">
             Threads
@@ -811,7 +765,7 @@ export function ThreadList({
         // touch inside a list inside a scrolling drawer.
         className="min-h-0 flex-1 scroll-fade-b overflow-y-auto px-2 pt-0.5 pb-2"
       >
-        <div ref={listContentRef}>
+        <div>
           {count === 0 && (filtering || threads.length === 0) && (
             <div className="px-2 py-6 text-center">
               <p className="text-sm text-muted-foreground">

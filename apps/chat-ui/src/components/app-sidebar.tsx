@@ -197,7 +197,13 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent>
+      {/* Expanded, the content does not scroll as a whole: the thread list takes
+          the height the lower region leaves and scrolls its own rows, and the
+          lower region — the workspace and the harness's pages — scrolls as one
+          below it, capped at 40% of the viewport. When the sidebar scrolled too,
+          a mounted folder's file tree put three scrollbars side by side and
+          pushed the harness's pages off the bottom. */}
+      <SidebarContent className={cn(!collapsed && 'overflow-y-hidden')}>
         {!collapsed && (
           <>
             <ThreadList
@@ -225,11 +231,17 @@ export function AppSidebar() {
               readOnlyId={watching ? threadId : undefined}
             />
             <SidebarSeparator />
-            <WorkspaceSection />
-            <SidebarSeparator />
+            <div
+              data-slot="sidebar-lower"
+              className="flex max-h-[40svh] flex-col gap-1 overflow-y-auto overscroll-contain"
+            >
+              <WorkspaceSection />
+              <SidebarSeparator />
+              <HarnessGroup collapsed={false} onNavigate={done} />
+            </div>
           </>
         )}
-        <HarnessGroup collapsed={collapsed} onNavigate={done} />
+        {collapsed && <HarnessGroup collapsed onNavigate={done} />}
       </SidebarContent>
     </Sidebar>
   );
