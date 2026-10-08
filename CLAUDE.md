@@ -298,11 +298,22 @@ its **exclusive lease** through the pool's own `attach` until the run ends (the 
 effect detaches on the switch as before); the approvals poll and the liveness check run over
 **every** live engine, and presence counts them all, so a background run still reads *working* —
 or *blocked* — in the title; a background run's approval or question stays on its own engine and
-never reaches the foreground banner (the attention line still lists its `/approvals` row tenant-wide);
-a send that fails after its thread was left goes back into **that thread's** queue, paused, not
-into the composer on screen; **Stop** still stops, and **deleting** a thread aborts a run on it
-wherever it is. The shell exposes the set as `runningThreads` on the shell context, foreground
-included. `tests/run-survives-thread-switch.test.tsx` pins it at the wire.
+never reaches the foreground banner. Its approval still shows in the attention line through the
+tenant-wide `/approvals` row. A **question** never appears in `/approvals`, so the pool reports
+open questions per thread and the shell passes the other threads' ones to the attention line as
+`elsewhereQuestions`. The line then goes amber, says *on another thread* (never *on this
+thread*) and links **Answer it** to that thread. A background engine adopts only `/approvals`
+rows that **name its thread** (`syncApprovals({ attributedOnly: true })`); an unattributed row
+stays the foreground's alone, or every live engine would hold a card for it. The gap **before**
+a run starts counts too: an image upload or a regenerate's history reset can take seconds, and
+switching threads then used to prune the engine the message was about to run on and release its
+lease. `holdThread` pins both until the send is under way, and `streamInto` runs on the pool's
+engine for the thread the message was written on, marking *that* thread sent rather than the one
+on screen. A send that fails after its thread was left goes back into **that thread's** queue,
+paused, not into the composer on screen. Returning to a live run keeps its own start time in
+the run clock. **Stop** still stops, and **deleting** a thread aborts a run on it wherever it
+is. The shell context exposes `runningThreads` (foreground included) and `blockedThreads`.
+`tests/run-survives-thread-switch.test.tsx` pins it at the wire.
 
 **The address is the thread.** `/` mints a thread and *replaces* itself with `/t/:threadSuffix`, so
 a thread is linkable the moment it exists and a reload resumes it; the URL carries the suffix alone,
@@ -1183,7 +1194,9 @@ as long as the harness answered the route with 429. The resting dot is neutral, 
 It also counts **an agent's question** (`ask_user` → `ui_request`), which blocks the run as an
 approval does but never appears in `/approvals`: the line said "Working. Nothing waiting on you."
 under a `blocked` header while a live run waited on an answer. The engine's `uiPrompt` is passed in
-as `question`, so the line goes amber and, off the workbench, links back with "Answer it". The tab
+as `question`, so the line goes amber and, off the workbench, links back with "Answer it"; a
+question open on a run left going on another thread arrives as `elsewhereQuestions` and always
+links to its own thread. The tab
 title and notification say "Waiting on you" rather than "Approve" for the same reason, matched in
 the TUI's `attention.ts`.
 

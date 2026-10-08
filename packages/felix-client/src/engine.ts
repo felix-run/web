@@ -161,8 +161,11 @@ export interface ChatEngine {
    * Adopt any approval `GET /approvals` is holding that is not already on
    * screen. Safe to call on a timer: ids stay remembered, so an answered
    * approval cannot come back if the server briefly still lists it as pending.
+   * `attributedOnly` leaves rows naming no thread alone — for a run the client
+   * keeps going off screen, so an unattributed approval is not adopted by every
+   * engine at once (see `ApprovalSyncOptions.attributedOnly`).
    */
-  syncApprovals(): Promise<void>;
+  syncApprovals(opts?: { attributedOnly?: boolean }): Promise<void>;
   /** Drop the approval at the head of the queue, once decided. */
   shiftApproval(): void;
   clearUiPrompt(): void;
@@ -1009,7 +1012,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       stream.abort.abort(new Error('stream stalled'));
       return true;
     },
-    async syncApprovals() {
+    async syncApprovals(opts = {}) {
       // Taken before the request, so an approval a frame queues while it is in
       // flight is not judged against a list read before its row existed.
       const queued = new Set(state.approvals.map((pending) => pending.approvalId));
@@ -1023,6 +1026,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       const result = await syncApprovals({
         listPending: () => ports.client.listApprovals('pending'),
         threadId,
+        ...(opts.attributedOnly ? { attributedOnly: true } : {}),
         seen: scratch,
         readForDiff: ports.clientTools?.readForDiff?.bind(ports.clientTools),
       });

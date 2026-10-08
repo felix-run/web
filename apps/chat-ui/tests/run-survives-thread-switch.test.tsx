@@ -1,13 +1,21 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { ThemeProvider } from '../src/components/theme-provider';
+import { uploadImages } from '../src/lib/image-upload';
 import { loadTurns } from '../src/lib/threads';
-import type { Turn } from '../src/types';
+import type { ImageAttachment, Turn } from '../src/types';
+
+// The upload is the window under test: held open by the test, so the operator
+// can switch threads between the click and the run starting.
+vi.mock('../src/lib/image-upload', async (original) => ({
+  ...(await original<typeof import('../src/lib/image-upload')>()),
+  uploadImages: vi.fn(),
+}));
 
 /**
  * Leaving a thread does not stop its run.
@@ -155,6 +163,8 @@ beforeEach(() => {
   sessionStorage.clear();
 });
 afterEach(() => {
+  // Unmounted, so this file's holds on the module-scoped lease keeper go with it.
+  cleanup();
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
@@ -269,5 +279,81 @@ describe('a run when the operator switches threads', () => {
       expect(net.posted('/chat/abort').map((c) => c.body.thread_id)).toEqual(['thread-a']),
     );
     expect(streamA.aborted).toBe(true);
+  });
+
+  /**
+   * The window between the click and the run: an image upload. Switching
+   * threads there used to prune the engine the message was about to run on, so
+   * the run went out on an orphan nothing tracked — and `markSent` read the
+   * thread on screen, filing the freshly minted one as a session on the harness.
+   */
+  it('starts on its own, tracked engine when the operator leaves during the upload', async () => {
+    const net = stubFetch();
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }),
+    );
+    let finishUpload!: (refs: ImageAttachment[]) => void;
+    vi.mocked(uploadImages).mockImplementation(
+      () =>
+        new Promise<ImageAttachment[]>((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    mount('/t/thread-up');
+
+    const user = userEvent.setup({ delay: null });
+    const input = await waitFor(() => {
+      const el = document.querySelector<HTMLInputElement>('input[type="file"]');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    await act(async () => {
+      await user.upload(input, new File(['x'], 'shot.png', { type: 'image/png' }));
+    });
+    await type('with image');
+    await waitFor(() => expect(uploadImages).toHaveBeenCalledTimes(1));
+
+    // Leave for a brand-new thread while the upload is still on the wire.
+    const fresh = await waitFor(() => {
+      const b = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+        (el) => el.textContent?.trim() === 'New chat' && !el.disabled,
+      );
+      expect(b).toBeTruthy();
+      return b!;
+    });
+    await act(async () => void (await user.click(fresh)));
+    await waitFor(() => expect(address).toMatch(/^\/t\/[0-9a-f-]{36}$/));
+    const minted = address.replace('/t/', '');
+
+    await act(async () => finishUpload([{ url: 'felix-file://f1', media_type: 'image/png' }]));
+    await waitFor(() => expect(net.streams).toHaveLength(1));
+    expect(net.posted('/chat/stream')[0]!.body).toMatchObject({ thread_id: 'thread-up' });
+    const streamA = net.streams[0]!;
+
+    // Tracked: its client tool is answered for A, and A's lease is held to the end.
+    await act(async () =>
+      streamA.frame('tool_request', { id: 'call-up', name: 'list_files', args: {} }),
+    );
+    await waitFor(() => expect(net.posted('/chat/tool_result')).toHaveLength(1));
+    expect(net.posted('/chat/tool_result')[0]!.body).toMatchObject({ thread_id: 'thread-up' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(releasesOf(net, 'thread-up')).toHaveLength(0);
+
+    await act(async () => streamA.finish('saw the image'));
+    await waitFor(() =>
+      expect(loadTurns('thread-up').some((t) => t.content.includes('saw the image'))).toBe(true),
+    );
+    await waitFor(() => expect(releasesOf(net, 'thread-up')).toHaveLength(1));
+
+    // Nothing asked the harness about the minted thread: it was never sent to.
+    const touched = net.calls.filter((c) => `${c.url} ${JSON.stringify(c.body)}`.includes(minted));
+    expect(touched).toEqual([]);
+
+    // And A shows the run on return.
+    await open('with image');
+    await waitFor(() => expect(address).toBe('/t/thread-up'));
+    await waitFor(() => expect(document.body.textContent).toContain('saw the image'));
+    expect(net.posted('/chat/abort')).toHaveLength(0);
   });
 });

@@ -25,6 +25,12 @@ export interface PoolRuns {
   running: ReadonlySet<string>;
   /** An approval or an agent's question is open on the thread's engine. */
   blocked: ReadonlySet<string>;
+  /**
+   * The agents' questions (`ask_user` → `ui_request`) open on any engine, by
+   * thread. A question never appears in `/approvals`, so for a run in the
+   * background this is the only record of it a surface can read.
+   */
+  questions: ReadonlyArray<{ threadId: string; prompt: string }>;
 }
 
 export interface EnginePoolOptions {
@@ -45,8 +51,20 @@ export interface EnginePool {
   peek(threadId: string): ChatEngine | undefined;
   /** Forget `threadId`'s engine. Does not abort it — a caller stopping a run does that. */
   drop(threadId: string): void;
-  /** Drop every engine but `keep`'s that has no run in flight. */
+  /**
+   * Drop every engine but `keep`'s that has no run in flight and is not pinned.
+   * `keep` is remembered as the foreground, which `pin`'s release consults.
+   */
   prune(keep: string): void;
+  /**
+   * Keep `threadId`'s engine through a prune while a send is on its way — an
+   * image upload, a regenerate's history reset — and has not started streaming
+   * yet. Without it, switching threads in that window dropped the engine, and
+   * the send then ran on an orphan nothing tracked: no lease, no polls, no cache.
+   * The returned release is idempotent; once it runs, an engine that is neither
+   * streaming nor in the foreground goes.
+   */
+  pin(threadId: string): () => void;
   /** Every engine with a run in flight, foreground included. */
   live(): ChatEngine[];
   runs(): PoolRuns;
@@ -59,24 +77,33 @@ interface Entry {
   streaming: boolean;
   blocked: boolean;
   turns: ChatEngine['state']['turns'];
+  question: string | null;
+  pins: number;
   release: (() => void) | null;
 }
 
-const NONE: PoolRuns = Object.freeze({ running: new Set<string>(), blocked: new Set<string>() });
+const NONE: PoolRuns = Object.freeze({
+  running: new Set<string>(),
+  blocked: new Set<string>(),
+  questions: [],
+});
 
 export function createEnginePool(options: EnginePoolOptions): EnginePool {
   const entries = new Map<string, Entry>();
   const listeners = new Set<() => void>();
   let snapshot: PoolRuns = NONE;
+  let foreground: string | null = null;
 
   const publish = () => {
     const running = new Set<string>();
     const blocked = new Set<string>();
+    const questions: { threadId: string; prompt: string }[] = [];
     for (const [id, entry] of entries) {
       if (entry.streaming) running.add(id);
       if (entry.blocked) blocked.add(id);
+      if (entry.question != null) questions.push({ threadId: id, prompt: entry.question });
     }
-    snapshot = running.size || blocked.size ? { running, blocked } : NONE;
+    snapshot = running.size || blocked.size ? { running, blocked, questions } : NONE;
     for (const listener of listeners) listener();
   };
 
@@ -89,8 +116,10 @@ export function createEnginePool(options: EnginePoolOptions): EnginePool {
     // The entry may have been dropped by the callback above.
     if (entries.get(threadId) !== entry) return;
     const blocked = s.approvals.length > 0 || s.uiPrompt != null;
-    let changed = blocked !== entry.blocked;
+    const question = s.uiPrompt?.prompt ?? null;
+    let changed = blocked !== entry.blocked || question !== entry.question;
     entry.blocked = blocked;
+    entry.question = question;
     if (s.streaming !== entry.streaming) {
       changed = true;
       entry.streaming = s.streaming;
@@ -128,6 +157,8 @@ export function createEnginePool(options: EnginePoolOptions): EnginePool {
         streaming: engine.state.streaming,
         blocked: false,
         turns: engine.state.turns,
+        question: null,
+        pins: 0,
         release: null,
       };
       entry.unsubscribe = engine.subscribe(() => observe(threadId, entry));
@@ -139,9 +170,29 @@ export function createEnginePool(options: EnginePoolOptions): EnginePool {
     },
     drop,
     prune(keep) {
+      foreground = keep;
       for (const [id, entry] of [...entries]) {
-        if (id !== keep && !entry.streaming) drop(id);
+        if (id !== keep && !entry.streaming && entry.pins === 0) drop(id);
       }
+    },
+    pin(threadId) {
+      const entry = entries.get(threadId);
+      if (!entry) return () => {};
+      entry.pins += 1;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        entry.pins -= 1;
+        if (
+          entries.get(threadId) === entry &&
+          entry.pins === 0 &&
+          !entry.streaming &&
+          threadId !== foreground
+        ) {
+          drop(threadId);
+        }
+      };
     },
     live() {
       return [...entries.values()].filter((e) => e.streaming).map((e) => e.engine);

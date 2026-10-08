@@ -74,6 +74,13 @@ export interface ShellValue {
    */
   runningThreads: ReadonlySet<string>;
   /**
+   * Threads whose engine in this tab holds an open approval or an agent's
+   * question — including a run kept going in the background. Narrower than the
+   * `/approvals` poll (only what this tab's engines adopted) but the only record
+   * of a question, which `/approvals` never lists.
+   */
+  blockedThreads: ReadonlySet<string>;
+  /**
    * Another client drives this thread and this tab holds only an observer lease:
    * the composer and every driving action are read-only until the keeper takes
    * the thread over, which it does on its own once the thread is free.

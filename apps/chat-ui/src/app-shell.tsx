@@ -1,6 +1,7 @@
 import {
   type BranchPoint,
   branchPoints,
+  type ChatEngine,
   createChatEngine,
   eventsToTurns,
   type ManifestEntry,
@@ -383,6 +384,12 @@ export function AppShell() {
    * mirrored below; the ports are the three things only a browser can do.
    */
   const poolRef = useRef<EnginePool | null>(null);
+  /**
+   * When each thread's current or last run started, as this tab saw it. Kept per
+   * thread so returning to a run still going reads its real elapsed time rather
+   * than starting the clock again at the moment of return.
+   */
+  const runStartsRef = useRef(new Map<string, number>());
   if (!poolRef.current) {
     poolRef.current = createEnginePool({
       // Bound to `id` for the engine's whole life, never to "the thread on
@@ -425,16 +432,18 @@ export function AppShell() {
       // A run keeps its thread's exclusive lease until it settles, whether or
       // not the thread is still on screen. The foreground hold is taken by the
       // effect below as before; this second reference is what outlives it.
-      onRunStart: (id) => sessionLeases.attach(id),
+      onRunStart: (id) => {
+        runStartsRef.current.set(id, Date.now());
+        return sessionLeases.attach(id);
+      },
       onRunEnd: (id) => {
         if (id === threadIdRef.current) return;
         // A run that finished after the operator left: nothing keeps its engine
-        // now. Dropped a task later, so the send's own `.then` — which can still
-        // rewrite the transcript on a failed outcome — lands before it goes.
-        window.setTimeout(() => {
-          const pool = poolRef.current;
-          if (id !== threadIdRef.current && !pool?.peek(id)?.state.streaming) pool?.drop(id);
-        }, 0);
+        // now. Pruned a task later, so the send's own `.then` — which can still
+        // rewrite the transcript on a failed outcome — lands before it goes, and
+        // through `prune` so a send still on its way to that thread (a pin)
+        // keeps it.
+        window.setTimeout(() => poolRef.current?.prune(threadIdRef.current), 0);
       },
       // The foreground thread is persisted by the effect below; a run in the
       // background has nobody rendering it, so it writes its own cache.
@@ -806,6 +815,30 @@ export function AppShell() {
   }, [pool, threadId]);
 
   /**
+   * Hold a thread through the gap before its run starts — an image upload, a
+   * regenerate's history reset — so leaving it meanwhile neither drops its
+   * engine (the run would start on an orphan nothing tracks) nor lets go of its
+   * lease (the run would start unleased while the pool re-acquired one). Once
+   * the run is streaming the pool holds both itself. Idempotent release.
+   */
+  const holdThread = useCallback(
+    (id: string) => {
+      const unpin = pool.pin(id);
+      // A thread nothing has been sent to is not leased yet, and must not be:
+      // asking about it is what files it on the harness (`unsentRef`).
+      const unlease = unsentRef.current.has(id) ? () => {} : sessionLeases.attach(id);
+      let done = false;
+      return () => {
+        if (done) return;
+        done = true;
+        unlease();
+        unpin();
+      };
+    },
+    [pool],
+  );
+
+  /**
    * Leaving a thread does not stop its run. It used to — both of these called
    * `stopRun` first, so clicking another conversation in the sidebar posted
    * `/chat/abort` on the one that was working — and merely hanging up would be
@@ -999,10 +1032,18 @@ export function AppShell() {
       mode: 'stream' | 'background' = 'stream',
       idempotencyKey?: string,
     ) => {
-      setLeftApp(false);
-      setDropped(false);
-      markSent(threadIdRef.current);
-      return engine.send({
+      // The thread this closure was built for is the one the message was
+      // written on — not necessarily the one showing, since an upload or a
+      // history reset can sit between the click and this call while the
+      // operator moves on. Everything below is that thread's: marking the new
+      // thread sent would file it as an empty session on the harness.
+      if (threadIdRef.current === threadId) {
+        setLeftApp(false);
+        setDropped(false);
+      }
+      markSent(threadId);
+      // The pool's engine for that thread, which the caller's pin kept there.
+      return pool.get(threadId).send({
         manifest,
         messages: messagesToSend,
         assistantId,
@@ -1010,7 +1051,7 @@ export function AppShell() {
         ...(idempotencyKey ? { idempotencyKey } : {}),
       });
     },
-    [engine, manifest, markSent],
+    [pool, threadId, manifest, markSent],
   );
 
   const pending = pendingQueue[0] ?? null;
@@ -1047,15 +1088,25 @@ export function AppShell() {
    */
   const [runClock, setRunClock] = useState<RunClock>(NO_RUN);
   useEffect(() => {
-    if (streaming) setRunClock({ startedAt: Date.now(), endedAt: null });
-    else
+    if (streaming) {
+      setRunClock({
+        startedAt: runStartsRef.current.get(threadIdRef.current) ?? Date.now(),
+        endedAt: null,
+      });
+    } else
       setRunClock((c) =>
         c.startedAt !== null && c.endedAt === null ? { ...c, endedAt: Date.now() } : c,
       );
   }, [streaming]);
+  // A thread switch forgets the clock — unless the thread arrived at has a run
+  // still going (one left running in the background), which keeps its own start.
   useEffect(() => {
-    setRunClock((c) => (c.startedAt === null ? c : NO_RUN));
-  }, [threadId]);
+    if (pool.peek(threadId)?.state.streaming) {
+      setRunClock({ startedAt: runStartsRef.current.get(threadId) ?? Date.now(), endedAt: null });
+    } else {
+      setRunClock((c) => (c.startedAt === null ? c : NO_RUN));
+    }
+  }, [pool, threadId]);
 
   // Deliberately bare: `ApprovalDecision` owns the in-flight guard and both
   // toasts, so this does the work and lets a failure propagate to it.
@@ -1144,13 +1195,26 @@ export function AppShell() {
   // the background blocks on an approval the same way, and its engine is what
   // prunes one decided elsewhere (the attention line, another tab).
   const anyRunning = poolRuns.running.size > 0;
+  /**
+   * The thread on screen adopts unattributed approvals, as it always has; a run
+   * kept going in the background adopts only rows naming its own thread. An
+   * unattributed row would otherwise land on every live engine at once, and
+   * deciding it from one banner left the others holding a stale card.
+   */
+  const syncLive = useCallback(
+    (live: ChatEngine) =>
+      live === pool.peek(threadIdRef.current)
+        ? live.syncApprovals()
+        : live.syncApprovals({ attributedOnly: true }),
+    [pool],
+  );
   useEffect(() => {
     if (!anyRunning) return;
     const timer = window.setInterval(() => {
-      for (const live of pool.live()) void live.syncApprovals();
+      for (const live of pool.live()) void syncLive(live);
     }, APPROVAL_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [anyRunning, pool]);
+  }, [anyRunning, pool, syncLive]);
 
   /**
    * Re-ask once the head approval's deadline has passed.
@@ -1205,7 +1269,7 @@ export function AppShell() {
         for (const live of pool.live()) live.checkLiveness();
         refreshTenantApprovals.current();
         void engine.syncApprovals();
-        for (const live of pool.live()) if (live !== engine) void live.syncApprovals();
+        for (const live of pool.live()) if (live !== engine) void syncLive(live);
         if (
           hiddenForMs > 0 &&
           !engine.state.streaming &&
@@ -1214,7 +1278,7 @@ export function AppShell() {
           void hydrateIfAhead(threadIdRef.current);
         }
       }),
-    [engine, pool, hydrateIfAhead],
+    [engine, pool, syncLive, hydrateIfAhead],
   );
 
   /**
@@ -1422,8 +1486,17 @@ export function AppShell() {
     // Reset the server log first so the replayed history isn't double-counted,
     // then stream. Best-effort: an anonymous prod caller can't reset history,
     // but the local transcript stays the source of truth either way.
-    void deleteThreadHistory(threadId).then(() => streamInto(messagesToSend, assistantId));
-  }, [engine, streaming, turns, threadId, streamInto]);
+    // Pinned through the reset: switching threads while it is on the wire must
+    // not drop the engine the run is about to start on.
+    const unpin = holdThread(threadId);
+    void deleteThreadHistory(threadId)
+      .then(() => {
+        const run = streamInto(messagesToSend, assistantId);
+        unpin();
+        return run;
+      })
+      .catch(unpin);
+  }, [engine, streaming, turns, threadId, streamInto, holdThread]);
 
   // Clear the current conversation in place (keeps the thread id; best-effort
   // server reset). Distinct from "New thread" which mints a fresh id.
@@ -1970,67 +2043,79 @@ export function AppShell() {
         unsettled.current.delete(key);
         key = crypto.randomUUID();
       }
-      const images = message.files.filter((f) => f.mediaType.startsWith('image/'));
-      let attachments: ImageAttachment[] = resend?.attachments ?? [];
-      if (images.length && !streaming && !resend) {
-        const pending = toast.loading(
-          images.length === 1 ? 'Uploading the image…' : `Uploading ${images.length} images…`,
-        );
-        try {
-          attachments = await uploadImages(images);
-        } catch (err) {
-          if (err instanceof ImageUploadError) {
-            toastProblem(
-              `${err.message} Your message is still in the composer.`,
-              err.detail ? { detail: err.detail } : {},
-            );
-          } else {
-            toastError(err, 'upload the image');
+      const sendWritten = async () => {
+        const images = message.files.filter((f) => f.mediaType.startsWith('image/'));
+        let attachments: ImageAttachment[] = resend?.attachments ?? [];
+        if (images.length && !streaming && !resend) {
+          const pending = toast.loading(
+            images.length === 1 ? 'Uploading the image…' : `Uploading ${images.length} images…`,
+          );
+          try {
+            attachments = await uploadImages(images);
+          } catch (err) {
+            if (err instanceof ImageUploadError) {
+              toastProblem(
+                `${err.message} Your message is still in the composer.`,
+                err.detail ? { detail: err.detail } : {},
+              );
+            } else {
+              toastError(err, 'upload the image');
+            }
+            throw err;
+          } finally {
+            toast.dismiss(pending);
           }
-          throw err;
-        } finally {
-          toast.dismiss(pending);
         }
-      }
-      // Resolving clears the composer, and it must, before the run is known to
-      // have been taken: a reply streams for minutes. So the message is held
-      // here instead, until the harness either starts the run or refuses it.
-      const sent = { text: message.text, files: message.files, key };
-      // A run can now end after the operator has left its thread. A message it
-      // hands back then belongs to that thread, not to the composer on screen:
-      // it goes back into that thread's own queue, paused, where returning to
-      // the thread finds it. (A caller with its own `onKept` — the drain —
-      // already puts it back where it came from.)
-      const sentOn = threadId;
-      const giveBack = (m: KeyedMessage, reason: KeptReason) => {
-        if (onKept !== keepRefused || threadIdRef.current === sentOn) {
-          onKept(m, reason);
-          return;
-        }
-        queue.enqueue({ text: m.text, files: m.files, ...(m.key ? { key: m.key } : {}) });
-        queue.setPaused(true);
-        toast.message('A message on another conversation was not sent. It is queued there.');
+        // Resolving clears the composer, and it must, before the run is known to
+        // have been taken: a reply streams for minutes. So the message is held
+        // here instead, until the harness either starts the run or refuses it.
+        const sent = { text: message.text, files: message.files, key };
+        // A run can now end after the operator has left its thread. A message it
+        // hands back then belongs to that thread, not to the composer on screen:
+        // it goes back into that thread's own queue, paused, where returning to
+        // the thread finds it. (A caller with its own `onKept` — the drain —
+        // already puts it back where it came from.)
+        const sentOn = threadId;
+        const giveBack = (m: KeyedMessage, reason: KeptReason) => {
+          if (onKept !== keepRefused || threadIdRef.current === sentOn) {
+            onKept(m, reason);
+            return;
+          }
+          queue.enqueue({ text: m.text, files: m.files, ...(m.key ? { key: m.key } : {}) });
+          queue.setPaused(true);
+          toast.message('A message on another conversation was not sent. It is queued there.');
+        };
+        void send(message.text, attachments, mode, key)?.then((outcome) => {
+          if (outcome === 'done') unsettled.current.delete(key);
+          else if (outcome === 'lease_refused') giveBack(sent, 'lease');
+          else if (outcome === 'failed') {
+            unsettled.current.set(key, {
+              threadId,
+              manifest,
+              text: message.text,
+              fileUrls: message.files.map((f) => f.url),
+              attachments,
+            });
+            giveBack(sent, 'failed');
+          } else {
+            // The harness will never send this body under this key.
+            unsettled.current.delete(key);
+            giveBack({ text: message.text, files: message.files }, 'key_reused');
+          }
+        });
       };
-      void send(message.text, attachments, mode, key)?.then((outcome) => {
-        if (outcome === 'done') unsettled.current.delete(key);
-        else if (outcome === 'lease_refused') giveBack(sent, 'lease');
-        else if (outcome === 'failed') {
-          unsettled.current.set(key, {
-            threadId,
-            manifest,
-            text: message.text,
-            fileUrls: message.files.map((f) => f.url),
-            attachments,
-          });
-          giveBack(sent, 'failed');
-        } else {
-          // The harness will never send this body under this key.
-          unsettled.current.delete(key);
-          giveBack({ text: message.text, files: message.files }, 'key_reused');
-        }
-      });
+      // Held in the pool until the run is under way: the upload above can take
+      // seconds, and switching threads meanwhile must not drop the engine the
+      // message is about to run on, or its lease (`holdThread`). Released on every exit,
+      // after `send` has either started streaming or declined.
+      const unpin = holdThread(threadId);
+      try {
+        await sendWritten();
+      } finally {
+        unpin();
+      }
     },
-    [send, streaming, queue.enqueue, queue.setPaused, keepRefused, threadId, manifest],
+    [send, streaming, queue.enqueue, queue.setPaused, keepRefused, threadId, manifest, holdThread],
   );
 
   /**
@@ -2190,6 +2275,7 @@ export function AppShell() {
     onUiCancel: () => void onUiCancel(),
     threadId,
     runningThreads: poolRuns.running,
+    blockedThreads: poolRuns.blocked,
     watching,
     driver,
     labels,
@@ -2462,6 +2548,7 @@ export function AppShell() {
                   threads={threads}
                   reasons={Object.fromEntries(pendingQueue.map((q) => [q.approvalId, q.reason]))}
                   question={uiPrompt?.prompt ?? null}
+                  elsewhereQuestions={poolRuns.questions.filter((q) => q.threadId !== threadId)}
                   queueHost={attentionHost}
                 />
               </div>
