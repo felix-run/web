@@ -8,6 +8,7 @@ import {
   type ThreadMeta,
   threadSuffix,
   titleFromText,
+  UNTITLED_THREAD_TITLE,
 } from '../src/session-log';
 
 /**
@@ -311,6 +312,40 @@ describe('mergeSessions', () => {
     const out = mergeSessions([local()], [{ id: 't1', name: '   ', updatedAt: 200 }]);
     expect(out[0]?.title).toBe('Local title');
     expect(out[0]?.named).toBe(false);
+  });
+
+  it("titles a server-only thread from the harness's preview, with its manifest", () => {
+    const out = mergeSessions(
+      [],
+      [
+        {
+          id: 'remote',
+          name: null,
+          preview: 'Score the open issues  against the DoR',
+          manifest: 'quick',
+        },
+      ],
+    );
+    expect(out[0]).toMatchObject({
+      title: 'Score the open issues against the DoR',
+      manifest: 'quick',
+    });
+    expect(out[0]?.named).toBe(false);
+  });
+
+  it('prefers a local title to the preview, and the preview to a placeholder', () => {
+    const kept = mergeSessions([local()], [{ id: 't1', name: null, preview: 'Other words' }]);
+    expect(kept[0]?.title).toBe('Local title');
+    const replaced = mergeSessions(
+      [local({ title: UNTITLED_THREAD_TITLE })],
+      [{ id: 't1', name: null, preview: 'Other words' }],
+    );
+    expect(replaced[0]?.title).toBe('Other words');
+  });
+
+  it("takes the harness's manifest, the newest turn's, over the one this client last sent", () => {
+    const out = mergeSessions([local()], [{ id: 't1', name: null, manifest: 'deep' }]);
+    expect(out[0]?.manifest).toBe('deep');
   });
 
   it('surfaces a thread that exists only on the server', () => {

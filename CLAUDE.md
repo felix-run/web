@@ -611,8 +611,11 @@ Flows worth knowing before editing the app:
   is the thread index behind the history rail. The `localStorage` copy in `src/lib/threads.ts` is a
   cache, not the list: `mergeSessions` folds the two, and the split matters because **neither side is
   a superset**. The harness owns which threads exist and what they are *named*
-  (`POST /chat/sessions/name`); it does not record which manifest a thread used, and a thread that
-  never reached it — or was created against a different deployment — exists only locally, so those
+  (`POST /chat/sessions/name`), and since `felix-run/felix#521` each index row also carries a
+  `preview` of the first user message and the `manifest` the newest turn ran under — so a thread
+  started on another client is titled and attributed rather than listed as a bare id, and the
+  harness's manifest wins over the local one, which only knows turns sent from this tab. An older
+  harness sends neither. A thread that never reached it — or was created against a different deployment — exists only locally, so those
   rows are kept and marked rather than dropped.
   - That local manifest is what `loadThread` restores into the agent picker on a thread change, so
     the picker names the agent the next message will actually go to. It is not restored when

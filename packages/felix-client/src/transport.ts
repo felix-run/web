@@ -72,6 +72,8 @@ interface RawSessionRow {
   createdAt?: number;
   updatedAt?: number;
   parentSessionId?: string | null;
+  preview?: string | null;
+  manifest?: string | null;
 }
 
 export type { FelixClientOptions };
@@ -633,9 +635,11 @@ export function createFelixClient(opts: FelixClientOptions) {
     /**
      * GET /chat/sessions — every thread the harness holds for this tenant.
      *
-     * The authoritative thread index. A client may still keep its own copy, but
-     * as a cache and as the only record of which manifest a thread used — the
-     * harness does not track that.
+     * The authoritative thread index. A client may still keep its own copy, as a
+     * cache and as the record of threads the harness has never seen.
+     *
+     * `preview` and `manifest` arrived with `felix-run/felix#521`; an older
+     * harness sends neither, and they read as `null`.
      *
      * Ids arrive tenant-prefixed and are stripped here, so callers only ever see
      * the suffix they are allowed to send back.
@@ -656,6 +660,8 @@ export function createFelixClient(opts: FelixClientOptions) {
         createdAt: row.createdAt ?? undefined,
         updatedAt: row.updatedAt ?? undefined,
         parentSessionId: row.parentSessionId ? threadSuffix(row.parentSessionId) : null,
+        preview: row.preview?.trim() || null,
+        manifest: row.manifest?.trim() || null,
       }));
     },
 
