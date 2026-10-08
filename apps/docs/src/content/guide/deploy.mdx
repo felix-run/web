@@ -476,9 +476,18 @@ off and an empty environment, reached through a gateway Worker that ships with t
   `/workspace` is backed up to an R2 bucket when a run that wrote files ends (and before the idle
   stop), and restored when the sandbox next starts. A restore that fails refuses the call rather than
   serving the scope empty.
+- **A thread's repository is cloned into its sandbox.** The person's token goes to the gateway for
+  the one clone and is added to the sandbox's requests to github.com outside the container, which
+  may fetch only that repository and only while the clone runs: the sandbox never holds the token
+  and cannot push. The file listing and `publish_commits` read the repository there; publishing
+  still goes through GitHub's API. A repository opens only into an empty thread workspace, and
+  removing it destroys the sandbox.
 - **Not served under `hosted`,** and refused rather than run on the host: an image tool's `path`,
-  `publish_commits` and a thread's repository checkout, for any scope but `deployment`, which stays
-  on the host. A scope starts empty on `hosted`; files from the local backend are not copied across.
+  and `publish_commits` in a thread with no repository of its own, for any scope but `deployment`,
+  which stays on the host.
+- **A scope starts empty on `hosted`.** To carry what local scopes already hold, run
+  `felix workspace upload` once after turning it on (`--dry-run` first); the local files stay where
+  they are, and symlinks and files over the write cap are skipped and reported.
 
 To turn it on, deploy the gateway, then point the harness at it:
 
