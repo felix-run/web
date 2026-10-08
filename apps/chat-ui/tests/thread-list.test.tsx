@@ -18,6 +18,8 @@ import { ThreadList } from '../src/components/chat/thread-list';
  */
 
 vi.mock('../src/api', () => ({ searchSessions: vi.fn(async () => []) }));
+const { searchSessions } = await import('../src/api');
+const search = vi.mocked(searchSessions);
 
 const thread = (over: Partial<ThreadMeta> = {}): ThreadMeta => ({
   id: 't1',
@@ -31,7 +33,6 @@ const thread = (over: Partial<ThreadMeta> = {}): ThreadMeta => ({
 function setup(props: Partial<Parameters<typeof ThreadList>[0]> = {}) {
   const handlers = {
     onSelect: vi.fn(),
-    onNew: vi.fn(),
     onDelete: vi.fn(),
     onRename: vi.fn(),
     onFork: vi.fn(),
@@ -48,14 +49,16 @@ const openMenu = async (user: ReturnType<typeof userEvent.setup>) => {
 
 beforeEach(() => {
   localStorage.clear();
+  search.mockReset();
+  search.mockResolvedValue([]);
 });
 afterEach(cleanup);
 
 describe('ThreadList actions', () => {
-  it('offers the four per-thread actions', async () => {
+  it('offers the per-thread actions, with Delete last', async () => {
     const { user } = setup();
     await openMenu(user);
-    for (const label of ['Rename', 'Duplicate', 'Compact context', 'Export JSONL']) {
+    for (const label of ['Rename', 'Fork', 'Compact context', 'Export JSONL', 'Delete']) {
       expect(await screen.findByRole('menuitem', { name: label })).toBeTruthy();
     }
   });
@@ -107,7 +110,7 @@ describe('ThreadList actions', () => {
     const field = await screen.findByLabelText('Thread name');
     await waitFor(() => expect(document.activeElement).toBe(field));
     await user.keyboard('typed then clicked away');
-    await user.click(screen.getByRole('button', { name: 'New chat' }));
+    await user.click(screen.getByRole('searchbox', { name: 'Search threads' }));
 
     expect(onRename).toHaveBeenCalledWith('t1', 'typed then clicked away');
   });
@@ -128,10 +131,12 @@ describe('ThreadList actions', () => {
     const { user } = setup({ threads: [thread({ onServer: false })] });
     await openMenu(user);
 
-    for (const label of ['Duplicate', 'Compact context', 'Export JSONL']) {
+    for (const label of ['Fork', 'Compact context', 'Export JSONL']) {
       const item = await screen.findByRole('menuitem', { name: label });
       expect(item.getAttribute('aria-disabled')).toBe('true');
     }
+    // A greyed item with no reason reads as broken.
+    expect(screen.getByText(/harness has no record of this thread/)).toBeTruthy();
     // Rename is local-first — the harness accepts it for any thread it can create.
     expect(screen.getByRole('menuitem', { name: 'Rename' }).getAttribute('aria-disabled')).not.toBe(
       'true',
@@ -191,10 +196,9 @@ describe('ThreadList rows', () => {
       threads: [thread({ id: 't1' }), thread({ id: 't2', title: 'Other' })],
       blocked: new Set(['t2']),
     });
-    const marked = screen.getByText('Other').closest('button');
-    expect(marked?.textContent).toContain('Waiting on you');
-    const unmarked = screen.getByText('Local title').closest('button');
-    expect(unmarked?.textContent).not.toContain('Waiting on you');
+    const waiting = screen.getByRole('group', { name: /^Waiting on you/ });
+    expect(waiting.textContent).toContain('Other');
+    expect(waiting.textContent).not.toContain('Local title');
   });
 
   it('finds a row by what it shows, including a fallback title', async () => {
@@ -251,12 +255,150 @@ describe('a row and its actions', () => {
   it('reveal on their own row only, laid over its end', () => {
     setup();
     const actions = screen
-      .getAllByRole('button', { name: 'Delete thread' })[0]
+      .getAllByRole('button', { name: /^Actions for/ })[0]
       ?.closest('[data-slot="thread-actions"]') as HTMLElement;
     const classes = actions.className.split(/\s+/);
     expect(classes).toContain('[@media(hover:hover)]:group-hover/thread:opacity-100');
     expect(classes.some((c) => /(^|:)group-hover:/.test(c))).toBe(false);
     expect(classes).toContain('[@media(hover:hover)]:absolute');
     expect((actions.parentElement as HTMLElement).className).toContain('group/thread');
+  });
+});
+
+/**
+ * Message search. The merged list holds every thread the harness returned, so a
+ * hit is almost always on a listed thread — and the first version kept only hits
+ * on threads it did *not* list, so it showed none of them and said "No matches"
+ * about a word the harness had found.
+ */
+describe('searching message text', () => {
+  const other = thread({ id: 't2', title: 'Release checklist' });
+
+  it('lists a thread whose messages matched, with the words that did', async () => {
+    search.mockResolvedValue([
+      { thread_id: 'default:t2', content: 'please update the README before the tag' },
+    ]);
+    const { user } = setup({ threads: [thread(), other] });
+    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'readme');
+    const row = await screen.findByRole('button', { name: /^Release checklist/ });
+    expect(row.textContent).toContain('README');
+    expect(row.querySelector('mark')?.textContent).toBe('README');
+    expect(screen.queryByText(/No thread matches/)).toBeNull();
+  });
+
+  it('says the message search failed rather than that nothing matched', async () => {
+    search.mockRejectedValue(new Error('503'));
+    const { user } = setup({ threads: [thread(), other] });
+    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'zzz');
+    expect(await screen.findByText(/Message search failed/)).toBeTruthy();
+  });
+
+  it('says it is still searching messages while title matches are already shown', async () => {
+    search.mockReturnValue(new Promise(() => {}));
+    const { user } = setup({ threads: [thread(), other] });
+    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'release');
+    expect(screen.getByText('Release checklist')).toBeTruthy();
+    expect(await screen.findByText('Searching message text…')).toBeTruthy();
+  });
+
+  it('opens the first result on Enter', async () => {
+    const { user, onSelect } = setup({ threads: [thread(), other] });
+    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'release{Enter}');
+    expect(onSelect).toHaveBeenCalledWith('t2');
+  });
+});
+
+/** An instrument ranks by state first: a thread waiting on a person is never folded away. */
+describe('grouping by state', () => {
+  const old = Date.now() - 30 * 86_400_000;
+
+  it('lifts a waiting thread out of a folded Older, above Pinned', () => {
+    setup({
+      threads: [
+        thread({ id: 'p', title: 'Pinned one' }),
+        thread({ id: 'w', title: 'Old but blocked', updatedAt: old }),
+      ],
+      currentId: 'x',
+      pinned: new Set(['p']),
+      blocked: new Set(['w']),
+    });
+    const groups = screen.getAllByRole('group').map((g) => g.getAttribute('aria-labelledby'));
+    const first = screen.getAllByRole('group')[0] as HTMLElement;
+    expect(groups.length).toBe(2);
+    expect(first.textContent).toContain('Waiting on you');
+    expect(first.textContent).toContain('Old but blocked');
+  });
+
+  it('keeps the current thread visible in a folded Older without holding the rest open', async () => {
+    const { user } = setup({
+      threads: [
+        thread({ id: 'a', title: 'Old current', updatedAt: old }),
+        thread({ id: 'b', title: 'Old other', updatedAt: old - 1 }),
+      ],
+      currentId: 'a',
+    });
+    expect(screen.getByText('Old current')).toBeTruthy();
+    expect(screen.queryByText('Old other')).toBeNull();
+    // The fold still works, rather than being disabled while it holds the current thread.
+    const older = screen.getByRole('button', { name: /^Older/ });
+    expect(older.hasAttribute('disabled')).toBe(false);
+    await user.click(older);
+    expect(screen.getByText('Old other')).toBeTruthy();
+  });
+
+  it('marks a thread with a live run', () => {
+    setup({ threads: [thread()], running: new Set(['t1']) });
+    expect(screen.getByRole('button', { name: /^Local title/ }).textContent).toContain('Running');
+  });
+});
+
+/** The list is one Tab stop: three per row put 167 between the search and the workspace. */
+describe('the keyboard', () => {
+  const three = [
+    thread({ id: 'a', title: 'Alpha' }),
+    thread({ id: 'b', title: 'Bravo', updatedAt: Date.now() - 1 }),
+    thread({ id: 'c', title: 'Charlie', updatedAt: Date.now() - 2 }),
+  ];
+
+  it('gives the list one Tab stop and walks it with the arrow keys', async () => {
+    const { user } = setup({ threads: three, currentId: 'b' });
+    const rows = document.querySelectorAll<HTMLElement>('[data-thread-row]');
+    expect([...rows].map((r) => r.tabIndex)).toEqual([-1, 0, -1]);
+    expect(
+      screen.getAllByRole('button', { name: /^Actions for/ }).every((b) => b.tabIndex === -1),
+    ).toBe(true);
+    rows[1]?.focus();
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(rows[2]);
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(rows[0]);
+  });
+
+  it('enters the results from the search field with ↓', async () => {
+    const { user } = setup({ threads: three, currentId: 'x' });
+    await user.click(screen.getByRole('searchbox', { name: 'Search threads' }));
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement?.getAttribute('data-thread-row')).toBe('a');
+  });
+
+  it("reaches a row's actions with →, and deletes with Delete", async () => {
+    const { user, onDelete } = setup({ threads: three, currentId: 'x' });
+    document.querySelector<HTMLElement>('[data-thread-row="a"]')?.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Actions for Alpha');
+    await user.keyboard('{ArrowLeft}');
+    expect(document.activeElement?.getAttribute('data-thread-row')).toBe('a');
+    await user.keyboard('{Delete}');
+    expect(onDelete).toHaveBeenCalledWith('a');
+  });
+
+  it('does not rename to the name it already has on Enter', async () => {
+    const { user, onRename } = setup({ threads: [thread({ title: 'Same', named: true })] });
+    await openMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const field = await screen.findByLabelText('Thread name');
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    await user.keyboard('{Enter}');
+    expect(onRename).not.toHaveBeenCalled();
   });
 });

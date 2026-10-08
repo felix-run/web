@@ -3,6 +3,7 @@ import {
   indexThread,
   listThreads,
   loadTurns,
+  matchExcerpt,
   migrateLegacy,
   removeThread,
   saveTurns,
@@ -77,5 +78,27 @@ describe('migrateLegacy', () => {
     const first = listThreads();
     migrateLegacy(now);
     expect(listThreads()).toEqual(first);
+  });
+});
+
+describe('matchExcerpt', () => {
+  it('keeps the words around the match, on one line, and says where it cut', () => {
+    const body = `${'x '.repeat(80)}update the\n\n  README   before the tag ${'y '.repeat(80)}`;
+    const out = matchExcerpt(body, 'readme');
+    expect(out).toContain('README before the tag');
+    expect(out.startsWith('…')).toBe(true);
+    expect(out.endsWith('…')).toBe(true);
+    expect(out).not.toMatch(/\s{2}|\n/);
+  });
+
+  it("reads JSON's escapes back rather than showing them", () => {
+    expect(matchExcerpt('{"a": "one\\nREADME \\u2014 \\"two\\""}', 'readme')).toBe(
+      '{"a": "one README — "two""}',
+    );
+  });
+
+  it('returns short content whole and falls back to the head when the term is not verbatim', () => {
+    expect(matchExcerpt('short one', 'x')).toBe('short one');
+    expect(matchExcerpt('a'.repeat(100), 'zzz').startsWith('aaa')).toBe(true);
   });
 });

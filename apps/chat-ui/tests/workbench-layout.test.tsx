@@ -185,10 +185,10 @@ describe('the sidebar', () => {
         refresh: () => {},
       } as unknown as ShellValue['tenantApprovals'],
     });
-    const row = (await screen.findByText('The other one')).closest('button');
-    expect(row?.textContent).toContain('Waiting on you');
-    const current = screen.getByText('Current thread').closest('button');
-    expect(current?.textContent).not.toContain('Waiting on you');
+    // In words, under a group of its own that heads the list.
+    const waiting = await screen.findByRole('group', { name: /^Waiting on you/ });
+    expect(waiting.textContent).toContain('The other one');
+    expect(waiting.textContent).not.toContain('Current thread');
   });
 
   it('groups by last activity, and starts Older folded with its count', async () => {
@@ -235,13 +235,32 @@ describe('the sidebar', () => {
   it('keeps every section reachable when collapsed to icons', async () => {
     mountSidebar({}, { open: false });
     expect(screen.queryByRole('searchbox', { name: 'Search threads' })).toBeNull();
-    for (const name of ['New chat', 'Search threads', 'Threads', 'Workspace', 'Ledger']) {
+    for (const name of ['New chat', 'Threads', 'Workspace', 'Ledger']) {
       expect(
         screen.getByRole(name === 'Ledger' ? 'link' : 'button', { name: new RegExp(`^${name}`) }),
       ).toBeTruthy();
     } // The Harness label is faded out when collapsed; its fold button must not
     // linger as a Tab stop nobody can see.
     expect(screen.queryByRole('button', { name: 'Harness' })).toBeNull();
+    // One icon for the threads: a second that did the same thing was a decision
+    // with nothing to decide between.
+    expect(screen.queryByRole('button', { name: /^Search threads/ })).toBeNull();
+  });
+
+  // The list scrolls inside itself, so an opened Older cannot push the workspace
+  // and the harness's pages fifty rows down. happy-dom lays nothing out, so what
+  // is pinned is the shape: the section may shrink and its list is the scroller.
+  it('keeps the sections below the threads in reach, however long the list', () => {
+    mountSidebar();
+    const section = document.querySelector('[data-slot="thread-list"]') as HTMLElement;
+    expect(section.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['shrink!', 'min-h-[min(var(--thread-list-h),max(12rem,40svh))]']),
+    );
+    const scroller = section.querySelector('[data-slot="thread-scroll"]') as HTMLElement;
+    expect(scroller.className).toContain('overflow-y-auto');
+    expect(scroller.contains(screen.getByRole('searchbox', { name: 'Search threads' }))).toBe(
+      false,
+    );
   });
 });
 

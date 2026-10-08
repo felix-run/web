@@ -763,7 +763,7 @@ export function AppShell() {
       void renameSession(id, name)
         .then(() => refreshThreads())
         .catch((err) =>
-          toastError(err, 'rename this conversation', { retry: () => renameThread(id, name) }),
+          toastError(err, 'rename this thread', { retry: () => renameThread(id, name) }),
         );
     },
     [refreshThreads],
@@ -795,9 +795,7 @@ export function AppShell() {
         })
         // A failed fork leaves nothing behind, so retrying is safe; it mints a
         // fresh id rather than reusing the one that failed.
-        .catch((err) =>
-          toastError(err, 'duplicate this conversation', { retry: () => forkThread(id) }),
-        );
+        .catch((err) => toastError(err, 'fork this thread', { retry: () => forkThread(id) }));
     },
     [threads, manifest, refreshThreads, selectThread],
   );
@@ -821,7 +819,7 @@ export function AppShell() {
           toast.dismiss(pending);
           // No retry: a compact that failed part-way may still have written a
           // summary, and running it again would summarise the summary.
-          toastError(err, 'compact this conversation');
+          toastError(err, 'compact this thread');
         });
     },
     [threads, manifest],
@@ -839,9 +837,7 @@ export function AppShell() {
         // Revoking synchronously can beat the download starting in some browsers.
         setTimeout(() => URL.revokeObjectURL(url), 10_000);
       })
-      .catch((err) =>
-        toastError(err, 'export this conversation', { retry: () => exportThread(id) }),
-      );
+      .catch((err) => toastError(err, 'export this thread', { retry: () => exportThread(id) }));
   }, []);
 
   const deleteThread = useCallback(
@@ -876,15 +872,13 @@ export function AppShell() {
         void deleteThreadHistory(id).catch(() => {});
       }, DELETE_UNDO_MS);
 
-      toast('Conversation deleted', {
+      toast('Thread deleted', {
         duration: DELETE_UNDO_MS,
         action: {
           label: 'Undo',
           onClick: () => {
             if (committed) {
-              toastProblem(
-                'Too late to undo. This conversation was already deleted on the harness.',
-              );
+              toastProblem('Too late to undo. This thread was already deleted on the harness.');
               return;
             }
             window.clearTimeout(commit);
