@@ -1,7 +1,6 @@
 import {
   type BranchPoint,
   branchPoints,
-  type ChatEngine,
   createChatEngine,
   eventsToTurns,
   type ManifestEntry,
@@ -91,6 +90,7 @@ import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
+import { createEnginePool, type EnginePool } from '@/lib/engine-pool';
 import { toastError, toastProblem } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
 import { ImageUploadError, uploadImages } from '@/lib/image-upload';
@@ -351,59 +351,102 @@ export function AppShell() {
   /** Where focus lands when the Verbose badge turns verbose off and unmounts. */
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
-  /** Which thread the engine currently holds — see `loadThread`. */
+  /** Which thread the shell last loaded — see `loadThread`. */
   const loadedThreadRef = useRef<string | null>(null);
   /**
    * `hydrateFromServer`, for the engine's callbacks.
    *
-   * The engine is built once, above the callback's own declaration, and must not
+   * The pool is built once, above the callback's own declaration, and must not
    * be rebuilt when it changes — a new engine mid-run is a lost run.
    */
-  const hydrateFromServerRef = useRef<(id: string) => void>(() => {});
+  const hydrateFromServerRef = useRef<(id: string, opts?: { transcript?: boolean }) => void>(
+    () => {},
+  );
   const verboseRef = useRef(verbose);
+  /**
+   * Mirrored at render rather than from an effect. The engine pool reads this to
+   * tell the thread on screen from a run kept going in the background, and
+   * `hydrateFromServer` compares a slow response against it to decide whether
+   * that response still belongs to the thread on screen. An effect leaves it one
+   * render behind, which on a thread change driven by Back or a pasted link is
+   * long enough to matter.
+   */
   const threadIdRef = useRef(threadId);
+  threadIdRef.current = threadId;
 
   /**
    * The conversation itself — every SSE frame, the durable-run and reattach
    * paths, the approval queue and the UI prompt — lives in `@felix/client`, so
-   * this component renders it rather than implementing it. Created once and
+   * this component renders it rather than implementing it. One engine per
+   * thread, so a run outlives the operator switching away from it: the pool
+   * keeps the ones still running and drops the rest. The one on screen is
    * mirrored below; the ports are the three things only a browser can do.
    */
-  const engineRef = useRef<ChatEngine | null>(null);
-  if (!engineRef.current) {
-    engineRef.current = createChatEngine({
-      client: felix,
-      threadId: () => threadIdRef.current,
-      clientTools: { execute: executeClientTool, readForDiff: readWorkspaceFile },
-      onToolStart: () => {
-        if (verboseRef.current) revealInspector();
+  const poolRef = useRef<EnginePool | null>(null);
+  if (!poolRef.current) {
+    poolRef.current = createEnginePool({
+      // Bound to `id` for the engine's whole life, never to "the thread on
+      // screen": a run kept going after the operator left its thread must post
+      // its tool results, take its approvals and write its transcript to its
+      // own thread, not to whichever one is showing now (`engine-pool.ts`).
+      create: (id) => {
+        const created = createChatEngine({
+          client: felix,
+          threadId: () => id,
+          clientTools: { execute: executeClientTool, readForDiff: readWorkspaceFile },
+          onToolStart: () => {
+            if (verboseRef.current && threadIdRef.current === id) revealInspector();
+          },
+          onSkills: (s) => {
+            if (threadIdRef.current === id) setSkills(s);
+          },
+          /**
+           * Re-read the session once a durable run lands.
+           *
+           * Its stream carried the answer and nothing else — no deltas, no tool
+           * frames — so the tool cards, and the workspace zone's "touched this
+           * session" list that is derived from them, are empty until something
+           * re-reads the harness's own transcript. Before this they stayed empty
+           * until the operator happened to reload.
+           */
+          onDurableComplete: () => hydrateFromServerRef.current(id),
+        });
+        // Seeded from the thread *the address names*, so the first paint is this
+        // thread's transcript rather than an empty one — and, on a deep link, not
+        // some other thread's. It used to read a `felix.threadId` key holding the
+        // last thread this tab was on, which was the same answer back when that
+        // key chose the thread and is the wrong one now that the URL does. That
+        // key is no longer written at all: the address is where a thread is
+        // remembered, and `migrateLegacy` reads only what a pre-multi-thread
+        // build left behind.
+        created.setTurns(loadTurns(id));
+        return created;
       },
-      onSkills: setSkills,
-      /**
-       * Re-read the session once a durable run lands.
-       *
-       * Its stream carried the answer and nothing else — no deltas, no tool
-       * frames — so the tool cards, and the workspace zone's "touched this
-       * session" list that is derived from them, are empty until something
-       * re-reads the harness's own transcript. Before this they stayed empty
-       * until the operator happened to reload.
-       *
-       * Reading `threadIdRef` rather than closing over a thread: the engine is
-       * created once and the run may well finish on a thread the operator has
-       * since left, in which case `hydrateFromServer` drops the result itself.
-       */
-      onDurableComplete: () => hydrateFromServerRef.current(threadIdRef.current),
+      // A run keeps its thread's exclusive lease until it settles, whether or
+      // not the thread is still on screen. The foreground hold is taken by the
+      // effect below as before; this second reference is what outlives it.
+      onRunStart: (id) => sessionLeases.attach(id),
+      onRunEnd: (id) => {
+        if (id === threadIdRef.current) return;
+        // A run that finished after the operator left: nothing keeps its engine
+        // now. Dropped a task later, so the send's own `.then` — which can still
+        // rewrite the transcript on a failed outcome — lands before it goes.
+        window.setTimeout(() => {
+          const pool = poolRef.current;
+          if (id !== threadIdRef.current && !pool?.peek(id)?.state.streaming) pool?.drop(id);
+        }, 0);
+      },
+      // The foreground thread is persisted by the effect below; a run in the
+      // background has nobody rendering it, so it writes its own cache.
+      onTurns: (id, e) => {
+        if (id !== threadIdRef.current) saveTurns(id, e.state.turns);
+      },
     });
-    // Seeded from the thread *the address names*, so the first paint is this
-    // thread's transcript rather than an empty one — and, on a deep link, not
-    // some other thread's. It used to read a `felix.threadId` key holding the
-    // last thread this tab was on, which was the same answer back when that key
-    // chose the thread and is the wrong one now that the URL does. That key is
-    // no longer written at all: the address is where a thread is remembered, and
-    // `migrateLegacy` reads only what a pre-multi-thread build left behind.
-    engineRef.current.setTurns(loadTurns(threadId));
   }
-  const engine = engineRef.current;
+  const pool = poolRef.current;
+  const engine = pool.get(threadId);
+  /** Threads with a run in flight in this tab, the foreground's included. */
+  const poolRuns = useSyncExternalStore(pool.subscribe, pool.runs);
   const {
     turns,
     error,
@@ -464,14 +507,6 @@ export function AppShell() {
     setLeftApp(false);
     setDropped(false);
   }, [threadId]);
-  /**
-   * Mirrored at render rather than from an effect. The engine reads this for
-   * every request it makes, and `hydrateFromServer` compares a slow response
-   * against it to decide whether that response still belongs to the thread on
-   * screen. An effect leaves it one render behind, which on a thread change
-   * driven by Back or a pasted link is long enough to matter.
-   */
-  threadIdRef.current = threadId;
   const queue = useMessageQueue(threadId);
   useEffect(() => {
     verboseRef.current = verbose;
@@ -588,7 +623,18 @@ export function AppShell() {
   /** Edited messages' other versions, by user event id — read off every snapshot. */
   const [branches, setBranches] = useState<Map<string, BranchPoint>>(() => new Map());
 
-  const hydrateFromServer = useCallback((id: string) => {
+  /**
+   * Re-read a thread from the harness. With `transcript: false` only the
+   * snapshot's side maps (labels, ratings, versions) are taken — for a thread
+   * re-adopted with its run still going, whose transcript the snapshot would
+   * replace with one missing the reply being written.
+   *
+   * The transcript goes to that thread's own engine, which may no longer be the
+   * one on screen (a durable run that finished in the background); the shell's
+   * own state is touched only while the thread is still the one showing.
+   */
+  const hydrateFromServer = useCallback((id: string, opts: { transcript?: boolean } = {}) => {
+    const withTranscript = opts.transcript ?? true;
     void (async () => {
       try {
         const snap = await getSessionSnapshot(id);
@@ -597,23 +643,30 @@ export function AppShell() {
           setFeedback(snap.feedback ?? {});
           setBranches(branchPoints(snap));
         }
+        if (!withTranscript) return;
+        const target = poolRef.current?.peek(id);
         if (snap?.transcript?.length) {
           const rebuilt = eventsToTurns(snapshotToEvents(snap));
-          if (rebuilt.length && id === threadIdRef.current) {
-            engine.setTurns(rebuilt);
+          if (rebuilt.length && target) {
+            target.setTurns(rebuilt);
             saveTurns(id, rebuilt);
           }
-          if (snap.thinkingLevel && THINKING_LEVELS.includes(snap.thinkingLevel as ThinkingLevel)) {
+          if (
+            id === threadIdRef.current &&
+            snap.thinkingLevel &&
+            THINKING_LEVELS.includes(snap.thinkingLevel as ThinkingLevel)
+          ) {
             setThinkingLevelState(snap.thinkingLevel as ThinkingLevel);
           }
-          if (snap.phase) engine.setPhase(snap.phase);
+          if (snap.phase) target?.setPhase(snap.phase);
           return;
         }
         const h = await getThreadHistory(id);
         if (!h || h.events.length === 0) return;
         const rebuilt = eventsToTurns(h.events);
-        if (rebuilt.length && id === threadIdRef.current) {
-          engine.setTurns(rebuilt);
+        const later = poolRef.current?.peek(id);
+        if (rebuilt.length && later) {
+          later.setTurns(rebuilt);
           saveTurns(id, rebuilt);
         }
       } catch {
@@ -630,18 +683,16 @@ export function AppShell() {
    * (a turn's usage, among others), so an unconditional one on every return
    * would cost the tab what it already had to learn nothing new.
    */
-  const hydrateIfAhead = useCallback(
-    async (id: string) => {
-      const snap = await getSessionSnapshot(id).catch(() => null);
-      if (!snap?.transcript?.length || id !== threadIdRef.current) return;
-      const rebuilt = eventsToTurns(snapshotToEvents(snap));
-      if (rebuilt.length <= engine.state.turns.length || engine.state.streaming) return;
-      engine.setTurns(rebuilt);
-      saveTurns(id, rebuilt);
-      if (snap.phase) engine.setPhase(snap.phase);
-    },
-    [engine],
-  );
+  const hydrateIfAhead = useCallback(async (id: string) => {
+    const snap = await getSessionSnapshot(id).catch(() => null);
+    const target = poolRef.current?.peek(id);
+    if (!snap?.transcript?.length || id !== threadIdRef.current || !target) return;
+    const rebuilt = eventsToTurns(snapshotToEvents(snap));
+    if (rebuilt.length <= target.state.turns.length || target.state.streaming) return;
+    target.setTurns(rebuilt);
+    saveTurns(id, rebuilt);
+    if (snap.phase) target.setPhase(snap.phase);
+  }, []);
 
   /**
    * Re-read the thread when this tab starts or stops watching it. Starting: what
@@ -707,8 +758,16 @@ export function AppShell() {
     (id: string, hydrate = true) => {
       if (loadedThreadRef.current === id) return;
       loadedThreadRef.current = id;
-      engine.reset();
-      engine.setTurns(loadTurns(id));
+      const target = pool.get(id);
+      // A run still going on this thread from before the operator left it is
+      // re-adopted as it stands: its engine has been reading the stream all
+      // along, and a reset or a snapshot rebuild would throw away the reply
+      // being written.
+      const running = target.state.streaming;
+      if (!running) {
+        target.reset();
+        target.setTurns(loadTurns(id));
+      }
       // The picker is where the next message goes, so on a thread this browser
       // has sent to it names the agent the thread last ran on rather than
       // whichever one the previous thread used. The local index is the only
@@ -727,9 +786,9 @@ export function AppShell() {
       setLabels({});
       setFeedback({});
       setBranches(new Map());
-      if (hydrate) hydrateFromServer(id);
+      if (hydrate || running) hydrateFromServer(id, { transcript: !running });
     },
-    [engine, hydrateFromServer],
+    [pool, hydrateFromServer],
   );
 
   useEffect(() => {
@@ -738,23 +797,37 @@ export function AppShell() {
     loadThread(threadId, routeThread !== null);
   }, [threadId, routeThread, loadThread]);
 
+  /**
+   * Engines with nothing in flight go as soon as their thread is off screen; a
+   * live run stays in the pool, still streaming and answering, until it settles.
+   */
+  useEffect(() => {
+    pool.prune(threadId);
+  }, [pool, threadId]);
+
+  /**
+   * Leaving a thread does not stop its run. It used to — both of these called
+   * `stopRun` first, so clicking another conversation in the sidebar posted
+   * `/chat/abort` on the one that was working — and merely hanging up would be
+   * no better, because the harness tears down a run whose client closes the
+   * stream. The run's engine stays in the pool instead, bound to its thread;
+   * Stop is the only thing that stops it.
+   */
   const newThread = useCallback(() => {
-    stopRun();
     const id = mint();
     // Nothing to hydrate: the id was minted a line ago, so the snapshot request
     // would be a round trip to be told the thread does not exist yet.
     loadThread(id, false);
     navigate(`/t/${id}`);
-  }, [stopRun, mint, loadThread, navigate]);
+  }, [mint, loadThread, navigate]);
 
   const selectThread = useCallback(
     (id: string) => {
       if (id === threadId) return;
-      stopRun();
       loadThread(id);
       navigate(`/t/${id}`);
     },
-    [threadId, stopRun, loadThread, navigate],
+    [threadId, loadThread, navigate],
   );
 
   /** POST /chat/sessions/name — a durable name, replacing the derived title. */
@@ -850,6 +923,17 @@ export function AppShell() {
       const meta = listThreads().find((t) => t.id === id);
       const turns = loadTurns(id);
 
+      // Deleting a conversation does stop its run, wherever it is: on screen,
+      // or kept going in the background after the operator left it. Dropped
+      // from the pool first, so the abort's last emits do not write the deleted
+      // transcript back into the cache.
+      const running = pool.peek(id);
+      if (running?.state.streaming) {
+        pool.drop(id);
+        void abortChat(id).catch(() => {});
+        running.abort();
+      }
+
       removeThread(id);
       const remaining = listThreads();
       setThreads(remaining);
@@ -895,7 +979,7 @@ export function AppShell() {
         },
       });
     },
-    [threadId, selectThread, newThread],
+    [pool, threadId, selectThread, newThread],
   );
 
   /**
@@ -1056,11 +1140,17 @@ export function AppShell() {
    * toggles a loading flag, which would add two renders per tick during a
    * stream. This wants the side effect, not the data.
    */
+  // Every live run in the tab, not only the one on screen: a run kept going in
+  // the background blocks on an approval the same way, and its engine is what
+  // prunes one decided elsewhere (the attention line, another tab).
+  const anyRunning = poolRuns.running.size > 0;
   useEffect(() => {
-    if (!streaming) return;
-    const timer = window.setInterval(() => void syncApprovals(), APPROVAL_POLL_MS);
+    if (!anyRunning) return;
+    const timer = window.setInterval(() => {
+      for (const live of pool.live()) void live.syncApprovals();
+    }, APPROVAL_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [streaming, syncApprovals]);
+  }, [anyRunning, pool]);
 
   /**
    * Re-ask once the head approval's deadline has passed.
@@ -1088,11 +1178,16 @@ export function AppShell() {
    * leave the page: the title carries it always, and an OS notification fires
    * only while the tab is hidden.
    */
+  // Over every run in the tab: a run kept going after the operator switched
+  // threads is still working, and still blocks on a person, with nothing on
+  // screen to say so.
+  const blockedAnywhere = pendingQueue.length > 0 || uiPrompt != null || poolRuns.blocked.size > 0;
+  const workingAnywhere = streaming || anyRunning;
   useEffect(() => {
-    if (pendingQueue.length > 0 || uiPrompt) setPresence('blocked');
-    else if (streaming) setPresence('working');
+    if (blockedAnywhere) setPresence('blocked');
+    else if (workingAnywhere) setPresence('working');
     else setPresence('idle');
-  }, [pendingQueue.length, uiPrompt, streaming]);
+  }, [blockedAnywhere, workingAnywhere]);
 
   /**
    * Coming back. A suspended page ran nothing while it was away — not the
@@ -1107,9 +1202,10 @@ export function AppShell() {
   useEffect(
     () =>
       onResume(({ hiddenForMs }) => {
-        engine.checkLiveness();
+        for (const live of pool.live()) live.checkLiveness();
         refreshTenantApprovals.current();
         void engine.syncApprovals();
+        for (const live of pool.live()) if (live !== engine) void live.syncApprovals();
         if (
           hiddenForMs > 0 &&
           !engine.state.streaming &&
@@ -1118,7 +1214,7 @@ export function AppShell() {
           void hydrateIfAhead(threadIdRef.current);
         }
       }),
-    [engine, hydrateIfAhead],
+    [engine, pool, hydrateIfAhead],
   );
 
   /**
@@ -1134,10 +1230,12 @@ export function AppShell() {
    * makes sure someone asks.
    */
   useEffect(() => {
-    if (!streaming) return;
-    const id = window.setInterval(() => engine.checkLiveness(), LIVENESS_CHECK_MS);
+    if (!anyRunning) return;
+    const id = window.setInterval(() => {
+      for (const live of pool.live()) live.checkLiveness();
+    }, LIVENESS_CHECK_MS);
     return () => window.clearInterval(id);
-  }, [engine, streaming]);
+  }, [pool, anyRunning]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -1898,9 +1996,24 @@ export function AppShell() {
       // have been taken: a reply streams for minutes. So the message is held
       // here instead, until the harness either starts the run or refuses it.
       const sent = { text: message.text, files: message.files, key };
+      // A run can now end after the operator has left its thread. A message it
+      // hands back then belongs to that thread, not to the composer on screen:
+      // it goes back into that thread's own queue, paused, where returning to
+      // the thread finds it. (A caller with its own `onKept` — the drain —
+      // already puts it back where it came from.)
+      const sentOn = threadId;
+      const giveBack = (m: KeyedMessage, reason: KeptReason) => {
+        if (onKept !== keepRefused || threadIdRef.current === sentOn) {
+          onKept(m, reason);
+          return;
+        }
+        queue.enqueue({ text: m.text, files: m.files, ...(m.key ? { key: m.key } : {}) });
+        queue.setPaused(true);
+        toast.message('A message on another conversation was not sent. It is queued there.');
+      };
       void send(message.text, attachments, mode, key)?.then((outcome) => {
         if (outcome === 'done') unsettled.current.delete(key);
-        else if (outcome === 'lease_refused') onKept(sent, 'lease');
+        else if (outcome === 'lease_refused') giveBack(sent, 'lease');
         else if (outcome === 'failed') {
           unsettled.current.set(key, {
             threadId,
@@ -1909,15 +2022,15 @@ export function AppShell() {
             fileUrls: message.files.map((f) => f.url),
             attachments,
           });
-          onKept(sent, 'failed');
+          giveBack(sent, 'failed');
         } else {
           // The harness will never send this body under this key.
           unsettled.current.delete(key);
-          onKept({ text: message.text, files: message.files }, 'key_reused');
+          giveBack({ text: message.text, files: message.files }, 'key_reused');
         }
       });
     },
-    [send, streaming, queue.enqueue, keepRefused, threadId, manifest],
+    [send, streaming, queue.enqueue, queue.setPaused, keepRefused, threadId, manifest],
   );
 
   /**
@@ -2076,6 +2189,7 @@ export function AppShell() {
     onUiRespond: (value) => void onUiRespond(value),
     onUiCancel: () => void onUiCancel(),
     threadId,
+    runningThreads: poolRuns.running,
     watching,
     driver,
     labels,

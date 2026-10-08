@@ -282,6 +282,28 @@ seam reads `src/shell-context.ts`. The engine is *above* the `<Outlet/>` on purp
 for as long as the tab is, so mounting `createChatEngine` inside a route would unmount it — and kill
 a live run — on a visit to any other address.
 
+**A run also outlives a change of thread** (2026-10-07). There is one engine *per thread*, not one
+for the tab: `src/lib/engine-pool.ts` holds them, and each engine's `threadId` port is bound to
+its own thread for life. Until then the one engine read "the thread on screen" at call time, so
+`selectThread` and `newThread` called `stopRun` first — clicking another conversation posted
+`/chat/abort` on the one that was working — and simply not stopping would have been worse: its
+tool results and approvals would have gone to whichever thread was showing, and hanging up the
+stream instead tears the run down on the harness. Now leaving a thread leaves its engine running
+in the pool — reading its stream, answering `tool_request` for *its* thread, writing its own
+`felix.turns:` cache — and coming back re-adopts that engine as it stands (no reset, no snapshot
+rebuild; only labels and ratings are re-read). An engine with nothing in flight is dropped once its
+thread is off screen, and a background run's engine once it settles, so the next visit rebuilds
+from cache and snapshot exactly as before. Rules that are easy to break: a running thread keeps
+its **exclusive lease** through the pool's own `attach` until the run ends (the shell's lease
+effect detaches on the switch as before); the approvals poll and the liveness check run over
+**every** live engine, and presence counts them all, so a background run still reads *working* —
+or *blocked* — in the title; a background run's approval or question stays on its own engine and
+never reaches the foreground banner (the attention line still lists its `/approvals` row tenant-wide);
+a send that fails after its thread was left goes back into **that thread's** queue, paused, not
+into the composer on screen; **Stop** still stops, and **deleting** a thread aborts a run on it
+wherever it is. The shell exposes the set as `runningThreads` on the shell context, foreground
+included. `tests/run-survives-thread-switch.test.tsx` pins it at the wire.
+
 **The address is the thread.** `/` mints a thread and *replaces* itself with `/t/:threadSuffix`, so
 a thread is linkable the moment it exists and a reload resumes it; the URL carries the suffix alone,
 never `{tenant}:{suffix}`. A thread change now has three ways to happen — the rail, Back/Forward and

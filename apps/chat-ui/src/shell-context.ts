@@ -68,6 +68,12 @@ export interface ShellValue {
   /** This thread. */
   threadId: string;
   /**
+   * Threads with a run in flight in this tab — the one on screen while it
+   * streams, and any the operator switched away from mid-run, which keep going
+   * in the background until they settle. A new set whenever membership changes.
+   */
+  runningThreads: ReadonlySet<string>;
+  /**
    * Another client drives this thread and this tab holds only an observer lease:
    * the composer and every driving action are read-only until the keeper takes
    * the thread over, which it does on its own once the thread is free.
