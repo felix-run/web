@@ -364,6 +364,51 @@ describe('grouping by state', () => {
     expect(screen.getByRole('button', { name: /^Local title/ }).textContent).toContain('Running');
   });
 
+  // The month branch drew every month whatever the fold said, so an Older
+  // spanning two months could not be closed.
+  it('folds an Older that spans several months, and opens it again', async () => {
+    vi.setSystemTime(new Date(2026, 9, 7).getTime());
+    try {
+      const { user } = setup({
+        threads: [
+          thread({ id: 's', title: 'September one', updatedAt: new Date(2026, 8, 10).getTime() }),
+          thread({ id: 'a', title: 'August one', updatedAt: new Date(2026, 7, 3).getTime() }),
+        ],
+        currentId: 'x',
+      });
+      const older = screen.getByRole('button', { name: /^Older/ });
+      expect(older.getAttribute('aria-expanded')).toBe('false');
+      expect(screen.queryByText('September one')).toBeNull();
+      expect(screen.queryByText('August one')).toBeNull();
+      await user.click(older);
+      expect(screen.getByText('September one')).toBeTruthy();
+      await user.click(older);
+      expect(screen.queryByText('September one')).toBeNull();
+      expect(screen.queryByText('August one')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps only the current thread when a several-month Older is folded', () => {
+    vi.setSystemTime(new Date(2026, 9, 7).getTime());
+    try {
+      setup({
+        threads: [
+          thread({ id: 's', title: 'September one', updatedAt: new Date(2026, 8, 10).getTime() }),
+          thread({ id: 'a', title: 'August one', updatedAt: new Date(2026, 7, 3).getTime() }),
+        ],
+        currentId: 'a',
+      });
+      expect(screen.getByRole('group', { name: 'This thread, from Older' }).textContent).toContain(
+        'August one',
+      );
+      expect(screen.queryByText('September one')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('cuts Older into months, each with its count', async () => {
     const now = new Date(2026, 9, 7).getTime();
     vi.setSystemTime(now);
