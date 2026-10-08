@@ -574,7 +574,7 @@ The list returns `{manifest, declared_only, items, active}`. Each item is
 
 | Field | Meaning |
 |---|---|
-| `active` | switched on for this `(tenant, manifest)` in the activation store |
+| `active` | switched on for this `(tenant, manifest)` in the activation store; only ever a skill in the caller's own catalog, so one caller's personal skill names never appear for another |
 | `has_body` | the skill has instructions; the body itself is only on the single-skill route |
 | `model_invocable` | `false` when the skill sets `disable_model_invocation` — in the catalog, never offered to the model |
 | `declared` | the manifest named it in `spec.skills` |
@@ -594,7 +594,9 @@ and an empty body.
 
 `activations/recent` reads the audit log, newest first — the activation store holds only current
 state. `limit` is 1–200, default 50. Each item is `{ts, skill, action, thread_id, tool_call_id,
-status}`: `action` is `activate` or `deactivate`, and `status` is `ok` or `unknown_skill` (the model
+status, library}`. `library` is `org`, or a personal library's digest (never the person's
+identity), so an investigator can tell whose skill ran; it is empty for a host skill. History
+shows every caller's activations to `skills:read`, personal skill names included. `action` is `activate` or `deactivate`, and `status` is `ok` or `unknown_skill` (the model
 named a skill that does not exist). `tool_call_id` joins the row to the matching `tool_call` audit
 event.
 
