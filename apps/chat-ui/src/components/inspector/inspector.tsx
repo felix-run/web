@@ -49,7 +49,7 @@ type SectionId = 'changes' | 'plans' | 'metrics';
  *
  * It used to hold eight sections, which is what made it an accordion — six tab
  * destinations did not fit the rail's 22rem. The other five were tenant-durable
- * (activity, usage, memory, corpus, skills): they outlive any one run and answer
+ * (activity, usage, memory, documents, skills): they outlive any one run and answer
  * questions about the harness rather than about what is on screen, so they are
  * `/harness` now. Approvals went to the attention line (above), which leaves the
  * two that belong beside a transcript — joined by Changes, which moved here from
@@ -216,9 +216,9 @@ export function runState(
  * only for a single-step answer (see `storedUsage` in `@felix/client`). A turn
  * that ran tools, or was written by a durable run, may carry none — so a thread
  * holding any such turn has spent more than this adds up to, and the readout says
- * `floor` the way the Ledger says `Cost (floor)` rather than presenting a partial
+ * `floor` the way the Activity page says `Cost (floor)` rather than presenting a partial
  * sum as the total. There is no cost here at all: the frame carries tokens and
- * nothing priced, and the Ledger is where spend is read.
+ * nothing priced, and the Activity page is where spend is read.
  */
 export function threadTokens(turns: Turn[]): {
   input: number;

@@ -41,7 +41,7 @@ describe('the context breakdown', () => {
   /**
    * `input` is the *uncached* prompt only; the breakdown's input is the whole
    * prompt, with the cached part beside it — and no price, since the harness
-   * prices calls itself and a second catalog would disagree with the Ledger.
+   * prices calls itself and a second catalog would disagree with the Activity page.
    */
   it('opens from the meter with input, cache and output, and no price', async () => {
     const usage = turns[0]?.usage;

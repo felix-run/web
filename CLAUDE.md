@@ -336,12 +336,12 @@ current engine state rather than from the captured value.
 ****Tabs come from `@felix/ui/tabs`, never hand-rolled.** Four strips carried
 `role="tablist"`/`role="tab"`/`aria-selected` with no `tabpanel`, no `aria-controls` and no
 arrow-key roving focus — which announces a widget and then does not behave like one, and is worse
-than plain buttons. The run instrument and the Ledger use the primitive now; `tests/workbench-layout.test.tsx`
+than plain buttons. The run instrument and the Activity page use the primitive now; `tests/workbench-layout.test.tsx`
 asserts the association both ways rather than the roles. An inactive `TabsContent` renders its
 element for the association and **not its children**, which is what keeps one section on screen to
 one poll — `forceMount` would silently undo that and mount all three.
 
-The Memory and Corpus strips are deliberately *not* tabs. They switch the input above a list all
+The Memory and Documents strips are deliberately *not* tabs. They switch the input above a list all
 their modes share, so there is no panel per mode to point at; they are `role="group"` with
 `aria-pressed` buttons, which promises only what they are.
 
@@ -470,12 +470,12 @@ to put the whole Jobs workbench in the entry. The run instrument (`Inspector`) i
 `routes/workbench.tsx` too, with a same-width placeholder so the transcript does not reflow.
 **Measure the first load, not the entry file**: Rolldown moves shared modules into chunks the entry
 imports statically, so this split took `index-*.js` from 652 to 508 kB while what a first load
-actually fetches (the entry plus its static imports, ~1.7 MB raw) fell only ~23 kB gzipped. Audit and usage are **one** destination, the Ledger:
+actually fetches (the entry plus its static imports, ~1.7 MB raw) fell only ~23 kB gzipped. Audit and usage are **one** destination, Activity (halves Events and Usage):
 segmented rather than stacked so only the half being read polls. `SheetBoundary` became
 `PanelBoundary` and wraps each destination individually — a panel throws during its *own* render, so
 one boundary around the group would take the other seven down with it. Wide, the nav is a resident
 rail; narrow there is no room for both, so `/harness` *is* the list and only redirects to
-`/harness/ledger` on a wide viewport — redirecting on a phone would mean the list could never be
+`/harness/activity` on a wide viewport — redirecting on a phone would mean the list could never be
 seen.
 
 **The shell must never treat a non-thread address as a thread.** `/t/:threadSuffix` is the truth when
@@ -826,7 +826,7 @@ Flows worth knowing before editing the app:
   underestimate, so chat-ui labels the total `Cost (floor)` and says how many turns were unpriced,
   and the terminal leaves the cell blank rather than drawing `$0`.
 
-  **The Ledger's totals come from `/usage/summary`, not from adding up `/usage`.** The panel used to
+  **The Activity page's totals come from `/usage/summary`, not from adding up `/usage`.** The panel used to
   sum whichever page of rows it had fetched — `limit: 40` — and label the result the total, so
   "Cost (floor)" described a page rather than a period. The summary route groups and totals
   server-side over a window (thirty days unless asked otherwise) and echoes the range it used, which
@@ -1349,7 +1349,7 @@ first appears, newest state, the later calls folded except in verbose); a **vers
 an edited message, from `branchPoints` in `@felix/client` (`MessageBranch` itself holds every
 version client-side, so the selector is rebuilt from the same `ButtonGroup`); **Context**, the
 meter's hover/focus breakdown, *without* its cost line — it prices from `tokenlens`, the harness
-prices calls itself, and two prices for one call would disagree with the Ledger; and
+prices calls itself, and two prices for one call would disagree with the Activity page; and
 **Checkpoint**, a restore point after a labelled turn. Two traps found on the way: `shiki` is
 pinned to the 3.x line streamdown uses, or the bundle carries two; and `ansi-to-react` is
 CommonJS whose default import Vite's dev bundle resolves to the module object — the app crashed

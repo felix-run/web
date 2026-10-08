@@ -614,7 +614,7 @@ icon, the title the nav uses, then the value **with its unit** (`0 memories`, `l
 1 failed`, `3 jobs`) set beside the title rather than at the far edge, and controls pushed right —
 wrapping to a second row when the pane is narrow. A page whose value would need a request of its
 own shows none; a list that came back at its fetch cap reads `50+`, not a total. A section drawn
-bare still computes its value and reports it to the host's header, which is how the Ledger's one
+bare still computes its value and reports it to the host's header, which is how the Activity page's one
 header carries whichever half is on screen. Every page's body **and** its header row are held to
 `READING_MEASURE` (`max-w-3xl`) by default, so a status is read with its name rather than found
 1300px away and a page's controls end where the rows they act on end; `<Panel fullBleed>` is the
@@ -622,23 +622,23 @@ opt-out, and no page takes it today. The rule under the header stays full width;
 header from the pane. Below the header a page is divided into `PageSection`s — a hairline rule and
 an `h3` title (Title, 13px 600), never a bordered box — and label/value pairs are a `Facts` grid
 with the value a gutter from its label rather than right-aligned across the pane. Lists are rows
-between hairlines, as the Ledger's are. `/harness` looks at its own agent — `?agent=` in the address,
+between hairlines, as the Activity page's are. `/harness` looks at its own agent — `?agent=` in the address,
 defaulting to the one Chat is talking to and never writing back to it — and the **picker lives
 only in the headers of the pages it scopes** (Skills, Eval, Agent); a control belongs on the
 things it changes, and at the top of the nav it read as filtering tenant-wide pages it does not.
 Every link and every page that writes its own view keeps `?agent=`. The nav is two runs under
-visible 11px labels that name their lists — Records (Memory, Corpus, Skills, Ledger, Agent) and
+visible 11px labels that name their lists — Records (Memory, Documents, Skills, Activity, Agent) and
 Workbenches (Manifests, Jobs, Eval) — split by a full-strength `border` rule. Every link is a Tab
 stop, with the arrow keys as an extra. The rail carries exactly two glances, in `state-failed`
-and only when non-zero: `Jobs · N failing` and `Ledger · N failed`, counted as those pages'
+and only when non-zero: `Jobs · N failing` and `Activity · N failed`, counted as those pages'
 headers count them. Absence is the rail's all-clear, so it is drawn only for a read that
 answered: a failed read shows a muted `unchecked` (a word, not a hover-only `?`), and a count
 kept from an earlier read carries its age on screen (`3 failed · 2m`). Every page header ends in a quiet
-`Docs ↗` text link to that page's reference on docs.felix.run (a new tab; the Ledger's follows
+`Docs ↗` text link to that page's reference on docs.felix.run (a new tab; the Activity page's follows
 its half), declared beside the destination and checked against the docs source by
 `tests/docs-links.test.ts`, so a renamed heading fails rather than landing at the top of a page.
 Every page header row is `min-h-8`, so the
-rule under it sits on one line from page to page, and the tab title names the page (`Ledger —
+rule under it sits on one line from page to page, and the tab title names the page (`Activity —
 Felix`) behind any run-state prefix. On `/harness` the header drops the conversation's own
 controls — New chat, the instrument toggle and the Session menu's run verbs; the way back to the
 conversation is its row in the sidebar's thread list, and the run's state is the header's first
@@ -646,7 +646,7 @@ slot, on both addresses. The ellipsis menu stays in the same slot on both addres
 instrument toggle's slot is held empty at every width, so the attention line beside it does not
 move between them;
 on `/harness` the menu is named **Theme** and holds only the Theme radio group. Two controls have
-one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Ledger's
+one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Activity page's
 tabs) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
 sit in the header, and the form a create toggle opens is the page's first section, with the list
 still under it. A view that can be linked is in the address (`?view=usage`,
@@ -661,9 +661,9 @@ header value says how old it is (`0 documents · as of 2m ago`) — it never tra
 knew for an error box. **Amber is only for a person being asked to act now**: a denial in the feed is an outlined
 badge, a rubric that can never reject is foreground text, a forgotten memory is not red. Names
 the harness gave in bulk (tools, skills) are a mono list, not a pill each. `/harness` opens on
-the Ledger. Narrow, the way back to the list
+the Activity page. Narrow, the way back to the list
 takes the header's icon slot rather than a row of its own. An id that has to distinguish rows is cut from the **middle**, not
-the end: the Ledger shows a thread id at up to 20 characters with both ends kept, because
+the end: the Activity page shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
 
 The sidebar's workspace section has the sidebar's section header — the row Harness draws: a small
@@ -743,7 +743,7 @@ those poll only while the rows are on screen, which includes the collapsed colum
 Collapsed to icons, the column is New chat, Threads, Workspace, then the eight destinations. Threads
 expands the sidebar and puts the caret in the search field. It carries one 6px dot for the most
 urgent state — `state-blocked` when something waits on a person, else `state-running` while a run
-is going — and says it as well. Jobs and the Ledger carry a `state-failed` dot when their glance
+is going — and says it as well. Jobs and the Activity page carry a `state-failed` dot when their glance
 reports a failure, with the glance's own sentence for a reader.
 
 ### Run readout
@@ -815,7 +815,7 @@ every second is noise.
 - **A labelled turn is a restore point.** After it, a bookmark, the label and *Restore*, then a
   hairline to the edge.
 - **The context meter opens a breakdown** on hover or focus — the window bar, then input,
-  cache and output for the last reply. No price: the Ledger is where spend is read.
+  cache and output for the last reply. No price: the Activity page is where spend is read.
 - **The workspace's files are a tree.** Mono 11px, folders before files, the icons muted —
   never coloured, since colour here is state. It opens onto the work: folders holding a path
   this thread wrote or edited start expanded and those files are in the foreground, the rest

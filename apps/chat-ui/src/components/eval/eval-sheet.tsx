@@ -17,7 +17,7 @@ import {
   runEvalDataset,
 } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
-import { compact, usd } from '@/components/harness/ledger';
+import { compact, usd } from '@/components/harness/activity';
 import {
   CREATE_FORM,
   CreateToggle,
@@ -823,7 +823,7 @@ function AddItemForm({
  * rows (felix-run/felix#345); a harness before that sends none and the line
  * simply has no cost on it. The cost is the candidate's own turns, not the
  * judge's, and it is labelled a floor whenever an item metered tokens with no
- * price, as the Ledger labels one — an unpriced model costs something, just not
+ * price, as the Activity page labels one — an unpriced model costs something, just not
  * something the harness knows.
  */
 export function runTotals(run: EvalRun): {

@@ -5,7 +5,8 @@ import { useSearchParams } from 'react-router';
 import { getResolvedManifest } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
-import { DocumentsSection } from '@/components/harness/corpus';
+import { EventsSection, UsageSection } from '@/components/harness/activity';
+import { DocumentsSection } from '@/components/harness/documents';
 import { GitHubPage } from '@/components/harness/github';
 import {
   HarnessAgentPicker,
@@ -13,7 +14,6 @@ import {
   modelsById,
   useHarnessAgent,
 } from '@/components/harness/harness-agent';
-import { ActivitySection, UsageSection } from '@/components/harness/ledger';
 import { MemorySection } from '@/components/harness/memory';
 import { PageHeader, Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';
@@ -28,7 +28,7 @@ import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useSkillsAddress } from '@/components/skills/skills-address';
 import { threadLabel } from '@/lib/threads';
 import { useShell } from '@/shell-context';
-import { GITHUB_DOCS, type HarnessPath, LEDGER_DOCS } from './harness';
+import { ACTIVITY_DOCS, GITHUB_DOCS, type HarnessPath } from './harness';
 
 /**
  * The harness: everything the tenant owns, at the lifetime it actually has.
@@ -58,7 +58,7 @@ function MemoryPanel() {
   );
 }
 
-function CorpusPanel() {
+function DocumentsPanel() {
   return (
     <AsPanel>
       <DocumentsSection enabled open onToggle={() => {}} />
@@ -181,7 +181,7 @@ function SkillsOverview() {
 }
 
 /**
- * The Ledger: what the harness did, and what it cost.
+ * Activity: what the harness did, and what it cost.
  *
  * One destination, two halves, and only the visible half polls — which is the
  * whole reason this is segmented rather than stacked. An audit event and a usage
@@ -189,14 +189,14 @@ function SkillsOverview() {
  * serve neither; but they are the same *question* — what has this tenant been
  * doing — so they are one place.
  */
-function LedgerPanel() {
+function ActivityPanel() {
   // In the address, not in state: a half kept in `useState` could not be linked
-  // to and reset to Activity on every visit, so "the Usage page" was two clicks
+  // to and reset to Events on every visit, so "the Usage page" was two clicks
   // away from every link that meant it. `replace`, because switching halves is a
   // view change rather than a place Back should step through.
   const [params, setParams] = useSearchParams();
-  const half: 'activity' | 'usage' = params.get('view') === 'usage' ? 'usage' : 'activity';
-  const setHalf = (next: 'activity' | 'usage') =>
+  const half: 'events' | 'usage' = params.get('view') === 'usage' ? 'usage' : 'events';
+  const setHalf = (next: 'events' | 'usage') =>
     setParams(keepAgent(params, next === 'usage' ? { view: 'usage' } : {}), { replace: true });
   // The visible half's header value, reported up by its `bare` section. Only the
   // visible half is mounted, so only it reports — the header describes the half
@@ -211,27 +211,27 @@ function LedgerPanel() {
       */}
       <Tabs
         value={half}
-        onValueChange={(v) => setHalf(v as 'activity' | 'usage')}
+        onValueChange={(v) => setHalf(v as 'events' | 'usage')}
         className="min-h-0 flex-1 gap-0"
       >
         <PageHeader
           icon={<ActivityIcon />}
-          title="Ledger"
-          // The half being read decides the reference: Activity is `/audit`,
+          title="Activity"
+          // The half being read decides the reference: Events is `/audit`,
           // Usage is `/usage`, and they are separate sections of the docs.
-          docs={LEDGER_DOCS[half]}
+          docs={ACTIVITY_DOCS[half]}
           value={withAge(meta.meta, meta.metaAsOf)}
           valueLead={meta.metaLead}
           valueTone={meta.metaTone}
           controls={
-            // Held to the header's row height, so the Ledger's rule sits where
+            // Held to the header's row height, so the Activity page's rule sits where
             // every other page's does.
             <TabsList
-              aria-label="Ledger view"
+              aria-label="Activity view"
               className="w-auto group-data-[orientation=horizontal]/tabs:h-8"
             >
-              <TabsTrigger value="activity" className="px-2.5 text-xs">
-                Activity
+              <TabsTrigger value="events" className="px-2.5 text-xs">
+                Events
               </TabsTrigger>
               <TabsTrigger value="usage" className="px-2.5 text-xs">
                 Usage
@@ -241,8 +241,8 @@ function LedgerPanel() {
         />
         <SectionMetaSink.Provider value={setMeta}>
           <PanelModeProvider chrome="bare">
-            <TabsContent value="activity" className="min-h-0 overflow-y-auto p-4">
-              <ActivitySection enabled open onToggle={() => {}} />
+            <TabsContent value="events" className="min-h-0 overflow-y-auto p-4">
+              <EventsSection enabled open onToggle={() => {}} />
             </TabsContent>
             <TabsContent value="usage" className="min-h-0 overflow-y-auto p-4">
               <UsageSection enabled open onToggle={() => {}} />
@@ -307,9 +307,9 @@ function AgentPanel() {
  */
 const PAGES: Record<HarnessPath, () => React.ReactNode> = {
   memory: MemoryPanel,
-  corpus: CorpusPanel,
+  documents: DocumentsPanel,
   skills: SkillsPanel,
-  ledger: LedgerPanel,
+  activity: ActivityPanel,
   agent: AgentPanel,
   github: GitHubPanel,
   manifests: ManifestsPanel,

@@ -22,8 +22,8 @@ import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { middleTruncate } from '@/lib/format';
 import {
   ACTIVITY_FETCH,
+  ACTIVITY_GLANCE_SPAN,
   AUDIT_POLL_KEY,
-  LEDGER_GLANCE_SPAN,
   recentFailures,
 } from '@/lib/harness-glances';
 import { cn } from '@/lib/utils';
@@ -31,10 +31,10 @@ import type { AuditEvent, UsageSummary } from '@/types';
 
 // The window, its keys and the glance's count live where the rail can import
 // them without loading this page; re-exported so the page's readers are unchanged.
-export { ACTIVITY_FETCH, AUDIT_POLL_KEY, LEDGER_GLANCE_SPAN, recentFailures };
+export { ACTIVITY_FETCH, ACTIVITY_GLANCE_SPAN, AUDIT_POLL_KEY, recentFailures };
 
 /**
- * The Ledger: what the harness *did*, and what it cost.
+ * Activity: what the harness *did*, and what it cost.
  *
  * One `/harness` destination holding both halves, segmented rather than stacked.
  * An audit event and a usage row are different shapes and answer different
@@ -233,7 +233,7 @@ const THREAD_CHARS = 20;
 /** Rows rendered per section before the footer starts saying what was left out. */
 const ACTIVITY_VISIBLE = 12;
 
-export function ActivitySection({
+export function EventsSection({
   enabled,
   open,
   onToggle,
@@ -254,7 +254,7 @@ export function ActivitySection({
   // finished, so there is nothing to miss by holding still. `usePoll` refetches on
   // the `enabled` false→true edge, so closing the row brings the list back current
   // with no extra wiring.
-  // Shared with the rail's `Ledger · N failed` glance, so the page and the rail
+  // Shared with the rail's `Activity · N failed` glance, so the page and the rail
   // make one request between them and count the same rows.
   //
   // The poll can no longer stop while a row is open — the rail is still asking —
@@ -311,7 +311,7 @@ export function ActivitySection({
   return (
     <Section
       icon={<ActivityIcon className="size-3.5" />}
-      title="Activity"
+      title="Events"
       // A bare count of the window is a constant once the harness has
       // `ACTIVITY_FETCH` rows — it read "60" forever and answered nothing. What is
       // worth knowing at a glance is whether anything in the window went wrong, and
@@ -331,7 +331,7 @@ export function ActivitySection({
       meta={
         data
           ? failed.length > 0
-            ? `${failed.length} failed · ${recent > 0 ? recent : 'none'} in ${LEDGER_GLANCE_SPAN}`
+            ? `${failed.length} failed · ${recent > 0 ? recent : 'none'} in ${ACTIVITY_GLANCE_SPAN}`
             : '0 failed'
           : undefined
       }
@@ -484,7 +484,7 @@ function threadOf(e: AuditEvent): string | null {
 
 /**
  * A text-weight button or link: underlined, and with the system's focus ring — the
- * Ledger's "Show all" and "Show the 3 failed" had none of their own.
+ * Activity page's "Show all" and "Show the 3 failed" had none of their own.
  */
 const TEXT_BUTTON =
   'rounded-sm text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none';
@@ -778,7 +778,7 @@ export function UsageSection({
    * the route the operator configured.
    *
    * One `usePoll` rather than two, so the section still costs one tick — the
-   * economy the Ledger's tabs exist for.
+   * economy the Activity page's tabs exist for.
    */
   const { data, error, loading, lastOkAt, refresh } = usePoll(
     async () => {
