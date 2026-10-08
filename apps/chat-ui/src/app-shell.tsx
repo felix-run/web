@@ -91,6 +91,7 @@ import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
+import { forgetDurableRun, recallDurableRun, rememberDurableRun } from '@/lib/durable-runs';
 import { createEnginePool, type EnginePool } from '@/lib/engine-pool';
 import { toastError, toastProblem } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
@@ -420,6 +421,10 @@ export function AppShell() {
            * until the operator happened to reload.
            */
           onDurableComplete: () => hydrateFromServerRef.current(id),
+          // Kept so a reload can rejoin the run (`lib/durable-runs.ts`).
+          onRunAccepted: (token) => rememberDurableRun(id, token),
+          onRunSettled: () => forgetDurableRun(id),
+          onDurableProgress: () => hydrateFromServerRef.current(id),
         });
         // Seeded from the thread *the address names*, so the first paint is this
         // thread's transcript rather than an empty one — and, on a deep link, not
@@ -799,6 +804,11 @@ export function AppShell() {
       setFeedback({});
       setBranches(new Map());
       if (hydrate || running) hydrateFromServer(id, { transcript: !running });
+      // A durable run this browser left going on this thread — a reload, or the tab
+      // closed and reopened. Rejoining marks the thread running, so the composer
+      // queues rather than starting a second run beside it.
+      const pending = running ? null : recallDurableRun(id);
+      if (pending) void target.rejoinRun(pending);
     },
     [pool, hydrateFromServer],
   );

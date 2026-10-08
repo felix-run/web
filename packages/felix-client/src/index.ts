@@ -33,6 +33,7 @@ export {
   DEFAULT_CLIENT_TOOL_TIMEOUT_MS,
   settleClientTool,
 } from './client-tools';
+export { durableRunFailure, isDurableRunOver } from './durable-runs';
 export {
   type ChatEngine,
   type ClientToolPort,

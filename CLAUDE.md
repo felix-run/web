@@ -608,6 +608,22 @@ Flows worth knowing before editing the app:
   **because** the in-flight turn was built from those same logged events rather than from
   deltas: a snapshot rebuild has no local detail to discard, which is not true of an ordinary
   run, and is why the callback never fires for one.
+  **The poll ends on the harness's terminal set, and a reload rejoins** (2026-10-08). On a
+  production `cowork` thread the stream closed at the run's 300s deadline with
+  `run_expired:<token>`, which the engine showed as the error while the run went on; the poll then
+  ran forever, because `expired` was not one of the four statuses it stopped on; and a reload had
+  no way back to the run — the snapshot reads `idle` while a durable run works, and no route lists
+  a thread's runs — so the next message started a **second run on the same thread**, which the
+  harness does not refuse. `isDurableRunOver`/`durableRunFailure` (`@felix/client`,
+  `durable-runs.ts`) are the terminal set and the sentence for a run that ended with no answer;
+  `run_expired:` with a token in hand is not an error; a failed poll read is retried, a 404 ends
+  it. `onRunAccepted`/`onRunSettled` let chat-ui keep the token per thread
+  (`src/lib/durable-runs.ts`, `localStorage`), and `loadThread` calls `engine.rejoinRun`, which
+  marks the thread streaming — so the composer queues — polls, re-reads the transcript every 5s
+  (`onDurableProgress`; the status turn survives a `setTurns`), and settles as `send` does.
+  **What it cannot do is run a cowork client tool after the stream has closed**: only the durable
+  arm of `POST /chat/stream` announces `tool_request`, not `GET /chat/stream/{thread_id}` and not
+  the poll, so a `local_*` call issued after that times out. That needs the harness.
 - **Durable runs** — two entry points, and they behave differently. `POST /chat` may return
   `202 + resume_token`; poll `GET /chat/runs/{token}` (`pollDurableRun`). `POST /chat/stream` with a
   `spec.execution.mode: durable` manifest instead streams the run's *progress* —
