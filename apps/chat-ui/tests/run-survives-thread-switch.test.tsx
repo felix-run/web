@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -267,13 +267,16 @@ describe('a run when the operator switches threads', () => {
     await open('b history');
     await waitFor(() => expect(address).toBe('/t/thread-b'));
 
-    const del = await waitFor(() => {
+    // Delete lives in the row's actions menu, not beside it.
+    const actions = await waitFor(() => {
       const b = row('question for A')?.parentElement?.querySelector<HTMLButtonElement>(
-        'button[aria-label="Delete thread"]',
+        'button[aria-label^="Actions for"]',
       );
       expect(b).toBeTruthy();
       return b!;
     });
+    await act(async () => void (await userEvent.click(actions)));
+    const del = await screen.findByRole('menuitem', { name: 'Delete' });
     await act(async () => void (await userEvent.click(del)));
     await waitFor(() =>
       expect(net.posted('/chat/abort').map((c) => c.body.thread_id)).toEqual(['thread-a']),
