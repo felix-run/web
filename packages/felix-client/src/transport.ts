@@ -927,17 +927,31 @@ export function createFelixClient(opts: FelixClientOptions) {
       }
     },
 
-    /** DELETE /chat/history/{thread_id} → erase the server transcript. Best-effort. */
-    async deleteThreadHistory(threadId: string): Promise<void> {
+    /**
+     * DELETE /chat/history/{thread_id} → erase the server transcript.
+     *
+     * Best-effort by default: clearing a thread or resetting it before a
+     * regenerate goes on whether or not the harness agreed, and the local copy
+     * is what the operator sees. `reportFailure` is for a caller that has told
+     * the operator the thread is gone — deleting it from a list — and must say
+     * so when the harness refused, or it reappears on the next refresh.
+     */
+    async deleteThreadHistory(
+      threadId: string,
+      { reportFailure = false }: { reportFailure?: boolean } = {},
+    ): Promise<void> {
       try {
         const res = await rawFetch(`/chat/history/${encodeURIComponent(threadId)}`, {
           method: 'DELETE',
           headers: leaseHeader(threadId),
         });
-        // Still best-effort, but a refusal reaches `onLeaseRefused` first.
+        // A refusal reaches `onLeaseRefused` first.
         await refuseIfLease(res, 'history', threadId);
-      } catch {
-        // best-effort; the local copy is the source of truth in the demo
+        if (!res.ok && reportFailure) {
+          throw new Error(`chat/history: ${res.status} ${await detailOf(res)}`);
+        }
+      } catch (err) {
+        if (reportFailure) throw err;
       }
     },
 

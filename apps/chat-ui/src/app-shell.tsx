@@ -107,8 +107,11 @@ import {
   listThreads,
   loadTurns,
   migrateLegacy,
+  readPins,
   removeThread,
   saveTurns,
+  threadLabel,
+  writePins,
 } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { NO_RUN, type RunClock, ShellProvider, type ShellValue } from '@/shell-context';
@@ -854,6 +857,17 @@ export function AppShell() {
     navigate(`/t/${id}`);
   }, [mint, loadThread, navigate]);
 
+  /**
+   * The threads this tab has shown, most recent last — so deleting the one on
+   * screen goes back to where the operator came from, not to whichever thread
+   * happens to be newest.
+   */
+  const visitedRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!threadId) return;
+    visitedRef.current = [...visitedRef.current.filter((v) => v !== threadId), threadId].slice(-20);
+  }, [threadId]);
+
   const selectThread = useCallback(
     (id: string) => {
       if (id === threadId) return;
@@ -951,6 +965,10 @@ export function AppShell() {
       // Capture enough to put it back before anything is destroyed.
       const meta = listThreads().find((t) => t.id === id);
       const turns = loadTurns(id);
+      // `removeThread` drops the pin, so Undo has to know there was one.
+      const wasPinned = readPins().has(id);
+      const label = meta ? threadLabel(meta) : null;
+      const name = label && !label.isId ? `“${label.text.slice(0, 40)}”` : 'Thread';
 
       // Deleting a conversation does stop its run, wherever it is: on screen,
       // or kept going in the background after the operator left it. Dropped
@@ -967,7 +985,11 @@ export function AppShell() {
       const remaining = listThreads();
       setThreads(remaining);
       if (id === threadId) {
-        if (remaining.length) selectThread(remaining[0].id);
+        const back = [...visitedRef.current]
+          .reverse()
+          .find((v) => v !== id && remaining.some((t) => t.id === v));
+        if (back) selectThread(back);
+        else if (remaining.length) selectThread(remaining[0].id);
         else newThread();
       }
 
@@ -986,10 +1008,18 @@ export function AppShell() {
       let committed = false;
       const commit = window.setTimeout(() => {
         committed = true;
-        void deleteThreadHistory(id).catch(() => {});
+        // Said, not swallowed: a delete the harness refused leaves the thread
+        // there, and it would come back in the rail on the next refresh with
+        // nothing to say why.
+        void deleteThreadHistory(id, { reportFailure: true }).catch((err) => {
+          toastError(err, 'delete this thread on the harness', {
+            retry: () => void deleteThreadHistory(id).catch(() => {}),
+          });
+          void refreshThreads();
+        });
       }, DELETE_UNDO_MS);
 
-      toast('Thread deleted', {
+      toast(`${name} deleted`, {
         duration: DELETE_UNDO_MS,
         action: {
           label: 'Undo',
@@ -1001,6 +1031,7 @@ export function AppShell() {
             window.clearTimeout(commit);
             if (meta) indexThread(meta);
             if (turns.length) saveTurns(id, turns);
+            if (wasPinned) writePins([...readPins(), id]);
             void refreshThreads();
           },
         },

@@ -188,9 +188,8 @@ describe('the sidebar', () => {
     });
     const waiting = await screen.findByRole('group', { name: /^Waiting on you/ });
     expect(waiting.textContent).toContain('The other one');
-    expect(screen.getByRole('button', { name: /^Current thread/ }).textContent).toContain(
-      'Running',
-    );
+    const runningGroup = screen.getByRole('group', { name: /^Running/ });
+    expect(runningGroup.textContent).toContain('Current thread');
   });
 
   // Starting a thread no longer stops the run on this one, so nothing about a
@@ -270,6 +269,22 @@ describe('the sidebar', () => {
     // One icon for the threads: a second that did the same thing was a decision
     // with nothing to decide between.
     expect(screen.queryByRole('button', { name: /^Search threads/ })).toBeNull();
+  });
+
+  // Collapsed, the column is all there is of the rail, so a run going in the
+  // background — not only something waiting — has to show on the Threads icon,
+  // and be said, since a dot is not.
+  it('says on the collapsed Threads icon that a run is going, and that something waits', () => {
+    const { unmount } = mountSidebar({ runningThreads: new Set(['other']) }, { open: false });
+    expect(screen.getByRole('button', { name: /^Threads\W+a run is going/ })).toBeTruthy();
+    unmount();
+    mountSidebar(
+      { runningThreads: new Set(['other']), blockedThreads: new Set(['other']) },
+      { open: false },
+    );
+    expect(
+      screen.getByRole('button', { name: /^Threads\W+something is waiting on you/ }),
+    ).toBeTruthy();
   });
 
   // The list scrolls inside itself, so an opened Older cannot push the workspace

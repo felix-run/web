@@ -165,15 +165,25 @@ export function AppSidebar() {
                 >
                   <MessagesSquareIcon aria-hidden />
                   <span>Threads</span>
-                  {blocked.size > 0 && (
+                  {/* One dot, the most urgent state: something waiting on a person
+                      before a run merely going. Said as well as drawn. */}
+                  {(blocked.size > 0 || runningThreads.size > 0) && (
                     <span
                       aria-hidden
-                      className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-state-blocked"
+                      className={cn(
+                        'absolute top-1.5 right-1.5 size-1.5 rounded-full',
+                        blocked.size > 0 ? 'bg-state-blocked' : 'bg-state-running',
+                      )}
                     />
                   )}
-                  {blocked.size > 0 && (
-                    <span className="sr-only">, an approval is waiting on a thread</span>
-                  )}
+                  {blocked.size > 0 ? (
+                    <span className="sr-only">, something is waiting on you on a thread</span>
+                  ) : runningThreads.size > 0 ? (
+                    <span className="sr-only">
+                      , {runningThreads.size === 1 ? 'a run is' : `${runningThreads.size} runs are`}{' '}
+                      going
+                    </span>
+                  ) : null}
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -245,7 +255,9 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
   const { search } = useHarnessAgent();
   // Collapsed to icons, the rows are all there is to the sidebar, so they never fold.
   const shown = collapsed || !folded;
-  const glance = useNavGlances(shown && !collapsed);
+  // Collapsed too: the icons are on screen, and a failure that vanishes when the
+  // column narrows is an instrument that stops reading.
+  const glance = useNavGlances(shown);
   const at = useMatch('/harness/:destination/*')?.params.destination;
 
   return (
@@ -304,7 +316,7 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
                         asChild
                         isActive={at === path}
                         tooltip={name}
-                        className="text-muted-foreground"
+                        className="relative text-muted-foreground"
                       >
                         <Link
                           to={{ pathname: `/harness/${path}`, search }}
@@ -313,7 +325,11 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
                         >
                           <Icon aria-hidden />
                           <span className="min-w-0 flex-1 truncate">{name}</span>
-                          {!collapsed && <NavGlance glance={glance[path]} />}
+                          {collapsed ? (
+                            <CollapsedGlance glance={glance[path]} />
+                          ) : (
+                            <NavGlance glance={glance[path]} />
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -325,5 +341,23 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
         </nav>
       </SidebarGroupContent>
     </SidebarGroup>
+  );
+}
+
+/**
+ * A destination's glance when the column is icons: a dot on the icon when
+ * something failed, and the glance's own sentence for a reader. Nothing for a
+ * quiet one — a dot that is always there says nothing.
+ */
+function CollapsedGlance({ glance }: { glance: ReturnType<typeof useNavGlances>[string] }) {
+  if (!glance || glance.tone !== 'failed') return null;
+  return (
+    <>
+      <span
+        aria-hidden
+        className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-state-failed"
+      />
+      <span className="sr-only">, {glance.title}</span>
+    </>
   );
 }

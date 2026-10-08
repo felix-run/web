@@ -1,4 +1,5 @@
 import { relativeTime, type ThreadMeta, threadSuffix } from '@felix/client';
+import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,10 +43,15 @@ const NO_PINS: ReadonlySet<string> = new Set();
 const NO_RUNNING: ReadonlySet<string> = new Set();
 
 /**
- * Characters of an id a row draws. A UUID is 36; this keeps eleven of its head
- * and twelve of its tail, which is where two of them differ.
+ * Characters of an id a row draws: what the row's width holds in 13px mono. A
+ * UUID is 36, so it is still cut from the middle, keeping the tail where two of
+ * them differ; a name like `self-triage-296-findings-b` now fits whole.
  */
-const ID_CHARS = 24;
+const ID_CHARS = 30;
+
+/** Message hits asked for at first, and when the operator asks for more. */
+const HIT_LIMIT = 12;
+const HIT_LIMIT_MORE = 50;
 
 /**
  * A row's actions, laid over the end of the row rather than beside it.
@@ -83,6 +89,14 @@ const ROW_LIT = cn(
   'focus-within:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
   'has-[[data-state=open]]:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
 );
+
+/**
+ * A group's label, held at the top of the list while its rows scroll under it,
+ * so a reader deep in a long group still knows which one they are in. Older's
+ * months stick one label-height lower, under Older's own.
+ */
+const STICKY_LABEL =
+  'sticky top-0 z-10 flex h-6 items-center gap-1 bg-background px-2 text-xs font-medium text-muted-foreground';
 
 /** A row to draw: the thread, and the stretch of a message that matched a search, if one did. */
 type Row = { thread: ThreadMeta; excerpt?: string };
@@ -242,6 +256,19 @@ export function ThreadList({
   >([]);
   const [searching, setSearching] = useState(false);
   const [searchFailed, setSearchFailed] = useState(false);
+  /** How many message hits to ask for. Back to the default for every new query. */
+  const [hitLimit, setHitLimit] = useState(HIT_LIMIT);
+  /** The row asking whether to stop its run before it is deleted. */
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
+  const confirmJustStarted = useRef(false);
+  useEffect(() => {
+    if (!confirming) return;
+    // After paint, for the reason the rename field waits: the menu that asked
+    // returns focus to its trigger as it closes.
+    const frame = requestAnimationFrame(() => confirmRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [confirming]);
 
   // Keyed on the list, not the query: a placeholder-titled row reads its cached
   // transcript once per index change rather than once per keystroke.
@@ -271,7 +298,7 @@ export function ThreadList({
     let cancelled = false;
     setSearching(true);
     const timer = window.setTimeout(() => {
-      void searchSessions(q, 12)
+      void searchSessions(q, hitLimit)
         .then((rows) => {
           if (!cancelled) setHits(rows);
         })
@@ -291,7 +318,7 @@ export function ThreadList({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, hitLimit]);
 
   /**
    * Search results: what matched on the row first, then threads whose messages
@@ -319,8 +346,8 @@ export function ThreadList({
 
   const filtering = query.trim() !== '';
   const groups = useMemo(
-    () => groupThreads(threads, pinned, Date.now(), blocked),
-    [threads, pinned, blocked],
+    () => groupThreads(threads, pinned, Date.now(), blocked, running),
+    [threads, pinned, blocked, running],
   );
   const [olderOpen, setOlderOpen] = useState(false);
   const ids = useId();
@@ -368,6 +395,26 @@ export function ThreadList({
       .find((b) => b.dataset.threadRow === id)
       ?.focus();
 
+  /**
+   * Delete, or ask first. A thread with a run going, or with something waiting
+   * on a person, asks — deleting stops the run at once, and the toast's Undo
+   * brings back the transcript but never the run. Anything else is deleted
+   * straight away; its Undo restores all of it.
+   */
+  function requestDelete(id: string, fromMenu = false) {
+    if (running.has(id) || blocked.has(id)) {
+      if (fromMenu) confirmJustStarted.current = true;
+      setConfirming(id);
+      return;
+    }
+    // The focus goes to the row that takes this one's place, not to the page.
+    const buttons = rowButtons();
+    const at = buttons.findIndex((b) => b.dataset.threadRow === id);
+    const next = (buttons[at + 1] ?? buttons[at - 1])?.dataset.threadRow;
+    onDelete(id);
+    if (next) requestAnimationFrame(() => focusRow(next));
+  }
+
   function onRowKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
     const target = e.currentTarget;
     const id = target.dataset.threadRow;
@@ -396,13 +443,7 @@ export function ThreadList({
       setMenuFor(id);
     } else if (e.key === 'Delete' && threads.some((t) => t.id === id)) {
       e.preventDefault();
-      // The focus goes to the row that takes this one's place, not to the page.
-      const next = buttons[at + 1] ?? buttons[at - 1];
-      onDelete(id);
-      if (next?.dataset.threadRow) {
-        const nextId = next.dataset.threadRow;
-        requestAnimationFrame(() => focusRow(nextId));
-      }
+      requestDelete(id);
     }
   }
 
@@ -440,7 +481,53 @@ export function ThreadList({
           t.id === currentId ? '[--row-bg:var(--accent)]' : ROW_LIT,
         )}
       >
-        {renaming?.id === t.id ? (
+        {confirming === t.id ? (
+          // In the row rather than a dialog: the question is about this row,
+          // and the row is where the eye already is.
+          <div
+            role="group"
+            aria-labelledby={`${ids}-confirm`}
+            className="flex min-w-0 flex-1 flex-col gap-1.5"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setConfirming(null);
+                requestAnimationFrame(() => focusRow(t.id));
+              }
+            }}
+          >
+            <p id={`${ids}-confirm`} className="text-xs text-foreground">
+              {live
+                ? `Deleting stops the run on ${label.isId ? 'this thread' : `“${label.text}”`}.`
+                : `${label.isId ? 'This thread' : `“${label.text}”`} has something waiting on you.`}
+            </p>
+            <div className="flex gap-1.5">
+              <Button
+                ref={confirmRef}
+                size="sm"
+                variant="destructive"
+                className="h-7"
+                onClick={() => {
+                  setConfirming(null);
+                  onDelete(t.id);
+                }}
+              >
+                {live ? 'Stop and delete' : 'Delete'}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7"
+                onClick={() => {
+                  setConfirming(null);
+                  requestAnimationFrame(() => focusRow(t.id));
+                }}
+              >
+                Keep
+              </Button>
+            </div>
+          </div>
+        ) : renaming?.id === t.id ? (
           <input
             // Renaming is a text edit, so it happens in place rather than in
             // a dialog: the row already shows the name being changed.
@@ -492,7 +579,9 @@ export function ThreadList({
               // An untitled thread is listed by its id, cut from the middle:
               // ids that differ differ at the end, and an end-cut kept only
               // the half they share. Whole in `title` and to a reader.
-              <span className="block truncate font-mono font-medium">
+              // Muted, so a row the operator can read ranks above one they
+              // would have to recall: an id is distinct, not memorable.
+              <span className="block truncate font-mono text-muted-foreground">
                 <CutId id={label.text} max={ID_CHARS} />
               </span>
             ) : (
@@ -500,9 +589,13 @@ export function ThreadList({
             )}
             {excerpt ? (
               // A message matched, so the second line is why: the words around
-              // the match, marked, rather than the agent and the time.
-              <span className="block truncate text-xs text-muted-foreground">
-                <Marked text={excerpt} query={query} />
+              // the match, marked, and how long ago — identical excerpts are
+              // common, and the time is what tells them apart.
+              <span className="flex min-w-0 gap-1 text-xs text-muted-foreground">
+                <span className="min-w-0 truncate">
+                  <Marked text={excerpt} query={query} />
+                </span>
+                <span className="shrink-0">· {relativeTime(t.updatedAt)}</span>
               </span>
             ) : (
               <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
@@ -514,7 +607,9 @@ export function ThreadList({
                 {waiting && inGroup !== 'waiting' && (
                   <StateMark className="text-state-blocked">Waiting on you</StateMark>
                 )}
-                {live && !waiting && <StateMark className="text-state-running">Running</StateMark>}
+                {live && !waiting && inGroup !== 'running' && (
+                  <StateMark className="text-state-running">Running</StateMark>
+                )}
                 <span className="min-w-0 truncate">
                   {/* A thread from another browser has no local manifest
                       record; the row says nothing rather than a placeholder. */}
@@ -530,7 +625,7 @@ export function ThreadList({
             )}
           </button>
         )}
-        {renaming?.id !== t.id && (
+        {renaming?.id !== t.id && confirming !== t.id && (
           <div data-slot="thread-actions" className={ROW_ACTIONS}>
             <DropdownMenu
               open={menuFor === t.id}
@@ -561,8 +656,9 @@ export function ThreadList({
                 className="w-56"
                 onCloseAutoFocus={(e) => {
                   e.preventDefault();
-                  if (renameJustStarted.current) {
+                  if (renameJustStarted.current || confirmJustStarted.current) {
                     renameJustStarted.current = false;
+                    confirmJustStarted.current = false;
                     return;
                   }
                   // Back to the row, which holds the list's Tab stop, rather
@@ -601,6 +697,8 @@ export function ThreadList({
                     <GitBranchIcon className="size-3.5" /> Fork
                   </DropdownMenuItem>
                 )}
+                {/* The rare ones, apart from the everyday ones. */}
+                {(onCompact || onExport) && <DropdownMenuSeparator />}
                 {onCompact && (
                   <DropdownMenuItem disabled={local || readOnly} onSelect={() => onCompact(t.id)}>
                     <ShrinkIcon className="size-3.5" /> Compact context
@@ -620,7 +718,7 @@ export function ThreadList({
                   </DropdownMenuLabel>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onSelect={() => onDelete(t.id)}>
+                <DropdownMenuItem variant="destructive" onSelect={() => requestDelete(t.id, true)}>
                   <Trash2Icon className="size-3.5" /> Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -632,13 +730,17 @@ export function ThreadList({
   }
 
   const count = results.length + elsewhere.length;
+  // The harness returned as many hits as were asked for, so there may be more.
+  const capped = filtering && !searching && !searchFailed && hits.length >= hitLimit;
   const status = !filtering
     ? ''
     : searching
       ? 'Searching message text…'
       : searchFailed
         ? 'Message search failed. Showing title matches only.'
-        : '';
+        : capped
+          ? `Showing the first ${hitLimit} message matches.`
+          : '';
 
   return (
     <section
@@ -672,24 +774,42 @@ export function ThreadList({
             aria-label="Search threads"
             data-shortcut-target="thread-search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setHitLimit(HIT_LIMIT);
+            }}
             onKeyDown={onSearchKeyDown}
             placeholder="Search titles and messages…"
             className="h-8 w-full rounded-md border border-border/60 bg-background pr-2 pl-7 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
           />
         </label>
-        {status && <p className="px-2 pt-1.5 text-xs text-muted-foreground">{status}</p>}
+        {status && (
+          <p className="flex items-center gap-2 px-2 pt-1.5 text-xs text-muted-foreground">
+            {status}
+            {capped && hitLimit < HIT_LIMIT_MORE && (
+              <button
+                type="button"
+                onClick={() => setHitLimit(HIT_LIMIT_MORE)}
+                className="rounded font-medium text-foreground underline underline-offset-2 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              >
+                Search more
+              </button>
+            )}
+          </p>
+        )}
         {/* What a search found, said to a reader once it settles. */}
         <p role="status" className="sr-only">
           {filtering && !searching
-            ? `${count === 0 ? 'No' : count} ${count === 1 ? 'thread matches' : 'threads match'}${searchFailed ? '; message search failed' : ''}`
+            ? `${count === 0 ? 'No' : count} ${count === 1 ? 'thread matches' : 'threads match'}${searchFailed ? '; message search failed' : capped ? `; the first ${hitLimit} message matches` : ''}`
             : ''}
         </p>
       </div>
       <div
         ref={listRef}
         data-slot="thread-scroll"
-        className="min-h-0 flex-1 scroll-fade-b overflow-y-auto overscroll-contain px-2 pt-0.5 pb-2"
+        // Scroll chains to the drawer at either end, rather than trapping a
+        // touch inside a list inside a scrolling drawer.
+        className="min-h-0 flex-1 scroll-fade-b overflow-y-auto px-2 pt-0.5 pb-2"
       >
         <div ref={listContentRef}>
           {count === 0 && (filtering || threads.length === 0) && (
@@ -697,7 +817,7 @@ export function ThreadList({
               <p className="text-sm text-muted-foreground">
                 {filtering
                   ? searching
-                    ? 'No title matches yet.'
+                    ? 'Searching…'
                     : `No thread matches “${query.trim()}”.`
                   : 'No threads yet'}
               </p>
@@ -721,7 +841,10 @@ export function ThreadList({
                       id={labelId}
                       aria-expanded={!folded}
                       onClick={() => setOlderOpen((o) => !o)}
-                      className="flex h-6 w-full items-center gap-1 rounded-md px-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                      className={cn(
+                        STICKY_LABEL,
+                        'w-full rounded-md text-left hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
+                      )}
                     >
                       <ChevronRightIcon
                         aria-hidden
@@ -737,12 +860,13 @@ export function ThreadList({
                     <p
                       id={labelId}
                       className={cn(
-                        'flex h-6 items-center gap-1 px-2 text-xs font-medium',
-                        g.key === 'waiting' ? 'text-state-blocked' : 'text-muted-foreground',
+                        STICKY_LABEL,
+                        g.key === 'waiting' && 'text-state-blocked',
+                        g.key === 'running' && 'text-state-running',
                       )}
                     >
-                      {g.key === 'waiting' && (
-                        <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                      {(g.key === 'waiting' || g.key === 'running') && (
+                        <span aria-hidden className="size-1.5 rounded-full bg-current" />
                       )}
                       {g.label}
                       {g.key === 'pinned' && (
@@ -750,8 +874,36 @@ export function ThreadList({
                       )}
                     </p>
                   )}
-                  {rows.length > 0 && (
-                    <div className="space-y-0.5">{rows.map((r) => renderRow(r, g.key))}</div>
+                  {folded && rows.length > 0 ? (
+                    // The thread on screen, kept in view from a folded group —
+                    // said, so a collapsed group holding a row is not a puzzle.
+                    <div role="group" aria-label="This thread, from Older" className="space-y-0.5">
+                      {rows.map((r) => renderRow(r, g.key))}
+                    </div>
+                  ) : g.months && g.months.length > 1 ? (
+                    g.months.map((m) => (
+                      <div
+                        key={m.key}
+                        role="group"
+                        aria-labelledby={`${labelId}-${m.key}`}
+                        className="pt-1"
+                      >
+                        <p
+                          id={`${labelId}-${m.key}`}
+                          className={cn(STICKY_LABEL, 'top-6 z-[9] pl-6 font-normal')}
+                        >
+                          {m.label}
+                          <span className="ml-auto tabular-nums">{m.threads.length}</span>
+                        </p>
+                        <div className="space-y-0.5">
+                          {m.threads.map((thread) => renderRow({ thread }, g.key))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    rows.length > 0 && (
+                      <div className="space-y-0.5">{rows.map((r) => renderRow(r, g.key))}</div>
+                    )
                   )}
                 </div>
               );

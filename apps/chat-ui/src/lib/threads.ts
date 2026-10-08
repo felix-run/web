@@ -135,37 +135,53 @@ export function writePins(ids: Iterable<string>): void {
   }
 }
 
-export type ThreadGroupKey = 'waiting' | 'pinned' | 'today' | 'yesterday' | 'week' | 'older';
+export type ThreadGroupKey =
+  | 'waiting'
+  | 'running'
+  | 'pinned'
+  | 'today'
+  | 'yesterday'
+  | 'week'
+  | 'older';
 
 export interface ThreadGroup {
   key: ThreadGroupKey;
   label: string;
   threads: ThreadMeta[];
+  /**
+   * Older only: its threads again, by calendar month, newest first. On a harness
+   * driven mostly by automation nearly every thread is older than a week, and one
+   * undivided Older was a 2,700px list with nothing to land on.
+   */
+  months?: Array<{ key: string; label: string; threads: ThreadMeta[] }>;
 }
 
 const DAY_MS = 86_400_000;
 
 /**
- * The sidebar's sections: what is waiting on a person, then pinned, then by last
- * activity.
+ * The sidebar's sections: what is waiting on a person, what is running, then
+ * pinned, then by last activity.
  *
- * Waiting comes first because it is the one state that asks something of the
- * reader, and an instrument ranks by state before recency: sorted by date alone, a
- * thread blocked on an approval could sit under a folded Older and say nothing.
- * `waiting` is the shell's tenant-wide `/approvals` poll, by suffix — positive
- * evidence only, so an approval with no thread moves none.
+ * State comes before recency because an instrument ranks by state: sorted by
+ * date alone, a thread blocked on an approval — or a run kept going after the
+ * operator switched away — could sit under a folded Older and say nothing.
+ * Waiting first, because it is the one state that asks something of the reader.
+ * `waiting` is the shell's tenant-wide `/approvals` poll plus questions this
+ * tab's runs are asking, and `running` the runs this tab carries, all by suffix
+ * and positive evidence only.
  *
  * The rest is bucketed on `updatedAt` — the last time this client or the harness
  * saw the thread move — against local midnight, so "Today" means the operator's
- * day rather than the last twenty-four hours. A thread appears in one group only,
- * the first that claims it. Empty groups are left out rather than drawn with no
- * rows under them.
+ * day rather than the last twenty-four hours, and Older is cut again by calendar
+ * month. A thread appears in one group only, the first that claims it. Empty
+ * groups are left out rather than drawn with no rows under them.
  */
 export function groupThreads(
   threads: readonly ThreadMeta[],
   pinned: ReadonlySet<string>,
   now: number = Date.now(),
   waiting: ReadonlySet<string> = new Set(),
+  running: ReadonlySet<string> = new Set(),
 ): ThreadGroup[] {
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
@@ -175,6 +191,7 @@ export function groupThreads(
 
   const groups: ThreadGroup[] = [
     { key: 'waiting', label: 'Waiting on you', threads: [] },
+    { key: 'running', label: 'Running', threads: [] },
     { key: 'pinned', label: 'Pinned', threads: [] },
     { key: 'today', label: 'Today', threads: [] },
     { key: 'yesterday', label: 'Yesterday', threads: [] },
@@ -185,12 +202,38 @@ export function groupThreads(
 
   for (const t of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
     if (waiting.has(t.id)) at('waiting').push(t);
+    else if (running.has(t.id)) at('running').push(t);
     else if (pinned.has(t.id)) at('pinned').push(t);
     else if (t.updatedAt >= today) at('today').push(t);
     else if (t.updatedAt >= yesterday) at('yesterday').push(t);
     else if (t.updatedAt >= week) at('week').push(t);
     else at('older').push(t);
   }
+
+  const older = groups.find((g) => g.key === 'older')!;
+  const thisYear = new Date(now).getFullYear();
+  const months = new Map<string, { key: string; label: string; threads: ThreadMeta[] }>();
+  for (const t of older.threads) {
+    const d = new Date(t.updatedAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    let month = months.get(key);
+    if (!month) {
+      month = {
+        key,
+        // The year only when it is not this one: "September" is unambiguous
+        // in October, "September 2025" is what a year-old thread needs.
+        label: d.toLocaleString(undefined, {
+          month: 'long',
+          ...(d.getFullYear() === thisYear ? {} : { year: 'numeric' }),
+        }),
+        threads: [],
+      };
+      months.set(key, month);
+    }
+    month.threads.push(t);
+  }
+  older.months = [...months.values()];
+
   return groups.filter((g) => g.threads.length > 0);
 }
 
