@@ -21,16 +21,29 @@ export const MARK_GRID = 32;
 /** The rounded square the glyph sits on. */
 export const MARK_TILE = { size: MARK_GRID, radius: 7 } as const;
 
-/** The four toe pads, left to right. Always the glyph's ink. */
+/**
+ * The four toe pads, left to right. Always the glyph's ink.
+ *
+ * Mirrored about the tile's centre line, the inner pair higher and larger than
+ * the outer. Every gap — toe to toe, toe to main pad — is at least 2 units,
+ * which is 1px at 16: closer than that and the browser's downsample fuses the
+ * toes into one arc over the pad.
+ */
 export const MARK_TOES = [
-  { cx: 8.5, cy: 13, r: 3 },
-  { cx: 15, cy: 9.5, r: 3 },
-  { cx: 21.5, cy: 10, r: 3 },
-  { cx: 27, cy: 14, r: 3 },
+  { cx: 7, cy: 14, r: 2.6 },
+  { cx: 12.2, cy: 8.2, r: 2.8 },
+  { cx: 19.8, cy: 8.2, r: 2.8 },
+  { cx: 25, cy: 14, r: 2.6 },
 ] as const;
 
-/** The main pad, which takes the run state's hue. */
-export const MARK_PAD = { cx: 16, cy: 21, rx: 6.5, ry: 5 } as const;
+/**
+ * The main pad, which takes the run state's hue: a rounded dome over a base
+ * that dips once at the centre, so it reads as a pad rather than an oval at
+ * any size larger than a tab. Symmetric about x = 16, spanning y 15.2–26.
+ */
+export const MARK_PAD_PATH =
+  'M16 15.2C20 15.2 23.6 18.2 23.6 21.8C23.6 24.4 21.6 26 19 26C17.6 26 16.8 25.6 16 25.6' +
+  'C15.2 25.6 14.4 26 13 26C10.4 26 8.4 24.4 8.4 21.8C8.4 18.2 12 15.2 16 15.2Z';
 
 /** The three states `presence.ts` tracks. `idle` draws the pad in glyph ink. */
 export type MarkState = 'idle' | 'working' | 'blocked';
@@ -91,7 +104,7 @@ export function markSvg({
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-inset} ${-inset} ${box} ${box}"${label}`,
     `<rect x="${-inset}" y="${-inset}" width="${box}" height="${box}" rx="${rx}" fill="${tile}"/>`,
     ...MARK_TOES.map((t) => `<circle cx="${t.cx}" cy="${t.cy}" r="${t.r}" fill="${glyph}"/>`),
-    `<ellipse cx="${MARK_PAD.cx}" cy="${MARK_PAD.cy}" rx="${MARK_PAD.rx}" ry="${MARK_PAD.ry}" fill="${pad}"/>`,
+    `<path d="${MARK_PAD_PATH}" fill="${pad}"/>`,
     '</svg>',
   ].join('');
 }

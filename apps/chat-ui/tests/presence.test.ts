@@ -61,7 +61,7 @@ describe('presence', () => {
     const svg = document.querySelector<HTMLLinkElement>('link[type="image/svg+xml"]');
     const ico = document.querySelector<HTMLLinkElement>('link[sizes]');
     const pad = () =>
-      decodeURIComponent(svg?.getAttribute('href') ?? '').match(/<ellipse[^>]*fill="([^"]+)"/)?.[1];
+      decodeURIComponent(svg?.getAttribute('href') ?? '').match(/<path[^>]*fill="([^"]+)"/)?.[1];
 
     setPresence('working');
     expect(pad()).toBe(STATE_DARK.running);
