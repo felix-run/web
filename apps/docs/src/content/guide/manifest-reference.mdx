@@ -315,6 +315,7 @@ name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the 
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `spec.skills_declared_only` | bool | `false` | `false` seeds the catalog with every bundled skill, every skill in `FELIX_SKILLS_DIR` and every live tenant-library skill, and `spec.skills` adds to that. `true` makes the declared names the whole catalog. |
+| `spec.personal_skills` | `off` \| `read` | `off` | `read` offers each authenticated caller the live skills in their own personal library, ahead of the tenant's (see [where skills come from](/guide/concepts/#where-skills-come-from)). A caller's skill never replaces one the manifest names in `spec.skills`. A durable run keeps the library of the caller who started it. Refused together with `skills_declared_only: true`. |
 
 ## `spec.skill_authoring`
 

@@ -207,10 +207,16 @@ A catalog is built in this order, and the first source to hold a name answers it
 1. **The host wins.** Bundled skills, then `FELIX_SKILLS_DIR` (a skill there replaces a bundled one
    of the same name). The library refuses to save a host name, or a name an operator uploaded at an
    unversioned key (`409 name_shadows_host_skill`).
-2. **The tenant library**, live versions only. Without `spec.skills_declared_only`, every live
+2. **The caller's own library**, live versions only, where the manifest sets
+   [`spec.personal_skills: read`](/guide/manifest-reference/#specskills). A caller with a verified
+   identity has a personal library; an anonymous caller, or an API key with no subject of its own,
+   has none. A personal skill shadows a tenant skill of the same name for that caller alone, and
+   only an ambient one: a name the manifest declares in `spec.skills` always resolves from the
+   tenant's library.
+3. **The tenant library**, live versions only. Without `spec.skills_declared_only`, every live
    library skill joins the catalog of every manifest in the tenant that builds one (any manifest
    with `spec.skills`, a skill tool, or `spec.skill_authoring`); with it, only declared names do.
-3. **Operator uploads**, for a declared name nothing above holds: pinned key, then unversioned, the
+4. **Operator uploads**, for a declared name nothing above holds: pinned key, then unversioned, the
    tenant's keys before the shared ones.
 
 One exception to library-before-uploads: **an explicit version pin to an operator upload beats the
