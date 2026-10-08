@@ -18,6 +18,7 @@
  */
 import {
   type ChatMessage,
+  type DurableRun,
   type PendingUiRequest,
   promptTokens,
   readUsage,
@@ -25,6 +26,7 @@ import {
   type StreamEvent,
 } from '@felix/protocol';
 import { describeGate, type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
+import { durableRunFailure } from './durable-runs';
 import {
   describeError,
   IdempotencyKeyReusedError,
@@ -98,6 +100,25 @@ export interface EnginePorts {
    * run, which is why this fires only on the two durable paths.
    */
   onDurableComplete?: () => void;
+  /**
+   * The harness took a durable run on this thread and handed back its token.
+   *
+   * The token is the only handle on the run: the snapshot does not say a durable run
+   * is in flight (its phase reads `idle` throughout), and no route lists a thread's
+   * runs. A client that keeps it across a reload can `rejoinRun` instead of showing
+   * a thread that looks finished while the run goes on — and instead of letting the
+   * next message start a second run beside it, which the harness does not refuse.
+   */
+  onRunAccepted?: (resumeToken: string) => void;
+  /** The run `onRunAccepted` reported is over (or was stopped): forget its token. */
+  onRunSettled?: () => void;
+  /**
+   * Re-read the transcript while a durable run is only being *polled* — the stream
+   * that carried its session events has closed, so nothing else shows its work.
+   * Called at most every `DURABLE_PROGRESS_MS`. Safe for the reason
+   * `onDurableComplete` is: a durable turn has no streamed detail to lose.
+   */
+  onDurableProgress?: () => void;
 }
 
 export interface SendArgs {
@@ -155,6 +176,14 @@ export interface ChatEngine {
    * it can give it back to the person who wrote it.
    */
   send(args: SendArgs): Promise<SendOutcome>;
+  /**
+   * Pick a durable run back up by its token, from a tab that did not start it or
+   * no longer holds its stream (a reload). Streams nothing — no route replays a
+   * run's frames — so it polls the run, says its status in a turn of its own,
+   * refreshes the transcript as the run works, and settles as `send` would.
+   * Approvals still arrive through `syncApprovals`. A no-op while a run is live.
+   */
+  rejoinRun(resumeToken: string): Promise<void>;
   /** Apply one wire frame. Exposed for reattach, and for tests. */
   applyEvent(event: StreamEvent): Promise<void>;
   /**
@@ -196,6 +225,18 @@ export interface ChatEngine {
 
 /** Three missed 15-second heartbeats. */
 export const STREAM_STALL_MS = 45_000;
+
+/** How often a polled durable run re-reads the transcript (`onDurableProgress`). */
+export const DURABLE_PROGRESS_MS = 5_000;
+
+/**
+ * The durable stream's own deadline, not the run's end. The harness closes a durable
+ * `POST /chat/stream` at the run's `expires_at` with `run_expired:<token>` whether or
+ * not the run has stopped — "expired" and "still running" look the same from here —
+ * so the engine polls the run instead of reporting a failure for work that may still
+ * be going.
+ */
+const STREAM_DEADLINE = /^run_expired:/;
 
 const IDLE: EngineState = {
   turns: [],
@@ -609,7 +650,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         const data = ev.data as { resume_token?: string };
         // Held so a dropped connection can rejoin the run instead of abandoning
         // it: the run itself outlives this stream.
-        if (data.resume_token) resumeToken = data.resume_token;
+        if (data.resume_token) {
+          resumeToken = data.resume_token;
+          ports.onRunAccepted?.(data.resume_token);
+        }
         runAccepted = true;
         set({ phase: 'durable' });
         durableStatus = ACCEPTED;
@@ -633,6 +677,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       // to have accumulated, so this replaces rather than defers.
       case 'final': {
         const content = String((ev.data as { content?: string }).content ?? '').trim();
+        if (resumeToken) ports.onRunSettled?.();
         resumeToken = null;
         durableStatus = null;
         durablePrefix = null;
@@ -672,9 +717,13 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       // Normalised by `readSseStream` from the harness's `event: error` frame —
       // the one SSE-typed frame, and the only way a stream reports a failure that
       // happened after its 200 was already sent.
-      case 'on_error':
-        set({ error: String((ev.data as { message?: string }).message ?? 'error') });
+      case 'on_error': {
+        const message = String((ev.data as { message?: string }).message ?? 'error');
+        // The run outlives this: the clean-end path below polls it to its real end.
+        if (resumeToken && STREAM_DEADLINE.test(message)) break;
+        set({ error: message });
         break;
+      }
       case 'aborted':
         set({ phase: 'aborted' });
         break;
@@ -740,6 +789,107 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       ? String((run.final as { content?: unknown }).content || '')
       : '';
 
+  /**
+   * Finish a durable run by polling it, and say so when it lands.
+   *
+   * Shared by every way a run can be left without a stream: the stream dropped, it
+   * ended cleanly without `final` (the harness closes it at the run's deadline), the
+   * run was started in the background, or a reload is picking it back up. A poll
+   * carries no frames, so while it runs the transcript is re-read every
+   * `DURABLE_PROGRESS_MS` — otherwise a run still working reads as one that stopped.
+   *
+   * A run that ended without an answer is an error with a sentence, not a status line
+   * left saying `Background · expired…`; the transcript is re-read either way, since
+   * whatever the run did before it stopped is in the log.
+   */
+  const settleDurable = async (token: string, signal: AbortSignal) => {
+    set({ phase: 'durable' });
+    let progressAt = Date.now();
+    const run = await ports.client.pollDurableRun(token, {
+      signal,
+      onTick: (r) => {
+        tick(r.status || 'pending');
+        if (ports.onDurableProgress && Date.now() - progressAt >= DURABLE_PROGRESS_MS) {
+          progressAt = Date.now();
+          ports.onDurableProgress();
+        }
+      },
+    });
+    finishDurable(run);
+  };
+
+  const finishDurable = (run: DurableRun) => {
+    resumeToken = null;
+    durableStatus = null;
+    ports.onRunSettled?.();
+    const failure = durableRunFailure(run);
+    if (failure) {
+      set({ error: failure });
+      // The status line was never an answer. A turn holding nothing else goes; one
+      // holding cards keeps them, without a line claiming the run is still going.
+      const target = activeAssistantId;
+      set({
+        turns: state.turns
+          .filter((t) => !(t.id === target && !(t.tools ?? []).length))
+          .map((t) => (t.id === target ? answered(t, '') : t)),
+      });
+    } else {
+      patch((t) => answered(t, finalOf(run) || `(${run.status || 'completed'})`));
+    }
+    ports.onDurableComplete?.();
+  };
+
+  /** What every run leaves behind, however it ended. */
+  const endRun = (ctrl: AbortController) => {
+    if (controller === ctrl) controller = null;
+    replayPrefix = null;
+    replayEvents = [];
+    // Stopped on purpose: nothing is left for a reload to rejoin.
+    if (ctrl.signal.aborted && resumeToken) ports.onRunSettled?.();
+    // However the run ended — `final`, a settled poll, an abort, a thrown
+    // error — nothing is in flight to report on any more, so an approval
+    // answered after this must not rewrite the turn it left behind.
+    durableStatus = null;
+    // A card still not `done` never reported back — the run was stopped, or
+    // ended with no matching tool_end. The `done` frame settles this when it
+    // arrives; an aborted run has no such frame, and a spinner that outlives
+    // the run that owned it reads as work still going.
+    patch((t) =>
+      (t.tools ?? []).some((tool) => !tool.done)
+        ? { ...t, tools: (t.tools ?? []).map((tool) => ({ ...tool, done: true })) }
+        : t,
+    );
+    set({
+      streaming: false,
+      phase: state.phase === 'aborted' ? state.phase : 'idle',
+    });
+  };
+
+  const rejoinRun = async (token: string): Promise<void> => {
+    if (state.streaming) return;
+    const ctrl = new AbortController();
+    controller = ctrl;
+    activeAssistantId = newId();
+    resumeToken = token;
+    lastEventId = undefined;
+    durableStatus = 'running';
+    set({
+      streaming: true,
+      error: null,
+      phase: 'durable',
+      turns: [...state.turns, { id: activeAssistantId, role: 'assistant', content: '', tools: [] }],
+    });
+    patch((t) => sayStatus(t, 'running'));
+    try {
+      await settleDurable(token, ctrl.signal);
+    } catch (err) {
+      // Not settled: the token stays remembered, so the next load tries again.
+      if (!ctrl.signal.aborted) set({ error: describeError(err, 'check on the run').message });
+    } finally {
+      endRun(ctrl);
+    }
+  };
+
   const send = async (args: SendArgs): Promise<SendOutcome> => {
     const mode = args.mode ?? 'stream';
     activeAssistantId = args.assistantId;
@@ -776,39 +926,11 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           ports.onDurableComplete?.();
           return;
         }
-        const runResult = await ports.client.pollDurableRun(started.resumeToken, {
-          signal: ctrl.signal,
-          onTick: (r) => tick(r.status || 'pending'),
-        });
-        durableStatus = null;
-        if (runResult.error) {
-          set({ error: runResult.error });
-          return;
-        }
-        patch((t) => answered(t, finalOf(runResult) || `(${runResult.status || 'completed'})`));
+        resumeToken = started.resumeToken;
+        ports.onRunAccepted?.(started.resumeToken);
+        await settleDurable(started.resumeToken, ctrl.signal);
         return;
       }
-
-      /**
-       * Finish a durable run by polling it, and say so when it lands.
-       *
-       * Shared by the two ways a stream can leave one unfinished: it dropped, or
-       * it ended cleanly having never sent `final`.
-       */
-      const settleDurable = async (token: string) => {
-        set({ phase: 'durable' });
-        const rejoined = await ports.client.pollDurableRun(token, {
-          signal: ctrl.signal,
-          onTick: (r) => tick(r.status || 'pending'),
-        });
-        durableStatus = null;
-        if (rejoined.error) {
-          set({ error: rejoined.error });
-          return;
-        }
-        patch((t) => answered(t, finalOf(rejoined) || `(${rejoined.status || 'completed'})`));
-        ports.onDurableComplete?.();
-      };
 
       const stream = {
         abort: new AbortController(),
@@ -862,7 +984,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
          * while the run finishes behind it, taking the answer, the tool cards and
          * everything derived from them with it.
          */
-        if (resumeToken && !ctrl.signal.aborted) await settleDurable(resumeToken);
+        if (resumeToken && !ctrl.signal.aborted) await settleDurable(resumeToken, ctrl.signal);
       } catch (err) {
         // A lease refusal is the harness declining to start the run at all —
         // nothing was torn down, so there is nothing to rejoin.
@@ -919,7 +1041,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           }
           return;
         }
-        await settleDurable(resumeToken);
+        await settleDurable(resumeToken, ctrl.signal);
       }
     };
 
@@ -957,26 +1079,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         }
       }
     } finally {
-      if (controller === ctrl) controller = null;
-      replayPrefix = null;
-      replayEvents = [];
-      // However the run ended — `final`, a settled poll, an abort, a thrown
-      // error — nothing is in flight to report on any more, so an approval
-      // answered after this must not rewrite the turn it left behind.
-      durableStatus = null;
-      // A card still not `done` never reported back — the run was stopped, or
-      // ended with no matching tool_end. The `done` frame settles this when it
-      // arrives; an aborted run has no such frame, and a spinner that outlives
-      // the run that owned it reads as work still going.
-      patch((t) =>
-        (t.tools ?? []).some((tool) => !tool.done)
-          ? { ...t, tools: (t.tools ?? []).map((tool) => ({ ...tool, done: true })) }
-          : t,
-      );
-      set({
-        streaming: false,
-        phase: state.phase === 'aborted' ? state.phase : 'idle',
-      });
+      endRun(ctrl);
     }
     return outcome;
   };
@@ -990,7 +1093,14 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       return () => listeners.delete(listener);
     },
     setTurns(turns) {
-      set({ turns });
+      // A transcript re-read while a durable run is only being polled (the progress
+      // refresh, a hydrate) carries no status turn: the harness never logged one. Keep
+      // ours last, or the run reads as finished until its next status change.
+      const status =
+        durableStatus !== null && state.streaming
+          ? state.turns.find((t) => t.id === activeAssistantId)
+          : undefined;
+      set({ turns: status && !turns.some((t) => t.id === status.id) ? [...turns, status] : turns });
     },
     reset() {
       seenApprovals.clear();
@@ -1001,6 +1111,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       set({ turns: [], error: null, phase: 'idle', approvals: [], uiPrompt: null });
     },
     send,
+    rejoinRun,
     applyEvent,
     checkLiveness(now = Date.now()) {
       const stream = liveStream;

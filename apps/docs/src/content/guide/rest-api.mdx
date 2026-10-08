@@ -404,6 +404,16 @@ A run that fails or expires says so in an `event: error` frame rather than closi
 "expired" and "still running" look identical to a client that only sees a stream end. Either way
 the events that already landed are delivered first.
 
+**`run_expired:<token>` is the stream's deadline, not proof the run stopped.** The stream closes
+at the run's `expires_at` with that message whether or not the worker has finished the step it is
+on, so treat it as "stop watching here" and poll
+[`GET /chat/runs/{resume_token}`](#get-chatrunsresume_token) until the status is terminal:
+`completed`, `failed`, `expired` or `dead`. Only `completed` carries an answer, and `expired`
+arrives with an empty `error`. The web client polls on that frame, and on any stream end that has
+not seen `final`. It also keeps each thread's token in `localStorage` (`felix.durableRuns`), so a
+reload picks the run back up rather than showing a thread that looks finished — the snapshot's
+`phase` reads `idle` while a durable run works, and no route lists a thread's runs.
+
 `GET /chat/runs/{resume_token}` is unchanged and stays coarse: it is a status read, not a stream, so
 it reports status and the final answer and carries no transcript. A client polling it that wants the
 tool calls reattaches to `GET /chat/stream/{thread_id}`.

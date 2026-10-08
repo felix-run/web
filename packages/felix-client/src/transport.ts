@@ -25,6 +25,7 @@ import {
   type ThreadHistory,
 } from '@felix/protocol';
 import { type ApprovalRequest, isLapsedApproval } from './approvals';
+import { DurableRunFetchError, isDurableRunOver, MAX_POLL_FAILURES } from './durable-runs';
 import { IdempotencyKeyReusedError, LeaseRefusedError, StreamInProgressError } from './errors';
 import { createHttp, type FelixClientOptions } from './http';
 import { createManagementClient } from './management';
@@ -443,10 +444,29 @@ export function createFelixClient(opts: FelixClientOptions) {
 
     async getDurableRun(resumeToken: string): Promise<DurableRun> {
       const res = await chatFetch(`/chat/runs/${encodeURIComponent(resumeToken)}`);
-      if (!res.ok) throw new Error(`chat/runs: ${res.status} ${await detailOf(res)}`);
+      if (!res.ok) {
+        throw new DurableRunFetchError(
+          `chat/runs: ${res.status} ${await detailOf(res)}`,
+          res.status,
+        );
+      }
       return (await res.json()) as DurableRun;
     },
 
+    /**
+     * Poll a durable run until it is over, and only until then.
+     *
+     * "Over" is the harness's own terminal set (`FIBER_TERMINAL_STATUSES` in
+     * `durability/fibers.py`), which its comment says every consumer must check
+     * against. This one checked four spellings and missed `expired` — which the run
+     * view reports with an empty `error` — so a run that hit its deadline was polled
+     * for the life of the tab under `Background · expired…`.
+     *
+     * A failed read is not the end of a run that is still working server-side: one
+     * blip used to throw out of the whole settle. Transient failures are retried with
+     * backoff; a run the harness no longer knows (404/410) ends the poll with an
+     * error; anything else past `MAX_POLL_FAILURES` in a row is thrown.
+     */
     async pollDurableRun(
       resumeToken: string,
       pollOpts: {
@@ -456,20 +476,25 @@ export function createFelixClient(opts: FelixClientOptions) {
       } = {},
     ): Promise<DurableRun> {
       const interval = pollOpts.intervalMs ?? 1500;
+      let failures = 0;
       while (true) {
         if (pollOpts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-        const run = await this.getDurableRun(resumeToken);
-        pollOpts.onTick?.(run);
-        const status = (run.status || '').toLowerCase();
-        if (
-          status === 'completed' ||
-          status === 'succeeded' ||
-          status === 'failed' ||
-          status === 'error'
-        ) {
-          return run;
+        let run: DurableRun;
+        try {
+          run = await this.getDurableRun(resumeToken);
+          failures = 0;
+        } catch (err) {
+          if (pollOpts.signal?.aborted) throw err;
+          const status = err instanceof DurableRunFetchError ? err.status : 0;
+          if (status === 404 || status === 410) {
+            return { status: 'missing', error: 'The harness no longer has a record of this run.' };
+          }
+          if (status === 401 || status === 403 || ++failures >= MAX_POLL_FAILURES) throw err;
+          await new Promise((r) => setTimeout(r, Math.min(interval * 2 ** failures, 15_000)));
+          continue;
         }
-        if (run.error) return run;
+        pollOpts.onTick?.(run);
+        if (isDurableRunOver(run)) return run;
         await new Promise((r) => setTimeout(r, interval));
       }
     },
