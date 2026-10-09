@@ -16,48 +16,48 @@
 }
 
 /*
- * One column, two measures. Starlight's default `--sl-content-width` is 45rem,
+ * One column, one edge. Starlight's default `--sl-content-width` is 45rem,
  * tuned for prose; these pages also carry wide tables, JSON manifests and REST
- * examples, which wrapped hard inside it. So the column is 58rem — but prose
- * was then running 111-116 characters a line, well past what reads. Prose is
- * held to 40rem (about 75-80 characters of body text) and the things that need
- * width — tables, code, figures — take the whole column.
+ * examples. An earlier layout ran the column at 58rem and held prose to 40rem
+ * inside it, which left every page with a ragged right edge: paragraphs,
+ * lists and callouts stopping ~200px short of the code and tables around them.
+ * Now everything shares one 48rem column, and a table or code line wider than
+ * that scrolls inside its own box. The cost is a longer line: ~100 characters
+ * of body text, measured on Concepts, against ~84 at the old 40rem.
  *
  * `TwoColumnContent` sizes the main pane as a `min()` against the space left
  * by the two sidebars, so the column still stops rather than pushing the
  * on-this-page rail off screen. Below 72rem the layout is single-column and the
- * column is the viewport; the prose cap only ever binds on a wide screen.
+ * column is the viewport.
  */
 :root {
-  --sl-content-width: 58rem;
-  --felix-measure: 40rem;
-}
-
-.sl-markdown-content
-  > :where(
-    p,
-    ul,
-    ol:not(.sl-steps),
-    blockquote,
-    dl:not(.event-list),
-    h2,
-    h3,
-    h4,
-    h5,
-    h6,
-    .starlight-aside,
-    details
-  ) {
-  max-inline-size: var(--felix-measure);
+  --sl-content-width: 48rem;
 }
 
 /*
- * Steps are a list of prose with code between the paragraphs. The list itself
- * takes the column so its code blocks do; the prose inside each step gets the
- * same measure as any other paragraph.
+ * Starlight centres the content and the table of contents together in the
+ * space right of the sidebar, splitting what is left over between the left of
+ * the content and the right of the TOC. At 58rem there was little left over; at
+ * 48rem it opened a gap of ~150px between the sidebar and the text. So from
+ * 72rem, where all three columns show, the content sits against the sidebar,
+ * the TOC follows it, and the spare room falls to the far right. The header's
+ * search box is placed by the same split (`--__main-column-fr`), so it is moved
+ * with the content or it would float over the gap.
  */
-.sl-markdown-content .sl-steps > li > :where(p, ul, ol, .starlight-aside) {
-  max-inline-size: var(--felix-measure);
+@media (min-width: 72rem) {
+  [data-has-sidebar][data-has-toc] .main-pane {
+    --sl-content-margin-inline: 0;
+    width: min(
+      calc(100% - var(--sl-sidebar-width)),
+      calc(var(--sl-content-width) + 2 * var(--sl-content-pad-x))
+    );
+  }
+  [data-has-sidebar][data-has-toc] .right-sidebar-container {
+    flex: 1;
+  }
+  [data-has-sidebar][data-has-toc] .header {
+    --__main-column-fr: 0rem;
+  }
 }
 
 /*
@@ -72,54 +72,13 @@
 }
 
 /*
- * The dot grid. It began as chat-ui's transcript texture, which chat-ui has
- * since dropped (2026-10-03); the docs keep it as their own. A foreground dot
- * on an 18px grid, its strength set on the layer rather than in
- * the colour, fading out as it falls down the page.
- *
- * Placed behind the reading column and
- * nowhere else. Not behind the sidebar or the table of contents, which are
- * scanned rather than read — the TOC's faint text is also the text with least
- * contrast margin, and it would sit on the dots for the whole page. And only
- * as a band at the top of the page, a viewport tall at most, because a mask
- * sized to a 400-screen reference page would never visibly fade.
- *
- * `--felix-dot-alpha` is per theme because what a dot costs the text crossing it differs by theme. At 7% light
- * body text (#404040) over a dot's centre measures 8.9:1; at 16% dark, body
- * text (#d4d4d4) measures 8.7:1 and faint text (#a3a3a3) 5.1:1.
+ * The header and sidebar sit on the page colour, not Starlight's panel step.
+ * The step drew a lighter band across the top and down the side that read as
+ * separate surfaces; the hairlines between them are edge enough.
  */
 :root {
-  --felix-dot-alpha: 16%;
-}
-:root[data-theme="light"] {
-  --felix-dot-alpha: 7%;
-}
-
-.main-pane {
-  position: relative;
-  isolation: isolate;
-}
-
-.main-pane::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: min(100vh, 56rem);
-  z-index: -1;
-  pointer-events: none;
-  background-image: radial-gradient(var(--sl-color-white) 1px, transparent 1.5px);
-  background-size: 18px 18px;
-  background-position: center top;
-  opacity: var(--felix-dot-alpha);
-  mask-image: linear-gradient(to bottom, black 0%, transparent 65%);
-}
-
-/* Off where it can only cost something: a reader who asked for more contrast,
-   forced colours (the gradient would be dropped anyway), and print. */
-@media (prefers-contrast: more), (forced-colors: active), print {
-  .main-pane::before {
-    display: none;
-  }
+  --sl-color-bg-nav: var(--sl-color-black);
+  --sl-color-bg-sidebar: var(--sl-color-black);
 }
 
 /*
@@ -139,8 +98,8 @@
  * `bg-state-blocked/5`): a hairline border all the way round in the hue at
  * reduced strength, a faint tint behind, the hue on the title, and body text
  * left in the ordinary text colour. Both are mixed into the page colour rather
- * than laid on as alphas, so each is a flat colour — the dots, or anything else
- * behind, cannot tint them (the Nesting Rule in DESIGN.md).
+ * than laid on as alphas, so each is a flat colour — nothing behind can tint
+ * them (the Nesting Rule in DESIGN.md).
  *
  * Caution is for things that can hurt a deployment. A note about what an older
  * harness did is a note, or the amber stops meaning anything.
@@ -215,10 +174,16 @@
 /*
  * The splash home has no sidebar and no table of contents, so its column can
  * be wider than a docs page's: the hero sets copy beside the run figure, and
- * both need room. Prose on it is still held to the measure above.
+ * both need room. Its prose is held to the line a docs page gives it (48rem),
+ * or it ran ~140 characters at 72rem.
  */
 :root[data-has-hero] {
   --sl-content-width: 72rem;
+}
+:root[data-has-hero]
+  .sl-markdown-content
+  > :where(p, ul, ol, blockquote, h2, h3, .starlight-aside) {
+  max-inline-size: 48rem;
 }
 /* Starlight leaves the splash container flush left once it is narrower than
    the viewport; centre it. */
@@ -299,7 +264,6 @@
 .sl-markdown-content .event-list dd {
   margin: 0.25rem 0 0;
   padding: 0;
-  max-inline-size: var(--felix-measure);
 }
 .sl-markdown-content .event-list .event-data {
   max-inline-size: none;
@@ -331,7 +295,7 @@
 }
 .sl-markdown-content .product-shot figcaption {
   margin-top: 0.75rem;
-  /* 13px text in the 40rem prose measure ran ~98 characters a line; 30rem is ~75. */
+  /* 13px text across the column runs well past a readable line; 30rem is ~75. */
   max-inline-size: 30rem;
   font-size: var(--sl-text-xs);
   color: var(--sl-color-gray-3);
