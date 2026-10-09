@@ -58,10 +58,10 @@ Core reads these members off your plugin object with `getattr`, so implement onl
 
 ### Agent-loop hooks
 
-These run inside the `react` loop, for every manifest in the process. Each hook is called
-**positionally** as `hook(value, ctx)` — `after_tool` takes `(tool_call, result, is_error, ctx)` —
-and may be sync or async. `ctx` carries `manifest_id` and `thread_id` (the model hooks add
-`model_id`), so a hook that should apply to one agent checks `ctx["manifest_id"]` itself; no
+These run for every manifest in the process. Each hook is called **positionally** as
+`hook(value, ctx)` — `after_tool` takes `(tool_call, result, is_error, ctx)` — and may be sync or
+async. `ctx` carries `manifest_id` and `thread_id` (the model hooks add `model_id` and
+`purpose`), so a hook that should apply to one agent checks `ctx["manifest_id"]` itself; no
 manifest field attaches a hook.
 
 | Hook | When | Return to act |
@@ -85,6 +85,21 @@ rewrites the history, and from `before_turn`, which can only add to it. `after_m
 `{"message", "stop_reason"}`, and its replacement is what the run records and acts on, tool calls
 included — drop a call from the reply and the tool never runs.
 
+They run on every model call a run makes, not only an agent's turns, and `ctx["purpose"]` says
+which kind of call it is:
+
+| `purpose` | The call | A replacement changes |
+|---|---|---|
+| `turn` | a step of the `react` loop, including each sub-agent's | what the agent says and does |
+| `router` | the `router` pattern choosing a sub-agent | which sub-agent gets the request |
+| `reflect` | the `reflect` verifier scoring a draft | the score, and so whether it drafts again |
+| `plan` | the `plan_execute` planner, opening plan and every replan | the subtasks the executor runs |
+| `synthesis` | `parallel` and `plan_execute` composing their answer | the answer |
+
+So a hook that redacts what reaches the model should usually apply to every `purpose`, while one
+that rewrites answers should check for `turn` or `synthesis` and leave the router's
+classification alone.
+
 ```python title="my_plugin/__init__.py"
 from felix_ai.types import ChatMessage
 
@@ -107,9 +122,9 @@ def register(registry) -> None:
   [governance](/internals/governance/) blocks.
 </Aside>
 
-Two limits to the model hooks: `after_model` cannot change text that has already streamed to the
-client, since deltas are sent as the model writes them; and they cover the `react` loop only, not
-the router's classifier or the `plan_execute` planner.
+One limit to the model hooks: `after_model` cannot change text that has already streamed to the
+client, since deltas are sent as the model writes them. Its replacement is still what the run
+records and returns as the answer.
 
 ### Command-line entry points
 
