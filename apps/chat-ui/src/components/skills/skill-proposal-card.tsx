@@ -11,7 +11,7 @@ import {
 } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { GateLine } from './gate-line';
-import { useLibrarySkill } from './queries';
+import { useLibrarySkill, usePublishPolicy } from './queries';
 import { QueryRoot } from './query-root';
 import { isForbidden } from './refusal';
 import { ScoreReadout } from './score-readout';
@@ -102,6 +102,7 @@ function SavedDraft({
   parent?: string;
 }) {
   const skill = useLibrarySkill(result.name);
+  const policy = usePublishPolicy().data;
   const [forbidden, setForbidden] = useState(false);
   const [open, setOpen] = useState(false);
   const onForbidden = useCallback(() => setForbidden(true), []);
@@ -166,6 +167,7 @@ function SavedDraft({
         className="mt-2"
         quality={result.quality_score}
         security={result.security_status}
+        policy={policy}
       />
       {result.review_hint && result.review_hint !== 'Every review check passed.' && (
         <p className="mt-1 text-xs text-muted-foreground">{result.review_hint}</p>
@@ -198,7 +200,7 @@ function SavedDraft({
 
       {!cannotRead && (
         <Collapsible open={open} onOpenChange={setOpen} className="mt-2">
-          <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+          <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none">
             <ChevronRightIcon
               aria-hidden
               className="size-3.5 transition-transform group-data-[state=open]:rotate-90"
@@ -223,6 +225,7 @@ function SavedDraft({
             version={row.version}
             liveVersion={live}
             parentVersion={row.parent_version}
+            showsVerdict={open}
             onForbidden={onForbidden}
           />
         )}

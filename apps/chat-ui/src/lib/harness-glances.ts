@@ -41,5 +41,16 @@ export function recentFailures(events: { status: string; ts: number }[], now: nu
   return events.filter((e) => isFailure(e.status) && e.ts != null && tsToMs(e.ts) >= since).length;
 }
 
+/**
+ * The rail's Skills glance: drafts waiting for review, read on their own slow
+ * poll. The Skills page reads the same queue through its Query cache, which
+ * lives in the lazy library chunk — sharing a key would pull that chunk into
+ * the entry, which is the mistake this module exists to prevent.
+ */
+export const SKILL_QUEUE_POLL_KEY = 'skill-review-queue';
+
+/** How many drafts the glance reads; a fuller queue says `100+`. */
+export const SKILL_QUEUE_GLANCE_LIMIT = 100;
+
 /** The key Activity and the rail's glance share their audit read under. */
 export const AUDIT_POLL_KEY = `audit:${ACTIVITY_FETCH}`;

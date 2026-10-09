@@ -255,6 +255,20 @@ export function useFreshPreview() {
   );
 }
 
+/**
+ * The verdict already read for a version, if any — from a `GateLine` on screen
+ * or a confirm that armed — without asking for one. A decision row reads this
+ * to stop offering Publish on a draft the gate has refused, without turning a
+ * queue of fifty rows into fifty previews.
+ */
+export function useKnownPreview(name: string, version: string) {
+  return useQuery({
+    queryKey: skillKeys.preview(name, version),
+    queryFn: () => previewSkillVersion(name, version),
+    enabled: false,
+  }).data;
+}
+
 const inFlightEval = (e: SkillEval) => e.status === 'queued' || e.status === 'running';
 
 /**

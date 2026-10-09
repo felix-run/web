@@ -65,14 +65,14 @@ export function PolicyEditor({ policy }: { policy: SkillPolicy }) {
               <td className="py-1 font-mono">
                 {show(policy[key])}
                 {outvoted.includes(key) && (
-                  <span className="ml-1 font-sans text-state-blocked">(deployment floor)</span>
+                  <span className="ml-1 font-sans text-muted-foreground">(deployment floor)</span>
                 )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="text-xs text-muted-foreground">
+      <p className="max-w-[72ch] text-xs text-muted-foreground">
         {policy.source === 'settings'
           ? 'No tenant policy: the deployment settings alone decide.'
           : policy.source === 'tenant+settings'

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { errorCodeOf, eventHelp, recentFailures } from '../src/components/harness/activity';
-import { glanceOf } from '../src/routes/harness';
+import { draftGlance, glanceOf } from '../src/routes/harness';
 
 /**
  * The rail's glances. Absence is the rail's all-clear, so every way a read can
@@ -167,5 +167,38 @@ describe('errorCodeOf', () => {
     expect(errorCodeOf({ payload: { error_code: '' } })).toBeUndefined();
     expect(errorCodeOf({ payload: { error_code: 3 } })).toBeUndefined();
     expect(errorCodeOf({ payload: {} })).toBeUndefined();
+  });
+});
+
+describe('draftGlance', () => {
+  it('draws nothing when no draft is waiting', () => {
+    expect(draftGlance({ data: [], error: null, lastOkAt: ago(1000) })).toBe(undefined);
+  });
+
+  it('counts waiting drafts in amber, and names them in full for a reader', () => {
+    expect(draftGlance({ data: [1], error: null, lastOkAt: ago(1000) })).toMatchObject({
+      text: '1 waiting',
+      title: '1 skill draft waiting for review',
+      tone: 'blocked',
+    });
+  });
+
+  it('says 100+ when the read came back full', () => {
+    const g = draftGlance({ data: Array(100).fill(0), error: null, lastOkAt: ago(1000) });
+    expect(g?.text).toBe('100+ waiting');
+  });
+
+  it('keeps a count after a failed read, in amber with its age', () => {
+    const g = draftGlance({ data: [1, 2], error: RATE_LIMITED, lastOkAt: ago(120_000) });
+    expect(g).toMatchObject({ text: '2 waiting', age: '2m', tone: 'blocked' });
+    expect(g?.title).toBe(
+      '2 skill drafts waiting for review, as of 2m ago — the latest check failed',
+    );
+  });
+
+  it('says unchecked rather than the all-clear when the first read failed', () => {
+    expect(draftGlance({ data: undefined, error: RATE_LIMITED, lastOkAt: null })?.tone).toBe(
+      'unknown',
+    );
   });
 });

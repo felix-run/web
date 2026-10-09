@@ -82,6 +82,21 @@ export function ago(ts: number | null | undefined): string {
 }
 
 /**
+ * An age with the moment it counts from: `9h` on screen, the date and time on
+ * hover and to a reader, so "waiting 9h" the next morning can be placed
+ * against the night it was written.
+ */
+export function Since({ ts, bare = false }: { ts: number; bare?: boolean }) {
+  const at = new Date(tsToMs(ts));
+  const text = ago(ts);
+  return (
+    <time dateTime={at.toISOString()} title={at.toLocaleString()}>
+      {bare ? text.replace(' ago', '') : text}
+    </time>
+  );
+}
+
+/**
  * The warning `shadows_operator_upload` asks for, everywhere it is set.
  *
  * An operator uploaded a skill of this name to the object store, at a key a
@@ -93,7 +108,8 @@ export function ShadowsUploadNotice({ name, compact }: { name: string; compact?:
   return (
     <div
       role="note"
-      className="flex items-start gap-2 rounded-lg border border-state-blocked/30 bg-state-blocked/10 px-2.5 py-2 text-sm text-state-blocked"
+      // How refs resolve, not a request: neutral, with the warning shape.
+      className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/40 px-2.5 py-2 text-sm text-foreground"
     >
       <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
       <p className="min-w-0">

@@ -1,3 +1,4 @@
+import { isSkillLibraryError } from '@felix/client';
 import {
   ActivityIcon,
   BookOpenIcon,
@@ -12,7 +13,7 @@ import {
 } from 'lucide-react';
 import { Fragment, type KeyboardEvent, lazy, Suspense, useEffect } from 'react';
 import { Navigate, NavLink, Outlet, useMatch } from 'react-router';
-import { listAudit, listJobs } from '@/api';
+import { listAudit, listJobs, listSkillReviewQueue } from '@/api';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { DOCS_ORIGIN, PageBack, PageDocs } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
@@ -26,6 +27,8 @@ import {
   failing,
   JOBS_POLL_KEY,
   recentFailures,
+  SKILL_QUEUE_GLANCE_LIMIT,
+  SKILL_QUEUE_POLL_KEY,
 } from '@/lib/harness-glances';
 import { setPresencePlace } from '@/lib/presence';
 import { cn } from '@/lib/utils';
@@ -186,8 +189,11 @@ export function walkNav(event: KeyboardEvent<HTMLElement>) {
 }
 
 /**
- * The two states on the rail worth a glance: jobs that are failing, and recent
- * failures in the Activity page — from the same reads those pages make. They poll
+ * The three states on the rail worth a glance: jobs that are failing, recent
+ * failures in the Activity page — from the same reads those pages make — and
+ * skill drafts waiting for review. The last is the one in amber, because it is
+ * the one that asks a person for something: an agent drafts overnight, and the
+ * attention line, which reads approvals and questions, has no way to say so. They poll
  * behind two links, which the rail used to avoid on purpose; the trade is that
  * someone coming back sees where to go first without opening eight pages, which
  * is what "legible on return" asks.
@@ -216,8 +222,8 @@ interface Glance {
   span?: string;
   /** Spoken, and shown on hover: the full reading the short text abbreviates. */
   title: string;
-  /** A count of failures, or an honest "could not check". */
-  tone: 'failed' | 'unknown';
+  /** A count of failures, a count waiting on a person, or an honest "could not check". */
+  tone: 'failed' | 'blocked' | 'unknown';
 }
 
 /**
@@ -248,6 +254,7 @@ export function glanceOf(
   word: string,
   noun: string,
   span?: string,
+  tone: 'failed' | 'blocked' = 'failed',
 ): Glance | undefined {
   const within = span ? ` in the last ${span}` : '';
   if (poll.error) {
@@ -271,11 +278,11 @@ export function glanceOf(
       text: `${count} ${word}`,
       age: since ?? undefined,
       title: `${count} ${word}${within}, as of ${ago} — the latest check failed`,
-      tone: 'failed',
+      tone,
     };
   }
   if (count === 0) return undefined;
-  return { text: `${count} ${word}`, span, title: `${count} ${word}${within}`, tone: 'failed' };
+  return { text: `${count} ${word}`, span, title: `${count} ${word}${within}`, tone };
 }
 
 export function useNavGlances(enabled = true): Record<string, Glance | undefined> {
@@ -286,6 +293,21 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
     enabled,
     intervalMs: 30_000,
   });
+  // Slower than the others: a draft waits hours, not seconds. A key without
+  // `skills:read`, or a harness without the library, has nothing to review —
+  // an answer, not a failed check, so it reads as none.
+  const drafts = useSharedPoll(
+    SKILL_QUEUE_POLL_KEY,
+    () =>
+      listSkillReviewQueue({ limit: SKILL_QUEUE_GLANCE_LIMIT }).then(
+        (page) => page.items,
+        (err: unknown) => {
+          if (isSkillLibraryError(err) && (err.status === 403 || err.status === 404)) return [];
+          throw err;
+        },
+      ),
+    { enabled, intervalMs: 60_000 },
+  );
   const failingJobs = (jobs.data ?? []).filter(failing).length;
   // Measured against the clock at render, which the 30s poll re-runs, so a
   // failure ages out within a tick of turning 24 hours old.
@@ -293,6 +315,25 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
   return {
     jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
     activity: glanceOf(audit, failedEvents, 'failed', 'activity', ACTIVITY_GLANCE_SPAN),
+    skills: draftGlance(drafts),
+  };
+}
+
+/** Drafts waiting, `100+` when the read came back full; amber, since each waits on a person. */
+export function draftGlance(poll: {
+  data: unknown[] | undefined;
+  error: unknown;
+  lastOkAt: number | null;
+}): Glance | undefined {
+  const count = poll.data?.length ?? 0;
+  const glance = glanceOf(poll, count, 'waiting', 'skill drafts', undefined, 'blocked');
+  if (!glance || glance.tone !== 'blocked') return glance;
+  const n = count >= SKILL_QUEUE_GLANCE_LIMIT ? `${count}+` : String(count);
+  const drafts = `${n} skill ${count === 1 ? 'draft' : 'drafts'} waiting for review`;
+  return {
+    ...glance,
+    text: `${n} waiting`,
+    title: glance.age ? `${drafts}, as of ${glance.age} ago — the latest check failed` : drafts,
   };
 }
 
@@ -304,7 +345,11 @@ export function NavGlance({ glance }: { glance: Glance | undefined }) {
       title={glance.title}
       className={cn(
         'ml-auto shrink-0 pl-2 text-xs font-medium tabular-nums',
-        glance.tone === 'failed' ? 'text-state-failed' : 'text-muted-foreground',
+        glance.tone === 'failed'
+          ? 'text-state-failed'
+          : glance.tone === 'blocked'
+            ? 'text-state-blocked'
+            : 'text-muted-foreground',
       )}
     >
       {/* For the accessible name, which would otherwise run "Jobs1 failing"

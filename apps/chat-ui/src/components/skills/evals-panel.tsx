@@ -22,6 +22,7 @@ import {
   usePublishPolicy,
   useQueueEval,
   useSkillEvals,
+  useSkillVersion,
 } from './queries';
 import { RefusalNotice } from './refusal';
 import { ago } from './skill-status';
@@ -86,6 +87,10 @@ export function EvalsPanel({
     wasBusy.current = busy;
   }, [busy, client, name]);
   const row = detail.versions.find((v) => v.version === version);
+  // Whether the bundle carries scenarios of its own — the only kind that counts
+  // for an agent's version, so without them nothing run here can.
+  const files = useSkillVersion(name, row?.source === 'agent' ? version : null).data?.files;
+  const ownEvals = files ? files.some((f) => f.path.startsWith('evals/')) : null;
   const gated = policy.data && (policy.data.require_eval || policy.data.min_eval_uplift != null);
 
   return (
@@ -121,7 +126,9 @@ export function EvalsPanel({
             <span className="text-xs text-muted-foreground">
               written by <span className="font-mono">{row.source}</span>
               {row.source === 'agent' &&
-                ' — only an evaluation on its own evals/ scenarios counts for the gate'}
+                (ownEvals === false
+                  ? ' — only an evaluation on its own evals/ scenarios counts for the gate, and this bundle has no evals/ folder'
+                  : ' — only an evaluation on its own evals/ scenarios counts for the gate')}
             </span>
           )}
         </div>
@@ -253,7 +260,7 @@ export function EvalRow({
       )}
       {e.results.length > 0 && (
         <Collapsible open={open} onOpenChange={setOpen}>
-          <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+          <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none">
             <ChevronRightIcon
               aria-hidden
               className="size-3.5 transition-transform group-data-[state=open]:rotate-90"

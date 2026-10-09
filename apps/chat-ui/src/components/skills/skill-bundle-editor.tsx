@@ -100,7 +100,7 @@ export function SkillBundleEditor({
     <div className="flex items-center justify-between gap-2 border-t border-border/60 px-3 py-1.5 font-mono text-xs text-muted-foreground">
       <span className="flex min-w-0 items-center gap-1.5">
         {bundle.dirty && (
-          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-state-blocked" />
+          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground" />
         )}
         <span className="truncate">{bundle.activePath}</span>
         {bundle.dirty && <span className="shrink-0 font-sans">· unsaved</span>}
@@ -221,7 +221,7 @@ export function SkillBundleEditor({
           {previewable && (
             <details className="group border-t border-border/60 @5xl:hidden">
               {/* The chevron every other disclosure on these pages draws, not the UA triangle. */}
-              <summary className="flex cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden">
                 <ChevronRightIcon
                   aria-hidden
                   className="size-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none"

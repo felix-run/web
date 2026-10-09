@@ -103,6 +103,11 @@ export function skillCallArgs(input: unknown): { reason?: string; parent?: strin
 }
 
 /** The library page for a skill, at a version's Versions tab. */
+/** A skill's editor — where a version the gate refused gets fixed. */
+export function skillEditHref(name: string): string {
+  return `/harness/skills?${new URLSearchParams({ skill: name, tab: 'edit' })}`;
+}
+
 export function skillLibraryHref(name: string, version?: string): string {
   const q = new URLSearchParams({ skill: name });
   if (version) {

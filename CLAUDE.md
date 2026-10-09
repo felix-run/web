@@ -945,7 +945,17 @@ Flows worth knowing before editing the app:
   `tab=files` link lands there. **No decision is asked before the evidence:** every publish and
   rollback confirm reads the gate's verdict (`GET …/preview`) fresh alongside the live version, a
   draft on Versions carries its one-line verdict (`GateLine`), and Save's "Publish now" asks the
-  same replacing-live question and relabels its button. Version selects say each version's state. The list follows `next_cursor` past
+  same replacing-live question and relabels its button. **A draft the gate has refused is not
+  offered Publish** — the harness has no override, so the slot is *Edit to fix* beside Reject —
+  once the verdict is known (`useKnownPreview` reads the cached preview and never fetches; a row
+  whose verdict was never read still offers Publish, and arming reads it). An armed confirm the
+  gate refuses has no confirm button. The Gate tab carries a draft's decision too. Scores are red
+  only where they would block under the policy in force (`ScoreReadout`'s `policy`), and amber on
+  this surface is kept for what waits on a person. Version selects say each version's state. The
+  sidebar's Skills row carries an amber `N waiting` glance from its own 60s poll of the queue
+  (`SKILL_QUEUE_POLL_KEY` — not the page's Query cache, which would pull the lazy chunk into the
+  entry), and the attention line's all-clear reads *No approvals or questions waiting.*, because
+  a draft is on no poll it reads. The list follows `next_cursor` past
   *empty* filtered pages — the route filters after reading — for a bounded number of pages, then
   says there is more rather than "none". A save names `parent_version`; a 409 `parent_changed`
   stops at a choice (reload the newer version, or keep the edits with its diff on screen) and never

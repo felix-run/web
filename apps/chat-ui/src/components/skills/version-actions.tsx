@@ -1,13 +1,22 @@
 import { isSkillLibraryError, type SkillPreview } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { Textarea } from '@felix/ui/textarea';
+import { CircleAlertIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { DECISION_BUTTON } from '@/components/approval/approval-decision';
 import { ConfirmButton } from '@/components/confirm-button';
+import { skillEditHref } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { GateVerdictLine } from './gate-line';
-import { type MakeLive, useFreshPreview, useFreshSkill, useVersionActions } from './queries';
+import {
+  type MakeLive,
+  useFreshPreview,
+  useFreshSkill,
+  useKnownPreview,
+  useVersionActions,
+} from './queries';
 import { isForbidden, RefusalNotice } from './refusal';
 
 /**
@@ -38,6 +47,12 @@ const DECISION_SLOT = 'min-w-0 flex-1';
  * Reject needs a note — the harness requires one, and it is what the agent
  * that drafted the version will be told — so it opens a field first rather
  * than arming on a blank.
+ *
+ * A draft the gate has refused is not offered Publish. The harness has no
+ * override, so a button whose one outcome is a refusal was a question with no
+ * yes; the slot becomes *Edit to fix*, beside Reject. That needs the verdict
+ * already in hand — read by a `GateLine` on screen or by a confirm that armed —
+ * and when it is not, Publish stays, and arming reads it.
  */
 export function VersionDecision({
   name,
@@ -48,6 +63,7 @@ export function VersionDecision({
   canReject = true,
   onDecided,
   onForbidden,
+  showsVerdict = false,
   className,
 }: {
   name: string;
@@ -60,14 +76,25 @@ export function VersionDecision({
   onDecided?: (what: 'published' | 'rejected') => void;
   /** A 403: the key lacks `skills:write`. The host can drop the buttons for good. */
   onForbidden?: () => void;
+  /**
+   * The host draws the gate's verdict right above. Otherwise a refused draft's
+   * slot says the verdict itself, since the button it replaces would be gone
+   * with no word why.
+   */
+  showsVerdict?: boolean;
   className?: string;
 }) {
   const { publish, reject } = useVersionActions();
+  const known = useKnownPreview(name, version);
+  const refused = known?.policy_passes === false ? known : null;
   const failure = publish.error ?? reject.error;
   useEffect(() => {
     if (failure && isForbidden(failure)) onForbidden?.();
   }, [failure, onForbidden]);
   const [rejecting, setRejecting] = useState(false);
+  // While Publish asks its question, the question has the row: Reject beside a
+  // wrapping sentence and two more buttons was a reflow, then a second row.
+  const [arming, setArming] = useState(false);
   const [note, setNote] = useState('');
   const noteId = useId();
   const busy = publish.isPending || reject.isPending;
@@ -79,25 +106,38 @@ export function VersionDecision({
   return (
     <div className={cn('space-y-2', className)}>
       {offParent && (
-        <p role="note" className="text-xs text-state-blocked">
-          {parentVersion ? (
-            <>
-              Edited from <span className="font-mono">{parentVersion}</span>, not from the live{' '}
-              <span className="font-mono">{liveVersion}</span>.
-            </>
-          ) : (
-            <>
-              Not edited from the live <span className="font-mono">{liveVersion}</span>.
-            </>
-          )}{' '}
-          Publishing replaces <span className="font-mono">{liveVersion}</span> with this version as
-          it stands, so anything only <span className="font-mono">{liveVersion}</span> has is gone —
-          the comparison shown is against <span className="font-mono">{liveVersion}</span>.
+        // A fact about the decision, not a person being asked to act: the shape
+        // and the words carry it, and amber stays for what waits on someone.
+        <p role="note" className="flex items-start gap-1.5 text-xs text-foreground">
+          <CircleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+          <span className="min-w-0">
+            {parentVersion ? (
+              <>
+                Edited from <span className="font-mono">{parentVersion}</span>, not from the live{' '}
+                <span className="font-mono">{liveVersion}</span>.
+              </>
+            ) : (
+              <>
+                Not edited from the live <span className="font-mono">{liveVersion}</span>.
+              </>
+            )}{' '}
+            Publishing replaces <span className="font-mono">{liveVersion}</span> with this version
+            as it stands, so anything only <span className="font-mono">{liveVersion}</span> has is
+            gone — the comparison shown is against <span className="font-mono">{liveVersion}</span>.
+          </span>
         </p>
       )}
+      {refused && !showsVerdict && <GateVerdictLine preview={refused} />}
       {!rejecting ? (
         <div className="flex flex-wrap gap-2">
-          {canPublish && (
+          {canPublish && refused && (
+            <div className={DECISION_SLOT}>
+              <Button asChild size="sm" variant="outline" className={cn(DECISION_BUTTON, 'w-full')}>
+                <Link to={skillEditHref(name)}>Edit to fix</Link>
+              </Button>
+            </div>
+          )}
+          {canPublish && !refused && (
             <MakeLiveButton
               kind="publish"
               name={name}
@@ -108,13 +148,14 @@ export function VersionDecision({
               slotClassName={DECISION_SLOT}
               disabled={busy}
               mutation={publish}
+              onArmed={setArming}
               onDone={() => {
                 toast.success(`Published ${name} ${version}.`);
                 onDecided?.('published');
               }}
             />
           )}
-          {canReject && (
+          {canReject && !arming && (
             <div className={DECISION_SLOT}>
               <Button
                 size="sm"
@@ -148,7 +189,7 @@ export function VersionDecision({
               variant="outline"
               destructive
               disabled={busy || note.trim() === ''}
-              question={`${name} ${version} is archived unpublished, with this note.`}
+              question={`${name} ${version} is archived unpublished, with this note. A rejected version can never be published.`}
               confirmLabel={`Reject ${version}`}
               onConfirm={async () => {
                 try {
@@ -192,6 +233,9 @@ export function RollbackButton({ name, version }: { name: string; version: strin
       version={version}
       label={`Roll back to ${version}`}
       confirmLabel={`Roll back to ${version}`}
+      // Its own width, not the row's: a past version's way back should not
+      // weigh what a draft's Publish does.
+      className="w-auto"
       mutation={rollback}
       onDone={() => toast.success(`${name} ${version} is live again.`)}
     />
@@ -239,6 +283,7 @@ function MakeLiveButton({
   confirmLabel,
   mutation,
   onDone,
+  onArmed,
   disabled,
   className,
   slotClassName,
@@ -255,6 +300,8 @@ function MakeLiveButton({
     isPending: boolean;
   };
   onDone: () => void;
+  /** Told when the question opens and closes, so a host can give it the row. */
+  onArmed?: (armed: boolean) => void;
   disabled?: boolean;
   /** The button's own classes. */
   className?: string;
@@ -272,11 +319,15 @@ function MakeLiveButton({
   const [readError, setReadError] = useState<unknown>(null);
   const inFlight = useRef(false);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const questionId = useId();
   const armed = phase.at === 'armed';
 
   useEffect(() => {
     if (armed) confirmRef.current?.focus();
   }, [armed]);
+  useEffect(() => onArmed?.(armed), [armed, onArmed]);
+  // Unmounted mid-question — a refused verdict swaps the slot out — is closed.
+  useEffect(() => () => onArmed?.(false), [onArmed]);
 
   // Escape cancels the question, not the page or dialog behind it.
   useEffect(() => {
@@ -336,6 +387,9 @@ function MakeLiveButton({
     }
   };
 
+  // The gate has already said no: the question is not asked, because the
+  // harness would refuse a yes. What is left is the verdict and a way out.
+  const gateRefuses = phase.at === 'armed' && phase.gate?.policy_passes === false;
   const error = readError ?? mutation.error;
   const liveChanged = isSkillLibraryError(error) && error.code === 'live_changed';
   return (
@@ -344,7 +398,7 @@ function MakeLiveButton({
         <Button
           size="sm"
           variant="outline"
-          className={cn(className, 'w-full')}
+          className={cn('w-full', className)}
           disabled={disabled || phase.at === 'checking' || mutation.isPending}
           onClick={() => {
             mutation.reset();
@@ -359,14 +413,19 @@ function MakeLiveButton({
           aria-label={confirmLabel}
           className="flex min-w-0 flex-wrap items-center gap-1.5"
         >
-          <span className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">
+          <span
+            id={questionId}
+            className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground"
+          >
             {phase.was !== undefined && (
               <span className="block font-medium text-state-blocked">
                 Nothing changed: live moved from {phase.was ?? 'nothing'} to{' '}
                 {phase.live ?? 'nothing'} while you were deciding.
               </span>
             )}
-            <span className="block">{makeLiveQuestion(kind, name, version, phase.live)}</span>
+            {!gateRefuses && (
+              <span className="block">{makeLiveQuestion(kind, name, version, phase.live)}</span>
+            )}
             {phase.gate ? (
               <GateVerdictLine preview={phase.gate} className="mt-0.5" />
             ) : (
@@ -375,23 +434,35 @@ function MakeLiveButton({
                 {kind === 'publish' ? 'publish' : 'rollback'}.
               </span>
             )}
+            {gateRefuses && (
+              <span className="block">
+                Nothing was sent: {version} cannot go live until the gate passes it.
+              </span>
+            )}
           </span>
+          {!gateRefuses && (
+            <Button
+              ref={confirmRef}
+              size="sm"
+              className="h-7 shrink-0"
+              // Focus lands here, so the question and the verdict are what a
+              // screen reader says with it — not only the button's own name.
+              aria-describedby={questionId}
+              disabled={mutation.isPending}
+              onClick={() => void confirm()}
+            >
+              {confirmLabel}
+            </Button>
+          )}
           <Button
-            ref={confirmRef}
-            size="sm"
-            className="h-7 shrink-0"
-            disabled={mutation.isPending}
-            onClick={() => void confirm()}
-          >
-            {confirmLabel}
-          </Button>
-          <Button
+            ref={gateRefuses ? confirmRef : undefined}
             size="sm"
             variant="outline"
             className="h-7 shrink-0"
+            aria-describedby={gateRefuses ? questionId : undefined}
             onClick={() => setPhase({ at: 'rest' })}
           >
-            Cancel
+            {gateRefuses ? 'Close' : 'Cancel'}
           </Button>
         </span>
       )}

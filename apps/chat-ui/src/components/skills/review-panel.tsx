@@ -8,7 +8,8 @@ import { ReadFailure } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
 import { usePublishPolicy, useSkillPreview } from './queries';
 import { policySentence } from './refusal';
-import { QualityMeta, SCORE_HELP, SecurityMeta } from './score-readout';
+import { QualityMeta, SCORE_HELP, SecurityMeta, securityHelp } from './score-readout';
+import { VersionDecision } from './version-actions';
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 } as const;
 
@@ -29,16 +30,23 @@ const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 } as const;
  * The policy is stated here and changed on the library page. It is the
  * tenant's, not this skill's: an edit made from inside one version's gate
  * re-decided every other skill's drafts with nothing on screen to say so.
+ *
+ * A draft's decision sits under its verdict, so the tab that says why is also
+ * where to act on it: Publish when the gate passes it, *Edit to fix* when it
+ * does not, and Reject either way. It used to be a diagnosis with no remedy.
  */
 export function ReviewPanel({
   name,
   version,
   liveVersion,
+  parentVersion,
   policyTo,
 }: {
   name: string;
   version: string;
   liveVersion: string | null;
+  /** The version this one was edited from, for the decision's off-parent note. */
+  parentVersion: string | null;
   /** The library page, where the tenant's policy is changed. */
   policyTo: string;
 }) {
@@ -75,8 +83,18 @@ export function ReviewPanel({
         }
       >
         <GateVerdict preview={p} liveVersion={liveVersion} />
+        {p.status === 'draft' && (
+          <VersionDecision
+            className="mt-3"
+            name={name}
+            version={version}
+            liveVersion={liveVersion}
+            parentVersion={parentVersion}
+            showsVerdict
+          />
+        )}
         {policy.data ? (
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-3 max-w-[72ch] text-xs text-muted-foreground">
             {policySentence(policy.data)} The policy covers every skill in this tenant;{' '}
             <Link
               to={policyTo}
@@ -87,7 +105,7 @@ export function ReviewPanel({
             .
           </p>
         ) : policy.error ? (
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-3 max-w-[72ch] text-xs text-muted-foreground">
             The policy itself could not be read, so only the gate's verdict is shown.
           </p>
         ) : null}
@@ -115,7 +133,7 @@ export function ReviewPanel({
           ) : undefined
         }
       >
-        <p className="mb-2 text-xs text-muted-foreground">{SCORE_HELP.quality}</p>
+        <p className="mb-2 max-w-[72ch] text-xs text-muted-foreground">{SCORE_HELP.quality}</p>
         <ul aria-label="Review checks" className="space-y-1">
           {p.review_checks.map((c) => (
             <li key={c.id} className="flex items-start gap-2 text-sm">
@@ -125,7 +143,8 @@ export function ReviewPanel({
                   className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
                 />
               ) : (
-                <CircleXIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-state-blocked" />
+                // A fact the shape tells; whether it blocks is the score's to say.
+                <CircleXIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-foreground" />
               )}
               <span className="min-w-0">
                 <span className="sr-only">{c.passed ? 'Passed: ' : 'Not met: '}</span>
@@ -148,9 +167,15 @@ export function ReviewPanel({
 
       <PageSection
         title="Security"
-        meta={p.security_status ? <SecurityMeta status={p.security_status} /> : undefined}
+        meta={
+          p.security_status ? (
+            <SecurityMeta status={p.security_status} policy={policy.data} />
+          ) : undefined
+        }
       >
-        <p className="mb-2 text-xs text-muted-foreground">{SCORE_HELP.security}</p>
+        <p className="mb-2 max-w-[72ch] text-xs text-muted-foreground">
+          {securityHelp(policy.data)}
+        </p>
         {p.security_issues.length === 0 ? (
           <p className="text-sm text-muted-foreground">The scan found nothing.</p>
         ) : (
@@ -218,10 +243,12 @@ function SecurityIssues({ issues }: { issues: SkillSecurityIssue[] }) {
           <span
             className={cn(
               'rounded-full px-1.5 py-0.5 font-mono text-xs font-medium',
+              // Severity is the scanner's word, said in the chip; red is kept for
+              // the two that fail a scan. Medium is a fact, not a person waiting.
               i.severity === 'critical' || i.severity === 'high'
                 ? 'bg-state-failed/15 text-state-failed'
                 : i.severity === 'medium'
-                  ? 'bg-state-blocked/15 text-state-blocked'
+                  ? 'bg-muted text-foreground'
                   : 'bg-muted text-muted-foreground',
             )}
           >

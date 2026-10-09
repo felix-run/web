@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { BundleChanges } from './bundle-changes';
 import { DiffView } from './diff-view';
 import { GateLine } from './gate-line';
-import { useArchiveSkill, useSkillFile } from './queries';
+import { useArchiveSkill, usePublishPolicy, useSkillFile } from './queries';
 import { RefusalNotice } from './refusal';
 import { ScoreReadout } from './score-readout';
 import { SkillBundleBrowser } from './skill-bundle-browser';
@@ -146,6 +146,7 @@ function VersionRow({
   onSelect: () => void;
 }) {
   const state = versionState(v, liveVersion);
+  const policy = usePublishPolicy().data;
   return (
     <li className={cn('space-y-1.5 py-3', selected && 'bg-accent/40 -mx-2 rounded-md px-2')}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -153,7 +154,7 @@ function VersionRow({
           type="button"
           onClick={onSelect}
           aria-pressed={selected}
-          className="rounded-sm font-mono text-sm font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="rounded-sm font-mono text-sm font-medium underline-offset-2 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
         >
           {v.version}
         </button>
@@ -167,7 +168,7 @@ function VersionRow({
         )}
       </div>
       {v.reason && <p className="text-sm whitespace-pre-wrap break-words">{v.reason}</p>}
-      <ScoreReadout quality={v.quality_score} security={v.security_status} />
+      <ScoreReadout quality={v.quality_score} security={v.security_status} policy={policy} />
       {v.decided_by && (
         <p className="text-xs text-muted-foreground">
           {state === 'rejected' ? 'Rejected' : 'Decided'} by{' '}
@@ -186,6 +187,7 @@ function VersionRow({
           version={v.version}
           liveVersion={liveVersion}
           parentVersion={v.parent_version}
+          showsVerdict
         />
       )}
       {state === 'superseded' && <RollbackButton name={v.name} version={v.version} />}
@@ -202,7 +204,7 @@ function ArchiveSkill({ name, liveVersion }: { name: string; liveVersion: string
   const archive = useArchiveSkill();
   return (
     <PageSection title="Archive">
-      <p className="mb-2 text-sm text-muted-foreground">
+      <p className="mb-2 max-w-[72ch] text-sm text-muted-foreground">
         Takes <span className="font-mono">{name}</span> out of every catalog. Every version is kept,
         and rolling back to one brings the skill back.
       </p>
