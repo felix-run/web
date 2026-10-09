@@ -36,6 +36,21 @@ describe('classifyToolResult', () => {
     });
   });
 
+  it('reads a schema refusal of the arguments as a failure', () => {
+    expect(
+      classifyToolResult(
+        'calculator',
+        '[invalid args for calculator] 1 validation error for CalculatorArgs\nexpression\n  String should have at least 1 character',
+      ),
+    ).toEqual({
+      kind: 'failed',
+      label: 'invalid arguments',
+      message:
+        '1 validation error for CalculatorArgs\nexpression\n  String should have at least 1 character',
+      code: 'invalid_arguments',
+    });
+  });
+
   it('reads the runner errors and the control refusals', () => {
     expect(classifyToolResult('x', '[error/RuntimeError] exploded')).toMatchObject({
       kind: 'failed',
