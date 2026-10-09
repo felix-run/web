@@ -57,7 +57,7 @@ export const SECTIONS: readonly Section[] = Object.freeze([
   { key: 'approvals', name: 'Waiting', description: 'gated tool calls waiting on a person' },
   { key: 'plans', name: 'Plans', description: 'plans the agent wrote for itself' },
   { key: 'tools', name: 'Tools', description: 'per-tool calls, errors and mean latency' },
-  { key: 'usage', name: 'Usage', description: 'tokens in and out, newest first' },
+  { key: 'usage', name: 'Usage', description: 'spend by thread, last 24 hours' },
   { key: 'memory', name: 'Memory', description: 'facts kept across sessions — / to search' },
   {
     key: 'documents',

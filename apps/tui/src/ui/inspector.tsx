@@ -13,7 +13,8 @@
  * overlay answers is routed by `src/keys.ts` and handed down as a prop.
  */
 
-import type { PendingApproval } from '@felix/client';
+import { type PendingApproval, threadSuffix } from '@felix/client';
+import { promptTokens } from '@felix/protocol';
 import type { ColorInput, ScrollBoxRenderable, TabSelectRenderable } from '@opentui/core';
 import { type RefObject, useEffect, useRef } from 'react';
 import { compact, num, relTime, usd } from '../format.js';
@@ -167,7 +168,7 @@ export const EMPTY: Record<string, string> = {
   approvals: 'nothing waiting — gated tools appear here',
   plans: 'the agent has not written a plan',
   tools: 'no tool calls in the window',
-  usage: 'no tokens billed yet',
+  usage: 'no model calls in the last 24 hours',
   memory: 'nothing remembered yet',
   documents: 'no documents yet — the corpus is what the agent retrieves from',
   skills: 'no skills reported yet — the agent lists them when it uses them',
@@ -251,6 +252,8 @@ export function usageRows(
     model_id: string;
     tokens_input: number;
     tokens_output: number;
+    cache_read?: number;
+    cache_creation?: number;
     cost_usd?: number;
   }>,
 ): { head: string[]; rows: Row[] } {
@@ -259,10 +262,74 @@ export function usageRows(
     rows: events.map((u) => [
       { text: relTime(u.ts) },
       { text: oneLine(u.model_id, 22) },
-      { text: num(compact(u.tokens_input), 6) },
+      { text: num(compact(promptOf(u)), 6) },
       { text: num(compact(u.tokens_output), 6) },
       { text: num(u.cost_usd ? usd(u.cost_usd) : '', 8) },
     ]),
+  };
+}
+
+/**
+ * The whole prompt a row was charged for. `tokens_input` is only its *uncached*
+ * part: drawn alone as "in", a call with 3,228 cache writes read `5` and looked
+ * cheaper than one that cost a fifth as much. The browser counts it the same way.
+ */
+function promptOf(u: {
+  tokens_input: number;
+  cache_read?: number;
+  cache_creation?: number;
+}): number {
+  return promptTokens({
+    input: u.tokens_input,
+    output: 0,
+    cacheRead: u.cache_read ?? 0,
+    cacheWrite: u.cache_creation ?? 0,
+  });
+}
+
+/** The window the Usage tab answers for. */
+export const USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Spend per thread over the last day, newest activity first — what the harness
+ * returns from `GET /usage/threads`. A thread is named by its title when this
+ * client knows it and by its suffix otherwise; the one on screen is marked, since
+ * "what did *this* cost" is the question someone opening the tab mid-run has.
+ * Calls with no thread — and every call made before the harness stamped one —
+ * are one row, said in words rather than as an empty name.
+ */
+export function threadSpendRows(
+  items: Array<{
+    thread_id: string;
+    calls: number;
+    tokens_input: number;
+    tokens_output: number;
+    cache_read: number;
+    cache_creation: number;
+    cost_usd: number;
+    last_ts: number;
+  }>,
+  opts: { threads: Array<{ id: string; title: string }>; current: string; theme: Theme },
+): { head: string[]; rows: Row[] } {
+  return {
+    head: ['last', 'thread', 'calls', 'in', 'out', 'cost'],
+    rows: items.map((t) => {
+      const id = t.thread_id ? threadSuffix(t.thread_id) : '';
+      const here = id !== '' && id === opts.current;
+      const title = opts.threads.find((m) => m.id === id)?.title || id;
+      return [
+        { text: relTime(t.last_ts) },
+        {
+          text: id ? oneLine(`${here ? '› ' : ''}${title}`, 26) : 'outside a thread',
+          color: here ? opts.theme.ready : id ? undefined : opts.theme.faint,
+        },
+        { text: num(t.calls, 5) },
+        { text: num(compact(promptOf(t)), 6) },
+        { text: num(compact(t.tokens_output), 6) },
+        // Blank, not `$0`, when metered but unpriced — the same rule as the raw rows.
+        { text: num(t.cost_usd ? usd(t.cost_usd) : '', 8) },
+      ];
+    }),
   };
 }
 

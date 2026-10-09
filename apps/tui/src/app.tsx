@@ -805,6 +805,8 @@ export function App({
     tick: refreshTick,
     approvals,
     skills,
+    threads,
+    threadId,
     theme,
     config,
   });
