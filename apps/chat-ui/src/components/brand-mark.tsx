@@ -1,6 +1,5 @@
 import { MARK_CHEVRON, MARK_CURSOR, MARK_GRID, MARK_HEAD_PATH } from '@felix/design/mark';
 import { cn } from '@felix/ui/lib/utils';
-import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
 
 /**
@@ -40,13 +39,15 @@ export function BrandMark({ className }: { className?: string }) {
  * The mark as the sidebar's toggle: the brand sits at the sidebar's edge, so the
  * thing that opens and closes it is the thing already there.
  *
- * At rest it is the mark. Where a pointer can hover, hovering it — or focusing it
- * from the keyboard, on any device — swaps in the panel glyph for what a click
- * will do, so the control declares itself before it is used. On touch it stays
- * the mark; the drawer it opens is the answer to "what does this do".
+ * The mark says which way the sidebar is: open, it faces the way it was drawn,
+ * `>_`; closed, it turns round to face the other way. The turn is a flip about
+ * its own vertical centre — the ears are symmetric, so only the face changes —
+ * and it plays as the sidebar moves, so the two read as one motion. The tile
+ * does not move, so nothing beside it does either.
  *
- * The swap is a cross-fade in place, both glyphs stacked in one 20px cell, so
- * nothing beside it moves.
+ * There is no second glyph swapped in on hover any more: the state is on the
+ * mark at rest, on every device, and the name and `aria-pressed` the callers
+ * pass carry it for a reader.
  */
 export function BrandToggle({
   open,
@@ -56,17 +57,13 @@ export function BrandToggle({
   /** Whether the sidebar is on screen — expanded inline, or the drawer open. */
   open: boolean;
 }) {
-  const Panel = open ? PanelLeftCloseIcon : PanelLeftOpenIcon;
-  const swap =
-    '[@media(hover:hover)]:group-hover/brand:opacity-0 group-focus-visible/brand:opacity-0';
-  const reveal =
-    '[@media(hover:hover)]:group-hover/brand:opacity-100 group-focus-visible/brand:opacity-100';
   return (
     <button
       type="button"
       data-slot="brand-toggle"
+      data-state={open ? 'open' : 'closed'}
       className={cn(
-        'group/brand relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground outline-none transition-colors',
+        'inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground outline-none transition-colors',
         '[@media(hover:hover)]:hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50',
         className,
       )}
@@ -74,16 +71,8 @@ export function BrandToggle({
     >
       <BrandMark
         className={cn(
-          'transition-opacity duration-150 ease-out motion-reduce:transition-none',
-          swap,
-        )}
-      />
-      <Panel
-        aria-hidden
-        className={cn(
-          'absolute size-4 text-muted-foreground opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none',
-          'group-hover/brand:text-foreground group-focus-visible/brand:text-foreground',
-          reveal,
+          'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+          !open && '-scale-x-100',
         )}
       />
     </button>
