@@ -51,5 +51,5 @@ home page is a front door, not a landing page.
   state ramp (see DESIGN.md → Colors). Replacing the code theme is a decision, not yet made.
 - **The screenshot is under 2x.** Recaptured 2026-10-08 against harness v0.11.2 after chat-ui
   dropped its dotted transcript texture: the card crop is ~1.8x (1400px for ~790 CSS px) and the
-  full window is 1492px for a 1728px viewport. The browser tool caps its resolution, and macOS
+  full window is 1456px for a 1728px viewport. The browser tool caps its resolution, and macOS
   `screencapture` could not reach the automation window, so a true 2x capture is still open.
