@@ -30,7 +30,9 @@ const { data } = Astro.locals.starlightRoute.entry;
 // biome-ignore lint/correctness/noUnusedVariables: rendered below
 const { title = data.title, tagline, actions = [] } = data.hero || {};
 // biome-ignore lint/correctness/noUnusedVariables: rendered below
-const isHome = Astro.locals.starlightRoute.entry.id === 'index';
+// The root page's id is '' under this collection's glob loader, not 'index' —
+// checking for 'index' alone hid the figure from the home page it exists for.
+const isHome = ['', 'index'].includes(Astro.locals.starlightRoute.entry.id);
 ---
 
 <div class="hero">
