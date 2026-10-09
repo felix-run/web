@@ -110,7 +110,7 @@ pending approvals all return a deny marker the loop records under this one name.
 `payload.control` names the layer — one of `policy`, `limits`, `guardrails`, `approvals`,
 `command`, `screening` — so `GET /audit?event_type=policy_deny` filtered on it answers "every
 call approvals blocked this week" without correlating counters. The web UI's Activity page names the
-layer on the row and filters its window to one layer; a row from a harness that predates the
+layer on the row and can narrow its threads to those with a denial by one layer; a row from a harness that predates the
 field reads as plain `Blocked`. The Prometheus counters —
 `felix_policy_deny`, `felix_approval_required`, `felix_content_screening`,
 `felix_inbound_screening`, described in [Observability](/internals/observability/) — still carry
@@ -1204,14 +1204,25 @@ Per-request token counts and the cost each was priced at.
 | `limit` | int 1–200 | `50` |
 | `cursor` | string | — |
 | `manifest_id` | string | — |
+| `thread_id` | string, the thread's suffix | — |
 
 ```bash
 curl -s "$BASE_URL/usage?limit=50&manifest_id=support" \
   -H "authorization: Bearer $FELIX_KEY" | jq
 ```
 
-A row carries `tokens_input`, `tokens_output`, `cache_creation`, `cache_read`, `cost_usd`, and
-**two** model ids. `model_id` is the logical route the operator configured; `wire_model_id` is the
+A row carries `tokens_input`, `tokens_output`, `cache_creation`, `cache_read`, `cost_usd`, the
+`thread_id` the call ran on, and **two** model ids. `tokens_input` is the **uncached** part of the
+prompt only; the whole prompt is `tokens_input + cache_read + cache_creation`, and cache writes are
+priced above plain input, so a row read as "input" alone will not explain its cost.
+
+`thread_id` is the full `{tenant}:{suffix}` id — the same spelling an audit row's
+`payload.thread_id` uses, so the two records join directly — or `""` for a call made with no
+thread in context (memory consolidation, skill model calls, maintenance) and for every row written
+before the column existed. The `thread_id` filter takes the **suffix**, as `/plans` does; an empty value
+asks for the calls outside any thread, and a full `other:x` id is a `400 invalid_thread_id`.
+
+The two model ids: `model_id` is the logical route the operator configured; `wire_model_id` is the
 provider's own id, and is what the row was priced by. On a plain route they agree; on a custom one
 they are the interesting thing on the row.
 
@@ -1248,3 +1259,29 @@ curl -s "$BASE_URL/usage/summary?manifest_id=support" \
 Returns `{since_ms, until_ms, items, totals}`. The window is half-open, and `since_ms >= until_ms`
 is a `422`. The same unpriced caveat applies to `totals.cost_usd`: it sums the column, so it
 inherits the floor.
+
+### `GET /usage/threads`
+
+<Badge text="usage:read" variant="note" />
+
+Spend per thread over a window — "what did that run cost" without paging `/usage` and grouping it
+yourself. The web UI's Activity page reads it to put a cost on each thread beside what happened on
+it.
+
+| Query | Type | Default |
+|---|---|---|
+| `since_ms` | int, epoch ms, inclusive | 30 days ago |
+| `until_ms` | int, epoch ms, exclusive | now |
+| `limit` | int 1–200 | `50` |
+
+```bash
+curl -s "$BASE_URL/usage/threads?limit=20" \
+  -H "authorization: Bearer $FELIX_KEY" | jq '.items[0]'
+```
+
+Returns `{since_ms, until_ms, items, totals, truncated}`. Each item is one thread —
+`thread_id`, `calls`, the four token columns, `cost_usd`, and `first_ts`/`last_ts` of its calls in
+the window — sorted by `last_ts`, newest first. Calls with no thread form one item whose
+`thread_id` is `""`. `totals` covers **every** thread in the window, not just the page returned,
+and `truncated` says more threads spent than `limit` let through. A harness that predates
+the column answers `404`: its rows carry no thread to group by.

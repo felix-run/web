@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DOCS_ORIGIN } from '../src/components/harness/panel';
-import { ACTIVITY_DOCS, HARNESS_DESTINATIONS } from '../src/routes/harness';
+import { HARNESS_DESTINATIONS } from '../src/routes/harness';
 
 /**
  * Every `/harness` page links to its reference on the docs site, and a link to a
@@ -31,11 +31,7 @@ function anchorsOf(file: string): Set<string> {
   return new Set(headings.map(slug));
 }
 
-const links = [
-  ...HARNESS_DESTINATIONS.map((d) => [d.label, d.docs] as const),
-  ['Activity · Events', ACTIVITY_DOCS.events] as const,
-  ['Activity · Usage', ACTIVITY_DOCS.usage] as const,
-];
+const links = HARNESS_DESTINATIONS.map((d) => [d.label, d.docs] as const);
 
 describe('the /harness docs links', () => {
   it.each(links)('%s links to a page and section that exist', (_label, href) => {

@@ -182,15 +182,12 @@ describe('the harness address', () => {
     brand();
   });
 
-  it("carries the visible Activity half's value in the page header, not a second poll's", async () => {
+  it("carries the Activity ledger's account in the page header", async () => {
     mount('/harness/activity');
-    // Reported up from the Events half's own `/audit` poll; the halves draw no
-    // heading of their own, so without the sink this value had nowhere to go.
     await waitFor(() => {
       const header = document.querySelector('main header');
       expect(header?.textContent).toContain('Activity');
-      expect(header?.textContent).toContain('0 events ·');
-      expect(header?.textContent).toContain('0 failed');
+      expect(header?.textContent).toContain('0 threads');
     });
   });
 
@@ -204,19 +201,19 @@ describe('the harness address', () => {
     await waitFor(() => expect(document.querySelector('main header')).not.toBeNull());
     const header = document.querySelector('main header') as HTMLElement;
     expect(header.firstElementChild?.className).toContain(READING_MEASURE);
-    // The Activity page's halves measure themselves inside their tab panels, once their
-    // first poll has answered; every other page's body carries it under the
-    // scroller from the first render.
+    // Every page's body carries it under the scroller.
     await waitFor(() =>
       expect(header.nextElementSibling?.querySelector(`.${READING_MEASURE}`)).not.toBeNull(),
     );
   });
 
-  it("keeps the Activity page's switch inside the measured header row", async () => {
+  it("keeps the Activity page's window inside the measured header row", async () => {
     mount('/harness/activity');
-    await waitFor(() => expect(document.querySelector('main [role="tablist"]')).not.toBeNull());
+    await waitFor(() =>
+      expect(document.querySelector('main [aria-label="Window"]')).not.toBeNull(),
+    );
     const row = document.querySelector('main header')?.firstElementChild;
-    expect(row?.contains(document.querySelector('main [role="tablist"]'))).toBe(true);
+    expect(row?.contains(document.querySelector('main [aria-label="Window"]'))).toBe(true);
   });
 
   it('lets a page opt out with fullBleed, and only then', () => {
@@ -266,12 +263,10 @@ describe('the harness address', () => {
     await waitFor(() => expect(document.title).toBe('Felix'));
   });
 
-  it("keeps the Activity page's half in the address, so Usage can be linked", async () => {
-    mount('/harness/activity?view=usage');
+  it("keeps the Activity page's window in the address, so a week can be linked", async () => {
+    mount('/harness/activity?since=7d');
     await waitFor(() =>
-      expect(document.querySelector('main [role="tab"][aria-selected="true"]')?.textContent).toBe(
-        'Usage',
-      ),
+      expect(document.querySelector('main [aria-label="Window"]')?.textContent).toBe('Last 7 days'),
     );
   });
 

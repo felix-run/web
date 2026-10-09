@@ -67,12 +67,6 @@ const MANIFEST_REFERENCE = `${DOCS_ORIGIN}/guide/manifest-reference/`;
 /** Where the GitHub page's reference lives: the connection and per-person repositories. */
 export const GITHUB_DOCS = `${DOCS_ORIGIN}/internals/auth/#per-person-repositories`;
 
-/** The Activity page's two halves read different routes, documented in different sections. */
-export const ACTIVITY_DOCS = {
-  events: `${MANAGEMENT_API}#audit`,
-  usage: `${MANAGEMENT_API}#usage`,
-} as const;
-
 export const HARNESS_DESTINATIONS: {
   path: HarnessPath;
   label: string;
@@ -108,6 +102,8 @@ export const HARNESS_DESTINATIONS: {
   },
   {
     path: 'activity',
+    // The ledger reads both records; audit is where its events, and the page's
+    // link to `/usage/threads`, are explained.
     docs: `${MANAGEMENT_API}#audit`,
     label: 'Activity',
     icon: ActivityIcon,

@@ -7,9 +7,7 @@ import {
   summarizeWindow,
   tokenLine,
   tokenSplit,
-  usageHeader,
   usd,
-  windowDays,
 } from '../src/components/harness/activity';
 
 /**
@@ -144,17 +142,6 @@ describe('tokenSplit / tokenLine', () => {
   });
 });
 
-describe('windowDays', () => {
-  it('reports the window the harness answered for, not the one that was asked', () => {
-    expect(windowDays(summary([], { since_ms: 0, until_ms: 7 * DAY }))).toBe(7);
-  });
-
-  it('never reports zero days for a short window', () => {
-    // A label reading "last 0 days" is worse than a slightly generous one.
-    expect(windowDays(summary([], { since_ms: 0, until_ms: 1000 }))).toBe(1);
-  });
-});
-
 describe('usd', () => {
   it('does not round a real cost away', () => {
     // Two decimals shows `$0.00` for every ordinary turn and a running total
@@ -209,17 +196,5 @@ describe('byModel', () => {
       items: [item({ cost_usd: 0 })],
     } as never);
     expect(row?.unpriced).toBe(true);
-  });
-});
-
-describe('usageHeader', () => {
-  it('leads with what it cost, then how much, then over what', () => {
-    expect(usageHeader({ in: 24_470_680, out: 196_558, cost: 79.5, unpriced: 0 }, 30)).toBe(
-      '$79.50 · 24.7M tokens · last 30 days',
-    );
-  });
-
-  it('marks a floor as a floor when any turn was unpriced', () => {
-    expect(usageHeader({ in: 1000, out: 0, cost: 2, unpriced: 3 }, 7)).toMatch(/^≥ \$2\.00 · /);
   });
 });
