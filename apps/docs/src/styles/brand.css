@@ -72,12 +72,13 @@
 }
 
 /*
- * The header sits on the page colour, not Starlight's panel step. The step
- * drew a lighter band across the top that read as a separate surface; the
- * hairline under it is edge enough. The sidebar keeps its panel step.
+ * The header and sidebar sit on the page colour, not Starlight's panel step.
+ * The step drew a lighter band across the top and down the side that read as
+ * separate surfaces; the hairlines between them are edge enough.
  */
 :root {
   --sl-color-bg-nav: var(--sl-color-black);
+  --sl-color-bg-sidebar: var(--sl-color-black);
 }
 
 /*

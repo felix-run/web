@@ -162,8 +162,9 @@ from these, so `--sl-color-white` means "highest-contrast text" in both themes, 
 ### Neutral
 
 - **Page** (`#0a0a0a` / `#ffffff`): the page ground, `--sl-color-black`.
-- **Panel** (`#171717` / `#fafafa`): the sidebar, one tonal step off the page. The header is on
-  the page colour (`--sl-color-bg-nav`), separated by its hairline alone.
+- **Panel** (`#171717` / `#fafafa`): one tonal step off the page. The header and sidebar no
+  longer use it: both sit on the page colour (`--sl-color-bg-nav`, `--sl-color-bg-sidebar`),
+  separated by their hairlines alone.
 - **Hairline** (`#262626` / `#e5e5e5`): every rule, table border and row separator — and the
   sidebar's current-page fill.
 - **Ink** (`#ffffff` / `#0a0a0a`): headings, links, the current page, button fills,
