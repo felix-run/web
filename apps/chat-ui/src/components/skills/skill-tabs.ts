@@ -11,11 +11,16 @@ export const EDITOR = 'editor';
 export const SKILL_TABS = [
   { id: 'edit', label: 'Edit', ready: true },
   { id: 'versions', label: 'Versions', ready: true },
-  { id: 'review', label: 'Review', ready: true },
-  { id: 'files', label: 'Files', ready: true },
+  // `review` in the address, so links made before the rename still open it.
+  // The tab is the publish gate; "Review" also named the queue on the library
+  // page, and a reviewer read the two as one place.
+  { id: 'review', label: 'Gate', ready: true },
   { id: 'evals', label: 'Evals', ready: true },
   { id: 'feedback', label: 'Feedback', ready: true },
 ] as const;
+// A stored version's files are a section of Versions now, under the comparison
+// that already lists what changed in them; `tab=files` falls to Versions with
+// the version it named.
 
 export type SkillTab = (typeof SKILL_TABS)[number]['id'];
 
@@ -33,7 +38,7 @@ export function leavesSkill(from: Location, to: Location): boolean {
 
 export interface SkillAddress {
   tab: SkillTab;
-  /** The version the Versions, Review and Files tabs are looking at. */
+  /** The version the Versions, Gate, Evals and Feedback tabs are looking at. */
   version: string | null;
   /** The other side of a comparison: a version, or `editor`. */
   against: string | null;

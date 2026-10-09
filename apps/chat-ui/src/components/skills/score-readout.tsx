@@ -1,8 +1,8 @@
 import type { SecurityStatus } from '@felix/client';
-import { ShieldAlertIcon, ShieldCheckIcon, ShieldXIcon, SparklesIcon } from 'lucide-react';
+import { ShieldAlertIcon, ShieldCheckIcon, ShieldXIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const HELP = {
+export const SCORE_HELP = {
   quality:
     'Quality, 0-100: the harness’s automated review of the SKILL.md — structure, length, headings, steps.',
   security:
@@ -22,9 +22,12 @@ const SECURITY = {
  * what needs a person — amber advisory, red fail — and `pass`, the routine
  * case, stays muted.
  *
- * The definitions are in `title` and in the accessible name rather than in a
- * tooltip, so the readout works on a touch screen and in a card mounted
- * outside any tooltip provider.
+ * Quality carries no icon: a sparkle beside a computed number read as
+ * decoration, and the shield is there because its shape is the state.
+ *
+ * The definitions are said in full on the Gate tab, under the Quality and
+ * Security headings; here they are only a `title`, a hover hint on rows that
+ * repeat them dozens of times.
  */
 export function ScoreReadout({
   quality,
@@ -44,8 +47,7 @@ export function ScoreReadout({
   return (
     <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs', className)}>
       {quality != null && (
-        <span title={HELP.quality} className="inline-flex items-center gap-1.5">
-          <SparklesIcon aria-hidden className="size-3.5 text-muted-foreground" />
+        <span title={SCORE_HELP.quality} className="inline-flex items-center gap-1.5">
           <span className="text-muted-foreground">quality</span>
           <span className={cn('tabular-nums', below && 'text-state-blocked')}>{quality}</span>
           {below && <span className="text-state-blocked"> (under {minQuality})</span>}
@@ -53,7 +55,7 @@ export function ScoreReadout({
       )}
       {security && (
         <span
-          title={HELP.security}
+          title={SCORE_HELP.security}
           className={cn('inline-flex items-center gap-1.5', sec?.tone ?? 'text-muted-foreground')}
         >
           {sec ? <sec.icon aria-hidden className="size-3.5" /> : null}
@@ -73,7 +75,7 @@ export function ScoreReadout({
 export function QualityMeta({ score, min }: { score: number; min?: number | null }) {
   const below = min != null && score < min;
   return (
-    <span title={HELP.quality} className="font-mono">
+    <span title={SCORE_HELP.quality} className="font-mono">
       <span className={cn('text-foreground', below && 'text-state-blocked')}>{score}</span>/100
       {below && <span className="text-state-blocked"> · under {min}</span>}
     </span>
@@ -83,7 +85,7 @@ export function QualityMeta({ score, min }: { score: number; min?: number | null
 export function SecurityMeta({ status }: { status: SecurityStatus | string }) {
   const sec = SECURITY[status as SecurityStatus];
   return (
-    <span title={HELP.security} className={cn('font-mono', sec?.tone)}>
+    <span title={SCORE_HELP.security} className={cn('font-mono', sec?.tone)}>
       {sec?.word ?? status}
     </span>
   );

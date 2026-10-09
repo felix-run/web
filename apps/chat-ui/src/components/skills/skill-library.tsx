@@ -2,6 +2,7 @@ import { isSkillName } from '@felix/client';
 import { createSkillTemplate, isValidSkillName, validateSkillName } from '@felix/skill-format';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
+import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -16,12 +17,14 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
+import { ReadFailure } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
 import { FeedbackInbox } from './feedback-panel';
 import { LibraryList } from './library-list';
-import { invalidateLibrary, useReviewQueue } from './queries';
+import { PolicyEditor } from './policy-form';
+import { invalidateLibrary, usePublishPolicy, useReviewQueue } from './queries';
 import { QueryRoot } from './query-root';
-import { RefusalNotice } from './refusal';
+import { policySentence, RefusalNotice } from './refusal';
 import { ReviewQueue } from './review-queue';
 import { SkillNotFound, SkillPage } from './skill-page';
 import { useSkillsAddress } from './skills-address';
@@ -74,7 +77,9 @@ export function SkillLibrary({
     <>
       <PageSection
         title="Waiting for review"
-        meta={pending.count != null ? (pending.count === 0 ? 'none' : pending.text) : undefined}
+        // Only a count: an empty queue says so in its own line, and "none" above
+        // "Nothing is waiting for review." said it twice.
+        meta={pending.count ? pending.text : undefined}
       >
         <ReviewQueue linkTo={nav.linkTo} />
       </PageSection>
@@ -96,7 +101,38 @@ export function SkillLibrary({
         )}
         <LibraryList filter={nav.filter} onFilter={nav.setFilter} linkTo={nav.linkTo} />
       </PageSection>
+      <PublishPolicySection />
     </>
+  );
+}
+
+/**
+ * The tenant's publish policy, beside the library it governs rather than inside
+ * one skill's gate: a change here re-decides every draft in the tenant, and it
+ * is the one place on the page that says so.
+ */
+function PublishPolicySection() {
+  const policy = usePublishPolicy();
+  return (
+    <PageSection title="Publish policy" meta="every skill in this tenant">
+      {policy.data ? (
+        <>
+          <p className="max-w-[72ch] text-sm text-muted-foreground">
+            {policySentence(policy.data)}
+          </p>
+          <PolicyEditor policy={policy.data} />
+        </>
+      ) : policy.error ? (
+        <ReadFailure
+          error={policy.error}
+          doing="read the publish policy"
+          lastOkAt={null}
+          onRetry={() => void policy.refetch()}
+        />
+      ) : (
+        <Skeleton className="h-24 w-full rounded-md" aria-label="Loading the publish policy" />
+      )}
+    </PageSection>
   );
 }
 

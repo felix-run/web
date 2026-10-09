@@ -1,4 +1,4 @@
-import { isSkillLibraryError } from '@felix/client';
+import { isSkillLibraryError, type SkillPreview } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { Textarea } from '@felix/ui/textarea';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import { DECISION_BUTTON } from '@/components/approval/approval-decision';
 import { ConfirmButton } from '@/components/confirm-button';
 import { cn } from '@/lib/utils';
-import { type MakeLive, useFreshSkill, useVersionActions } from './queries';
+import { GateVerdictLine } from './gate-line';
+import { type MakeLive, useFreshPreview, useFreshSkill, useVersionActions } from './queries';
 import { isForbidden, RefusalNotice } from './refusal';
 
 /**
@@ -47,7 +48,6 @@ export function VersionDecision({
   canReject = true,
   onDecided,
   onForbidden,
-  verb = 'Publish',
   className,
 }: {
   name: string;
@@ -60,8 +60,6 @@ export function VersionDecision({
   onDecided?: (what: 'published' | 'rejected') => void;
   /** A 403: the key lacks `skills:write`. The host can drop the buttons for good. */
   onForbidden?: () => void;
-  /** The publish button's verb — `Approve` on the chat card, where it answers a proposal. */
-  verb?: string;
   className?: string;
 }) {
   const { publish, reject } = useVersionActions();
@@ -104,8 +102,8 @@ export function VersionDecision({
               kind="publish"
               name={name}
               version={version}
-              label={`${verb} ${version}`}
-              confirmLabel={`${verb} ${version}`}
+              label={`Publish ${version}`}
+              confirmLabel={`Publish ${version}`}
               className={DECISION_BUTTON}
               slotClassName={DECISION_SLOT}
               disabled={busy}
@@ -192,9 +190,8 @@ export function RollbackButton({ name, version }: { name: string; version: strin
       kind="rollback"
       name={name}
       version={version}
-      label="Roll back to this"
+      label={`Roll back to ${version}`}
       confirmLabel={`Roll back to ${version}`}
-      size="xs"
       mutation={rollback}
       onDone={() => toast.success(`${name} ${version} is live again.`)}
     />
@@ -204,8 +201,11 @@ export function RollbackButton({ name, version }: { name: string; version: strin
 type Phase =
   | { at: 'rest' }
   | { at: 'checking' }
-  /** Armed against `live`; `was` is the live version a refused attempt expected. */
-  | { at: 'armed'; live: string | null; was?: string | null };
+  /**
+   * Armed against `live`; `was` is the live version a refused attempt expected.
+   * `gate` is the verdict read alongside it, or null when that read failed.
+   */
+  | { at: 'armed'; live: string | null; was?: string | null; gate: SkillPreview | null };
 
 /**
  * The question a move to live asks, built only from what the harness said is
@@ -242,7 +242,6 @@ function MakeLiveButton({
   disabled,
   className,
   slotClassName,
-  size = 'sm',
 }: {
   kind: 'publish' | 'rollback';
   name: string;
@@ -266,9 +265,9 @@ function MakeLiveButton({
    * stretched to the padded wrapper and stood taller than Publish.
    */
   slotClassName?: string;
-  size?: 'xs' | 'sm';
 }) {
   const fresh = useFreshSkill();
+  const freshPreview = useFreshPreview();
   const [phase, setPhase] = useState<Phase>({ at: 'rest' });
   const [readError, setReadError] = useState<unknown>(null);
   const inFlight = useRef(false);
@@ -296,8 +295,20 @@ function MakeLiveButton({
     setPhase({ at: 'checking' });
     setReadError(null);
     try {
-      const skill = await fresh(name);
-      setPhase({ at: 'armed', live: skill.live_version, was });
+      // The gate's verdict rides along, so the question is never asked without
+      // it; a failed read of it costs the line, not the decision — the harness
+      // checks again on the publish itself.
+      const [skill, gate] = await Promise.all([
+        fresh(name),
+        freshPreview(name, version).catch(() => null),
+      ]);
+      // A body with no verdict in it is a read that failed, not a refusal.
+      setPhase({
+        at: 'armed',
+        live: skill.live_version,
+        was,
+        gate: typeof gate?.policy_passes === 'boolean' ? gate : null,
+      });
     } catch (err) {
       setReadError(err);
       setPhase({ at: 'rest' });
@@ -331,7 +342,7 @@ function MakeLiveButton({
     <div className={cn('space-y-2', !armed && slotClassName)}>
       {phase.at !== 'armed' ? (
         <Button
-          size={size}
+          size="sm"
           variant="outline"
           className={cn(className, 'w-full')}
           disabled={disabled || phase.at === 'checking' || mutation.isPending}
@@ -355,11 +366,19 @@ function MakeLiveButton({
                 {phase.live ?? 'nothing'} while you were deciding.
               </span>
             )}
-            {makeLiveQuestion(kind, name, version, phase.live)}
+            <span className="block">{makeLiveQuestion(kind, name, version, phase.live)}</span>
+            {phase.gate ? (
+              <GateVerdictLine preview={phase.gate} className="mt-0.5" />
+            ) : (
+              <span className="block">
+                The gate's verdict could not be read; the harness checks again on{' '}
+                {kind === 'publish' ? 'publish' : 'rollback'}.
+              </span>
+            )}
           </span>
           <Button
             ref={confirmRef}
-            size={size}
+            size="sm"
             className="h-7 shrink-0"
             disabled={mutation.isPending}
             onClick={() => void confirm()}
@@ -367,7 +386,7 @@ function MakeLiveButton({
             {confirmLabel}
           </Button>
           <Button
-            size={size}
+            size="sm"
             variant="outline"
             className="h-7 shrink-0"
             onClick={() => setPhase({ at: 'rest' })}

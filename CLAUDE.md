@@ -929,10 +929,18 @@ Flows worth knowing before editing the app:
   rather than a correction, which the Add form says where the decision is made. A hit's `channels`
   reading `lexical` alone means the vector retriever never *ran* (no embedder configured), not that
   it ran and disagreed.
-- **Skill library** — `/harness/skills` keeps the agent's active/declared skills on top and adds
-  the tenant library below: a review queue (oldest draft first, diff against live, publish or reject
-  with a note) and a list filtered by status and source. `?skill=&tab=&v=&against=` is a skill's
-  page (Edit, Versions, Review, Files), so any view is a link. The list follows `next_cursor` past
+- **Skill library** — `/harness/skills` holds the agent's active/declared skills and the tenant
+  library — below them, or **above them while a draft is waiting**, since that queue is why an
+  operator opens the page. The library is a review queue (oldest draft first, its gate verdict and
+  diff against live open on the first row, publish or reject with a note), a feedback inbox, a list
+  filtered by status and source, and the tenant's **publish policy** form, which lives here and not
+  on a skill's page: it re-decides every skill's drafts. `?skill=&tab=&v=&against=` is a skill's
+  page (Edit, Versions, Gate, Evals, Feedback), so any view is a link; the Gate tab is still
+  `tab=review` in the address, and a stored version's files are a section of Versions, so an old
+  `tab=files` link lands there. **No decision is asked before the evidence:** every publish and
+  rollback confirm reads the gate's verdict (`GET …/preview`) fresh alongside the live version, a
+  draft on Versions carries its one-line verdict (`GateLine`), and Save's "Publish now" asks the
+  same replacing-live question and relabels its button. Version selects say each version's state. The list follows `next_cursor` past
   *empty* filtered pages — the route filters after reading — for a bounded number of pages, then
   says there is more rather than "none". A save names `parent_version`; a 409 `parent_changed`
   stops at a choice (reload the newer version, or keep the edits with its diff on screen) and never
@@ -944,8 +952,9 @@ Flows worth knowing before editing the app:
   seeded with the files sent, and a refetch would swap in the harness's redacted read. Skill text is agent-written: `SkillMarkdown` is the transcript pipeline minus
   `rehype-raw` (no HTML element from markdown) and loads no remote image, and `assetDataUrl` builds
   `data:` URLs only for the raster types on the harness's table, never SVG. `create_skill` /
-  `update_skill` results render `SkillProposalCard` above the tool card, offering Approve only once
-  the library confirms the version is still a draft, and only the link after a 403. The library,
+  `update_skill` results render `SkillProposalCard` above the tool card, offering Publish (the same
+  word as everywhere else, not "Approve") only once the library confirms the version is still a
+  draft, and only the link after a 403. The library,
   the editor and the card are lazy chunks (the YAML parser and Query ride in them). The
   highlighter caps every spanning pattern and leaves lines over 4000 characters untokenized — a
   sticky regex runs at every position, so one unbounded span made a long line quadratic. The
@@ -956,8 +965,8 @@ Flows worth knowing before editing the app:
   version counts only an evaluation on its bundle's own `evals/`), a **Feedback** tab (file,
   accept with "improve with AI" on by default, reject with a note, follow an applied rewrite to
   its draft and load it into the editor), a feedback inbox beside the review queue, and the
-  tenant policy form in Review, which shows what the tenant set against what is in force because
-  the policy is tighten-only (the deployment settings are a floor). Every publish and rollback
+  tenant policy form on the library page, which shows what the tenant set against what is in force
+  because the policy is tighten-only (the deployment settings are a floor). Every publish and rollback
   re-reads the skill before arming and sends `expected_live_version` — the live version its
   question named — and a 409 `live_changed` re-asks naming the new one; it never retries.
 - **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and

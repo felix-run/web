@@ -140,7 +140,7 @@ describe('version decisions', () => {
   it('rolls back to a once-live version, naming the one it replaces', async () => {
     const h = library(THREE(), '0.1.1');
     mountWithProviders(<SkillLibraryPage />, VERSIONS_AT);
-    fireEvent.click(await screen.findByRole('button', { name: 'Roll back to this' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll back to 0.1.0' }));
     expect(await screen.findByText('0.1.0 goes live again, replacing 0.1.1.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Roll back to 0.1.0' }));
     await waitFor(() =>

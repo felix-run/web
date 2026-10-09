@@ -1,6 +1,6 @@
 import { Badge } from '@felix/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
-import { ChevronRightIcon, ExternalLinkIcon } from 'lucide-react';
+import { ChevronRightIcon } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router';
 import {
@@ -10,6 +10,7 @@ import {
   skillLibraryHref,
 } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
+import { GateLine } from './gate-line';
 import { useLibrarySkill } from './queries';
 import { QueryRoot } from './query-root';
 import { isForbidden } from './refusal';
@@ -23,13 +24,17 @@ import { VersionDiff } from './version-diff';
  *
  * `create_skill` and `update_skill` save a *draft*: nothing changes for any run
  * until a person publishes it. So the card is a decision, drawn in the
- * approval card's frame and grammar — what, why, the evidence one click open,
- * then two equal-weight answers — and it says plainly when there is nothing to
- * decide: the call was refused, the version was published or rejected since,
- * or this key may read the library but not change it.
+ * approval card's frame and grammar — what, why, the gate's verdict and the
+ * diff one click open, then two equal-weight answers — and it says plainly when
+ * there is nothing to decide: the call was refused, the version was published
+ * or rejected since, or this key may read the library but not change it.
+ *
+ * The answer is *Publish*, as it is in the queue and on Versions, not
+ * "Approve": the button makes the draft live for every ref that pins no
+ * version, and the word on it should be the one that says so.
  *
  * The status shown is the library's *now*, read on render, not the result's
- * at save time; a draft approved in another tab must not still offer Approve
+ * at save time; a draft published in another tab must not still offer Publish
  * here. When the library cannot be read, the card falls back to the result and
  * says that it has.
  */
@@ -81,7 +86,6 @@ function OpenInLibrary({ name, version }: { name: string; version?: string }) {
       className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
     >
       Open in library
-      <ExternalLinkIcon aria-hidden className="size-3" />
     </Link>
   );
 }
@@ -108,7 +112,7 @@ function SavedDraft({
   const readable = !!skill.data;
   const cannotRead = skill.error ? isForbidden(skill.error) : false;
   // Only on the library's own word that this version is still a draft: the
-  // tool result is agent-relayed, and offering Approve on it would offer it on
+  // tool result is agent-relayed, and offering Publish on it would offer it on
   // a draft someone already decided — or on one the library does not hold.
   const decidable = !!row && state === 'draft' && !forbidden && !cannotRead;
   // What publishing replaces is the live version, so that is what the diff is
@@ -199,10 +203,15 @@ function SavedDraft({
               aria-hidden
               className="size-3.5 transition-transform group-data-[state=open]:rotate-90"
             />
-            {before ? `Diff against live ${before}` : 'Show SKILL.md'}
+            {before ? `Gate verdict and diff against live ${before}` : 'Gate verdict and SKILL.md'}
           </CollapsibleTrigger>
-          <CollapsibleContent className="pt-2">
-            {open && <VersionDiff name={result.name} before={before} after={result.version} />}
+          <CollapsibleContent className="space-y-2 pt-2">
+            {open && (
+              <>
+                {decidable && <GateLine name={result.name} version={result.version} />}
+                <VersionDiff name={result.name} before={before} after={result.version} />
+              </>
+            )}
           </CollapsibleContent>
         </Collapsible>
       )}
@@ -214,7 +223,6 @@ function SavedDraft({
             version={row.version}
             liveVersion={live}
             parentVersion={row.parent_version}
-            verb="Approve"
             onForbidden={onForbidden}
           />
         )}

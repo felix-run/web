@@ -106,16 +106,20 @@ export function LibraryList({
           <Skeleton className="h-10 w-full rounded-md" />
         </div>
       ) : items.length === 0 && !query.error ? (
-        <p
-          role="status"
-          className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground"
-        >
-          {hasNextPage
-            ? // Said, because an empty filtered page is not an empty library.
-              `No match in the first ${pages.length * 50} skills; there are more to look through.`
-            : filtered
-              ? 'No skill in the library matches this filter.'
-              : 'The library is empty. Skills an agent drafts with create_skill, and ones saved here, appear in it.'}
+        // A line, as the queue's and the inbox's empty states are: a tinted box
+        // here made the one quiet answer on the page its loudest element.
+        <p role="status" className="max-w-[72ch] text-sm text-muted-foreground">
+          {hasNextPage ? (
+            // Said, because an empty filtered page is not an empty library.
+            `No match in the first ${pages.length * 50} skills; there are more to look through.`
+          ) : filtered ? (
+            'No skill in the library matches this filter.'
+          ) : (
+            <>
+              The library is empty. Skills an agent drafts with{' '}
+              <code className="font-mono">create_skill</code>, and ones saved here, appear in it.
+            </>
+          )}
         </p>
       ) : (
         <ul aria-label="Library skills" className="divide-y divide-border/60">
@@ -142,6 +146,9 @@ export function LibraryList({
     </div>
   );
 }
+
+const SHADOWS_UPLOAD =
+  "An operator upload has the same name: refs that pin no version get this library skill, refs pinning the upload's version still get the upload.";
 
 function LibraryRow({ skill, to }: { skill: SkillSummary; to: string }) {
   const latest = skill.latest;
@@ -171,10 +178,11 @@ function LibraryRow({ skill, to }: { skill: SkillSummary; to: string }) {
         {skill.shadows_operator_upload && (
           <span
             className="inline-flex items-center gap-1 text-xs text-state-blocked"
-            title="An operator upload has the same name: refs that pin no version get this library skill, refs pinning the upload's version still get the upload."
+            title={SHADOWS_UPLOAD}
           >
             <TriangleAlertIcon aria-hidden className="size-3" />
             shadows an upload
+            <span className="sr-only">: {SHADOWS_UPLOAD}</span>
           </span>
         )}
       </div>

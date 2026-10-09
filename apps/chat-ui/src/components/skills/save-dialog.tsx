@@ -10,9 +10,14 @@ import {
   DialogTitle,
 } from '@felix/ui/dialog';
 import { Textarea } from '@felix/ui/textarea';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { formatBytes } from './asset-preview';
+import { useFreshSkill } from './queries';
+import { makeLiveQuestion } from './version-actions';
+
+/** What is live, read fresh while "Publish now" is checked. */
+type LiveRead = { at: 'reading' } | { at: 'read'; live: string | null } | { at: 'failed' };
 
 export interface SaveChoice {
   reason: string;
@@ -32,8 +37,12 @@ export interface SaveChoice {
  *
  * "Publish now" is a request, not a promise: the publish gate still decides,
  * and when it refuses, the version is saved as a draft and the page says why.
+ * Checked, it asks the question every other move to live asks — which version
+ * goes live and which it replaces, read fresh from the harness — and the button
+ * says it publishes. It used to be the one path to live that named nothing.
  */
 export function SaveDialog({
+  name,
   open,
   onOpenChange,
   parent,
@@ -42,6 +51,7 @@ export function SaveDialog({
   onSave,
   error,
 }: {
+  name: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The version this edits; the save is refused if a newer one exists. Null for a new skill. */
@@ -59,6 +69,24 @@ export function SaveDialog({
   const over = bodyBytes > SKILL_BUNDLE_BODY_LIMIT_BYTES;
   const near = bodyBytes > SKILL_BUNDLE_BODY_LIMIT_BYTES * 0.8;
   const next = parent ? bumpSemver(parent, bump) : '0.1.0';
+  const fresh = useFreshSkill();
+  const [live, setLive] = useState<LiveRead>({ at: 'reading' });
+  useEffect(() => {
+    if (!publish) return;
+    if (!parent) {
+      setLive({ at: 'read', live: null });
+      return;
+    }
+    let current = true;
+    setLive({ at: 'reading' });
+    fresh(name).then(
+      (s) => current && setLive({ at: 'read', live: s.live_version }),
+      () => current && setLive({ at: 'failed' }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [publish, parent, name, fresh]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -138,9 +166,14 @@ export function SaveDialog({
             />
             <span>
               Publish now
-              <span className="block text-xs text-muted-foreground">
-                Goes live if the publish gate passes it. If not, it is saved as a draft and the page
-                says why.
+              <span role="status" className="block text-xs text-muted-foreground">
+                {!publish
+                  ? 'Goes live if the publish gate passes it. If not, it is saved as a draft and the page says why.'
+                  : live.at === 'reading'
+                    ? 'Checking what is live…'
+                    : live.at === 'failed'
+                      ? 'What is live could not be read. Publishing replaces whichever version is live when the harness takes the save.'
+                      : `${makeLiveQuestion('publish', name, next, live.live)} If the gate refuses it, it is saved as a draft and the page says why.`}
               </span>
             </span>
           </label>
@@ -163,7 +196,7 @@ export function SaveDialog({
             Cancel
           </Button>
           <Button disabled={busy || over} onClick={() => onSave({ reason, bump, publish })}>
-            {busy ? 'Saving…' : `Save ${next}`}
+            {busy ? 'Saving…' : publish ? `Save and publish ${next}` : `Save ${next}`}
           </Button>
         </DialogFooter>
       </DialogContent>

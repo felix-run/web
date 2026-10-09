@@ -112,7 +112,8 @@ export function EvalsPanel({
       >
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <VersionPicker
-            versions={detail.versions.map((v) => v.version)}
+            versions={detail.versions}
+            liveVersion={detail.live_version}
             value={version}
             onChange={onVersion}
           />

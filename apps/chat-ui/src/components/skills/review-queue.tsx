@@ -6,6 +6,7 @@ import { ChevronRightIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { ReadFailure } from '@/components/inspector/primitives';
+import { GateLine } from './gate-line';
 import { useReviewQueue } from './queries';
 import { ScoreReadout } from './score-readout';
 import { ago, SourceLabel } from './skill-status';
@@ -18,9 +19,10 @@ import { VersionDiff } from './version-diff';
  * next.
  *
  * Each row is the decision and its evidence together: what the draft is, who
- * wrote it and why, its scores, and — one click open — its SKILL.md against
- * the live version it would replace. Publishing from here passes the same gate
- * as anywhere else; the gate's refusal is shown in its own words.
+ * wrote it and why, its scores, and — open on the oldest row, one click on the
+ * rest — the gate's verdict and its SKILL.md against the live version it would
+ * replace. Publishing from here passes the same gate as anywhere else, and the
+ * confirm states the verdict whether or not the row was opened.
  */
 export function ReviewQueue({ linkTo }: { linkTo: (name: string, version?: string) => string }) {
   const query = useReviewQueue();
@@ -40,11 +42,21 @@ export function ReviewQueue({ linkTo }: { linkTo: (name: string, version?: strin
         />
       ) : null}
       {items.length === 0 && !query.error ? (
-        <p className="text-sm text-muted-foreground">Nothing is waiting for review.</p>
+        <p role="status" className="text-sm text-muted-foreground">
+          Nothing is waiting for review.
+        </p>
       ) : (
         <ul aria-label="Drafts waiting for review" className="divide-y divide-border/60">
-          {items.map((d) => (
-            <QueueRow key={`${d.name}@${d.version}`} draft={d} linkTo={linkTo} />
+          {items.map((d, i) => (
+            <QueueRow
+              key={`${d.name}@${d.version}`}
+              draft={d}
+              linkTo={linkTo}
+              // The draft to read next, with its evidence already open. The rest
+              // open on request: each open row asks the gate, and a queue of fifty
+              // asking at once is a burst the harness sheds.
+              defaultOpen={i === 0}
+            />
           ))}
         </ul>
       )}
@@ -66,11 +78,13 @@ export function ReviewQueue({ linkTo }: { linkTo: (name: string, version?: strin
 function QueueRow({
   draft,
   linkTo,
+  defaultOpen,
 }: {
   draft: ReviewQueueItem;
   linkTo: (name: string, version?: string) => string;
+  defaultOpen: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <li className="space-y-2 py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -105,11 +119,16 @@ function QueueRow({
             aria-hidden
             className="size-3.5 transition-transform group-data-[state=open]:rotate-90"
           />
-          {draft.live_version ? `Diff against live ${draft.live_version}` : 'Show SKILL.md'}
+          {draft.live_version
+            ? `Gate verdict and diff against live ${draft.live_version}`
+            : 'Gate verdict and SKILL.md'}
         </CollapsibleTrigger>
-        <CollapsibleContent className="pt-2">
+        <CollapsibleContent className="space-y-2 pt-2">
           {open && (
-            <VersionDiff name={draft.name} before={draft.live_version} after={draft.version} />
+            <>
+              <GateLine name={draft.name} version={draft.version} />
+              <VersionDiff name={draft.name} before={draft.live_version} after={draft.version} />
+            </>
           )}
         </CollapsibleContent>
       </Collapsible>
