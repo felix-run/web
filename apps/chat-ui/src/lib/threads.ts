@@ -42,10 +42,19 @@ export function loadTurns(threadId: string): Turn[] {
   return readJSON<Turn[]>(TURNS_PREFIX + threadId, []);
 }
 
-/** Persist a thread's transcript blob (cheap; called per streamed token). */
+/**
+ * Persist a thread's transcript blob (cheap; called per streamed token). An
+ * empty transcript is not written: a caller holding `[]` may simply not have
+ * loaded the thread yet. Emptying a cache on purpose is `clearTurns`.
+ */
 export function saveTurns(threadId: string, turns: Turn[]): void {
   if (turns.length === 0) return;
   localStorage.setItem(TURNS_PREFIX + threadId, JSON.stringify(turns));
+}
+
+/** Drop a thread's cached transcript — the thread on screen really is empty now. */
+export function clearTurns(threadId: string): void {
+  localStorage.removeItem(TURNS_PREFIX + threadId);
 }
 
 /**
