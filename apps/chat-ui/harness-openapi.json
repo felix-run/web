@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.11.3"
+    "version": "0.12.0"
   },
   "paths": {
     "/health": {
@@ -221,6 +221,9 @@
       "get": {}
     },
     "/usage/summary": {
+      "get": {}
+    },
+    "/usage/threads": {
       "get": {}
     },
     "/memory/": {

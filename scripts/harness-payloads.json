@@ -1,7 +1,7 @@
 {
   "$comment": "The key set of every row the harness serialises, recorded from a checkout by scripts/sync-harness-contract.mjs. check-payload-shapes fails when a client type requires a field that is not in one of these sets — the `payload` vs `payload_json` bug, which typechecks, lints, drifts past check-api-drift (it reads paths, not shapes) and renders `undefined` forever. Do not hand-edit: re-run the sync.",
-  "harnessCommit": "557ad801",
-  "harnessVersion": "0.11.3",
+  "harnessCommit": "7d980c0c",
+  "harnessVersion": "0.12.0",
   "unreadable": [
     "felix/a2a/tasks.py:_task_dict",
     "felix/observability/genai.py:_message_dict",
@@ -218,7 +218,8 @@
       "cache_read",
       "wire_model_id",
       "cost_usd",
-      "meta_json"
+      "meta_json",
+      "thread_id"
     ],
     "felix/usage/store.py:_summary_item_dict": [
       "manifest_id",
@@ -230,6 +231,17 @@
       "cache_creation",
       "cache_read",
       "cost_usd"
+    ],
+    "felix/usage/store.py:_thread_item_dict": [
+      "thread_id",
+      "calls",
+      "tokens_input",
+      "tokens_output",
+      "cache_creation",
+      "cache_read",
+      "cost_usd",
+      "first_ts",
+      "last_ts"
     ]
   }
 }

@@ -35,6 +35,13 @@ export interface UsageEvent {
    * summing this column is summing an underestimate.
    */
   cost_usd?: number;
+  /**
+   * The thread the call ran on, as the harness spells it (`{tenant}:{suffix}`, the
+   * spelling an audit payload's `thread_id` uses). `""` for a call outside any
+   * thread — the session summarizer, an eval — and absent from a harness older
+   * than the column.
+   */
+  thread_id?: string;
   meta_json: Record<string, unknown>;
 }
 
@@ -84,18 +91,49 @@ export interface UsageSummary {
   totals: UsageSummaryTotals;
 }
 
+/**
+ * One thread's spend over a window, from `GET /usage/threads`.
+ *
+ * Mirrors `felix/usage/store.py:_thread_item_dict`. `thread_id` is `""` for the one
+ * bucket of calls made outside any thread.
+ */
+export interface UsageThreadItem {
+  thread_id: string;
+  calls: number;
+  tokens_input: number;
+  tokens_output: number;
+  cache_creation: number;
+  cache_read: number;
+  /** Dollars. The same "`0` does not mean free" caveat as `UsageEvent.cost_usd`. */
+  cost_usd: number;
+  first_ts: number;
+  last_ts: number;
+}
+
+/** `GET /usage/threads` — spend per thread over a window, newest activity first. */
+export interface UsageByThread {
+  since_ms: number;
+  until_ms: number;
+  items: UsageThreadItem[];
+  /** Over every thread in the window, not just the returned page. */
+  totals: UsageSummaryTotals;
+  /** More threads spent in the window than `limit` returned. */
+  truncated: boolean;
+}
+
 /** GET /usage → paginated token meter events. */
 
 export function createUsageClient(http: FelixHttp) {
   const { chatFetch } = http;
 
   async function listUsage(
-    opts: { limit?: number; cursor?: string; manifest_id?: string } = {},
+    opts: { limit?: number; cursor?: string; manifest_id?: string; thread_id?: string } = {},
   ): Promise<{ items: UsageEvent[]; next_cursor: string | null }> {
     const q = new URLSearchParams();
     q.set('limit', String(opts.limit ?? 50));
     if (opts.cursor) q.set('cursor', opts.cursor);
     if (opts.manifest_id) q.set('manifest_id', opts.manifest_id);
+    if (opts.thread_id) q.set('thread_id', opts.thread_id);
     const res = await chatFetch(`/usage?${q}`);
     if (!res.ok) throw new Error(`usage: ${res.status}`);
     return (await res.json()) as { items: UsageEvent[]; next_cursor: string | null };
@@ -124,8 +162,29 @@ export function createUsageClient(http: FelixHttp) {
     return (await res.json()) as UsageSummary;
   }
 
+  /**
+   * `GET /usage/threads` — what each thread cost over a window.
+   *
+   * `null` when the harness does not serve the route (404): one older than the
+   * `thread_id` column records spend with no thread at all, so there is nothing to
+   * group, and a caller should say that rather than show every thread as free.
+   */
+  async function listUsageByThread(
+    opts: { since_ms?: number; until_ms?: number; limit?: number } = {},
+  ): Promise<UsageByThread | null> {
+    const q = new URLSearchParams();
+    if (opts.since_ms !== undefined) q.set('since_ms', String(opts.since_ms));
+    if (opts.until_ms !== undefined) q.set('until_ms', String(opts.until_ms));
+    if (opts.limit !== undefined) q.set('limit', String(opts.limit));
+    const res = await chatFetch(`/usage/threads?${q}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`usage by thread: ${res.status}`);
+    return (await res.json()) as UsageByThread;
+  }
+
   return {
     listUsage,
     getUsageSummary,
+    listUsageByThread,
   };
 }

@@ -42,9 +42,11 @@ export {
   parseApprovalOutcome,
   type ToolMetrics,
   type ToolMetricsRow,
+  type UsageByThread,
   type UsageEvent,
   type UsageSummary,
   type UsageSummaryItem,
+  type UsageThreadItem,
 } from '@felix/client';
 export type {
   ArtifactRef,
