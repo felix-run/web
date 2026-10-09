@@ -136,6 +136,29 @@ describe('eventHelp', () => {
       eventHelp({ event_type: 'tool_call', status: 'error', payload: { error_code: 'quota' } }),
     ).toMatch(/failed with `quota`/);
   });
+
+  /**
+   * The harness writes `final_response` as `error` when any call in the turn
+   * failed or was refused, and the agent usually replied anyway. The red row
+   * used to open to "the agent produced its reply" — a success sentence under a
+   * Failed status.
+   */
+  it('does not explain a failed turn as a successful reply', () => {
+    const replied = eventHelp({
+      event_type: 'final_response',
+      status: 'error',
+      payload: { chars: 31 },
+    });
+    expect(replied).not.toMatch(/produced its reply/);
+    expect(replied).toMatch(/not cleanly/);
+    expect(replied).toMatch(/replied after it/);
+    expect(
+      eventHelp({ event_type: 'final_response', status: 'error', payload: { chars: 0 } }),
+    ).toMatch(/produced no reply/);
+    expect(eventHelp({ event_type: 'final_response', status: 'ok', payload: {} })).toBe(
+      'The turn ended; the agent produced its reply.',
+    );
+  });
 });
 
 describe('errorCodeOf', () => {

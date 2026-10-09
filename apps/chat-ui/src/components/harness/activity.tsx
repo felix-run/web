@@ -1,4 +1,5 @@
 import { threadSuffix } from '@felix/client';
+import { promptTokens } from '@felix/protocol';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
@@ -138,6 +139,18 @@ export function eventHelp(
     if (code)
       return `The tool failed with \`${code}\`. The full message is on the call's card in the thread.`;
     return "The tool returned an error. The audit record keeps which call failed, not why; the tool's result is on its card in the thread.";
+  }
+  // The harness writes `final_response` as `error` when any call in the turn
+  // failed fatally *or was refused*, and the agent usually replied anyway — so a
+  // red reply row is a turn that ended badly, not a reply that failed to send. It
+  // fell through to "the agent produced its reply" under a red Failed, the one
+  // row type that explained itself as a success. The row does not record which of
+  // the two it was; the turn's other rows do.
+  if (e.event_type === 'final_response' && isFailure(e.status)) {
+    const replied = typeof e.payload?.chars === 'number' && e.payload.chars > 0;
+    return `The turn ended, but not cleanly: a call in it failed or was refused${
+      replied ? ', and the agent replied after it' : ', and the agent produced no reply'
+    }. Which call is on this turn's earlier rows; the reply is in the thread.`;
   }
   return EVENT_HELP[e.event_type];
 }
@@ -796,7 +809,7 @@ export function UsageSection({
   // ever on screen once the window really is empty.
   const totals = summary
     ? summarizeWindow(summary)
-    : { in: 0, out: 0, cache: 0, cost: 0, calls: 0, unpriced: 0 };
+    : { in: 0, out: 0, cache: 0, cacheWrite: 0, cost: 0, calls: 0, unpriced: 0 };
   const days = summary ? windowDays(summary) : SUMMARY_DEFAULT_DAYS;
   const rows = data?.rows ?? [];
   const pricedAs = sharedPricing(rows);
@@ -843,13 +856,20 @@ export function UsageSection({
                 {totals.out.toLocaleString()}
               </dd>
             </div>
-            {/* Cache reads are on every row below, so they are counted up here
-                too — a row showing "20,913 cache" under totals that never
-                mentioned cache read as if those tokens were missing. */}
+            {/* Input is the whole prompt; these two say how much of it the cache
+                served and how much it was sent to keep, the same split every row
+                below carries. Writes are priced above plain input, so leaving
+                them out made the cost look unrelated to the tokens beside it. */}
             <div>
-              <dt className="text-xs text-muted-foreground">Cache read</dt>
+              <dt className="text-xs text-muted-foreground">From cache</dt>
               <dd className="mt-0.5 tabular-nums font-mono text-sm">
                 {totals.cache.toLocaleString()}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Written to cache</dt>
+              <dd className="mt-0.5 tabular-nums font-mono text-sm">
+                {totals.cacheWrite.toLocaleString()}
               </dd>
             </div>
             <div>
@@ -894,7 +914,7 @@ export function UsageSection({
                     Turns
                   </th>
                   <th scope="col" className="py-1 text-right font-medium">
-                    Tokens
+                    Tokens in + out
                   </th>
                   <th scope="col" className="py-1 text-right font-medium">
                     Cost
@@ -944,10 +964,7 @@ export function UsageSection({
                     ) : null}
                   </div>
                   <p className="mt-0.5 tabular-nums font-mono text-xs text-muted-foreground">
-                    {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
-                    {(e.tokens_output ?? 0).toLocaleString()} out
-                    {(e.cache_read ?? 0) > 0 ? ` · ${e.cache_read.toLocaleString()} cache` : ''}
-                    {e.cost_usd ? ` · ${usd(e.cost_usd)}` : ''}
+                    {tokenLine(e)} · {e.cost_usd ? usd(e.cost_usd) : 'unpriced'}
                   </p>
                   {/*
                   Only when it disagrees with the reported id. `model_id` is the
@@ -1033,7 +1050,10 @@ export function byModel(summary: UsageSummary): Array<{
       cost: 0,
     };
     row.calls += item.calls;
-    row.tokens += item.tokens_input + item.tokens_output;
+    // The whole prompt plus the output, as `tokenSplit` counts a row — the
+    // uncached input alone left every cached token out of the column.
+    const t = tokenSplit(item);
+    row.tokens += t.prompt + t.out;
     row.cost += item.cost_usd;
     rows.set(key, row);
   }
@@ -1080,6 +1100,7 @@ export function summarizeWindow(summary: UsageSummary): {
   in: number;
   out: number;
   cache: number;
+  cacheWrite: number;
   cost: number;
   calls: number;
   unpriced: number;
@@ -1088,14 +1109,53 @@ export function summarizeWindow(summary: UsageSummary): {
   for (const item of summary.items) {
     if (item.cost_usd === 0 && item.tokens_input + item.tokens_output > 0) unpriced += item.calls;
   }
+  const t = tokenSplit(summary.totals);
   return {
-    in: summary.totals.tokens_input,
-    out: summary.totals.tokens_output,
-    cache: summary.totals.cache_read ?? 0,
+    in: t.prompt,
+    out: t.out,
+    cache: t.cacheRead,
+    cacheWrite: t.cacheWrite,
     cost: summary.totals.cost_usd,
     calls: summary.totals.calls,
     unpriced,
   };
+}
+
+/**
+ * A usage row's tokens, split the way its cost was.
+ *
+ * `tokens_input` is the **uncached** part of the prompt only. The row used to print
+ * it as "in" and leave `cache_creation` out entirely, so `3 in · 68 out · $0.0131`
+ * sat above `5 in · 82 out · 3,228 cache · $0.00252` and the row that looked
+ * cheaper cost five times more: its 3,228 cache *writes* — priced above plain input
+ * — were never on screen. "in" is the whole prompt now, as `promptTokens` counts it
+ * everywhere else, with the cached parts said in words beside it.
+ */
+export function tokenSplit(r: {
+  tokens_input?: number | null;
+  tokens_output?: number | null;
+  cache_read?: number | null;
+  cache_creation?: number | null;
+}): { prompt: number; out: number; cacheRead: number; cacheWrite: number } {
+  const cacheRead = r.cache_read ?? 0;
+  const cacheWrite = r.cache_creation ?? 0;
+  return {
+    prompt: promptTokens({ input: r.tokens_input ?? 0, output: 0, cacheRead, cacheWrite }),
+    out: r.tokens_output ?? 0,
+    cacheRead,
+    cacheWrite,
+  };
+}
+
+/** `3,233 in (3,228 written to cache) · 82 out`. */
+export function tokenLine(r: Parameters<typeof tokenSplit>[0]): string {
+  const t = tokenSplit(r);
+  const cached = [
+    t.cacheRead > 0 ? `${t.cacheRead.toLocaleString()} from cache` : '',
+    t.cacheWrite > 0 ? `${t.cacheWrite.toLocaleString()} written to cache` : '',
+  ].filter(Boolean);
+  const split = cached.length > 0 ? ` (${cached.join(', ')})` : '';
+  return `${t.prompt.toLocaleString()} in${split} · ${t.out.toLocaleString()} out`;
 }
 
 export function usd(n: number): string {

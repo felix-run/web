@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   byModel,
   summarizeWindow,
+  tokenLine,
+  tokenSplit,
   usageHeader,
   usd,
   windowDays,
@@ -101,6 +103,44 @@ describe('summarizeWindow', () => {
     expect(t.in).toBe(9_000_000);
     expect(t.calls).toBe(5_000);
     expect(t.cost).toBe(41.5);
+  });
+});
+
+/**
+ * `tokens_input` is the uncached part of the prompt. Printed as "in" with
+ * `cache_creation` left out, a row with 3,228 cache writes read `5 in · 82 out`
+ * and looked cheaper than a row that cost a fifth as much.
+ */
+describe('tokenSplit / tokenLine', () => {
+  it('counts the whole prompt as in, and says what the cache did', () => {
+    const row = { tokens_input: 5, tokens_output: 82, cache_creation: 3_228, cache_read: 0 };
+    expect(tokenSplit(row)).toEqual({ prompt: 3_233, out: 82, cacheRead: 0, cacheWrite: 3_228 });
+    expect(tokenLine(row)).toBe('3,233 in (3,228 written to cache) · 82 out');
+  });
+
+  it('names both cached parts, and neither when there are none', () => {
+    expect(
+      tokenLine({ tokens_input: 10, tokens_output: 1, cache_read: 900, cache_creation: 40 }),
+    ).toBe('950 in (900 from cache, 40 written to cache) · 1 out');
+    expect(tokenLine({ tokens_input: 3, tokens_output: 68 })).toBe('3 in · 68 out');
+  });
+
+  it('totals the window the same way', () => {
+    const t = summarizeWindow(
+      summary([], {
+        totals: {
+          calls: 2,
+          tokens_input: 8,
+          tokens_output: 150,
+          cache_creation: 3_228,
+          cache_read: 20_913,
+          cost_usd: 0.02,
+        },
+      }),
+    );
+    expect(t.in).toBe(24_149);
+    expect(t.cache).toBe(20_913);
+    expect(t.cacheWrite).toBe(3_228);
   });
 });
 
