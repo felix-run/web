@@ -78,6 +78,12 @@ manifest field attaches a hook.
 Return `None` to leave things as they are. Several hooks of one kind run in registration order,
 each seeing what the one before it returned.
 
+Write hooks with the positional parameters above, not `**kwargs`: a hook is called as
+`hook(value, ctx)`, so a keyword-only one raises on every call. The hook types in `felix.hooks`
+(`BeforeToolHook`, `AfterModelHook`, …) spell the parameters out, and each
+`registry.register_*` takes its type, so a type checker refuses that hook at the call that
+registers it.
+
 **The model hooks.** `before_model` receives `{"messages", "tools"}` (tool names) and its
 replacement goes to that one call only: the run's history and the session log keep the
 originals, so the next call sees them again. That is the difference from `filter_history`, which
@@ -115,10 +121,12 @@ def register(registry) -> None:
 ```
 
 <Aside type="caution">
-  Hooks **fail open**. One that raises is logged at debug level and skipped, and so is a return
+  Hooks **fail open**. One that raises is skipped and the run carries on, and so is a return
   value of the wrong shape (a `before_model` list holding anything but `ChatMessage`, an
-  `after_model` message that is not an assistant's). A hook is not a security control: a broken
-  `before_tool` lets every call through. Controls that must hold belong in the manifest's
+  `after_model` message that is not an assistant's). Each broken hook logs a warning with its
+  traceback the first time, then at debug, and every failure counts as
+  `felix_hook_failures{hook}`. A hook is not a security control: a broken `before_tool` lets
+  every call through. Controls that must hold belong in the manifest's
   [governance](/internals/governance/) blocks.
 </Aside>
 
