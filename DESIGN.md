@@ -328,8 +328,8 @@ height beside the header, and its top row is the header's line — the same
 `--header-height` plus the top safe-area inset, the same rule — carrying the mark and the
 wordmark. The mark sits 8px in, where the menu's icons sit, so collapsed to icons it heads their
 column and the wordmark is clipped by the narrowing panel rather than snapping out. The mark
-*is* the toggle (named *Sidebar*, `aria-pressed`, ⌘\), and it shows which way the sidebar is:
-open, it faces the way it was drawn, `>_`; closed, it turns round. The turn is a horizontal flip
+*is* the toggle (named *Sidebar*, `aria-pressed`, ⌘\), and it points the way a click will move
+the sidebar: closed, it faces the way it was drawn, `>_`; open, it turns round to face back. The turn is a horizontal flip
 about the tile's own centre, played as the sidebar moves — the ears are symmetric, so only the
 face changes, and nothing beside it moves. No second glyph is swapped in on hover: the state is
 on the mark at rest, on every device, and reduced motion makes the turn instant. Below

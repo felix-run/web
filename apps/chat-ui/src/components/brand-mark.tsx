@@ -39,8 +39,9 @@ export function BrandMark({ className }: { className?: string }) {
  * The mark as the sidebar's toggle: the brand sits at the sidebar's edge, so the
  * thing that opens and closes it is the thing already there.
  *
- * The mark says which way the sidebar is: open, it faces the way it was drawn,
- * `>_`; closed, it turns round to face the other way. The turn is a flip about
+ * The mark points the way a click will move the sidebar: closed, it faces the
+ * way it was drawn, `>_`, out towards where the sidebar will open; open, it
+ * turns round to face back over it. The turn is a flip about
  * its own vertical centre — the ears are symmetric, so only the face changes —
  * and it plays as the sidebar moves, so the two read as one motion. The tile
  * does not move, so nothing beside it does either.
@@ -72,7 +73,7 @@ export function BrandToggle({
       <BrandMark
         className={cn(
           'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
-          !open && '-scale-x-100',
+          open && '-scale-x-100',
         )}
       />
     </button>
