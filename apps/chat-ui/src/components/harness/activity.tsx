@@ -241,12 +241,18 @@ export const TEXT_BUTTON =
 export function ActivityRow({
   event: e,
   hideThread = false,
+  clock = false,
   open,
   onToggle,
 }: {
   event: AuditEvent;
   /** The list already said which thread every row is from. */
   hideThread?: boolean;
+  /**
+   * Clock time rather than age. Inside a turn headed `2:21 PM`, rows reading `7h`
+   * were two time formats for one moment.
+   */
+  clock?: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -376,9 +382,12 @@ export function ActivityRow({
                   // row against a harness log line.
                   <span
                     title={new Date(tsToMs(e.ts)).toISOString()}
-                    className="w-8 text-right text-xs tabular-nums text-muted-foreground"
+                    className={cn(
+                      'text-right text-xs tabular-nums text-muted-foreground',
+                      clock ? 'min-w-16 whitespace-nowrap' : 'w-8',
+                    )}
                   >
-                    {relTime(e.ts)}
+                    {clock ? clockTime(tsToMs(e.ts)) : relTime(e.ts)}
                   </span>
                 )}
               </span>
@@ -403,6 +412,18 @@ export function ActivityRow({
       </Collapsible>
     </li>
   );
+}
+
+/** `2:21 PM`, or `Tue 2:21 PM` when it was not today. */
+export function clockTime(ms: number): string {
+  const d = new Date(ms);
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  return d.toLocaleString(undefined, {
+    ...(sameDay ? {} : { weekday: 'short' }),
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 /**

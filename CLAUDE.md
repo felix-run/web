@@ -886,8 +886,16 @@ Flows worth knowing before editing the app:
   `{tenant}:{suffix}` spelling the audit payload uses; `buildLedger` folds both to the suffix. A
   harness without the route answers 404, `listUsageByThread` returns `null`, and the page says no
   thread can show a cost rather than drawing every one as free. The window opens on **since this
-  browser last left the page** (`felix.activity.lastVisit`, stamped on unmount and `pagehide`,
-  falling back to 24h); window and filters are in the address. Polling stops while a thread is
+  browser last left the page** (`felix.activity.lastVisit`), falling back to 24h; window and
+  filters are in the address. **A reload is not a visit**: the stamp is written on unmount and
+  `pagehide` only after the page has been on screen `VISIT_MIN_MS` (5s), and a tab measures from
+  the value it first read, held in `sessionStorage` (`felix.activity.sessionSince`) — before both,
+  any reload, remount or second tab turned the window into "since a minute ago". The sidebar's
+  Activity glance links with `?since=24h` (`navSearch`), the window it counted in. **Spend before
+  per-thread metering lives in the `""` bucket**: `meteringStart` finds the first attributed call
+  when unattributed spend came before it (`Infinity` when none is attributed at all), and
+  `spendState` tells a thread's cell `cost`, `floor` (`≥`), `unrecorded` or `none` — so a thread
+  whose calls predate the upgrade never reads as having spent nothing. Polling stops while a thread is
   open, as the feed's did while a row was. **`tokens_input` is the uncached prompt only**:
   `tokenSplit`/`tokenLine` count the whole prompt as "in" and name what the cache served and
   stored, because a row printed as `5 in` hid 3,228 cache writes and looked cheaper than a row

@@ -229,6 +229,19 @@ interface Glance {
  * it could not refresh — and a failed read after a good one keeps the count and
  * says its age.
  */
+/**
+ * The address a nav row links to. Activity's glance counts failures in the last
+ * 24 hours, and its link opened the page on "since your last visit" — often a
+ * minute ago, so the click on "8 failed" landed on "Nothing ran". While the glance
+ * says something, the link carries the window it was counted in.
+ */
+export function navSearch(path: HarnessPath, search: string, glance: Glance | undefined): string {
+  if (path !== 'activity' || !glance) return search;
+  const q = new URLSearchParams(search);
+  q.set('since', ACTIVITY_GLANCE_SPAN);
+  return `?${q}`;
+}
+
 export function glanceOf(
   poll: { data: unknown[] | undefined; error: unknown; lastOkAt: number | null },
   count: number,
@@ -343,7 +356,7 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                   {/* The agent rides along: moving between pages keeps looking at
                       the same one. */}
                   <NavLink
-                    to={{ pathname: path, search }}
+                    to={{ pathname: path, search: navSearch(path, search, glance[path]) }}
                     onClick={onNavigate}
                     className={({ isActive }) =>
                       cn(

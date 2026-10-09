@@ -440,6 +440,16 @@ export function Field({ label, value, mono }: { label: string; value: string; mo
  */
 export function StatusDot({ status }: { status: string }) {
   const bad = status === 'error' || status === 'failed' || status === 'denied';
+  // A status this table does not know — `stored`, `minted`, `removed` on the
+  // sign-in rows — is a word about what happened, not an outcome, so it gets
+  // no dot: a dot beside it read as a verdict it does not carry.
+  if (!bad && !(status in STATUS_LABEL)) {
+    return (
+      <span title={status} className="text-xs text-muted-foreground">
+        {status}
+      </span>
+    );
+  }
   // OK is the routine majority, so it is a muted word with a muted dot. A feed of
   // eleven green dots and one red made the red slower to find — the badging-the-
   // majority fault the Activity page's own tone rule was written against. Colour is

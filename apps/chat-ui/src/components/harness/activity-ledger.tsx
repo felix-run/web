@@ -2,7 +2,7 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { ActivityIcon, ChevronRightIcon } from 'lucide-react';
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { getUsageSummary, listAuditWindow, listUsage, listUsageByThread } from '@/api';
 import {
@@ -10,6 +10,7 @@ import {
   byModel,
   CONTROL_LABEL,
   CONTROL_LAYERS,
+  clockTime,
   controlOf,
   ERROR_CODE_LABEL,
   errorCodeOf,
@@ -20,23 +21,34 @@ import {
   tokenLine,
 } from '@/components/harness/activity';
 import { keepAgent } from '@/components/harness/harness-agent';
-import { PageHeader, PanelBody, plural } from '@/components/harness/panel';
-import { relTime, SectionBody, StatusDot } from '@/components/inspector/primitives';
+import { PageEmpty, PageHeader, PanelBody, plural } from '@/components/harness/panel';
+import {
+  relTime,
+  SectionBody,
+  STATUS_LABEL,
+  StatusDot,
+  tsToMs,
+} from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import { middleTruncate } from '@/lib/format';
 import {
   buildLedger,
   filterLedger,
   foldRoutine,
+  groupFailures,
   type LedgerThread,
   type LedgerTurn,
   type LedgerWindow,
+  meteringStart,
   money,
   NO_THREAD,
   parseWindow,
   readLastVisit,
   resolveWindow,
+  type SpendState,
+  spendState,
   toolTally,
+  VISIT_MIN_MS,
   writeLastVisit,
 } from '@/lib/ledger';
 import { threadLabel } from '@/lib/threads';
@@ -86,13 +98,31 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   const setWin = (next: LedgerWindow) =>
     setParams(keepAgent(params, next === 'last' ? {} : { since: next }), { replace: true });
 
-  // Read once: the visit this page measures from is the *previous* one. Leaving
-  // stamps the next, on unmount and on `pagehide` (a closed tab never unmounts).
+  // Read once, and held for the life of the tab (`readLastVisit`): the visit this
+  // page measures from is the *previous* one. Leaving stamps the next — on unmount
+  // and on `pagehide`, since a closed tab never unmounts — but only once the page
+  // has been on screen for `VISIT_MIN_MS`. A reload, a remount or a glance through
+  // a tab is not a visit, and counting each as one made the window "since a minute
+  // ago" every time the reader came back.
   const [lastVisit] = useState(readLastVisit);
   useEffect(() => {
-    const stamp = () => writeLastVisit(Date.now());
+    let shownFor = 0;
+    let since = document.visibilityState === 'visible' ? Date.now() : null;
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') since = Date.now();
+      else if (since !== null) {
+        shownFor += Date.now() - since;
+        since = null;
+      }
+    };
+    const stamp = () => {
+      const total = shownFor + (since !== null ? Date.now() - since : 0);
+      if (total >= VISIT_MIN_MS) writeLastVisit(Date.now());
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', stamp);
     return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', stamp);
       stamp();
     };
@@ -161,6 +191,13 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   const totals = data?.summary?.totals ? summarizeWindow(data.summary) : null;
   const cost = totals ? `${totals.unpriced > 0 ? '≥ ' : ''}${money(totals.cost)}` : null;
   const account = [cost, plural(conversations.length, 'thread')].filter(Boolean).join(' · ');
+  const metered = data?.spend ? meteringStart(data.spend.items) : null;
+  // The cost column is drawn only when a thread on screen has a figure for it. On
+  // the day per-thread metering began, 51 of 52 rows read `—`: a column that is
+  // nearly always empty is texture, and the reason is said once below instead.
+  const costColumn =
+    data?.spend != null && rows.some((t) => t.id !== NO_THREAD && t.spend !== null);
+  const emptyLast = data !== undefined && ledger.length === 0 && win === 'last' && !data.fellBack;
 
   return (
     <>
@@ -193,19 +230,32 @@ export function ActivityLedger({ docs }: { docs?: string }) {
           doing="load activity"
           loading={loading && !data}
           error={error}
-          empty={ledger.length === 0}
-          emptyText={
-            data && win === 'last' && !data.fellBack
-              ? `Nothing ran since your last visit, ${relTime(data.since)} ago. Pick a longer window to look further back.`
-              : 'Nothing ran in this window. Turns, tool calls and their spend show up here, one entry per thread.'
-          }
+          empty={ledger.length === 0 && !emptyLast}
+          emptyText="Nothing ran in this window. Turns, tool calls and their spend show up here, one entry per thread."
           status={
             data
               ? `${plural(conversations.length, 'thread')}, ${failing} with failures${cost ? `, ${cost} spent` : ''}.`
               : undefined
           }
         >
-          {data && (
+          {data && emptyLast && (
+            // Not a dead end: "nothing since a minute ago" is true and useless to
+            // someone who came here from a count of failures, so it hands over
+            // the window that count was taken in.
+            <PageEmpty>
+              <span>
+                Nothing ran since your last visit, {relTime(data.since)} ago.{' '}
+                <button
+                  type="button"
+                  className={cn(TEXT_BUTTON, 'text-foreground')}
+                  onClick={() => setWin('24h')}
+                >
+                  Show the last 24 hours
+                </button>
+              </span>
+            </PageEmpty>
+          )}
+          {data && !emptyLast && (
             <>
               <Account
                 win={win}
@@ -233,6 +283,8 @@ export function ActivityLedger({ docs }: { docs?: string }) {
                   openId={openThread}
                   onToggle={(id) => setOpenThread((prev) => (prev === id ? null : id))}
                   spendKnown={data.spend !== null}
+                  metered={metered}
+                  costColumn={costColumn}
                 />
               )}
               {shown.length > rows.length && (
@@ -248,6 +300,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
                 eventsTruncated={data.audit.truncated}
                 spendTruncated={data.spend?.truncated ?? false}
                 spendKnown={data.spend !== null}
+                metered={metered}
               />
               {data.summary?.totals && (totals?.calls ?? 0) > 0 && (
                 <SpendByModel summary={data.summary} recent={data.recent} />
@@ -313,13 +366,14 @@ function Account({
           </>
         )}
       </p>
-      {paused && (
-        // Next to the window rather than under the list: the list is what stopped
-        // updating, and the reader is looking at the top of it.
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Paused while a thread is open; closing it catches up.
-        </p>
-      )}
+      {/* Next to the window rather than under the list: the list is what stopped
+          updating, and the reader is looking at the top of it. The line's height is
+          held when empty — appearing, it pushed every row 16px down and out from
+          under the pointer — and it is a polite live region, so a screen reader
+          hears that the list has stopped. */}
+      <p aria-live="polite" className="mt-0.5 min-h-4 text-xs text-muted-foreground">
+        {paused ? 'Paused while a thread is open; closing it catches up.' : ''}
+      </p>
     </div>
   );
 }
@@ -382,12 +436,16 @@ function LedgerList({
   openId,
   onToggle,
   spendKnown,
+  metered,
+  costColumn,
 }: {
   threads: LedgerThread[];
   titleOf: (id: string) => { text: string; isId: boolean };
   openId: string | null;
   onToggle: (id: string) => void;
   spendKnown: boolean;
+  metered: number | null;
+  costColumn: boolean;
 }) {
   const ref = useRef<HTMLOListElement>(null);
   const [stop, setStop] = useState<string | null>(null);
@@ -426,6 +484,8 @@ function LedgerList({
           onToggle={() => onToggle(t.id)}
           onKeyDown={(e) => onKeyDown(e, t.id)}
           spendKnown={spendKnown}
+          spend={spendKnown ? spendState(t, metered) : null}
+          costColumn={costColumn}
         />
       ))}
     </ol>
@@ -444,6 +504,41 @@ function failureWords(e: AuditEvent): string {
   return `${subject} failed`;
 }
 
+/** Two strings saying the same thing, give or take a truncation. */
+function sameText(a: string, b: string): boolean {
+  const norm = (x: string) => x.trim().replace(/\s+/g, ' ').replace(/…$/, '').toLowerCase();
+  const [x, y] = [norm(a), norm(b)];
+  return x === y || x.startsWith(y) || y.startsWith(x);
+}
+
+/**
+ * The cost cell: what is drawn and what is said. A thread whose activity all
+ * predates metering draws nothing — its calls are in the no-thread bucket, and a
+ * dash would claim it cost nothing — and one that straddles the start is a floor.
+ */
+function costCell(
+  t: LedgerThread,
+  state: SpendState | null,
+): { shown: ReactNode; spoken: string | null } {
+  if (state === null || state === 'unrecorded') {
+    return { shown: null, spoken: state === 'unrecorded' ? 'cost not recorded' : null };
+  }
+  if (state === 'none')
+    return { shown: <span className="text-muted-foreground">—</span>, spoken: 'no spend' };
+  const s = t.spend;
+  if (!s) return { shown: null, spoken: null };
+  if (s.cost_usd === 0 && s.calls > 0) {
+    return {
+      shown: <span className="font-sans text-xs text-foreground">unpriced</span>,
+      spoken: 'unpriced',
+    };
+  }
+  const amount = money(s.cost_usd);
+  return state === 'floor'
+    ? { shown: `≥ ${amount}`, spoken: `at least ${amount}` }
+    : { shown: amount, spoken: amount };
+}
+
 function ThreadEntry({
   thread: t,
   title,
@@ -453,6 +548,8 @@ function ThreadEntry({
   onToggle,
   onKeyDown,
   spendKnown,
+  spend,
+  costColumn,
 }: {
   thread: LedgerThread;
   title: { text: string; isId: boolean } | null;
@@ -462,6 +559,9 @@ function ThreadEntry({
   onToggle: () => void;
   onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void;
   spendKnown: boolean;
+  /** `null` when the harness cannot attribute spend to threads at all. */
+  spend: SpendState | null;
+  costColumn: boolean;
 }) {
   const failed = t.failures.length > 0;
   const latestPrompt = t.turns.find((turn) => turn.prompt)?.prompt ?? null;
@@ -473,14 +573,37 @@ function ThreadEntry({
     ...t.failures.filter((e) => e.event_type !== 'final_response'),
     ...t.failures.filter((e) => e.event_type === 'final_response'),
   ];
+  // The same failure counted, not repeated: "local_write blocked by an approval ·
+  // local_write blocked by an approval · 6 more" hid the one failure that differed.
+  const groups = groupFailures(causes);
   const what = failed
-    ? `${causes
+    ? `${groups
         .slice(0, 2)
-        .map(failureWords)
-        .join(' · ')}${t.failures.length > 2 ? ` · ${t.failures.length - 2} more` : ''}`
+        .map((g) => `${failureWords(g.event)}${g.count > 1 ? ` ×${g.count}` : ''}`)
+        .join(' · ')}${groups.length > 2 ? ` · ${groups.length - 2} more kinds` : ''}`
     : t.id === NO_THREAD
-      ? 'Screening, skills and calls made outside any conversation'
-      : latestPrompt;
+      ? // Said by what it holds. Before per-thread metering this bucket carries
+        // every model call there was, and calling that "screening and skills"
+        // put a thread's whole cost under the wrong name.
+        t.spend && t.spend.calls > 0
+        ? 'Spend recorded before per-thread metering, or made outside any thread'
+        : 'Sign-ins, screening and other events outside any conversation'
+      : // The title is usually the first prompt; saying it twice is not a summary.
+        latestPrompt && !sameText(latestPrompt, name)
+        ? latestPrompt
+        : null;
+  const cell = costCell(t, spend);
+  // The row's name, short: the whole row as its name read the title twice and
+  // the dash aloud.
+  const label = [
+    name,
+    STATUS_LABEL[t.worst] ?? t.worst,
+    failed ? plural(t.failures.length, 'failure') : null,
+    cell.spoken,
+    `${relTime(t.lastTs)} ago`,
+  ]
+    .filter(Boolean)
+    .join(', ');
   const facts = [
     t.turns.length > 0 ? plural(t.turns.length, 'turn') : null,
     t.tools > 0 ? plural(t.tools, 'tool call') : null,
@@ -491,6 +614,7 @@ function ThreadEntry({
       <Collapsible open={open} onOpenChange={onToggle}>
         <CollapsibleTrigger
           data-ledger-row
+          aria-label={label}
           tabIndex={tabIndex}
           onFocus={onFocus}
           onKeyDown={onKeyDown}
@@ -533,17 +657,9 @@ function ThreadEntry({
           </div>
           <div className="flex items-center gap-3 pl-2">
             <StatusDot status={t.worst} />
-            <span className="w-16 text-right font-mono text-sm tabular-nums">
-              {t.spend ? (
-                t.spend.cost_usd === 0 && t.spend.calls > 0 ? (
-                  <span className="font-sans text-xs text-foreground">unpriced</span>
-                ) : (
-                  money(t.spend.cost_usd)
-                )
-              ) : spendKnown ? (
-                <span className="text-muted-foreground">—</span>
-              ) : null}
-            </span>
+            {costColumn && (
+              <span className="w-16 text-right font-mono text-sm tabular-nums">{cell.shown}</span>
+            )}
             <span
               title={new Date(t.lastTs).toISOString()}
               className="w-8 text-right text-xs tabular-nums text-muted-foreground"
@@ -553,7 +669,7 @@ function ThreadEntry({
           </div>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ThreadDetail thread={t} spendKnown={spendKnown} />
+          <ThreadDetail thread={t} spendKnown={spendKnown} spend={spend} />
         </CollapsibleContent>
       </Collapsible>
     </li>
@@ -561,11 +677,23 @@ function ThreadEntry({
 }
 
 /** One thread opened: its spend, a way into it, and its turns newest first. */
-function ThreadDetail({ thread: t, spendKnown }: { thread: LedgerThread; spendKnown: boolean }) {
+function ThreadDetail({
+  thread: t,
+  spendKnown,
+  spend,
+}: {
+  thread: LedgerThread;
+  spendKnown: boolean;
+  spend: SpendState | null;
+}) {
   const [openEvent, setOpenEvent] = useState<string | null>(null);
   const [allTurns, setAllTurns] = useState(false);
   const [allLoose, setAllLoose] = useState(false);
-  const turns = allTurns ? t.turns : t.turns.slice(0, TURNS_VISIBLE);
+  // In the order they happened, as the thread itself reads: the turns were newest
+  // first while the events inside each ran oldest first, two directions in one
+  // view. The newest are what is shown; the earlier ones are offered above them.
+  const newest = allTurns ? t.turns : t.turns.slice(0, TURNS_VISIBLE);
+  const turns = [...newest].reverse();
   const loose = allLoose ? t.loose : t.loose.slice(0, LOOSE_VISIBLE);
   const toggle = (id: string) => setOpenEvent((prev) => (prev === id ? null : id));
 
@@ -575,11 +703,19 @@ function ThreadDetail({ thread: t, spendKnown }: { thread: LedgerThread; spendKn
         {t.spend ? (
           <>
             <span className="font-mono tabular-nums text-foreground">
-              {t.spend.cost_usd === 0 && t.spend.calls > 0 ? 'unpriced' : money(t.spend.cost_usd)}
+              {t.spend.cost_usd === 0 && t.spend.calls > 0
+                ? 'unpriced'
+                : `${spend === 'floor' ? '≥ ' : ''}${money(t.spend.cost_usd)}`}
             </span>{' '}
-            across {plural(t.spend.calls, 'model call')} ·{' '}
+            across {plural(t.spend.calls, 'model call')}
+            {spend === 'floor' ? ' since per-thread metering began' : ''} ·{' '}
             <span className="font-mono text-xs tabular-nums">{tokenLine(t.spend)}</span>
           </>
+        ) : spend === 'unrecorded' ? (
+          // True of every thread whose turns predate the upgrade: its calls were
+          // made and charged, just not to a thread. "No model spend recorded"
+          // said the opposite.
+          'Its spend predates per-thread metering, so it is counted under Outside a thread.'
         ) : spendKnown ? (
           'No model spend recorded for this thread in the window.'
         ) : (
@@ -601,29 +737,23 @@ function ThreadDetail({ thread: t, spendKnown }: { thread: LedgerThread; spendKn
           It spent in this window, but every audited event on it is older than the window.
         </p>
       )}
-      {turns.map((turn) => (
-        <TurnBlock key={turn.id} turn={turn} openEvent={openEvent} onToggle={toggle} />
-      ))}
       {t.turns.length > turns.length && (
         <button
           type="button"
-          className={cn(TEXT_BUTTON, 'mt-1 text-sm')}
+          className={cn(TEXT_BUTTON, 'mt-2 text-sm')}
           onClick={() => setAllTurns(true)}
         >
-          Show all {t.turns.length} turns
+          Show {t.turns.length - turns.length} earlier turns
         </button>
       )}
+      {turns.map((turn) => (
+        <TurnBlock key={turn.id} turn={turn} openEvent={openEvent} onToggle={toggle} />
+      ))}
       {loose.length > 0 && (
+        // Folded as a turn's rows are: eleven alternating sign-in rows were the
+        // longest thing on the page and the least looked-at.
         <ol className="mt-2 divide-y divide-border/40">
-          {loose.map((e) => (
-            <ActivityRow
-              key={e.id}
-              event={e}
-              hideThread
-              open={openEvent === e.id}
-              onToggle={() => toggle(e.id)}
-            />
-          ))}
+          <Segments events={loose} openEvent={openEvent} onToggle={toggle} />
         </ol>
       )}
       {t.loose.length > loose.length && (
@@ -658,10 +788,18 @@ function TurnBlock({
     : turn.partial
       ? 'Continued from before the window'
       : 'Turn';
+  // "Yet" promised something still coming on turns seven hours old. Past the run
+  // deadline a turn with no reply did not get one.
+  const replyState = turn.open
+    ? Date.now() - turn.endTs > OPEN_TURN_MS
+      ? 'ended without a reply'
+      : 'no reply yet'
+    : null;
   return (
     <section className="mt-3">
       <div className="flex items-baseline gap-2">
-        <h4
+        {/* An h3 under the page's h2: the turns were h4 with no h3 above them. */}
+        <h3
           className={cn(
             'min-w-0 flex-1 truncate text-sm',
             turn.prompt ? 'text-foreground' : 'text-muted-foreground',
@@ -669,52 +807,32 @@ function TurnBlock({
           title={turn.prompt ?? undefined}
         >
           {heading}
-        </h4>
-        {turn.open && (
-          <span className="shrink-0 text-xs text-muted-foreground">no reply recorded yet</span>
-        )}
+        </h3>
+        {replyState && <span className="shrink-0 text-xs text-muted-foreground">{replyState}</span>}
         <span
           title={new Date(turn.startTs).toISOString()}
           className="shrink-0 text-xs tabular-nums text-muted-foreground"
         >
-          {new Date(turn.startTs).toLocaleTimeString(undefined, {
-            hour: 'numeric',
-            minute: '2-digit',
-          })}
+          {clockTime(turn.startTs)}
         </span>
       </div>
       <ol className="divide-y divide-border/40">
         {/* The `user_input` is the heading; drawing it again as a row said it twice. */}
-        {foldRoutine(
-          turn.events.filter((e) => !(e.event_type === 'user_input' && turn.prompt)),
-        ).map((seg) =>
-          seg.kind === 'event' ? (
-            <ActivityRow
-              key={seg.event.id}
-              event={seg.event}
-              hideThread
-              open={openEvent === seg.event.id}
-              onToggle={() => onToggle(seg.event.id)}
-            />
-          ) : (
-            <RoutineRun
-              key={seg.id}
-              events={seg.events}
-              openEvent={openEvent}
-              onToggle={onToggle}
-            />
-          ),
-        )}
+        <Segments
+          events={turn.events.filter((e) => !(e.event_type === 'user_input' && turn.prompt))}
+          openEvent={openEvent}
+          onToggle={onToggle}
+        />
       </ol>
     </section>
   );
 }
 
-/**
- * A run of calls that all succeeded, as one line until asked: how many, and which
- * tools. Opened, it is the rows it stood for, in order.
- */
-function RoutineRun({
+/** Past this, a turn with no `final_response` is over rather than still running. */
+const OPEN_TURN_MS = 15 * 60_000;
+
+/** A list of events as drawn: routine runs folded, repeated failures counted. */
+function Segments({
   events,
   openEvent,
   onToggle,
@@ -723,41 +841,112 @@ function RoutineRun({
   openEvent: string | null;
   onToggle: (id: string) => void;
 }) {
+  return (
+    <>
+      {foldRoutine(events).map((seg) =>
+        seg.kind === 'event' ? (
+          <ActivityRow
+            key={seg.event.id}
+            event={seg.event}
+            hideThread
+            clock
+            open={openEvent === seg.event.id}
+            onToggle={() => onToggle(seg.event.id)}
+          />
+        ) : (
+          <FoldedRun
+            key={seg.id}
+            kind={seg.kind}
+            events={seg.events}
+            openEvent={openEvent}
+            onToggle={onToggle}
+          />
+        ),
+      )}
+    </>
+  );
+}
+
+/**
+ * A folded run, as one line until asked. Routine: how many, and which tools.
+ * Repeated: the failure, once, in red, with how many times — counted, never
+ * hidden. Opened, it is the rows it stood for, in order, and focus moves to the
+ * first of them: the button that was focused is gone, and focus had fallen to
+ * the page.
+ */
+function FoldedRun({
+  kind,
+  events,
+  openEvent,
+  onToggle,
+}: {
+  kind: 'fold' | 'repeat';
+  events: AuditEvent[];
+  openEvent: string | null;
+  onToggle: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const firstRow = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) firstRow.current?.querySelector<HTMLElement>('button')?.focus();
+  }, [open]);
   if (open) {
     return (
       <>
-        {events.map((e) => (
-          <ActivityRow
-            key={e.id}
-            event={e}
-            hideThread
-            open={openEvent === e.id}
-            onToggle={() => onToggle(e.id)}
-          />
+        {events.map((e, i) => (
+          // `display: contents`, so the wrapper adds nothing to the list's layout
+          // and exists only for focus to find the first row.
+          <div key={e.id} ref={i === 0 ? firstRow : undefined} className="contents">
+            <ActivityRow
+              event={e}
+              hideThread
+              clock
+              open={openEvent === e.id}
+              onToggle={() => onToggle(e.id)}
+            />
+          </div>
         ))}
       </>
     );
   }
+  const first = events[0];
   return (
     <li>
       <button
         type="button"
         aria-expanded={false}
         onClick={() => setOpen(true)}
-        className="group flex w-full items-start gap-2 rounded-sm py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          'group flex w-full items-start gap-2 rounded-sm py-1.5 text-left text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          kind === 'repeat' ? 'text-state-failed' : 'text-muted-foreground',
+        )}
       >
         <ChevronRightIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
-        <span className="min-w-0">
-          {plural(
-            events.length,
-            events.every((e) => e.event_type === 'tool_call') ? 'call' : 'event',
-          )}
-          , all OK: <span className="font-mono">{toolTally(events)}</span>
-        </span>
+        {kind === 'repeat' ? (
+          <span className="min-w-0">
+            <span className="font-mono">{failureWords(first)}</span> ×{events.length}
+            <span className="ml-2 whitespace-nowrap text-muted-foreground">
+              {span(tsToMs(first.ts), tsToMs(events[events.length - 1].ts))}
+            </span>
+          </span>
+        ) : (
+          <span className="min-w-0">
+            {plural(
+              events.length,
+              events.every((e) => e.event_type === 'tool_call') ? 'call' : 'event',
+            )}
+            , all OK: <span className="font-mono">{toolTally(events)}</span>
+          </span>
+        )}
       </button>
     </li>
   );
+}
+
+/** `8:43 PM`, or `8:43 PM–9:10 PM`: a range that starts and ends in one minute is one time. */
+function span(from: number, to: number): string {
+  const [a, b] = [clockTime(from), clockTime(to)];
+  return a === b ? a : `${a}–${b}`;
 }
 
 /** What the page could not cover, said where the reader would assume it had. */
@@ -765,12 +954,22 @@ function Caveats({
   eventsTruncated,
   spendTruncated,
   spendKnown,
+  metered,
 }: {
   eventsTruncated: boolean;
   spendTruncated: boolean;
   spendKnown: boolean;
+  metered: number | null;
 }) {
+  // Said once, rather than as a dash on every row it explains.
+  const before =
+    !spendKnown || metered === null
+      ? null
+      : metered === Number.POSITIVE_INFINITY
+        ? 'No spend in this window is recorded against a thread yet: it predates per-thread metering, so its cost is under Outside a thread.'
+        : `Spend is recorded per thread from ${clockTime(metered)}; before that it is counted under Outside a thread, and a thread that ran across that point shows at least what came after (≥).`;
   const lines = [
+    before,
     eventsTruncated
       ? `This window holds more than ${MAX_EVENTS.toLocaleString()} events; the ledger covers the newest ${MAX_EVENTS.toLocaleString()}. A shorter window shows the rest.`
       : null,
