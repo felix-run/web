@@ -858,7 +858,10 @@ Flows worth knowing before editing the app:
   an injection ingress by design, which is why the form says so. **Every row leads with where it
   came from**: the conversation (a link), the turn (a link into As of), the agent, when it was
   written and whether it has been recalled since — the hunt ends at "which conversation taught it
-  this", and `kind · imp · seq` could not answer it. Three rules that are easy to break.
+  this", and `kind · imp · seq` could not answer it. The line has a grammar of its own: muted, `from` and
+  the quoted title cut from the middle at 32, links marked by an underline that is always there
+  (colour alone told them from the text by nothing — a title is usually the user's first message,
+  so a bare one read as the fact's next sentence) and padded to 24px without a taller line. Three rules that are easy to break.
   **As of is per conversation**: `origin_seq` is an ordinal into one thread's log, so the view asks
   for the thread before the turn and sends `thread_id` (`felix-run/felix#548`); without it
   `as-of/4` collected every conversation's fourth turn. The client re-filters by thread, because an
@@ -868,7 +871,9 @@ Flows worth knowing before editing the app:
   UI says "forget" — and the page offers Undo and a Forgotten view with Restore
   (`POST /memory/{id}/restore`, gated on whoever forgot it). A failed forget is said on its row:
   `ConfirmButton` has no `catch`, so a rejecting `onConfirm` used to leave it armed with nothing on
-  screen. Reads need the `memory:read` scope, so a 403 here means a narrow key, not an empty store.
+  screen, and its `shrink-0` is a `restingClassName`, never a `className` — on `className` it reaches
+  the armed row too, which then cannot narrow on a phone. An older harness's missing forgotten
+  list is an empty state, not an error: a retry gets the same answer. Reads need the `memory:read` scope, so a 403 here means a narrow key, not an empty store.
 - **Usage** — `/usage` is the token meter, and two of its fields are easy to misread. `model_id` is
   the logical route the operator configured; `wire_model_id` is the provider's own id and is what the
   row was **priced** by, so the two disagreeing on a custom route is the thing worth seeing. And

@@ -26,6 +26,8 @@ import {
 } from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
+import { middleTruncate } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 import type { MemoryHit, MemoryRecord } from '@/types';
 
@@ -104,7 +106,24 @@ function quote(text: string, max = 80): string {
  */
 const CHANNEL: Record<string, string> = { fts: 'lexical', vector: 'vector', topic: 'topic' };
 
+/**
+ * The reading measure for prose on this page. `70ch` looked like the floor's 65–75
+ * and was not: `ch` is the width of a "0", wider than average prose, so at 13px it
+ * held ~94 characters a line. 30rem holds ~75.
+ */
+const PROSE = 'max-w-[30rem]';
+
+/**
+ * A link inside an 11px line of metadata: muted like the line, and marked as a link
+ * by an underline that is always there rather than only on hover — colour alone
+ * told it apart from the text around it by nothing. The negative margin gives it a
+ * 24px target without making the line taller.
+ */
+const META_LINK =
+  '-my-1 py-1 underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground hover:decoration-current focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none';
+
 type Notice =
+  | { kind: 'added'; content: string; agent: string }
   | { kind: 'forgot'; id: string; content: string }
   | { kind: 'restored'; content: string }
   | { kind: 'error'; message: string };
@@ -136,6 +155,8 @@ export function MemorySection({
   const [limit, setLimit] = useState(PAGE);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  /** The memory Add just stored, marked in the list until the next thing done here. */
+  const [freshId, setFreshId] = useState<string | null>(null);
   /** Set by a user's switch, and only then: a page load on `?view=search` keeps focus where it was. */
   const focusNext = useRef<MemoryView | null>(null);
   /** Debounced so a poll is not issued per keystroke. */
@@ -185,7 +206,8 @@ export function MemorySection({
 
   const setMode = (next: MemoryView) => {
     focusNext.current = next;
-    setNotice(null);
+    // The notice survives a view change: Undo after a forget is the one way back,
+    // and it used to vanish the moment the operator looked anywhere else.
     setParams(
       keepAgent(
         params,
@@ -238,6 +260,7 @@ export function MemorySection({
     setRowErrors(({ [row.id]: _, ...rest }) => rest);
     try {
       await forgetMemory(row.id);
+      setFreshId(null);
       setNotice({ kind: 'forgot', id: row.id, content: row.content });
       active.refresh();
     } catch (err) {
@@ -252,6 +275,7 @@ export function MemorySection({
     setRowErrors(({ [id]: _, ...rest }) => rest);
     try {
       await restoreMemory(id);
+      setFreshId(null);
       setNotice({ kind: 'restored', content });
       active.refresh();
     } catch (err) {
@@ -261,7 +285,15 @@ export function MemorySection({
     }
   };
 
-  const asOfTitle = asOfThread ? (titleOf(asOfThread) ?? shortId(asOfThread)) : '';
+  // A harness older than the forgotten listing is not a failure to retry: asking
+  // again gets the same answer. Said as what it is, in the empty state's voice.
+  const tooOld =
+    mode === 'forgotten' &&
+    /does not list forgotten/.test(String((gone.error as Error | null)?.message ?? ''));
+  // Hits from a harness that predates hit provenance carry no `thread_id` key at all
+  // (a new one sends `''` for a memory written outside a conversation).
+  const hitsWithoutOrigin =
+    mode === 'search' && rows.length > 0 && rows.every((r) => !('thread_id' in r));
 
   return (
     <Section
@@ -278,12 +310,14 @@ export function MemorySection({
           : mode === 'search' && searchReady && found.data
             ? plural(found.data.length, 'match', 'matches', SEARCH_LIMIT)
             : mode === 'asOf' && asOfReady && past.data
-              ? `${plural(past.data.length, 'memory', 'memories', AS_OF_LIMIT)} at turn ${seq} in ${asOfTitle}`
+              ? // The conversation is named once, in its own field below; repeated here
+                // it was a long title pushing the controls onto a second row.
+                `${plural(past.data.length, 'memory', 'memories', AS_OF_LIMIT)} at turn ${seq}`
               : mode === 'forgotten' && gone.data
                 ? `${plural(gone.data.length, 'memory', 'memories', limit)} forgotten`
                 : undefined
       }
-      metaAsOf={active.error ? active.lastOkAt : undefined}
+      metaAsOf={active.error && !tooOld ? active.lastOkAt : undefined}
       open={open}
       onToggle={onToggle}
       controls={
@@ -301,11 +335,14 @@ export function MemorySection({
           <PageSection title="New memory">
             <AddMemoryForm
               defaultAgent={agent || manifest}
+              chatAgent={manifest}
               agents={manifestOptions}
               onCancel={() => setAdding(false)}
-              onAdded={() => {
+              onAdded={(stored) => {
                 setAdding(false);
                 setMode('recent');
+                setNotice({ kind: 'added', content: stored.content, agent: stored.agent });
+                setFreshId(stored.id);
                 recent.refresh();
               }}
             />
@@ -315,29 +352,45 @@ export function MemorySection({
         // The view's own inputs, hidden while Add is open: two forms stacked one on
         // the other read as one form, and the As-of field sat under "Remember it"
         // as if it were the next thing to fill in.
-        <div className="mb-3 flex flex-wrap items-end gap-x-4 gap-y-2">
-          {mode === 'search' && (
-            <div className="min-w-48 flex-1">
-              <Label htmlFor="memory-search">What would it recall?</Label>
-              <Input
-                id="memory-search"
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="mt-1 h-8 max-w-md text-sm"
+        <div className="mb-3 space-y-2">
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+            {mode === 'search' && (
+              <div className="min-w-48 flex-1">
+                <Label htmlFor="memory-search">What would it recall?</Label>
+                <Input
+                  id="memory-search"
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="mt-1 h-8 max-w-md text-sm"
+                />
+              </div>
+            )}
+            {mode === 'asOf' && (
+              <AsOfFields
+                thread={asOfThread}
+                turn={asOfSeq}
+                threads={threads}
+                onThread={(v) => setAsOf('thread', v)}
+                onTurn={(v) => setAsOf('turn', v)}
               />
-            </div>
-          )}
+            )}
+            <AgentFilter value={agent} options={manifestOptions} onChange={setAgent} />
+          </div>
+          {/* Its own line, under the row it explains. Inside the wrapping row it took
+              whatever space was left, and the Agent filter landed beside it mid-row. */}
           {mode === 'asOf' && (
-            <AsOfFields
-              thread={asOfThread}
-              turn={asOfSeq}
-              threads={threads}
-              onThread={(v) => setAsOf('thread', v)}
-              onTurn={(v) => setAsOf('turn', v)}
-            />
+            <p id="memory-as-of-help" className={`${PROSE} text-xs text-muted-foreground`}>
+              What the conversation had stored by that turn, including facts it later replaced.
+              Every memory's turn is beside it; following one opens this view there.
+            </p>
           )}
-          <AgentFilter value={agent} options={manifestOptions} onChange={setAgent} />
+          {hitsWithoutOrigin && (
+            <p className={`${PROSE} text-xs text-muted-foreground`}>
+              This harness does not say where a search hit came from. The same memory under Recent
+              does.
+            </p>
+          )}
         </div>
       )}
 
@@ -348,9 +401,9 @@ export function MemorySection({
         lastOkAt={active.lastOkAt}
         doing={mode === 'forgotten' ? 'list forgotten memories' : 'read stored memory'}
         loading={active.loading && !active.data}
-        error={active.error}
+        error={tooOld ? undefined : active.error}
         empty={
-          (mode === 'search' && !searchReady) || (mode === 'asOf' && !asOfReady)
+          tooOld || (mode === 'search' && !searchReady) || (mode === 'asOf' && !asOfReady)
             ? true
             : rows.length === 0
         }
@@ -364,7 +417,9 @@ export function MemorySection({
                 ? 'This conversation had stored nothing by that turn.'
                 : 'Pick a conversation and one of its turns to see what it had stored then.'
               : mode === 'forgotten'
-                ? 'Nothing has been forgotten.'
+                ? tooOld
+                  ? 'This harness is older than this page: it keeps no list of forgotten memories, and a forget cannot be undone on it.'
+                  : 'Nothing has been forgotten.'
                 : 'Nothing stored yet. Memory accumulates as the agent works.'
         }
         status={
@@ -386,13 +441,25 @@ export function MemorySection({
             // nothing and it offers nothing.
             const superseded = Boolean(record?.superseded_by) || m.status === 'superseded';
             return (
-              <li key={m.id} className="flex items-start gap-3 border-b border-border/60 py-2.5">
+              // `flex-wrap`, so an armed Forget — a sentence and two buttons — drops to
+              // its own line when the row has no room for it rather than crushing the fact.
+              <li
+                key={m.id}
+                className={cn(
+                  'flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-border/60 py-2.5',
+                  // The memory just added, so the operator sees where it landed.
+                  m.id === freshId && '-mx-2 rounded-sm bg-muted/60 px-2',
+                )}
+              >
                 <div className="min-w-0 flex-1">
-                  <p className="max-w-[70ch] text-sm leading-snug break-words">{m.content}</p>
+                  <p className={`${PROSE} text-sm leading-snug break-words`}>{m.content}</p>
                   <Provenance
                     row={m}
                     titleOf={titleOf}
                     showAgent={!agent}
+                    // As of already names its conversation and turn; each row repeating
+                    // them was a link back to the view it was in.
+                    hereThread={mode === 'asOf' ? asOfThread : undefined}
                     forgottenAt={forgotten ? record?.updated_at : undefined}
                   />
                   <Details row={m} hit={hit} rank={i + 1} record={record} />
@@ -407,6 +474,7 @@ export function MemorySection({
                     size="xs"
                     variant="outline"
                     className="shrink-0"
+                    aria-label={`Restore “${quote(m.content, 40)}”`}
                     onClick={() => void restore(m.id, m.content, true)}
                   >
                     Restore
@@ -415,7 +483,12 @@ export function MemorySection({
                   <ConfirmButton
                     size="xs"
                     variant="ghost"
-                    className="shrink-0 text-muted-foreground hover:text-state-failed"
+                    // `shrink-0` on the resting button only: on `className` it reached the
+                    // armed row too, which then could not narrow on a phone.
+                    className="max-w-full"
+                    restingClassName="shrink-0 text-muted-foreground hover:text-state-failed"
+                    // A list of buttons read "Forget" once per row; the name says which.
+                    aria-label={`Forget “${quote(m.content, 40)}”`}
                     destructive
                     question={`“${quote(m.content)}” will stop being recalled.`}
                     confirmLabel="Forget it"
@@ -461,9 +534,9 @@ function explainRestore(err: unknown): string {
   return describeError(err, 'restore this memory').message;
 }
 
-/** `abc12345…ef90` — a suffix nobody titled, short enough to sit in a line of metadata. */
+/** A suffix nobody titled, cut from the middle at 20 with both ends kept (DESIGN.md). */
 function shortId(suffix: string): string {
-  return suffix.length > 14 ? `${suffix.slice(0, 8)}…${suffix.slice(-4)}` : suffix;
+  return middleTruncate(suffix, 20);
 }
 
 /** An epoch the harness wrote in milliseconds, as this app's relative time. */
@@ -482,28 +555,47 @@ function Provenance({
   titleOf,
   showAgent,
   forgottenAt,
+  hereThread,
 }: {
   row: MemoryRecord | MemoryHit;
   titleOf: (suffix: string) => string | undefined;
   showAgent: boolean;
   forgottenAt?: number;
+  /** The conversation the view is already about, whose name and turn the row skips. */
+  hereThread?: string;
 }) {
   const parts: ReactNode[] = [];
   const full = row.thread_id ?? undefined;
   const source = 'metadata' in row ? (row.metadata?.source as string | undefined) : undefined;
 
-  if (full) {
+  if (full && threadSuffix(full) === hereThread) {
+    // Named by the view; nothing to add.
+  } else if (full) {
     const suffix = threadSuffix(full);
-    const title = titleOf(suffix);
+    // Trimmed: a title cut by the harness can end in a space, which the quotes then show.
+    const title = titleOf(suffix)?.trim() || undefined;
+    // "from" and quotes, because a bare title under a fact read as the fact's next
+    // sentence — and titles are usually the first thing the user typed, so they
+    // look exactly like memories. Cut from the middle, where two titles that share
+    // an opening ("Create notes/…") still differ.
     parts.push(
-      <Link
-        key="thread"
-        to={`/t/${encodeURIComponent(suffix)}`}
-        className="max-w-[24ch] truncate text-foreground underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-        title={title ? `Open “${title}”` : `Open thread ${suffix}`}
-      >
-        {title ?? <span className="font-mono">{shortId(suffix)}</span>}
-      </Link>,
+      // A flex row, so the link inside is a block and its padding reaches 24px; inline,
+      // the same padding measured 21.
+      <span key="thread" className="inline-flex items-baseline gap-1">
+        from
+        <Link
+          to={`/t/${encodeURIComponent(suffix)}`}
+          className={META_LINK}
+          title={title ?? suffix}
+          aria-label={`Conversation ${title ? `“${title}”` : suffix}`}
+        >
+          {title ? (
+            `“${middleTruncate(title, 32)}”`
+          ) : (
+            <span className="font-mono">{shortId(suffix)}</span>
+          )}
+        </Link>
+      </span>,
     );
     if (typeof row.origin_seq === 'number') {
       const at = new URLSearchParams({
@@ -516,7 +608,7 @@ function Provenance({
           key="turn"
           to={`?${at}`}
           replace
-          className="underline-offset-2 hover:text-foreground hover:underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+          className={META_LINK}
           title="What this conversation had stored at that turn"
         >
           turn {row.origin_seq}
@@ -660,9 +752,17 @@ function NoticeLine({
       role={notice.kind === 'error' ? 'alert' : 'status'}
       className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
     >
-      {notice.kind === 'forgot' ? (
+      {notice.kind === 'added' ? (
+        // The one write here that used to end in silence, on the form that writes
+        // model input: what was stored, and for whom.
+        <span className={`${PROSE} text-muted-foreground`}>
+          Stored for <span className="font-mono text-foreground">{notice.agent}</span>:{' '}
+          <span className="text-foreground">“{quote(notice.content, 60)}”</span>. It can be recalled
+          from that agent's next run.
+        </span>
+      ) : notice.kind === 'forgot' ? (
         <>
-          <span className="min-w-0 text-muted-foreground">
+          <span className={`${PROSE} min-w-0 text-muted-foreground`}>
             Forgotten: <span className="text-foreground">“{quote(notice.content, 60)}”</span>. It is
             no longer recalled.
           </span>
@@ -675,12 +775,12 @@ function NoticeLine({
           </Button>
         </>
       ) : notice.kind === 'restored' ? (
-        <span className="text-muted-foreground">
+        <span className={`${PROSE} text-muted-foreground`}>
           Restored: <span className="text-foreground">“{quote(notice.content, 60)}”</span> is
           recalled again.
         </span>
       ) : (
-        <span className="text-state-failed">{notice.message}</span>
+        <span className={`${PROSE} text-state-failed`}>{notice.message}</span>
       )}
     </div>
   );
@@ -741,16 +841,14 @@ function AsOfFields({
   // A conversation reached from a row link may not be in this tab's index — one
   // another client started — so it is offered under its id rather than dropped.
   const known = threads.some((t) => t.id === thread);
+  // One cluster: the two halves of one question stay side by side when the row wraps,
+  // where they used to be flung to opposite edges.
   return (
-    <>
-      <div className="min-w-48 flex-1">
+    <div className="flex min-w-0 items-end gap-2">
+      <div className="w-72 min-w-0">
         <Label htmlFor="memory-as-of-thread">Conversation</Label>
         <Select value={thread || undefined} onValueChange={(v) => v && onThread(v)}>
-          <SelectTrigger
-            id="memory-as-of-thread"
-            size="sm"
-            className="mt-1 h-8 w-full max-w-sm text-sm"
-          >
+          <SelectTrigger id="memory-as-of-thread" size="sm" className="mt-1 h-8 w-full text-sm">
             <SelectValue placeholder="Choose a conversation" />
           </SelectTrigger>
           <SelectContent>
@@ -776,14 +874,10 @@ function AsOfFields({
           value={turn}
           onChange={(e) => onTurn(e.target.value)}
           aria-describedby="memory-as-of-help"
-          className="mt-1 h-8 w-24 font-mono text-sm"
+          className="mt-1 h-8 w-20 font-mono text-sm"
         />
       </div>
-      <p id="memory-as-of-help" className="w-full max-w-[70ch] text-xs text-muted-foreground">
-        What the conversation had stored by that turn, including facts it later replaced. Every
-        memory's turn is beside it; following one opens this view there.
-      </p>
-    </>
+    </div>
   );
 }
 
@@ -807,13 +901,16 @@ const MEMORY_TOPIC_MAX = 200;
  */
 function AddMemoryForm({
   defaultAgent,
+  chatAgent,
   agents,
   onAdded,
   onCancel,
 }: {
   defaultAgent: string;
+  /** The agent Chat is talking to, so the form can say when the default is that one. */
+  chatAgent: string;
   agents: string[];
-  onAdded: () => void;
+  onAdded: (stored: { id: string; content: string; agent: string }) => void;
   onCancel: () => void;
 }) {
   const [content, setContent] = useState('');
@@ -839,7 +936,7 @@ function AddMemoryForm({
     setBusy(true);
     setError(null);
     try {
-      await addMemory({
+      const stored = await addMemory({
         content: value,
         manifestId: agent,
         topicKey: topicKey.trim(),
@@ -847,7 +944,7 @@ function AddMemoryForm({
       });
       setContent('');
       setTopicKey('');
-      onAdded();
+      onAdded({ id: stored.id, content: value, agent });
     } catch (err) {
       setError(describeError(err, 'store this memory').message);
     } finally {
@@ -858,7 +955,7 @@ function AddMemoryForm({
   // The shared primitives at the body size, with labels that stay on screen.
   return (
     <div className="space-y-3">
-      <p className="max-w-[70ch] text-sm text-muted-foreground">
+      <p className={`${PROSE} text-sm text-muted-foreground`}>
         Stored as a fact the agent can recall. It becomes model input in later sessions, so write it
         the way you would write an instruction.
       </p>
@@ -880,7 +977,7 @@ function AddMemoryForm({
           {value.length}/{MEMORY_CONTENT_MAX}
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)_7rem]">
+      <div className="grid gap-3 sm:grid-cols-[11rem_minmax(0,1fr)_10rem]">
         <div>
           <Label htmlFor="memory-recalled-by">Recalled by</Label>
           <Select value={agent || undefined} onValueChange={(v) => v && setAgent(v)}>
@@ -900,6 +997,12 @@ function AddMemoryForm({
               ))}
             </SelectContent>
           </Select>
+          {/* Each field's help under the field, not in a list two rows below them. */}
+          <p id="memory-recalled-by-help" className="mt-1 text-xs text-muted-foreground">
+            {agent === chatAgent
+              ? 'Only this agent recalls it. It starts as the agent Chat is using.'
+              : 'Only this agent recalls it.'}
+          </p>
         </div>
         <div>
           <Label htmlFor="memory-topic">Topic (optional)</Label>
@@ -911,6 +1014,9 @@ function AddMemoryForm({
             aria-describedby="memory-topic-help"
             className="mt-1 h-8 font-mono text-sm"
           />
+          <p id="memory-topic-help" className="mt-1 text-xs text-muted-foreground">
+            Replaces whatever this agent has stored under the same topic.
+          </p>
         </div>
         <div>
           <Label htmlFor="memory-importance">Importance</Label>
@@ -925,17 +1031,11 @@ function AddMemoryForm({
             aria-describedby="memory-importance-help"
             className="mt-1 h-8 font-mono text-sm"
           />
+          <p id="memory-importance-help" className="mt-1 text-xs text-muted-foreground">
+            0 to 1. Higher is kept first when not everything fits.
+          </p>
         </div>
       </div>
-      <ul className="max-w-[70ch] space-y-0.5 text-xs text-muted-foreground">
-        <li id="memory-recalled-by-help">Only this agent recalls it.</li>
-        <li id="memory-topic-help">
-          A topic replaces whatever is stored under the same topic for this agent.
-        </li>
-        <li id="memory-importance-help">
-          0 to 1. When there is more stored than fits, higher importance is kept first.
-        </li>
-      </ul>
       {/* A Cancel beside it, as Jobs has: the header toggle was the only way out,
           and it is not where anyone looks when a form is in front of them. */}
       <div className="flex gap-2">
