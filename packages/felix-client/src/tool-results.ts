@@ -44,6 +44,11 @@ const REFUSAL_PREFIXES: ReadonlyArray<readonly [prefix: string, control: string]
 
 const TOOL_ERROR = /^\[tool error\/([a-z_]+)\]\s*/;
 const RUNNER_ERROR = /^\[(error|fatal)\/[^\]]*\]\s*/;
+/**
+ * The harness's refusal of arguments that fail the tool's schema, written by `define_tool`. It
+ * starts with `[`, so the harness adds no `[tool error/...]` in front, and a card read it as done.
+ */
+const INVALID_ARGS = /^\[invalid args for [^\]]*\]\s*/;
 
 /** Human wording for the harness's `ToolErrorCode`s. */
 function codeLabel(code: string): string {
@@ -86,6 +91,16 @@ export function classifyToolResult(toolName: string, output: unknown): ToolResul
       label: codeLabel(code),
       message: output.slice(toolError[0].length),
       code,
+    };
+  }
+
+  const invalidArgs = INVALID_ARGS.exec(output);
+  if (invalidArgs) {
+    return {
+      kind: 'failed',
+      label: codeLabel('invalid_arguments'),
+      message: output.slice(invalidArgs[0].length) || output,
+      code: 'invalid_arguments',
     };
   }
 
