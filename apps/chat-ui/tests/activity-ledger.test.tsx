@@ -11,11 +11,15 @@ import {
   cutTurns,
   filterLedger,
   foldRoutine,
+  groupFailures,
+  meteringStart,
   money,
   NO_THREAD,
   resolveWindow,
+  spendState,
   toolTally,
 } from '../src/lib/ledger';
+import { navSearch } from '../src/routes/harness';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 import type { AuditEvent, UsageThreadItem } from '../src/types';
 
@@ -157,7 +161,9 @@ describe('foldRoutine', () => {
       ok('5', 'read'),
       ev({ id: 'f', event_type: 'final_response' }),
     ]);
-    expect(segs.map((s) => (s.kind === 'fold' ? `fold:${s.events.length}` : s.event.id))).toEqual([
+    expect(
+      segs.map((s) => (s.kind === 'event' ? s.event.id : `${s.kind}:${s.events.length}`)),
+    ).toEqual([
       'fold:4',
       'x',
       // Two routine rows are cheaper to draw than a fold that hides them.
@@ -169,6 +175,113 @@ describe('foldRoutine', () => {
 
   it('tallies a fold by tool, most-called first', () => {
     expect(toolTally([ok('1', 'run'), ok('2', 'read'), ok('3', 'run')])).toBe('run ×2 · read');
+  });
+
+  it('counts events that are not tools as such, not as tools of that name', () => {
+    expect(
+      toolTally([ok('1', 'activate_skill'), ev({ id: 's', event_type: 'skill_activation' })]),
+    ).toBe('activate_skill · 1 other event');
+  });
+
+  /**
+   * Seven `local_write blocked by an approval` rows in one turn were one fact
+   * drawn seven times. A run of the same failure is one red line with a count;
+   * a different failure breaks the run.
+   */
+  it('folds a run of the same failure into one counted line, and only the same one', () => {
+    const deny = (id: string, tool = 'local_write') =>
+      ev({
+        id,
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload: { tool, control: 'approvals' },
+      });
+    const segs = foldRoutine([deny('a'), deny('b'), deny('c'), deny('d', 'shell'), deny('e')]);
+    expect(
+      segs.map((s) => (s.kind === 'event' ? s.event.id : `${s.kind}:${s.events.length}`)),
+    ).toEqual(['repeat:3', 'd', 'e']);
+  });
+});
+
+describe('groupFailures', () => {
+  it('counts the same failure and keeps a different one visible', () => {
+    const deny = (id: string) =>
+      ev({
+        id,
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload: { tool: 'local_write', control: 'approvals' },
+      });
+    const groups = groupFailures([
+      deny('1'),
+      deny('2'),
+      ev({
+        id: '3',
+        status: 'error',
+        payload: { tool: 'list_dir', error_code: 'invalid_arguments' },
+      }),
+      deny('4'),
+    ]);
+    expect(groups.map((g) => [g.event.id, g.count])).toEqual([
+      ['1', 3],
+      ['3', 1],
+    ]);
+  });
+});
+
+/**
+ * Spend is stamped with its thread from harness 0.12.1 on. A window reaching
+ * back past that holds threads whose calls are in the no-thread bucket, and the
+ * page said "No model spend recorded" of them while calling the bucket
+ * "screening and skills".
+ */
+describe('meteringStart / spendState', () => {
+  const thread = (id: string, firstTs: number, spent: UsageThreadItem | null) =>
+    ({ ...buildLedger([], null)[0], id, firstTs, spend: spent }) as Parameters<
+      typeof spendState
+    >[0];
+
+  it('finds the boundary only when unattributed spend came before the first attributed call', () => {
+    const cut = now - 60 * MIN;
+    expect(
+      meteringStart([
+        spend({ thread_id: '', first_ts: now - 600 * MIN }),
+        spend({ thread_id: 'default:a', first_ts: cut }),
+      ]),
+    ).toBe(cut);
+    // No-thread calls after metering began are real no-thread calls, not a boundary.
+    expect(
+      meteringStart([
+        spend({ thread_id: 'default:a', first_ts: cut }),
+        spend({ thread_id: '', first_ts: now - MIN }),
+      ]),
+    ).toBeNull();
+    expect(meteringStart([spend({ thread_id: '', first_ts: cut })])).toBe(Number.POSITIVE_INFINITY);
+    expect(meteringStart([])).toBeNull();
+  });
+
+  it('says what each thread’s cost cell may claim', () => {
+    const cut = now - 60 * MIN;
+    const s = spend({ thread_id: 'default:a' });
+    expect(spendState(thread('a', now - 30 * MIN, s), cut)).toBe('cost');
+    // Seconds before its first call is still metered: the turn's own user_input.
+    expect(spendState(thread('a', cut - 10_000, s), cut)).toBe('cost');
+    expect(spendState(thread('a', now - 600 * MIN, s), cut)).toBe('floor');
+    expect(spendState(thread('a', now - 600 * MIN, null), cut)).toBe('unrecorded');
+    expect(spendState(thread('a', now - 30 * MIN, null), cut)).toBe('none');
+    expect(spendState(thread('a', now - 30 * MIN, null), Number.POSITIVE_INFINITY)).toBe(
+      'unrecorded',
+    );
+    expect(spendState(thread('a', now - 600 * MIN, null), null)).toBe('none');
+  });
+});
+
+describe('navSearch', () => {
+  it("carries the glance's window to Activity while the glance has something to say", () => {
+    const glance = { text: '3 failed', title: '3 failed in the last 24h', tone: 'failed' as const };
+    expect(navSearch('activity', '?agent=x', glance)).toBe('?agent=x&since=24h');
+    expect(navSearch('activity', '?agent=x', undefined)).toBe('?agent=x');
+    expect(navSearch('memory', '', glance)).toBe('');
   });
 });
 
@@ -341,6 +454,7 @@ const rowFor = (name: RegExp) =>
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -460,19 +574,87 @@ describe('the ledger page', () => {
     expect(new URL(audit ?? '', 'http://x').searchParams.get('since')).toBe(String(now - 90 * MIN));
     expect(screen.getByText(/Since your last visit/)).toBeTruthy();
 
+    // A new tab: it reads the stamp afresh.
     cleanup();
     localStorage.clear();
+    sessionStorage.clear();
     stubHarness({ events: failingTurn });
     mount();
     expect(await screen.findByText(/no earlier visit from this browser/)).toBeTruthy();
   });
 
-  it('stamps the visit on the way out, so the next one measures from it', async () => {
+  it('stamps the visit on the way out, once the page was on screen long enough', async () => {
     stubHarness({ events: failingTurn });
     const { unmount } = mount();
     await rowFor(/Changelog cleanup/);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 6_000);
     unmount();
+    clock.mockRestore();
     expect(Number(localStorage.getItem('felix.activity.lastVisit'))).toBeGreaterThanOrEqual(now);
+  });
+
+  /**
+   * A reload stamped the visit too, so "since your last visit" became "since a
+   * minute ago" every time. A glance through the page is not a visit, and a
+   * tab measures from the visit it first read for as long as it is open.
+   */
+  it('does not count a glance as a visit, and holds its first reading across a reload', async () => {
+    stubHarness({ events: failingTurn });
+    localStorage.setItem('felix.activity.lastVisit', String(now - 90 * MIN));
+    const first = mount();
+    await rowFor(/Changelog cleanup/);
+    first.unmount();
+    // Under VISIT_MIN_MS on screen: nothing stamped.
+    expect(localStorage.getItem('felix.activity.lastVisit')).toBe(String(now - 90 * MIN));
+
+    // Another tab stamps meanwhile; this tab still measures from what it read.
+    localStorage.setItem('felix.activity.lastVisit', String(now - MIN));
+    const spy = stubHarness({ events: failingTurn });
+    mount();
+    await rowFor(/Changelog cleanup/);
+    const audit = spy.mock.calls.map((c) => String(c[0])).find((u) => u.includes('/api/audit'));
+    expect(new URL(audit ?? '', 'http://x').searchParams.get('since')).toBe(String(now - 90 * MIN));
+  });
+
+  it('offers the last day when nothing ran since the last visit', async () => {
+    const user = userEvent.setup();
+    stubHarness({ events: [] });
+    localStorage.setItem('felix.activity.lastVisit', String(now - 2 * MIN));
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'Show the last 24 hours' }));
+    expect(await screen.findByText('Last 24 hours')).toBeTruthy();
+  });
+
+  it('names a row briefly, and does not repeat the title as its summary', async () => {
+    stubHarness({
+      events: [
+        ev({
+          id: 'u9',
+          event_type: 'user_input',
+          payload: { user_input: 'Read the docs', thread_id: 'default:thread-b' },
+        }),
+      ],
+    });
+    mount();
+    const b = await rowFor(/Read the docs/);
+    expect(b.getAttribute('aria-label')).toMatch(/^Read the docs, OK, /);
+    expect(b.textContent?.match(/Read the docs/g)).toHaveLength(1);
+  });
+
+  it('says a thread’s spend predates metering rather than that it spent nothing', async () => {
+    const user = userEvent.setup();
+    stubHarness({
+      events: failingTurn,
+      threads: [
+        spend({ thread_id: '', first_ts: now - 600 * MIN }),
+        spend({ thread_id: 'default:other', first_ts: now - 5 * MIN }),
+      ],
+    });
+    mount();
+    await user.click(await rowFor(/Changelog cleanup/));
+    expect(await screen.findByText(/predates per-thread metering/)).toBeTruthy();
+    expect(screen.queryByText(/No model spend recorded/)).toBeNull();
+    expect(screen.getByText(/Spend recorded before per-thread metering/)).toBeTruthy();
   });
 
   it('on a harness with no spend per thread, shows no cost and says why', async () => {

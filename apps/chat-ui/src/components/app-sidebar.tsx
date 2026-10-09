@@ -21,7 +21,14 @@ import { WorkspaceSection } from '@/components/workspace/workspace-section';
 import { ariaShortcut, isMacPlatform, shortcutLabel } from '@/lib/shortcuts';
 import { readPins, writePins } from '@/lib/threads';
 import { cn } from '@/lib/utils';
-import { GROUPS, HARNESS_DESTINATIONS, NavGlance, useNavGlances, walkNav } from '@/routes/harness';
+import {
+  GROUPS,
+  HARNESS_DESTINATIONS,
+  NavGlance,
+  navSearch,
+  useNavGlances,
+  walkNav,
+} from '@/routes/harness';
 import { useShell } from '@/shell-context';
 
 /**
@@ -331,7 +338,10 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
                         className="relative text-muted-foreground"
                       >
                         <Link
-                          to={{ pathname: `/harness/${path}`, search }}
+                          to={{
+                            pathname: `/harness/${path}`,
+                            search: navSearch(path, search, glance[path]),
+                          }}
                           onClick={onNavigate}
                           aria-current={at === path ? 'page' : undefined}
                         >

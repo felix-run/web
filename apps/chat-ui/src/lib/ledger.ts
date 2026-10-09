@@ -69,15 +69,37 @@ export function resolveWindow(
  */
 const LAST_VISIT_KEY = 'felix.activity.lastVisit';
 
+/**
+ * The visit this tab measures from, held for the life of the tab.
+ *
+ * Every leave stamps `LAST_VISIT_KEY`, so reading it on each mount meant a reload —
+ * or a second tab, or a remount — turned "since your last visit" into "since a
+ * minute ago" and the page opened on nothing. The first value a tab reads is
+ * copied into `sessionStorage` and that is what the tab keeps measuring from;
+ * only a new tab reads the stamp afresh.
+ */
+const SESSION_SINCE_KEY = 'felix.activity.sessionSince';
+
+const toVisit = (raw: string | null): number | null => {
+  const n = raw == null ? Number.NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 export function readLastVisit(): number | null {
   try {
-    const raw = localStorage.getItem(LAST_VISIT_KEY);
-    const n = raw == null ? Number.NaN : Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : null;
+    const held = sessionStorage.getItem(SESSION_SINCE_KEY);
+    if (held !== null) return toVisit(held);
+    const stamped = localStorage.getItem(LAST_VISIT_KEY);
+    // Held even when empty (`''`), so a first visit stays a first visit on reload.
+    sessionStorage.setItem(SESSION_SINCE_KEY, stamped ?? '');
+    return toVisit(stamped);
   } catch {
     return null;
   }
 }
+
+/** How long the page must have been on screen before leaving it counts as a visit. */
+export const VISIT_MIN_MS = 5_000;
 
 export function writeLastVisit(at: number): void {
   try {
@@ -132,6 +154,8 @@ export interface LedgerThread {
   tools: number;
   /** The newest thing in the window, from either record. */
   lastTs: number;
+  /** The oldest, likewise — what decides whether its spend can have been metered. */
+  firstTs: number;
   /** `null` when the harness reported no spend for it, or cannot report per thread. */
   spend: UsageThreadItem | null;
 }
@@ -216,6 +240,7 @@ export function buildLedger(events: AuditEvent[], spend: UsageThreadItem[] | nul
     const turns = id === NO_THREAD ? [] : cutTurns(evs);
     const loose = id === NO_THREAD ? [...evs].sort((a, b) => tsToMs(b.ts) - tsToMs(a.ts)) : [];
     const lastEvent = evs.reduce((m, e) => Math.max(m, tsToMs(e.ts)), 0);
+    const firstEvent = evs.reduce((m, e) => Math.min(m, tsToMs(e.ts)), Number.POSITIVE_INFINITY);
     return {
       id,
       turns,
@@ -224,6 +249,7 @@ export function buildLedger(events: AuditEvent[], spend: UsageThreadItem[] | nul
       failures: evs.filter((e) => isFailure(e.status)).sort((a, b) => tsToMs(b.ts) - tsToMs(a.ts)),
       tools: evs.filter(isTool).length,
       lastTs: Math.max(lastEvent, own ? tsToMs(own.last_ts) : 0),
+      firstTs: Math.min(firstEvent, own ? tsToMs(own.first_ts) : Number.POSITIVE_INFINITY),
       spend: own,
     };
   });
@@ -247,6 +273,63 @@ function mergeSpend(a: UsageThreadItem, b: UsageThreadItem): UsageThreadItem {
     first_ts: Math.min(a.first_ts, b.first_ts),
     last_ts: Math.max(a.last_ts, b.last_ts),
   };
+}
+
+/**
+ * Where per-thread metering begins inside this window, if it does.
+ *
+ * Spend is stamped with its thread from harness 0.12.1 on (`felix-run/felix#542`);
+ * every call before that sits in the `""` bucket. So a window reaching back past
+ * the upgrade holds threads whose model calls really happened and can never show
+ * a cost. That is read from the data, not a version — the page cannot see when the
+ * harness was upgraded, but it can see that unattributed spend came *before* the
+ * first attributed call:
+ *
+ * - `null` — no such boundary: everything here was metered (or nothing spent).
+ *   Unattributed calls *after* metering began are real no-thread calls (memory
+ *   consolidation, skill model calls) and are not a boundary.
+ * - `Infinity` — unattributed spend and no attributed spend at all: the whole
+ *   window predates metering.
+ * - a time — the first attributed call, with unattributed spend before it.
+ */
+export function meteringStart(spend: UsageThreadItem[] | null): number | null {
+  let threaded: number | null = null;
+  let unthreaded: number | null = null;
+  for (const s of spend ?? []) {
+    if (s.calls === 0) continue;
+    const ts = tsToMs(s.first_ts);
+    if (s.thread_id) threaded = threaded === null ? ts : Math.min(threaded, ts);
+    else unthreaded = unthreaded === null ? ts : Math.min(unthreaded, ts);
+  }
+  if (unthreaded === null) return null;
+  if (threaded === null) return Number.POSITIVE_INFINITY;
+  return unthreaded < threaded ? threaded : null;
+}
+
+/**
+ * How far before the first attributed call a thread's activity can begin and
+ * still count as metered: a turn's `user_input` lands seconds before its first
+ * model call, and the thread that made the first attributed call is otherwise
+ * read as having straddled the upgrade.
+ */
+const METERING_SLACK_MS = 5 * 60_000;
+
+/**
+ * What a thread's cost cell may honestly say.
+ *
+ * - `cost` — metered for the whole of its activity in the window.
+ * - `floor` — it spent before metering began too, so the figure is a lower bound.
+ * - `unrecorded` — all of its spend predates metering; its calls are in the
+ *   no-thread bucket, not free.
+ * - `none` — metered throughout and nothing was charged to it.
+ */
+export type SpendState = 'cost' | 'floor' | 'unrecorded' | 'none';
+
+export function spendState(t: LedgerThread, cutover: number | null): SpendState {
+  if (t.id === NO_THREAD) return t.spend ? 'cost' : 'none';
+  const before = cutover !== null && t.firstTs < cutover - METERING_SLACK_MS;
+  if (t.spend) return before ? 'floor' : 'cost';
+  return cutover === Number.POSITIVE_INFINITY || before ? 'unrecorded' : 'none';
 }
 
 /**
@@ -284,10 +367,38 @@ export function filterLedger(
   });
 }
 
-/** A turn's rows as drawn: an event on its own, or a run of routine calls folded. */
+/**
+ * What makes two failures the same failure: the kind of row, the tool, and why —
+ * the layer that refused it or the error class. Seven `local_write blocked by an
+ * approval` rows are one fact repeated, and drawn seven times they hid the
+ * different failure behind "6 more".
+ */
+export function failureKey(e: AuditEvent): string {
+  const tool = typeof e.payload?.tool === 'string' ? e.payload.tool : '';
+  const why = e.payload?.control ?? e.payload?.error_code ?? '';
+  return `${e.event_type}\u0000${tool}\u0000${String(why)}`;
+}
+
+/** Failures grouped by `failureKey`, each with its count, in first-seen order. */
+export function groupFailures(events: AuditEvent[]): { event: AuditEvent; count: number }[] {
+  const groups = new Map<string, { event: AuditEvent; count: number }>();
+  for (const e of events) {
+    const k = failureKey(e);
+    const g = groups.get(k);
+    if (g) g.count += 1;
+    else groups.set(k, { event: e, count: 1 });
+  }
+  return [...groups.values()];
+}
+
+/**
+ * A turn's rows as drawn: an event on its own, a run of routine events folded, or
+ * a run of the same failure folded to one line that stays red.
+ */
 export type TurnSegment =
   | { kind: 'event'; event: AuditEvent }
-  | { kind: 'fold'; id: string; events: AuditEvent[] };
+  | { kind: 'fold'; id: string; events: AuditEvent[] }
+  | { kind: 'repeat'; id: string; events: AuditEvent[] };
 
 /** Below this, a run of successful calls is drawn as rows; folding two hides nothing. */
 const FOLD_MIN = 3;
@@ -314,11 +425,28 @@ export function foldRoutine(events: AuditEvent[]): TurnSegment[] {
     // the `skill_activation` rows the harness writes between them, which broke
     // every run into fragments when only calls folded.
     const boundary = e.event_type === 'user_input' || e.event_type === 'final_response';
-    if (!boundary && !isFailure(e.status)) run.push(e);
-    else {
-      flush();
-      out.push({ kind: 'event', event: e });
+    if (!boundary && !isFailure(e.status)) {
+      run.push(e);
+      continue;
     }
+    flush();
+    // The same failure again, straight after itself, joins it: one red line that
+    // says how many, rather than a column of identical rows. Never hidden — a
+    // repeat is still a failure, it is only counted.
+    const prev = out[out.length - 1];
+    const prevEvent =
+      prev?.kind === 'event' ? prev.event : prev?.kind === 'repeat' ? prev.events[0] : null;
+    if (
+      !boundary &&
+      prevEvent &&
+      isFailure(prevEvent.status) &&
+      failureKey(prevEvent) === failureKey(e)
+    ) {
+      if (prev.kind === 'repeat') prev.events.push(e);
+      else out[out.length - 1] = { kind: 'repeat', id: prevEvent.id, events: [prevEvent, e] };
+      continue;
+    }
+    out.push({ kind: 'event', event: e });
   }
   flush();
   return out;
@@ -326,15 +454,24 @@ export function foldRoutine(events: AuditEvent[]): TurnSegment[] {
 
 /** `run ×20 · edit_file ×5`, most-called first. */
 export function toolTally(events: AuditEvent[], shown = 4): string {
+  // Tools only: an event type in the same list read as a tool of that name
+  // (`activate_skill ×4 · skill_activation ×4`). The rest are counted as such.
   const counts = new Map<string, number>();
+  let other = 0;
   for (const e of events) {
-    const t = typeof e.payload?.tool === 'string' && e.payload.tool ? e.payload.tool : e.event_type;
-    counts.set(t, (counts.get(t) ?? 0) + 1);
+    const t = typeof e.payload?.tool === 'string' && e.payload.tool ? e.payload.tool : null;
+    if (t) counts.set(t, (counts.get(t) ?? 0) + 1);
+    else other += 1;
   }
   const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const head = ranked
     .slice(0, shown)
     .map(([t, n]) => (n > 1 ? `${t} ×${n}` : t))
     .join(' · ');
-  return ranked.length > shown ? `${head} · ${ranked.length - shown} more` : head;
+  const parts = [
+    head,
+    ranked.length > shown ? `${ranked.length - shown} more tools` : '',
+    other > 0 ? `${other} other ${other === 1 ? 'event' : 'events'}` : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
 }

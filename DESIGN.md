@@ -689,6 +689,19 @@ stop that roves like the sidebar's. *Where the spend went* — by agent and mode
 16px semibold, the unpriced warning, routes priced as another model — sits below the ledger as a
 `PageSection`-style part, since no thread row can carry facts about the pricing catalog.
 
+**The second pass (2026-10-09), from a critique on production.** The same failure is **counted**,
+not repeated: a row reads `local_write blocked by an approval ×7 · read_file bad arguments`, and in
+a turn a run of the same failure folds to one *red* line with its count and time — still a failure
+on screen, never hidden. Turns read in the order they happened, the newest shown and the earlier
+offered above them, and every row inside a turn takes **clock time** (`Wed 8:20 PM`) as its turn
+heading does; the thread row keeps age (`45m`), because it answers a different question. Turn
+headings are `h3`. The cost column is drawn **only when a thread on screen has a figure**, and a
+window that reaches back past per-thread metering says where that spend went once, under the
+list, rather than as a dash on every row; a thread that straddles it shows `≥ $x`. A status the
+table does not know (`stored`, `minted`) is a muted word with **no dot**: a dot read as an outcome
+it is not. The *Paused* line holds its height when empty, so opening a thread no longer moves the
+rows under the pointer.
+
 The sidebar's workspace section has the sidebar's section header — the row Harness draws: a small
 muted **Workspace** label, then the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the
 tab's own store (including while a folder from last session waits on a reconnect, because until
