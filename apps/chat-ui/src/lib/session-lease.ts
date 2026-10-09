@@ -119,6 +119,21 @@ export interface LeaseKeeper {
 /** Renew at half the TTL the transport asks for, so one late renewal is not a lapse. */
 export const LEASE_RENEW_MS = 150_000;
 
+/**
+ * When a hold's first acquire could only observe, try to take the thread again this soon —
+ * before settling into `LEASE_RENEW_MS`.
+ *
+ * A reload releases the old page's hold on `pagehide`, as a keepalive request, and the new
+ * page asks for the thread a moment later. When the release lands second, the new page is
+ * refused, observes — and used to wait a whole renewal interval, 150s, before trying again:
+ * a reload left the tab reading *watching read-only* for over two minutes, unable to send
+ * or to answer the tool requests of a run it had started (felix-run/felix#532). The holder
+ * cannot take its own hold back by id — renewal needs the hold's token, deliberately, since
+ * a duplicated tab shares the id — so the cure is to ask again once the release has landed.
+ * A genuine second tab is refused each time, which costs three 409s.
+ */
+export const SETTLE_RETRY_MS: readonly number[] = [1_000, 3_000, 8_000];
+
 type Got = { token: string; mode: LeaseMode; heldByOther: boolean } | null;
 
 interface Hold {
@@ -133,6 +148,8 @@ interface Hold {
   epoch: number;
   releaseTimer: ReturnType<typeof setTimeout> | null;
   renewTimer: ReturnType<typeof setInterval> | null;
+  /** The quick takeover attempts after a first acquire that could only observe. */
+  settleTimers: ReturnType<typeof setTimeout>[];
 }
 
 const NOTHING: LeaseState = Object.freeze({ mode: null, heldByOther: false });
@@ -141,6 +158,7 @@ export function createLeaseKeeper(
   api: LeaseApi,
   holderId: () => string,
   renewMs: number = LEASE_RENEW_MS,
+  settleRetryMs: readonly number[] = SETTLE_RETRY_MS,
 ): LeaseKeeper {
   const holds = new Map<string, Hold>();
   /** Releases on the wire, per thread, which the next acquire there waits behind. */
@@ -254,18 +272,37 @@ export function createLeaseKeeper(
     if (hold.epoch === epoch) setGot(threadId, hold, again);
   }
 
+  /** Run one renewal tick, unless one is already on the wire. */
+  function tickOnce(threadId: string, hold: Hold, epoch: number) {
+    if (hold.ticking) return;
+    const tick = renew(threadId, hold, epoch)
+      .catch(() => {})
+      .finally(() => {
+        if (hold.ticking === tick) hold.ticking = null;
+      });
+    hold.ticking = tick;
+  }
+
   function startRenewing(threadId: string, hold: Hold) {
     if (hold.renewTimer) return;
     const epoch = hold.epoch;
-    hold.renewTimer = setInterval(() => {
-      if (hold.ticking) return;
-      const tick = renew(threadId, hold, epoch)
-        .catch(() => {})
-        .finally(() => {
-          if (hold.ticking === tick) hold.ticking = null;
-        });
-      hold.ticking = tick;
-    }, renewMs);
+    hold.renewTimer = setInterval(() => tickOnce(threadId, hold, epoch), renewMs);
+  }
+
+  /**
+   * A first acquire that could only observe tries again soon (`SETTLE_RETRY_MS`): the
+   * hold refusing it may be this tab's own, from before a reload, on its way out. Each try
+   * is an ordinary observing tick, which attempts `exclusive` first.
+   */
+  function settle(threadId: string, hold: Hold, epoch: number) {
+    for (const ms of settleRetryMs) {
+      hold.settleTimers.push(
+        setTimeout(() => {
+          if (!live(threadId, hold, epoch) || hold.got?.mode !== 'shared') return;
+          tickOnce(threadId, hold, epoch);
+        }, ms),
+      );
+    }
   }
 
   /** Start `hold`'s acquire behind `behind`, and renew it once it holds anything. */
@@ -278,13 +315,18 @@ export function createLeaseKeeper(
       // An acquire `releaseAllNow` gave up on is not this hold's any more.
       if (hold.acquired !== acquired || hold.epoch !== epoch) return;
       setGot(threadId, hold, got);
-      if (got && live(threadId, hold, epoch)) startRenewing(threadId, hold);
+      if (got && live(threadId, hold, epoch)) {
+        startRenewing(threadId, hold);
+        if (got.mode === 'shared') settle(threadId, hold, epoch);
+      }
     });
   }
 
   function stopRenewing(hold: Hold) {
     if (hold.renewTimer) clearInterval(hold.renewTimer);
     hold.renewTimer = null;
+    for (const timer of hold.settleTimers) clearTimeout(timer);
+    hold.settleTimers = [];
   }
 
   function release(threadId: string, hold: Hold) {
@@ -324,6 +366,7 @@ export function createLeaseKeeper(
           epoch: 0,
           releaseTimer: null,
           renewTimer: null,
+          settleTimers: [],
         };
         hold = created;
         holds.set(threadId, created);
