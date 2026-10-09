@@ -185,21 +185,24 @@ function OpenAtLastAnchor({ anchorId }: { anchorId: string | undefined }) {
     requestAnimationFrame(attempt);
     if (!viewport || !content) return;
 
-    let quiet = window.setTimeout(release, SETTLE_MS);
+    // The global timers, not `window`'s: `release` can run from a timer after the document is
+    // gone (a test's environment torn down under a still-armed hold), and `window.` then threw
+    // an unhandled ReferenceError that failed the suite after every test had passed.
+    let quiet = setTimeout(release, SETTLE_MS);
     const observer = new ResizeObserver(() => {
       const now = anchorTop();
       if (landedAt !== null && now !== null && Math.abs(now - landedAt) > 1) {
         viewport.scrollTop += now - landedAt;
       }
-      window.clearTimeout(quiet);
-      quiet = window.setTimeout(release, SETTLE_MS);
+      clearTimeout(quiet);
+      quiet = setTimeout(release, SETTLE_MS);
     });
     observer.observe(content);
     const intents = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
     for (const type of intents) viewport.addEventListener(type, release, { passive: true });
     function release() {
       observer.disconnect();
-      window.clearTimeout(quiet);
+      clearTimeout(quiet);
       for (const type of intents) viewport?.removeEventListener(type, release);
     }
     // Released on cleanup, and re-armed: StrictMode runs this effect twice, and a
