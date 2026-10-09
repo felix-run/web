@@ -1,4 +1,4 @@
-import { MARK_GRID, MARK_PAD_PATH, MARK_TILE, MARK_TOES } from '@felix/design/mark';
+import { MARK_CHEVRON, MARK_CURSOR, MARK_GRID, MARK_HEAD_PATH } from '@felix/design/mark';
 import { cn } from '@felix/ui/lib/utils';
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
@@ -6,11 +6,11 @@ import type { ComponentProps } from 'react';
 /**
  * The Felix mark in the page, from the same geometry as the favicon.
  *
- * The tile is `currentColor` and the glyph is the page, so it is `primary`'s
+ * The head is `currentColor` and the prompt is the page, so it is `primary`'s
  * inversion rather than a fixed colour: dark on a light page, light on a dark
- * one, with no theme branch. The pad is always the glyph's ink. A coloured pad
- * would repeat the header's run-state slot right beside it, and colour here
- * means state (DESIGN.md's State-Only Rule).
+ * one, with no theme branch. The cursor is always the prompt's ink. A coloured
+ * cursor would repeat the header's run-state slot right beside it, and colour
+ * here means state (DESIGN.md's State-Only Rule).
  *
  * Decorative: every place that draws it sits beside the wordmark, or inside a
  * button that carries its own name.
@@ -22,16 +22,16 @@ export function BrandMark({ className }: { className?: string }) {
       viewBox={`0 0 ${MARK_GRID} ${MARK_GRID}`}
       className={cn('size-5 shrink-0', className)}
     >
-      <rect
-        width={MARK_TILE.size}
-        height={MARK_TILE.size}
-        rx={MARK_TILE.radius}
-        fill="currentColor"
+      <path d={MARK_HEAD_PATH} fill="currentColor" />
+      <path
+        d={MARK_CHEVRON.d}
+        fill="none"
+        stroke="var(--background)"
+        strokeWidth={MARK_CHEVRON.width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      {MARK_TOES.map((t) => (
-        <circle key={t.cx} cx={t.cx} cy={t.cy} r={t.r} fill="var(--background)" />
-      ))}
-      <path d={MARK_PAD_PATH} fill="var(--background)" />
+      <rect {...MARK_CURSOR} fill="var(--background)" />
     </svg>
   );
 }
