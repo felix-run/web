@@ -49,5 +49,7 @@ home page is a front door, not a landing page.
 
 - **Code highlighting.** Night Owl's cyans and violets are the only saturated colour outside the
   state ramp (see DESIGN.md → Colors). Replacing the code theme is a decision, not yet made.
-- **The screenshot is 1x.** It is cropped from a 1387px capture; a 2x recapture needs the local
-  harness, and was not taken in this pass.
+- **The screenshot is under 2x.** Recaptured 2026-10-08 against harness v0.11.2 after chat-ui
+  dropped its dotted transcript texture: the card crop is ~1.8x (1400px for ~790 CSS px) and the
+  full window is 1492px for a 1728px viewport. The browser tool caps its resolution, and macOS
+  `screencapture` could not reach the automation window, so a true 2x capture is still open.

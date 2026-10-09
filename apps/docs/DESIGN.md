@@ -212,7 +212,7 @@ same stacks.
 - **Headline** (600, 42px wide / 35px narrow, 1.2): a page's `h1` — Starlight's scale.
 - **Title** (600, 35px / 29px, 1.2): `h2`. `h3` and `h4` step down Starlight's scale.
 - **Body** (400, 16px, 1.75): prose, the full 48rem column (~100 characters, measured on Concepts).
-- **Label** (600, 14px): buttons, the header's Route index link (full ink, like the icon beside
+- **Label** (600, 14px): buttons, the header's API link (full ink, like the icon beside
   it), the sidebar's current page.
 - **Code** (13px inline, measured; code blocks at Expressive Code's own size; 13px on the events
   list's `data` line).
