@@ -54,7 +54,62 @@ Core reads these members off your plugin object with `getattr`, so implement onl
 | Auth modes | `registry.register_authenticator(mode, builder)` |
 | Audit / usage sinks | `registry.register_audit_sink(f)` / `register_usage_sink(f)` |
 | Startup hooks | `registry.register_startup_hook(hook)` |
-| Agent-loop hooks | `register_before_turn`, `register_filter_history`, `register_before_compact`, `register_before_tool`, `register_after_tool`, `register_compact_failed` |
+| Agent-loop hooks | `register_before_turn`, `register_filter_history`, `register_before_compact`, `register_before_model`, `register_after_model`, `register_before_tool`, `register_after_tool`, `register_compact_failed` (see [below](#agent-loop-hooks)) |
+
+### Agent-loop hooks
+
+These run inside the `react` loop, for every manifest in the process. Each hook is called
+**positionally** as `hook(value, ctx)` — `after_tool` takes `(tool_call, result, is_error, ctx)` —
+and may be sync or async. `ctx` carries `manifest_id` and `thread_id` (the model hooks add
+`model_id`), so a hook that should apply to one agent checks `ctx["manifest_id"]` itself; no
+manifest field attaches a hook.
+
+| Hook | When | Return to act |
+|---|---|---|
+| `filter_history` | once per request, as the history is assembled | a new message list, which becomes the history |
+| `before_turn` | before each model call in the loop (not a queued follow-up's) | messages to **append** to the history |
+| `before_model` | before every model call, after `before_turn` and on a follow-up's too | `{"messages": [...]}`: what *this call* sends |
+| `after_model` | after every model reply | `{"message": ChatMessage(role="assistant", ...)}`: the reply the run keeps |
+| `before_tool` | before each tool call | `{"block": True, "reason": "...", "terminate"?: True}` |
+| `after_tool` | after each tool call, including a failed one | `{"content"?: "...", "terminate"?: True}` |
+| `before_compact` | before compacting a session | a custom `{"summary": ...}`, or `{"cancel": True}` |
+| `compact_failed` | when compaction fails | nothing; it is a notification |
+
+Return `None` to leave things as they are. Several hooks of one kind run in registration order,
+each seeing what the one before it returned.
+
+**The model hooks.** `before_model` receives `{"messages", "tools"}` (tool names) and its
+replacement goes to that one call only: the run's history and the session log keep the
+originals, so the next call sees them again. That is the difference from `filter_history`, which
+rewrites the history, and from `before_turn`, which can only add to it. `after_model` receives
+`{"message", "stop_reason"}`, and its replacement is what the run records and acts on, tool calls
+included — drop a call from the reply and the tool never runs.
+
+```python title="my_plugin/__init__.py"
+from felix_ai.types import ChatMessage
+
+def _drop_shell_calls(response, ctx):
+    message = response["message"]
+    kept = [c for c in message.tool_calls or [] if c.name != "shell"]
+    if len(kept) == len(message.tool_calls or []):
+        return None
+    return {"message": ChatMessage(role="assistant", content=message.content, tool_calls=kept)}
+
+def register(registry) -> None:
+    registry.register_after_model(_drop_shell_calls)
+```
+
+<Aside type="caution">
+  Hooks **fail open**. One that raises is logged at debug level and skipped, and so is a return
+  value of the wrong shape (a `before_model` list holding anything but `ChatMessage`, an
+  `after_model` message that is not an assistant's). A hook is not a security control: a broken
+  `before_tool` lets every call through. Controls that must hold belong in the manifest's
+  [governance](/internals/governance/) blocks.
+</Aside>
+
+Two limits to the model hooks: `after_model` cannot change text that has already streamed to the
+client, since deltas are sent as the model writes them; and they cover the `react` loop only, not
+the router's classifier or the `plan_execute` planner.
 
 ### Command-line entry points
 
