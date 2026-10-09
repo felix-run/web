@@ -452,7 +452,11 @@ export function PageSection({
         className,
       )}
     >
-      <div className="mb-2 flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1">
+      {/* No margin under a heading that is the whole part (its meta says it all),
+          or the gap below it reads as a body that failed to render. */}
+      <div
+        className={cn('flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1', children && 'mb-2')}
+      >
         <h3 id={id} className="text-sm font-semibold">
           {title}
         </h3>

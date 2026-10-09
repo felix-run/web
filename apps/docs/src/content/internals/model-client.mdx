@@ -96,7 +96,7 @@ day are not subtracted, so spend reads high rather than low.
 
 A manifest that *declares* `limits.max_cost_usd` on a model with no known rates is **refused at
 compile**, pointing at `spec.model.price`. Only a declared cap is refused; an unset one is filled from
-`ABSOLUTE_LIMITS`, and refusing on that would break every deployment on an unpriced model over a ceiling the
+`DEFAULT_LIMITS`, and refusing on that would break every deployment on an unpriced model over a ceiling the
 author never asked for.
 
 Costs are keyed on the **wire** model, while reporting keeps the logical route name.

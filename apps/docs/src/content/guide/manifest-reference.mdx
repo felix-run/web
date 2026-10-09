@@ -1294,20 +1294,28 @@ spec:
     max_wall_clock_seconds: 3600
 ```
 
-| Field | Type | Default | Absolute ceiling |
+| Field | Type | Unset means | Absolute ceiling |
 |---|---|---|---|
-| `max_tool_calls` | int \| null | `null` | **500** |
-| `max_wall_clock_seconds` | float \| null | `null` | **3600** |
-| `max_peer_hops` | int \| null | `null` | **5** |
-| `max_input_tokens` | int \| null | `null` | **1,000,000** |
-| `max_output_tokens` | int \| null | `null` | **100,000** |
-| `max_cost_usd` | float \| null | `null` | **1,000.00** |
+| `max_tool_calls` | int \| null | 500 | **500** |
+| `max_wall_clock_seconds` | float \| null | 3600 | **3600** |
+| `max_peer_hops` | int \| null | 5 | **5** |
+| `max_input_tokens` | int \| null | 1,000,000 | **20,000,000** |
+| `max_output_tokens` | int \| null | 100,000 | **100,000** |
+| `max_cost_usd` | float \| null | 1,000.00 | **1,000.00** |
 | `precount` | bool | `false` | Count input tokens before the call rather than after. |
+
+**An unset limit is not unlimited.** Every run is bounded on all six: a field left out, or set
+to `null`, is filled from the harness's defaults (`DEFAULT_LIMITS`), which are the ceiling for
+every field but `max_input_tokens`. Its default stays at 1,000,000 so that a manifest that
+declares nothing is not given a 20M-token budget, while one that needs more can still declare
+it. A declared value above the ceiling is refused when the manifest is parsed rather than
+clamped to it.
 
 `max_cost_usd` is a per-run spend ceiling, accumulated from the model catalog's prices as tokens are
 metered. It fails closed: a model the catalog cannot price is a pricing gap that mis-enforces the
 cap, so supply `spec.model.price` for any model you route to that the built-in table does not
-cover.
+cover. Only a *declared* cap is refused on an unpriced model; the default one is still applied,
+and on such a model its spend reads zero, so it never trips.
 
 `spec.recursion_limit` (int \| null, ceiling **50**) and `spec.max_turns` (ceiling **100**) are
 capped the same way. A breach denies the call like any other governance layer: the tool result
