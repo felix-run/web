@@ -46,9 +46,14 @@ export function DiffView({
           <span className="text-muted-foreground">No differences</span>
         ) : (
           <span className="font-mono tabular-nums">
-            <span className="text-state-done">+{diff.added}</span>
+            {/* A zero is no change, so it takes no colour: a red −0 read as a removal. */}
+            <span className={diff.added ? 'text-state-done' : 'text-muted-foreground'}>
+              +{diff.added}
+            </span>
             <span className="sr-only"> added,</span>{' '}
-            <span className="text-state-failed">−{diff.removed}</span>
+            <span className={diff.removed ? 'text-state-failed' : 'text-muted-foreground'}>
+              −{diff.removed}
+            </span>
             <span className="sr-only"> removed</span>
           </span>
         )}
@@ -128,7 +133,7 @@ function FoldRow({ count, onOpen }: { count: number; onOpen: () => void }) {
         <button
           type="button"
           onClick={onOpen}
-          className="rounded-sm font-sans text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="rounded-sm font-sans text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
         >
           {count} unchanged line{count === 1 ? '' : 's'}
         </button>

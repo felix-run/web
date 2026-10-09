@@ -112,7 +112,7 @@ export function SkillPage({
                         {t.label}
                         {t.id === 'edit' && editor.bundle.dirty && (
                           <>
-                            <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                            <span aria-hidden className="size-1.5 rounded-full bg-foreground" />
                             <span className="sr-only"> (unsaved)</span>
                           </>
                         )}
@@ -178,6 +178,9 @@ export function SkillPage({
                       name={name}
                       version={version}
                       liveVersion={detail.live_version}
+                      parentVersion={
+                        detail.versions.find((v) => v.version === version)?.parent_version ?? null
+                      }
                       policyTo={backTo}
                     />
                   </>

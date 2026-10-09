@@ -178,7 +178,7 @@ export function FileTree({
               type="button"
               onClick={() => toggleDir(node.path)}
               aria-expanded={!isCollapsed}
-              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left font-mono text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left font-mono text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
             >
               {isCollapsed ? (
                 <ChevronRightIcon className="size-3 shrink-0" aria-hidden />
@@ -194,7 +194,7 @@ export function FileTree({
               onClick={() => onSelect(node.path)}
               aria-current={active ? 'true' : undefined}
               className={cn(
-                'flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left font-mono text-xs hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                'flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left font-mono text-xs hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
                 active ? 'font-medium text-foreground' : 'text-muted-foreground',
               )}
             >

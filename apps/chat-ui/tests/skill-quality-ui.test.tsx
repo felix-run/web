@@ -703,7 +703,7 @@ describe('the decision states the evidence', () => {
     reasons,
   });
 
-  it("states the gate's verdict in the publish confirm, read fresh beside what is live", async () => {
+  it('stops offering Publish once the gate has refused, and offers the editor and Reject', async () => {
     const h = fakeHarness((req: Recorded) =>
       req.path === '/skill-library/roll-dice'
         ? { body: detail('0.1.0') }
@@ -712,10 +712,36 @@ describe('the decision states the evidence', () => {
           : undefined,
     );
     mountWithProviders(<VersionDecision name="roll-dice" version="0.1.1" liveVersion="0.1.0" />);
+    // Not known yet, so Publish is offered; arming reads the verdict.
     fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.1' }));
     expect(await screen.findByText('The gate would refuse 0.1.1: quality 40 < 60.')).toBeTruthy();
-    expect(screen.getByText(/replacing live 0\.1\.0/)).toBeTruthy();
     expect(h.requests.some((r) => r.path.endsWith('/versions/0.1.1/preview'))).toBe(true);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Publish 0.1.1' })).toBeNull());
+    expect(screen.getByRole('link', { name: 'Edit to fix' }).getAttribute('href')).toBe(
+      '/harness/skills?skill=roll-dice&tab=edit',
+    );
+    expect(screen.getByRole('button', { name: 'Reject…' })).toBeTruthy();
+    expect(h.requests.some((r) => r.method === 'POST')).toBe(false);
+  });
+
+  it('asks with the verdict beside the question when the gate would pass', async () => {
+    fakeHarness((req: Recorded) =>
+      req.path === '/skill-library/roll-dice'
+        ? { body: detail('0.1.0') }
+        : req.path.endsWith('/preview')
+          ? { body: preview(true) }
+          : undefined,
+    );
+    mountWithProviders(<VersionDecision name="roll-dice" version="0.1.1" liveVersion="0.1.0" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.1' }));
+    expect(await screen.findByText('The gate would let 0.1.1 through.')).toBeTruthy();
+    const confirm = screen.getByRole('button', { name: 'Publish 0.1.1' });
+    // The question and the verdict are what a screen reader hears with the focused confirm.
+    const described = document.getElementById(confirm.getAttribute('aria-describedby') ?? '');
+    expect(described?.textContent).toMatch(/replacing live 0\.1\.0/);
+    expect(described?.textContent).toMatch(/let 0\.1\.1 through/);
+    // The question has the row while it is open.
+    expect(screen.queryByRole('button', { name: 'Reject…' })).toBeNull();
   });
 
   it('still asks when the verdict cannot be read, and says so', async () => {

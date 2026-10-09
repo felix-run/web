@@ -7,9 +7,9 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { GateLine } from './gate-line';
-import { useReviewQueue } from './queries';
+import { usePublishPolicy, useReviewQueue } from './queries';
 import { ScoreReadout } from './score-readout';
-import { ago, SourceLabel } from './skill-status';
+import { Since, SourceLabel } from './skill-status';
 import { VersionDecision } from './version-actions';
 import { VersionDiff } from './version-diff';
 
@@ -85,6 +85,7 @@ function QueueRow({
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const policy = usePublishPolicy().data;
   return (
     <li className="space-y-2 py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -102,7 +103,7 @@ function QueueRow({
           ) : (
             'nothing live yet'
           )}{' '}
-          · waiting {ago(draft.created_at).replace(' ago', '')}
+          · waiting <Since ts={draft.created_at} bare />
         </span>
         <SourceLabel source={draft.source} author={draft.author} />
       </div>
@@ -112,9 +113,13 @@ function QueueRow({
           {draft.reason}
         </p>
       )}
-      <ScoreReadout quality={draft.quality_score} security={draft.security_status} />
+      <ScoreReadout
+        quality={draft.quality_score}
+        security={draft.security_status}
+        policy={policy}
+      />
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+        <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none">
           <ChevronRightIcon
             aria-hidden
             className="size-3.5 transition-transform group-data-[state=open]:rotate-90"
@@ -137,6 +142,7 @@ function QueueRow({
         version={draft.version}
         liveVersion={draft.live_version}
         parentVersion={draft.parent_version}
+        showsVerdict={open}
       />
     </li>
   );

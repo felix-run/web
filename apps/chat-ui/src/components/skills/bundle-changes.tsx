@@ -94,7 +94,7 @@ function ChangeRow({
             type="button"
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
-            className="ml-auto rounded-sm text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="ml-auto rounded-sm text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
           >
             {open ? 'Hide diff' : 'Show diff'}
           </button>

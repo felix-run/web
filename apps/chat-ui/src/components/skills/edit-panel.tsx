@@ -12,7 +12,7 @@ import type { FileChange } from './bundle-compare';
 import type { CodeEditorHandle } from './code-editor';
 import { DiffView } from './diff-view';
 import { errorLinesForSkillMd } from './frontmatter-lines';
-import { useSkillFile } from './queries';
+import { usePublishPolicy, useSkillFile } from './queries';
 import { RefusalNotice } from './refusal';
 import { SaveDialog } from './save-dialog';
 import { ScoreReadout } from './score-readout';
@@ -30,6 +30,7 @@ import { ValidationPanel } from './validation-panel';
  * a choice between the two honest outcomes; the editor never picks one.
  */
 export function EditPanel({ name, editor }: { name: string; editor: SkillEditor }) {
+  const policy = usePublishPolicy().data;
   const { bundle, files, issues, errorLines, local, save, stale, parent } = editor;
   const editorRef = useRef<CodeEditorHandle>(null);
   const [saving, setSaving] = useState(false);
@@ -165,9 +166,18 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
           {bundle.dirty ? ' · unsaved changes' : ''}
         </span>
         {local && (
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            if saved now:
-            <ScoreReadout quality={local.review.score} security={local.scan.status} />
+          // Computed in the browser with the harness's rules, not asked of it:
+          // the gate re-scores the save, and its number is the one that counts.
+          <span
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            title="Checked in this tab with the harness's rules. The gate scores the saved version itself."
+          >
+            checked here:
+            <ScoreReadout
+              quality={local.review.score}
+              security={local.scan.status}
+              policy={policy}
+            />
           </span>
         )}
         <Button
@@ -443,7 +453,7 @@ function UpstreamRow({
             type="button"
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
-            className="ml-auto rounded-sm text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="ml-auto rounded-sm text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
           >
             {open ? 'Hide diff' : 'Show diff'}
           </button>

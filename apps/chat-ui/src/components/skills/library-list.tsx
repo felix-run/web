@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router';
 import { ViewSwitch } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
-import { type LibraryFilter, useLibraryPages } from './queries';
+import { type LibraryFilter, useLibraryPages, usePublishPolicy } from './queries';
 import { ScoreReadout } from './score-readout';
 import { ago, SourceLabel } from './skill-status';
 
@@ -152,6 +152,7 @@ const SHADOWS_UPLOAD =
 
 function LibraryRow({ skill, to }: { skill: SkillSummary; to: string }) {
   const latest = skill.latest;
+  const policy = usePublishPolicy().data;
   return (
     <li className="py-2.5">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -177,7 +178,7 @@ function LibraryRow({ skill, to }: { skill: SkillSummary; to: string }) {
         )}
         {skill.shadows_operator_upload && (
           <span
-            className="inline-flex items-center gap-1 text-xs text-state-blocked"
+            className="inline-flex items-center gap-1 text-xs text-foreground"
             title={SHADOWS_UPLOAD}
           >
             <TriangleAlertIcon aria-hidden className="size-3" />
@@ -193,7 +194,11 @@ function LibraryRow({ skill, to }: { skill: SkillSummary; to: string }) {
             {ago(latest.created_at)}
           </span>
           <SourceLabel source={latest.source} />
-          <ScoreReadout quality={latest.quality_score} security={latest.security_status} />
+          <ScoreReadout
+            quality={latest.quality_score}
+            security={latest.security_status}
+            policy={policy}
+          />
         </div>
       )}
     </li>

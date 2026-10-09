@@ -244,9 +244,13 @@ export function AttentionLine({
         ? 'Checking approvals…'
         : waiting
           ? `${calls} ${count === 1 ? 'is' : 'are'} waiting on you ${where}`
-          : streaming
-            ? 'Working. Nothing waiting on you.'
-            : 'Nothing waiting on you.';
+          : // Said for what this line counts — approvals and an agent's questions —
+            // not as an all-clear: a skill draft waiting for review is on no poll
+            // this line reads, and "Nothing waiting on you" sat above a page
+            // saying one was. Drafts have their own glance on Skills.
+            streaming
+            ? 'Working. No approvals or questions waiting.'
+            : 'No approvals or questions waiting.';
   // A question is known locally, from the stream, so it is said even when the
   // approvals poll has not answered — "Checking approvals…" over an open question
   // would hide the one thing this line is certain of.
@@ -275,7 +279,7 @@ export function AttentionLine({
             ? 'Checking'
             : streaming
               ? 'Working'
-              : 'None waiting';
+              : 'No approvals';
   // Outside the live region: it changes on every failed tick, and a screen
   // reader re-reading the sentence for a clock would bury the change that matters.
   const age =

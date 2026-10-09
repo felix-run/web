@@ -372,12 +372,15 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
  * quiet one — a dot that is always there says nothing.
  */
 function CollapsedGlance({ glance }: { glance: ReturnType<typeof useNavGlances>[string] }) {
-  if (!glance || glance.tone !== 'failed') return null;
+  if (!glance || glance.tone === 'unknown') return null;
   return (
     <>
       <span
         aria-hidden
-        className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-state-failed"
+        className={cn(
+          'absolute top-1.5 right-1.5 size-1.5 rounded-full',
+          glance.tone === 'failed' ? 'bg-state-failed' : 'bg-state-blocked',
+        )}
       />
       <span className="sr-only">, {glance.title}</span>
     </>

@@ -350,7 +350,7 @@ function FeedbackOutcome({
       </p>
       {result && (
         <Collapsible open={open} onOpenChange={setOpen}>
-          <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+          <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none">
             <ChevronRightIcon
               aria-hidden
               className="size-3.5 transition-transform group-data-[state=open]:rotate-90"

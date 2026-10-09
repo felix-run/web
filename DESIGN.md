@@ -388,7 +388,7 @@ toggle and the menu, on every address — the answer to "is anything waiting on 
 address shares rather than a row of its own. It is the first thing in the header to give way (a
 shrink weight far above the run cluster's): the sentence truncates. Below `sm` it is two words that
 cannot truncate, so there it does not shrink at all and the run cluster clips instead — it is two words
-(*1 waiting*, *None waiting*, *Unreachable*) with *Review* as its chevron alone, the full sentence kept as
+(*1 waiting*, *No approvals*, *Unreachable*) with *Review* as its chevron alone, the full sentence kept as
 the live region and the `title`. It is tinted only when it has something to say — `state-blocked`
 at `/10` while a person is asked, `state-failed` while it cannot vouch for the list — and is muted
 text on no surface at rest. At rest its dot is the neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach
@@ -637,9 +637,12 @@ things it changes, and at the top of the nav it read as filtering tenant-wide pa
 Every link and every page that writes its own view keeps `?agent=`. The nav is two runs under
 visible 11px labels that name their lists — Records (Memory, Documents, Skills, Activity, Agent) and
 Workbenches (Manifests, Jobs, Eval) — split by a full-strength `border` rule. Every link is a Tab
-stop, with the arrow keys as an extra. The rail carries exactly two glances, in `state-failed`
-and only when non-zero: `Jobs · N failing` and `Activity · N failed`, counted as those pages'
-headers count them. Absence is the rail's all-clear, so it is drawn only for a read that
+stop, with the arrow keys as an extra. The rail carries exactly three glances, each only when
+non-zero: `Jobs · N failing` and `Activity · N failed` in `state-failed`, counted as those pages'
+headers count them, and `Skills · N waiting` in `state-blocked` — skill drafts waiting for review,
+the one glance that asks a person for something, since the attention line reads approvals and
+questions and no draft reaches it. Its resting copy says so (*No approvals or questions
+waiting.*) rather than "Nothing waiting on you", which sat above a page with a draft waiting. Absence is the rail's all-clear, so it is drawn only for a read that
 answered: a failed read shows a muted `unchecked` (a word, not a hover-only `?`), and a count
 kept from an earlier read carries its age on screen (`3 failed · 2m`). Every page header ends in a quiet
 `Docs ↗` text link to that page's reference on docs.felix.run (a new tab), declared beside the destination and checked against the docs source by
@@ -783,7 +786,8 @@ Collapsed to icons, the column is New chat, Threads, Workspace, then the eight d
 expands the sidebar and puts the caret in the search field. It carries one 6px dot for the most
 urgent state — `state-blocked` when something waits on a person, else `state-running` while a run
 is going — and says it as well. Jobs and the Activity page carry a `state-failed` dot when their glance
-reports a failure, with the glance's own sentence for a reader.
+reports a failure, Skills a `state-blocked` dot while a draft waits, each with the glance's own
+sentence for a reader.
 
 ### Run readout
 

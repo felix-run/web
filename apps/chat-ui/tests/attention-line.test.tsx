@@ -168,7 +168,9 @@ describe('the attention line', () => {
   it('says so when nothing is waiting, rather than disappearing', async () => {
     stub([]);
     mount();
-    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/nothing waiting/i));
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toMatch(/no approvals or questions waiting/i),
+    );
     // No Review control: there is nothing to review, and an affordance that
     // opens an empty queue is worse than none.
     expect(screen.queryByRole('button', { name: /review/i })).toBeNull();
@@ -600,13 +602,13 @@ describe('an approval this tab just decided', () => {
     );
 
     await act(async () => screen.getByRole('button', { name: 'decide in banner' }).click());
-    expect(screen.getByRole('status').textContent).toBe('Nothing waiting on you.');
+    expect(screen.getByRole('status').textContent).toBe('No approvals or questions waiting.');
     expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
 
     // A tick that still carries it must not put it back.
     await act(async () => screen.getByRole('button', { name: 'poll now' }).click());
     await act(async () => {});
-    expect(screen.getByRole('status').textContent).toBe('Nothing waiting on you.');
+    expect(screen.getByRole('status').textContent).toBe('No approvals or questions waiting.');
     expect(screen.queryByRole('button', { name: /review/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
   });
@@ -690,9 +692,9 @@ describe('when the line cannot see', () => {
     switchable({ status: 429 });
     mount();
     // Before any answer: checking, not clear.
-    expect(status()).not.toMatch(/nothing waiting/i);
+    expect(status()).not.toMatch(/no approvals or questions waiting/i);
     await settle();
-    expect(status()).not.toMatch(/nothing waiting/i);
+    expect(status()).not.toMatch(/no approvals or questions waiting/i);
     // A 429 is the harness answering, so it is named as a rate limit, not an outage.
     expect(status()).toMatch(/approvals rate-limited/i);
     expect(screen.getByText('no answer yet')).toBeTruthy();
@@ -712,11 +714,11 @@ describe('when the line cannot see', () => {
     const answer = switchable({ status: 200, rows: [] });
     mount();
     await settle();
-    expect(status()).toMatch(/nothing waiting/i);
+    expect(status()).toMatch(/no approvals or questions waiting/i);
 
     answer({ status: 429 });
     await tick();
-    expect(status()).not.toMatch(/nothing waiting/i);
+    expect(status()).not.toMatch(/no approvals or questions waiting/i);
     await tick();
     expect(status()).toMatch(/approvals rate-limited/i);
     expect(screen.getByText(/^last answered /)).toBeTruthy();
@@ -736,14 +738,14 @@ describe('when the line cannot see', () => {
     answer({ status: 429 });
     await tick();
     expect(status()).toMatch(/rechecking approvals/i);
-    expect(status()).not.toMatch(/nothing waiting/i);
+    expect(status()).not.toMatch(/no approvals or questions waiting/i);
     const dot = () => container.querySelector('[data-attention-dot]')?.className ?? '';
     expect(dot()).not.toMatch(/state-failed/);
     expect(screen.queryByText(/^last answered /)).toBeNull();
 
     answer({ status: 200, rows: [] });
     await tick();
-    expect(status()).toMatch(/nothing waiting/i);
+    expect(status()).toMatch(/no approvals or questions waiting/i);
 
     // The count resets on an answer: one more failure is a recheck again, not red.
     answer({ status: 429 });
@@ -777,7 +779,7 @@ describe('when the line cannot see', () => {
 
     answer({ status: 200, rows: [] });
     await tick();
-    expect(status()).toMatch(/nothing waiting/i);
+    expect(status()).toMatch(/no approvals or questions waiting/i);
     expect(screen.queryByText(/last answered|no answer yet/)).toBeNull();
   });
 
@@ -785,7 +787,7 @@ describe('when the line cannot see', () => {
   it('rests on a neutral dot, not the done hue', async () => {
     stub([]);
     const { container } = mount();
-    await waitFor(() => expect(status()).toMatch(/nothing waiting/i));
+    await waitFor(() => expect(status()).toMatch(/no approvals or questions waiting/i));
     const dot = container.querySelector('[data-attention-dot]');
     expect(dot?.className).not.toMatch(/state-done/);
     expect(dot?.className).toContain('bg-muted-foreground/50');

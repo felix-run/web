@@ -66,6 +66,7 @@ export function SaveDialog({
   const [publish, setPublish] = useState(false);
   const reasonId = useId();
   const publishId = useId();
+  const publishNoteId = useId();
   const over = bodyBytes > SKILL_BUNDLE_BODY_LIMIT_BYTES;
   const near = bodyBytes > SKILL_BUNDLE_BODY_LIMIT_BYTES * 0.8;
   const next = parent ? bumpSemver(parent, bump) : '0.1.0';
@@ -156,17 +157,21 @@ export function SaveDialog({
             />
           </div>
 
-          <label htmlFor={publishId} className="flex items-start gap-2 text-sm">
+          {/* The checkbox is named "Publish now" and described by the sentence
+              under it. Inside the label, the changing sentence became the
+              checkbox's whole name, re-read on every change. */}
+          <div className="flex items-start gap-2 text-sm">
             <input
               id={publishId}
               type="checkbox"
               className="mt-0.5"
               checked={publish}
+              aria-describedby={publishNoteId}
               onChange={(e) => setPublish(e.target.checked)}
             />
-            <span>
-              Publish now
-              <span role="status" className="block text-xs text-muted-foreground">
+            <div className="min-w-0">
+              <label htmlFor={publishId}>Publish now</label>
+              <p id={publishNoteId} role="status" className="text-xs text-muted-foreground">
                 {!publish
                   ? 'Goes live if the publish gate passes it. If not, it is saved as a draft and the page says why.'
                   : live.at === 'reading'
@@ -174,13 +179,14 @@ export function SaveDialog({
                     : live.at === 'failed'
                       ? 'What is live could not be read. Publishing replaces whichever version is live when the harness takes the save.'
                       : `${makeLiveQuestion('publish', name, next, live.live)} If the gate refuses it, it is saved as a draft and the page says why.`}
-              </span>
-            </span>
-          </label>
+              </p>
+            </div>
+          </div>
 
           {near && (
             <p
-              className={cn('text-xs', over ? 'text-state-failed' : 'text-state-blocked')}
+              // Red once it would be refused; until then a measurement, not a warning.
+              className={cn('text-xs', over ? 'text-state-failed' : 'text-muted-foreground')}
               role={over ? 'alert' : undefined}
             >
               This save is {formatBytes(bodyBytes)} as sent; the harness refuses requests over{' '}
