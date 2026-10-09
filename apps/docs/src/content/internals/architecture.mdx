@@ -31,7 +31,7 @@ own. All three connect to the same Postgres with pgvector, Valkey, and object st
 | **Worker** (`apps/worker`) | Audit flush, jobs, memory consolidation, retention, anomaly, continuous eval, fiber resume |
 | **Scheduler** | Enqueues labeled Taskiq cron tasks (required alongside the worker) |
 
-The harness library lives in `packages/harness` (`felix`). The CLI is `packages/cli` (`felix migrate|doctor|eval|mint-jwt|…`).
+The harness library lives in `packages/harness` (`felix`). The CLI is `apps/cli` (`felix migrate|doctor|eval|mint-jwt|…`).
 
 Felix is plain CPython in containers you run. There is no serverless or edge runtime in the stack, and no vendor-specific compute or storage binding — Postgres, Valkey and an object store sit behind Protocols. Deploy with Compose or Helm — see [getting started](/guide/getting-started/) and [deploy](/guide/deploy/).
 
@@ -131,5 +131,5 @@ the following ever fires:
 | `packages/harness/src/felix/` | Manifests, patterns, tools, session, governance, auth, plugins |
 | `apps/api` | FastAPI composition + routes |
 | `apps/worker` | Taskiq worker and scheduler entrypoints |
-| `packages/cli` | Ops CLI |
+| `apps/cli` | Ops CLI |
 | `manifests/` | Bundled agents (`quick`, `deep`, `router`, …) |
