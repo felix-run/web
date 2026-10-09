@@ -207,7 +207,21 @@ describe('a send the harness refuses on the lease', () => {
       });
 
   it('puts the message back in the composer, and sends it once after the takeover', async () => {
-    const server = leaseServer();
+    // The hold lapsed while the tab slept, and another client took the thread:
+    // this tab still believes it drives, and its send carries a stale token. It is
+    // taken as the send arrives, so no renewal tick can find out first. Taking it
+    // before Enter raced a 60ms tick on a loaded CI runner: the tab flipped to
+    // watching, Enter met a disabled composer, and nothing was sent.
+    let takeOnSend = false;
+    const server = leaseServer({
+      beforeDrive: ({ path, thread }) => {
+        const lease = thread ? server.leases.get(thread) : undefined;
+        if (!takeOnSend || path !== '/api/chat/stream' || !lease) return;
+        takeOnSend = false;
+        lease.holder = 'other-tab';
+        lease.token = 'tok-other';
+      },
+    });
     mount('/t/thread-k');
     await waitFor(() => expect(server.leases.get('thread-k')?.mode).toBe('exclusive'));
     const ours = server.leases.get('thread-k')?.token;
@@ -215,13 +229,7 @@ describe('a send the harness refuses on the lease', () => {
     await act(async () => {
       await userEvent.type(composer() as HTMLTextAreaElement, 'do not lose this');
     });
-    // The hold lapsed while the tab slept, and another client took the thread:
-    // this tab still believes it drives, and its send carries a stale token. Taken
-    // just before Enter, so no renewal tick finds out first.
-    const lease = server.leases.get('thread-k');
-    if (!lease) throw new Error('no lease');
-    lease.holder = 'other-tab';
-    lease.token = 'tok-other';
+    takeOnSend = true;
     await act(async () => {
       await userEvent.keyboard('{Enter}');
     });
@@ -269,7 +277,17 @@ describe('a send the harness refuses on the lease', () => {
     const enc = new TextEncoder();
     let finish: () => void = () => {};
     let opened = 0;
+    let takeOnSend = false;
     const server = leaseServer({
+      // Taken as the drained send arrives, for the reason the test above gives:
+      // taken earlier, a renewal tick can flip the tab first and nothing drains.
+      beforeDrive: ({ path, thread }) => {
+        const lease = thread ? server.leases.get(thread) : undefined;
+        if (!takeOnSend || path !== '/api/chat/stream' || !lease) return;
+        takeOnSend = false;
+        lease.holder = 'other-tab';
+        lease.token = 'tok-other';
+      },
       stream: () => {
         opened += 1;
         if (opened > 1) {
@@ -301,11 +319,8 @@ describe('a send the harness refuses on the lease', () => {
     await type('queued next');
     await waitFor(() => expect(tray()?.textContent).toContain('queued next'));
 
-    // Taken while the run is still going; the drain sends with the stale token.
-    const lease = server.leases.get('thread-q');
-    if (!lease) throw new Error('no lease');
-    lease.holder = 'other-tab';
-    lease.token = 'tok-other';
+    // Taken as the run ends and the queue drains; the drain sends with the stale token.
+    takeOnSend = true;
     await act(async () => finish());
 
     await waitFor(() => expect(banner()).toBeTruthy());

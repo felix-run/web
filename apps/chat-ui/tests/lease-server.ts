@@ -73,6 +73,12 @@ export function leaseServer(
     /** Answers `/chat/stream`; throwing stands in for a request that never got an answer. */
     stream?: (req: StreamRequest) => Response | Promise<Response>;
     sessions?: Array<{ id: string; sessionName?: string }>;
+    /**
+     * Runs as a driving request arrives, before its token is checked — the one
+     * point where a test can change the lease with no renewal tick able to see
+     * it first.
+     */
+    beforeDrive?: (drive: { method: string; path: string; thread: string | undefined }) => void;
   } = {},
 ) {
   const leases = new Map<string, Lease>();
@@ -234,6 +240,7 @@ export function leaseServer(
           : method === 'DELETE'
             ? decodeURIComponent(path.split('/').pop() ?? '')
             : undefined;
+      opts.beforeDrive?.({ method, path, thread });
       const refusal = thread && leaseToken ? writeRefusal(thread, leaseToken) : null;
       drives.push({ method, path, thread, leaseToken, status: refusal ? 409 : 200 });
       if (refusal) return new Response(JSON.stringify({ detail: refusal }), { status: 409 });
