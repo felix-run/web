@@ -404,3 +404,54 @@ describe('createLeaseKeeper', () => {
     });
   });
 });
+
+describe('a first acquire that could only observe', () => {
+  /**
+   * felix-run/felix#532. A reload releases the old page's hold as a keepalive request on
+   * `pagehide`, and the new page asks a moment later; when the release lands second, the new
+   * page observes. It used to wait a whole renewal interval -- 150s -- before asking again,
+   * reading *watching read-only* the whole time, unable to send or to answer its own run's
+   * tool requests.
+   */
+  function heldBy(holder: string | null) {
+    const state = { holder, exclusiveAsks: 0 };
+    const fake: LeaseApi = {
+      acquire: async ({ mode, holderId, token }) => {
+        if (mode === 'shared')
+          return { ok: true, token: 'obs', held_by_other: state.holder !== null };
+        state.exclusiveAsks += 1;
+        if (state.holder && !(state.holder === holderId && token))
+          return { ok: false, error: 'lease_held' };
+        state.holder = holderId;
+        return { ok: true, token: 'ex' };
+      },
+      release: async () => {},
+    };
+    return { fake, state };
+  }
+
+  it('takes the thread as soon as the old hold is gone, not a renewal later', async () => {
+    const { fake, state } = heldBy('old-page');
+    const keeper = createLeaseKeeper(fake, () => 'tab-1', LEASE_RENEW_MS, [1_000, 3_000]);
+    keeper.attach('t1');
+    await flush();
+    expect(keeper.state('t1').mode).toBe('shared');
+
+    // The old page's release lands.
+    state.holder = null;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(keeper.state('t1')).toEqual({ mode: 'exclusive', heldByOther: false });
+  });
+
+  it('asks only those few extra times when another tab really does drive', async () => {
+    const { fake, state } = heldBy('other-tab');
+    const keeper = createLeaseKeeper(fake, () => 'tab-1', LEASE_RENEW_MS, [1_000, 3_000]);
+    keeper.attach('t1');
+    await flush();
+    await vi.advanceTimersByTimeAsync(LEASE_RENEW_MS - 1);
+
+    // The first acquire, then one per settle retry; the next is the ordinary renewal.
+    expect(state.exclusiveAsks).toBe(3);
+    expect(keeper.state('t1').mode).toBe('shared');
+  });
+});

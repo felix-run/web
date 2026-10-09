@@ -728,7 +728,10 @@ Flows worth knowing before editing the app:
   under a `role="status"` banner. Every hold has its own token, renewed and released with it — the
   harness refuses either by holder id alone (`felix-run/felix#479`). While observing, each renewal
   tick first tries `exclusive` with no token, so a watching tab takes over within one
-  `LEASE_RENEW_MS` of the driver leaving; observers are never promoted by the harness. Every
+  `LEASE_RENEW_MS` of the driver leaving; observers are never promoted by the harness. A *first*
+  acquire that could only observe also tries again at 1s, 3s and 8s (`SETTLE_RETRY_MS`): a reload's
+  keepalive release can land after the new page's acquire, which then watched its own run for 150s
+  (`felix-run/felix#532`); a genuine second tab costs three 409s. Every
   driving request carries the tab's token as `X-Felix-Lease-Token` (the `leaseToken` hook on
   `@felix/client`, bound in `api.ts`), and a `409 lease_read_only` / `lease_held` arrives as a
   `LeaseRefusedError` that flips the tab to watching rather than raising a toast. A refused send
