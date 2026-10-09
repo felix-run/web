@@ -239,6 +239,11 @@ which left every page ragged — paragraphs stopping ~200px short of the code ar
 page has no sidebar or TOC and widens to **72rem** (`:root[data-has-hero]`), centred, with its
 prose held to 48rem so it reads at the same line as a docs page.
 
+From 72rem the content sits against the sidebar and the table of contents follows it, with the
+spare width falling to the far right. Starlight's default centres content and TOC together, which
+at 48rem put a ~150px gap between the sidebar and the text. The header's search box follows the
+content edge.
+
 Breakpoints are Starlight's (50rem, where the header's links appear; 72rem, where the sidebar and
 table of contents sit beside the content) plus three of the docs' own, each chosen by content: the
 home hero goes two-column at **64rem**; RunTrace stacks below a **32rem container** (a container query, so
