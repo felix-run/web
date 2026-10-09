@@ -76,7 +76,22 @@ manifest field attaches a hook.
 | `compact_failed` | when compaction fails | nothing; it is a notification |
 
 Return `None` to leave things as they are. Several hooks of one kind run in registration order,
-each seeing what the one before it returned.
+and how their answers combine depends on the kind:
+
+- `filter_history`, `before_model` and `after_model` chain: each hook sees what the one before it
+  returned.
+- `before_turn` hooks all see the same history, and every message they return is appended.
+- `before_tool` stops at the first hook that blocks. Any other answer passes the call on to the
+  next hook, and an answer with no `block` key at all is logged as a mistake (it is usually a
+  misspelt block, such as `{"deny": True}`). `{"block": False}` is a valid way to allow.
+- `after_tool` hooks all see the tool's own result, and their answers are merged, a later hook's
+  key winning.
+- `before_compact` stops at the first hook that cancels or supplies a summary.
+
+A `before_tool` block is recorded like a governance denial: a `policy_deny` audit row with
+`payload.control` set to `hook` and `payload.hook` naming the hook that blocked
+(`module.qualname`), and `felix_tool_calls{status="denied"}`. The reason the hook gave goes to the
+model, not into the row. No `after_tool` hook runs for a blocked call, since the tool never ran.
 
 An `after_tool` hook that redacts output covers failures too, whether the tool raised or
 returned an error: an error message is where a secret or an internal path is most likely to
