@@ -541,17 +541,21 @@ border.
 
 ### The mark
 
-An F drawn as a stem and a top arm on a rounded tile, with the middle arm replaced by a **dot** —
-the same state dot the run readout, chips and approvals draw. The dot is where the mark carries
-state, so the mark is the State-Only Rule applied to identity rather than an exception to it:
-there is still no brand colour, and the only hue the mark ever shows is a run state's.
+A **paw print at a run**: four toe pads over a main pad, leaning 30° into its stride on a rounded
+tile, with two speed streaks trailing it. Felix runs things, so the mark is one mid-flight. The
+**main pad** is where the mark carries state, so the mark is the State-Only Rule applied to
+identity rather than an exception to it: there is still no brand colour, and the only hue the mark
+ever shows is a run state's. The toes and streaks are always the glyph's ink.
 
-- **One geometry.** `packages/design/src/mark.ts` holds it on a 32-unit grid with every straight
-  edge on an even unit, so at 16px each edge lands on a whole pixel. The stroke is 4 units; a
-  6-unit stroke read as a corner bracket with a dot in its pocket rather than as a letter.
-  `pnpm sync:brand` renders every static file from it (favicons, touch and PWA icons, the docs'
-  header logos and social card); nothing is drawn by hand.
-- **In the tab, it carries state.** `presence.ts` repaints the SVG favicon's dot: `state-running`
+- **One geometry.** `packages/design/src/mark.ts` holds it on a 32-unit grid: the upright,
+  mirrored print (`MARK_TOES`, `MARK_PAD_PATH`), the lean that places it (`MARK_STRIDE`, a
+  `transform`, so the print stays readable as drawn), and the streaks (`MARK_STREAKS`), whose
+  2-unit heads sit on whole pixels at 16px so they stay two crisp dashes where their tapered tails
+  dissolve. At 16px the toes soften into one arc over the pad; that is accepted, because there
+  the pad's hue and the streaks are what has to read. `pnpm sync:brand` renders every static file
+  from it (favicons, touch and PWA icons, the docs' header logos and social card); nothing is
+  drawn by hand.
+- **In the tab, it carries state.** `presence.ts` repaints the SVG favicon's pad: `state-running`
   while working, `state-blocked` while waiting on a person, and back to the static
   `/favicon.svg` at rest. The tab tile is always the dark ink in either scheme, because the tab
   strip is browser chrome rather than our page, and the dark-theme ramp is the one tuned to read
@@ -559,7 +563,7 @@ there is still no brand colour, and the only hue the mark ever shows is a run st
   state alone.
 - **In the page, it never does.** The header lockup and the auth panel draw the mark at rest: the
   tile is `currentColor` and the glyph is `--background`, which is `primary`'s inversion with no
-  theme branch. The header's first slot is the run state; a coloured dot on the mark
+  theme branch. The header's first slot is the run state; a coloured pad on the mark
   would say the same thing twice.
 - **It is decorative beside the wordmark.** `aria-hidden` in chat-ui and an empty `alt` in the
   docs, because the wordmark is the accessible name and a second "Felix" would be read out. In

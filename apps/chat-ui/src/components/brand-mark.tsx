@@ -1,4 +1,11 @@
-import { MARK_GRID, MARK_PAD_PATH, MARK_TILE, MARK_TOES } from '@felix/design/mark';
+import {
+  MARK_GRID,
+  MARK_PAD_PATH,
+  MARK_STREAKS,
+  MARK_STRIDE,
+  MARK_TILE,
+  MARK_TOES,
+} from '@felix/design/mark';
 import { cn } from '@felix/ui/lib/utils';
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
@@ -28,10 +35,15 @@ export function BrandMark({ className }: { className?: string }) {
         rx={MARK_TILE.radius}
         fill="currentColor"
       />
-      {MARK_TOES.map((t) => (
-        <circle key={t.cx} cx={t.cx} cy={t.cy} r={t.r} fill="var(--background)" />
+      {MARK_STREAKS.map((d) => (
+        <path key={d} d={d} fill="var(--background)" />
       ))}
-      <path d={MARK_PAD_PATH} fill="var(--background)" />
+      <g transform={MARK_STRIDE}>
+        {MARK_TOES.map((t) => (
+          <circle key={t.cx} cx={t.cx} cy={t.cy} r={t.r} fill="var(--background)" />
+        ))}
+        <path d={MARK_PAD_PATH} fill="var(--background)" />
+      </g>
     </svg>
   );
 }
