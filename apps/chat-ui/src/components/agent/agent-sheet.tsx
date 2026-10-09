@@ -12,6 +12,7 @@ import {
   PageSection,
   Panel,
   PanelBody,
+  plural,
 } from '@/components/harness/panel';
 import { SectionBody } from '@/components/inspector/primitives';
 import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
@@ -73,13 +74,14 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
   const spec = (resolved?.manifest as ManifestLike | undefined)?.spec;
   const meta = (resolved?.manifest as ManifestLike | undefined)?.metadata;
   const reach = spec ? connections(spec) : [];
-  const limits = Object.entries(spec?.limits ?? {}).map(([key, v]) => ({
-    key,
-    unset: v === null || v === undefined,
-    ...limitAs(key, v),
-  }));
-  const bounded = limits.filter((l) => !l.unset);
-  const unbounded = limits.filter((l) => l.unset).map((l) => l.label.toLowerCase());
+  const { bounded, defaulted } = governanceLimits(spec?.limits);
+  const governed =
+    asArray(spec?.approvals).length +
+    asArray(spec?.guardrails?.judges).length +
+    asArray(spec?.policies).length +
+    bounded.length;
+  const tools = asArray(spec?.tools).map(String);
+  const skills = asArray(spec?.skills).map((sk) => (sk as { name?: string })?.name ?? String(sk));
   const provenance = resolved ? resolvedFrom(resolved) : null;
 
   return (
@@ -131,23 +133,22 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
                 </div>
               )}
 
-              <PageSection title="Tools & skills">
-                <Facts>
-                  <Fact label="Tools">
-                    {asArray(spec.tools).length > 0 ? (
-                      <Chips items={asArray(spec.tools).map(String)} />
-                    ) : null}
-                  </Fact>
-                  <Fact label="Skills">
-                    {asArray(spec.skills).length > 0 ? (
-                      <Chips
-                        items={asArray(spec.skills).map(
-                          (sk) => (sk as { name?: string })?.name ?? String(sk),
-                        )}
-                      />
-                    ) : null}
-                  </Fact>
-                </Facts>
+              {/* One line when there are neither, as Reaches has it: a router that
+                  only dispatches spent two rows of dashes here, first on the page. */}
+              <PageSection
+                title="Tools & skills"
+                meta={tools.length === 0 && skills.length === 0 ? 'none declared' : undefined}
+              >
+                {(tools.length > 0 || skills.length > 0) && (
+                  <Facts>
+                    <Fact label="Tools" absent="none">
+                      {tools.length > 0 ? <Chips items={tools} /> : null}
+                    </Fact>
+                    <Fact label="Skills" absent="none">
+                      {skills.length > 0 ? <Chips items={skills} /> : null}
+                    </Fact>
+                  </Facts>
+                )}
               </PageSection>
 
               {/*
@@ -183,18 +184,24 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
                 )}
               </PageSection>
 
-              {(asArray(spec.guardrails?.judges).length > 0 ||
-                asArray(spec.approvals).length > 0 ||
-                asArray(spec.policies).length > 0 ||
-                spec.limits) && (
-                <PageSection
-                  title="Governance"
-                  // The limit an operator acts on is the one that is *not* set, so
-                  // it is said at the heading rather than found as the fourth of
-                  // nine equal rows reading "no limit". Words, not colour: an
-                  // unset limit is configuration, not a run state.
-                  meta={unbounded.length > 0 ? `no limit on ${unbounded.join(', ')}` : undefined}
-                >
+              {/* Always drawn: every run is bounded by limits, declared or not. */}
+              <PageSection
+                title="Governance"
+                // The limits the manifest left unset are named once, at the
+                // heading, rather than as rows. They are *not* unlimited: the
+                // harness fills every unset limit from its own defaults
+                // (`effective_limits`), and this read "no limit on tool calls,
+                // wall clock, …" for a run capped at all six. No number, because
+                // no route reports the defaults and a copied one would drift.
+                meta={
+                  defaulted.length === 0
+                    ? undefined
+                    : defaulted.length === LIMIT_KEYS.length
+                      ? 'every limit at the harness default'
+                      : `harness default for ${defaulted.join(', ')}`
+                }
+              >
+                {governed > 0 && (
                   <Facts>
                     {asArray(spec.approvals).map((a, i) => {
                       const ap = a as { id?: string; tools?: string[] };
@@ -247,8 +254,8 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
                       </Fact>
                     ))}
                   </Facts>
-                </PageSection>
-              )}
+                )}
+              </PageSection>
 
               <PageSection title="Model">
                 <Facts>
@@ -319,7 +326,13 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
         {(card || cardError != null) && (
           <PageSection
             title="A2A discovery card"
-            meta={card && !card.error ? 'published for the default agent' : undefined}
+            // Said once: when the sentence below names the default agent, a note
+            // here saying the same thing is the second of two.
+            meta={
+              card && !card.error && (!card.name || card.name === manifest)
+                ? 'published for the default agent'
+                : undefined
+            }
           >
             {/* The card is the *default* agent's, which need not be the one this
                   page describes — say so where the two names would otherwise sit
@@ -516,6 +529,45 @@ function resolvedFrom(r: ResolvedManifest): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+/** The run budgets the harness fills from its defaults when a manifest leaves them unset. */
+const LIMIT_KEYS = [
+  'max_tool_calls',
+  'max_wall_clock_seconds',
+  'max_peer_hops',
+  'max_input_tokens',
+  'max_output_tokens',
+  'max_cost_usd',
+] as const;
+
+/**
+ * The declared limits as rows, and the unset budgets by name.
+ *
+ * Every budget in `LIMIT_KEYS` is read whether or not the manifest mentions it,
+ * since an absent key is defaulted exactly as a `null` one is. `precount` is a
+ * switch rather than a bound, so it is a row only when on — off is the default
+ * and bounds nothing. Unknown keys pass through when set.
+ */
+function governanceLimits(limits: Record<string, unknown> | undefined): {
+  bounded: Array<{ key: string; label: string; value: string; mono: boolean }>;
+  defaulted: string[];
+} {
+  const declared = limits ?? {};
+  const isSet = (v: unknown) => v !== null && v !== undefined;
+  const budgets = (LIMIT_KEYS as readonly string[]).map((key) => ({
+    key,
+    set: isSet(declared[key]),
+    ...limitAs(key, declared[key]),
+  }));
+  const others = Object.entries(declared)
+    .filter(([key, v]) => !(LIMIT_KEYS as readonly string[]).includes(key) && isSet(v))
+    .filter(([key, v]) => !(key === 'precount' && v === false))
+    .map(([key, v]) => ({ key, set: true, ...limitAs(key, v) }));
+  return {
+    bounded: [...budgets.filter((b) => b.set), ...others],
+    defaulted: budgets.filter((b) => !b.set).map((b) => b.label.toLowerCase()),
+  };
+}
+
 /**
  * A governance limit, as a label and a reading rather than a schema key.
  *
@@ -538,7 +590,9 @@ export function limitAs(
     precount: 'Count tokens first',
   };
   const label = labels[key] ?? key;
-  if (value === null || value === undefined) return { label, value: 'no limit', mono: false };
+  if (value === null || value === undefined) {
+    return { label, value: 'harness default', mono: false };
+  }
   if (typeof value === 'boolean') return { label, value: value ? 'yes' : 'no', mono: false };
   if (typeof value === 'number') {
     if (key === 'max_wall_clock_seconds') return { label, value: `${value}s`, mono: true };
@@ -557,16 +611,22 @@ export function limitAs(
  * unchanged: a harness that gains one should render it, not hide it.
  */
 function historyAs(strategy: string | undefined): string {
-  switch (strategy ?? 'full_replay') {
-    case 'full_replay':
-      return 'every turn replayed';
-    case 'summarize':
-      return 'older turns summarised';
-    case 'window':
-      return 'recent turns only';
-    default:
-      return strategy ?? 'full_replay';
-  }
+  // The harness's own spellings (`session/strategies.py`): a name, and for most a
+  // `:N` count. This matched `summarize` and `window`, which it has never
+  // accepted, so every non-default strategy reached the page as its wire text.
+  const raw = (strategy ?? 'full_replay').trim();
+  const [name, arg] = raw.split(':', 2);
+  const n = arg !== undefined && /^\d+$/.test(arg) ? Number(arg) : undefined;
+  if (raw === 'full_replay') return 'every turn replayed';
+  if (name === 'windowed' && n) return `last ${plural(n, 'turn')} only`;
+  // `summarizing:N` is compaction with a turn floor; the harness upgrades it.
+  if (name === 'summarizing' && n)
+    return `compacted near the window, last ${plural(n, 'turn')} kept`;
+  if (name === 'compacting' && arg === undefined) return 'compacted near the window';
+  if (name === 'compacting' && n)
+    return `compacted near the window, last ${plural(n, 'turn')} kept`;
+  if (name === 'semantic' && n) return `the ${plural(n, 'most relevant turn')}`;
+  return raw;
 }
 
 function runsAs(mode: string | undefined): string {

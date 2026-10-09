@@ -107,17 +107,66 @@ describe('Connectivity is not a panel of absences', () => {
 });
 
 describe('governance limits read as limits', () => {
-  it('names each limit, and says which are unset at the heading rather than as rows', async () => {
+  it('names each declared limit, and the defaulted ones once at the heading', async () => {
     await sheet({
-      limits: { max_tool_calls: 200, max_peer_hops: null, max_cost_usd: null, precount: false },
+      limits: {
+        max_tool_calls: 200,
+        max_wall_clock_seconds: 3600,
+        max_input_tokens: 500000,
+        max_output_tokens: 8000,
+        max_peer_hops: null,
+        precount: false,
+      },
     });
     expect(screen.getByText('Tool calls')).toBeTruthy();
     expect(screen.getByText('200')).toBeTruthy();
-    // The limits nobody set are the ones an operator acts on: named once, up top.
-    expect(screen.getByText('no limit on peer hops, spend')).toBeTruthy();
+    // An absent key is defaulted exactly as a null one is: spend is named too.
+    expect(screen.getByText('harness default for peer hops, spend')).toBeTruthy();
     expect(screen.queryByText('Peer hops')).toBeNull();
     expect(screen.queryByText('max_peer_hops')).toBeNull();
     expect(screen.queryByText('null')).toBeNull();
+  });
+
+  /**
+   * The harness fills every unset limit from its defaults (`effective_limits`),
+   * so "no limit" was false for every manifest that declared none.
+   */
+  it('never says an unset limit is unlimited', async () => {
+    await sheet();
+    expect(screen.getByText('every limit at the harness default')).toBeTruthy();
+    expect(screen.queryByText(/no limit/)).toBeNull();
+  });
+
+  it('draws no precount row when it is off, since off bounds nothing', async () => {
+    await sheet({ limits: { precount: false } });
+    expect(screen.queryByText('Count tokens first')).toBeNull();
+  });
+
+  it('draws precount when it is on', async () => {
+    await sheet({ limits: { precount: true } });
+    expect(screen.getByText('Count tokens first')).toBeTruthy();
+  });
+});
+
+describe('session strategies in the spellings the harness accepts', () => {
+  it.each([
+    ['compacting', 'compacted near the window'],
+    ['compacting:6', 'compacted near the window, last 6 turns kept'],
+    ['summarizing:20', 'compacted near the window, last 20 turns kept'],
+    ['windowed:1', 'last 1 turn only'],
+    ['semantic:10', 'the 10 most relevant turns'],
+  ])('reads %s as "%s"', async (strategy, reading) => {
+    await sheet({ session: { strategy } });
+    expect(screen.getByText(reading)).toBeTruthy();
+    expect(screen.queryByText(strategy)).toBeNull();
+  });
+});
+
+describe('Tools & skills', () => {
+  it('says so in one line when there are neither', async () => {
+    await sheet({ tools: [] });
+    expect(screen.getByText('none declared')).toBeTruthy();
+    expect(screen.queryByText('Tools')).toBeNull();
   });
 });
 
