@@ -126,7 +126,7 @@ error reasons.
 It is a reading surface, so the rules are the ones reading needs. Prose, tables, code and figures
 share one column and one right edge; data wider than it scrolls in its own box. Reference is
 reached two ways — the sidebar for "what is this", the Route index for "where is this route" —
-and a page ends on a next step: the home page and Getting Started on an explicit list, every
+and a page ends on a next step: the home page and Getting started on an explicit list, every
 other page on Starlight's previous/next pair, which follows the sidebar's order.
 
 Most of the chrome is Starlight's, recoloured from `@felix/design` rather than redrawn. What is
@@ -254,12 +254,17 @@ it behaves the same in the hero and full width); the Route index stacks at **50r
 **The One-Edge Rule.** Prose and data share one column and one right edge. Never widen the column
 to fit a table: a table or code line wider than 48rem scrolls inside its own box.
 
-**The Whole-Token Rule.** Code is never broken mid-token. A table that cannot fit stacks on a
-phone — each row a block, each cell under its column name (`public/enhance.js` marks tables of
-three or more columns; `brand.css` stacks them below 50rem) — and the events list is stacked at
-every width. A route or field in a heading wraps between its segments: the same script adds a
-break opportunity after each `/` and `.`, and such headings step down to 0.8em below 50rem.
-Route index paths break the same way, server-side. An earlier rule broke table code anywhere and
+**The Whole-Token Rule.** Code is never broken mid-token. Every table stacks on a phone — each
+row a block, each cell under its column name from three columns, a two-column table as a term
+over its description with no labels, empty cells dropped (`public/enhance.js` marks them;
+`brand.css` stacks them below 50rem) — and the events list is stacked at every width. A route or
+field in a heading wraps between its segments: the same script adds a break opportunity after
+each `/` and `.`, and such headings step down to 0.8em below 50rem. Code in a table cell gets
+those plus `,` `&` `?` and `|` — between keys and parameters, never after a `.` before a digit
+or a `,` between digits — because a table sizes a column to its longest unbreakable run and one
+JSON body made a table scroll at desktop width. What still scrolls at desktop is a single
+identifier (`FELIX_SKILL_IMPORT_CALLS_PER_HOUR_TOTAL`), which no rule here will break. Route
+index paths break the same way, server-side. An earlier rule broke table code anywhere and
 shredded JSON mid-key; before that, headings split `{thread_id}` into `{thread_i` / `d}`.
 
 ## Elevation & Depth

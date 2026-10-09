@@ -81,7 +81,7 @@ export default defineConfig({
         {
           label: 'Start',
           items: [
-            { label: 'Getting Started', slug: 'guide/getting-started' },
+            { label: 'Getting started', slug: 'guide/getting-started' },
             { label: 'Concepts', slug: 'guide/concepts' },
             { label: 'Deploy', slug: 'guide/deploy' },
             { label: 'Skill import', slug: 'guide/skill-import' },

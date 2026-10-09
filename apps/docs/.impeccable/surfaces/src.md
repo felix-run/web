@@ -28,8 +28,8 @@ home page is a front door, not a landing page.
 - **Show the mechanism.** RunTrace on the home page draws one approval-gated turn as real frames,
   and the top of Concepts shows the same pause as chat-ui draws it — a real capture from a local
   harness, cropped to read at 1:1, captioned with where it came from.
-  Expected output in Getting Started is taken from harness source and says which file.
-- **Every page ends on a next step.** Home ends on Where next and Getting Started on Where to
+  Expected output in Getting started is taken from harness source and says which file.
+- **Every page ends on a next step.** Home ends on Where next and Getting started on Where to
   next; every other page ends on Starlight's previous/next, which follows the sidebar. A dead
   address lands on a 404 with the ways back in, not on a decorated splash.
 - **Truth over tidiness.** Event names, routes and error reasons exactly as the harness sends them.

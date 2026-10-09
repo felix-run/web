@@ -184,18 +184,18 @@ readable text goes on the frame — a stored thinking block's `signature`, and a
 block's opaque `data`, exist to be replayed back to the model provider, not shown, and stay in the
 log. The key is omitted entirely when a turn has nothing readable to show.
 
+:::caution
+This recovers the **thread**, not the interrupted run. A disconnect still tears the run down, so
+that a client which hangs up stops incurring model cost. Reconnecting shows you what was persisted,
+not the turn you were watching.
+:::
+
 :::note[On a harness older than `felix-run/felix#238`, a warm reattach loses its tool calls]
 Before it, `session_event` carried neither `tool_calls` nor `tool_call_id`, so an assistant turn that
 called a tool replayed as an empty message and its result had nothing to attach to. The `snapshot`
 frame has always carried both, so a *cold* reattach was unaffected — which is why this looked like a
 quirk of resuming rather than a missing field. Clients should treat the fields as optional and fall
 back to re-reading the session when they are absent.
-:::
-
-:::caution
-This recovers the **thread**, not the interrupted run. A disconnect still tears the run down, so
-that a client which hangs up stops incurring model cost. Reconnecting shows you what was persisted,
-not the turn you were watching.
 :::
 
 ## `POST /chat`

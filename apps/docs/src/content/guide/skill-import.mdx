@@ -297,11 +297,13 @@ The skill suggester (`spec.skill_suggestion`) gives its decision model each skil
 rank on, and in its rerank the start of the skill's body. An imported skill reaches it the way it
 reaches the catalog, in both rounds: by its listed description only — withheld when it carries the
 injection markers — quoted, fenced as third-party text, and never by its body. Operator, agent and
-bundled skills are described as before. The decision model returns probabilities and runs no tool,
-so imported text there can bias which skill is hinted, not execute anything; a paraphrased injection
-in a description can still tilt the ranking. The skill's name — a validated slug, but one the third
-party chose — still reaches the model. The hint carries only the name, and the agent still activates
-the skill through the screening above.
+bundled skills are described as before.
+
+The decision model returns probabilities and runs no tool, so imported text there can bias which
+skill is hinted, not execute anything; a paraphrased injection in a description can still tilt the
+ranking. The skill's name — a validated slug, but one the third party chose — still reaches the
+model. The hint carries only the name, and the agent still activates the skill through the screening
+above.
 
 ## The cooldown
 
