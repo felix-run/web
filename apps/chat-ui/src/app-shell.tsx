@@ -105,6 +105,7 @@ import { createLeaseKeeper, LEASE_RENEW_MS, releaseOnPageExit } from '@/lib/sess
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
 import {
+  clearTurns,
   indexThread,
   listThreads,
   loadTurns,
@@ -554,7 +555,13 @@ export function AppShell() {
     // re-runs the *first* render's closure — so whatever `turns` held then would
     // be written out now, after the guard above has opened. Current state cannot
     // be stale by construction; the captured value can.
-    saveTurns(threadId, engine.state.turns);
+    //
+    // Empty is written too, as a removal. A refused first message is dropped
+    // from the engine, leaving `[]`; skipping that write kept the refused turn
+    // and its empty reply in the cache, and a reload put both back on screen.
+    const current = engine.state.turns;
+    if (current.length) saveTurns(threadId, current);
+    else clearTurns(threadId);
   }, [threadId, turns, engine]);
 
   // Canary state for the selected manifest on *this* thread. Two questions, two
@@ -1591,7 +1598,7 @@ export function AppShell() {
     setSkills(null);
     engine.reset();
     void deleteThreadHistory(threadId);
-    saveTurns(threadId, []);
+    clearTurns(threadId);
   }, [engine, threadId, stopRun]);
 
   const continueRun = useCallback(() => {
