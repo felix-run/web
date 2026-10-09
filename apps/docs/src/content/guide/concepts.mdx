@@ -20,12 +20,12 @@ it.*
 <figure class="product-shot">
   <Image
     src={approvalCard}
-    alt="An approval card in chat-ui. Above it, two tool rows — write_file and the approval for write_file, both writing notes.txt (26 chars) — are marked running. The card names the tool write_file and the rule workspace-write, reads 'Confirm writes to the workspace', shows the file before (it does not exist yet, so empty) and after ('Deploy checklist reviewed.'), carries a deadline chip 'Auto-denies in 9:47', says 'Approving also allows every identical write_file call until the deadline, not just this one', and offers Approve write_file and Deny."
+    alt="An approval card in chat-ui. Above it, two tool rows — write_file and the approval for write_file, both writing notes.txt (26 chars) — are marked running. The card names the tool write_file and the rule workspace-write, reads 'Confirm writes to the workspace', shows the file before (it does not exist yet, so empty) and after ('Deploy checklist reviewed.'), carries a deadline chip 'Auto-denies in 9:05', says 'Approving also allows every identical write_file call until the deadline, not just this one', and offers Approve write_file and Deny."
   />
   <figcaption>
     A run paused on a gated <code>write_file</code>, as chat-ui draws it: the file as it is and as
     it would be, the deadline after which the harness denies it, and what approving grants. Cropped
-    from a capture against a local harness (v0.5.0); the call was denied.{' '}
+    from a capture against a local harness (v0.11.2); the call was denied.{' '}
     <a href={approvalBanner.src}>Full window</a>.
   </figcaption>
 </figure>
