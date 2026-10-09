@@ -541,36 +541,40 @@ border.
 
 ### The mark
 
-A **paw print at a run**: four toe pads over a main pad, leaning 30° into its stride on a rounded
-tile, with two speed streaks trailing it. Felix runs things, so the mark is one mid-flight. The
-**main pad** is where the mark carries state, so the mark is the State-Only Rule applied to
-identity rather than an exception to it: there is still no brand colour, and the only hue the mark
-ever shows is a run state's. The toes and streaks are always the glyph's ink.
+**A cat's head whose face is a prompt.** The tile itself is the head, ears and all, and on it sit
+a `>` and the cursor after it: Felix is a cat and a harness you drive from a prompt, and the mark
+is both. The **cursor** is where the mark carries state, so the mark is the State-Only Rule
+applied to identity rather than an exception to it: there is still no brand colour, and the only
+hue the mark ever shows is a run state's. The head and the `>` are always neutral ink.
 
-- **One geometry.** `packages/design/src/mark.ts` holds it on a 32-unit grid: the upright,
-  mirrored print (`MARK_TOES`, `MARK_PAD_PATH`), the lean that places it (`MARK_STRIDE`, a
-  `transform`, so the print stays readable as drawn), and the streaks (`MARK_STREAKS`), whose
-  2-unit heads sit on whole pixels at 16px so they stay two crisp dashes where their tapered tails
-  dissolve. At 16px the toes soften into one arc over the pad; that is accepted, because there
-  the pad's hue and the streaks are what has to read. `pnpm sync:brand` renders every static file
-  from it (favicons, touch and PWA icons, the docs' header logos and social card); nothing is
-  drawn by hand.
-- **In the tab, it carries state.** `presence.ts` repaints the SVG favicon's pad: `state-running`
+- **One geometry.** `packages/design/src/mark.ts` holds it on a 32-unit grid: the head
+  (`MARK_HEAD_PATH`, the old rounded square's bottom corners with its top raised into two wide
+  ears), the `>` (`MARK_CHEVRON`, a round-capped 3-unit stroke) and the cursor (`MARK_CURSOR`).
+  The silhouette carries the mark at 16px — ears are the one shape no other tab has, and they
+  survive a downsample that turns interior detail to mush — so the interior is two marks, each
+  at least two pixels across. The cursor's edges are all on even units, so at 16px it is a crisp
+  4×2-pixel block: it is the shape whose colour has to read in a tab. `pnpm sync:brand` renders
+  every static file from it (favicons, touch and PWA icons, the docs' header logos and social
+  card); nothing is drawn by hand.
+- **Full-bleed icons are light.** iOS and a maskable launcher icon draw no transparency, and a
+  dark field would swallow the ears, so there the field is the light ink and the dark head stands
+  on it, inset so the ear tips clear the corners iOS rounds and the 80% circle a launcher crops to.
+- **In the tab, it carries state.** `presence.ts` repaints the SVG favicon's cursor: `state-running`
   while working, `state-blocked` while waiting on a person, and back to the static
-  `/favicon.svg` at rest. The tab tile is always the dark ink in either scheme, because the tab
+  `/favicon.svg` at rest. The tab mark's head is always the dark ink in either scheme, because the tab
   strip is browser chrome rather than our page, and the dark-theme ramp is the one tuned to read
   on near-black. Safari draws neither an SVG nor a swapped favicon; there the title carries the
   state alone.
 - **In the page, it never does.** The header lockup and the auth panel draw the mark at rest: the
-  tile is `currentColor` and the glyph is `--background`, which is `primary`'s inversion with no
-  theme branch. The header's first slot is the run state; a coloured pad on the mark
+  head is `currentColor` and the prompt is `--background`, which is `primary`'s inversion with no
+  theme branch. The header's first slot is the run state; a coloured cursor on the mark
   would say the same thing twice.
 - **It is decorative beside the wordmark.** `aria-hidden` in chat-ui and an empty `alt` in the
   docs, because the wordmark is the accessible name and a second "Felix" would be read out. In
   chat-ui it sits inside the sidebar toggle, which carries its own name.
 - **Lockup:** mark, then the uppercase wordmark, `gap-2`. In chat-ui the lockup heads the sidebar (see
-  Layout), and the mark never yields: it is the toggle. The tile is sized so the glyph inside
-  it stands about as tall as the wordmark's caps: 20px beside chat-ui's 16px wordmark, 16px beside
+  Layout), and the mark never yields: it is the toggle. The mark is sized so the head below the
+  ears stands about as tall as the wordmark's caps, with the ears rising above them: 20px beside chat-ui's 16px wordmark, 16px beside
   the auth panel's 13px one, 1.5rem beside the docs' 1.25rem one.
 
 ### Buttons
