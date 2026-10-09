@@ -72,54 +72,12 @@
 }
 
 /*
- * The dot grid. It began as chat-ui's transcript texture, which chat-ui has
- * since dropped (2026-10-03); the docs keep it as their own. A foreground dot
- * on an 18px grid, its strength set on the layer rather than in
- * the colour, fading out as it falls down the page.
- *
- * Placed behind the reading column and
- * nowhere else. Not behind the sidebar or the table of contents, which are
- * scanned rather than read — the TOC's faint text is also the text with least
- * contrast margin, and it would sit on the dots for the whole page. And only
- * as a band at the top of the page, a viewport tall at most, because a mask
- * sized to a 400-screen reference page would never visibly fade.
- *
- * `--felix-dot-alpha` is per theme because what a dot costs the text crossing it differs by theme. At 7% light
- * body text (#404040) over a dot's centre measures 8.9:1; at 16% dark, body
- * text (#d4d4d4) measures 8.7:1 and faint text (#a3a3a3) 5.1:1.
+ * The header sits on the page colour, not Starlight's panel step. The step
+ * drew a lighter band across the top that read as a separate surface; the
+ * hairline under it is edge enough. The sidebar keeps its panel step.
  */
 :root {
-  --felix-dot-alpha: 16%;
-}
-:root[data-theme="light"] {
-  --felix-dot-alpha: 7%;
-}
-
-.main-pane {
-  position: relative;
-  isolation: isolate;
-}
-
-.main-pane::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: min(100vh, 56rem);
-  z-index: -1;
-  pointer-events: none;
-  background-image: radial-gradient(var(--sl-color-white) 1px, transparent 1.5px);
-  background-size: 18px 18px;
-  background-position: center top;
-  opacity: var(--felix-dot-alpha);
-  mask-image: linear-gradient(to bottom, black 0%, transparent 65%);
-}
-
-/* Off where it can only cost something: a reader who asked for more contrast,
-   forced colours (the gradient would be dropped anyway), and print. */
-@media (prefers-contrast: more), (forced-colors: active), print {
-  .main-pane::before {
-    display: none;
-  }
+  --sl-color-bg-nav: var(--sl-color-black);
 }
 
 /*
@@ -139,8 +97,8 @@
  * `bg-state-blocked/5`): a hairline border all the way round in the hue at
  * reduced strength, a faint tint behind, the hue on the title, and body text
  * left in the ordinary text colour. Both are mixed into the page colour rather
- * than laid on as alphas, so each is a flat colour — the dots, or anything else
- * behind, cannot tint them (the Nesting Rule in DESIGN.md).
+ * than laid on as alphas, so each is a flat colour — nothing behind can tint
+ * them (the Nesting Rule in DESIGN.md).
  *
  * Caution is for things that can hurt a deployment. A note about what an older
  * harness did is a note, or the amber stops meaning anything.

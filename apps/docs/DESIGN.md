@@ -73,7 +73,6 @@ spacing:
   measure: "40rem"
   column: "58rem"
   hero-column: "72rem"
-  dot-grid: "18px"
 components:
   button-primary:
     backgroundColor: "{colors.ink}"
@@ -133,8 +132,8 @@ other page on Starlight's previous/next pair, which follows the sidebar's order.
 
 Most of the chrome is Starlight's, recoloured from `@felix/design` rather than redrawn. What is
 Felix's own is small and deliberate: the wordmark, the reading measure, the callouts on the state
-ramp, the stream-events list, RunTrace, the Route index, and a dot grid behind the top of the
-reading column — once shared with chat-ui's transcript, now the docs' alone.
+ramp, the stream-events list, RunTrace and the Route index. The page ground is flat: the dot grid
+that once sat behind the top of the reading column was removed (2026-10-08).
 
 **Key Characteristics:**
 
@@ -163,7 +162,8 @@ from these, so `--sl-color-white` means "highest-contrast text" in both themes, 
 ### Neutral
 
 - **Page** (`#0a0a0a` / `#ffffff`): the page ground, `--sl-color-black`.
-- **Panel** (`#171717` / `#fafafa`): the sidebar and header, one tonal step off the page.
+- **Panel** (`#171717` / `#fafafa`): the sidebar, one tonal step off the page. The header is on
+  the page colour (`--sl-color-bg-nav`), separated by its hairline alone.
 - **Hairline** (`#262626` / `#e5e5e5`): every rule, table border and row separator — and the
   sidebar's current-page fill.
 - **Ink** (`#ffffff` / `#0a0a0a`): headings, links, the current page, button fills,
@@ -191,7 +191,7 @@ draw in "running", the live colour, on text that was neither.
 
 **The Flat-Mix Rule.** A tint is mixed into the page colour (`color-mix(in srgb, hue 6%,
 --sl-color-black)`), never laid on as an alpha, so a callout is one flat colour whatever sits
-behind it — the dot grid included.
+behind it.
 
 The explorer's method colours are a mapping by hue family, not meaning: a `POST` is not "done".
 It exists because Scalar's light defaults put `GET` at 3.78:1; on the ramp it measures 7.20:1.
@@ -242,12 +242,6 @@ Breakpoints are Starlight's (50rem, where the header's links appear; 72rem, wher
 table of contents sit beside the content) plus three of the docs' own, each chosen by content: the
 home hero goes two-column at **64rem**; RunTrace stacks below a **32rem container** (a container query, so
 it behaves the same in the hero and full width); the Route index stacks at **50rem**.
-
-A **dot grid** — a text-colour dot on an 18px grid at 16% (dark) / 7% (light) layer opacity —
-sits behind the top of the reading column only, as a band at most one viewport tall that fades by
-65%. It began as chat-ui's transcript texture, which chat-ui has since dropped, and it is off under
-`prefers-contrast: more`, forced colours and print. In light mode it is nearly invisible: that is
-the price of the contrast rule it carries, not an oversight.
 
 ### Named Rules
 
