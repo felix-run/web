@@ -85,6 +85,11 @@ export interface RawSessionRow {
   manifest?: string | null;
 }
 
+/** Rows a `GET /chat/sessions` page asks for: the most the route takes. */
+const SESSION_PAGE = 500;
+/** Pages `listSessions` reads before it stops: 25,000 threads. */
+const MAX_SESSION_PAGES = 50;
+
 export type { FelixClientOptions };
 
 /** `POST /chat/sessions/lease`'s answer, or `{ ok: false, error }` for its 409. */
@@ -693,19 +698,35 @@ export function createFelixClient(opts: FelixClientOptions) {
      * `preview` and `manifest` arrived with `felix-run/felix#521`; an older
      * harness sends neither, and they read as `null`.
      *
+     * The harness pages this newest first, 100 a page unless asked otherwise,
+     * and says where to resume in `next_cursor`. Every caller here wants the whole
+     * index, so this follows the cursor to the end at the largest page the route
+     * takes; read once, a tenant with more threads than a page silently lost its
+     * oldest. An older harness sends no `next_cursor` and everything at once, and
+     * reads the same. `MAX_SESSION_PAGES` stops a cursor that never runs out.
+     *
      * Ids arrive tenant-prefixed and are stripped here, so callers only ever see
      * the suffix they are allowed to send back.
      */
     async listSessions(): Promise<SessionSummary[]> {
-      const res = await chatFetch('/chat/sessions');
-      if (!res.ok) throw new Error(`chat/sessions: ${res.status}`);
-      // The route returns the same array under both keys. Read either — a harness
-      // that later drops one of them should not empty the sidebar.
-      const body = (await res.json()) as {
-        sessions?: RawSessionRow[];
-        items?: RawSessionRow[];
-      };
-      const rows = body.sessions ?? body.items ?? [];
+      const rows: RawSessionRow[] = [];
+      let cursor: string | null = null;
+      for (let page = 0; page < MAX_SESSION_PAGES; page++) {
+        const query = new URLSearchParams({ limit: String(SESSION_PAGE) });
+        if (cursor) query.set('cursor', cursor);
+        const res = await chatFetch(`/chat/sessions?${query}`);
+        if (!res.ok) throw new Error(`chat/sessions: ${res.status}`);
+        // The route returns the same array under both keys. Read either — a harness
+        // that later drops one of them should not empty the sidebar.
+        const body = (await res.json()) as {
+          sessions?: RawSessionRow[];
+          items?: RawSessionRow[];
+          next_cursor?: string | null;
+        };
+        rows.push(...(body.sessions ?? body.items ?? []));
+        if (!body.next_cursor || body.next_cursor === cursor) break;
+        cursor = body.next_cursor;
+      }
       return rows.map((row) => ({
         id: threadSuffix(String(row.id ?? '')),
         name: row.sessionName ?? null,

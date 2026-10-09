@@ -749,7 +749,7 @@ Thinking levels map to token budgets: `off` (none), `minimal` 128, `low` 512, `m
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/chat/sessions` | List sessions — `{sessions:[…], items:[…]}`; each row has `id`, `createdAt`, `updatedAt`, `parentSessionId`, `sessionName`, `preview` (first user message, masked, ≤120 chars) and `manifest` (the newest turn's), the last two `null` when unknown (`felix sessions backfill-previews` fills `preview` for threads created before v0.11.2) |
+| `GET` | `/chat/sessions?limit=&cursor=` | List sessions, newest first, one page at a time — `{sessions:[…], items:[…], next_cursor}`. `limit` is 1–500 (default 100); pass `next_cursor` back as `cursor` for the next page, and it is `null` on the last. Each row has `id`, `createdAt`, `updatedAt`, `parentSessionId`, `sessionName`, `preview` (first user message, masked, ≤120 chars) and `manifest` (the newest turn's), the last two `null` when unknown (`felix sessions backfill-previews` fills `preview` for threads created before v0.11.2) |
 | `GET` | `/chat/sessions/search?q=&limit=` | Postgres full-text search — `{query, hits}` |
 | `GET` | `/chat/sessions/{thread_id}` | **Authoritative snapshot** |
 | `GET` | `/chat/sessions/{thread_id}/export` | Active branch as JSONL (`application/x-ndjson`, attachment) |
