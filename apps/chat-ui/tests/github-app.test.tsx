@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountChip } from '../src/components/account-chip';
@@ -28,6 +28,15 @@ const TOKEN = {
   scopes: ['chat'],
   github_login: 'octo',
 };
+const CONNECTION = {
+  github_user_id: 42,
+  github_login: 'octo',
+  status: 'active',
+  created_at: 1,
+  updated_at: 1,
+  refresh_expires_at: 0,
+};
+
 const REPOS = {
   installations: [
     { id: 7, account: 'acme', account_type: 'Organization', repository_selection: 'selected' },
@@ -396,9 +405,70 @@ describe('your GitHub connection', () => {
         <GitHubPage docs="https://docs.example/auth" />
       </MemoryRouter>,
     );
-    await screen.findByText(/Installed on acme, reaching 2 repositories for you/);
-    expect(screen.getByText('read & write')).toBeTruthy();
+    await screen.findByText(/The App is installed on acme\./);
+    expect(screen.getByText('2 repositories')).toBeTruthy();
+    expect(screen.getByText('private · read & write')).toBeTruthy();
     expect(screen.getByText('connected as octo')).toBeTruthy();
+  });
+
+  it('asks before revoking, then forgets the repositories', async () => {
+    signedInAsOcto();
+    routes['/api/github/connection'] = (init) =>
+      init?.method === 'DELETE'
+        ? new Response(null, { status: 204 })
+        : json({ connected: true, connection: CONNECTION });
+    routes['/api/github/repos'] = () => json(REPOS);
+    render(
+      <MemoryRouter>
+        <GitHubPage docs="https://docs.example/auth" />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke GitHub access' }));
+    expect(calls.some((c) => c.init?.method === 'DELETE')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke access' }));
+    await screen.findByText(/Felix holds no GitHub connection for you/);
+    expect(calls.some((c) => c.init?.method === 'DELETE')).toBe(true);
+    expect(screen.queryByText('acme/docs')).toBeNull();
+  });
+
+  it('searches the harness once a listing is truncated, since the rows it sent are not all', async () => {
+    signedInAsOcto();
+    routes['/api/github/connection'] = () => json({ connected: true, connection: CONNECTION });
+    let listed = 0;
+    const gadgets = { ...REPOS.repositories[1], full_name: 'acme/gadgets' };
+    routes['/api/github/repos'] = () =>
+      json(listed++ === 0 ? { ...REPOS, truncated: true } : { ...REPOS, repositories: [gadgets] });
+    render(
+      <MemoryRouter>
+        <GitHubPage docs="https://docs.example/auth" />
+      </MemoryRouter>,
+    );
+    fireEvent.change(
+      await screen.findByRole('searchbox', { name: 'Search repositories by name' }),
+      {
+        target: { value: 'gadgets' },
+      },
+    );
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('?q=gadgets'))).toBe(true));
+    // Not among the rows first sent, so only the harness's answer can put it here.
+    await screen.findByText('acme/gadgets');
+  });
+
+  it('says what failed and offers to try again', async () => {
+    signedInAsOcto();
+    let fail = true;
+    routes['/api/github/connection'] = () =>
+      fail ? json({ error: 'boom' }, 500) : json({ connected: false, connection: null });
+    render(
+      <MemoryRouter>
+        <GitHubPage docs="https://docs.example/auth" />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('alert');
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText(/Felix holds no GitHub connection for you/);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('under the shared key, says a GitHub sign-in is needed rather than asking', () => {
