@@ -78,10 +78,12 @@ manifest field attaches a hook.
 Return `None` to leave things as they are. Several hooks of one kind run in registration order,
 each seeing what the one before it returned.
 
-An `after_tool` hook that redacts output covers failures too: the exception's message is where a
-secret or an internal path is most likely to appear. Its `content` replaces the error text, and
-if the replacement does not start with an error spelling such as `[error/...]`, the original one
-is put back in front, so the call still counts as a failure for the model and for eval.
+An `after_tool` hook that redacts output covers failures too, whether the tool raised or
+returned an error: an error message is where a secret or an internal path is most likely to
+appear. On a failed call `result` is the text the model would see, and `content` replaces it.
+When the original text was a failure or a refusal (`[error/...]`, `[tool error/...]`,
+`[policy ...]`, …) and the replacement does not start with one, the original tag is put back in
+front, so the call still counts as a failure for the model and for eval.
 
 Write hooks with the positional parameters above, not `**kwargs`: a hook is called as
 `hook(value, ctx)`, so a keyword-only one raises on every call. The hook types in `felix.hooks`
