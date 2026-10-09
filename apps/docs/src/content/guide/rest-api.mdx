@@ -719,8 +719,12 @@ curl -s -X POST "$BASE_URL/chat/steer" \
 ```
 
 `kind: "steer"` interrupts the remaining tool batch mid-run; `kind: "follow_up"` is delivered once
-the run goes idle. Drain behaviour is `session.steering_mode` / `follow_up_mode` (`all` or
-`one-at-a-time`). The queues are Redis lists, so this works across replicas.
+the run goes idle — it has answered, or a terminal tool ended it — and the run takes another turn to
+answer it, tools and all, in the same stream. Drain behaviour is `session.steering_mode` /
+`follow_up_mode` (`all` or `one-at-a-time`): under `all` every follow-up waiting is answered in one
+turn, under `one-at-a-time` each in its own. A run that ends any other way (a budget, a truncated
+reply, the step limit, an abort) leaves its follow-ups for the thread's next run. The queues are
+Redis lists, so this works across replicas.
 
 A steer sent while no run is going is **held for the next run** on that thread and delivered at
 its start, right after that run's own user turn — so "prefer metric units" shapes the next answer
