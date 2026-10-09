@@ -1077,7 +1077,10 @@ browser cannot do rather than about the chat:
   nothing on screen to say a seventh existed. Names truncate to `TAB_WIDTH - 2`, so 7 characters is
   the ceiling, which is why approvals is `Waiting` and the audit feed is `Audit` rather than
   chat-ui's `Activity`. A ninth section does not fit by shrinking this again: it needs a second row,
-  or a section that has stopped earning its place.
+  or a section that has stopped earning its place. `Usage` is spend **by thread** over the last
+  day (`threadSpendRows`, from `listUsageByThread`), the current thread marked `›`, falling back
+  to the raw meter on a 404 — the same question the browser's Activity ledger answers, and "in"
+  counts the whole prompt there too.
 - **A tool card draws its result, and a spilled one carries a handle.** Until it did, `ToolCard`
   rendered the *call* and never the output, so a `[artifact:…]` marker was not a raw marker on
   screen — it was nothing on screen, and every tool ran and returned into silence. The card now

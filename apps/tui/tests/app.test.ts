@@ -501,6 +501,98 @@ describe('the inspector', () => {
     h.restore();
   });
 
+  /**
+   * The Usage tab answers "what did that run cost" from `GET /usage/threads`,
+   * and on a harness without the route reads the raw meter instead of showing
+   * every thread as free.
+   */
+  async function openUsage(ui: Awaited<ReturnType<typeof app>>['ui']) {
+    await ui.keys.pressTab({ shift: true });
+    await ui.until(() => shows(ui.frame(), 'Audit'));
+    // One section per key, and each move has to land before the next: pressed
+    // together, four arrived as one.
+    for (const next of [
+      'waiting on a person',
+      'plans the agent',
+      'per-tool calls',
+      'spend by thread',
+    ]) {
+      await ui.keys.typeText('l');
+      await ui.until(() => shows(ui.frame(), next));
+    }
+  }
+
+  it('shows spend by thread on the Usage tab', async () => {
+    const { ui, h } = await app({
+      '/usage/threads': {
+        since_ms: 0,
+        until_ms: Date.now(),
+        items: [
+          {
+            thread_id: 'default:abc-123',
+            calls: 4,
+            tokens_input: 10,
+            tokens_output: 50,
+            cache_creation: 0,
+            cache_read: 900,
+            cost_usd: 0.42,
+            first_ts: Date.now() - 60_000,
+            last_ts: Date.now(),
+          },
+          {
+            thread_id: '',
+            calls: 2,
+            tokens_input: 5,
+            tokens_output: 5,
+            cache_creation: 0,
+            cache_read: 0,
+            cost_usd: 0.01,
+            first_ts: Date.now() - 60_000,
+            last_ts: Date.now() - 30_000,
+          },
+        ],
+        totals: {},
+        truncated: false,
+      },
+    });
+    await openUsage(ui);
+    await ui.until(() => shows(ui.frame(), 'abc-123'));
+    expect(shows(ui.frame(), 'outside a thread')).toBe(true);
+    expect(shows(ui.frame(), '$0.4200')).toBe(true);
+    // The window rides on the request, so "last 24 hours" is what was asked.
+    const asked = new URL(h.to('/usage/threads')[0]?.url ?? '');
+    expect(Number(asked.searchParams.get('since_ms'))).toBeGreaterThan(Date.now() - 86_500_000);
+    ui.stop();
+    h.restore();
+  });
+
+  it('falls back to the raw meter on a harness without spend by thread', async () => {
+    const { ui, h } = await app({
+      '/usage/threads': () => new Response('{"detail":"Not Found"}', { status: 404 }),
+      '/usage': {
+        items: [
+          {
+            id: 'u1',
+            ts: Date.now(),
+            model_id: 'claude-raw',
+            tokens_input: 5,
+            tokens_output: 82,
+            cache_creation: 3228,
+            cache_read: 0,
+            cost_usd: 0.0131,
+          },
+        ],
+        next_cursor: null,
+      },
+    });
+    await openUsage(ui);
+    await ui.until(() => shows(ui.frame(), 'claude-raw'));
+    // The whole prompt, not the 5 uncached tokens.
+    expect(shows(ui.frame(), '3.2k')).toBe(true);
+    ui.stop();
+    h.restore();
+  });
+
   it('will not open while a run is waiting on a person', async () => {
     // The rule the whole precedence chain exists for, end to end this time.
     const { ui, h } = await app({

@@ -12,7 +12,13 @@
  * exists to serve, and it must not become conditional on an overlay being open.
  */
 
-import type { DocumentHit, DocumentRecord, FelixClient, PendingApproval } from '@felix/client';
+import type {
+  DocumentHit,
+  DocumentRecord,
+  FelixClient,
+  PendingApproval,
+  ThreadMeta,
+} from '@felix/client';
 import { useMemo } from 'react';
 import type { Config } from './config.js';
 import { explainError } from './errors.js';
@@ -29,7 +35,9 @@ import {
   type PanelState,
   planRows,
   skillRows,
+  threadSpendRows,
   toolRows,
+  USAGE_WINDOW_MS,
   usageRows,
 } from './ui/inspector.js';
 
@@ -43,7 +51,7 @@ function describeSection(section: SectionKey): string {
     case 'tools':
       return 'read the tool metrics';
     case 'usage':
-      return 'read the token usage';
+      return 'read the spend by thread';
     case 'memory':
       return 'read what the agent remembers';
     case 'documents':
@@ -65,10 +73,25 @@ export function usePanel(opts: {
   tick: number;
   approvals: PendingApproval[];
   skills: { declared: string[]; active: string[] } | null;
+  /** For naming a thread by its title, and marking the one on screen. */
+  threads: ThreadMeta[];
+  threadId: string;
   theme: Theme;
   config: Config;
 }): PanelState {
-  const { client, section, open, query, tick, approvals, skills, theme, config } = opts;
+  const {
+    client,
+    section,
+    open,
+    query,
+    tick,
+    approvals,
+    skills,
+    threads,
+    threadId,
+    theme,
+    config,
+  } = opts;
 
   // Only the visible section is enabled, so only one request is in flight.
   const on = (key: SectionKey) => open && section === key;
@@ -85,10 +108,22 @@ export function usePanel(opts: {
     enabled: on('tools'),
     intervalMs: POLL_MS,
   });
-  const usage = usePoll(() => client.listUsage({ limit: LIMIT }), {
-    enabled: on('usage'),
-    intervalMs: POLL_MS,
-  });
+  // Spend by thread over the last day — "what did that run cost", the question
+  // the raw meter could not answer because no row named its thread. A harness
+  // older than the column answers 404, and the tab falls back to the raw rows
+  // rather than showing every thread as free.
+  const usage = usePoll(
+    async () => {
+      const byThread = await client.listUsageByThread({
+        since_ms: Date.now() - USAGE_WINDOW_MS,
+        limit: LIMIT,
+      });
+      if (byThread) return { kind: 'threads' as const, items: byThread.items };
+      const page = await client.listUsage({ limit: LIMIT });
+      return { kind: 'rows' as const, items: page.items };
+    },
+    { enabled: on('usage'), intervalMs: POLL_MS },
+  );
   const memory = usePoll(
     () =>
       query.trim()
@@ -135,7 +170,10 @@ export function usePanel(opts: {
         return { ...of(tools), head, rows, empty };
       }
       case 'usage': {
-        const { head, rows } = usageRows(usage.data?.items ?? []);
+        const { head, rows } =
+          usage.data?.kind === 'threads'
+            ? threadSpendRows(usage.data.items, { threads, current: threadId, theme })
+            : usageRows(usage.data?.items ?? []);
         return { ...of(usage), head, rows, empty };
       }
       case 'memory': {
@@ -163,6 +201,8 @@ export function usePanel(opts: {
     documents,
     approvals,
     skills,
+    threads,
+    threadId,
     theme,
     config,
     tick,

@@ -148,6 +148,23 @@ describe('the usage rows', () => {
     expect(rows[1]?.[4]?.text.trim()).toBe('$0.00310');
   });
 
+  it('counts the whole prompt as in, not only its uncached part', async () => {
+    // `tokens_input` is the uncached part. Drawn alone, a call with 3,228 cache
+    // writes read `5` and looked cheaper than one costing a fifth as much.
+    const { usageRows } = await import('../src/ui/inspector');
+    const { rows } = usageRows([
+      {
+        ts: Date.now(),
+        model_id: 'claude',
+        tokens_input: 5,
+        tokens_output: 82,
+        cache_creation: 3_228,
+        cache_read: 0,
+      },
+    ]);
+    expect(rows[0]?.[2]?.text.trim()).toBe('3.2k');
+  });
+
   it('does not round a real cost away', async () => {
     // Two decimals draws `$0.00` for every ordinary turn and a total that never
     // moves, which is the failure this resolution exists to avoid.
@@ -155,6 +172,44 @@ describe('the usage rows', () => {
     expect(usd(0.000_04)).toBe('$0.00004');
     expect(usd(0.42)).toBe('$0.4200');
     expect(usd(12.5)).toBe('$12.50');
+  });
+});
+
+/**
+ * "What did that run cost" — the raw meter could not say, because no usage row
+ * named its thread. The harness groups spend by thread now; the tab draws it.
+ */
+describe('spend by thread', () => {
+  const item = (thread_id: string, over: Record<string, number> = {}) => ({
+    thread_id,
+    calls: 3,
+    tokens_input: 10,
+    tokens_output: 100,
+    cache_read: 900,
+    cache_creation: 0,
+    cost_usd: 0.42,
+    last_ts: Date.now(),
+    ...over,
+  });
+
+  it('names a thread by its title, marks the one on screen, and says what has none', async () => {
+    const { threadSpendRows } = await import('../src/ui/inspector');
+    const { resolveTheme } = await import('../src/theme');
+    const theme = resolveTheme({ themeMode: null, trueColor: false });
+    const { head, rows } = threadSpendRows(
+      [item('default:abc'), item('default:other', { cost_usd: 0 }), item('')],
+      { threads: [{ id: 'abc', title: 'Fix the changelog' }], current: 'abc', theme },
+    );
+    expect(head).toEqual(['last', 'thread', 'calls', 'in', 'out', 'cost']);
+    expect(rows[0]?.[1]?.text).toBe('› Fix the changelog');
+    expect(rows[0]?.[1]?.color).toBe(theme.ready);
+    // The suffix, never `{tenant}:{suffix}`, for a thread this client never wrote.
+    expect(rows[1]?.[1]?.text).toBe('other');
+    // Unpriced stays blank here too.
+    expect(rows[1]?.[5]?.text.trim()).toBe('');
+    expect(rows[2]?.[1]?.text).toBe('outside a thread');
+    // In is the whole prompt: 10 uncached + 900 from cache.
+    expect(rows[0]?.[3]?.text.trim()).toBe('910');
   });
 });
 
