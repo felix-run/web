@@ -853,13 +853,22 @@ Flows worth knowing before editing the app:
   deliberately not a parameter — the harness takes it from the caller's credentials.
 - **Memory** — `/memory` is what the agent has stored across sessions, surfaced at
   `/harness/memory` so a stale or hostile fact can be found and removed without a database
-  console. Listing, the agent's own hybrid ranking (`/memory/search`, whose hits report *which
-  retriever* found them), and a
-  read-only `as-of/{turn_seq}` view including superseded facts, and an **Add** tab that writes one
-  (`POST /memory`) — an injection ingress by design, which is why the form says so. `DELETE` is
-  **soft** — the row becomes `forgotten` and drops out of recall rather than being erased, which is
-  why the UI says "forget". Reads need the `memory:read` scope, so a 403 here means a narrow key,
-  not an empty store.
+  console. Four views — Recent, Search (the agent's own hybrid ranking, whose hits report *which
+  retriever* found them), As of, Forgotten — and an **Add** form that writes one (`POST /memory`),
+  an injection ingress by design, which is why the form says so. **Every row leads with where it
+  came from**: the conversation (a link), the turn (a link into As of), the agent, when it was
+  written and whether it has been recalled since — the hunt ends at "which conversation taught it
+  this", and `kind · imp · seq` could not answer it. Three rules that are easy to break.
+  **As of is per conversation**: `origin_seq` is an ordinal into one thread's log, so the view asks
+  for the thread before the turn and sends `thread_id` (`felix-run/felix#548`); without it
+  `as-of/4` collected every conversation's fourth turn. The client re-filters by thread, because an
+  older harness ignores the parameter. **Add names the agent** ("Recalled by"): an agent recalls
+  only rows stored under its own manifest id, and the form used to send `''`, so every memory added
+  here was recalled by nobody. **`DELETE` is soft** — the row becomes `forgotten`, which is why the
+  UI says "forget" — and the page offers Undo and a Forgotten view with Restore
+  (`POST /memory/{id}/restore`, gated on whoever forgot it). A failed forget is said on its row:
+  `ConfirmButton` has no `catch`, so a rejecting `onConfirm` used to leave it armed with nothing on
+  screen. Reads need the `memory:read` scope, so a 403 here means a narrow key, not an empty store.
 - **Usage** — `/usage` is the token meter, and two of its fields are easy to misread. `model_id` is
   the logical route the operator configured; `wire_model_id` is the provider's own id and is what the
   row was **priced** by, so the two disagreeing on a custom route is the thing worth seeing. And

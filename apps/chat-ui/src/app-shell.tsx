@@ -2551,14 +2551,18 @@ export function AppShell() {
                     focusable, goes `sr-only` and is still read. Both come back when
                     the run settles. Nothing else in the cluster shrinks, so this row
                     is `min-w-0` for the widths between, where it is the one to give. */}
-                {(verbose || canary) && (
+                {/* Verbose changes how the transcript draws tool calls, and
+                    `/harness` has no transcript: there it was a filled pill on every
+                    page reporting a mode nothing on screen obeyed. Its menu item is
+                    absent there too, so the way out was never on the same page. */}
+                {((verbose && !onHarness) || canary) && (
                   <div
                     data-slot="header-modes"
                     // `contents` while the modes have stepped off a narrow screen, so
                     // the row leaves no empty box and no gap behind them.
                     className={cn('flex min-w-0 items-center gap-2', runShown && 'max-sm:contents')}
                   >
-                    {verbose && (
+                    {verbose && !onHarness && (
                       <Badge
                         variant="secondary"
                         className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}

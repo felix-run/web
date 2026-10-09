@@ -251,7 +251,7 @@ export function PageHeader({
                 target="_blank"
                 rel="noreferrer"
                 aria-label={`${title} in the docs (opens in a new tab)`}
-                className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                className="inline-flex min-h-6 items-center gap-1 rounded-sm px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
               >
                 Docs
                 <ExternalLinkIcon aria-hidden className="size-3" />

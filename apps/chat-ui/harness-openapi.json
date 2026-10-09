@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.12.0"
+    "version": "0.12.1"
   },
   "paths": {
     "/health": {
@@ -242,6 +242,9 @@
     },
     "/memory/{memory_id}": {
       "delete": {}
+    },
+    "/memory/{memory_id}/restore": {
+      "post": {}
     },
     "/documents/": {
       "get": {},

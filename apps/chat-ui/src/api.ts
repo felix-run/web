@@ -123,6 +123,7 @@ export const listMemories = felix.listMemories.bind(felix);
 export const searchMemories = felix.searchMemories.bind(felix);
 export const memoriesAsOf = felix.memoriesAsOf.bind(felix);
 export const forgetMemory = felix.forgetMemory.bind(felix);
+export const restoreMemory = felix.restoreMemory.bind(felix);
 export const addMemory = felix.addMemory.bind(felix);
 export const listDocuments = felix.listDocuments.bind(felix);
 export const searchDocuments = felix.searchDocuments.bind(felix);
