@@ -16,48 +16,22 @@
 }
 
 /*
- * One column, two measures. Starlight's default `--sl-content-width` is 45rem,
+ * One column, one edge. Starlight's default `--sl-content-width` is 45rem,
  * tuned for prose; these pages also carry wide tables, JSON manifests and REST
- * examples, which wrapped hard inside it. So the column is 58rem — but prose
- * was then running 111-116 characters a line, well past what reads. Prose is
- * held to 40rem (about 75-80 characters of body text) and the things that need
- * width — tables, code, figures — take the whole column.
+ * examples. An earlier layout ran the column at 58rem and held prose to 40rem
+ * inside it, which left every page with a ragged right edge: paragraphs,
+ * lists and callouts stopping ~200px short of the code and tables around them.
+ * Now everything shares one 48rem column, and a table or code line wider than
+ * that scrolls inside its own box. The cost is a longer line: ~100 characters
+ * of body text, measured on Concepts, against ~84 at the old 40rem.
  *
  * `TwoColumnContent` sizes the main pane as a `min()` against the space left
  * by the two sidebars, so the column still stops rather than pushing the
  * on-this-page rail off screen. Below 72rem the layout is single-column and the
- * column is the viewport; the prose cap only ever binds on a wide screen.
+ * column is the viewport.
  */
 :root {
-  --sl-content-width: 58rem;
-  --felix-measure: 40rem;
-}
-
-.sl-markdown-content
-  > :where(
-    p,
-    ul,
-    ol:not(.sl-steps),
-    blockquote,
-    dl:not(.event-list),
-    h2,
-    h3,
-    h4,
-    h5,
-    h6,
-    .starlight-aside,
-    details
-  ) {
-  max-inline-size: var(--felix-measure);
-}
-
-/*
- * Steps are a list of prose with code between the paragraphs. The list itself
- * takes the column so its code blocks do; the prose inside each step gets the
- * same measure as any other paragraph.
- */
-.sl-markdown-content .sl-steps > li > :where(p, ul, ol, .starlight-aside) {
-  max-inline-size: var(--felix-measure);
+  --sl-content-width: 48rem;
 }
 
 /*
@@ -174,10 +148,16 @@
 /*
  * The splash home has no sidebar and no table of contents, so its column can
  * be wider than a docs page's: the hero sets copy beside the run figure, and
- * both need room. Prose on it is still held to the measure above.
+ * both need room. Its prose is held to the line a docs page gives it (48rem),
+ * or it ran ~140 characters at 72rem.
  */
 :root[data-has-hero] {
   --sl-content-width: 72rem;
+}
+:root[data-has-hero]
+  .sl-markdown-content
+  > :where(p, ul, ol, blockquote, h2, h3, .starlight-aside) {
+  max-inline-size: 48rem;
 }
 /* Starlight leaves the splash container flush left once it is narrower than
    the viewport; centre it. */
@@ -258,7 +238,6 @@
 .sl-markdown-content .event-list dd {
   margin: 0.25rem 0 0;
   padding: 0;
-  max-inline-size: var(--felix-measure);
 }
 .sl-markdown-content .event-list .event-data {
   max-inline-size: none;
@@ -290,7 +269,7 @@
 }
 .sl-markdown-content .product-shot figcaption {
   margin-top: 0.75rem;
-  /* 13px text in the 40rem prose measure ran ~98 characters a line; 30rem is ~75. */
+  /* 13px text across the column runs well past a readable line; 30rem is ~75. */
   max-inline-size: 30rem;
   font-size: var(--sl-text-xs);
   color: var(--sl-color-gray-3);

@@ -70,8 +70,7 @@ rounded:
   row: "6px"
   pill: "999px"
 spacing:
-  measure: "40rem"
-  column: "58rem"
+  column: "48rem"
   hero-column: "72rem"
 components:
   button-primary:
@@ -124,14 +123,14 @@ way it did. The palette is the Workbench's, hue still means state and nothing el
 shows the mechanism rather than a friendlier account of it: real event names, real routes, real
 error reasons.
 
-It is a reading surface, so the rules are the ones reading needs. Prose is held to a measure;
-tables, code and figures take the full column because they are data, not prose. Reference is
+It is a reading surface, so the rules are the ones reading needs. Prose, tables, code and figures
+share one column and one right edge; data wider than it scrolls in its own box. Reference is
 reached two ways — the sidebar for "what is this", the Route index for "where is this route" —
 and a page ends on a next step: the home page and Getting Started on an explicit list, every
 other page on Starlight's previous/next pair, which follows the sidebar's order.
 
 Most of the chrome is Starlight's, recoloured from `@felix/design` rather than redrawn. What is
-Felix's own is small and deliberate: the wordmark, the reading measure, the callouts on the state
+Felix's own is small and deliberate: the wordmark, the single column, the callouts on the state
 ramp, the stream-events list, RunTrace and the Route index. The page ground is flat: the dot grid
 that once sat behind the top of the reading column was removed (2026-10-08).
 
@@ -139,7 +138,7 @@ that once sat behind the top of the reading column was removed (2026-10-08).
 
 - A pure neutral field (Tailwind `neutral`) in both themes; dark is the default.
 - Hue only from the four-state ramp, only where there is something to do or know.
-- Prose at 40rem inside a 58rem column; tables, code and figures use the column.
+- One 48rem column for everything; tables and code scroll inside it when wider.
 - The mechanism drawn as data: RunTrace on the home page, events as a stacked list.
 - Flat surfaces separated by hairlines; no shadow authored anywhere in the docs' own CSS.
 
@@ -212,7 +211,7 @@ same stacks.
   home hero title only.
 - **Headline** (600, 42px wide / 35px narrow, 1.2): a page's `h1` — Starlight's scale.
 - **Title** (600, 35px / 29px, 1.2): `h2`. `h3` and `h4` step down Starlight's scale.
-- **Body** (400, 16px, 1.75): prose, held to **40rem (~76 characters)**.
+- **Body** (400, 16px, 1.75): prose, the full 48rem column (~100 characters, measured on Concepts).
 - **Label** (600, 14px): buttons, the header's Route index link (full ink, like the icon beside
   it), the sidebar's current page.
 - **Code** (13px inline, measured; code blocks at Expressive Code's own size; 13px on the events
@@ -233,11 +232,12 @@ rule and does not apply to a manual.
 ## Layout
 
 Starlight's three columns — sidebar, content, table of contents — with the content column at
-**58rem** (`--sl-content-width`; Starlight's default is 45rem) and every prose element inside it
-held to **40rem** (`--felix-measure`): paragraphs, lists, headings, blockquotes, callouts,
-`<details>`, and the prose inside `<Steps>`. Tables, code blocks, the events list and figures take
-the whole column. The home page has no sidebar or TOC and widens to **72rem**
-(`:root[data-has-hero]`), centred.
+**48rem** (`--sl-content-width`; Starlight's default is 45rem). Everything in it takes the whole
+column: prose, callouts, `<details>`, tables, code blocks, the events list and figures, so a page
+has one right edge. It replaced a 58rem column with prose held to 40rem inside it (2026-10-08),
+which left every page ragged — paragraphs stopping ~200px short of the code around them. The home
+page has no sidebar or TOC and widens to **72rem** (`:root[data-has-hero]`), centred, with its
+prose held to 48rem so it reads at the same line as a docs page.
 
 Breakpoints are Starlight's (50rem, where the header's links appear; 72rem, where the sidebar and
 table of contents sit beside the content) plus three of the docs' own, each chosen by content: the
@@ -246,8 +246,8 @@ it behaves the same in the hero and full width); the Route index stacks at **50r
 
 ### Named Rules
 
-**The Two-Measure Rule.** Prose reads at 40rem; data takes the column. Never widen prose to fit a
-table, and never let a table's widest cell decide how prose wraps.
+**The One-Edge Rule.** Prose and data share one column and one right edge. Never widen the column
+to fit a table: a table or code line wider than 48rem scrolls inside its own box.
 
 **The Whole-Token Rule.** Code is never broken mid-token. A table that cannot fit stacks on a
 phone — each row a block, each cell under its column name (`public/enhance.js` marks tables of
@@ -360,7 +360,7 @@ are tabular.
 
 ### Do:
 
-- **Do** hold prose to `--felix-measure` (40rem) and let tables, code and figures take the column.
+- **Do** keep everything on the one 48rem column; let wide tables and code scroll inside it.
 - **Do** take hue only from the state ramp, and only where there is something to do or know.
 - **Do** mix tints into the page colour (`color-mix(…, --sl-color-black)`), never alpha them.
 - **Do** separate with 1px hairlines and tonal steps.
