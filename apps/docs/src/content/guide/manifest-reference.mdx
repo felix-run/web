@@ -362,7 +362,7 @@ spec:
 In either mode, an agent's edit of a version an operator wrote is saved as a draft and never
 published automatically, and `submit_skill_feedback` only reaches library skills in this agent's own
 catalog. Drafts and feedback are decided through [`/skill-library`](/guide/management-api/#skill-library).
-The bundled `contributor` manifest enables authoring in `draft` mode; `governed` carries the
+The self-build `contributor` manifest enables authoring in `draft` mode; `governed` carries the
 `skill-author` approval rule above.
 
 ## `spec.mcp_servers`
@@ -1193,8 +1193,9 @@ offset=<end>]`, or `; end]` on the last one, so the model pages by the offset it
   reports the id as missing.
 
 Clients read artifacts through [`GET /artifacts`](/guide/management-api/#artifacts) instead, which
-needs `artifacts:read` and is not held to a conversation. The bundled manifests that read files or
-fetch pages — `contributor`, `cowork`, `triage`, `deep`, `support` — enable artifacts.
+needs `artifacts:read` and is not held to a conversation. The manifests that read files or fetch
+pages — `cowork`, `deep` and `support`, and the self-build `contributor` and `triage` — enable
+artifacts.
 
 ## `spec.reflect`
 

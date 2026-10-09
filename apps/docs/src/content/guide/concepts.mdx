@@ -63,9 +63,16 @@ The request-path resolver walks four layers and returns the first hit:
 4. **Bundled** — the YAML shipped in the image (`source: bundled`)
 
 So a tenant manifest named `quick` shadows the bundled `quick` for that tenant alone. Active pointers
-are cached for 30 seconds. Twelve manifests ship in the box: `quick`, `assistant`, `deep`, `router`,
-`oss-only`, `hybrid-router`, `support`, `decider-support`, `triage`, `cowork`, `governed` and
-`contributor`. `assistant` is `quick` with long-term memory — see [Memory](#memory).
+are cached for 30 seconds. Ten manifests ship in the box: `quick`, `assistant`, `deep`, `router`,
+`oss-only`, `hybrid-router`, `support`, `decider-support`, `cowork` and `governed`. `assistant` is
+`quick` with long-term memory — see [Memory](#memory).
+
+`contributor` and `triage`, the agents that build Felix itself, are in the image but not bundled.
+They need the builder stack's workspace and shell runner, so they live in `manifests/self/`, and
+only a deployment that sets `FELIX_MANIFESTS_DIR` to that directory serves them;
+`deploy/docker/compose.self.yml` does. Any directory of manifest YAML works the same way, searched
+after the bundled set. A directory that is missing, or that holds a name the bundled set also has,
+is refused at boot rather than letting one shadow the other.
 
 `FELIX_MANIFEST_SOURCE=bundled` collapses that to one layer: only the manifests baked into the
 image are served, no manifest store is constructed, and the write routes are not registered — so
