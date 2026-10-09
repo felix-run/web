@@ -184,6 +184,7 @@ export const CONTROL_LAYERS = [
   'approvals',
   'command',
   'screening',
+  'hook',
 ] as const;
 
 export const CONTROL_LABEL: Record<string, string> = {
@@ -193,6 +194,8 @@ export const CONTROL_LABEL: Record<string, string> = {
   approvals: 'an approval',
   command: 'a command rule',
   screening: 'screening',
+  // A plugin's `before_tool` hook; the row's `payload.hook` names which one.
+  hook: 'a plugin hook',
 };
 
 export function controlOf(e: AuditEvent): string | undefined {
