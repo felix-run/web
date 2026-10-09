@@ -1018,7 +1018,7 @@ spec:
 | `keep_recent_tokens` | int ≥ 0 | `20000` | Never compacted. |
 | `context_window_tokens` | int ≥ 1024 \| null | `null` | The window to compact against. Unset: the model's own, from the catalog through its route (1M on a 1M-context model). Set it to compact earlier on purpose — a smaller window is a cheaper turn. |
 | `steering_mode` | `all` \| `one-at-a-time` | `all` | |
-| `follow_up_mode` | `all` \| `one-at-a-time` | `all` | |
+| `follow_up_mode` | `all` \| `one-at-a-time` | `all` | How queued follow-ups are answered once the run has an answer: `all` gives every one waiting to a single further turn; `one-at-a-time` gives each its own. A follow-up's turn is an ordinary step — tools run, it streams — and counts against `recursion_limit`; a run with no step left, or that stopped on a budget, truncation or abort, keeps them for the thread's next run. |
 | `branch_summary` | bool | `true` | Summarize an abandoned branch on rewind. |
 | `compact_after_turn` | bool | `false` | |
 
