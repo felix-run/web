@@ -376,17 +376,28 @@ it without a database console.
 
 | Method | Path | Scope |
 |---|---|---|
-| `GET` | `/memory?limit=` | `memory:read` |
+| `GET` | `/memory?limit=&thread_id=&status=` | `memory:read` |
 | `GET` | `/memory/search?q=&limit=` | `memory:read` |
-| `GET` | `/memory/as-of/{turn_seq}` | `memory:read` |
+| `GET` | `/memory/as-of/{turn_seq}?thread_id=` | `memory:read` |
 | `POST` | `/memory` | `memory:write` |
 | `DELETE` | `/memory/{memory_id}` | `memory:write` |
+| `POST` | `/memory/{memory_id}/restore` | `memory:write` |
 
-`search` runs the agent's own hybrid ranking and reports which retriever found each hit, so it
-answers "why did it recall that". `as-of` is read-only and includes superseded rows: what was
-believed at a past turn, not what is believed now.
+Every row says where it came from: `thread_id` (`{tenant}:{suffix}`, or `''` for a memory written
+outside any conversation), `origin_seq` (the turn of that thread that wrote it), `manifest_id`,
+`created_at` and `last_used_at`. `search` hits carry the same fields, plus the agent's own hybrid
+ranking and which retriever found each hit, so a surprising recall answers both "why that" and
+"which conversation taught it this".
 
-`POST` takes `{content, kind, manifest_id, topic_key, importance}` — `content` up to 4000 chars,
+`as-of` is read-only and includes superseded rows: what was believed at a past turn, not what is
+believed now. A turn number is an ordinal into **one** thread's log, so pass `thread_id` (the
+suffix, as every chat route takes it) to ask about one conversation; without it, `as-of/4` collects
+whatever every conversation wrote at its own fourth turn. `GET /memory` takes the same `thread_id`,
+and an empty one means memories written outside any thread.
+
+`POST` takes `{content, kind, manifest_id, topic_key, importance}`. `manifest_id` decides who
+recalls it: an agent recalls only memories stored under its own manifest id, so a memory stored with
+an empty one is recalled by no agent. `content` is up to 4000 chars,
 `topic_key` up to 200, `importance` in 0–1. A `POST` with a `topic_key` retires every other active
 memory under that key: this route is the only writer that can. The agent's own writes — capture and
 the `remember` tool — are stored beside what already holds a key, so a topic can carry several
@@ -400,7 +411,12 @@ reading.
 :::
 
 `DELETE` is **soft**. The row becomes `forgotten` and drops out of recall rather than being erased,
-which is why the UI calls it "forget".
+which is why the UI calls it "forget". `GET /memory?status=forgotten` lists forgotten memories, most
+recently forgotten first, and `POST /memory/{memory_id}/restore` brings one back. Restore answers
+`409 not_forgotten` for a memory that is active or superseded (a superseded memory has a place in
+turn time and is not restorable), and `403 restore_refused` when the caller ranks below whoever
+forgot it, so an agent cannot undo an operator's forget. These three arrived with harness
+`felix-run/felix#548`.
 
 ## Documents
 

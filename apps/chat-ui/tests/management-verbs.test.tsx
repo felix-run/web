@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ShellValue } from '../src/shell-context';
 
 /**
  * Three verbs the harness has always served and nothing here called.
@@ -24,12 +25,15 @@ const okJson = (body: unknown) =>
   vi.fn().mockResolvedValue({ ok: true, json: async () => body, text: async () => '' });
 
 describe('addMemory', () => {
-  it('sends the shape the harness models, with its defaults filled in', async () => {
+  // `manifest_id` is the agent that will recall it: an agent recalls only rows
+  // stored under its own id, so the `''` this used to default to was a write no
+  // agent ever read back.
+  it('sends the shape the harness models, naming the agent that recalls it', async () => {
     const fetchMock = okJson({ id: 'm1', status: 'active' });
     vi.stubGlobal('fetch', fetchMock);
     const { addMemory } = await import('../src/api');
 
-    await addMemory({ content: 'staging runs on :8081' });
+    await addMemory({ content: 'staging runs on :8081', manifestId: 'cowork' });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain('/api/memory');
@@ -37,7 +41,7 @@ describe('addMemory', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       content: 'staging runs on :8081',
       kind: 'fact',
-      manifest_id: '',
+      manifest_id: 'cowork',
       topic_key: '',
       importance: 0.5,
     });
@@ -50,7 +54,7 @@ describe('addMemory', () => {
       vi.fn().mockResolvedValue({ ok: false, status: 403, text: async () => 'missing scopes' }),
     );
     const { addMemory } = await import('../src/api');
-    await expect(addMemory({ content: 'x' })).rejects.toThrow(/403/);
+    await expect(addMemory({ content: 'x', manifestId: 'cowork' })).rejects.toThrow(/403/);
     vi.unstubAllGlobals();
   });
 });
@@ -148,14 +152,19 @@ describe('the memory panel', () => {
       listPlans: vi.fn().mockResolvedValue([]),
       listUsage: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
       memoriesAsOf: vi.fn().mockResolvedValue([]),
+      restoreMemory: vi.fn(),
       searchMemories: vi.fn().mockResolvedValue([]),
     }));
     const { MemorySection } = await import('../src/components/harness/memory');
+    const { ShellProvider } = await import('../src/shell-context');
+    const shell = { threads: [], manifest: 'cowork', manifestOptions: ['cowork', 'quick'] };
 
     // In a router: the view lives in the address now.
     render(
       <MemoryRouter>
-        <MemorySection enabled open onToggle={() => {}} />
+        <ShellProvider value={shell as unknown as ShellValue}>
+          <MemorySection enabled open onToggle={() => {}} />
+        </ShellProvider>
       </MemoryRouter>,
     );
     // A toggle button, not a tab: these modes switch the input above a list all
@@ -170,6 +179,9 @@ describe('the memory panel', () => {
     await waitFor(() =>
       expect(addMemory).toHaveBeenCalledWith({
         content: 'staging runs on :8081',
+        // The chat's agent by default: a memory stored under no agent is one no
+        // agent recalls.
+        manifestId: 'cowork',
         topicKey: '',
         importance: 0.5,
       }),

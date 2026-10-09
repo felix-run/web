@@ -63,8 +63,13 @@ export interface MemoryRecord {
 
 /**
  * One hit from GET /memory/search — a *different* shape from the list row, not a
- * subset with extras: no timestamps or status, plus the two fields that only
- * ranking produces.
+ * subset with extras: the two fields only ranking produces, plus the row's
+ * provenance.
+ *
+ * The provenance fields arrived with `felix-run/felix#548` and are optional
+ * because an older harness sends none of them. Without them a hit could not say
+ * which conversation taught the agent this, which is the question a surprising
+ * recall raises first.
  */
 export interface MemoryHit {
   id: string;
@@ -73,6 +78,13 @@ export interface MemoryHit {
   score: number;
   topic_key?: string;
   importance?: number;
+  manifest_id?: string;
+  /** `{tenant}:{suffix}`, or `''` for a memory written outside any thread. */
+  thread_id?: string;
+  origin_seq?: number | null;
+  status?: string;
+  created_at?: number;
+  last_used_at?: number | null;
   /**
    * Which retrievers found this, e.g. `["fts"]` or `["fts", "vector"]`.
    *
@@ -87,17 +99,42 @@ export interface MemoryHit {
 export function createMemoryClient(http: FelixHttp) {
   const { chatFetch } = http;
 
+  /**
+   * `threadId` is the thread's suffix; the harness composes it with the tenant.
+   * `status: 'forgotten'` lists what a forget hid, most recently forgotten first.
+   *
+   * Both filters are re-applied to the rows that come back, because a harness
+   * older than `felix-run/felix#548` ignores the parameters and answers with
+   * every active row — and a "Forgotten" list made of active rows, or a thread's
+   * memories mixed with every other thread's, is worse than an empty one.
+   */
   async function listMemories(
-    opts: { manifestId?: string; kind?: string; limit?: number } = {},
+    opts: {
+      manifestId?: string;
+      kind?: string;
+      limit?: number;
+      threadId?: string;
+      status?: 'active' | 'forgotten';
+    } = {},
   ): Promise<MemoryRecord[]> {
     const q = new URLSearchParams();
     if (opts.manifestId) q.set('manifest_id', opts.manifestId);
     if (opts.kind) q.set('kind', opts.kind);
+    if (opts.threadId !== undefined) q.set('thread_id', opts.threadId);
+    if (opts.status && opts.status !== 'active') q.set('status', opts.status);
     q.set('limit', String(opts.limit ?? 50));
     const res = await chatFetch(`/memory?${q}`);
     if (!res.ok) throw new Error(`memory: ${res.status}`);
     const body = (await res.json()) as { items?: MemoryRecord[] };
-    return body.items ?? [];
+    const items = body.items ?? [];
+    const want = opts.status ?? 'active';
+    // Asked for forgotten rows and handed active ones: the harness ignored the
+    // parameter, so it has no such listing. Said as the 404 it effectively is,
+    // which `describeError` turns into "the harness is older than this client".
+    if (want === 'forgotten' && items.some((r) => (r.status ?? 'active') !== 'forgotten')) {
+      throw new Error('memory: 404 this harness does not list forgotten memories');
+    }
+    return items.filter((r) => (r.status ?? 'active') === want && inThread(r, opts.threadId));
   }
 
   /**
@@ -128,18 +165,25 @@ export function createMemoryClient(http: FelixHttp) {
    * data-loss primitive on a shared multi-tenant table, and session rewind is
    * deliberately non-destructive.
    */
+  /**
+   * A turn number is an ordinal into one thread's log, so `threadId` (the
+   * suffix) is what makes "turn 4" mean one conversation's fourth turn rather
+   * than every conversation's. Re-applied to the rows for the same reason as
+   * `listMemories`: an older harness ignores it.
+   */
   async function memoriesAsOf(
     turnSeq: number,
-    opts: { manifestId?: string; kind?: string; limit?: number } = {},
+    opts: { manifestId?: string; kind?: string; limit?: number; threadId?: string } = {},
   ): Promise<MemoryRecord[]> {
     const q = new URLSearchParams();
     if (opts.manifestId) q.set('manifest_id', opts.manifestId);
     if (opts.kind) q.set('kind', opts.kind);
+    if (opts.threadId !== undefined) q.set('thread_id', opts.threadId);
     q.set('limit', String(opts.limit ?? 200));
     const res = await chatFetch(`/memory/as-of/${encodeURIComponent(String(turnSeq))}?${q}`);
     if (!res.ok) throw new Error(`memory/as-of: ${res.status}`);
     const body = (await res.json()) as { items?: MemoryRecord[] };
-    return body.items ?? [];
+    return (body.items ?? []).filter((r) => inThread(r, opts.threadId));
   }
 
   /**
@@ -158,6 +202,22 @@ export function createMemoryClient(http: FelixHttp) {
   }
 
   /**
+   * POST /memory/{id}/restore → undo a forget; the agent recalls it again.
+   *
+   * 409 means the row is not forgotten (already active, or superseded, which has a
+   * place in turn time and is not restorable); 403 a key without `memory:write`,
+   * or a forget made by a writer ranked above this one. A harness older than
+   * `felix-run/felix#548` has no route, which arrives as a 404 or a 405.
+   */
+  async function restoreMemory(id: string): Promise<void> {
+    const res = await chatFetch(`/memory/${encodeURIComponent(id)}/restore`, { method: 'POST' });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`memory/restore: ${res.status} ${detail.slice(0, 200)}`);
+    }
+  }
+
+  /**
    * POST /memory → store a fact directly, without waiting for the agent to learn it.
    *
    * The harness calls this a prompt-injection ingress in as many words, and it is
@@ -170,11 +230,15 @@ export function createMemoryClient(http: FelixHttp) {
    * `content` is bounded at 4000 chars upstream and `topic_key` at 200; both are
    * enforced here too, because a 422 for a length the form could have checked is
    * a worse answer than not sending it.
+   *
+   * `manifestId` is required. An agent recalls only the rows stored under its own
+   * manifest id, so a memory written with `''` — what this sent by default — is
+   * recalled by no agent at all: a successful write that changes nothing.
    */
   async function addMemory(input: {
     content: string;
     kind?: string;
-    manifestId?: string;
+    manifestId: string;
     topicKey?: string;
     importance?: number;
   }): Promise<{ id: string; status: string }> {
@@ -184,7 +248,7 @@ export function createMemoryClient(http: FelixHttp) {
       body: JSON.stringify({
         content: input.content,
         kind: input.kind || 'fact',
-        manifest_id: input.manifestId ?? '',
+        manifest_id: input.manifestId,
         topic_key: input.topicKey ?? '',
         importance: input.importance ?? 0.5,
       }),
@@ -201,6 +265,14 @@ export function createMemoryClient(http: FelixHttp) {
     searchMemories,
     memoriesAsOf,
     forgetMemory,
+    restoreMemory,
     addMemory,
   };
+}
+
+/** Whether a row was written by the thread `suffix` names; `undefined` asks nothing. */
+function inThread(row: { thread_id?: string }, suffix: string | undefined): boolean {
+  if (suffix === undefined) return true;
+  const full = row.thread_id ?? '';
+  return suffix === '' ? full === '' : full.slice(full.lastIndexOf(':') + 1) === suffix;
 }

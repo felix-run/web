@@ -100,3 +100,39 @@ describe('memory client', () => {
     expect(tooOld.message).not.toBe(tooNarrow.message);
   });
 });
+
+describe('memory client: threads, forgotten rows and restore', () => {
+  it('sends the thread suffix and keeps only that thread’s rows', async () => {
+    const spy = stub(200, {
+      items: [
+        { id: 'a', kind: 'fact', content: 'mine', status: 'active', thread_id: 'default:t1' },
+        { id: 'b', kind: 'fact', content: 'other', status: 'active', thread_id: 'default:t2' },
+      ],
+    });
+    const rows = await memoriesAsOf(4, { threadId: 't1' });
+    expect(String(spy.mock.calls[0]?.[0])).toContain('thread_id=t1');
+    // An older harness ignores the parameter; the rows are filtered here too.
+    expect(rows.map((r) => r.id)).toEqual(['a']);
+  });
+
+  it('asks for forgotten rows, and calls a harness that answers with active ones too old', async () => {
+    const spy = stub(200, {
+      items: [{ id: 'a', kind: 'fact', content: 'x', status: 'forgotten' }],
+    });
+    await expect(listMemories({ status: 'forgotten' })).resolves.toHaveLength(1);
+    expect(String(spy.mock.calls[0]?.[0])).toContain('status=forgotten');
+
+    stub(200, { items: [{ id: 'a', kind: 'fact', content: 'x', status: 'active' }] });
+    const err = await listMemories({ status: 'forgotten' }).catch((e) => e);
+    expect(describeError(err, 'list forgotten memories').message).toMatch(/older version/);
+  });
+
+  it('restores with POST to the memory’s restore route', async () => {
+    const spy = stub(200, { id: 'm1', status: 'active' });
+    const { restoreMemory } = await import('../src/api');
+    await restoreMemory('m1');
+    const [url, init] = spy.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/api/memory/m1/restore');
+    expect(init.method).toBe('POST');
+  });
+});
