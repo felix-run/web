@@ -95,6 +95,9 @@ export interface ToolMetrics {
  * query rather than the rendered slice. `limit` is capped at 500 upstream.
  */
 
+/** What `/audit` accepts for `limit`. */
+const AUDIT_PAGE_MAX = 500;
+
 export function createAuditClient(http: FelixHttp) {
   const { chatFetch } = http;
 
@@ -115,6 +118,44 @@ export function createAuditClient(http: FelixHttp) {
   }
 
   /**
+   * Every audit event in a time window, newest first, read a page at a time.
+   *
+   * `listAudit` answers "the last N events", which on a busy tenant is minutes and on
+   * a quiet one is weeks — no window an operator can name. This answers "what
+   * happened since <time>": the harness's half-open `[since, until)` filter, its
+   * cursor followed until the window is exhausted or `maxEvents` is reached.
+   * `truncated` says which, because a capped window presented as the whole of it
+   * would undercount exactly the busy stretch someone came back to read.
+   */
+  async function listAuditWindow(opts: {
+    since: number;
+    until?: number;
+    maxEvents?: number;
+  }): Promise<{ events: AuditEvent[]; truncated: boolean }> {
+    const max = opts.maxEvents ?? 2000;
+    const events: AuditEvent[] = [];
+    let cursor: string | null = null;
+    do {
+      const q = new URLSearchParams();
+      q.set('since', String(opts.since));
+      if (opts.until !== undefined) q.set('until', String(opts.until));
+      q.set('limit', String(Math.min(AUDIT_PAGE_MAX, max - events.length)));
+      if (cursor) q.set('cursor', cursor);
+      const res = await chatFetch(`/audit?${q}`);
+      if (!res.ok) throw new Error(`audit: ${res.status}`);
+      const body = (await res.json()) as {
+        events?: AuditEventWire[];
+        next_cursor?: string | null;
+      };
+      for (const e of body.events ?? []) {
+        events.push({ ...e, payload: e.payload_json ?? e.payload ?? {} });
+      }
+      cursor = body.next_cursor ?? null;
+    } while (cursor && events.length < max);
+    return { events, truncated: cursor !== null };
+  }
+
+  /**
    * GET /audit/metrics → tool-call rollups for a window. Aggregates `tool_call`
    * audit rows by `(tool, transport, status, error_code)`; defaults to the last
    * hour server-side. We pass an explicit `since` so the panel window is stable.
@@ -132,6 +173,7 @@ export function createAuditClient(http: FelixHttp) {
 
   return {
     listAudit,
+    listAuditWindow,
     getToolMetrics,
   };
 }

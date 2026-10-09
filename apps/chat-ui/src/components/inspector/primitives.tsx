@@ -3,7 +3,7 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Skeleton } from '@felix/ui/skeleton';
 import { ChevronRightIcon, CircleAlertIcon } from 'lucide-react';
-import { createContext, type ReactNode, useContext, useEffect } from 'react';
+import { createContext, type ReactNode, useContext } from 'react';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { ErrorNotice } from '@/components/error-notice';
 import { PageEmpty, PageHeader, READING_MEASURE } from '@/components/harness/panel';
@@ -82,34 +82,13 @@ type SectionChrome =
   | 'disclosure'
   /** A `/harness` page: static heading, body fills the panel. */
   | 'panel'
-  /** A `/harness` page whose *host* draws the heading — see the Activity page. */
-  | 'bare'
   /**
-   * An instrument tab: the tab is the heading, as with `bare`, but it lives in a
-   * 22rem rail, where an empty state is a line. `bare`'s page-sized empty field
-   * was the one box in the rail, standing in for content nobody had yet.
+   * An instrument tab: the tab is the heading, and it lives in a 22rem rail, where
+   * an empty state is a line rather than a page-sized field.
    */
   | 'tab';
 
 const PanelMode = createContext<SectionChrome>('disclosure');
-
-/** A section's header value, as `Section` would have drawn it. */
-export interface SectionMeta {
-  meta: string | undefined;
-  metaLead?: string | undefined;
-  metaAsOf?: number | null | undefined;
-  metaTone: 'default' | 'attention' | 'failed' | undefined;
-}
-
-/**
- * Where a `bare` section sends the header value it no longer draws.
- *
- * The Activity page draws one header for two halves, so its halves draw none — but the
- * value each computes is the thing a header is *for*, and it comes from data the
- * half already polled. Reporting it upward lets the host's header carry it
- * without a second request made only to fill a label.
- */
-export const SectionMetaSink = createContext<((m: SectionMeta) => void) | null>(null);
 
 /** Marks everything inside as a `/harness` page rather than an inspector row. */
 export function PanelModeProvider({
@@ -164,24 +143,11 @@ export function Section({
   children: React.ReactNode;
 }) {
   const chrome = useContext(PanelMode);
-  const sink = useContext(SectionMetaSink);
 
-  // Before the early returns: a hook after a conditional return is a hook that
-  // runs on some renders and not others.
-  useEffect(() => {
-    if (chrome === 'bare' || chrome === 'tab') sink?.({ meta, metaLead, metaAsOf, metaTone });
-  }, [chrome, sink, meta, metaLead, metaAsOf, metaTone]);
-
-  // The Activity page draws one heading for two halves, so its halves draw none: a
-  // section heading under a tab strip that already names the same thing is the
-  // label repeated, and it costs a row on every screen. The value still reaches
-  // that heading, through `SectionMetaSink`.
-  //
-  // The measure is applied here rather than by each half, so the loading, empty
-  // and error states take it too: the halves used to measure only their rows,
-  // and a failed poll's slab ran the full width of the pane.
-  if (chrome === 'bare' || chrome === 'tab')
-    return <div className={READING_MEASURE}>{children}</div>;
+  // The tab strip names the section, so a heading under it would be the label
+  // repeated. The measure is applied here rather than by the section, so its
+  // loading, empty and error states take it too.
+  if (chrome === 'tab') return <div className={READING_MEASURE}>{children}</div>;
 
   // A page does not disclose: there is nothing else on it to collapse *to*, and a
   // header that hides the only content on screen is a control whose best outcome

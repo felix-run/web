@@ -620,12 +620,10 @@ section does not become two implementations. A rail's own heading is a headline 
 matching the app header.
 
 Under `/harness` every destination draws the same `PageHeader` (`components/harness/panel.tsx`):
-icon, the title the nav uses, then the value **with its unit** (`0 memories`, `last 60 events ·
-1 failed`, `3 jobs`) set beside the title rather than at the far edge, and controls pushed right —
+icon, the title the nav uses, then the value **with its unit** (`0 memories`, `$1.41 · 2 threads ·
+1 with failures`, `3 jobs`) set beside the title rather than at the far edge, and controls pushed right —
 wrapping to a second row when the pane is narrow. A page whose value would need a request of its
-own shows none; a list that came back at its fetch cap reads `50+`, not a total. A section drawn
-bare still computes its value and reports it to the host's header, which is how the Activity page's one
-header carries whichever half is on screen. Every page's body **and** its header row are held to
+own shows none; a list that came back at its fetch cap reads `50+`, not a total. Every page's body **and** its header row are held to
 `READING_MEASURE` (`max-w-3xl`) by default, so a status is read with its name rather than found
 1300px away and a page's controls end where the rows they act on end; `<Panel fullBleed>` is the
 opt-out, and no page takes it today. The rule under the header stays full width; it separates the
@@ -644,8 +642,7 @@ and only when non-zero: `Jobs · N failing` and `Activity · N failed`, counted 
 headers count them. Absence is the rail's all-clear, so it is drawn only for a read that
 answered: a failed read shows a muted `unchecked` (a word, not a hover-only `?`), and a count
 kept from an earlier read carries its age on screen (`3 failed · 2m`). Every page header ends in a quiet
-`Docs ↗` text link to that page's reference on docs.felix.run (a new tab; the Activity page's follows
-its half), declared beside the destination and checked against the docs source by
+`Docs ↗` text link to that page's reference on docs.felix.run (a new tab), declared beside the destination and checked against the docs source by
 `tests/docs-links.test.ts`, so a renamed heading fails rather than landing at the top of a page.
 Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page, and the tab title names the page (`Activity —
@@ -656,15 +653,14 @@ slot, on both addresses. The ellipsis menu stays in the same slot on both addres
 instrument toggle's slot is held empty at every width, so the attention line beside it does not
 move between them;
 on `/harness` the menu is named **Theme** and holds only the Theme radio group. Two controls have
-one home on every page: a view switch (`ViewSwitch`, a toggle group drawn like the Activity page's
-tabs) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
+one home on every page: a view switch (`ViewSwitch`, a toggle group) and a create toggle (`CreateToggle`, outline, the plus turning to a cross when open) both
 sit in the header, and the form a create toggle opens is the page's first section, with the list
-still under it. A view that can be linked is in the address (`?view=usage`,
+still under it. A view that can be linked is in the address (`?since=7d&failed=1`,
 `?view=asof&turn=12`). Fields are the shared `Input`/`Textarea` at 13px with a visible `Label`;
 help that must survive typing goes under the field, never in a placeholder. A header value that
 mixes a window with a state draws the window neutral and only the state in its chip
-(`last 60 events ·` then `3 failed`, `3 jobs ·` then `1 failing`), and a list puts its failures
-where the eye lands — failing jobs first, a failed Activity row's subject in `state-failed`.
+(`$1.41 · 2 threads ·` then `1 with failures`, `3 jobs ·` then `1 failing`), and a list puts its failures
+where the eye lands — failing jobs first, a failed call's subject in `state-failed`.
 A routine `OK` status is a muted word and dot; colour is kept for what went wrong. A page whose
 latest read failed after a good one keeps the good rows under one line saying so, and its
 header value says how old it is (`0 documents · as of 2m ago`) — it never trades what it last
@@ -675,6 +671,23 @@ the Activity page. Narrow, the way back to the list
 takes the header's icon slot rather than a row of its own. An id that has to distinguish rows is cut from the **middle**, not
 the end: the Activity page shows a thread id at up to 20 characters with both ends kept, because
 `self-triage-changelog-union` and `self-triage-other` share a prefix and differ in the tail.
+
+**The Activity page is a ledger, one entry per thread** (2026-10-08). It was two tabs split by route —
+Events (`/audit`) and Usage (`/usage`) — which is how the harness files the record and not how an
+operator asks about it, and the two could not be joined because no usage row named its thread. Each
+entry is now the thread's title, its worst status as word and dot, its failures **in words** on a
+second line in `state-failed` (`publish_commits blocked by an approval · edit_file bad arguments`,
+the call before the turn it spoiled), its turn and call counts, and its cost in a right-aligned mono
+column at fixed cents (`< $0.01` rather than `$0.00252`, so a column lines up by magnitude). Above
+the list one sentence gives the window's account at 16px — `2 threads ran, 1 with failures. $1.41
+spent.` — rather than four equal figures; the window (since this browser last left the page, or
+24h/7d/30d) is a select in the header and in the address. Opened, a thread shows its turns, each
+headed by what was asked, and inside a turn **a run of three or more routine events folds to one
+line** (`20 calls, all OK: run ×11 · edit_file ×5`): a failure, a denial and a turn boundary always
+stand alone, which is what put two failures back on screen in a 67-call turn. The list is one Tab
+stop that roves like the sidebar's. *Where the spend went* — by agent and model, cost leading at
+16px semibold, the unpriced warning, routes priced as another model — sits below the ledger as a
+`PageSection`-style part, since no thread row can carry facts about the pricing catalog.
 
 The sidebar's workspace section has the sidebar's section header — the row Harness draws: a small
 muted **Workspace** label, then the mount as its value — the folder's name in mono, or *in-tab* when client tools run against the

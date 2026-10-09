@@ -136,10 +136,12 @@ export {
   type SkillWriteResult,
 } from './management/skills';
 export type {
+  UsageByThread,
   UsageEvent,
   UsageSummary,
   UsageSummaryItem,
   UsageSummaryTotals,
+  UsageThreadItem,
 } from './management/usage';
 export {
   PLAN_TOOLS,

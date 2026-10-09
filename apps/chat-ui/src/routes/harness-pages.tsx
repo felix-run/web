@@ -1,34 +1,25 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
-import { ActivityIcon } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
 import { getResolvedManifest } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { EvalSheet } from '@/components/eval/eval-sheet';
-import { EventsSection, UsageSection } from '@/components/harness/activity';
+import { ActivityLedger } from '@/components/harness/activity-ledger';
 import { DocumentsSection } from '@/components/harness/documents';
 import { GitHubPage } from '@/components/harness/github';
 import {
   HarnessAgentPicker,
-  keepAgent,
   modelsById,
   useHarnessAgent,
 } from '@/components/harness/harness-agent';
 import { MemorySection } from '@/components/harness/memory';
-import { PageHeader, Panel } from '@/components/harness/panel';
+import { Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';
-import {
-  PanelModeProvider,
-  type SectionMeta,
-  SectionMetaSink,
-  withAge,
-} from '@/components/inspector/primitives';
+import { PanelModeProvider } from '@/components/inspector/primitives';
 import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useSkillsAddress } from '@/components/skills/skills-address';
 import { threadLabel } from '@/lib/threads';
 import { useShell } from '@/shell-context';
-import { ACTIVITY_DOCS, GITHUB_DOCS, type HarnessPath } from './harness';
+import { GITHUB_DOCS, type HarnessPath } from './harness';
 
 /**
  * The harness: everything the tenant owns, at the lifetime it actually has.
@@ -181,75 +172,13 @@ function SkillsOverview() {
 }
 
 /**
- * Activity: what the harness did, and what it cost.
- *
- * One destination, two halves, and only the visible half polls — which is the
- * whole reason this is segmented rather than stacked. An audit event and a usage
- * row are different shapes answering different questions, so a merged feed would
- * serve neither; but they are the same *question* — what has this tenant been
- * doing — so they are one place.
+ * Activity: one entry per thread — what happened, what failed, what it cost.
+ * The page is `ActivityLedger`; see it for why the Events/Usage halves went.
  */
 function ActivityPanel() {
-  // In the address, not in state: a half kept in `useState` could not be linked
-  // to and reset to Events on every visit, so "the Usage page" was two clicks
-  // away from every link that meant it. `replace`, because switching halves is a
-  // view change rather than a place Back should step through.
-  const [params, setParams] = useSearchParams();
-  const half: 'events' | 'usage' = params.get('view') === 'usage' ? 'usage' : 'events';
-  const setHalf = (next: 'events' | 'usage') =>
-    setParams(keepAgent(params, next === 'usage' ? { view: 'usage' } : {}), { replace: true });
-  // The visible half's header value, reported up by its `bare` section. Only the
-  // visible half is mounted, so only it reports — the header describes the half
-  // being read, from the one poll already running.
-  const [meta, setMeta] = useState<SectionMeta>({ meta: undefined, metaTone: undefined });
   return (
     <Panel>
-      {/*
-        `@felix/ui/tabs` rather than hand-rolled roles: a `role="tablist"` with no
-        `tabpanel`, no `aria-controls` and no arrow-key roving focus announces a
-        widget that does not behave like one.
-      */}
-      <Tabs
-        value={half}
-        onValueChange={(v) => setHalf(v as 'events' | 'usage')}
-        className="min-h-0 flex-1 gap-0"
-      >
-        <PageHeader
-          icon={<ActivityIcon />}
-          title="Activity"
-          // The half being read decides the reference: Events is `/audit`,
-          // Usage is `/usage`, and they are separate sections of the docs.
-          docs={ACTIVITY_DOCS[half]}
-          value={withAge(meta.meta, meta.metaAsOf)}
-          valueLead={meta.metaLead}
-          valueTone={meta.metaTone}
-          controls={
-            // Held to the header's row height, so the Activity page's rule sits where
-            // every other page's does.
-            <TabsList
-              aria-label="Activity view"
-              className="w-auto group-data-[orientation=horizontal]/tabs:h-8"
-            >
-              <TabsTrigger value="events" className="px-2.5 text-xs">
-                Events
-              </TabsTrigger>
-              <TabsTrigger value="usage" className="px-2.5 text-xs">
-                Usage
-              </TabsTrigger>
-            </TabsList>
-          }
-        />
-        <SectionMetaSink.Provider value={setMeta}>
-          <PanelModeProvider chrome="bare">
-            <TabsContent value="events" className="min-h-0 overflow-y-auto p-4">
-              <EventsSection enabled open onToggle={() => {}} />
-            </TabsContent>
-            <TabsContent value="usage" className="min-h-0 overflow-y-auto p-4">
-              <UsageSection enabled open onToggle={() => {}} />
-            </TabsContent>
-          </PanelModeProvider>
-        </SectionMetaSink.Provider>
-      </Tabs>
+      <ActivityLedger />
     </Panel>
   );
 }

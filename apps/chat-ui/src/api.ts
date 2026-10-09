@@ -114,9 +114,11 @@ export const decideApproval = felix.decideApproval.bind(felix);
 // The management half moved into @felix/client so a terminal client can ask the
 // same questions. Bound here so every `@/api` import site is unchanged.
 export const listAudit = felix.listAudit.bind(felix);
+export const listAuditWindow = felix.listAuditWindow.bind(felix);
 export const getToolMetrics = felix.getToolMetrics.bind(felix);
 export const listUsage = felix.listUsage.bind(felix);
 export const getUsageSummary = felix.getUsageSummary.bind(felix);
+export const listUsageByThread = felix.listUsageByThread.bind(felix);
 export const listMemories = felix.listMemories.bind(felix);
 export const searchMemories = felix.searchMemories.bind(felix);
 export const memoriesAsOf = felix.memoriesAsOf.bind(felix);

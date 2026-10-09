@@ -1,24 +1,10 @@
 import { threadSuffix } from '@felix/client';
+import { promptTokens } from '@felix/protocol';
 import { Badge } from '@felix/ui/badge';
-import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
-import { ActivityIcon, ChevronRightIcon, CoinsIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ChevronRightIcon } from 'lucide-react';
 import { Link } from 'react-router';
-import { getUsageSummary, listAudit, listUsage } from '@/api';
-import {
-  Field,
-  isFailure,
-  relTime,
-  Section,
-  SectionBody,
-  STATUS_LABEL,
-  StatusDot,
-  tsToMs,
-} from '@/components/inspector/primitives';
-import { usePoll } from '@/hooks/usePoll';
-import { useSharedPoll } from '@/hooks/useSharedPoll';
+import { Field, isFailure, relTime, StatusDot, tsToMs } from '@/components/inspector/primitives';
 import { middleTruncate } from '@/lib/format';
 import {
   ACTIVITY_FETCH,
@@ -34,14 +20,13 @@ import type { AuditEvent, UsageSummary } from '@/types';
 export { ACTIVITY_FETCH, ACTIVITY_GLANCE_SPAN, AUDIT_POLL_KEY, recentFailures };
 
 /**
- * Activity: what the harness *did*, and what it cost.
+ * The Activity page's vocabulary: how one audit event reads as a row, and how a
+ * usage record's tokens and cost are counted.
  *
- * One `/harness` destination holding both halves, segmented rather than stacked.
- * An audit event and a usage row are different shapes and answer different
- * questions, so interleaving them into one feed would serve neither — and only
- * the visible half polls, which is the same economy the terminal's tab strip
- * buys. Two stacked panels would cost two polls for a surface where exactly one
- * is being read.
+ * The page itself is `activity-ledger.tsx`, which folds these rows into one entry
+ * per thread. What is here is what a row *says*, and it is shared with anything
+ * else that shows an audit event or a dollar figure (`eval-sheet.tsx` reads
+ * `usd` and `compact`).
  */
 
 /**
@@ -89,7 +74,7 @@ const EVENT_HELP: Record<string, string> = {
  * tool's own text and stays on its card in the thread. An older harness records
  * none, and a code this table does not know is shown as the harness spelled it.
  */
-const ERROR_CODE_LABEL: Record<string, string> = {
+export const ERROR_CODE_LABEL: Record<string, string> = {
   invalid_arguments: 'bad arguments',
   transport_unavailable: 'unreachable',
   provider_error: 'provider error',
@@ -138,6 +123,18 @@ export function eventHelp(
     if (code)
       return `The tool failed with \`${code}\`. The full message is on the call's card in the thread.`;
     return "The tool returned an error. The audit record keeps which call failed, not why; the tool's result is on its card in the thread.";
+  }
+  // The harness writes `final_response` as `error` when any call in the turn
+  // failed fatally *or was refused*, and the agent usually replied anyway — so a
+  // red reply row is a turn that ended badly, not a reply that failed to send. It
+  // fell through to "the agent produced its reply" under a red Failed, the one
+  // row type that explained itself as a success. The row does not record which of
+  // the two it was; the turn's other rows do.
+  if (e.event_type === 'final_response' && isFailure(e.status)) {
+    const replied = typeof e.payload?.chars === 'number' && e.payload.chars > 0;
+    return `The turn ended, but not cleanly: a call in it failed or was refused${
+      replied ? ', and the agent replied after it' : ', and the agent produced no reply'
+    }. Which call is on this turn's earlier rows; the reply is in the thread.`;
   }
   return EVENT_HELP[e.event_type];
 }
@@ -189,7 +186,7 @@ export const CONTROL_LAYERS = [
   'screening',
 ] as const;
 
-const CONTROL_LABEL: Record<string, string> = {
+export const CONTROL_LABEL: Record<string, string> = {
   policy: 'a policy rule',
   limits: 'a limit',
   guardrails: 'a guardrail',
@@ -198,24 +195,9 @@ const CONTROL_LABEL: Record<string, string> = {
   screening: 'screening',
 };
 
-function controlOf(e: AuditEvent): string | undefined {
+export function controlOf(e: AuditEvent): string | undefined {
   const c = e.payload?.control;
   return typeof c === 'string' && c ? c : undefined;
-}
-
-/**
- * The feed's two filters, applied to the whole fetched window before the render cap.
- * Pure and exported so the test can drive it without opening a Radix select in a
- * DOM that lays nothing out. `layer` narrows to `policy_deny` rows that name it;
- * `'any'` is no filter.
- */
-export function filterActivity(
-  rows: AuditEvent[],
-  opts: { failuresOnly: boolean; layer: string },
-): AuditEvent[] {
-  const base = opts.failuresOnly ? rows.filter((e) => isFailure(e.status)) : rows;
-  if (opts.layer === 'any') return base;
-  return base.filter((e) => e.event_type === 'policy_deny' && controlOf(e) === opts.layer);
 }
 
 /**
@@ -228,253 +210,7 @@ export function filterActivity(
  * longer one `middleTruncate` keeps both ends, which is where ids differ: a shared
  * prefix names the kind of work and the tail names the instance.
  */
-const THREAD_CHARS = 20;
-
-/** Rows rendered per section before the footer starts saying what was left out. */
-const ACTIVITY_VISIBLE = 12;
-
-export function EventsSection({
-  enabled,
-  open,
-  onToggle,
-}: {
-  enabled: boolean;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const [failuresOnly, setFailuresOnly] = useState(false);
-  const [layer, setLayer] = useState<string>('any');
-  const [openId, setOpenId] = useState<string | null>(null);
-  /** Draw the whole filtered window rather than its newest `ACTIVITY_VISIBLE`. */
-  const [showAll, setShowAll] = useState(false);
-
-  // Polling stops while a row is open. The feed repaints every 3s and a new event
-  // pushes every row below it down, which moves the pane out from under whoever is
-  // reading it — and the reason to open a row is to read something that has already
-  // finished, so there is nothing to miss by holding still. `usePoll` refetches on
-  // the `enabled` false→true edge, so closing the row brings the list back current
-  // with no extra wiring.
-  // Shared with the rail's `Activity · N failed` glance, so the page and the rail
-  // make one request between them and count the same rows.
-  //
-  // The poll can no longer stop while a row is open — the rail is still asking —
-  // so the *view* holds instead: the rows on screen stay put until the row is
-  // closed, which is what pausing was for, and closing it shows the latest.
-  const poll = useSharedPoll(AUDIT_POLL_KEY, () => listAudit({ limit: ACTIVITY_FETCH }), {
-    enabled: enabled && open,
-  });
-  const { error, loading, lastOkAt, refresh } = poll;
-  const [held, setHeld] = useState(poll.data);
-  if (openId === null && held !== poll.data) setHeld(poll.data);
-  const data = openId === null ? poll.data : held;
-  // Closing a row asks again rather than showing whatever the shared poll last
-  // had — the refetch-on-close that pausing the poll used to give for free.
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    if (openId === null && wasOpen.current) refresh();
-    wasOpen.current = openId !== null;
-  }, [openId, refresh]);
-
-  // Close the drill-down when the list it belongs to changes underneath it. Without
-  // this, filtering or collapsing the section unmounts the open row while `openId`
-  // stays set — nothing looks expanded and the poll never resumes.
-  useEffect(() => setOpenId(null), [failuresOnly, layer, open]);
-
-  // Applied to the whole fetched window, before the render cap. Filtering the twelve
-  // visible rows instead would drop exactly what the filter exists to find: a failure
-  // thirty events back is one the cap was already hiding.
-  //
-  // Deliberately client-side even though `/audit` accepts `status`. A failure here is
-  // `error` *or* `denied`, the server filter takes one value at a time, and a filter
-  // that disagreed with the "N failed" count in the header would be worse than none.
-  // The layer filter is client-side for a plainer reason: `control` lives inside the
-  // payload, and `/audit` filters on columns.
-  const failed = data?.filter((e) => isFailure(e.status)) ?? [];
-  const recent = recentFailures(data ?? [], Date.now());
-  const visible = filterActivity(data ?? [], { failuresOnly, layer });
-  const rows = showAll ? visible : visible.slice(0, ACTIVITY_VISIBLE);
-  const firstThread = rows[0] ? threadOf(rows[0]) : null;
-  const sharedThread =
-    firstThread && rows.length > 1 && rows.every((r) => threadOf(r) === firstThread)
-      ? firstThread
-      : null;
-  /**
-   * Failures in the window that the drawn rows do not include. The header said
-   * "3 failed" over twelve rows holding one, with no way to see the other two
-   * short of guessing that the filter above was the way — so the footer offers it
-   * by name.
-   */
-  const shownIds = new Set(rows.map((e) => e.id));
-  const failedHidden = failuresOnly ? 0 : failed.filter((e) => !shownIds.has(e.id)).length;
-  const layerLabel = layer === 'any' ? null : (CONTROL_LABEL[layer] ?? layer);
-
-  return (
-    <Section
-      icon={<ActivityIcon className="size-3.5" />}
-      title="Events"
-      // A bare count of the window is a constant once the harness has
-      // `ACTIVITY_FETCH` rows — it read "60" forever and answered nothing. What is
-      // worth knowing at a glance is whether anything in the window went wrong, and
-      // the window is there as that number's denominator, labelled as a window.
-      // Two parts, so only the part that is a state takes its colour: the
-      // window is the denominator, and red on it read as the window failing.
-      metaLead={
-        data
-          ? `${data.length >= ACTIVITY_FETCH ? `last ${ACTIVITY_FETCH}` : data.length} ${
-              data.length === 1 ? 'event' : 'events'
-            } ·`
-          : undefined
-      }
-      // The window the rail counts in, beside the one this page counts in: "3
-      // failed" here over a rail showing nothing read as one of them being wrong.
-      // Said only when there are failures; "0 failed" needs no qualifier.
-      meta={
-        data
-          ? failed.length > 0
-            ? `${failed.length} failed · ${recent > 0 ? recent : 'none'} in ${ACTIVITY_GLANCE_SPAN}`
-            : '0 failed'
-          : undefined
-      }
-      metaTone={failed.length > 0 ? 'failed' : 'default'}
-      metaAsOf={error ? lastOkAt : undefined}
-      open={open}
-      onToggle={onToggle}
-    >
-      <SectionBody
-        onRetry={refresh}
-        lastOkAt={lastOkAt}
-        doing="load recent activity"
-        loading={loading && !data}
-        error={error}
-        empty={visible.length === 0}
-        emptyText={
-          layerLabel
-            ? // Says "recorded" on purpose: a harness older than the `control` stamp
-              // writes denials this filter can never find, and "nothing was blocked"
-              // would be the wrong reading of that.
-              `No denial recorded as blocked by ${layerLabel} in the last ${ACTIVITY_FETCH} events.`
-            : failuresOnly
-              ? `Nothing failed or was denied in the last ${ACTIVITY_FETCH} events.`
-              : 'Turns, tool calls, and policy denials from chat show up here as they happen.'
-        }
-        // Derived from the newest event rather than the count, which stops changing
-        // once the window is full — and a live region that never changes never speaks.
-        status={
-          data && data.length > 0
-            ? `${data.length} events. Latest: ${subjectOf(data[0])}, ${STATUS_LABEL[data[0].status] ?? data[0].status}.`
-            : undefined
-        }
-      >
-        {/*
-          Held to the reading measure by `Section` on `/harness`. Across a
-          full-width page the tool name sat at the left edge and its status ~1300px
-          away at the right, so reading one row meant carrying a word across the
-          screen; the filters sit on the same edge the statuses do.
-        */}
-        <div>
-          <div className="mb-1.5 flex items-center justify-end gap-1.5">
-            {/* The layer filter answers one question — "what has approvals blocked this
-              week" — so it reads as that question rather than as a column picker. */}
-            <Select value={layer} onValueChange={setLayer}>
-              <SelectTrigger
-                size="sm"
-                className="h-8 w-auto gap-1 px-2 text-xs"
-                aria-label="Blocked by which layer"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="any" className="text-xs">
-                  Any layer
-                </SelectItem>
-                {CONTROL_LAYERS.map((c) => (
-                  <SelectItem key={c} value={c} className="text-xs">
-                    Blocked by {CONTROL_LABEL[c]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {/* Outline rather than ghost: at this size a ghost toggle reads as a caption
-              floating above the list, and a control nobody recognises as one is the
-              same as no filter at all. */}
-            <Button
-              size="sm"
-              variant={failuresOnly ? 'secondary' : 'outline'}
-              // The select's height: two heights in one toolbar read as uneven.
-              className="h-8 px-2 text-xs"
-              aria-pressed={failuresOnly}
-              onClick={() => setFailuresOnly((v) => !v)}
-            >
-              Failures only
-            </Button>
-          </div>
-          {/* Said once when every drawn row shares it — nine copies of one id were
-              texture, not information — and as a link, which a row cannot hold
-              (it is itself a button). */}
-          {sharedThread && (
-            <p className="mb-1 text-sm text-muted-foreground">
-              {rows.length === 1 ? 'From' : `All ${rows.length} from`} thread{' '}
-              <Link
-                to={`/t/${sharedThread}`}
-                title={`Thread ${sharedThread}`}
-                className={cn(TEXT_BUTTON, 'font-mono text-xs')}
-              >
-                {middleTruncate(sharedThread, THREAD_CHARS)}
-              </Link>
-              .
-            </p>
-          )}
-          <ol className="divide-y divide-border/40">
-            {rows.map((e) => (
-              <ActivityRow
-                key={e.id}
-                event={e}
-                hideThread={sharedThread !== null}
-                open={openId === e.id}
-                onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-              />
-            ))}
-          </ol>
-          {/* Counts the filtered set, not the fetch: with the filter on, "of the last 60"
-            would describe a window the reader is no longer looking at. And it says
-            where the rest are, because the filters run over the whole window while
-            only the newest rows are drawn — "Showing 12 of the last 60 recent
-            events" said "recent" twice and not how to reach the other 48. */}
-          {visible.length > rows.length && data && (
-            // Body size: it is an instruction (how to reach the rest), and DESIGN.md
-            // sets instructional copy at 13px; 11px is for counts and labels.
-            <p className="mt-2 text-sm text-muted-foreground">
-              {layerLabel
-                ? `Newest ${rows.length} of ${visible.length} denials by ${layerLabel} in the last ${data.length} events.`
-                : failuresOnly
-                  ? `Newest ${rows.length} of ${visible.length} failed events in the last ${data.length}.`
-                  : `Newest ${rows.length} of the last ${data.length} events. The filters search all ${data.length}.`}
-            </p>
-          )}
-          {(visible.length > ACTIVITY_VISIBLE || failedHidden > 0) && (
-            <div className="mt-1 flex flex-wrap gap-x-3 text-sm">
-              {visible.length > ACTIVITY_VISIBLE && (
-                <button type="button" className={TEXT_BUTTON} onClick={() => setShowAll((v) => !v)}>
-                  {showAll ? `Show newest ${ACTIVITY_VISIBLE}` : `Show all ${visible.length}`}
-                </button>
-              )}
-              {failedHidden > 0 && (
-                <button type="button" className={TEXT_BUTTON} onClick={() => setFailuresOnly(true)}>
-                  {`Show the ${failed.length} failed`}
-                </button>
-              )}
-            </div>
-          )}
-          {openId !== null && (
-            // A list that has quietly stopped updating looks exactly like a harness that
-            // has stopped working. Say which one it is.
-            <p className="mt-1 text-xs text-muted-foreground">Paused while a row is open.</p>
-          )}
-        </div>
-      </SectionBody>
-    </Section>
-  );
-}
+export const THREAD_CHARS = 20;
 
 /** The thread an event belongs to, as the suffix every client holds, or `null`. */
 function threadOf(e: AuditEvent): string | null {
@@ -486,7 +222,7 @@ function threadOf(e: AuditEvent): string | null {
  * A text-weight button or link: underlined, and with the system's focus ring — the
  * Activity page's "Show all" and "Show the 3 failed" had none of their own.
  */
-const TEXT_BUTTON =
+export const TEXT_BUTTON =
   'rounded-sm text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none';
 
 /**
@@ -502,7 +238,7 @@ const TEXT_BUTTON =
  * two-line summary and nothing else, so a long prompt or a denial's context used to
  * end at the clamp with nowhere to go.
  */
-function ActivityRow({
+export function ActivityRow({
   event: e,
   hideThread = false,
   open,
@@ -531,7 +267,17 @@ function ActivityRow({
             `bg-accent/40` alone, which at this density is hard to locate and does not
             clear the 3:1 WCAG 1.4.11 asks of a focus indicator; `--ring` was measured
             for exactly this and is used on both now. */}
-        <CollapsibleTrigger className="group flex w-full items-start gap-2 rounded-sm py-1.5 text-left text-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {/* Escape closes the row it is on, and only that row: stopped here so the
+            thread the row sits in does not close with it. */}
+        <CollapsibleTrigger
+          onKeyDown={(ev) => {
+            if (ev.key !== 'Escape' || !open) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            onToggle();
+          }}
+          className="group flex w-full items-start gap-2 rounded-sm py-1.5 text-left text-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <ChevronRightIcon
             aria-hidden
             className="mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90"
@@ -556,8 +302,11 @@ function ActivityRow({
                 </Badge>
               ) : (
                 // Suppressed where it would only repeat the subject, which is what
-                // `EVENT_LABEL` returns for a turn boundary.
-                label !== subject && (
+                // `EVENT_LABEL` returns for a turn boundary — and on a tool call,
+                // whose mono tool name already says what it is: "Tool call" on
+                // every row of a turn was texture.
+                label !== subject &&
+                !(e.event_type === 'tool_call' && tool) && (
                   <span
                     title={EVENT_HELP[e.event_type]}
                     className="shrink-0 text-xs text-muted-foreground"
@@ -725,7 +474,7 @@ function ActivityDetail({ event: e }: { event: AuditEvent }) {
  * ("quick") repeated down the panel. It is now the last resort it was meant to be,
  * behind the event's own label.
  */
-function subjectOf(e: AuditEvent): string {
+export function subjectOf(e: AuditEvent): string {
   const t = e.payload?.tool;
   if (typeof t === 'string' && t) return t;
   if (EVENT_LABEL[e.event_type]) return EVENT_LABEL[e.event_type];
@@ -750,259 +499,6 @@ function summary(e: AuditEvent): string {
     return `${p.chars.toLocaleString()} characters`;
   }
   return '';
-}
-
-const USAGE_VISIBLE = 8;
-/** What `GET /usage/summary` answers for when asked for no window. */
-const SUMMARY_DEFAULT_DAYS = 30;
-
-export function UsageSection({
-  enabled,
-  open,
-  onToggle,
-}: {
-  enabled: boolean;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  /**
-   * Two requests, one tick.
-   *
-   * They answer different questions and neither can answer the other's. The
-   * **summary** is what the tenant actually spent: the harness groups and totals
-   * over a window — thirty days unless asked otherwise — which is a number this
-   * panel could not produce before, because it was summing whatever page of rows
-   * it happened to fetch and labelling the result as the total. The **rows** are
-   * the recent detail the summary drops, above all `wire_model_id`, which is what
-   * a turn was priced by and the one thing worth seeing when it disagrees with
-   * the route the operator configured.
-   *
-   * One `usePoll` rather than two, so the section still costs one tick — the
-   * economy the Activity page's tabs exist for.
-   */
-  const { data, error, loading, lastOkAt, refresh } = usePoll(
-    async () => {
-      const [summary, page] = await Promise.all([
-        getUsageSummary(),
-        listUsage({ limit: USAGE_VISIBLE }),
-      ]);
-      return { summary, rows: page.items };
-    },
-    { enabled },
-  );
-  const summary = data?.summary ?? null;
-  // Zeroed rather than nullable, so the readout below stays one shape. `SectionBody`
-  // renders the loading skeleton ahead of the empty state, so a zero here is only
-  // ever on screen once the window really is empty.
-  const totals = summary
-    ? summarizeWindow(summary)
-    : { in: 0, out: 0, cache: 0, cost: 0, calls: 0, unpriced: 0 };
-  const days = summary ? windowDays(summary) : SUMMARY_DEFAULT_DAYS;
-  const rows = data?.rows ?? [];
-  const pricedAs = sharedPricing(rows);
-  const buckets = summary ? byModel(summary) : [];
-
-  return (
-    <Section
-      icon={<CoinsIcon className="size-3.5" />}
-      title="Usage"
-      meta={summary ? usageHeader(totals, days) : undefined}
-      metaAsOf={error ? lastOkAt : undefined}
-      open={open}
-      onToggle={onToggle}
-    >
-      <SectionBody
-        onRetry={refresh}
-        lastOkAt={lastOkAt}
-        doing="load token usage"
-        loading={loading && !data}
-        error={error}
-        empty={totals.calls === 0}
-        emptyText="Token meters appear here after model turns flush to the usage store."
-        status={
-          totals
-            ? `${totals.calls} turns in the last ${days} days, ${totals.in.toLocaleString()} tokens in, ${totals.out.toLocaleString()} out`
-            : undefined
-        }
-      >
-        <div>
-          <p className="mb-1.5 text-xs text-muted-foreground">
-            Last {days} days, across {totals.calls.toLocaleString()}{' '}
-            {totals.calls === 1 ? 'turn' : 'turns'}
-          </p>
-          <dl className="mb-2.5 flex gap-6 border-b border-border/40 pb-2.5">
-            <div>
-              <dt className="text-xs text-muted-foreground">Input</dt>
-              <dd className="mt-0.5 tabular-nums font-mono text-sm">
-                {totals.in.toLocaleString()}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Output</dt>
-              <dd className="mt-0.5 tabular-nums font-mono text-sm">
-                {totals.out.toLocaleString()}
-              </dd>
-            </div>
-            {/* Cache reads are on every row below, so they are counted up here
-                too — a row showing "20,913 cache" under totals that never
-                mentioned cache read as if those tokens were missing. */}
-            <div>
-              <dt className="text-xs text-muted-foreground">Cache read</dt>
-              <dd className="mt-0.5 tabular-nums font-mono text-sm">
-                {totals.cache.toLocaleString()}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">
-                {/*
-                Not "Cost" when any row was unpriced: the number is a floor, and
-                labelling a floor as the total is the misreading worth designing
-                against here.
-              */}
-                {totals.unpriced > 0 ? 'Cost (floor)' : 'Cost'}
-              </dt>
-              <dd className="mt-0.5 tabular-nums font-mono text-sm">
-                {totals.unpriced > 0 ? '≥ ' : ''}
-                {usd(totals.cost)}
-              </dd>
-            </div>
-          </dl>
-          {totals.unpriced > 0 && (
-            // Foreground at 13px, not red: an unpriced model is a gap in the
-            // pricing catalog, not something that failed. It is still said in
-            // full, because the consequence — a spending cap that fails open — is
-            // one an operator acts on.
-            <p className="mb-2.5 text-sm text-foreground">
-              {totals.unpriced} {totals.unpriced === 1 ? 'turn is' : 'turns are'} metered but
-              unpriced — the model has no entry in the pricing catalog, so its spend counts as zero
-              and <code className="font-mono">limits.max_cost_usd</code> fails open for it.
-            </p>
-          )}
-          {/* Where the window's spend went. The summary was fetched grouped by
-              agent and model and used only to count unpriced turns, so the page
-              had a total and eight recent rows and no answer to "what cost that".
-              Sorted by cost, so the answer is the first row. */}
-          {buckets.length > 1 && (
-            <table className="mb-3 w-full text-xs">
-              <caption className="sr-only">Spend by agent and model, most first</caption>
-              <thead className="text-muted-foreground">
-                <tr className="border-b border-border/60">
-                  <th scope="col" className="py-1 text-left font-medium">
-                    Agent · model
-                  </th>
-                  <th scope="col" className="py-1 text-right font-medium">
-                    Turns
-                  </th>
-                  <th scope="col" className="py-1 text-right font-medium">
-                    Tokens
-                  </th>
-                  <th scope="col" className="py-1 text-right font-medium">
-                    Cost
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {buckets.map((b) => (
-                  <tr key={`${b.manifest_id}:${b.model_id}`} className="border-b border-border/40">
-                    <td className="py-1 font-mono">
-                      {b.manifest_id || '—'}{' '}
-                      <span className="text-muted-foreground">{b.model_id}</span>
-                    </td>
-                    <td className="py-1 text-right font-mono tabular-nums">
-                      {b.calls.toLocaleString()}
-                    </td>
-                    <td className="py-1 text-right font-mono tabular-nums">{compact(b.tokens)}</td>
-                    <td className="py-1 text-right font-mono tabular-nums">
-                      {b.unpriced ? <span className="text-foreground">unpriced</span> : usd(b.cost)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {/* One line for a mapping every row shares, rather than the same line
-              under each of them: repeated eight times it is texture, and the
-              row that *differs* — the thing this exists to show — is lost in it. */}
-          {pricedAs && (
-            // 13px: a sentence to read, not a count.
-            <p className="mb-1 text-sm text-muted-foreground">
-              {rows.length === 1 ? 'The turn' : `All ${rows.length} turns`} below routed{' '}
-              <span className="font-mono">{pricedAs.model}</span>, priced as{' '}
-              <span className="font-mono">{pricedAs.wire}</span>.
-            </p>
-          )}
-          <ol className="divide-y divide-border/40">
-            {rows.map((e) => (
-              <li key={e.id} className="flex items-start gap-2 py-1.5 text-xs">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate">
-                    <span className="font-mono">{e.manifest_id || '—'}</span>
-                    {e.model_id ? (
-                      <span className="ml-1 font-mono text-xs text-muted-foreground">
-                        {e.model_id}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-0.5 tabular-nums font-mono text-xs text-muted-foreground">
-                    {(e.tokens_input ?? 0).toLocaleString()} in ·{' '}
-                    {(e.tokens_output ?? 0).toLocaleString()} out
-                    {(e.cache_read ?? 0) > 0 ? ` · ${e.cache_read.toLocaleString()} cache` : ''}
-                    {e.cost_usd ? ` · ${usd(e.cost_usd)}` : ''}
-                  </p>
-                  {/*
-                  Only when it disagrees with the reported id. `model_id` is the
-                  logical route the operator configured; this is what the row was
-                  actually priced by, and the two differing on a custom route is
-                  the case worth being able to see.
-                */}
-                  {!pricedAs && e.wire_model_id && e.wire_model_id !== e.model_id ? (
-                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-                      priced as {e.wire_model_id}
-                    </p>
-                  ) : null}
-                </div>
-                {e.ts != null && (
-                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
-                    {relTime(e.ts)}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ol>
-          {/*
-          The rows are a recent sample, not a page of the window. Saying "8 of 8"
-          would be true and useless; what the reader needs is that the list and
-          the totals above it are measuring different things.
-        */}
-          {rows.length > 0 && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              The {rows.length} most recent {rows.length === 1 ? 'turn' : 'turns'}; the totals above
-              cover the window.
-            </p>
-          )}
-        </div>
-      </SectionBody>
-    </Section>
-  );
-}
-
-/**
- * The route → price mapping, when every row shares one that differs.
- *
- * `null` when any row was priced as its own id, or rows disagree: then the
- * per-row line is the honest form, because the rows are not all the same.
- */
-export function sharedPricing(
-  rows: { model_id?: string | null; wire_model_id?: string | null }[],
-): { model: string; wire: string } | null {
-  const first = rows[0];
-  if (!first?.wire_model_id || !first.model_id || first.wire_model_id === first.model_id) {
-    return null;
-  }
-  const same = rows.every(
-    (r) => r.model_id === first.model_id && r.wire_model_id === first.wire_model_id,
-  );
-  return same ? { model: first.model_id, wire: first.wire_model_id } : null;
 }
 
 /**
@@ -1033,36 +529,16 @@ export function byModel(summary: UsageSummary): Array<{
       cost: 0,
     };
     row.calls += item.calls;
-    row.tokens += item.tokens_input + item.tokens_output;
+    // The whole prompt plus the output, as `tokenSplit` counts a row — the
+    // uncached input alone left every cached token out of the column.
+    const t = tokenSplit(item);
+    row.tokens += t.prompt + t.out;
     row.cost += item.cost_usd;
     rows.set(key, row);
   }
   return [...rows.values()]
     .map((r) => ({ ...r, unpriced: r.cost === 0 && r.tokens > 0 }))
     .sort((a, b) => b.cost - a.cost || b.tokens - a.tokens);
-}
-
-/**
- * The Usage header's value: what it cost, then how much, then over what.
- *
- * Cost leads because it is the question PRODUCT.md names — "what did it cost" —
- * and the header is read without the body under it; it led with tokens, so the
- * dollar figure was only in the body's third column. The window still rides with
- * the total, since "$79.50" alone does not say over what. A floor stays a floor:
- * when any turn in the window was unpriced the cost is marked `≥`, as the body's
- * "Cost (floor)" is, rather than presented as the total.
- */
-export function usageHeader(
-  totals: { in: number; out: number; cost: number; unpriced: number },
-  days: number,
-): string {
-  const cost = `${totals.unpriced > 0 ? '≥ ' : ''}${usd(totals.cost)}`;
-  return `${cost} · ${compact(totals.in + totals.out)} tokens · last ${days} days`;
-}
-
-/** The window the harness answered for, in whole days, for a label. */
-export function windowDays(summary: UsageSummary): number {
-  return Math.max(1, Math.round((summary.until_ms - summary.since_ms) / 86_400_000));
 }
 
 /**
@@ -1080,6 +556,7 @@ export function summarizeWindow(summary: UsageSummary): {
   in: number;
   out: number;
   cache: number;
+  cacheWrite: number;
   cost: number;
   calls: number;
   unpriced: number;
@@ -1088,14 +565,53 @@ export function summarizeWindow(summary: UsageSummary): {
   for (const item of summary.items) {
     if (item.cost_usd === 0 && item.tokens_input + item.tokens_output > 0) unpriced += item.calls;
   }
+  const t = tokenSplit(summary.totals);
   return {
-    in: summary.totals.tokens_input,
-    out: summary.totals.tokens_output,
-    cache: summary.totals.cache_read ?? 0,
+    in: t.prompt,
+    out: t.out,
+    cache: t.cacheRead,
+    cacheWrite: t.cacheWrite,
     cost: summary.totals.cost_usd,
     calls: summary.totals.calls,
     unpriced,
   };
+}
+
+/**
+ * A usage row's tokens, split the way its cost was.
+ *
+ * `tokens_input` is the **uncached** part of the prompt only. The row used to print
+ * it as "in" and leave `cache_creation` out entirely, so `3 in · 68 out · $0.0131`
+ * sat above `5 in · 82 out · 3,228 cache · $0.00252` and the row that looked
+ * cheaper cost five times more: its 3,228 cache *writes* — priced above plain input
+ * — were never on screen. "in" is the whole prompt now, as `promptTokens` counts it
+ * everywhere else, with the cached parts said in words beside it.
+ */
+export function tokenSplit(r: {
+  tokens_input?: number | null;
+  tokens_output?: number | null;
+  cache_read?: number | null;
+  cache_creation?: number | null;
+}): { prompt: number; out: number; cacheRead: number; cacheWrite: number } {
+  const cacheRead = r.cache_read ?? 0;
+  const cacheWrite = r.cache_creation ?? 0;
+  return {
+    prompt: promptTokens({ input: r.tokens_input ?? 0, output: 0, cacheRead, cacheWrite }),
+    out: r.tokens_output ?? 0,
+    cacheRead,
+    cacheWrite,
+  };
+}
+
+/** `3,233 in (3,228 written to cache) · 82 out`. */
+export function tokenLine(r: Parameters<typeof tokenSplit>[0]): string {
+  const t = tokenSplit(r);
+  const cached = [
+    t.cacheRead > 0 ? `${t.cacheRead.toLocaleString()} from cache` : '',
+    t.cacheWrite > 0 ? `${t.cacheWrite.toLocaleString()} written to cache` : '',
+  ].filter(Boolean);
+  const split = cached.length > 0 ? ` (${cached.join(', ')})` : '';
+  return `${t.prompt.toLocaleString()} in${split} · ${t.out.toLocaleString()} out`;
 }
 
 export function usd(n: number): string {

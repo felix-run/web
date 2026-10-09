@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 import {
   byModel,
   summarizeWindow,
-  usageHeader,
+  tokenLine,
+  tokenSplit,
   usd,
-  windowDays,
 } from '../src/components/harness/activity';
 
 /**
@@ -104,14 +104,41 @@ describe('summarizeWindow', () => {
   });
 });
 
-describe('windowDays', () => {
-  it('reports the window the harness answered for, not the one that was asked', () => {
-    expect(windowDays(summary([], { since_ms: 0, until_ms: 7 * DAY }))).toBe(7);
+/**
+ * `tokens_input` is the uncached part of the prompt. Printed as "in" with
+ * `cache_creation` left out, a row with 3,228 cache writes read `5 in · 82 out`
+ * and looked cheaper than a row that cost a fifth as much.
+ */
+describe('tokenSplit / tokenLine', () => {
+  it('counts the whole prompt as in, and says what the cache did', () => {
+    const row = { tokens_input: 5, tokens_output: 82, cache_creation: 3_228, cache_read: 0 };
+    expect(tokenSplit(row)).toEqual({ prompt: 3_233, out: 82, cacheRead: 0, cacheWrite: 3_228 });
+    expect(tokenLine(row)).toBe('3,233 in (3,228 written to cache) · 82 out');
   });
 
-  it('never reports zero days for a short window', () => {
-    // A label reading "last 0 days" is worse than a slightly generous one.
-    expect(windowDays(summary([], { since_ms: 0, until_ms: 1000 }))).toBe(1);
+  it('names both cached parts, and neither when there are none', () => {
+    expect(
+      tokenLine({ tokens_input: 10, tokens_output: 1, cache_read: 900, cache_creation: 40 }),
+    ).toBe('950 in (900 from cache, 40 written to cache) · 1 out');
+    expect(tokenLine({ tokens_input: 3, tokens_output: 68 })).toBe('3 in · 68 out');
+  });
+
+  it('totals the window the same way', () => {
+    const t = summarizeWindow(
+      summary([], {
+        totals: {
+          calls: 2,
+          tokens_input: 8,
+          tokens_output: 150,
+          cache_creation: 3_228,
+          cache_read: 20_913,
+          cost_usd: 0.02,
+        },
+      }),
+    );
+    expect(t.in).toBe(24_149);
+    expect(t.cache).toBe(20_913);
+    expect(t.cacheWrite).toBe(3_228);
   });
 });
 
@@ -169,17 +196,5 @@ describe('byModel', () => {
       items: [item({ cost_usd: 0 })],
     } as never);
     expect(row?.unpriced).toBe(true);
-  });
-});
-
-describe('usageHeader', () => {
-  it('leads with what it cost, then how much, then over what', () => {
-    expect(usageHeader({ in: 24_470_680, out: 196_558, cost: 79.5, unpriced: 0 }, 30)).toBe(
-      '$79.50 · 24.7M tokens · last 30 days',
-    );
-  });
-
-  it('marks a floor as a floor when any turn was unpriced', () => {
-    expect(usageHeader({ in: 1000, out: 0, cost: 2, unpriced: 3 }, 7)).toMatch(/^≥ \$2\.00 · /);
   });
 });

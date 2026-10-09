@@ -336,7 +336,7 @@ current engine state rather than from the captured value.
 ****Tabs come from `@felix/ui/tabs`, never hand-rolled.** Four strips carried
 `role="tablist"`/`role="tab"`/`aria-selected` with no `tabpanel`, no `aria-controls` and no
 arrow-key roving focus — which announces a widget and then does not behave like one, and is worse
-than plain buttons. The run instrument and the Activity page use the primitive now; `tests/workbench-layout.test.tsx`
+than plain buttons. The run instrument uses the primitive now; `tests/workbench-layout.test.tsx`
 asserts the association both ways rather than the roles. An inactive `TabsContent` renders its
 element for the association and **not its children**, which is what keeps one section on screen to
 one poll — `forceMount` would silently undo that and mount all three.
@@ -476,8 +476,8 @@ to put the whole Jobs workbench in the entry. The run instrument (`Inspector`) i
 `routes/workbench.tsx` too, with a same-width placeholder so the transcript does not reflow.
 **Measure the first load, not the entry file**: Rolldown moves shared modules into chunks the entry
 imports statically, so this split took `index-*.js` from 652 to 508 kB while what a first load
-actually fetches (the entry plus its static imports, ~1.7 MB raw) fell only ~23 kB gzipped. Audit and usage are **one** destination, Activity (halves Events and Usage):
-segmented rather than stacked so only the half being read polls. `SheetBoundary` became
+actually fetches (the entry plus its static imports, ~1.7 MB raw) fell only ~23 kB gzipped. Audit and usage are **one** destination, Activity, a ledger with one entry per thread
+(see **Usage** below). `SheetBoundary` became
 `PanelBoundary` and wraps each destination individually — a panel throws during its *own* render, so
 one boundary around the group would take the other seven down with it. Wide, the nav is a resident
 rail; narrow there is no room for both, so `/harness` *is* the list and only redirects to
@@ -877,9 +877,21 @@ Flows worth knowing before editing the app:
   bucket priced at `0` with tokens in it is an unpriced model, and its `calls` says how many turns
   that covers, so the warning is over the window rather than over whatever was on screen.
 
-  Both are fetched, in one `usePoll` and therefore one tick: the summary drops `wire_model_id`, and
-  a row where that disagrees with `model_id` is the thing worth seeing, so `/usage` still supplies
-  the recent detail. `summarizeWindow` reads `totals` off the response rather than re-adding
+  **The page is a ledger by thread** (`components/harness/activity-ledger.tsx`, grouping in
+  `src/lib/ledger.ts`). One `usePoll` tick reads four things for one window: the audit events
+  (`listAuditWindow`, which follows `/audit`'s cursor under `since` up to 2,000 and says when it
+  stopped), spend per thread (`GET /usage/threads`, `felix-run/felix#542`), `/usage/summary` for
+  the totals and the by-model table, and 20 recent `/usage` rows only to find routes priced as
+  another model, which the summary drops. Usage rows carry `thread_id` in the full
+  `{tenant}:{suffix}` spelling the audit payload uses; `buildLedger` folds both to the suffix. A
+  harness without the route answers 404, `listUsageByThread` returns `null`, and the page says no
+  thread can show a cost rather than drawing every one as free. The window opens on **since this
+  browser last left the page** (`felix.activity.lastVisit`, stamped on unmount and `pagehide`,
+  falling back to 24h); window and filters are in the address. Polling stops while a thread is
+  open, as the feed's did while a row was. **`tokens_input` is the uncached prompt only**:
+  `tokenSplit`/`tokenLine` count the whole prompt as "in" and name what the cache served and
+  stored, because a row printed as `5 in` hid 3,228 cache writes and looked cheaper than a row
+  that cost a fifth as much. `summarizeWindow` reads `totals` off the response rather than re-adding
   `items` — adding them would reintroduce exactly the bug, since the items are what the harness
   chose to return and the totals are what it counted.
 
