@@ -105,16 +105,17 @@ no `tool` — `inbound_screening` carries `surface` (`turn` or `tool_arguments`)
 `judge`, `score` and `threshold`.
 
 `policy_deny` covers every governance denial **that a tool call ran into**, not only
-`spec.policies`: command and content screening, limits, guardrails, tool-targeted judges and
-pending approvals all return a deny marker the loop records under this one name. The row's
-`payload.control` names the layer — one of `policy`, `limits`, `guardrails`, `approvals`,
-`command`, `screening` — so `GET /audit?event_type=policy_deny` filtered on it answers "every
-call approvals blocked this week" without correlating counters. The web UI's Activity page names the
-layer on the row and can narrow its threads to those with a denial by one layer; a row from a harness that predates the
-field reads as plain `Blocked`. The Prometheus counters —
-`felix_policy_deny`, `felix_approval_required`, `felix_content_screening`,
-`felix_inbound_screening`, described in [Observability](/internals/observability/) — still carry
-the per-rule detail (which policy, which judge) the audit row does not.
+`spec.policies`: command and content screening, limits, guardrails, tool-targeted judges and pending
+approvals all return a deny marker the loop records under this one name. The row's `payload.control`
+names the layer — one of `policy`, `limits`, `guardrails`, `approvals`, `command`, `screening` — so
+`GET /audit?event_type=policy_deny` filtered on it answers "every call approvals blocked this week"
+without correlating counters. The web UI's Activity page names the layer on the row and can narrow
+its threads to those with a denial by one layer; a row from a harness that predates the field reads
+as plain `Blocked`.
+
+The Prometheus counters — `felix_policy_deny`, `felix_approval_required`, `felix_content_screening`,
+`felix_inbound_screening`, described in [Observability](/internals/observability/) — still carry the
+per-rule detail (which policy, which judge) the audit row does not.
 
 Secret values are masked out of payloads before they are written.
 

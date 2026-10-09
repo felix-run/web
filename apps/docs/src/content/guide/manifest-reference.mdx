@@ -1,5 +1,5 @@
 ---
-title: "Manifest Reference"
+title: "Manifest reference"
 description: "Every field in the felix/v1 manifest schema with defaults, types, ceilings, and examples."
 sidebar:
   order: 3
@@ -664,10 +664,9 @@ fetch tool, so pairing search with an unconfined `http_tools` entry is an egress
 screening does not close — which is why the bundled `deep` manifest requires authentication.
 </Aside>
 
-<Aside type="note" title="Declaring one without a backend">
-The tool still binds, and every call reports that `FELIX_SEARCH_BACKEND` is unset — rather
-than the field silently doing nothing. The compile logs a warning too.
-</Aside>
+**Declaring one without a backend** still binds the tool, and every call reports that
+`FELIX_SEARCH_BACKEND` is unset — rather than the field silently doing nothing. The compile logs a
+warning too.
 
 ## `spec.http_tools`
 
@@ -717,10 +716,8 @@ Compiling a manifest that binds a fetch tool without `spec.content_screening.ena
 `untrusted tool(s) … unscreened`, and pages reach the model unexamined.
 </Aside>
 
-<Aside type="note" title="Not replay-safe">
-A resumed run will not re-issue a fetch. The model names the endpoint, and a `GET` that
-changes something is ordinary on the open web.
-</Aside>
+**Not replay-safe.** A resumed run will not re-issue a fetch. The model names the endpoint, and a
+`GET` that changes something is ordinary on the open web.
 
 ## `spec.github_publish`
 
@@ -877,13 +874,10 @@ spec:
   alongside it, rather than being silently dropped.
 </Aside>
 
-<Aside type="note">
-  There is no in-process built-in on purpose. A thread is not manifest-scoped —
-  the session routes address one by id with no manifest in hand — so a manifest
-  choosing a different *backend* would leave the agent reading one log while
-  `/history`, `/continue` and `/compact` read another. `none` is exempt because it
-  is a claim about the agent, not a competing backend.
-</Aside>
+**There is no in-process built-in, on purpose.** A thread is not manifest-scoped — the session
+routes address one by id with no manifest in hand — so a manifest choosing a different *backend*
+would leave the agent reading one log while `/history`, `/continue` and `/compact` read another.
+`none` is exempt because it is a claim about the agent, not a competing backend.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|

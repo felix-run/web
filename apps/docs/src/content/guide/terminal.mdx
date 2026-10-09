@@ -326,11 +326,9 @@ Three rules hold:
 The supported verbs are `pwd`, `ls`, `cat`, `echo`, `mkdir`, `touch`, `tree`, `help`. **This is not a
 shell**: nothing is spawned as a process. `local_open` has no terminal equivalent and is refused.
 
-<Aside type="caution">
-A blocked run costs real time. Every request settles — a refusal, a path outside the root, an unknown
-tool and an unanswered prompt all come back as a **result**, never a hang, because the harness parks
-the model loop until it hears back (`spec.client_tools[].timeout_seconds`, default 120s).
-</Aside>
+**A blocked run costs real time,** so every request settles: a refusal, a path outside the root, an
+unknown tool and an unanswered prompt all come back as a **result**, never a hang, because the harness
+parks the model loop until it hears back (`spec.client_tools[].timeout_seconds`, default 120s).
 
 <Aside type="danger" title="Reads are not confirmed">
 That is the real trade of pointing an agent at a working directory, and it is worth stating plainly:

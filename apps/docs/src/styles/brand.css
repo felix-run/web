@@ -312,9 +312,11 @@
 /*
  * Phones. A route or field heading in the code face wraps between its segments
  * (enhance.js adds the break points) and steps down a size, so it is two lines
- * rather than a broken token. And a table of three or more columns stacks: each
- * row a block, each cell under its column name — the events list's shape, for the
- * tables whose last column (Notes, Purpose) was the one clipped off the edge.
+ * rather than a broken token. And a table stacks: each row a block, each cell
+ * under its column name — the events list's shape, for the tables whose last
+ * column (Notes, Purpose) was the one clipped off the edge. A two-column table
+ * stacks as a term over its description, with no labels (enhance.js sets none).
+ * An empty cell is dropped, or it printed its column name over nothing.
  */
 @media (max-width: 50rem) {
   .sl-markdown-content :is(h2, h3) code {
@@ -345,6 +347,14 @@
   .sl-markdown-content table.felix-stack td {
     border: 0;
     padding: 0.1rem 0;
+  }
+  .sl-markdown-content table.felix-stack td:empty {
+    display: none;
+  }
+  /* Starlight's flow spacing reaches block cells too, and put 1rem between a term
+     and its own description — more than between the row and the rule above it. */
+  .sl-markdown-content table.felix-stack td + td {
+    margin-top: 0.15rem;
   }
   .sl-markdown-content table.felix-stack td:first-child {
     font-weight: 600;
