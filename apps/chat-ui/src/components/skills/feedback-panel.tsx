@@ -169,7 +169,8 @@ function FeedbackForm({ detail, version }: { detail: SkillDetail; version: strin
       }}
     >
       <VersionPicker
-        versions={detail.versions.map((v) => v.version)}
+        versions={detail.versions}
+        liveVersion={detail.live_version}
         value={target}
         onChange={setTarget}
       />
@@ -430,7 +431,7 @@ function FeedbackDecision({ feedback: f }: { feedback: SkillFeedback }) {
       ) : (
         <div className="space-y-2">
           <label htmlFor={noteId} className="block text-xs font-medium text-muted-foreground">
-            Why reject it?
+            Why reject it? The note is kept on the feedback with its status.
           </label>
           <Textarea
             id={noteId}

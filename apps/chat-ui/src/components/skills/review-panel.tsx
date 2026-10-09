@@ -2,13 +2,13 @@ import type { SkillPreview, SkillSecurityIssue } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { Skeleton } from '@felix/ui/skeleton';
 import { CircleCheckIcon, CircleXIcon } from 'lucide-react';
+import { Link } from 'react-router';
 import { PageSection } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
-import { PolicyEditor } from './policy-form';
 import { usePublishPolicy, useSkillPreview } from './queries';
 import { policySentence } from './refusal';
-import { QualityMeta, SecurityMeta } from './score-readout';
+import { QualityMeta, SCORE_HELP, SecurityMeta } from './score-readout';
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 } as const;
 
@@ -25,15 +25,22 @@ const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 } as const;
  * Whether the gate *passes* is separate from whether the version's state
  * allows a publish: only a draft publishes, and only a once-live version rolls
  * back. Both are said.
+ *
+ * The policy is stated here and changed on the library page. It is the
+ * tenant's, not this skill's: an edit made from inside one version's gate
+ * re-decided every other skill's drafts with nothing on screen to say so.
  */
 export function ReviewPanel({
   name,
   version,
   liveVersion,
+  policyTo,
 }: {
   name: string;
   version: string;
   liveVersion: string | null;
+  /** The library page, where the tenant's policy is changed. */
+  policyTo: string;
 }) {
   const preview = useSkillPreview(name, version);
   const policy = usePublishPolicy();
@@ -69,10 +76,16 @@ export function ReviewPanel({
       >
         <GateVerdict preview={p} liveVersion={liveVersion} />
         {policy.data ? (
-          <>
-            <p className="mt-2 text-xs text-muted-foreground">{policySentence(policy.data)}</p>
-            <PolicyEditor policy={policy.data} />
-          </>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {policySentence(policy.data)} The policy covers every skill in this tenant;{' '}
+            <Link
+              to={policyTo}
+              className="text-foreground underline underline-offset-2 hover:no-underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              change it on the library page
+            </Link>
+            .
+          </p>
         ) : policy.error ? (
           <p className="mt-2 text-xs text-muted-foreground">
             The policy itself could not be read, so only the gate's verdict is shown.
@@ -102,6 +115,7 @@ export function ReviewPanel({
           ) : undefined
         }
       >
+        <p className="mb-2 text-xs text-muted-foreground">{SCORE_HELP.quality}</p>
         <ul aria-label="Review checks" className="space-y-1">
           {p.review_checks.map((c) => (
             <li key={c.id} className="flex items-start gap-2 text-sm">
@@ -136,6 +150,7 @@ export function ReviewPanel({
         title="Security"
         meta={p.security_status ? <SecurityMeta status={p.security_status} /> : undefined}
       >
+        <p className="mb-2 text-xs text-muted-foreground">{SCORE_HELP.security}</p>
         {p.security_issues.length === 0 ? (
           <p className="text-sm text-muted-foreground">The scan found nothing.</p>
         ) : (

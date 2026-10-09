@@ -298,9 +298,10 @@ review. Nothing in the loop publishes. Evaluations and improvements run in the w
 task, so they need `felix-worker` and `felix-scheduler` running.
 
 chat-ui's Skills page is the operator surface over all of this: the library list, a review queue and
-feedback inbox, an editor with diff and versions, evaluations, and the tenant's publish policy. A
-`create_skill` or `update_skill` result renders in the chat as a proposal card with Approve and
-Reject. The routes underneath are in the [Management API](/guide/management-api/#skill-library).
+feedback inbox, the tenant's publish policy, and for each skill an editor, its versions with diffs,
+the gate's verdict, evaluations and feedback. Every publish confirm states the gate's verdict before
+it asks. A `create_skill` or `update_skill` result renders in the chat as a proposal card with
+Publish and Reject. The routes underneath are in the [Management API](/guide/management-api/#skill-library).
 
 ## Tool
 

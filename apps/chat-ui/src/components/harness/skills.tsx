@@ -3,9 +3,10 @@ import { PuzzleIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ErrorNotice } from '@/components/error-notice';
-import { NameList } from '@/components/harness/panel';
+import { NameList, PageSection } from '@/components/harness/panel';
 import { Section, type SkillState } from '@/components/inspector/primitives';
 import { middleTruncate } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 /**
  * Skills: what an agent's manifest has given it to work with.
@@ -22,7 +23,8 @@ import { middleTruncate } from '@/lib/format';
  *
  * Below it, on `/harness/skills`, sits the tenant's skill **library** (`library`)
  * — what agents drafted and operators saved, and the queue of drafts waiting on
- * a person. That half is tenant-wide rather than per-agent, so it does not move
+ * a person. While that queue holds a draft the library comes first: it is
+ * the reason an operator opens this page the morning after an agent worked. That half is tenant-wide rather than per-agent, so it does not move
  * with the agent picker, and its pending count is the header's value when there
  * is one: a draft waiting is the thing on this page that asks for someone.
  */
@@ -74,6 +76,13 @@ export function SkillsSection({
     : specSkills
       ? `${specSkills.length} declared`
       : undefined;
+  // A draft waiting is what this page asks someone for, so the queue leads
+  // while it holds one; otherwise the agent's own skills, which change least,
+  // stop being the first thing read on every visit only when there is
+  // something else to read.
+  const libraryBlock = library ? (
+    <div className={cn('space-y-1', pendingText ? 'mb-6' : 'mt-6')}>{library}</div>
+  ) : null;
   return (
     <Section
       icon={<PuzzleIcon className="size-3.5" />}
@@ -85,102 +94,110 @@ export function SkillsSection({
       onToggle={onToggle}
       controls={controls}
     >
-      <div className="space-y-3">
-        {skills ? (
-          <>
-            <p className="text-sm text-muted-foreground">
-              As of the agent's last <code className="font-mono">list_skills</code> call.
-            </p>
-            <div className="space-y-2.5">
-              <SkillList label="Active" names={skills.active} kind="active" />
-              <SkillList
-                label="Declared"
-                names={skills.declared}
-                kind="declared"
-                active={skills.active}
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-muted-foreground">
-              {isChatAgent ? (
-                <>
-                  Which are active is unknown until the agent calls{' '}
-                  <code className="font-mono">list_skills</code> in a conversation.
-                </>
-              ) : (
-                <>
-                  Which are active is only known for the agent Chat is talking to; this is{' '}
-                  <span className="font-mono text-foreground">{agent}</span>, as its manifest
-                  declares it.
-                </>
-              )}
-            </p>
-            {specError != null ? (
-              // Said, and retryable. The page used to fall silent here, which
-              // read exactly like a manifest that declares no skills.
-              <ErrorNotice
-                error={specError}
-                doing={`read ${agent ?? 'the agent'}'s manifest`}
-                action={
-                  onRetrySpec ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="self-start text-xs"
-                      onClick={onRetrySpec}
-                    >
-                      Try again
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : specSkills ? (
-              <SkillList label="Declared by the manifest" names={specSkills} kind="declared" />
-            ) : (
-              // Said, so an in-flight read is not the same picture as a manifest
-              // that declares none — which now answers `[]` and reads "None".
-              <p role="status" className="text-sm text-muted-foreground">
-                Reading the manifest…
+      {pendingText && libraryBlock}
+      <PageSection
+        title={agent ? `Skills ${agent} can use` : 'Skills the agent can use'}
+        // Below the library it is a section like the others, so it takes their
+        // rule; first on the page it opens bare, as a first section does.
+        className={pendingText ? 'border-t! pt-3!' : undefined}
+      >
+        <div className="space-y-3">
+          {skills ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                As of the agent's last <code className="font-mono">list_skills</code> call.
               </p>
-            )}
-          </>
-        )}
-        {thread && isChatAgent && (
-          <p className="text-sm text-muted-foreground">
-            From{' '}
-            <Link
-              to={thread.to}
-              className="text-foreground underline underline-offset-2 hover:no-underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-            >
-              {thread.isId ? (
-                <>
-                  the untitled thread{' '}
-                  <span className="font-mono" title={thread.text}>
-                    {middleTruncate(thread.text, 16)}
-                  </span>
-                </>
+              <div className="space-y-2.5">
+                <SkillList label="Active" names={skills.active} kind="active" />
+                <SkillList
+                  label="Declared"
+                  names={skills.declared}
+                  kind="declared"
+                  active={skills.active}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {isChatAgent ? (
+                  <>
+                    Which are active is unknown until the agent calls{' '}
+                    <code className="font-mono">list_skills</code> in a conversation.
+                  </>
+                ) : (
+                  <>
+                    Which are active is only known for the agent Chat is talking to; this is{' '}
+                    <span className="font-mono text-foreground">{agent}</span>, as its manifest
+                    declares it.
+                  </>
+                )}
+              </p>
+              {specError != null ? (
+                // Said, and retryable. The page used to fall silent here, which
+                // read exactly like a manifest that declares no skills.
+                <ErrorNotice
+                  error={specError}
+                  doing={`read ${agent ?? 'the agent'}'s manifest`}
+                  action={
+                    onRetrySpec ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="self-start text-xs"
+                        onClick={onRetrySpec}
+                      >
+                        Try again
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : specSkills ? (
+                <SkillList label="Declared by the manifest" names={specSkills} kind="declared" />
               ) : (
-                thread.text
+                // Said, so an in-flight read is not the same picture as a manifest
+                // that declares none — which now answers `[]` and reads "None".
+                <p role="status" className="text-sm text-muted-foreground">
+                  Reading the manifest…
+                </p>
               )}
-            </Link>
-            {skills ? '.' : ', where asking it is one message.'}
-          </p>
-        )}
-        {!thread && isChatAgent && !skills && chatTo && (
-          <p className="text-sm text-muted-foreground">
-            <Link
-              to={chatTo}
-              className="text-foreground underline underline-offset-2 hover:no-underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-            >
-              Ask it in Chat
-            </Link>{' '}
-            to see which are active.
-          </p>
-        )}
-      </div>
-      {library ? <div className="mt-6 space-y-1">{library}</div> : null}
+            </>
+          )}
+          {thread && isChatAgent && (
+            <p className="text-sm text-muted-foreground">
+              From{' '}
+              <Link
+                to={thread.to}
+                className="text-foreground underline underline-offset-2 hover:no-underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              >
+                {thread.isId ? (
+                  <>
+                    the untitled thread{' '}
+                    <span className="font-mono" title={thread.text}>
+                      {middleTruncate(thread.text, 16)}
+                    </span>
+                  </>
+                ) : (
+                  thread.text
+                )}
+              </Link>
+              {skills ? '.' : ', where asking it is one message.'}
+            </p>
+          )}
+          {!thread && isChatAgent && !skills && chatTo && (
+            <p className="text-sm text-muted-foreground">
+              <Link
+                to={chatTo}
+                className="text-foreground underline underline-offset-2 hover:no-underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              >
+                Ask it in Chat
+              </Link>{' '}
+              to see which are active.
+            </p>
+          )}
+        </div>
+      </PageSection>
+      {!pendingText && libraryBlock}
     </Section>
   );
 }
@@ -198,7 +215,7 @@ function SkillList({
 }) {
   return (
     <div>
-      <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
+      <h4 className="mb-1 text-xs font-medium text-muted-foreground">{label}</h4>
       {names.length === 0 ? (
         <p className="text-sm text-muted-foreground">None</p>
       ) : (

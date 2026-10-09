@@ -17,7 +17,7 @@ import {
 /**
  * The card a `create_skill` / `update_skill` result becomes in the transcript.
  *
- * Every state here is one where the wrong card would mislead: Approve on a
+ * Every state here is one where the wrong card would mislead: Publish on a
  * draft already decided elsewhere, "done" on a call that saved nothing, a
  * button that 403s forever for a key without `skills:write`, a diff that hides
  * a changed script. Each is driven through the real tool card and a fake
@@ -158,18 +158,18 @@ describe('parseSkillCall', () => {
 });
 
 describe('SkillProposalCard', () => {
-  it('offers a pending draft for decision, Approve publishes it, and then offers nothing', async () => {
+  it('offers a pending draft for decision, Publish publishes it, and then offers nothing', async () => {
     const h = library(DRAFT_AND_LIVE);
     mountWithProviders(<Tool tool={tool(saved())} />);
 
     await screen.findByText('draft');
     expect(screen.getByText('Clearer steps')).toBeTruthy();
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve 0.1.1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish 0.1.1' }));
     // Armed, naming what goes live and what it replaces — from the library's data.
     expect(
       await screen.findByText(/roll-dice 0\.1\.1 goes live, replacing live 0\.1\.0/),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Approve 0.1.1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.1' }));
     await waitFor(() =>
       expect(
         h.requests.find(
@@ -180,28 +180,30 @@ describe('SkillProposalCard', () => {
     );
     // The refetch says it is live; the card stops offering a decision.
     expect(await screen.findByText('live')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull();
   });
 
-  it('gives Approve and Reject the same weight', async () => {
+  it('gives Publish and Reject the same weight', async () => {
     library(DRAFT_AND_LIVE);
     mountWithProviders(<Tool tool={tool(saved())} />);
-    const approve = await screen.findByRole('button', { name: 'Approve 0.1.1' });
+    const approve = await screen.findByRole('button', { name: 'Publish 0.1.1' });
     expectSameWeight(approve, screen.getByRole('button', { name: 'Reject…' }));
   });
 
-  it('does not offer Approve until the library has confirmed the draft exists', async () => {
+  it('does not offer Publish until the library has confirmed the draft exists', async () => {
     library([versionRow({ version: '0.1.0', status: 'published' })]);
     mountWithProviders(<Tool tool={tool(saved())} />);
     await screen.findByRole('link', { name: /Open in library/ });
     await new Promise((r) => setTimeout(r, 20));
-    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull();
   });
 
   it('diffs against the live version and lists every other file that differs', async () => {
     const h = library(DRAFT_AND_LIVE);
     mountWithProviders(<Tool tool={tool(saved())} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Diff against live 0.1.0' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Gate verdict and diff against live 0.1.0' }),
+    );
     expect(await screen.findByText('new line')).toBeTruthy();
     expect(screen.getByText('old line')).toBeTruthy();
     const others = await screen.findByRole('list', { name: 'Files that differ in 0.1.1' });
@@ -230,17 +232,19 @@ describe('SkillProposalCard', () => {
     mountWithProviders(<Tool tool={tool(saved({ version: '0.1.2' }))} />);
     const note = await screen.findByRole('note');
     expect(note.textContent).toMatch(/Edited from 0\.1\.0, not from the live 0\.1\.1/);
-    expect(screen.getByRole('button', { name: 'Diff against live 0.1.1' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Gate verdict and diff against live 0.1.1' }),
+    ).toBeTruthy();
   });
 
-  it('does not offer Approve for a draft decided since, whatever the result said', async () => {
+  it('does not offer Publish for a draft decided since, whatever the result said', async () => {
     library(
       [versionRow({ version: '0.1.1', status: 'archived', decided_at: 5, decided_by: 'ops' })],
       null,
     );
     mountWithProviders(<Tool tool={tool(saved())} />);
     await screen.findByText('rejected');
-    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull();
     expect(screen.getByRole('link', { name: /Open in library/ }).getAttribute('href')).toBe(
       '/harness/skills?skill=roll-dice&v=0.1.1&tab=versions',
     );
@@ -257,11 +261,11 @@ describe('SkillProposalCard', () => {
       return undefined;
     });
     mountWithProviders(<Tool tool={tool(saved())} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve 0.1.1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish 0.1.1' }));
     await screen.findByText(/goes live/);
-    fireEvent.click(screen.getByRole('button', { name: 'Approve 0.1.1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.1' }));
     expect(await screen.findByText(/approving or rejecting needs skills:write/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull();
     expect(screen.getByRole('link', { name: /Open in library/ })).toBeTruthy();
   });
 
@@ -283,7 +287,7 @@ describe('SkillProposalCard', () => {
     expect(within(card).getByText(/was saved since\. Nothing was saved/)).toBeTruthy();
     expect(card.textContent).toContain('0.1.0');
     expect(card.textContent).toContain('0.1.2');
-    expect(within(card).queryByRole('button', { name: /Approve/ })).toBeNull();
+    expect(within(card).queryByRole('button', { name: /Publish/ })).toBeNull();
   });
 
   it('reports a refused publish as a draft with the gate reasons', async () => {
@@ -300,6 +304,6 @@ describe('SkillProposalCard', () => {
     mountWithProviders(<Tool tool={tool(saved())} />);
     expect(await screen.findByText(/as saved; the library could not be read/)).toBeTruthy();
     expect(screen.getByText('draft')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull();
   });
 });

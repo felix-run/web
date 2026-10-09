@@ -221,6 +221,7 @@ export function EditPanel({ name, editor }: { name: string; editor: SkillEditor 
       </PageSection>
 
       <SaveDialog
+        name={name}
         key={dialogKey}
         open={saving}
         onOpenChange={(open) => {

@@ -6,19 +6,24 @@ import { PageSection } from '@/components/harness/panel';
 import { cn } from '@/lib/utils';
 import { BundleChanges } from './bundle-changes';
 import { DiffView } from './diff-view';
+import { GateLine } from './gate-line';
 import { useArchiveSkill, useSkillFile } from './queries';
 import { RefusalNotice } from './refusal';
 import { ScoreReadout } from './score-readout';
+import { SkillBundleBrowser } from './skill-bundle-browser';
 import { ago, SourceLabel, VersionStateBadge, versionState } from './skill-status';
 import { EDITOR } from './skill-tabs';
 import { RollbackButton, VersionDecision } from './version-actions';
+import { versionOptionLabel } from './version-picker';
 
 /**
  * Every version of one skill, newest first, with what can be done to each:
  * a draft is published or rejected, a once-live version rolled back to, the
- * live one left alone. Above the list, a diff of any version against the
+ * live one left alone, and each draft says what the gate would make of it
+ * beside its decision. Above the list, a diff of any version against the
  * editor's working copy or against any other version — both sides named, both
- * in the address, so a comparison is a link.
+ * in the address, so a comparison is a link. Below it, the selected version's
+ * files.
  */
 export function VersionsPanel({
   detail,
@@ -40,7 +45,6 @@ export function VersionsPanel({
   const right = useSkillFile(name, selected);
   const leftId = useId();
   const rightId = useId();
-  const options = detail.versions.map((v) => v.version);
 
   const leftText = against === EDITOR ? editorSkillMd : (left.data?.content ?? null);
   const rightText = right.data?.content ?? null;
@@ -62,9 +66,9 @@ export function VersionsPanel({
             <option value={EDITOR} disabled={editorSkillMd === null}>
               the editor
             </option>
-            {options.map((v) => (
-              <option key={v} value={v}>
-                {v}
+            {detail.versions.map((v) => (
+              <option key={v.version} value={v.version}>
+                {versionOptionLabel(v, detail.live_version)}
               </option>
             ))}
           </select>
@@ -77,9 +81,9 @@ export function VersionsPanel({
             onChange={(e) => onCompare(e.target.value, against)}
             className="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
           >
-            {options.map((v) => (
-              <option key={v} value={v}>
-                {v}
+            {detail.versions.map((v) => (
+              <option key={v.version} value={v.version}>
+                {versionOptionLabel(v, detail.live_version)}
               </option>
             ))}
           </select>
@@ -119,6 +123,10 @@ export function VersionsPanel({
             />
           ))}
         </ul>
+      </PageSection>
+
+      <PageSection title={`Files in ${selected}`}>
+        <SkillBundleBrowser name={name} version={selected} />
       </PageSection>
 
       <ArchiveSkill name={name} liveVersion={detail.live_version} />
@@ -171,6 +179,7 @@ function VersionRow({
           ) : null}
         </p>
       )}
+      {state === 'draft' && <GateLine name={v.name} version={v.version} />}
       {state === 'draft' && (
         <VersionDecision
           name={v.name}

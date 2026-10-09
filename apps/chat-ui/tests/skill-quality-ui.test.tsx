@@ -8,7 +8,8 @@ import { FeedbackRow, feedbackFailure } from '../src/components/skills/feedback-
 import { PolicyEditor, policyPatch } from '../src/components/skills/policy-form';
 import { JOB_POLL_MS, STALL_MS } from '../src/components/skills/queries';
 import { policySentence } from '../src/components/skills/refusal';
-import { SkillLibraryPage } from '../src/components/skills/skill-library';
+import { SaveDialog } from '../src/components/skills/save-dialog';
+import { SkillLibrary, SkillLibraryPage } from '../src/components/skills/skill-library';
 import { VersionDecision } from '../src/components/skills/version-actions';
 import {
   fakeHarness,
@@ -226,7 +227,7 @@ describe('feedback', () => {
       }),
     );
     fireEvent.click(within(list).getByRole('button', { name: 'Reject…' }));
-    fireEvent.change(within(list).getByLabelText('Why reject it?'), { target: { value: 'No' } });
+    fireEvent.change(within(list).getByLabelText(/^Why reject it\?/), { target: { value: 'No' } });
     fireEvent.click(within(list).getByRole('button', { name: 'Reject feedback' }));
     await waitFor(() =>
       expect(
@@ -306,6 +307,44 @@ describe('the publish policy', () => {
     updated_at: 1,
     updated_by: 'ops',
     ...over,
+  });
+
+  it("is changed on the library page, and only stated on a skill's gate", async () => {
+    fakeHarness((req: Recorded) => {
+      if (req.path === '/skill-library/-/policy') return { body: policy() };
+      if (req.path.startsWith('/skill-library/-/review'))
+        return { body: { items: [], next_cursor: null } };
+      if (req.path.startsWith('/skill-library/-/feedback'))
+        return { body: { items: [], next_cursor: null } };
+      if (req.path.startsWith('/skill-library?')) return { body: { items: [], next_cursor: null } };
+      if (req.path === '/skill-library/roll-dice') return { body: detail('0.1.0') };
+      if (req.path.endsWith('/preview'))
+        return {
+          body: {
+            name: 'roll-dice',
+            version: '0.1.1',
+            status: 'draft',
+            valid: true,
+            validation_issues: [],
+            quality_score: 80,
+            review_checks: [],
+            security_status: 'pass',
+            security_issues: [],
+            policy_passes: true,
+            reasons: [],
+          },
+        };
+      return undefined;
+    });
+    const { unmount } = mountWithProviders(<SkillLibrary />, '/harness/skills');
+    expect(await screen.findByRole('heading', { name: 'Publish policy' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Edit policy…' })).toBeTruthy();
+    unmount();
+    mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=roll-dice&tab=review');
+    expect(await screen.findByText(/The gate would let 0\.1\.1 through/)).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'change it on the library page' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Edit policy…' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Gate' })).toBeTruthy();
   });
 
   it('marks where the deployment floor outvoted the tenant, and says tighten-only', () => {
@@ -646,5 +685,78 @@ describe('review fixes', () => {
       expect(again.value).toBe(DRAFT);
       expect(document.body.textContent).not.toContain('unsaved changes');
     });
+  });
+});
+
+describe('the decision states the evidence', () => {
+  const preview = (passes: boolean, reasons: string[] = []) => ({
+    name: 'roll-dice',
+    version: '0.1.1',
+    status: 'draft',
+    valid: true,
+    validation_issues: [],
+    quality_score: passes ? 80 : 40,
+    review_checks: [],
+    security_status: 'pass',
+    security_issues: [],
+    policy_passes: passes,
+    reasons,
+  });
+
+  it("states the gate's verdict in the publish confirm, read fresh beside what is live", async () => {
+    const h = fakeHarness((req: Recorded) =>
+      req.path === '/skill-library/roll-dice'
+        ? { body: detail('0.1.0') }
+        : req.path.endsWith('/preview')
+          ? { body: preview(false, ['quality 40 < 60.']) }
+          : undefined,
+    );
+    mountWithProviders(<VersionDecision name="roll-dice" version="0.1.1" liveVersion="0.1.0" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.1' }));
+    expect(await screen.findByText('The gate would refuse 0.1.1: quality 40 < 60.')).toBeTruthy();
+    expect(screen.getByText(/replacing live 0\.1\.0/)).toBeTruthy();
+    expect(h.requests.some((r) => r.path.endsWith('/versions/0.1.1/preview'))).toBe(true);
+  });
+
+  it('still asks when the verdict cannot be read, and says so', async () => {
+    fakeHarness((req: Recorded) =>
+      req.path === '/skill-library/roll-dice' ? { body: detail('0.1.0') } : undefined,
+    );
+    mountWithProviders(<VersionDecision name="roll-dice" version="0.1.1" liveVersion="0.1.0" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.1' }));
+    expect(await screen.findByText(/verdict could not be read/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publish 0.1.1' })).toBeTruthy();
+  });
+
+  it('names what a save-and-publish replaces, read fresh, and says it publishes', async () => {
+    fakeHarness((req: Recorded) =>
+      req.path === '/skill-library/roll-dice' ? { body: detail('0.1.0') } : undefined,
+    );
+    mountWithProviders(
+      <SaveDialog
+        name="roll-dice"
+        open
+        onOpenChange={() => {}}
+        parent="0.1.1"
+        bodyBytes={100}
+        busy={false}
+        onSave={() => {}}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Save 0.1.2' })).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(/Publish now/));
+    expect(
+      await screen.findByText(/roll-dice 0\.1\.2 goes live, replacing live 0\.1\.0/),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save and publish 0.1.2' })).toBeTruthy();
+  });
+});
+
+describe('a link to no skill', () => {
+  it('draws no tab strip over the not-found line', async () => {
+    fakeHarness(() => ({ status: 404, body: { error: 'not_found', message: 'no such skill' } }));
+    mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=does-not-exist');
+    expect(await screen.findByText(/has no skill called/)).toBeTruthy();
+    expect(screen.queryByRole('tablist')).toBeNull();
   });
 });

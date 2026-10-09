@@ -13,7 +13,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   acceptSkillFeedback,
   archiveLibrarySkill,
@@ -225,12 +225,34 @@ export function useArchiveSkill() {
 /** The skill as it stands now, from the harness and never the cache — what a confirm must show. */
 export function useFreshSkill() {
   const client = useQueryClient();
-  return (name: string) =>
-    client.fetchQuery({
-      queryKey: skillKeys.skill(name),
-      queryFn: () => getLibrarySkill(name),
-      staleTime: 0,
-    });
+  return useCallback(
+    (name: string) =>
+      client.fetchQuery({
+        queryKey: skillKeys.skill(name),
+        queryFn: () => getLibrarySkill(name),
+        staleTime: 0,
+      }),
+    [client],
+  );
+}
+
+/**
+ * The gate's verdict on a version as it stands now — what a publish confirm
+ * states beside its question, so the decision is never asked before the
+ * evidence. Fresh for the same reason the skill is: the policy and the scanner
+ * move on.
+ */
+export function useFreshPreview() {
+  const client = useQueryClient();
+  return useCallback(
+    (name: string, version: string) =>
+      client.fetchQuery({
+        queryKey: skillKeys.preview(name, version),
+        queryFn: () => previewSkillVersion(name, version),
+        staleTime: 0,
+      }),
+    [client],
+  );
 }
 
 const inFlightEval = (e: SkillEval) => e.status === 'queued' || e.status === 'running';
