@@ -67,16 +67,21 @@ manifest field attaches a hook.
 | Hook | When | Return to act |
 |---|---|---|
 | `filter_history` | once per request, as the history is assembled | a new message list, which becomes the history |
-| `before_turn` | before each model call in the loop (not a queued follow-up's) | messages to **append** to the history |
-| `before_model` | before every model call, after `before_turn` and on a follow-up's too | `{"messages": [...]}`: what *this call* sends |
+| `before_turn` | before each model call in the loop, a queued follow-up's included | messages to **append** to the history |
+| `before_model` | before every model call, after `before_turn` | `{"messages": [...]}`: what *this call* sends |
 | `after_model` | after every model reply | `{"message": ChatMessage(role="assistant", ...)}`: the reply the run keeps |
 | `before_tool` | before each tool call | `{"block": True, "reason": "...", "terminate"?: True}` |
-| `after_tool` | after each tool call, including a failed one | `{"content"?: "...", "terminate"?: True}` |
+| `after_tool` | after each tool call, including a failed one, where `result` is the error text the model would see | `{"content"?: "...", "terminate"?: True}` |
 | `before_compact` | before compacting a session | a custom `{"summary": ...}`, or `{"cancel": True}` |
 | `compact_failed` | when compaction fails | nothing; it is a notification |
 
 Return `None` to leave things as they are. Several hooks of one kind run in registration order,
 each seeing what the one before it returned.
+
+An `after_tool` hook that redacts output covers failures too: the exception's message is where a
+secret or an internal path is most likely to appear. Its `content` replaces the error text, and
+if the replacement does not start with an error spelling such as `[error/...]`, the original one
+is put back in front, so the call still counts as a failure for the model and for eval.
 
 Write hooks with the positional parameters above, not `**kwargs`: a hook is called as
 `hook(value, ctx)`, so a keyword-only one raises on every call. The hook types in `felix.hooks`
