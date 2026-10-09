@@ -30,6 +30,7 @@ import {
 } from '@/lib/auth';
 import { useDeviceLogin } from '@/lib/github-login';
 import { DeviceLoginBody } from './auth/github-sign-in';
+import { ConfirmButton } from './confirm-button';
 
 /** From here to the end, the chip says the session is ending and offers to renew it. */
 export const RENEW_WINDOW_MS = 15 * 60_000;
@@ -195,7 +196,7 @@ export function AccountChip() {
  */
 function GitHubConnectionRow({ open }: { open: boolean }) {
   const [state, setState] = useState<GitHubConnectionState | 'unknown' | 'error'>('unknown');
-  const [busy, setBusy] = useState(false);
+  const [revokeFailed, setRevokeFailed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -230,21 +231,27 @@ function GitHubConnectionRow({ open }: { open: boolean }) {
             : 'Repositories you open in a thread need a GitHub connection; sign in with GitHub to make one.'}
       </p>
       {connected && (
-        <Button
-          type="button"
+        // The same question the GitHub page asks: it is the same action, and it is not one
+        // an undo can reverse — getting the connection back is a fresh GitHub sign-in.
+        <ConfirmButton
           variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            removeGitHubConnection()
+          destructive
+          question="Felix forgets this token and GitHub withdraws the App's grant. Opening a repository needs a GitHub sign-in again."
+          confirmLabel="Revoke access"
+          onConfirm={() => {
+            setRevokeFailed(false);
+            return removeGitHubConnection()
               .then(() => setState({ connected: false, connection: null }))
-              .catch(() => setState('error'))
-              .finally(() => setBusy(false));
+              .catch(() => setRevokeFailed(true));
           }}
         >
           Revoke GitHub access
-        </Button>
+        </ConfirmButton>
+      )}
+      {revokeFailed && (
+        <p role="alert" className="text-xs text-state-failed">
+          Could not revoke the connection. Try again.
+        </p>
       )}
     </div>
   );

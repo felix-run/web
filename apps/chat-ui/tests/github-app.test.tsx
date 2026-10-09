@@ -352,7 +352,7 @@ describe("the thread's repository on the harness", () => {
 });
 
 describe('your GitHub connection', () => {
-  it('can be revoked from the account chip, asking the harness', async () => {
+  it('can be revoked from the account chip, after asking, then asking the harness', async () => {
     signedInAsOcto();
     let connected = true;
     routes['/api/github/connection'] = (init) => {
@@ -379,6 +379,9 @@ describe('your GitHub connection', () => {
     render(<AccountChip />);
     fireEvent.click(screen.getByRole('button', { name: /signed in as/i }));
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke GitHub access' }));
+    // Arming asks; nothing is sent until the second press.
+    expect(calls.some((c) => c.init?.method === 'DELETE')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke access' }));
     await screen.findByText('Not connected to GitHub');
     expect(
       calls.some((c) => c.url === '/api/github/connection' && c.init?.method === 'DELETE'),
