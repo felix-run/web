@@ -62,6 +62,12 @@ function MiddleCut({ text }: { text: string }) {
  * An `h2`: the wordmark is the page's one `h1`, and this names what the sheet
  * below it holds, the way a `/harness` page's own `h2` names that page.
  *
+ * A thread with nothing in it yet reads *New conversation*, muted, rather than
+ * its id: the id is not a name, only the lack of one, and on every fresh thread
+ * it was the most prominent text in the header. The id stays in the `title`. A
+ * thread that has turns but no title (an older harness, another client) still
+ * shows its id, because then the id is the only name it has.
+ *
  * Clicking the title renames it in place, through the same action as the
  * sidebar's Rename (`POST /chat/sessions/name`). It is not editable while this
  * tab only watches the thread, nor before the thread exists on the harness: a
@@ -72,6 +78,7 @@ export function ThreadTitle({
   thread,
   readOnly,
   onRename,
+  empty = false,
   showAgent = true,
   className,
 }: {
@@ -81,6 +88,8 @@ export function ThreadTitle({
   /** Another client drives this thread; this tab only watches it. */
   readOnly: boolean;
   onRename: (id: string, name: string) => void;
+  /** The thread has no turns yet: it is named *New conversation* until it does. */
+  empty?: boolean;
   /**
    * Draw the agent id beside the title. Debug mode only: it is the harness's
    * manifest id, and the composer's picker already names the agent in words.
@@ -92,6 +101,7 @@ export function ThreadTitle({
     () => (thread ? threadLabel(thread) : { text: threadId, isId: true }),
     [thread, threadId],
   );
+  const unnamedNew = empty && label.isId;
   const [draft, setDraft] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -134,10 +144,18 @@ export function ThreadTitle({
     <span
       className={cn(
         'flex min-w-0',
-        label.isId ? 'font-mono text-muted-foreground' : 'font-medium text-foreground',
+        unnamedNew
+          ? 'font-medium text-muted-foreground'
+          : label.isId
+            ? 'font-mono text-muted-foreground'
+            : 'font-medium text-foreground',
       )}
     >
-      <MiddleCut text={label.text} />
+      {unnamedNew ? (
+        <span className="truncate">New conversation</span>
+      ) : (
+        <MiddleCut text={label.text} />
+      )}
     </span>
   );
 
@@ -179,7 +197,7 @@ export function ThreadTitle({
               data-slot="thread-title-button"
               // The whole title, since the header may be showing a cut of it,
               // and the id, since two threads can carry the same title.
-              title={`${label.isId ? label.text : `${label.text}\nThread ${threadId}`}\nClick to rename`}
+              title={`${unnamedNew ? `New conversation\nThread ${threadId}` : label.isId ? label.text : `${label.text}\nThread ${threadId}`}\nClick to rename`}
               aria-describedby={hintId}
               onClick={() => setDraft(thread?.named ? thread.title : '')}
               className="flex min-w-0 cursor-text items-center rounded-md px-1.5 py-0.5 -mx-1.5 outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring"
@@ -193,7 +211,9 @@ export function ThreadTitle({
               title={
                 readOnly
                   ? `${label.text}\nAnother client is driving this thread, so it cannot be renamed here.`
-                  : label.text
+                  : unnamedNew
+                    ? `New conversation\nThread ${threadId}`
+                    : label.text
               }
             >
               {text}

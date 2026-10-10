@@ -86,6 +86,25 @@ describe('ThreadTitle', () => {
     expect(heading.querySelector('button')).toBeNull();
   });
 
+  it('calls a thread with nothing in it yet a new conversation, not its id', () => {
+    render(
+      <ThreadTitle
+        threadId="ba3ff3b4-090e-4ce9-ad24-4f8b079cb439"
+        thread={undefined}
+        readOnly={false}
+        onRename={() => {}}
+        empty
+      />,
+    );
+    const heading = screen.getByRole('heading', { level: 2 });
+    expect(heading.textContent).toBe('New conversation');
+    expect(heading.querySelector('.font-mono')).toBeNull();
+    // The id is still there for anyone who needs it.
+    expect(heading.querySelector('[title]')?.getAttribute('title')).toContain(
+      'ba3ff3b4-090e-4ce9-ad24-4f8b079cb439',
+    );
+  });
+
   it('renames in place through the action it is given: Enter saves', async () => {
     const onRename = vi.fn();
     render(<ThreadTitle threadId="abc" thread={meta()} readOnly={false} onRename={onRename} />);
