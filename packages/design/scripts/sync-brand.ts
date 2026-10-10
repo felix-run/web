@@ -25,7 +25,7 @@ import {
   MARK_INK,
   markSvg,
 } from '../src/mark';
-import { DARK } from '../src/tokens';
+import { DARK, NEUTRAL } from '../src/tokens';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const chatPublic = join(root, 'apps/chat-ui/public');
@@ -122,8 +122,14 @@ write(join(docsAssets, 'mark-dark.svg'), `${markSvg({ inverted: true })}\n`);
 
 /**
  * The docs' social card. The page field and type are the docs' own dark theme
- * (DESIGN.md: `page`, `ink`, `faint-text`); the mark is the tab mark at scale,
- * set on a hairline so the dark head does not dissolve into a dark field.
+ * (DESIGN.md: `page`, `ink`, `body-text`, `faint-text`), read from the tokens so the
+ * card warms with them; the mark is the tab mark at scale, set on a hairline so the
+ * dark head does not dissolve into a dark field.
+ *
+ * The type is the platform's sans and mono, not the docs' Onest and JetBrains Mono:
+ * rsvg-convert on macOS lays text out through CoreText and ignores a scratch
+ * fontconfig, so a self-hosted face cannot reach it (tested 2026-10-10 — "Onest" and
+ * a made-up family rendered byte-identically).
  */
 function socialCard(): string {
   const w = 1200;
@@ -137,13 +143,13 @@ function socialCard(): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <rect width="${w}" height="${h}" fill="${DARK.bg}"/>
   <g transform="translate(${x} ${y}) scale(${k})">
-    <path d="${MARK_HEAD_PATH}" fill="${MARK_INK.tile}" stroke="#262626" stroke-width="${1.5 / k}"/>
+    <path d="${MARK_HEAD_PATH}" fill="${MARK_INK.tile}" stroke="${NEUTRAL[800]}" stroke-width="${1.5 / k}"/>
     <path d="${MARK_CHEVRON.d}" fill="none" stroke="${MARK_INK.glyph}" stroke-width="${MARK_CHEVRON.width}" stroke-linecap="round" stroke-linejoin="round"/>
     <rect x="${MARK_CURSOR.x}" y="${MARK_CURSOR.y}" width="${MARK_CURSOR.width}" height="${MARK_CURSOR.height}" rx="${MARK_CURSOR.rx}" fill="${MARK_INK.glyph}"/>
   </g>
-  <text x="${x - 4}" y="410" font-family="${sans}" font-size="88" font-weight="600" letter-spacing="6" fill="#ffffff">FELIX</text>
-  <text x="${x}" y="470" font-family="${sans}" font-size="32" fill="#d4d4d4">The operator's manual for a self-hosted agent harness.</text>
-  <text x="${x}" y="${h - 80}" font-family="${mono}" font-size="24" fill="#a3a3a3">docs.felix.run</text>
+  <text x="${x - 4}" y="410" font-family="${sans}" font-size="88" font-weight="600" letter-spacing="6" fill="${DARK.text}">FELIX</text>
+  <text x="${x}" y="470" font-family="${sans}" font-size="32" fill="${DARK.textMuted}">The operator's manual for a self-hosted agent harness.</text>
+  <text x="${x}" y="${h - 80}" font-family="${mono}" font-size="24" fill="${DARK.textFaint}">docs.felix.run</text>
 </svg>`;
 }
 
