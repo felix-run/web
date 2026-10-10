@@ -797,8 +797,14 @@ never scrolls when expanded. Workspace's *Files* is a disclosure with its entry 
 until opened and remembered. The thread groups rank by state, then recency: *Waiting on you*
 (`state-blocked`, dot and words), *Running* (`state-running`), *Pinned* (labelled *this browser*),
 *Today*, *Yesterday*, *Previous 7 days*, and *Older*, which starts folded and, open, is cut by
-month. Group labels are 12px semibold muted on the ground, 28px tall, and stick to the top of the
+month. Group labels are 12px medium muted on the ground, 28px tall, and stick to the top of the
 list while their rows scroll under them. Empty groups are not drawn.
+
+**Two label weights, one edge.** The sidebar's three *section* headings (Threads, Workspace,
+Harness) are 12px semibold; every *subgroup* label inside them (the date groups, Older, Files,
+Records, Workbenches) is 12px medium. All of them start on the rows' text edge, 18px in, and
+both scrolling regions reserve their scrollbar's gutter, so the counts down the right edge
+(Older's, Files') end on one line whether or not a region is scrolling.
 
 Each row is a **tile** (`rounded-lg`, `px-2.5 py-1.5`): the thread's title over one 12px line
 (*Waiting on you* or *Running* first when the row is not already under that group, then the agent

@@ -246,7 +246,7 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        'flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground outline-hidden transition-[margin,opacity] duration-200 ease-out focus-visible:ring-[3px] focus-visible:ring-ring [&>svg]:size-3.5 [&>svg]:shrink-0',
+        'flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold text-muted-foreground outline-hidden transition-[margin,opacity] duration-200 ease-out focus-visible:ring-[3px] focus-visible:ring-ring [&>svg]:size-3.5 [&>svg]:shrink-0',
         'group-data-[collapsible=icon]:-mt-7 group-data-[collapsible=icon]:opacity-0',
         className,
       )}

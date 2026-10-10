@@ -93,7 +93,7 @@ const ROW_LIT = cn(
  * months stick one label-height lower, under Older's own.
  */
 const STICKY_LABEL =
-  'sticky top-0 z-10 flex h-7 items-center gap-1 bg-ground px-2.5 text-xs font-semibold text-muted-foreground';
+  'sticky top-0 z-10 flex h-7 items-center gap-1 bg-ground px-2.5 text-xs font-medium text-muted-foreground';
 
 /** A row to draw: the thread, and the stretch of a message that matched a search, if one did. */
 type Row = { thread: ThreadMeta; excerpt?: string };
@@ -714,9 +714,9 @@ export function ThreadList({
       // own rows inside that. `shrink!` beats the sidebar's `*:shrink-0`.
       className={cn('flex min-h-0 flex-1 shrink! flex-col', className)}
     >
-      <div className="shrink-0 px-2 pt-1 pb-2">
-        <div className="flex h-7 items-center px-2">
-          <h2 id="history-heading" className="text-xs font-medium text-muted-foreground">
+      <div className="shrink-0 px-2 pt-3 pb-2">
+        <div className="flex h-7 items-center px-2.5">
+          <h2 id="history-heading" className="text-xs font-semibold text-muted-foreground">
             Threads
           </h2>
         </div>
@@ -763,7 +763,7 @@ export function ThreadList({
         data-slot="thread-scroll"
         // Scroll chains to the drawer at either end, rather than trapping a
         // touch inside a list inside a scrolling drawer.
-        className="min-h-0 flex-1 scroll-fade-b overflow-y-auto px-2 pt-0.5 pb-2"
+        className="min-h-0 flex-1 scroll-fade-b overflow-y-auto px-2 pt-0.5 pb-2 [scrollbar-gutter:stable]"
       >
         <div>
           {count === 0 && (filtering || threads.length === 0) && (
