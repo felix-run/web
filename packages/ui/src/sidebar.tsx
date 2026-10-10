@@ -26,7 +26,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip';
 
 const SIDEBAR_WIDTH = '17rem';
 const SIDEBAR_WIDTH_MOBILE = '18rem';
-const SIDEBAR_WIDTH_ICON = '3rem';
+// 8px either side of the 36px icon buttons: at 3rem the right side had 4px, so the
+// icons sat off-centre and crowded the sheet, which floats 8px off everything else.
+const SIDEBAR_WIDTH_ICON = '3.25rem';
 
 type SidebarContextProps = {
   state: 'expanded' | 'collapsed';

@@ -346,7 +346,7 @@ their modes share, so there is no panel per mode to point at; they are `role="gr
 `aria-pressed` buttons, which promises only what they are.
 
 **The shell is three zones, and they yield in a fixed order.** On the left, the **app sidebar**
-(`src/components/app-sidebar.tsx`, 17rem, or 3rem collapsed to icons) belongs to the *shell*, not to
+(`src/components/app-sidebar.tsx`, 17rem, or 3.25rem collapsed to icons) belongs to the *shell*, not to
 a route, so it is the same on `/t` and `/harness`. In the middle, `src/routes/workbench.tsx` renders
 the transcript at reading width with the composer anchored. On the right is the run instrument
 (`clamp(22rem,24vw,30rem)`). The three want 1200px of content before any chrome, so **1280** is
