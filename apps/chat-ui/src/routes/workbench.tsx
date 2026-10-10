@@ -1,7 +1,8 @@
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { LogOutIcon, UnplugIcon } from 'lucide-react';
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
+import { useInRouterContext, useSearchParams } from 'react-router';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill, NEARLY_FULL } from '@/components/chat/context-meter';
 import { Conversation, ConversationItem } from '@/components/chat/conversation';
@@ -14,10 +15,14 @@ import { PushHint } from '@/components/chat/push-hint';
 import { TurnCheckpoint } from '@/components/chat/turn-checkpoint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { WATCHING_REFUSAL, WatchingBanner } from '@/components/chat/watching-banner';
+import { PaneDivider } from '@/components/pane/pane-divider';
+import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { RailPresence } from '@/components/rail-presence';
 import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { landedPaths } from '@/lib/changes';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
+import { openInPane, setPaneShown, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 
@@ -29,6 +34,11 @@ import { useShell } from '@/shell-context';
  */
 const Inspector = lazy(() =>
   import('@/components/inspector/inspector').then((m) => ({ default: m.Inspector })),
+);
+
+/** The side pane loads with the first thing opened in it. */
+const SidePane = lazy(() =>
+  import('@/components/pane/side-pane').then((m) => ({ default: m.SidePane })),
 );
 
 /**
@@ -166,9 +176,37 @@ export function Workbench() {
     ? undefined
     : (threads.find((t) => t.id === threadId)?.manifest ?? '').trim() || null;
 
+  // The side pane. Where the instrument is a column it takes the instrument's
+  // place (the shell hands the zone over: `app-shell.tsx`); below that it sits
+  // beside the transcript wherever both fit their floors, and over the sheet
+  // where they do not (`usePaneLayout`). It is the daily surface's, not debug's:
+  // reading what the agent wrote is the outcome, not the mechanism.
+  const row = useRef<HTMLDivElement>(null);
+  const layout = usePaneLayout(row);
+  const pane = usePaneState(threadId);
+  const paneOpen = pane.shown && pane.items.length > 0;
+  const changedPaths = useMemo(() => landedPaths(turns), [turns]);
+  const runPaths = useMemo(
+    () => (streaming && lastUser !== -1 ? landedPaths(turns, lastUser) : new Set<string>()),
+    [turns, streaming, lastUser],
+  );
+  const inRouter = useInRouterContext();
+  const sidePane = (onBack?: () => void) => (
+    <Suspense fallback={null}>
+      <SidePane
+        threadId={threadId}
+        changedPaths={changedPaths}
+        runPaths={runPaths}
+        streaming={streaming}
+        {...(onBack ? { onBack } : {})}
+      />
+    </Suspense>
+  );
+
   return (
     <>
-      <div className="flex min-h-0 flex-1">
+      {inRouter && <OpenLink threadId={threadId} items={pane.items} active={pane.active} />}
+      <div ref={row} className="flex min-h-0 flex-1">
         <main className="relative isolate flex min-w-0 flex-1 flex-col">
           {/* Who denied each denied call and when, and its "Ask again" — offered only
               to a tab that drives the thread, since it fills this tab's composer. */}
@@ -381,6 +419,26 @@ export function Workbench() {
             )}
           />
         </main>
+        {paneOpen && layout.split && (
+          <>
+            <PaneDivider
+              share={layout.share}
+              min={layout.min}
+              max={layout.max}
+              onChange={layout.onChange}
+              onCommit={layout.onCommit}
+              onReset={layout.onReset}
+              controls="side-pane"
+            />
+            <div
+              id="side-pane"
+              style={{ width: `${(layout.share * 100).toFixed(2)}%` }}
+              className="flex min-h-0 shrink-0 animate-in fade-in-0 slide-in-from-right-3 duration-200 ease-out motion-reduce:animate-none"
+            >
+              {sidePane()}
+            </div>
+          </>
+        )}
         {instrumentInline && (
           <RailPresence open={inspectorOpen} side="right">
             <Suspense fallback={<InspectorLoading />}>
@@ -402,6 +460,24 @@ export function Workbench() {
         a fixed rem width is the whole story: the instrument's 22rem is 352px, and
         on a 320px phone it hung 32px off the left edge — its title, its first tab
         and the start of every row cut away, measured in a real browser. */}
+      {!layout.split && (
+        <Sheet
+          open={paneOpen}
+          onOpenChange={(open) => {
+            if (!open) setPaneShown(threadId, false);
+          }}
+        >
+          <SheetContent
+            side="right"
+            showCloseButton={false}
+            className={cn('w-full max-w-full gap-0 p-0 sm:max-w-none', DRAWER_MOTION)}
+          >
+            <SheetTitle className="sr-only">Side pane</SheetTitle>
+            {sidePane(() => setPaneShown(threadId, false))}
+          </SheetContent>
+        </Sheet>
+      )}
+
       {!instrumentInline && (
         <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
           <SheetContent
@@ -426,4 +502,51 @@ export function Workbench() {
       )}
     </>
   );
+}
+
+/**
+ * The open file in the address — `?open=path/in/workspace` — so a reload, or a
+ * link, lands on it. Only a workspace file: it is the one item an address can
+ * name and the pane re-read; an output, a code block or an image is content the
+ * pane was handed, which this tab's session storage already brings back.
+ */
+function OpenLink({
+  threadId,
+  items,
+  active,
+}: {
+  threadId: string;
+  items: readonly { key: string }[];
+  active: string | null;
+}) {
+  const [params, setParams] = useSearchParams();
+  const asked = params.get('open');
+
+  // Arriving with a file named: open it, once per thread.
+  const opened = useRef<string | null>(null);
+  useEffect(() => {
+    if (!asked || opened.current === `${threadId}\n${asked}`) return;
+    opened.current = `${threadId}\n${asked}`;
+    openInPane(threadId, { kind: 'file', path: asked.replace(/^\/+/, '') });
+  }, [threadId, asked]);
+
+  const linked =
+    active?.startsWith('file:') && items.some((i) => i.key === active)
+      ? active.slice('file:'.length)
+      : null;
+  useEffect(() => {
+    if (linked === asked) return;
+    // Until the asked-for file has been opened, the address is the request, not a stale echo.
+    if (asked && opened.current !== `${threadId}\n${asked}`) return;
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (linked) next.set('open', linked);
+        else next.delete('open');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [linked, asked, threadId, setParams]);
+  return null;
 }

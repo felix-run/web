@@ -1,4 +1,4 @@
-import { ChevronRightIcon } from 'lucide-react';
+import { ChevronRightIcon, PanelRightOpenIcon } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { CodePane } from '@/components/approval/approval-decision';
 import {
@@ -7,6 +7,7 @@ import {
   durableRunInFlight,
   type PathChange,
   runHasToolCalls,
+  treePath,
 } from '@/lib/changes';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
@@ -71,6 +72,7 @@ function ChangesList({
 }
 
 function ChangeRow({ change }: { change: PathChange }) {
+  const openInPane = useShell().openInPane;
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const { evidence } = change;
@@ -104,26 +106,44 @@ function ChangeRow({ change }: { change: PathChange }) {
     </>
   );
 
+  // A file a write landed on can be read whole, beside the conversation.
+  const openFile =
+    openInPane && change.changed ? (
+      <button
+        type="button"
+        aria-label={`Open ${change.path} in the side pane`}
+        title="Open in the side pane"
+        onClick={() => openInPane({ kind: 'file', path: treePath(change.path) })}
+        className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent/40 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/change:opacity-100"
+      >
+        <PanelRightOpenIcon aria-hidden className="size-3.5" />
+      </button>
+    ) : null;
+
   if (!evidence) {
     return (
-      <li className="flex min-w-0 items-center gap-1 rounded px-1 py-0.5" title={change.path}>
-        {body}
+      <li className="group/change flex min-w-0 items-center gap-1" title={change.path}>
+        <span className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5">{body}</span>
+        {openFile}
       </li>
     );
   }
 
   return (
-    <li>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((v) => !v)}
-        title={change.path}
-        className="flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        {body}
-      </button>
+    <li className="group/change">
+      <div className="flex min-w-0 items-center gap-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((v) => !v)}
+          title={change.path}
+          className="flex w-full min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          {body}
+        </button>
+        {openFile}
+      </div>
       {open && (
         <div id={panelId} className="mt-1 mb-2 space-y-2 pl-5 pr-1">
           <Evidence evidence={evidence} />

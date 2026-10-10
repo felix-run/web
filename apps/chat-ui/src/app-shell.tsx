@@ -35,7 +35,15 @@ import {
   PlusIcon,
   SunIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Outlet, useMatch, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
@@ -87,7 +95,7 @@ import { type Theme, useTheme } from '@/components/theme-provider';
 import { ThreadTitle } from '@/components/thread-title';
 import { useMessageQueue } from '@/hooks/use-message-queue';
 import { usePendingApprovals } from '@/hooks/use-pending-approvals';
-import { useRails, WORKSPACE_INLINE } from '@/hooks/use-rails';
+import { INSTRUMENT_INLINE, useRails, WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -104,6 +112,13 @@ import { resyncPush } from '@/lib/push';
 import { lastResume, onResume } from '@/lib/resume';
 import { createLeaseKeeper, LEASE_RENEW_MS, releaseOnPageExit } from '@/lib/session-lease';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
+import {
+  anyUnsaved,
+  openInPane as openPaneItem,
+  type PaneItemInput,
+  setPaneShown,
+  usePaneState,
+} from '@/lib/side-pane';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
 import {
   clearTurns,
@@ -509,8 +524,70 @@ export function AppShell() {
   // Called here, below the engine's state, because the default reads `turns`.
   // The pool's `onToolStart` above names `revealInspector` before this line;
   // it runs only once a tool starts, long after this render has passed it.
-  const { historyOpen, setHistoryOpen, inspectorOpen, setInspectorOpen, revealInspector } =
-    useRails({ emptyThread: turns.length === 0, enabled: debug });
+  const {
+    historyOpen,
+    setHistoryOpen,
+    inspectorOpen: instrumentWanted,
+    setInspectorOpen: setInstrumentWanted,
+    revealInspector: revealInstrument,
+  } = useRails({ emptyThread: turns.length === 0, enabled: debug });
+
+  // The side pane takes the instrument's zone where the instrument is a column
+  // (`routes/workbench.tsx`). The instrument's preference is left as it was, so
+  // closing the pane brings it back exactly as it stood; while the pane holds
+  // the zone the instrument reads closed, and opening it hands the zone back
+  // with the pane's tabs kept. Below 1280 the instrument is a drawer over
+  // everything and the two do not compete.
+  const instrumentInline = useMediaQuery(INSTRUMENT_INLINE);
+  const pane = usePaneState(threadId);
+  const paneHasItems = pane.items.length > 0;
+  const paneHoldsZone = instrumentInline && pane.shown && paneHasItems;
+  const paneZone = useRef({ holds: paneHoldsZone, hasItems: paneHasItems, inline: false });
+  paneZone.current = { holds: paneHoldsZone, hasItems: paneHasItems, inline: instrumentInline };
+  const inspectorOpen = instrumentWanted && !paneHoldsZone;
+  const setInspectorOpen = useCallback(
+    (next: SetStateAction<boolean>) => {
+      const { holds, hasItems, inline } = paneZone.current;
+      if (holds) {
+        if (typeof next === 'function' ? next(false) : next) {
+          setPaneShown(threadIdRef.current, false);
+          setInstrumentWanted(true);
+        }
+        return;
+      }
+      setInstrumentWanted((was) => {
+        const open = typeof next === 'function' ? next(was) : next;
+        // Closing the instrument over a pane it had displaced gives the zone back.
+        if (inline && hasItems && was && !open) setPaneShown(threadIdRef.current, true);
+        return open;
+      });
+    },
+    [setInstrumentWanted],
+  );
+  const onHarnessRef = useRef(onHarness);
+  onHarnessRef.current = onHarness;
+  // From `/harness` the pane is not on screen, so opening something goes back
+  // to the thread it opened on.
+  const openInPane = useCallback(
+    (item: PaneItemInput) => {
+      const id = threadIdRef.current;
+      openPaneItem(id, item);
+      if (onHarnessRef.current) navigate(`/t/${id}`);
+    },
+    [navigate],
+  );
+  // A draft lives in this tab's session storage, which a closed tab takes with it.
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (anyUnsaved()) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
+  // A run's first tool call must not take the zone from a file being read.
+  const revealInspector = useCallback(() => {
+    if (!paneZone.current.holds) revealInstrument();
+  }, [revealInstrument]);
   // `idle` is the engine's resting value and this renders a chip, so the chip
   // asks for the same thing the old nullable state did: a phase worth showing.
   const sessionPhase = engine.state.phase === 'idle' ? null : engine.state.phase;
@@ -2506,6 +2583,7 @@ export function AppShell() {
     setHistoryOpen,
     inspectorOpen,
     setInspectorOpen,
+    openInPane,
   };
 
   return (

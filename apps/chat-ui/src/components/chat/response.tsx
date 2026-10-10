@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { PanelRightOpenIcon } from 'lucide-react';
+import { type ReactNode, useEffect, useState } from 'react';
 import remarkBreaks from 'remark-breaks';
 import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from 'streamdown';
 import { loadedMathPlugins, loadMathPlugins, needsMath, WITHOUT_MATH } from '@/lib/katex-plugin';
 import { cn } from '@/lib/utils';
+import { useOptionalShell } from '@/shell-context';
 
 /**
  * Streamed assistant markdown. Tolerates incomplete fences mid-stream.
@@ -114,6 +116,73 @@ export const responseComponents: Components = {
   ),
 };
 
+/** The hast node the renderer hands a component: just the parts read here. */
+interface HastNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  properties?: { className?: unknown };
+  children?: HastNode[];
+}
+
+function hastText(node: HastNode): string {
+  if (node.type === 'text') return node.value ?? '';
+  return (node.children ?? []).map(hastText).join('');
+}
+
+/** A fenced block's code and language, read off the `<pre>`'s own node. */
+export function fencedCode(node: unknown): { code: string; language: string } | null {
+  const pre = node as HastNode | undefined;
+  const code = pre?.children?.find((c) => c.type === 'element' && c.tagName === 'code');
+  if (!code) return null;
+  const classes = code.properties?.className;
+  const list = Array.isArray(classes) ? classes.map(String) : [];
+  const language = list.find((c) => c.startsWith('language-'))?.slice('language-'.length) ?? '';
+  return { code: hastText(code), language };
+}
+
+/**
+ * A reply's code block, with one more control in its header: open it in the
+ * side pane, full height, beside the reply rather than in place of it.
+ *
+ * The renderer's `pre` is a pass-through — the block itself, Shiki and its
+ * copy and download, is drawn by its `code` — so wrapping `pre` adds to the
+ * block without taking it over. The control sits in the header's row, just
+ * before the renderer's own two, which is why its offsets are the header's
+ * padding and theirs; `tests/response.test.tsx` pins that it is there. A
+ * diagram (`mermaid`) is not code to read, and is left as it is.
+ */
+function OpenablePre({ node, children }: { node?: unknown; children?: ReactNode }) {
+  const openInPane = useOptionalShell()?.openInPane;
+  const fenced = openInPane ? fencedCode(node) : null;
+  if (!openInPane || !fenced || fenced.language === 'mermaid') return <>{children}</>;
+  const lines = fenced.code.replace(/\n$/, '').split('\n').length;
+  return (
+    <div className="relative" data-slot="openable-code">
+      {children}
+      <button
+        type="button"
+        title="Open in the side pane"
+        aria-label={`Open this ${fenced.language || 'code'} block in the side pane`}
+        onClick={() =>
+          openInPane({
+            kind: 'code',
+            code: fenced.code,
+            language: fenced.language,
+            title: `${fenced.language || 'Code'} · ${lines} ${lines === 1 ? 'line' : 'lines'}`,
+          })
+        }
+        className="absolute top-[13px] right-[73px] cursor-pointer rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+      >
+        <PanelRightOpenIcon aria-hidden size={14} />
+      </button>
+    </div>
+  );
+}
+
+/** A reply's own map: the shared one, plus the code block's Open. */
+const replyComponents: Components = { ...responseComponents, pre: OpenablePre };
+
 /**
  * The wrap rule is `wrap-break-word`, deliberately not the `wrap-anywhere` the
  * operator's own turn uses. Both break a hash or a path that has no space in it
@@ -147,7 +216,7 @@ export function Response({ children, className }: { children: string; className?
     <Streamdown
       key={rehypePlugins === WITHOUT_MATH ? 'plain' : 'math'}
       className={cn('max-w-none wrap-break-word', className)}
-      components={responseComponents}
+      components={replyComponents}
       remarkPlugins={responseRemarkPlugins}
       rehypePlugins={rehypePlugins}
     >

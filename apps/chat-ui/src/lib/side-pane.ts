@@ -1,0 +1,245 @@
+import { useCallback, useSyncExternalStore } from 'react';
+
+/**
+ * What the side pane holds, per thread: the items open in it, which one is in
+ * front, whether the pane is on screen, and the unsaved edits to any workspace
+ * file among them.
+ *
+ * A module store rather than component state, for three reasons that each
+ * broke a version of it. The pane's tabs render only the active item, so an
+ * edit held in the editor's own state was lost on a tab switch. The workbench
+ * unmounts on a visit to `/harness`, so it would have been lost there too. And
+ * the things that open an item — the sidebar's file tree, a tool card, a code
+ * block in a reply — are nowhere near the pane in the tree.
+ *
+ * Kept in `sessionStorage` per thread, so a reload brings the tabs and their
+ * drafts back. Not `localStorage`: a draft is this tab's, and two tabs editing
+ * one file from one store would each save over the other.
+ */
+
+export type PaneItem =
+  | {
+      kind: 'file';
+      key: string;
+      path: string;
+      /** The operator's edit, when there is one. */
+      draft?: string;
+      /** The file's text when the draft began — what a save would overwrite. */
+      base?: string;
+      /** The file's text as last read, when it differs from `base`. */
+      disk?: string;
+    }
+  | {
+      kind: 'artifact';
+      key: string;
+      manifestId: string;
+      artifactId: string;
+      /** The tool whose output this is. */
+      title: string;
+      chars: number;
+    }
+  | { kind: 'code'; key: string; code: string; language: string; title: string }
+  | { kind: 'image'; key: string; url: string; title: string };
+
+export type PaneItemInput = PaneItem extends infer T
+  ? T extends PaneItem
+    ? Omit<T, 'key'>
+    : never
+  : never;
+
+export interface PaneState {
+  items: readonly PaneItem[];
+  active: string | null;
+  /** On screen. False with items open means the instrument has the zone. */
+  shown: boolean;
+}
+
+/** How many items stay open. The oldest clean one goes when a seventh arrives. */
+export const PANE_LIMIT = 6;
+
+/** Past this, an item's content is not written to session storage (it stays open in memory). */
+const PERSIST_LIMIT = 200_000;
+
+const EMPTY: PaneState = { items: [], active: null, shown: false };
+const KEY_PREFIX = 'felix.pane:';
+
+const states = new Map<string, PaneState>();
+const listeners = new Set<() => void>();
+
+export function paneKey(item: PaneItemInput): string {
+  switch (item.kind) {
+    case 'file':
+      return `file:${item.path}`;
+    case 'artifact':
+      return `artifact:${item.manifestId}/${item.artifactId}`;
+    case 'code':
+      return `code:${hash(`${item.language}\n${item.code}`)}`;
+    case 'image':
+      return `image:${hash(item.url)}`;
+  }
+}
+
+/** A short stable id for content that is its own identity. Not a security boundary. */
+function hash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+export function isDirty(item: PaneItem): boolean {
+  return item.kind === 'file' && item.draft !== undefined && item.draft !== item.base;
+}
+
+/** The agent wrote the file under an unsaved edit: the edit's base is no longer what is on disk. */
+export function hasConflict(item: PaneItem): boolean {
+  return isDirty(item) && item.kind === 'file' && item.disk !== undefined;
+}
+
+export function paneState(threadId: string): PaneState {
+  let s = states.get(threadId);
+  if (!s) {
+    s = restore(threadId);
+    states.set(threadId, s);
+  }
+  return s;
+}
+
+function restore(threadId: string): PaneState {
+  try {
+    const raw = sessionStorage.getItem(KEY_PREFIX + threadId);
+    if (!raw) return EMPTY;
+    const parsed = JSON.parse(raw) as Partial<PaneState>;
+    const items = Array.isArray(parsed.items) ? parsed.items.filter(isItem) : [];
+    if (!items.length) return EMPTY;
+    const active =
+      typeof parsed.active === 'string' && items.some((i) => i.key === parsed.active)
+        ? parsed.active
+        : (items.at(-1)?.key ?? null);
+    return { items, active, shown: parsed.shown !== false };
+  } catch {
+    return EMPTY;
+  }
+}
+
+function isItem(v: unknown): v is PaneItem {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  if (typeof o.key !== 'string') return false;
+  switch (o.kind) {
+    case 'file':
+      return typeof o.path === 'string';
+    case 'artifact':
+      return typeof o.manifestId === 'string' && typeof o.artifactId === 'string';
+    case 'code':
+      return typeof o.code === 'string' && typeof o.language === 'string';
+    case 'image':
+      return typeof o.url === 'string';
+    default:
+      return false;
+  }
+}
+
+function persist(threadId: string, s: PaneState) {
+  try {
+    const key = KEY_PREFIX + threadId;
+    if (!s.items.length) {
+      sessionStorage.removeItem(key);
+      return;
+    }
+    // An item too large to keep is left out of the copy, not out of the pane.
+    const items = s.items.filter((i) => JSON.stringify(i).length <= PERSIST_LIMIT);
+    sessionStorage.setItem(key, JSON.stringify({ ...s, items }));
+  } catch {
+    // Storage full or blocked: the pane lasts for this page.
+  }
+}
+
+function update(threadId: string, next: (s: PaneState) => PaneState) {
+  const prev = paneState(threadId);
+  const s = next(prev);
+  if (s === prev) return;
+  states.set(threadId, s);
+  persist(threadId, s);
+  for (const l of listeners) l();
+}
+
+export function openInPane(threadId: string, input: PaneItemInput) {
+  const key = paneKey(input);
+  update(threadId, (s) => {
+    if (s.items.some((i) => i.key === key)) return { ...s, active: key, shown: true };
+    let items = [...s.items, { ...input, key } as PaneItem];
+    while (items.length > PANE_LIMIT) {
+      const drop = items.find((i) => !isDirty(i) && i.key !== key);
+      if (!drop) break;
+      items = items.filter((i) => i !== drop);
+    }
+    return { items, active: key, shown: true };
+  });
+}
+
+export function closePaneItem(threadId: string, key: string) {
+  update(threadId, (s) => {
+    const at = s.items.findIndex((i) => i.key === key);
+    if (at === -1) return s;
+    const items = s.items.filter((i) => i.key !== key);
+    // The neighbour that slid into its place, or the one before it at the end.
+    const active =
+      s.active === key ? (items[Math.min(at, items.length - 1)]?.key ?? null) : s.active;
+    return { items, active, shown: items.length > 0 && s.shown };
+  });
+}
+
+export function closeAllPaneItems(threadId: string) {
+  update(threadId, (s) => (s.items.length ? EMPTY : s));
+}
+
+export function setPaneActive(threadId: string, key: string) {
+  update(threadId, (s) => (s.active === key ? s : { ...s, active: key }));
+}
+
+export function setPaneShown(threadId: string, shown: boolean) {
+  update(threadId, (s) => (s.shown === shown || (shown && !s.items.length) ? s : { ...s, shown }));
+}
+
+/** Apply a change to one file item. */
+export function updatePaneFile(
+  threadId: string,
+  key: string,
+  change: (item: Extract<PaneItem, { kind: 'file' }>) => Extract<PaneItem, { kind: 'file' }>,
+) {
+  update(threadId, (s) => {
+    let changed = false;
+    const items = s.items.map((i) => {
+      if (i.key !== key || i.kind !== 'file') return i;
+      const next = change(i);
+      if (next !== i) changed = true;
+      return next;
+    });
+    return changed ? { ...s, items } : s;
+  });
+}
+
+/** Any thread's pane holding an unsaved edit — what a reload or a closed tab would lose. */
+export function anyUnsaved(): boolean {
+  for (const s of states.values()) if (s.items.some(isDirty)) return true;
+  return false;
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function usePaneState(threadId: string): PaneState {
+  const get = useCallback(() => paneState(threadId), [threadId]);
+  return useSyncExternalStore(subscribe, get, get);
+}
+
+/** For tests: forget every thread's pane. */
+export function resetPanes() {
+  states.clear();
+  for (const l of listeners) l();
+}
