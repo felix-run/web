@@ -119,7 +119,7 @@ export function AppSidebar() {
           that, so it is a span here. */}
       <div
         data-slot="sidebar-brand"
-        className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-2 border-b border-border/60 px-2 pt-safe"
+        className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-2 px-2.5 pt-safe lg:mt-2"
       >
         {isMobile ? (
           <BrandToggle
@@ -151,7 +151,7 @@ export function AppSidebar() {
                 newThread();
                 done();
               }}
-              className="border border-border/60 font-medium"
+              className="rounded-full bg-primary font-semibold text-primary-foreground shadow-composer hover:bg-primary/90 hover:text-primary-foreground"
             >
               <PlusIcon aria-hidden />
               <span>New chat</span>

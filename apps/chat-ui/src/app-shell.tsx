@@ -2430,7 +2430,7 @@ export function AppShell() {
     // toolbar where `h-screen` (the *large* viewport) put the composer under it.
     // The side insets are on the shell rather than on each zone: a phone on its
     // side has the notch at one edge, and everything inside clears it at once.
-    <div className="flex h-[var(--vvh,100dvh)] flex-col bg-background px-safe-0">
+    <div className="flex h-[var(--vvh,100dvh)] flex-col bg-ground px-safe-0">
       {/*
         The address decides what renders here. The engine, the thread and the
         approval queue are above it deliberately: mounting `createChatEngine`
@@ -2448,7 +2448,10 @@ export function AppShell() {
           {/* Full height, beside the header rather than under it, so its top edge
               can carry the brand on the header's own line. */}
           <AppSidebar />
-          <SidebarInset>
+          {/* The sheet: everything but the sidebar sits on one surface lifted off the
+              stone ground. Inline (from 1024) it floats with a margin and the largest
+              radius; as a drawer layout it is the whole screen, edge to edge. */}
+          <SidebarInset className="bg-background lg:my-2 lg:mr-2 lg:overflow-hidden lg:rounded-2xl lg:shadow-sheet">
             {/* The inset is added to the bar's height rather than taken out of it:
                 `--header-height` is read by the toaster and must stay the bar's own. */}
             <header className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-1 border-b border-border/60 px-3 pt-safe">

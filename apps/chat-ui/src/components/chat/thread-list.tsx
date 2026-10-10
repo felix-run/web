@@ -65,7 +65,7 @@ const HIT_LIMIT_MORE = 50;
 const ROW_ACTIONS = cn(
   'flex shrink-0 items-center gap-0.5',
   '[@media(hover:hover)]:absolute [@media(hover:hover)]:inset-y-0 [@media(hover:hover)]:right-0',
-  '[@media(hover:hover)]:rounded-r-md [@media(hover:hover)]:pr-1 [@media(hover:hover)]:pl-5',
+  '[@media(hover:hover)]:rounded-r-lg [@media(hover:hover)]:pr-1 [@media(hover:hover)]:pl-5',
   '[@media(hover:hover)]:bg-[linear-gradient(to_right,transparent,var(--row-bg)_1.25rem)]',
   '[@media(hover:hover)]:opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none',
   '[@media(hover:hover)]:group-hover/thread:opacity-100',
@@ -81,10 +81,10 @@ const ROW_ACTIONS = cn(
  * only the classes it finds written whole in the source.
  */
 const ROW_LIT = cn(
-  '[--row-bg:var(--background)]',
-  'hover:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
-  'focus-within:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
-  'has-[[data-state=open]]:[--row-bg:color-mix(in_oklab,var(--accent)_50%,var(--background))]',
+  '[--row-bg:var(--ground)]',
+  'hover:[--row-bg:color-mix(in_oklab,var(--sidebar-accent)_70%,var(--ground))]',
+  'focus-within:[--row-bg:color-mix(in_oklab,var(--sidebar-accent)_70%,var(--ground))]',
+  'has-[[data-state=open]]:[--row-bg:color-mix(in_oklab,var(--sidebar-accent)_70%,var(--ground))]',
 );
 
 /**
@@ -93,7 +93,7 @@ const ROW_LIT = cn(
  * months stick one label-height lower, under Older's own.
  */
 const STICKY_LABEL =
-  'sticky top-0 z-10 flex h-6 items-center gap-1 bg-background px-2 text-xs font-medium text-muted-foreground';
+  'sticky top-0 z-10 flex h-7 items-center gap-1 bg-ground px-2.5 text-xs font-semibold text-muted-foreground';
 
 /** A row to draw: the thread, and the stretch of a message that matched a search, if one did. */
 type Row = { thread: ThreadMeta; excerpt?: string };
@@ -439,9 +439,9 @@ export function ThreadList({
         key={t.id}
         data-thread={t.id}
         className={cn(
-          'group/thread relative flex items-center gap-2 rounded-md bg-(--row-bg) px-2 py-1.5 text-sm',
+          'group/thread relative flex items-center gap-2 rounded-lg bg-(--row-bg) px-2.5 py-1.5 text-sm',
           'has-[[data-thread-row]:focus-visible]:ring-[3px] has-[[data-thread-row]:focus-visible]:ring-ring',
-          t.id === currentId ? '[--row-bg:var(--accent)]' : ROW_LIT,
+          t.id === currentId ? 'shadow-sheet [--row-bg:var(--sidebar-accent)]' : ROW_LIT,
         )}
       >
         {confirming === t.id ? (
@@ -518,7 +518,7 @@ export function ThreadList({
                 requestAnimationFrame(() => focusRow(t.id));
               }
             }}
-            className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1.5 py-1 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="min-w-0 flex-1 rounded-md border border-input bg-sidebar-accent px-2 py-1 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         ) : (
           <button
@@ -721,7 +721,7 @@ export function ThreadList({
           </h2>
         </div>
         <label className="relative mt-1 block">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             ref={searchRef}
             type="search"
@@ -734,7 +734,7 @@ export function ThreadList({
             }}
             onKeyDown={onSearchKeyDown}
             placeholder="Search titles and messages…"
-            className="h-8 w-full rounded-md border border-border/60 bg-background pr-2 pl-7 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-9 w-full rounded-full border border-input bg-sidebar-accent pr-3 pl-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring"
           />
         </label>
         {status && (
@@ -884,9 +884,11 @@ export function ThreadList({
                   <div
                     key={t.id}
                     className={cn(
-                      'rounded-md bg-(--row-bg) px-2 py-1.5 text-sm',
+                      'rounded-lg bg-(--row-bg) px-2.5 py-1.5 text-sm',
                       'has-[[data-thread-row]:focus-visible]:ring-[3px] has-[[data-thread-row]:focus-visible]:ring-ring',
-                      t.id === currentId ? '[--row-bg:var(--accent)]' : ROW_LIT,
+                      t.id === currentId
+                        ? 'shadow-sheet [--row-bg:var(--sidebar-accent)]'
+                        : ROW_LIT,
                     )}
                   >
                     <button
