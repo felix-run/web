@@ -204,6 +204,16 @@ injection-marker floor over it. The skill suggester's decision model sees such a
 listed description, fenced as third-party text, never by its body. See
 [Skill import](/guide/skill-import/).
 
+**Promoted text is judged as an agent's.** A version a person proposes from their personal library
+(`source: promoted`, see [Personal libraries](/guide/management-api/#personal-libraries)) has been
+read by no reviewer of the tenant's, and an agent may have written it there. So the copy rule runs
+on it and it inherits the personal version's `lineage_import`, only an evaluation on its bundle's own
+`evals/` counts, its `evals/` must equal the tenant parent's exactly, an undecided one cannot be
+adopted, and an agent's edit of it, or of any undecided draft built on it, waits for a person. The
+rules per source are one table, `skills/sources.py`. A **personal publish** runs this same gate,
+except that evaluations are kept for the tenant's library only: where the policy requires one, a
+personal version is blocked rather than let through.
+
 **The copy rule** (`skills/copy_rule.py`) decides what counts as a copy in an agent's save. A file
 matches a file of imported text by its bytes (every non-empty binary asset, every text file that is
 not empty or whitespace-only), or by a digest of its normalized text: NFKC, format characters

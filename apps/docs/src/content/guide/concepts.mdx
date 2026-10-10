@@ -207,7 +207,8 @@ per `(tenant, manifest)` and only reaches skills in the manifest's catalog.
 | Bundled | the harness's `skills/` directory | `bundled` | the release |
 | Host directory | `FELIX_SKILLS_DIR` | `bundled` | the operator |
 | Operator upload | object-store keys `skills/{tenant}/{name}/SKILL.md` or `skills/{name}/SKILL.md`, and pinned `…/{name}/{version}/SKILL.md` | `store` | the operator, outside Felix |
-| Tenant library | the live version of each skill in the tenant's library, under `skill-library/` | `library` | an agent, an operator, or an import from GitHub, through review |
+| Tenant library | the live version of each skill in the tenant's library, under `skill-library/` | `library` | an agent, an operator, an import from GitHub, or a promotion from a personal library, through review |
+| Personal library | the live version of each skill in the caller's own library, under `skill-library/{tenant}/~{digest}/` | `library` | the caller, or an agent under `spec.personal_skills: write` |
 
 A catalog is built in this order, and the first source to hold a name answers it:
 
@@ -232,6 +233,17 @@ library.** A `spec.skills` ref with `version: 0.1.0` is served `skills/{tenant}/
 is. A pin no upload holds still gets the library's live version. The library reports
 `shadows_operator_upload` on a skill whose name is split this way.
 
+A **personal library** belongs to one principal within one tenant, and only its owner's turns load
+it. The owner saves and publishes in it through
+[`/skill-library/~me`](/guide/management-api/#personal-libraries) with the `skills:personal` scope,
+through the same publish gate as the tenant's library but without its review queue; an agent writes
+to it under `spec.personal_skills: write`. **Promotion** proposes a version the owner has published
+to the whole tenant: its files are copied, byte for byte, into a draft of the tenant's skill of the
+same name (`source: promoted`) that waits in the tenant's ordinary review queue. Promotion never
+publishes, and the draft is judged as strictly as an agent's draft: the copy rule runs on it, only
+its bundle's own `evals/` count toward an evaluation requirement, and it may not add, change or drop
+an `evals/` file. The personal skill stays as it was.
+
 ### Skills an agent writes
 
 A manifest with [`spec.skill_authoring.enabled`](/guide/manifest-reference/#specskill_authoring)
@@ -239,7 +251,7 @@ gets three more tools:
 
 | Tool | Arguments | Does |
 |---|---|---|
-| `create_skill` | `name`, `description`, `body`, `reason` | Saves a new skill to the tenant library at `0.1.0` |
+| `create_skill` | `name`, `description`, `body`, `reason` | Saves a new skill to the tenant library at `0.1.0` (to the caller's own under [`spec.personal_skills: write`](/guide/manifest-reference/#specskill_authoring)) |
 | `update_skill` | `name`, `body`, `reason`, `parent_version`, `description?` | Saves a new version with a new body; every other file is kept from the parent |
 | `submit_skill_feedback` | `name`, `body`, `suggested_patch?` | Files feedback on a library skill in this agent's catalog; changes nothing |
 
@@ -272,7 +284,7 @@ is an immutable draft that no catalog loads, and a person publishes it.
 `spec.skill_authoring.mode: publish` skips step 2: the draft is published at once if the gate passes,
 and stays a draft (with the reasons) if not. The manifest is refused unless an approvals rule gates
 every `create_skill` and `update_skill` call, so a person still reads each skill before it is saved.
-An agent's edit of a version an operator wrote waits for review in either mode.
+An agent's edit of a version an operator wrote, imported or promoted waits for review in either mode, as does an edit built on such a version through drafts nobody has decided yet.
 
 ### Skills from GitHub
 
