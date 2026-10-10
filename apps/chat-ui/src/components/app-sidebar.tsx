@@ -240,7 +240,7 @@ export function AppSidebar() {
             <SidebarSeparator />
             <div
               data-slot="sidebar-lower"
-              className="flex max-h-[40svh] flex-col gap-1 overflow-y-auto overscroll-contain"
+              className="flex max-h-[40svh] flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
             >
               <WorkspaceSection />
               <SidebarSeparator />
@@ -320,7 +320,7 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
               {!collapsed && (
                 <p
                   id={`sidebar-harness-${key}`}
-                  className="px-2 pt-1 pb-0.5 text-xs text-muted-foreground"
+                  className="px-2.5 pt-1 pb-0.5 text-xs font-medium text-muted-foreground"
                 >
                   {label}
                 </p>

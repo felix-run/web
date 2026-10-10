@@ -193,11 +193,14 @@ export function WorkspaceSection({ className }: { className?: string }) {
         its neighbours for a section that is often folded. The value is what is
         mounted, the question this header exists to answer.
       */}
-      <div className="flex h-7 min-w-0 items-center px-2">
+      <div className="flex h-7 min-w-0 items-center px-2.5">
         {/* The label and its value as one group with no control in it: the value
             is a fact. The fold is the row's, beside the group. */}
         <div className="flex min-w-0 items-center gap-1.5">
-          <h2 id="workspace-heading" className="shrink-0 text-xs font-medium text-muted-foreground">
+          <h2
+            id="workspace-heading"
+            className="shrink-0 text-xs font-semibold text-muted-foreground"
+          >
             Workspace
           </h2>
           {/* Mono for a folder name, because it is the filesystem's word; the
@@ -234,7 +237,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
           />
         </button>
       </div>
-      <div className="px-2">
+      <div className="px-2.5">
         <p className="truncate text-xs text-muted-foreground">
           {mountLabel ? 'Client tools run against this folder' : 'Client tools run in this tab'}
         </p>
@@ -320,7 +323,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
         )}
       </div>
 
-      <div id="workspace-body" hidden={folded} className="mt-3 space-y-4 px-2">
+      <div id="workspace-body" hidden={folded} className="mt-3 space-y-4 px-2.5">
         <ThreadRepoSection threadId={threadId} streaming={streaming} />
 
         <section aria-labelledby="workspace-files-heading">
@@ -330,7 +333,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
               aria-expanded={filesOpen}
               aria-controls="workspace-files"
               onClick={toggleFiles}
-              className="flex w-full items-center gap-1 rounded-md text-left text-xs font-semibold text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              className="flex w-full items-center gap-1 rounded-md text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
             >
               <ChevronRightIcon
                 aria-hidden
