@@ -514,8 +514,9 @@ checklist, with the whole list:
 data: {"event":"todo_updated","data":{"todos":[{"id":"1","content":"Reproduce the failure","status":"in_progress","active_form":"Reproducing the failure"},{"id":"2","content":"Fix it","status":"pending","active_form":""}]}}
 ```
 
-The same list is on the session snapshot as `todos`, so a client that reloads draws it without
-waiting for the next write.
+The same list is on the session snapshot as `todos` — the last successful write on the current
+branch — so a client that reloads draws it without waiting for the next write, and a rewind shows
+the list that point in the conversation had.
 
 ### Child agents on the stream
 
