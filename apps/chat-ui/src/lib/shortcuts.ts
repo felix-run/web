@@ -92,7 +92,7 @@ export interface Shortcut {
  */
 export const SHORTCUTS: readonly Shortcut[] = Object.freeze([
   { action: 'toggle-workspace', key: '\\', mod: true, what: 'Sidebar' },
-  { action: 'toggle-instrument', key: "'", mod: true, what: 'This run' },
+  { action: 'toggle-instrument', key: "'", mod: true, what: 'This thread' },
   { action: 'open-threads', key: 'k', mod: true, what: 'Threads' },
   { action: 'focus-approval', key: ';', mod: true, what: 'What is waiting' },
   { action: 'focus-composer', key: '/', mod: false, what: 'Message box' },

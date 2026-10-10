@@ -442,8 +442,7 @@ the files — while the instrument holds what this thread's calls did. The tabs 
 **The panel is headed "This thread"** (2026-10-10), as is its drawer's dialog name. It was "This
 run", which its own readout (tokens summed over the thread) and Tools (*All threads · last 60
 minutes*, since `/audit/metrics` takes no thread filter) contradicted; the wider tab says so on its
-first line. The header's toggle is still named *This run* (and `shortcuts.ts` with it) — a rename
-waiting on the header. A partial token sum reads `at least …` on the figure, not `Tokens (floor)`:
+first line. The header's toggle and its shortcut (`shortcuts.ts`) say *This thread* too. A partial token sum reads `at least …` on the figure, not `Tokens (floor)`:
 "floor" is the Activity page's word for unpriced cost. **The instrument starts closed over a thread
 with no turns**, even from 1600px: `useRails({ emptyThread })` derives the unchosen default each
 render (null pref, never written), so it opens once the thread has a turn and a stored choice

@@ -584,9 +584,9 @@ describe('rail state across widths', () => {
    * rather than userEvent, which refuses to click through the `pointer-events:
    * none` the same modal sets. A keyboard shortcut reaches the same setter.
    */
-  const button = (name: 'Sidebar' | 'This run') =>
+  const button = (name: 'Sidebar' | 'This thread') =>
     document.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`) as HTMLButtonElement;
-  const toggle = async (name: 'Sidebar' | 'This run') => {
+  const toggle = async (name: 'Sidebar' | 'This thread') => {
     const el = button(name);
     await act(async () => el.click());
     return el;
@@ -603,7 +603,7 @@ describe('rail state across widths', () => {
 
     expect(drawers()).toHaveLength(0);
     expect(button('Sidebar').getAttribute('aria-pressed')).toBe('false');
-    expect(button('This run').getAttribute('aria-pressed')).toBe('false');
+    expect(button('This thread').getAttribute('aria-pressed')).toBe('false');
     expect(stored()).toEqual(['1', '1']);
   });
 
@@ -621,16 +621,16 @@ describe('rail state across widths', () => {
     expect(document.querySelectorAll('h1')).toHaveLength(1);
     expect(drawer('workspace')?.querySelector('button[aria-label="Close sidebar"]')).toBeTruthy();
 
-    const inst = await toggle('This run');
+    const inst = await toggle('This thread');
     await waitFor(() => expect(drawer('instrument')).toBeTruthy());
     expect(drawer('workspace')).toBeNull();
     expect(drawers()).toHaveLength(1);
     expect(inst.getAttribute('aria-pressed')).toBe('true');
     expect(ws.getAttribute('aria-pressed')).toBe('false');
-    // Named for the heading it shows. (The header's toggle is still "This run".)
+    // Named for the heading it shows, as is the toggle that opens it.
     expect(screen.getByRole('dialog', { name: 'This thread' })).toBeTruthy();
 
-    await toggle('This run');
+    await toggle('This thread');
     await waitFor(() => expect(drawers()).toHaveLength(0));
     expect(stored()).toEqual(['1', '1']);
   });
@@ -639,13 +639,13 @@ describe('rail state across widths', () => {
     await mountApp(1400);
     expect(instrumentRail()).toBeNull();
 
-    const inst = await toggle('This run');
+    const inst = await toggle('This thread');
     await waitFor(() => expect(instrumentRail()).toBeTruthy());
     expect(drawers()).toHaveLength(0);
     expect(inst.getAttribute('aria-pressed')).toBe('true');
     expect(localStorage.getItem('felix.inspectorOpen')).toBe('1');
 
-    await toggle('This run');
+    await toggle('This thread');
     await waitFor(() => expect(instrumentRail()).toBeNull());
     expect(localStorage.getItem('felix.inspectorOpen')).toBe('0');
   });
@@ -658,11 +658,11 @@ describe('rail state across widths', () => {
     await resize(1100);
     expect(instrumentRail()).toBeNull();
     expect(drawers()).toHaveLength(0);
-    expect(button('This run').getAttribute('aria-pressed')).toBe('false');
+    expect(button('This thread').getAttribute('aria-pressed')).toBe('false');
 
     // A drawer opened here belongs to this width: widening hands back to the
     // stored rail, and narrowing again does not bring the drawer back with it.
-    await toggle('This run');
+    await toggle('This thread');
     await waitFor(() => expect(drawer('instrument')).toBeTruthy());
     await resize(1400);
     await waitFor(() => expect(instrumentRail()).toBeTruthy());

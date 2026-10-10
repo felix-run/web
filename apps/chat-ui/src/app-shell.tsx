@@ -2752,9 +2752,9 @@ export function AppShell() {
                     size="icon-sm"
                     onClick={() => setInspectorOpen((o) => !o)}
                     aria-pressed={inspectorOpen}
-                    aria-label="This run"
+                    aria-label="This thread"
                     aria-keyshortcuts={ariaShortcut('toggle-instrument', mac)}
-                    title={`This run (${shortcutLabel('toggle-instrument', mac)})`}
+                    title={`This thread (${shortcutLabel('toggle-instrument', mac)})`}
                   >
                     <PanelRightIcon className="size-4" />
                   </Button>
