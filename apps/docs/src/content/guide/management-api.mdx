@@ -31,6 +31,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 | `files:read` / `files:write` | read an upload back / upload and delete |
 | `skills:read` / `skills:write` | `/skills/{manifest_name}` and every `/skill-library` read / save, publish, roll back, reject, archive, adopt an import, decide feedback, queue evaluations and set the publish policy |
+| `skills:personal` | writing the caller's own [personal library](#personal-libraries) under `/skill-library/~me`, and promoting from it; implied by nothing but `admin` / `*` |
 
 Three rules make this practical:
 
@@ -94,6 +95,7 @@ than an error:
 
 The skill tools and the [skill library](#skill-library) write `skill_activation`,
 `skill_draft_saved`, `skill_published`, `skill_rolled_back`, `skill_rejected`, `skill_archived`,
+`skill_adopted`, `skill_promoted`, `personal_library_accessed`,
 `skill_feedback_submitted`, `skill_feedback_accepted`, `skill_feedback_rejected`,
 `skill_feedback_applied`, `skill_feedback_failed`, `skill_eval_queued`, `skill_eval_finished`,
 `skill_policy_updated` and `skill_policy_deleted`; payloads are in
@@ -622,7 +624,7 @@ event.
 ## Skill library
 
 The tenant's own skills: every skill an agent drafted (`create_skill`, `update_skill`), an operator
-saved or a person imported from GitHub, each version's review record, the feedback on it, its evaluations, and the publish policy.
+saved, a person imported from GitHub or a person promoted from their own library, each version's review record, the feedback on it, its evaluations, and the publish policy.
 `/skills/{manifest}` answers "what can this manifest's model reach"; this answers "what is in the
 library, and what is waiting on a person". [Concepts → Skill](/guide/concepts/#skill) has the model.
 
@@ -668,6 +670,10 @@ can publish a skill to every manifest in the tenant.
 | `POST` | `/skill-library/-/feedback/{feedback_id}/reject` | `skills:write` | `200` |
 | `PATCH` | `/skill-library/-/policy` | `skills:write` | `200` |
 | `DELETE` | `/skill-library/-/policy` | `skills:write` | `200` |
+| `GET` | `/skill-library/-/personal` | `admin` | `200` |
+
+Each person's own library sits beside the tenant's under `/skill-library/~me`; see
+[Personal libraries](#personal-libraries).
 
 ### Addressing and paging
 
@@ -680,7 +686,7 @@ last page. `limit` is 1–100, default 50.
 
 | Listing | Order | Filters |
 |---|---|---|
-| `GET /skill-library` | by name | `status`: `live` (has a live version), `draft` (has drafts awaiting review), `archived` (neither); `source`: `agent`, `operator` or `import`, of the newest version |
+| `GET /skill-library` | by name | `status`: `live` (has a live version), `draft` (has drafts awaiting review), `archived` (neither); `source`: `agent`, `operator`, `import` or `promoted`, of the newest version |
 | `GET /-/review` | oldest draft first, across skills | — |
 | `GET /-/feedback` | oldest first | `status`, default `pending` |
 | `GET /{name}/feedback` | newest first | `status` |
@@ -699,13 +705,15 @@ security_status, created_at}`. A review-queue item is a version record plus the 
 is `{name, version, parent_version, status, source, author, origin_manifest_id, session_id, reason,
 description, quality_score, security_status, decided_by, decision_note, created_at, decided_at,
 published_at, origin_source, origin_ref, origin_commit, origin_tree_hash, origin_license,
-origin_committed_at, lineage_import, adopted_from}`. `status` is `draft`, `published` (the live one) or `archived`
-(superseded, rejected, or taken out by an archive); `source` is `agent`, `operator` or `import`. The
+origin_committed_at, lineage_import, adopted_from, promoted_from}`. `status` is `draft`, `published` (the live one) or `archived`
+(superseded, rejected, or taken out by an archive); `source` is `agent`, `operator`, `import` or
+`promoted`. The
 `origin_*` fields name where an import came from and are `null` on every other version;
 `lineage_import` marks an import and every version built on one, which the gate judges as an import
 (see [Skill import](/guide/skill-import/#review-and-publish)); `adopted_from` names the import-lineage
-version an operator adopted into this one, and is `null` on every other version. The review queue's
-items carry both. `GET /{name}/versions/{version}` adds
+version an operator adopted into this one, and `promoted_from` the version of the promoter's (`author`'s)
+personal library a `promoted` draft was copied from; both are `null` on every other version. The
+review queue's items carry them all. `GET /{name}/versions/{version}` adds
 `review_checks`, `security_issues`, `files` (`{path, sha256, size}`) and `shadows_operator_upload`.
 
 `shadows_operator_upload: true` means an operator upload exists under the same name at a key a
@@ -866,6 +874,85 @@ means there is no tenant policy. `DELETE /-/policy` drops the tenant's values, s
 decide. `min_eval_uplift` without `require_eval` still blocks a version that has no evaluation that
 counts. Changes are audited as `skill_policy_updated` and `skill_policy_deleted`.
 
+### Personal libraries
+
+A principal with a verified identity has a personal library in its tenant, keyed by issuer and
+subject; an anonymous caller, `FELIX_AUTH_MODE=none`, and an API key configured without its own
+`sub` have none. Its skills reach only its owner's turns, and only on a manifest with
+[`spec.personal_skills`](/guide/manifest-reference/#specskills) set to `read` or `write`.
+`/skill-library/~me` mirrors the library routes for the caller's own library:
+
+| Method | Path | Scope | Success |
+|---|---|---|---|
+| `GET` | `/skill-library/~me?status=&source=&limit=&cursor=` | none | `200` |
+| `GET` | `/skill-library/~me/{name}` | none | `200` |
+| `GET` | `/skill-library/~me/{name}/versions/{version}` | none | `200` |
+| `GET` | `/skill-library/~me/{name}/versions/{version}/files/{path}` | none | `200` |
+| `GET` | `/skill-library/~me/{name}/versions/{version}/preview` | none | `200` |
+| `POST` | `/skill-library/~me` | `skills:personal` | `201` |
+| `PUT` | `/skill-library/~me/{name}/versions` | `skills:personal` | `201` |
+| `POST` | `/skill-library/~me/{name}/versions/{version}/publish` | `skills:personal` | `200` |
+| `POST` | `/skill-library/~me/{name}/versions/{version}/rollback` | `skills:personal` | `200` |
+| `POST` | `/skill-library/~me/{name}/versions/{version}/reject` | `skills:personal` | `200` |
+| `POST` | `/skill-library/~me/{name}/versions/{version}/promote` | `skills:personal` | `201` |
+| `DELETE` | `/skill-library/~me/{name}` | `skills:personal` | `200` |
+
+Bodies, responses and refusals are the tenant library's. Reading needs no scope; writing needs
+`skills:personal`, because a principal can be a credential many people share. A caller with no
+library gets `403 {"detail":"no_personal_library"}`. The owner publishes their own drafts: there is
+no review queue, but the [publish gate](/internals/governance/#the-skill-publish-gate) runs as for
+the tenant. Evaluations are kept for the tenant's library only, so where the deployment or the
+tenant's policy requires one, a personal publish is `422 publish_blocked`. Feedback, evaluations,
+imports, adopts, update checks, the review queue and the publish policy are the tenant's alone;
+`upstream` on a personal skill is `null`.
+
+A personal library holds at most 100 skills in use (live, or with a draft waiting; archiving one or
+rejecting its drafts frees a place), 500 names ever, and `FELIX_SKILL_PERSONAL_MAX_BYTES` (default
+50 MiB) across every version it keeps. A save past any of them is `409 personal_library_full`.
+
+**Administrators.** `GET /-/personal` lists the tenant's personal libraries as `{items, truncated}`,
+each item `{library, owner, skills}`: `library` is the digest (`~` and 32 hex characters), `owner`
+is `issuer|subject`, and `skills` counts archived ones too. The first 1000 owners are listed;
+`truncated` says there are more. An `admin` or `*` caller reads or archives one library through
+`/skill-library/~{digest}/…` (the digest without its `~`): the read routes and `DELETE` above, and
+no other write (`403 {"detail":"personal_library_read_only"}`). A digest that names no library is
+`404`. Both refuse under `FELIX_AUTH_MODE=none` (`403 {"detail":"personal_libraries_need_auth"}`), and every
+look is audited as `personal_library_accessed`.
+
+#### Promoting a skill
+
+`POST /skill-library/~me/{name}/versions/{version}/promote` proposes a version of your library to
+the tenant's. It takes an optional `{reason}` (up to 2000 characters, shown to the reviewer) and
+answers `201` with the tenant draft, in the shape a save returns.
+
+```bash
+curl -s -X POST "$BASE_URL/skill-library/~me/invoice-triage/versions/0.1.0/promote" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"reason":"the team asks for this every week"}' | jq
+```
+
+The version's files are copied byte for byte, server-side, into a draft of the tenant's skill of
+the same name: `source: promoted`, `author` the promoter, `promoted_from` your version. The draft
+follows the tenant's newest version that was not rejected, or starts the skill if the tenant has
+none. It waits in the ordinary review queue (`GET /-/review`), and a reviewer with `skills:write`
+publishes or rejects it. Promotion never publishes, and your own skill is left as it was.
+
+A promoted draft is judged as an agent's: the copy rule runs on it and it inherits your version's
+`lineage_import`, only an evaluation on its bundle's own `evals/` scenarios counts toward the gate,
+an agent's edit of it waits for a person, and it cannot be adopted until someone decides it.
+
+| Refusal | Status | When |
+|---|---|---|
+| `version_conflict` | `409` | The version never went live in your library (a draft, or a rejected one); publish it there first |
+| `promotion_pending` | `409` | The tenant's skill already holds an undecided promotion |
+| `origin_mismatch` | `409` | The tenant's newest version of the name carries imported text; a reviewer adopts it first |
+| `parent_changed` / `skill_exists` | `409` | The tenant's skill moved while the promotion was saved |
+| `invalid_bundle` | `422` | The `evals/` files are not exactly the tenant parent's: none added, changed or removed |
+| `pending_cap_reached` | `429` | You already hold 20 undecided promotions in the tenant |
+
+Every refusal a save can return applies as well (`name_shadows_host_skill`, `version_cap_reached`).
+Only `~me` has the route: the tenant's own path has none, and an administrator's digest is `422`. Audited as `skill_promoted`, with `library` naming the personal library it came from.
+
 ### Errors
 
 Every refusal is `{error, message}`, with `issues` on `invalid_bundle` and `reasons` on
@@ -879,19 +966,23 @@ Every refusal is `{error, message}`, with `issues` on `invalid_bundle` and `reas
 | `invalid_cursor` | `422` | `cursor` is not one this route issued |
 | `invalid_path` | `422` | A file path outside the bundle allowlist |
 | `reason_required` | `422` | An adopt whose `reason` is only whitespace |
+| `org_only` | `422` | An import, adopt or promotion aimed at a personal library rather than the tenant's |
 | `name_shadows_host_skill` | `409` | The name is a bundled or `FELIX_SKILLS_DIR` skill, or an operator upload at an unversioned key |
 | `skill_exists` | `409` | `POST /skill-library` for a name the library holds |
 | `parent_changed` | `409` | `parent_version` is not the newest version, or an adopt named anything but the newest non-rejected version |
 | `parent_rejected` | `409` | An agent's edit named a rejected draft as its parent, or an adopt named a rejected draft |
-| `version_conflict` | `409` | The version exists, is not newer than every existing one, or is in the wrong state |
+| `version_conflict` | `409` | The version exists, is not newer than every existing one, or is in the wrong state; a promotion of a version that never went live in the caller's library |
 | `live_changed` | `409` | `expected_live_version` is not the live version |
 | `not_imported` | `409` | An upstream check or update of a skill whose newest version was not imported, or an adopt of a version with no imported text |
 | `agent_draft` | `409` | An adopt of an agent's draft no person has decided |
 | `adopt_mismatch` | `409` | A save carrying `adopted_from` whose parent or files are not that version's |
 | `version_cap_reached` | `409` | The skill already holds 200 versions |
+| `personal_library_full` | `409` | A personal library is at one of its [limits](#personal-libraries): 100 skills in use, 500 names, or `FELIX_SKILL_PERSONAL_MAX_BYTES` |
+| `promotion_pending` | `409` | A promotion into a tenant skill that already holds an undecided one |
+| `origin_mismatch` | `409` | A promotion into a tenant skill whose newest version carries imported text (for imports, see below) |
 | `feedback_conflict` | `409` | The feedback was already decided |
 | `eval_in_progress` | `409` | The version already has an evaluation queued or running |
-| `pending_cap_reached` | `429` | An agent's manifest holds `max_pending` undecided drafts |
+| `pending_cap_reached` | `429` | An agent's manifest holds `max_pending` undecided drafts, or a promoter holds 20 undecided promotions |
 | `feedback_cap_reached` | `429` | An agent's manifest holds `max_pending` undecided feedback |
 | `skill_jobs_cap_reached` | `429` | The tenant's skill-job caps; see [Deploy](/guide/deploy/#skill-jobs) |
 | `version_corrupt` | `500` | The object store no longer holds the bytes the row recorded |
@@ -904,7 +995,9 @@ Browse and import add their own codes — `invalid_source`, `ambiguous_ref`, `co
 
 A `429` drains as drafts, feedback and jobs are decided or run, so a retry later can succeed. A
 request body that fails schema validation is FastAPI's `422 {"detail": […]}`, not this shape. A
-missing scope is `403`, an unauthenticated caller `401`, as everywhere here.
+missing scope is `403`, an unauthenticated caller `401`, as everywhere here. The personal-library
+refusals that come before a library is resolved — `no_personal_library`, `personal_library_read_only`,
+`personal_libraries_need_auth` — are `403 {"detail": …}` too, not this shape.
 
 ## Jobs
 

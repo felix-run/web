@@ -315,7 +315,7 @@ name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the 
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `spec.skills_declared_only` | bool | `false` | `false` seeds the catalog with every bundled skill, every skill in `FELIX_SKILLS_DIR` and every live tenant-library skill, and `spec.skills` adds to that. `true` makes the declared names the whole catalog. |
-| `spec.personal_skills` | `off` \| `read` | `off` | `read` offers each authenticated caller the live skills in their own personal library, ahead of the tenant's (see [where skills come from](/guide/concepts/#where-skills-come-from)). A caller's skill never replaces one the manifest names in `spec.skills`. A durable run keeps the library of the caller who started it. Refused together with `skills_declared_only: true`. |
+| `spec.personal_skills` | `off` \| `read` \| `write` | `off` | `read` offers each authenticated caller the live skills in their own personal library, ahead of the tenant's (see [where skills come from](/guide/concepts/#where-skills-come-from)). A caller's skill never replaces one the manifest names in `spec.skills`. A durable run keeps the library of the caller who started it. `write` reads as `read` does and points the [authoring tools](#specskill_authoring) at the caller's library; it needs `skill_authoring.enabled`. Anything but `off` is refused together with `skills_declared_only: true`. |
 
 ## `spec.skill_authoring`
 
@@ -337,6 +337,24 @@ spec:
 | `mode` | `draft` \| `publish` | `draft` | `draft`: every save waits for a person to publish it. `publish`: a save is published at once if the publish gate passes, and stays a draft (the result carries `publish_blocked` with the reasons) if not. |
 | `max_pending` | int 1–200 | `20` | Undecided agent drafts this manifest may hold in the tenant's library, and undecided feedback it may have filed, before the tools refuse (`pending_cap_reached`, `feedback_cap_reached`). |
 | `auto_eval` | bool | `false` | Queue an evaluation (`FELIX_SKILL_EVAL_MODEL`) of every draft the agent saves; the result carries its `eval_id`. Model calls on the tenant's bill. |
+
+With `spec.personal_skills: write` the tools save into the caller's own library instead:
+
+| Tool | Saves into |
+|---|---|
+| `create_skill` | the caller's library, always |
+| `update_skill` | the caller's library when it holds the name (live, or a draft not yet in a catalog) and the manifest does not name it in `spec.skills`; the tenant's otherwise |
+| `submit_skill_feedback` | the tenant's library only; feedback on one of the caller's own skills is refused (`personal_skill`) |
+
+A personal save needs a caller who has a library and holds the `skills:personal` scope, checked when
+the tool runs. Without either it is refused (`no_personal_library`, `missing_scope`) and nothing is
+saved; it is never redirected to the tenant's library. The result carries `library: "personal"`.
+`max_pending` and `mode` apply as for the tenant's library, except that in `publish` mode a personal
+skill that would replace a tenant or host skill for its owner stays a draft for them to publish.
+`auto_eval` skips a personal save. An approval of the call binds the library it saves into, so a
+grant for one caller's save authorizes none into another's or the tenant's. Under `read` or `off`
+the tools write the tenant's library and refuse a name that is the caller's own skill in the catalog
+(`personal_skill`).
 
 **`mode: publish` needs an approval on both writes.** Validation refuses the manifest unless the
 approval rule [`spec.approvals`](#specapprovals) would select for `create_skill`, and the one it

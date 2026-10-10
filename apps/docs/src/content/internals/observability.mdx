@@ -200,21 +200,24 @@ incident query filtered to `policy_deny` alone sees none of those three.
 `skill_activation` is written by `activate_skill` and `deactivate_skill` inside a turn. The rest are
 written by the skill library for work done outside one — a management route acting for an operator,
 or a worker job — so `principal_subj` is the operator, the authoring manifest's id for an agent's
-save, or `skill-improver` / `skill-eval` for the worker. The six version events (`skill_draft_saved`
-through `skill_archived`, `skill_adopted` included) carry the version's `origin_manifest_id` as `manifest_id` — empty for an
-operator's save — and their payloads name `skill`, `version`, `source`, `author`, `quality_score` and
-`security_status`. Feedback events name `skill`, `target_version`, `feedback_id`, `source` and
+save, or `skill-improver` / `skill-eval` for the worker. The version events (`skill_draft_saved`
+through `skill_archived`, `skill_adopted` and `skill_promoted` included) carry the version's `origin_manifest_id` as `manifest_id` — empty for an
+operator's save or a promotion — and their payloads name `skill`, `version`, `source`, `author`, `quality_score`,
+`security_status` and `library`: `org`, or a personal library's digest (`~` and 32 hex characters),
+never the owner's subject. Feedback events name `skill`, `target_version`, `feedback_id`, `source` and
 `author`, with the authoring manifest as `manifest_id` for an agent's feedback.
 
 | `event_type` | Emitted | `status` | Payload adds |
 |---|---|---|---|
 | `skill_activation` | `activate_skill` / `deactivate_skill` | `ok`, `unknown_skill` | `action`, `skill`, `thread_id`, `tool_call_id` |
-| `skill_draft_saved` | Every save, agent, operator or import (reason `imported from <source>@<commit>`, or `updated from …` for an update) | `ok` | `parent`, `reason` (first 200 chars, redacted), `shadows_operator_upload`, `principal` |
+| `skill_draft_saved` | Every save, agent, operator, import or promotion (reason `imported from <source>@<commit>`, or `updated from …` for an update) | `ok` | `parent`, `reason` (first 200 chars, redacted), `shadows_operator_upload`, `principal` |
 | `skill_published` | A publish | `ok`, `blocked` | `previous`, or `reasons` when blocked |
 | `skill_rolled_back` | A rollback | `ok`, `blocked` | `previous`, or `reasons` when blocked |
 | `skill_rejected` | A draft rejected | `ok` | `note` (first 200 chars) |
 | `skill_adopted` | `POST …/versions/{version}/adopt`, after the new draft's `skill_draft_saved` | `ok` | `adopted_from` (the version vouched for; `version` is the one saved), `reason` (first 200 chars, redacted), `principal`. Under `FELIX_AUTH_MODE=none` the principal is whatever the request claimed |
 | `skill_archived` | `DELETE /skill-library/{name}` | `ok` | `previous` |
+| `skill_promoted` | `POST /skill-library/~me/{name}/versions/{version}/promote`, after the tenant draft's `skill_draft_saved` | `ok` | `promoted_from` (the personal version; `version` is the tenant draft), `reason` (first 200 chars, redacted), `principal`. `library` is the personal library it came from, so an `audit:read` holder can link the promoter's subject to that digest |
+| `personal_library_accessed` | An administrator's `GET /skill-library/-/personal`, or any request under `/skill-library/~{digest}` | `ok` | `library` (the digest, or `*` for the listing), `method`, `path` |
 | `skill_feedback_submitted` | Feedback filed | `ok` | `feedback_status`, `body_chars`, `has_patch` — never the body |
 | `skill_feedback_accepted` / `skill_feedback_rejected` | A person's decision | `ok` | `improve` |
 | `skill_feedback_applied` / `skill_feedback_failed` | The worker's improvement | `ok` | `result_version`, `model`, `error` |
