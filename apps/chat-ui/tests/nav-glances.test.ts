@@ -105,6 +105,54 @@ describe('recentFailures', () => {
   it('clears once the last failure ages out, with nothing newer', () => {
     expect(recentFailures([{ status: 'error', ts: hours(24.1) }], now)).toBe(0);
   });
+
+  /**
+   * One declined write put `Activity · 2 failed` in red on the rail: the
+   * approval's `policy_deny`, and the reply the harness marks `error` after it.
+   * Neither is a failure.
+   */
+  it('does not count an approval denial, or the reply after it, as a failure', () => {
+    const thread = { thread_id: 'default:t' };
+    const denial = [
+      {
+        event_type: 'policy_deny',
+        status: 'denied',
+        ts: hours(1),
+        payload: { ...thread, tool: 'write_file', control: 'approvals' },
+      },
+      // An older harness: no `denied_calls`, so the turn around it decides.
+      { event_type: 'final_response', status: 'error', ts: hours(1), payload: { ...thread } },
+    ];
+    expect(recentFailures(denial, now)).toBe(0);
+    // A newer one says so itself.
+    expect(
+      recentFailures(
+        [
+          {
+            event_type: 'final_response',
+            status: 'error',
+            ts: hours(1),
+            payload: { denied_calls: 1 },
+          },
+        ],
+        now,
+      ),
+    ).toBe(0);
+    // A policy rule's refusal is still counted, as before.
+    expect(
+      recentFailures(
+        [
+          {
+            event_type: 'policy_deny',
+            status: 'denied',
+            ts: hours(1),
+            payload: { control: 'policy' },
+          },
+        ],
+        now,
+      ),
+    ).toBe(1);
+  });
 });
 
 /**
@@ -150,7 +198,7 @@ describe('eventHelp', () => {
       payload: { chars: 31 },
     });
     expect(replied).not.toMatch(/produced its reply/);
-    expect(replied).toMatch(/not cleanly/);
+    expect(replied).toMatch(/stopped on an error/);
     expect(replied).toMatch(/replied after it/);
     expect(
       eventHelp({ event_type: 'final_response', status: 'error', payload: { chars: 0 } }),

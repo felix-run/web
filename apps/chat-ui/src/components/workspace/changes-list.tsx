@@ -91,9 +91,12 @@ function ChangeRow({ change }: { change: PathChange }) {
           'ml-auto shrink-0 pl-2 font-mono text-xs tabular-nums',
           change.stat.tone === 'failed'
             ? 'text-state-failed'
-            : change.changed
-              ? 'text-foreground/80'
-              : 'text-muted-foreground',
+            : change.stat.tone === 'denied'
+              ? // Not red: an approval gate saying no is the gate working.
+                'text-muted-foreground'
+              : change.changed
+                ? 'text-foreground/80'
+                : 'text-muted-foreground',
         )}
       >
         {change.stat.text}
@@ -140,7 +143,12 @@ function Evidence({ evidence }: { evidence: ChangeEvidence }) {
   return (
     <>
       {evidence.issue && (
-        <p className="text-xs text-state-failed wrap-anywhere">
+        <p
+          className={cn(
+            'text-xs wrap-anywhere',
+            evidence.denied ? 'text-muted-foreground' : 'text-state-failed',
+          )}
+        >
           Not applied — <span className="font-mono">{evidence.issue}</span>
         </p>
       )}

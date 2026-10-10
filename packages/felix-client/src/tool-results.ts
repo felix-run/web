@@ -15,14 +15,28 @@ import { describeRefusal, parseApprovalOutcome } from './approvals';
 import { fileToolOp } from './local-files';
 
 export interface ToolResultIssue {
-  /** `failed`: the call ran into an error. `refused`: a control stopped it before it ran. */
-  kind: 'failed' | 'refused';
+  /**
+   * `failed`: the call ran into an error. `refused`: a control (a policy rule, a limit,
+   * a guardrail) stopped it before it ran. `denied`: an approval gate answered no, or
+   * nobody answered before its deadline and the harness answered no for them.
+   *
+   * `denied` is its own kind because it is not a failure: nothing broke, and the
+   * gate did exactly what it is for. Drawn as one, a write an operator declined
+   * read as red in four places, and the run beside it as having gone wrong.
+   */
+  kind: 'failed' | 'refused' | 'denied';
   /** Short badge text for the card. */
   label: string;
   /** The sentence to show in place of the raw output. */
   message: string;
   /** The harness's error code, for a `[tool error/<code>]` result. */
   code?: string;
+  /**
+   * For `denied`: the approval outcome's note as the harness wrote it: `denied`
+   * (someone said no without a word), `timeout` (nobody answered), `aborted` (the
+   * run was stopped while it waited), or the refuser's own note.
+   */
+  note?: string;
 }
 
 /**
@@ -76,11 +90,10 @@ export function classifyToolResult(toolName: string, output: unknown): ToolResul
   if (approval) {
     const message = describeRefusal(approval);
     if (!message) return null; // `[approval required]` is waiting, not refused
-    return {
-      kind: 'refused',
-      label: approval.note === 'timeout' ? 'not approved in time' : 'refused',
-      message,
-    };
+    // One word for every way a gate says no (a person, a deadline, a Stop) so
+    // the card, the Changes list and the Activity ledger agree. The sentence
+    // says which it was.
+    return { kind: 'denied', label: 'denied', message, note: approval.note };
   }
 
   const toolError = TOOL_ERROR.exec(output);

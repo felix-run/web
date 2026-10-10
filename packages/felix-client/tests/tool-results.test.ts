@@ -67,12 +67,27 @@ describe('classifyToolResult', () => {
     });
   });
 
-  it('keeps the approval outcomes, and a waiting gate is not a refusal', () => {
+  it('reads every approval outcome as denied, never as failed, and a waiting gate as neither', () => {
+    // A denial is not a failure: nothing broke. One word for a person's no, a
+    // deadline's and a Stop's, with the note kept so a client can say which.
     expect(
       classifyToolResult('write_file', '[approval timeout] tool=write_file rule=workspace-write'),
-    ).toMatchObject({
+    ).toMatchObject({ kind: 'denied', label: 'denied', note: 'timeout' });
+    expect(
+      classifyToolResult('write_file', '[approval denied] tool=write_file rule=workspace-write'),
+    ).toEqual({
+      kind: 'denied',
+      label: 'denied',
+      note: 'denied',
+      message: 'Denied, so write_file (workspace-write) did not run.',
+    });
+    expect(classifyToolResult('local_shell', '[approval aborted] tool=local_shell')).toMatchObject({
+      kind: 'denied',
+      note: 'aborted',
+    });
+    // A policy rule is still a refusal, in its own word.
+    expect(classifyToolResult('x', '[policy needs-scope] missing tools:x')).toMatchObject({
       kind: 'refused',
-      label: 'not approved in time',
     });
     expect(
       classifyToolResult('write_file', '[approval required] tool=write_file rule=r'),

@@ -250,11 +250,15 @@ export function parseApprovalOutcome(output: unknown): ApprovalOutcome | null {
 }
 
 /**
- * The refusal as a sentence, or null when the outcome is not one.
+ * The denial as a sentence, or null when the outcome is not one.
  *
- * `timeout` is the one that needs explaining, because it is the one nobody
- * chose: the harness stopped waiting, and the operator reading this may have
- * been looking at the screen the whole time.
+ * Each says what happened and that the call did not run, because the agent's
+ * reply after a denial often asks whether to try again, and the card is where an
+ * operator reads what that question is about. `timeout` is the one that needs
+ * explaining, because it is the one nobody chose: the harness stopped waiting,
+ * and the operator reading this may have been looking at the screen the whole
+ * time. Who denied it, and when, is not in the result; a client that can read
+ * the approval row says so beside this sentence.
  */
 export function describeRefusal(outcome: ApprovalOutcome): string | null {
   const what = `${outcome.toolName}${outcome.ruleId ? ` (${outcome.ruleId})` : ''}`;
@@ -262,11 +266,13 @@ export function describeRefusal(outcome: ApprovalOutcome): string | null {
     case 'required':
       return null;
     case 'timeout':
-      return `Refused: nobody approved ${what} before the deadline.`;
+      return `Timed out waiting for approval. The harness denied it, so ${what} did not run.`;
+    case 'aborted':
+      return `The run was stopped while ${what} waited for approval, so it did not run.`;
     case 'denied':
-      return `Refused: ${what} was denied.`;
+      return `Denied, so ${what} did not run.`;
     default:
-      return `Refused: ${what} was denied — ${outcome.note}`;
+      return `Denied, so ${what} did not run. Their note: ${outcome.note}`;
   }
 }
 

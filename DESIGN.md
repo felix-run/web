@@ -663,6 +663,13 @@ card corner.
 dashed `state-failed/40` border and its summary struck through (`decoration-state-failed/60`),
 so it still reads as something that was tried. Nothing disappears; it cancels.
 
+**The Denied-Is-Not-Failed Rule.** An approval gate saying no (a person, its deadline, or a Stop
+while it waited) is **denied**, one word on every surface, and it is never `state-failed`: nothing
+broke and the gate did its job. A denied call cancels like a failed one but in the neutral tone
+(dashed `muted-foreground/40`, struck through at `decoration-muted-foreground/60`, an outlined
+muted `denied` chip with no icon or dot). Red stays for calls that broke and for a control's
+*refusal* (`refused by policy`, a limit, a guardrail), which keeps its existing treatment.
+
 ## Components
 
 ### The mark
@@ -770,15 +777,23 @@ distinguish rows is cut from the **middle**, not the end.
 **The Activity page is a ledger, one entry per thread, drawn as white tiles on a stone tray.**
 The list is an `ol` on `bg-ground` at `rounded-2xl` with 6px of padding and 6px between tiles;
 each entry is a `rounded-xl` sheet-coloured tile with `shadow-sheet`, opening in place. Each entry
-is the thread's title, its worst status as word and dot, its failures **in words** on a second
-line in `state-failed` (counted, `local_write blocked by an approval ×7`), its turn and call
-counts, and its cost in a right-aligned mono column at fixed cents (`< $0.01`), drawn only when a
-thread on screen has a figure. Above the list, a muted when-line and one **Figure** sentence give
-the window's account (`2 threads ran, 1 with failures. $1.41 spent.`). Opened, a thread shows its
-turns in the order they happened, each headed by what was asked (`h3`) and by clock time; inside a
-turn a run of three or more routine events folds to one line, and a run of the same failure folds
-to one *red* line with its count. A status the table does not know is a muted word with **no
-dot**. The list is one Tab stop that roves. *Where the spend went* sits below as a section: a 16px
+is the thread's title (the whole first message where the window holds it, truncated by the tile,
+not the 48-character stored title), its worst outcome as a word, its failures **in words** on a
+second line in `state-failed` (counted, `edit_file bad arguments ×2`) followed by its denials in
+muted (`write_file denied`), its turn and call counts, and its cost in a right-aligned mono column
+at fixed cents (`< $0.01`), drawn only when a thread on screen has a figure. Outcomes rank
+`Failed` > `Refused` (red dot and word) > `Denied` (outlined muted chip, **no dot**) > `OK`; a
+thread whose only miss was a denial reads `Denied`, and the reply the harness marks `error` after a
+denial reads *after a denial* and is not a second failure. The header value carries the account
+(`$1.41 · 2 threads · 1 with failures`); below it, one muted when-line says the window and, when
+any, how many threads had a call denied (not a failure, so not in the red header). There is no
+Figure sentence repeating the header. Explanatory prose on the page is held to `70ch`. Opened, a
+thread shows its turns in the order they happened, each headed by what was asked (`h3`) and by
+clock time; inside a turn a run of three or more routine events folds to one line, and a run of
+the same failure folds to one *red* line with its count (a run of the same denial, muted). An
+approval's denial row is badged *Approval*, not *Blocked*. The thread filter reads *All threads*,
+*Denied at an approval*, *Blocked by …*; *Failures only* never finds a denial. A status the table
+does not know is a muted word with **no dot**. The list is one Tab stop that roves. *Where the spend went* sits below as a section: a 16px
 heading, the total as a mono Figure, the unpriced warning, then the by-agent-and-model table on its
 own stone tray with no rule per row.
 
@@ -797,7 +812,8 @@ the directory truncating before the filename, and the full path is the row's `ti
 mono, tabular, right-aligned, and claims only what the call proves: an edit is `+N −M`; a
 whole-file write is `+N written` and never carries a minus; a read is its verb (`read`, `listed`,
 `searched`, `opened`, `ran in`) with `×3` for a repeat. A failed or refused call reads
-`failed`/`refused` in `state-failed`, a word and not only a colour. A call in flight reads
+`failed`/`refused` in `state-failed`, a word and not only a colour; a denied one reads `denied` in
+muted, and its evidence's *Not applied* line is muted too. A call in flight reads
 `writing…`/`editing…` in muted. Paths a write or edit was attempted on sort first, each newest
 first. Such a row is a disclosure showing that call's evidence through the approval card's own
 folding pane. While a durable run is in flight and has reported no call, the tab is one muted
@@ -941,7 +957,14 @@ badge is honest about outcome: a shell tool shows its exit status, and a result 
 marked as an error or refusal is drawn in `state-failed`, never under a green `done`. **A failed
 or refused call is cancelled, not hidden**: the border turns dashed at `state-failed/40` and the
 summary is struck through (the Cancelled-Not-Gone Rule), with the harness's message beneath in
-12px `state-failed`. Expanded, input and output sit on `bg-background` panes (the Nesting Rule)
+12px `state-failed`. **A denied call** (Denied-Is-Not-Failed) cancels the same way in the neutral
+tone, and carries a subject line outside the fold, above a `border/60` rule: *Denied by you · 2:02
+PM* only when this browser made the decision, otherwise the principal the approval row recorded
+(*Denied by `local-dev` · 2:02 PM*, the principal in mono), plain *Denied* when no row matches;
+*Timed out after 5 min · 2:07 PM. The harness denied it.* for a deadline. On the newest reply's
+denied calls, and only for a tab that drives the thread, an outline **Ask again** button sits at
+the line's end: it puts *Please try the write_file call again; I'll approve it.* in the composer,
+focused and editable, and sends nothing. Expanded, input and output sit on `bg-background` panes (the Nesting Rule)
 under a `border/60` rule.
 
 ### Cards
@@ -1016,6 +1039,7 @@ resting `--input` edge it replaces it is 3.00:1 light, exactly at the threshold.
   Statement, Page Title and Figure.
 - **Do** separate with tone first: a stone tray under white tiles, a stone note in white space.
 - **Do** keep a failed or refused call on screen, dashed and struck through.
+- **Do** draw an approval's denial as `denied` in the neutral tone, never in `state-failed`.
 - **Do** carry `flexShrink: 0` on anything below a scrolling region.
 - **Do** measure contrast in each theme in its natural state, on both neutral levels.
 - **Do** state the resting case. A signal that appears only in trouble teaches the operator not

@@ -1,4 +1,10 @@
-import { describeError, fileToolOp, parseTabular, summarizeToolArgs } from '@felix/client';
+import {
+  describeError,
+  fileToolOp,
+  parseTabular,
+  summarizeToolArgs,
+  type ToolResultIssue,
+} from '@felix/client';
 import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
@@ -22,9 +28,12 @@ import {
   TerminalTitle,
 } from '@/components/ai-elements/terminal';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
+import { type DenialRecord, denialSubject } from '@/lib/denials';
+import { clockTime } from '@/lib/format';
 import { parseSkillCall } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
+import { useDenial } from './denial-context';
 import { ToolTable } from './tool-table';
 
 /**
@@ -61,6 +70,10 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
   // same reason it is on a shell command that exited 1: a write that failed
   // with Errno 13 sat under a green `done` badge on the reference deployment.
   const issue = tool.done ? classifyToolResult(tool.name, tool.output) : null;
+  // An approval gate's no is not a failure: nothing broke. It cancels like one,
+  // but in the neutral tone, and red is kept for calls that went wrong.
+  const denied = issue?.kind === 'denied';
+  const denial = useDenial(tool);
   // Only a finished, successful result is read as a table; a failure says so in words.
   // Memoised on the tool's own fields: a transcript re-renders on every streamed
   // delta, and a large result would otherwise be re-parsed each time.
@@ -87,7 +100,12 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         'overflow-hidden rounded-xl border bg-card text-sm shadow-sheet',
         // Nothing disappears, it cancels: a call that changed nothing keeps its card,
         // dashed, with its summary struck through, so it still reads as something tried.
-        issue ? 'border-dashed border-state-failed/40' : 'border-border',
+        // A denial cancels in the neutral tone; only a failure or a refusal is red.
+        denied
+          ? 'border-dashed border-muted-foreground/40'
+          : issue
+            ? 'border-dashed border-state-failed/40'
+            : 'border-border',
       )}
     >
       <CollapsibleTrigger className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left hover:bg-accent/50">
@@ -98,7 +116,9 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
             <span
               className={cn(
                 'min-w-0 truncate font-medium text-foreground',
-                issue && 'line-through decoration-state-failed/60',
+                denied
+                  ? 'line-through decoration-muted-foreground/60'
+                  : issue && 'line-through decoration-state-failed/60',
               )}
               title={target}
             >
@@ -133,6 +153,11 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
           >
             {shellState.label}
           </Badge>
+        ) : denied ? (
+          // Outlined and muted, with no icon: a state, not an alarm.
+          <Badge variant="outline" className="ml-auto py-0 font-sans text-muted-foreground">
+            denied
+          </Badge>
         ) : issue ? (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans text-state-failed">
             {issue.kind === 'refused' ? (
@@ -163,10 +188,18 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
       {/* Outside the fold: a screenshot is the result a person wants to see, and
           hiding it behind the chevron made every browser call read as text. */}
       {tool.images?.length ? <ToolImages images={tool.images} label={target ?? tool.name} /> : null}
+      {/* Outside the fold too: who said no and when is the first thing asked of a
+          denied call, and the way forward has to be on screen when the agent's
+          reply asks "would you like to approve this?" in prose nothing can answer. */}
+      {denied && issue && (
+        <DenialLine issue={issue} record={denial.record} onAskAgain={denial.askAgain} />
+      )}
       <CollapsibleContent className="space-y-2 border-t border-border/60 px-3.5 py-3">
         <Field label="Input" value={tool.input} />
         {shell ? (
           <ShellOutput result={shell} />
+        ) : denied && issue ? (
+          <p className="whitespace-pre-wrap text-xs text-muted-foreground">{issue.message}</p>
         ) : issue ? (
           <p className="whitespace-pre-wrap text-xs text-state-failed">{issue.message}</p>
         ) : tool.done ? (
@@ -190,6 +223,70 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         <SkillProposalCard toolName={tool.name} input={tool.input} result={skillCall} />
       </Suspense>
       {card}
+    </div>
+  );
+}
+
+/**
+ * A denied call's subject line, and the way forward.
+ *
+ * *Denied by you · 2:02 PM* when this browser made the decision, the principal the
+ * harness recorded when it did not, plain *Denied* with no row to read — never
+ * "you" on a guess. A timeout says the harness denied it, because nobody did.
+ *
+ * "Ask again" puts a request in the composer and sends nothing. The harness has
+ * no route that re-issues one call; a denied call is a tool result the model has
+ * already read, so the only way to try again is to ask the agent to, and the
+ * button says exactly that rather than "Retry", which would promise a replay.
+ */
+function DenialLine({
+  issue,
+  record,
+  onAskAgain,
+}: {
+  issue: ToolResultIssue;
+  record: DenialRecord | null;
+  onAskAgain: (() => void) | null;
+}) {
+  const s = denialSubject(issue, record);
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border/60 px-3.5 py-2">
+      <p className="min-w-0 flex-1 text-xs text-muted-foreground" data-slot="denial-subject">
+        {s.lead}
+        {s.who && (
+          <>
+            {' '}
+            <span className="font-mono">{s.who}</span>
+          </>
+        )}
+        {s.at !== null && (
+          <>
+            {' · '}
+            <time dateTime={new Date(s.at).toISOString()} className="tabular-nums">
+              {clockTime(s.at)}
+            </time>
+          </>
+        )}
+        {s.tail ? `. ${s.tail}` : null}
+        {s.note && (
+          <>
+            {'. '}
+            <span className="text-foreground">“{s.note}”</span>
+          </>
+        )}
+      </p>
+      {onAskAgain && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 shrink-0 px-2.5 text-xs"
+          title="Puts a request in the composer for you to edit and send"
+          onClick={onAskAgain}
+        >
+          Ask again
+        </Button>
+      )}
     </div>
   );
 }

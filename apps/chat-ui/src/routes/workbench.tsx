@@ -5,6 +5,7 @@ import { lazy, Suspense, useMemo } from 'react';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill } from '@/components/chat/context-meter';
 import { Conversation, ConversationItem } from '@/components/chat/conversation';
+import { DenialsSync } from '@/components/chat/denials-sync';
 import { Greeting, useMountLabel } from '@/components/chat/greeting';
 import { InstallHint } from '@/components/chat/install-hint';
 import { Message } from '@/components/chat/message';
@@ -92,6 +93,7 @@ export function Workbench() {
     submit,
     kept,
     takeKept,
+    draftMessage,
     queue,
     steerQueued,
     stopRun,
@@ -165,6 +167,13 @@ export function Workbench() {
     <>
       <div className="flex min-h-0 flex-1">
         <main className="relative isolate flex min-w-0 flex-1 flex-col">
+          {/* Who denied each denied call and when, and its "Ask again" — offered only
+              to a tab that drives the thread, since it fills this tab's composer. */}
+          <DenialsSync
+            threadId={threadId}
+            turns={turns}
+            {...(drives ? { onAskAgain: draftMessage } : {})}
+          />
           <Conversation lastAnchorId={lastAnchorId}>
             {empty && (
               // Not a row: the scroller applies its opening position when rows first

@@ -591,7 +591,8 @@ describe('a refused gate on the tool card', () => {
       height: 8,
     });
     try {
-      expect(shows(ui.frame(), 'nobody approved write_file')).toBe(true);
+      // `denied`, the word every client uses for a gate's no, then why.
+      expect(shows(ui.frame(), 'denied: Timed out waiting for approval')).toBe(true);
       expect(ui.frame()).not.toContain('[approval timeout]');
     } finally {
       ui.stop();

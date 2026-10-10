@@ -14,6 +14,7 @@ import {
   controlOf,
   ERROR_CODE_LABEL,
   errorCodeOf,
+  OutcomeMark,
   subjectOf,
   summarizeWindow,
   TEXT_BUTTON,
@@ -22,13 +23,7 @@ import {
 } from '@/components/harness/activity';
 import { keepAgent } from '@/components/harness/harness-agent';
 import { PageEmpty, PageHeader, PanelBody, plural } from '@/components/harness/panel';
-import {
-  relTime,
-  SectionBody,
-  STATUS_LABEL,
-  StatusDot,
-  tsToMs,
-} from '@/components/inspector/primitives';
+import { relTime, SectionBody, tsToMs } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import { middleTruncate } from '@/lib/format';
 import {
@@ -42,6 +37,7 @@ import {
   meteringStart,
   money,
   NO_THREAD,
+  type Outcomes,
   parseWindow,
   readLastVisit,
   resolveWindow,
@@ -49,6 +45,7 @@ import {
   spendState,
   toolTally,
   VISIT_MIN_MS,
+  type Worst,
   writeLastVisit,
 } from '@/lib/ledger';
 import { threadLabel } from '@/lib/threads';
@@ -186,6 +183,9 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   const rows = showAll ? shown : shown.slice(0, THREADS_VISIBLE);
   const conversations = ledger.filter((t) => t.id !== NO_THREAD);
   const failing = conversations.filter((t) => t.failures.length > 0).length;
+  // Counted apart from failures, and never in red: an approval saying no is the
+  // gate working, and a thread whose only "failure" was one read *Failed*.
+  const denying = conversations.filter((t) => t.denials.length > 0).length;
   // A summary with no `totals` is not one: say nothing about cost rather than
   // take the page down with it.
   const totals = data?.summary?.totals ? summarizeWindow(data.summary) : null;
@@ -234,7 +234,9 @@ export function ActivityLedger({ docs }: { docs?: string }) {
           emptyText="Nothing ran in this window. Turns, tool calls and their spend show up here, one entry per thread."
           status={
             data
-              ? `${plural(conversations.length, 'thread')}, ${failing} with failures${cost ? `, ${cost} spent` : ''}.`
+              ? `${plural(conversations.length, 'thread')}, ${failing} with failures${
+                  denying > 0 ? `, ${denying} with a call denied` : ''
+                }${cost ? `, ${cost} spent` : ''}.`
               : undefined
           }
         >
@@ -243,7 +245,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
             // someone who came here from a count of failures, so it hands over
             // the window that count was taken in.
             <PageEmpty>
-              <span>
+              <span className="max-w-[70ch]">
                 Nothing ran since your last visit, {relTime(data.since)} ago.{' '}
                 <button
                   type="button"
@@ -261,20 +263,19 @@ export function ActivityLedger({ docs }: { docs?: string }) {
                 win={win}
                 since={data.since}
                 fellBack={data.fellBack}
-                threads={conversations.length}
-                failing={failing}
-                cost={cost}
-                floor={(totals?.unpriced ?? 0) > 0}
+                denying={denying}
                 paused={openThread !== null}
               />
               <Filters failuresOnly={failuresOnly} layer={layer} onChange={setFilters} />
               {shown.length === 0 ? (
-                <p className="py-2 text-sm text-muted-foreground">
-                  {layer !== 'any'
-                    ? // "recorded": a harness older than the `control` stamp writes
-                      // denials this filter can never find.
-                      `No thread in this window has a denial recorded as blocked by ${CONTROL_LABEL[layer] ?? layer}.`
-                    : 'No thread in this window had a failure or a denial.'}
+                <p className="max-w-[70ch] py-2 text-sm text-muted-foreground">
+                  {layer === 'approvals'
+                    ? 'No thread in this window had a call denied at an approval.'
+                    : layer !== 'any'
+                      ? // "recorded": a harness older than the `control` stamp writes
+                        // denials this filter can never find.
+                        `No thread in this window has a call recorded as blocked by ${CONTROL_LABEL[layer] ?? layer}.`
+                      : 'No thread in this window had a failure.'}
                 </p>
               ) : (
                 <LedgerList
@@ -314,27 +315,27 @@ export function ActivityLedger({ docs }: { docs?: string }) {
 }
 
 /**
- * The window in one sentence, with what it held. A sentence rather than four
- * figures in a row: the old Usage summary was four equal numbers with cost last,
- * and the eye landed on 24,473,083 tokens.
+ * The window, and what the header cannot say about it.
+ *
+ * This was a 24px sentence (`4 threads ran, 3 with failures. $2.57 spent.`)
+ * directly under a header reading `$2.57 · 4 threads · 3 with failures`: the
+ * same three facts twice, eighty pixels apart. The header value is the page
+ * grammar every `/harness` page shares, so it stays and the sentence went. What
+ * is left is what the header does not hold: which window this is, and how many
+ * threads had a call denied, which is not a failure and so has no place in a
+ * header value drawn in the failure colour.
  */
 function Account({
   win,
   since,
   fellBack,
-  threads,
-  failing,
-  cost,
-  floor,
+  denying,
   paused,
 }: {
   win: LedgerWindow;
   since: number;
   fellBack: boolean;
-  threads: number;
-  failing: number;
-  cost: string | null;
-  floor: boolean;
+  denying: number;
   paused: boolean;
 }) {
   const when =
@@ -348,22 +349,15 @@ function Account({
         ? 'Last 24 hours — no earlier visit from this browser to measure from'
         : WINDOW_LABEL[win];
   return (
-    <div className="mb-3">
-      <p className="text-sm text-muted-foreground">{when}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-balance">
-        {plural(threads, 'thread')} ran
-        {failing > 0 ? (
-          <>
-            , <span className="text-state-failed">{failing} with failures</span>
-          </>
-        ) : null}
-        .
-        {cost && (
+    <div className="mb-3 max-w-[70ch]">
+      <p className="text-sm text-muted-foreground">
+        {when}.
+        {denying > 0 && (
           <>
             {' '}
-            {/* Geist with tabular figures, not mono: this is our own formatted total, and at
-                24px a monospace full stop takes a whole cell and opens "$2 . 57". */}
-            <span className="tabular-nums">{cost}</span> {floor ? 'spent at least' : 'spent'}.
+            {denying === 1
+              ? '1 thread had a call denied at an approval.'
+              : `${denying} threads had a call denied at an approval.`}
           </>
         )}
       </p>
@@ -394,17 +388,19 @@ function Filters({
         <SelectTrigger
           size="sm"
           className="h-8 w-auto gap-1 px-2 text-xs"
-          aria-label="Threads with a denial by"
+          aria-label="Show threads"
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
+          {/* Named for what the list then shows. "Any denial or none" described the
+              filter's logic, and no operator asks for threads that way. */}
           <SelectItem value="any" className="text-xs">
-            Any denial or none
+            All threads
           </SelectItem>
           {CONTROL_LAYERS.map((c) => (
             <SelectItem key={c} value={c} className="text-xs">
-              Blocked by {CONTROL_LABEL[c]}
+              {c === 'approvals' ? 'Denied at an approval' : `Blocked by ${CONTROL_LABEL[c]}`}
             </SelectItem>
           ))}
         </SelectContent>
@@ -493,16 +489,56 @@ function LedgerList({
   );
 }
 
-/** A failure as a few words: the tool, then why — its error class or the layer that said no. */
+/**
+ * A failure or a denial as a few words: the tool, then why — its error class, the
+ * layer that said no, or that an approval did.
+ */
 function failureWords(e: AuditEvent): string {
   const subject = subjectOf(e);
   const control = e.event_type === 'policy_deny' ? controlOf(e) : undefined;
+  if (control === 'approvals') return `${subject} denied`;
   if (control) return `${subject} blocked by ${CONTROL_LABEL[control] ?? control}`;
   const code = errorCodeOf(e);
   if (code) return `${subject} ${ERROR_CODE_LABEL[code] ?? code}`;
   if (e.event_type === 'policy_deny') return `${subject} blocked`;
-  if (e.event_type === 'final_response') return 'turn ended badly';
+  // Said as what happened. "Turn ended badly" named a mood, not an event; the
+  // harness writes this when the run stopped on a call that broke.
+  if (e.event_type === 'final_response') return 'run stopped on an error';
   return `${subject} failed`;
+}
+
+/** A list of failures or denials, the same one counted rather than repeated. */
+function wordsFor(events: AuditEvent[]): string {
+  const groups = groupFailures(events);
+  return `${groups
+    .slice(0, 2)
+    .map((g) => `${failureWords(g.event)}${g.count > 1 ? ` ×${g.count}` : ''}`)
+    .join(' · ')}${groups.length > 2 ? ` · ${groups.length - 2} more kinds` : ''}`;
+}
+
+/** The worst outcome as a word, for a row's accessible name. */
+const WORST_WORD: Record<Worst, string> = {
+  ok: 'OK',
+  denied: 'Denied',
+  refused: 'Refused',
+  error: 'Failed',
+};
+
+/**
+ * The title a thread is shown under, as long as the tile allows.
+ *
+ * A thread nobody named is titled with its first message cut at 48 characters,
+ * so the ledger's tile ended at "…" with a third of its width empty. Where the
+ * window holds that first message, its whole text is drawn and the tile's own
+ * width truncates it.
+ */
+function fullTitle(name: string, t: LedgerThread): string {
+  if (!name.endsWith('…')) return name;
+  const first = t.turns[t.turns.length - 1];
+  const prompt = first && !first.partial ? first.prompt : null;
+  if (!prompt) return name;
+  const whole = prompt.trim().replace(/\s+/g, ' ');
+  return whole.startsWith(name.slice(0, -1).trimEnd()) ? whole : name;
 }
 
 /** Two strings saying the same thing, give or take a truncation. */
@@ -565,41 +601,47 @@ function ThreadEntry({
   costColumn: boolean;
 }) {
   const failed = t.failures.length > 0;
+  const denied = t.denials.length > 0;
   const latestPrompt = t.turns.find((turn) => turn.prompt)?.prompt ?? null;
   const name =
-    title === null ? 'Outside a thread' : title.isId ? middleTruncate(title.text, 32) : title.text;
-  // The call that broke before the turn it broke: "turn ended badly" is the
-  // consequence, and leading with it named nothing.
+    title === null
+      ? 'Outside a thread'
+      : title.isId
+        ? middleTruncate(title.text, 32)
+        : fullTitle(title.text, t);
+  // The call that broke before the turn it broke: the reply is the consequence,
+  // and leading with it named nothing.
   const causes = [
     ...t.failures.filter((e) => e.event_type !== 'final_response'),
     ...t.failures.filter((e) => e.event_type === 'final_response'),
   ];
   // The same failure counted, not repeated: "local_write blocked by an approval ·
   // local_write blocked by an approval · 6 more" hid the one failure that differed.
-  const groups = groupFailures(causes);
-  const what = failed
-    ? `${groups
-        .slice(0, 2)
-        .map((g) => `${failureWords(g.event)}${g.count > 1 ? ` ×${g.count}` : ''}`)
-        .join(' · ')}${groups.length > 2 ? ` · ${groups.length - 2} more kinds` : ''}`
-    : t.id === NO_THREAD
-      ? // Said by what it holds. Before per-thread metering this bucket carries
-        // every model call there was, and calling that "screening and skills"
-        // put a thread's whole cost under the wrong name.
-        t.spend && t.spend.calls > 0
-        ? 'Spend recorded before per-thread metering, or made outside any thread'
-        : 'Sign-ins, screening and other events outside any conversation'
-      : // The title is usually the first prompt; saying it twice is not a summary.
-        latestPrompt && !sameText(latestPrompt, name)
-        ? latestPrompt
-        : null;
+  const failureLine = failed ? wordsFor(causes) : null;
+  // Denials in their own words and their own tone, after any failure.
+  const denialLine = denied ? wordsFor(t.denials) : null;
+  const what =
+    failed || denied
+      ? null
+      : t.id === NO_THREAD
+        ? // Said by what it holds. Before per-thread metering this bucket carries
+          // every model call there was, and calling that "screening and skills"
+          // put a thread's whole cost under the wrong name.
+          t.spend && t.spend.calls > 0
+          ? 'Spend recorded before per-thread metering, or made outside any thread'
+          : 'Sign-ins, screening and other events outside any conversation'
+        : // The title is usually the first prompt; saying it twice is not a summary.
+          latestPrompt && !sameText(latestPrompt, name)
+          ? latestPrompt
+          : null;
   const cell = costCell(t, spend);
   // The row's name, short: the whole row as its name read the title twice and
   // the dash aloud.
   const label = [
     name,
-    STATUS_LABEL[t.worst] ?? t.worst,
+    WORST_WORD[t.worst],
     failed ? plural(t.failures.length, 'failure') : null,
+    denied ? `${plural(t.denials.length, 'call')} denied` : null,
     cell.spoken,
     `${relTime(t.lastTs)} ago`,
   ]
@@ -636,19 +678,24 @@ function ThreadEntry({
                 'line-clamp-2 break-words text-sm font-medium sm:line-clamp-1',
                 title?.isId && 'font-mono text-xs font-normal leading-5',
               )}
-              title={title?.isId === false ? undefined : t.id || undefined}
+              title={
+                title?.isId === false ? (name !== title.text ? name : undefined) : t.id || undefined
+              }
             >
               {name}
             </p>
+            {(failureLine || denialLine) && (
+              // The failure line names what broke; on a phone one line cut it to
+              // "publish_commits blocked by…", the part that mattered. A denial
+              // follows in the muted tone: nothing broke.
+              <p className="mt-0.5 line-clamp-2 break-words text-xs sm:line-clamp-1">
+                {failureLine && <span className="text-state-failed">{failureLine}</span>}
+                {failureLine && denialLine && <span className="text-muted-foreground"> · </span>}
+                {denialLine && <span className="text-muted-foreground">{denialLine}</span>}
+              </p>
+            )}
             {what && (
-              <p
-                className={cn(
-                  // The failure line names what broke; on a phone one line cut it
-                  // to "publish_commits blocked by…", the part that mattered.
-                  'mt-0.5 line-clamp-2 break-words text-xs sm:line-clamp-1',
-                  failed ? 'text-state-failed' : 'text-muted-foreground',
-                )}
-              >
+              <p className="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground sm:line-clamp-1">
                 {what}
               </p>
             )}
@@ -657,7 +704,9 @@ function ThreadEntry({
             )}
           </div>
           <div className="flex items-center gap-3 pl-2">
-            <StatusDot status={t.worst} />
+            {/* A thread whose only miss was a denial reads *Denied*, outlined and
+                muted, never *Failed* in red. */}
+            <OutcomeMark status={t.worst} outcome={t.worst} />
             {costColumn && (
               <span className="w-16 text-right font-mono text-sm tabular-nums">{cell.shown}</span>
             )}
@@ -700,7 +749,7 @@ function ThreadDetail({
 
   return (
     <div className="mb-3 ml-5 border-l border-border/60 pl-3">
-      <p className="text-sm text-muted-foreground">
+      <p className="max-w-[70ch] text-sm text-muted-foreground">
         {t.spend ? (
           <>
             <span className="font-mono tabular-nums text-foreground">
@@ -734,7 +783,7 @@ function ThreadDetail({
         </p>
       )}
       {t.turns.length === 0 && t.loose.length === 0 && (
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 max-w-[70ch] text-sm text-muted-foreground">
           It spent in this window, but every audited event on it is older than the window.
         </p>
       )}
@@ -754,7 +803,7 @@ function ThreadDetail({
         // Folded as a turn's rows are: eleven alternating sign-in rows were the
         // longest thing on the page and the least looked-at.
         <ol className="mt-2 divide-y divide-border/40">
-          <Segments events={loose} openEvent={openEvent} onToggle={toggle} />
+          <Segments events={loose} outcomes={t.outcomes} openEvent={openEvent} onToggle={toggle} />
         </ol>
       )}
       {t.loose.length > loose.length && (
@@ -821,6 +870,7 @@ function TurnBlock({
         {/* The `user_input` is the heading; drawing it again as a row said it twice. */}
         <Segments
           events={turn.events.filter((e) => !(e.event_type === 'user_input' && turn.prompt))}
+          outcomes={turn.outcomes}
           openEvent={openEvent}
           onToggle={onToggle}
         />
@@ -835,20 +885,24 @@ const OPEN_TURN_MS = 15 * 60_000;
 /** A list of events as drawn: routine runs folded, repeated failures counted. */
 function Segments({
   events,
+  outcomes,
   openEvent,
   onToggle,
 }: {
   events: AuditEvent[];
+  /** Each event's outcome, read in its turn. */
+  outcomes: Outcomes;
   openEvent: string | null;
   onToggle: (id: string) => void;
 }) {
   return (
     <>
-      {foldRoutine(events).map((seg) =>
+      {foldRoutine(events, outcomes).map((seg) =>
         seg.kind === 'event' ? (
           <ActivityRow
             key={seg.event.id}
             event={seg.event}
+            outcome={outcomes.get(seg.event.id) ?? 'ok'}
             hideThread
             clock
             open={openEvent === seg.event.id}
@@ -859,6 +913,7 @@ function Segments({
             key={seg.id}
             kind={seg.kind}
             events={seg.events}
+            outcomes={outcomes}
             openEvent={openEvent}
             onToggle={onToggle}
           />
@@ -878,11 +933,13 @@ function Segments({
 function FoldedRun({
   kind,
   events,
+  outcomes,
   openEvent,
   onToggle,
 }: {
   kind: 'fold' | 'repeat';
   events: AuditEvent[];
+  outcomes: Outcomes;
   openEvent: string | null;
   onToggle: (id: string) => void;
 }) {
@@ -900,6 +957,7 @@ function FoldedRun({
           <div key={e.id} ref={i === 0 ? firstRow : undefined} className="contents">
             <ActivityRow
               event={e}
+              outcome={outcomes.get(e.id) ?? 'ok'}
               hideThread
               clock
               open={openEvent === e.id}
@@ -911,6 +969,8 @@ function FoldedRun({
     );
   }
   const first = events[0];
+  // A repeated denial is counted in the muted tone; only a repeated failure is red.
+  const deniedRun = kind === 'repeat' && outcomes.get(first.id) === 'denied';
   return (
     <li>
       <button
@@ -919,7 +979,7 @@ function FoldedRun({
         onClick={() => setOpen(true)}
         className={cn(
           'group flex w-full items-start gap-2 rounded-sm py-1.5 text-left text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          kind === 'repeat' ? 'text-state-failed' : 'text-muted-foreground',
+          kind === 'repeat' && !deniedRun ? 'text-state-failed' : 'text-muted-foreground',
         )}
       >
         <ChevronRightIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
@@ -983,7 +1043,7 @@ function Caveats({
   ].filter(Boolean);
   if (lines.length === 0) return null;
   return (
-    <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+    <div className="mt-3 max-w-[70ch] space-y-1 text-sm text-muted-foreground">
       {lines.map((l) => (
         <p key={l}>{l}</p>
       ))}
@@ -1029,7 +1089,7 @@ function SpendByModel({ summary, recent }: { summary: UsageSummary; recent: Usag
         // Foreground, not red: an unpriced model is a gap in the pricing catalog,
         // not something that failed. Said in full because the consequence — a
         // spending cap that fails open — is one an operator acts on.
-        <p className="mt-2 text-sm text-foreground">
+        <p className="mt-2 max-w-[70ch] text-sm text-foreground">
           {totals.unpriced} {totals.unpriced === 1 ? 'call is' : 'calls are'} metered but unpriced —
           the model has no entry in the pricing catalog, so its spend counts as zero and{' '}
           <code className="font-mono">limits.max_cost_usd</code> fails open for it.

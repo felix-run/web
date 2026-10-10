@@ -1033,8 +1033,14 @@ export function createFelixClient(opts: FelixClientOptions) {
      * Chat, not management: a gated tool blocks the run, and the harness does
      * not reliably announce it on the stream. See `syncApprovals`.
      */
-    async listApprovals(status: ApprovalRequest['status'] = 'pending'): Promise<ApprovalRequest[]> {
-      const res = await chatFetch(`/approvals?status=${status}`);
+    async listApprovals(
+      status: ApprovalRequest['status'] = 'pending',
+      opts: { limit?: number } = {},
+    ): Promise<ApprovalRequest[]> {
+      // `limit` for the decided lists: the route answers 50 newest by default and
+      // allows 200, and a denial on a quiet thread is rarely among a busy tenant's 50.
+      const limit = opts.limit ? `&limit=${Math.min(200, Math.max(1, opts.limit))}` : '';
+      const res = await chatFetch(`/approvals?status=${status}${limit}`);
       if (!res.ok) throw new Error(`approvals: ${res.status}`);
       const body = (await res.json()) as { requests?: ApprovalRequest[] };
       // Normalised here, where every other thread id a client holds is: the wire

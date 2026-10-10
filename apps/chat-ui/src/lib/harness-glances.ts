@@ -1,4 +1,5 @@
 import { isFailure, tsToMs } from '@/components/inspector/primitives';
+import { eventOutcome, isFailureOutcome, type OutcomeEvent } from '@/lib/audit-outcome';
 
 /**
  * What the sidebar's glances read, apart from the pages that also read it.
@@ -35,10 +36,28 @@ export const ACTIVITY_FETCH = 60;
 export const ACTIVITY_GLANCE_MS = 24 * 60 * 60 * 1000;
 export const ACTIVITY_GLANCE_SPAN = '24h';
 
-/** Failures in the Activity page glance's window, which ends at `now`. */
-export function recentFailures(events: { status: string; ts: number }[], now: number): number {
+/**
+ * Failures in the Activity page glance's window, which ends at `now`.
+ *
+ * Read as the page reads them (`eventOutcome`): an approval's denial is not a
+ * failure, and nor is the reply the harness marks `error` after one. Counting both
+ * put `Activity · 2 failed` in red beside a thread where someone had declined one
+ * write. A reply is read among its thread's events, the nearest the glance has to
+ * its turn.
+ */
+export function recentFailures(events: (OutcomeEvent & { ts: number })[], now: number): number {
   const since = now - ACTIVITY_GLANCE_MS;
-  return events.filter((e) => isFailure(e.status) && e.ts != null && tsToMs(e.ts) >= since).length;
+  const byThread = new Map<unknown, OutcomeEvent[]>();
+  for (const e of events) {
+    const k = e.payload?.thread_id ?? null;
+    byThread.set(k, [...(byThread.get(k) ?? []), e]);
+  }
+  return events.filter(
+    (e) =>
+      e.ts != null &&
+      tsToMs(e.ts) >= since &&
+      isFailureOutcome(eventOutcome(e, byThread.get(e.payload?.thread_id ?? null))),
+  ).length;
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { ApprovalRequest } from '@felix/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listApprovals } from '@/api';
+import { rememberDecidedHere } from '@/lib/denials';
 
 /** Slow: a TTL is minutes long, and this runs for the life of the tab. */
 export const PENDING_APPROVALS_POLL_MS = 10_000;
@@ -107,6 +108,9 @@ export function usePendingApprovals(): PendingApprovals {
 
   const markDecided = useCallback((id: string) => {
     decided.current.set(id, Date.now());
+    // Every decision this tab makes passes through here, after the harness took
+    // it, so this is the evidence a denied card needs to say "Denied by you".
+    rememberDecidedHere(id);
     setPending((rows) => rows.filter((r) => r.id !== id));
   }, []);
 

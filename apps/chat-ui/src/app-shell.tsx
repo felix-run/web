@@ -2083,6 +2083,12 @@ export function AppShell() {
     );
   }, []);
   const takeKept = useCallback(() => setKept(null), []);
+  // The kept-message path with no refusal behind it and no key to reuse: a new
+  // message the composer takes like a kept one, with nothing said about it.
+  const draftMessage = useCallback(
+    (text: string) => setKept((was) => ({ text, files: [], n: (was?.n ?? 0) + 1 })),
+    [],
+  );
 
   /**
    * Streamed sends that failed after they may have reached the harness, by key.
@@ -2400,6 +2406,7 @@ export function AppShell() {
     submit,
     kept,
     takeKept,
+    draftMessage,
     queue,
     steerQueued,
     stopRun,

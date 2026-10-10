@@ -5,7 +5,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/c
 import { ChevronRightIcon } from 'lucide-react';
 import { Link } from 'react-router';
 import { Field, isFailure, relTime, StatusDot, tsToMs } from '@/components/inspector/primitives';
-import { middleTruncate } from '@/lib/format';
+import { type EventOutcome, eventOutcome, isFailureOutcome } from '@/lib/audit-outcome';
+import { clockTime, middleTruncate } from '@/lib/format';
 import {
   ACTIVITY_FETCH,
   ACTIVITY_GLANCE_SPAN,
@@ -115,7 +116,14 @@ export function errorCodeOf(e: Pick<AuditEvent, 'payload'>): string | undefined 
  */
 export function eventHelp(
   e: Pick<AuditEvent, 'event_type' | 'status' | 'payload'>,
+  outcome: EventOutcome = eventOutcome(e),
 ): string | undefined {
+  if (outcome === 'denied') {
+    return 'An approval gate declined this call, so it did not run: someone denied it, or nobody answered before its deadline and the harness denied it. Nothing broke. Who decided is on the call’s card in the thread.';
+  }
+  if (outcome === 'after-denial') {
+    return 'The turn ended after a call in it was denied or refused. The harness records that reply as an error; nothing broke. Which call is on this turn’s earlier rows.';
+  }
   if (e.event_type === 'tool_call' && e.status === 'error') {
     const code = errorCodeOf(e);
     const known = code ? ERROR_CODE_HELP[code] : undefined;
@@ -132,7 +140,7 @@ export function eventHelp(
   // the two it was; the turn's other rows do.
   if (e.event_type === 'final_response' && isFailure(e.status)) {
     const replied = typeof e.payload?.chars === 'number' && e.payload.chars > 0;
-    return `The turn ended, but not cleanly: a call in it failed or was refused${
+    return `The run stopped on an error in this turn${
       replied ? ', and the agent replied after it' : ', and the agent produced no reply'
     }. Which call is on this turn's earlier rows; the reply is in the thread.`;
   }
@@ -247,8 +255,15 @@ export function ActivityRow({
   clock = false,
   open,
   onToggle,
+  outcome = eventOutcome(e),
 }: {
   event: AuditEvent;
+  /**
+   * What the row says happened, read in its turn by the caller when it can be
+   * (`eventOutcome`). Alone, a reply after a denial is indistinguishable from one
+   * after a crash on a harness that does not count denied calls.
+   */
+  outcome?: EventOutcome;
   /** The list already said which thread every row is from. */
   hideThread?: boolean;
   /**
@@ -260,13 +275,16 @@ export function ActivityRow({
   onToggle: () => void;
 }) {
   const tone = EVENT_TONE[e.event_type];
-  const label = EVENT_LABEL[e.event_type] ?? e.event_type;
+  // An approval's no is labelled for what it was. "Blocked" and a red status
+  // beside it read as a control stopping something that was wrong.
+  const label = outcome === 'denied' ? 'Approval' : (EVENT_LABEL[e.event_type] ?? e.event_type);
   const subject = subjectOf(e);
   const tool = typeof e.payload?.tool === 'string' && e.payload.tool !== '';
   const thread = hideThread ? null : threadOf(e);
-  const failedRow = isFailure(e.status);
+  const failedRow = isFailureOutcome(outcome);
   const text = summary(e);
-  const control = e.event_type === 'policy_deny' ? controlOf(e) : undefined;
+  // The badge already says an approval did it.
+  const control = e.event_type === 'policy_deny' && outcome !== 'denied' ? controlOf(e) : undefined;
   const errorCode = e.event_type === 'tool_call' && failedRow ? errorCodeOf(e) : undefined;
 
   return (
@@ -379,7 +397,7 @@ export function ActivityRow({
                 </span>
               )}
               <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
-                <StatusDot status={e.status} />
+                <OutcomeMark status={e.status} outcome={outcome} />
                 {e.ts != null && (
                   // The rounded "3h" is for scanning; the exact stamp is for matching a
                   // row against a harness log line.
@@ -410,24 +428,56 @@ export function ActivityRow({
           </div>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ActivityDetail event={e} />
+          <ActivityDetail event={e} outcome={outcome} />
         </CollapsibleContent>
       </Collapsible>
     </li>
   );
 }
 
-/** `2:21 PM`, or `Tue 2:21 PM` when it was not today. */
-export function clockTime(ms: number): string {
-  const d = new Date(ms);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  return d.toLocaleString(undefined, {
-    ...(sameDay ? {} : { weekday: 'short' }),
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+/**
+ * An event's outcome as the ledger draws it, word first.
+ *
+ * - A denial is a muted word in an outlined chip with **no dot**: it is a state,
+ *   not an alarm, and `state-failed` is kept for things that broke.
+ * - A refusal is a red dot and *Refused*: a control stopped the call, which the
+ *   operator may need to change.
+ * - A reply after a denial is a muted word, *after a denial*; the harness marks it
+ *   `error`, and drawn as *Failed* it counted one declined write twice.
+ * - Anything else is the status as `StatusDot` draws it.
+ */
+export function OutcomeMark({ status, outcome }: { status: string; outcome: EventOutcome }) {
+  if (outcome === 'denied') {
+    return (
+      <span
+        title={status}
+        className="inline-flex items-center rounded-full border border-border px-1.5 text-xs leading-4 text-muted-foreground"
+      >
+        Denied
+      </span>
+    );
+  }
+  if (outcome === 'after-denial') {
+    return (
+      <span title={status} className="text-xs text-muted-foreground">
+        after a denial
+      </span>
+    );
+  }
+  if (outcome === 'refused') {
+    return (
+      <span title={status} className="inline-flex items-center gap-1 text-xs text-state-failed">
+        <span aria-hidden className="size-1.5 rounded-full bg-state-failed" />
+        Refused
+      </span>
+    );
+  }
+  return <StatusDot status={status} />;
 }
+
+// In `lib/format` so a tool card can say when a call was denied without pulling
+// this page into the transcript's chunk.
+export { clockTime };
 
 /**
  * Everything the harness recorded about one event.
@@ -441,14 +491,16 @@ export function clockTime(ms: number): string {
  * `user_input`, `chars` — so JSON would be punctuation around the same six words.
  * Anything nested still renders, as compact JSON in the value column.
  */
-function ActivityDetail({ event: e }: { event: AuditEvent }) {
+function ActivityDetail({ event: e, outcome }: { event: AuditEvent; outcome: EventOutcome }) {
   const payload = Object.entries(e.payload ?? {});
   const thread = threadOf(e);
   return (
     <div className="mt-1 mb-2 ml-5 rounded-md bg-background px-2.5 py-2 text-xs">
       {/* What the event type means, on screen. It lived only in a `title`, which
           a keyboard or a touch screen never shows. */}
-      {eventHelp(e) && <p className="mb-1.5 text-sm text-muted-foreground">{eventHelp(e)}</p>}
+      {eventHelp(e, outcome) && (
+        <p className="mb-1.5 max-w-[70ch] text-sm text-muted-foreground">{eventHelp(e, outcome)}</p>
+      )}
       {thread && (
         <p className="mb-1.5 text-sm">
           <Link to={`/t/${thread}`} className={cn(TEXT_BUTTON, 'text-foreground')}>
