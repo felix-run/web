@@ -63,7 +63,7 @@ function Face({ session, className }: { session: GitHubSession; className?: stri
           referrerPolicy="no-referrer"
         />
       )}
-      <AvatarFallback className="text-[0.625rem] font-medium uppercase">
+      <AvatarFallback className="text-xs font-semibold uppercase">
         {name.slice(0, 1)}
       </AvatarFallback>
     </Avatar>

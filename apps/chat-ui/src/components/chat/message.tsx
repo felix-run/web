@@ -329,7 +329,7 @@ function UserTurn({
                   save();
                 }
               }}
-              className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
             />
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={save} disabled={!changed}>
