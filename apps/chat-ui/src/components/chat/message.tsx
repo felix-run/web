@@ -1,5 +1,4 @@
 import { type BranchPoint, interleaveTurn, plansInTurn } from '@felix/client';
-import { promptTokens } from '@felix/protocol';
 import {
   Attachment,
   AttachmentContent,
@@ -22,6 +21,7 @@ import { Reasoning } from './reasoning';
 import { Response } from './response';
 import { RunStatusLine } from './run-status';
 import { Tool } from './tool';
+import { TurnDebugLine } from './turn-debug';
 
 /**
  * One transcript turn. Both sides are labelled, left-aligned and full-width;
@@ -50,6 +50,7 @@ export function Message({
   feedback,
   onRate,
   verbose = false,
+  debug = false,
 }: {
   turn: Turn;
   /** This message's other versions, when it was edited. */
@@ -73,6 +74,8 @@ export function Message({
   onRate?: (rating: 'up' | 'down' | null, opts?: { note?: string; evalDataset?: string }) => void;
   /** Expand tool I/O and surface tool counts when set. */
   verbose?: boolean;
+  /** Debug mode: the turn's ids and the spend the client holds, under it. */
+  debug?: boolean;
 }) {
   if (turn.role === 'note') {
     // Neither side of the conversation, so neither bubble. Whether the model read
@@ -108,6 +111,7 @@ export function Message({
     return (
       <UserTurn
         turn={turn}
+        debug={debug}
         onRewind={onRewind}
         {...(branch ? { branch } : {})}
         {...(onSwitchBranch ? { onSwitchBranch } : {})}
@@ -201,7 +205,9 @@ export function Message({
         </Marker>
       )}
 
-      {turn.usage && <UsageLine usage={turn.usage} />}
+      {/* Debug's, with the rest of the mechanism: the daily surface says what
+          the agent did, and the Debug tab and this line say what it cost. */}
+      {debug && !streaming && <TurnDebugLine turn={turn} />}
 
       {/* A turn carrying reasoning already says "Thinking" in its own block. */}
       {empty && streaming && !turn.reasoning?.length && <AwaitingStatus />}
@@ -272,6 +278,7 @@ function LabelChip({ label }: { label: string }) {
  */
 function UserTurn({
   turn,
+  debug = false,
   label,
   onLabel,
   onRewind,
@@ -280,6 +287,7 @@ function UserTurn({
   onSwitchBranch,
 }: {
   turn: Turn;
+  debug?: boolean;
   branch?: BranchPoint;
   onSwitchBranch?: (tipEventId: string) => void;
   label?: string;
@@ -358,6 +366,7 @@ function UserTurn({
           )
         )}
       </div>
+      {debug && !editing && <TurnDebugLine turn={turn} />}
       {!editing && (
         <MessageActions
           content={turn.content}
@@ -367,30 +376,6 @@ function UserTurn({
           {...(onLabel ? { onLabel } : {})}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * One call's tokens. `in` is the whole prompt: the harness reports cached tokens
- * apart from `input`, and counting `input` alone drew `3 in` for a 1,035-token
- * call. How much of it came from the cache goes in the title rather than the line,
- * because it changes what the turn cost and not how big it was.
- */
-function UsageLine({ usage }: { usage: NonNullable<Turn['usage']> }) {
-  const prompt = promptTokens(usage);
-  const cached = (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-  return (
-    <div
-      className="font-mono text-xs text-muted-foreground"
-      title={
-        cached > 0
-          ? `Tokens for this turn. ${cached.toLocaleString()} of the ${prompt.toLocaleString()} in went through the prompt cache.`
-          : 'Tokens for this turn'
-      }
-    >
-      {prompt.toLocaleString()} in · {usage.output.toLocaleString()} out ·{' '}
-      {(prompt + usage.output).toLocaleString()} tok
     </div>
   );
 }

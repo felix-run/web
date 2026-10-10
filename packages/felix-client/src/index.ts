@@ -38,6 +38,7 @@ export {
   type ChatEngine,
   type ClientToolPort,
   createChatEngine,
+  type EngineDiagnostics,
   type EnginePorts,
   type EngineState,
   type SendArgs,

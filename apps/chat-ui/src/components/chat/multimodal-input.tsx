@@ -80,7 +80,12 @@ import { cn } from '@/lib/utils';
 import { ContextMeter } from './context-meter';
 import { PaperclipIcon, StopIcon } from './icons';
 import { QueuedMessages } from './queued-messages';
-import { type SlashCommand, SlashCommandMenu, slashCommands } from './slash-commands';
+import {
+  findSlashCommand,
+  matchSlashCommands,
+  type SlashCommand,
+  SlashCommandMenu,
+} from './slash-commands';
 import { WATCHING_LABEL } from './watching-banner';
 
 /**
@@ -345,8 +350,7 @@ function MultimodalInputInner({
   const isSlashy = text.startsWith('/') && !text.includes(' ') && !text.includes('\n');
   const slashQuery = isSlashy ? text.slice(1) : '';
   const filteredCommands = useMemo(
-    () =>
-      isSlashy ? slashCommands.filter((c) => c.name.startsWith(slashQuery.toLowerCase())) : [],
+    () => (isSlashy ? matchSlashCommands(slashQuery) : []),
     [isSlashy, slashQuery],
   );
   // Dismissed *at this text*, so the next keystroke re-opens the menu on its own.
@@ -483,7 +487,7 @@ function MultimodalInputInner({
       const trimmed = message.text.trim();
       if (trimmed.startsWith('/')) {
         const name = trimmed.slice(1).split(/\s+/)[0]?.toLowerCase() ?? '';
-        const cmd = slashCommands.find((c) => c.name === name);
+        const cmd = findSlashCommand(name);
         if (cmd) {
           // `handleSlashSelect` toasts its own reason when the command is not
           // wired up; throw so the provider leaves the text to be edited.

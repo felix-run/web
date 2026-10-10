@@ -1,4 +1,10 @@
-import type { BranchPoint, ChatEngine, ManifestEntry, ThreadMeta } from '@felix/client';
+import type {
+  BranchPoint,
+  ChatEngine,
+  EngineDiagnostics,
+  ManifestEntry,
+  ThreadMeta,
+} from '@felix/client';
 import { createContext, type Dispatch, type SetStateAction, useContext } from 'react';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { KeptMessage } from '@/components/chat/multimodal-input';
@@ -157,12 +163,55 @@ export interface ShellValue {
   thinkingLevel: ThinkingLevel;
   thinkingLevels: readonly ThinkingLevel[];
   chooseThinking(level: ThinkingLevel): void;
-  verbose: boolean;
+  /**
+   * Debug mode. Off, the tab is the daily surface: the conversation, its threads
+   * and workspace, and whatever waits on a person. On, the mechanism comes back —
+   * the run instrument, the harness's pages, the header's agent, canary and
+   * context meter, tool I/O open, and the ids and numbers under each turn.
+   */
+  debug: boolean;
+  setDebug: (next: boolean) => void;
+  /** What this tab believes, read once, for the Debug tab and its report. */
+  inspectClient: () => ClientDiagnostics;
   harnessReachable: boolean;
   historyOpen: boolean;
   setHistoryOpen: Dispatch<SetStateAction<boolean>>;
   inspectorOpen: boolean;
   setInspectorOpen: Dispatch<SetStateAction<boolean>>;
+}
+
+/** One engine in the pool, as the Debug tab reads it. */
+export interface EngineReport {
+  threadId: string;
+  foreground: boolean;
+  pins: number;
+  phase: string;
+  streaming: boolean;
+  reattaching: boolean;
+  approvals: number;
+  question: boolean;
+  error: string | null;
+  diagnostics: EngineDiagnostics;
+}
+
+/**
+ * The client's beliefs about the harness and its runs, in one value. Built on
+ * demand from state the shell, the pool and the lease keeper already hold.
+ */
+export interface ClientDiagnostics {
+  at: number;
+  threadId: string;
+  holderId: string;
+  lease: { mode: 'exclusive' | 'shared' | null; heldByOther: boolean; token: string | null };
+  manifest: string;
+  /** The agent the newest turn ran under, from the thread index; null when unknown. */
+  threadAgent: string | null;
+  canary: { version: number; weight: number; onCanary: boolean } | null;
+  /** The newest server event id on screen — the leaf the next message continues. */
+  leaf: string | null;
+  turns: number;
+  harnessReachable: boolean;
+  engines: EngineReport[];
 }
 
 /**

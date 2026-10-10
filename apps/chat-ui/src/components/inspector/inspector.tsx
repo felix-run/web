@@ -19,13 +19,18 @@ import { callTarget } from '@/lib/call-target';
 import { cn } from '@/lib/utils';
 import { type ShellValue, useShell } from '@/shell-context';
 import type { Plan, Turn } from '@/types';
+import { DebugSection } from './debug-section';
 
-type SectionId = 'changes' | 'plans' | 'metrics';
+type SectionId = 'changes' | 'plans' | 'metrics' | 'debug';
 
 /**
- * Right-hand inspector: a readout of the thread's run, then three tabs — what this
- * thread's tool calls changed in the workspace, the harness's plans, and its tool
- * metrics.
+ * Right-hand inspector: a readout of the thread's run, then four tabs — what this
+ * thread's tool calls changed in the workspace, the harness's plans, its tool
+ * metrics, and Debug: what this tab believes about the thread and its runs.
+ *
+ * The whole instrument is debug mode's. Off, the shell renders none of it and the
+ * header has no toggle for it; the daily surface's run state is the header chip
+ * and the attention line.
  *
  * Each part says its own scope, because they differ. "This thread" heads the
  * panel: the readout is this thread's run and its tokens, derived from the
@@ -72,6 +77,8 @@ const SECTIONS = [
   // only known once the harness has answered.
   { id: 'plans', label: 'Plans' },
   { id: 'metrics', label: 'Tools', window: 'All threads · last 60 minutes' },
+  // Draws its own line beside Copy report, which is the tab's focal action.
+  { id: 'debug', label: 'Debug' },
 ] as const satisfies readonly { id: SectionId; label: string; window?: string }[];
 
 export function Inspector({
@@ -162,6 +169,7 @@ export function Inspector({
                       {section.id === 'metrics' && (
                         <MetricsSection enabled={open} open onToggle={() => {}} />
                       )}
+                      {section.id === 'debug' && <DebugSection enabled={open} />}
                     </SectionBoundary>
                   </PanelModeProvider>
                 </div>

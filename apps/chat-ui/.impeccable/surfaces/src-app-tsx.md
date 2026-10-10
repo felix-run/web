@@ -246,3 +246,24 @@ specimen); a waiting approval owns attention (vertical feed). Seed key `7726f8dc
 Staging: PR 1 is foundation + shell (tokens, fonts, primitives, header, sidebar). PR 2 is the
 transcript and composer. PR 3 is the instrument and the /harness pages. One branch per stage,
 never stacked.
+
+## Amendment 2026-10-10 — debug mode
+
+Shaped and confirmed in session: **debug off is the daily surface; debug on is the Workbench as
+described above.** One mode absorbs Verbose (`felix.debug`; a browser with `felix.verbose` on
+starts in debug; `/debug`, with `/verbose` as an alias; Session → View → Debug, on both
+addresses; a bug badge in the header that is also the way out).
+
+- **Off:** no run instrument and no toggle for it; no harness pages in the sidebar, except a
+  *Skill drafts* row while drafts wait on a review; no agent id, canary or context meter in the
+  header and composer (the meter returns at 90% full); no tokens under turns. Approvals,
+  questions, the attention line, the run-state chip, and failed and denied tool calls stay.
+- **On:** everything Verbose did, plus the turn's ids and token split under it, the call id in a
+  tool card, and the instrument's fourth tab, **Debug** — thread, lease, every pooled engine's
+  stream and durable-run state, the thread's metered calls, and **Copy report** (Markdown over
+  JSON, lease token redacted).
+- Per-call numbers are listed by time in the Debug tab and **not joined to turns**: a turn
+  carries no timestamp, and a call drawn under the wrong turn is worse than none.
+- Out of scope this pass: the TUI (keeps `FELIX_DEBUG`) and a raw SSE frame log.
+
+PRODUCT.md principle 1 was amended the same day to match.

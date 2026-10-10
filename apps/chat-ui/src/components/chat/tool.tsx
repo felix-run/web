@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { useDenial } from './denial-context';
 import { ToolTable } from './tool-table';
+import { DebugId } from './turn-debug';
 
 /**
  * The skill proposal card, loaded only when a transcript holds a skill call:
@@ -195,6 +196,18 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         <DenialLine issue={issue} record={denial.record} onAskAgain={denial.askAgain} />
       )}
       <CollapsibleContent className="space-y-2 border-t border-border/60 px-3.5 py-3">
+        {/* Debug's: the id the harness pairs this call's result with, and the
+            phase it last reported while running. */}
+        {verbose && (tool.callId || tool.phase) && (
+          <div
+            data-slot="tool-debug"
+            className="flex flex-wrap items-center gap-x-1.5 font-mono text-xs text-muted-foreground"
+          >
+            {tool.callId && <DebugId label="call" value={tool.callId} />}
+            {tool.callId && tool.phase && !tool.done && <span aria-hidden>·</span>}
+            {tool.phase && !tool.done && <span>phase {tool.phase}</span>}
+          </div>
+        )}
         <Field label="Input" value={tool.input} />
         {shell ? (
           <ShellOutput result={shell} />

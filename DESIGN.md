@@ -477,9 +477,11 @@ harness's id. The title is cut from the middle, never the end: the head truncate
 ten characters stay, since two titles that share a prefix differ at the end; its `title` holds
 the whole name and the thread id. Clicking it renames it in place (*Thread name*; Enter saves,
 Escape cancels), unless the tab is only watching the thread. `/harness` names no thread: each
-page has its own title. After that, the tab's modes: **Verbose**, a `secondary` badge that is
-also the button turning it off (named *Verbose on, turn off*), and the **canary** rollout as an
-outline badge in mono. The canary's words also say whether this thread is on the rollout, in an
+page has its own title. After that, in **debug mode** only, the tab's modes: **Debug**, a
+`secondary` badge that is also the button turning it off (named *Debug on, turn off*), on both
+addresses because debug governs both, and the **canary** rollout as an outline badge in mono.
+The agent beside the title is debug's too; off, the header is the brand, the run state, the
+title and the attention line. The canary's words also say whether this thread is on the rollout, in an
 `sr-only` clause.
 
 The left cluster **yields in a fixed order**. The brand never shrinks and the wordmark is never
@@ -491,16 +493,17 @@ the title ~100px. Below `sm` the title is one end-cut, the wordmark steps aside 
 (and on `/harness` while a run state is showing; it stays the `h1` for a reader), and under 23rem
 (a 320–360px phone) the title leaves the screen too, read but not drawn, rather than show a
 sliver of a glyph. While a run state is showing below `sm`, New chat steps aside. Below `sm` both modes
-draw as icons (a scroll for Verbose, a bird for the canary), their words kept in the accessible
+draw as icons (a bug for Debug, a bird for the canary), their words kept in the accessible
 name and the `title`. While the run state is showing below `sm`, the modes step off the screen:
-Verbose goes `hidden` (it is in the Session menu), and the canary goes `sr-only` and is still
+Debug goes `hidden` (it is in the menu), and the canary goes `sr-only` and is still
 read; both return when the run settles. Past all that the cluster clips at its own edge rather
 than running under the right cluster: at 320px the chip is clipped, a known limit. There is **no
 door to `/harness`** in the header: the sidebar lists its eight pages. Before the controls sits
 the **attention line** (below). On the right: New chat, only where the sidebar is a drawer, and
-a plus alone below `sm`; the instrument toggle; and one ellipsis menu named **Session**:
-*Session* (Continue run, Copy thread id), *View* (Verbose tools), then *Theme* as Light/Dark/
-System radio items. Thinking is in the composer.
+a plus alone below `sm`; the instrument toggle, in debug only; and one ellipsis menu named
+**Session**: *Session* (Continue run, Copy thread id), *View* (Debug, with a 12px muted second
+line naming what it adds), then *Theme* as Light/Dark/System radio items. On `/harness` the menu
+is named **View** and holds View and Theme. Thinking is in the composer.
 
 The workbench is **three zones**: the app sidebar (17rem expanded, 3.25rem as icons: 8px either side of the 36px icon buttons, the gap the sheet keeps everywhere else) on the ground,
 and on the sheet the transcript at reading width (`max-w-3xl`, turns 24px apart) with the
@@ -824,7 +827,10 @@ has touched a workspace file yet.*
 
 On the ground, with no border: the sheet's edge is the divider. It has one order on both
 addresses: **New chat** (the ink pill), then **Threads**, then the workspace section, then
-**Harness**, with hairline separators between them.
+**Harness**, with hairline separators between them. **Harness is debug's.** Off, the lower
+region ends at the workspace, and one row may follow it: **Skill drafts**, a destination row with
+the amber `N waiting` glance, drawn only while drafts wait on a review, because nothing else on
+the daily surface says so. Collapsed, it is the one icon below Workspace, with its amber dot.
 
 Threads is a heading and a **pill search field** (36px, `sidebar-accent` face, `input` edge, 14px,
 a 3px focus ring) that stay put above a list that scrolls inside itself. Workspace and Harness are
@@ -865,6 +871,27 @@ a 36px rounded square. Threads expands the sidebar and puts the caret in the sea
 carries one 6px dot for the most urgent state and says it as well. Jobs and Activity carry a
 `state-failed` dot when their glance reports a failure, Skills a `state-blocked` dot while a draft
 waits, each with the glance's own sentence for a reader.
+
+### Debug tab
+
+The instrument's fourth tab, and the instrument itself, exist in debug mode only. Its first line
+is the tab's scope beside **Copy report** (`outline`, `sm`, its icon swapping to a check for 2s):
+the one action on the tab, copying a Markdown summary over one JSON block, lease token redacted.
+Then four groups under 14px semibold headings, each a 12px definition list with a 5rem muted term
+column: *Thread* (id, leaf, agent, canary, turns, whether the harness answered), *Lease* (holder,
+mode, token redacted), *Engines* (one entry per pooled engine, a state dot and its thread —
+linked when it is not the one on screen — over its phase, durable run, cursor, stream quiet time,
+heartbeat proof, waiting and seen counts), and *Model calls* (the thread's last 20 metered calls,
+each a time, kind and route, *priced as* its wire model when the two differ, then the token
+split in mono, and the cost or **unpriced** in `state-blocked`). An id is a copy button in mono
+with a hairline underline, cut from the middle; a field the client does not have is said in muted
+italic (*none*, *not yet proved*), never drawn as zero or left blank.
+
+Under each turn in debug, one 12px muted mono line: its event and parent ids (copy buttons), and
+on a reply the token split the client holds — whole prompt, then *new · cache read · cache
+write*, then out — and how full the context was. A reply that ran tools says the per-call figures
+are in the Debug tab rather than drawing its final call as the turn's spend. Off, a turn draws no
+tokens at all. A tool card's open body leads with its call id in debug.
 
 ### Run readout
 
@@ -921,7 +948,8 @@ stopwatch is not.
 - **A labelled turn is a restore point.** After it, a bookmark, the label and *Restore*, then a
   hairline to the edge.
 - **The context meter opens a breakdown** on hover or focus. No price: the Activity page is where
-  spend is read.
+  spend is read. It is drawn in debug, and off only once the window is 90% full — the one point
+  where it changes what the agent can see.
 - **The workspace's files are a tree.** Mono 12px, folders before files, icons muted, never
   coloured. Folders holding a path this thread wrote start expanded and those files are in the
   foreground. One Tab stop per folder.

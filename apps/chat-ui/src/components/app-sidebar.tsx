@@ -11,7 +11,13 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@felix/ui/sidebar';
-import { ChevronRightIcon, FolderIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react';
+import {
+  ChevronRightIcon,
+  FolderIcon,
+  MessagesSquareIcon,
+  PlusIcon,
+  PuzzleIcon,
+} from 'lucide-react';
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
@@ -26,6 +32,7 @@ import {
   HARNESS_DESTINATIONS,
   NavGlance,
   navSearch,
+  useDraftGlance,
   useNavGlances,
   walkNav,
 } from '@/routes/harness';
@@ -36,7 +43,9 @@ import { useShell } from '@/shell-context';
  *
  * Top to bottom by how often each is the reason to open it — New chat, then the
  * threads (pinned, then by last activity), then the folder the agent works on,
- * then the harness's own pages. It replaced three separate ways in: a threads
+ * then the harness's own pages — those last in debug mode only. Debug off, the
+ * sidebar is the daily one: New chat, threads, workspace, and a Skill drafts row
+ * that appears only while drafts wait on a review. It replaced three separate ways in: a threads
  * popover hung off the workspace header (the only door to another conversation,
  * at any width), the workspace zone itself, and `/harness`'s resident nav rail.
  *
@@ -60,6 +69,7 @@ export function AppSidebar() {
     tenantApprovals,
     runningThreads,
     blockedThreads,
+    debug,
   } = useShell();
   const { state, open, isMobile, setOpen, setOpenMobile, toggleSidebar } = useSidebar();
   const collapsed = state === 'collapsed' && !isMobile;
@@ -251,12 +261,23 @@ export function AppSidebar() {
               className="flex max-h-[40svh] flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
             >
               <WorkspaceSection />
-              <SidebarSeparator />
-              <HarnessGroup collapsed={false} onNavigate={done} />
+              {debug ? (
+                <>
+                  <SidebarSeparator />
+                  <HarnessGroup collapsed={false} onNavigate={done} />
+                </>
+              ) : (
+                <SkillDraftsRow collapsed={false} onNavigate={done} />
+              )}
             </div>
           </>
         )}
-        {collapsed && <HarnessGroup collapsed onNavigate={done} />}
+        {collapsed &&
+          (debug ? (
+            <HarnessGroup collapsed onNavigate={done} />
+          ) : (
+            <SkillDraftsRow collapsed onNavigate={done} />
+          ))}
       </SidebarContent>
     </Sidebar>
   );
@@ -371,6 +392,49 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
         </nav>
       </SidebarGroupContent>
     </SidebarGroup>
+  );
+}
+
+/**
+ * Debug off, the one harness page the sidebar still points at — and only while
+ * there is a reason to go: skill drafts an agent wrote, waiting on a person's
+ * review. Nothing else asks for one, and a row that is always there is a door
+ * to the mechanism the daily surface leaves out. A failed check keeps a count it
+ * already had (with its age); a check that never answered draws nothing here,
+ * because "unchecked" is a fact about the harness, which is debug's to say.
+ */
+function SkillDraftsRow({ collapsed, onNavigate }: { collapsed: boolean; onNavigate: () => void }) {
+  const glance = useDraftGlance();
+  const at = useMatch('/harness/skills/*');
+  if (!glance || glance.tone !== 'blocked') return null;
+  return (
+    <>
+      {/* Its own rule, since it comes and goes: one outside it would be left
+          dangling under the workspace whenever nothing waits. */}
+      {!collapsed && <SidebarSeparator />}
+      <SidebarGroup data-slot="skill-drafts" className="pt-1">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={!!at}
+              tooltip="Skill drafts"
+              className="relative text-muted-foreground"
+            >
+              <Link
+                to="/harness/skills"
+                onClick={onNavigate}
+                aria-current={at ? 'page' : undefined}
+              >
+                <PuzzleIcon aria-hidden />
+                <span className="min-w-0 flex-1 truncate">Skill drafts</span>
+                {collapsed ? <CollapsedGlance glance={glance} /> : <NavGlance glance={glance} />}
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroup>
+    </>
   );
 }
 

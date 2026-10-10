@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { LogOutIcon, UnplugIcon } from 'lucide-react';
 import { lazy, Suspense, useMemo } from 'react';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
-import { contextFill } from '@/components/chat/context-meter';
+import { contextFill, NEARLY_FULL } from '@/components/chat/context-meter';
 import { Conversation, ConversationItem } from '@/components/chat/conversation';
 import { DenialsSync } from '@/components/chat/denials-sync';
 import { Greeting, useMountLabel } from '@/components/chat/greeting';
@@ -112,7 +112,7 @@ export function Workbench() {
     thinkingLevel,
     thinkingLevels,
     chooseThinking,
-    verbose,
+    debug,
     harnessReachable,
     inspectorOpen,
     setInspectorOpen,
@@ -150,10 +150,13 @@ export function Workbench() {
 
   // The window is the *selected* agent's, not the one the thread last ran on: the
   // next message goes to the selection, with this history replayed in front of it.
-  const context = useMemo(
+  const fill = useMemo(
     () => contextFill(turns, manifestEntries.find((m) => m.id === manifest)?.contextWindow),
     [turns, manifestEntries, manifest],
   );
+  // The meter is debug's — except a window nearly full, which is about to change
+  // what the agent can see, and so is the daily user's to know too.
+  const context = debug || (fill && fill.share >= NEARLY_FULL) ? fill : null;
 
   // Which agent this thread's turns last ran on, for the line under the composer.
   // Only the local index knows (the harness keeps no manifest per thread), and a
@@ -201,7 +204,8 @@ export function Workbench() {
                     {...(drives && !streaming && switchBranch
                       ? { onSwitchBranch: switchBranch }
                       : {})}
-                    verbose={verbose}
+                    verbose={debug}
+                    debug={debug}
                     onRegenerate={
                       drives && isLast && t.role === 'assistant' ? regenerate : undefined
                     }

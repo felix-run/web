@@ -293,6 +293,25 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
     enabled,
     intervalMs: 30_000,
   });
+  const drafts = useDraftGlance(enabled);
+  const failingJobs = (jobs.data ?? []).filter(failing).length;
+  // Measured against the clock at render, which the 30s poll re-runs, so a
+  // failure ages out within a tick of turning 24 hours old.
+  const failedEvents = recentFailures(audit.data ?? [], Date.now());
+  return {
+    jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
+    activity: glanceOf(audit, failedEvents, 'failed', 'activity', ACTIVITY_GLANCE_SPAN),
+    skills: drafts,
+  };
+}
+
+/**
+ * The skill drafts waiting for review, on their own. Debug off, this is the one
+ * glance the sidebar keeps: an agent drafts overnight, a draft waits on a person,
+ * and no other surface — not the attention line, which reads approvals and
+ * questions — says so.
+ */
+export function useDraftGlance(enabled = true): Glance | undefined {
   // Slower than the others: a draft waits hours, not seconds. A key without
   // `skills:read`, or a harness without the library, has nothing to review —
   // an answer, not a failed check, so it reads as none.
@@ -308,15 +327,7 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
       ),
     { enabled, intervalMs: 60_000 },
   );
-  const failingJobs = (jobs.data ?? []).filter(failing).length;
-  // Measured against the clock at render, which the 30s poll re-runs, so a
-  // failure ages out within a tick of turning 24 hours old.
-  const failedEvents = recentFailures(audit.data ?? [], Date.now());
-  return {
-    jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
-    activity: glanceOf(audit, failedEvents, 'failed', 'activity', ACTIVITY_GLANCE_SPAN),
-    skills: draftGlance(drafts),
-  };
+  return draftGlance(drafts);
 }
 
 /** Drafts waiting, `100+` when the read came back full; amber, since each waits on a person. */

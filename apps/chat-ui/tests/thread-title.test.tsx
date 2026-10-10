@@ -43,6 +43,8 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   localStorage.clear();
+  // These pin debug-mode surfaces (the instrument, the harness pages).
+  localStorage.setItem('felix.debug', '1');
   sessionStorage.clear();
   document.body.innerHTML = '';
 });

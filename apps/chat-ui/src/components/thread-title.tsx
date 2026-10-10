@@ -72,6 +72,7 @@ export function ThreadTitle({
   thread,
   readOnly,
   onRename,
+  showAgent = true,
   className,
 }: {
   threadId: string;
@@ -80,6 +81,11 @@ export function ThreadTitle({
   /** Another client drives this thread; this tab only watches it. */
   readOnly: boolean;
   onRename: (id: string, name: string) => void;
+  /**
+   * Draw the agent id beside the title. Debug mode only: it is the harness's
+   * manifest id, and the composer's picker already names the agent in words.
+   */
+  showAgent?: boolean;
   className?: string;
 }) {
   const label = useMemo(
@@ -202,7 +208,7 @@ export function ThreadTitle({
           Rename this thread
         </span>
       )}
-      {thread?.manifest && (
+      {showAgent && thread?.manifest && (
         // Hidden below `md`: between 640 and 768 the sidebar is a drawer, the
         // header also holds the brand and New chat, and an agent id beside the
         // title left the title itself ~100px — cut twice over. The agent is in

@@ -176,6 +176,8 @@ describe('usage', () => {
     // `done.usage` is the final call's block (felix-run/felix#399). This used to
     // read `on_chain_end.output.usage`, a shape the harness never sent: that
     // frame's output reaches the wire as a Python repr string.
+    // The per-turn line is debug's; the daily surface draws no tokens.
+    localStorage.setItem('felix.debug', '1');
     stubFetch([
       { event: 'text_delta', data: { delta: 'counted' } },
       { event: 'on_chain_end', data: { output: 'InvokeOutput(messages=[...])' } },
@@ -185,8 +187,6 @@ describe('usage', () => {
     await send();
     await seeText('1,200 in');
     await seeText('340 out');
-    // The total is computed, not sent — the one number here nothing upstream owns.
-    await seeText('1,540 tok');
   });
 });
 
@@ -342,6 +342,8 @@ describe('the header run-state slot', () => {
       event: 'approval_required',
       data: { approval_id: 'ap-1', tool_name: 'write_file', args: { path: 'a.txt' } },
     };
+    // The sidebar's harness pages are debug's, and they are the way to `/harness`.
+    localStorage.setItem('felix.debug', '1');
     stubFetch([], () => {
       const bytes = new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`);
       return new Response(
@@ -381,7 +383,7 @@ describe('the header run-state slot', () => {
 
 /**
  * The header's left cluster with everything it can hold: the wordmark, a blocked
- * run, Verbose and a canary. At 390px that is more than its space, and before the
+ * run, Debug and a canary. At 390px that is more than its space, and before the
  * yield order was written down the wordmark was what gave — "F…", then nothing.
  *
  * happy-dom lays nothing out and applies no media queries, so this pins what the
@@ -392,6 +394,7 @@ describe('the header run-state slot', () => {
  */
 describe('the header with every mode on and a run blocked', () => {
   it('keeps the wordmark and the run state, and names the compact modes', async () => {
+    // The key Verbose used: a browser that had it on starts in debug.
     localStorage.setItem('felix.verbose', 'true');
     const frame = {
       event: 'approval_required',
@@ -434,7 +437,7 @@ describe('the header with every mode on and a run blocked', () => {
     mount();
     // At rest the modes are on screen at every width, as icons on a phone.
     const idle = await waitFor(() => {
-      const found = document.querySelector<HTMLElement>('header [data-slot="verbose-mode"]');
+      const found = document.querySelector<HTMLElement>('header [data-slot="debug-mode"]');
       expect(found).not.toBeNull();
       return found as HTMLElement;
     });
@@ -453,9 +456,9 @@ describe('the header with every mode on and a run blocked', () => {
     await waitFor(() => expect(slot()?.textContent).toContain('blocked'));
     expect(slot()?.className).toContain('shrink-0');
 
-    // Verbose below `sm` is an icon; its name is still the state and the action.
-    const verbose = header.querySelector<HTMLButtonElement>('[data-slot="verbose-mode"]');
-    expect(verbose?.getAttribute('aria-label')).toBe('Verbose on, turn off');
+    // Debug below `sm` is an icon; its name is still the state and the action.
+    const verbose = header.querySelector<HTMLButtonElement>('[data-slot="debug-mode"]');
+    expect(verbose?.getAttribute('aria-label')).toBe('Debug on, turn off');
 
     // The canary below `sm` is a glyph; its words stay in the DOM for a reader —
     // that it is a canary, which version, and whether this thread is on it.
@@ -470,7 +473,7 @@ describe('the header with every mode on and a run blocked', () => {
     expect(canary.getAttribute('title')).toContain('canary v5');
 
     // While the run state shows, a phone has no room for the modes beside it.
-    // Verbose leaves the screen *and* the tab order — an invisible button focus
+    // Debug leaves the screen *and* the tab order — an invisible button focus
     // can land on is the failure — while the canary, not focusable, stays read.
     expect(verbose?.className).toMatch(/(^|\s)max-sm:hidden(\s|$)/);
     expect(canary.className).toMatch(/(^|\s)max-sm:sr-only(\s|$)/);
