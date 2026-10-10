@@ -171,6 +171,24 @@ describe('a harness file in the pane', () => {
     expect(value.tellAgentEdited).not.toHaveBeenCalled();
   });
 
+  it('shows the note in the transcript when the harness recorded it on an idle thread', async () => {
+    harness.write.mockImplementationOnce(async () => ({
+      status: 'recorded',
+      bytes: 6,
+      sha256: SHA2,
+      eventId: 'e7',
+    }));
+    const showRecordedNote = vi.fn();
+    const user = userEvent.setup();
+    mount(shell({ showRecordedNote }));
+    await editHarnessFile(user, 'x = 4\n');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(
+      await screen.findByText('Saved. The agent was told, and reads it on its next turn.'),
+    ).toBeTruthy();
+    expect(showRecordedNote).toHaveBeenCalledOnce();
+  });
+
   it('stops on the choice when the file moved on the harness, then saves at its new hash', async () => {
     harness.write.mockImplementationOnce(async () => {
       harness.files['src/app.py'] = { text: 'x = 1\nagent = True\n', sha: SHA2 };

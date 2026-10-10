@@ -26,6 +26,7 @@ import {
   type StreamEvent,
 } from '@felix/protocol';
 import { describeGate, type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
+import type { DiffCall } from './diff-before';
 import { durableRunFailure } from './durable-runs';
 import {
   describeError,
@@ -62,8 +63,14 @@ export interface ClientToolPort {
     name: string;
     args: Record<string, unknown>;
   }): Promise<{ content: string; error?: boolean }>;
-  /** Pre-edit text for a `write_file` approval diff, where the client can read one. */
-  readForDiff?(path: string): Promise<string | null>;
+  /**
+   * Pre-edit text for a `write_file` approval diff, where the client can read one.
+   * `call` says which tool is writing, on which thread: a `local_*` tool writes
+   * the client's own files, any other the thread's workspace on the harness — a
+   * different file under the same path, so reading the wrong one draws a diff
+   * against a file the write does not touch (`routedDiffReader`).
+   */
+  readForDiff?(path: string, call?: DiffCall): Promise<string | null>;
 }
 
 export interface EnginePorts {
@@ -596,7 +603,11 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         const args = data.args ?? {};
         let before: string | null = null;
         if (fileToolOp(data.tool_name) === 'write' && typeof args.path === 'string') {
-          before = (await ports.clientTools?.readForDiff?.(args.path)) ?? null;
+          before =
+            (await ports.clientTools?.readForDiff?.(args.path, {
+              tool: data.tool_name,
+              threadId: ports.threadId(),
+            })) ?? null;
         }
         if (seenApprovals.has(data.approval_id)) break;
         seenApprovals.add(data.approval_id);

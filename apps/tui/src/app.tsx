@@ -22,6 +22,7 @@ import {
   msUntilDecision,
   type PendingApproval,
   parseEditedArgs,
+  routedDiffReader,
   snapshotToEvents,
   type ThreadMeta,
   titleFromText,
@@ -214,12 +215,15 @@ export function App({
       // *because* a durable stream carries no deltas, so there is no local
       // detail for the rebuild to throw away.
       onDurableComplete: () => void hydrateRef.current(threadIdRef.current),
-      clientTools: createWorkspace({
-        root,
-        // `--yes` is a confirm that always agrees, not an absent one: a
-        // workspace with no confirm at all would be a silent writer.
-        confirm: config.yes ? async () => true : confirmWrite,
-      }),
+      clientTools: withHarnessDiffs(
+        createWorkspace({
+          root,
+          // `--yes` is a confirm that always agrees, not an absent one: a
+          // workspace with no confirm at all would be a silent writer.
+          confirm: config.yes ? async () => true : confirmWrite,
+        }),
+        client,
+      ),
     });
     engineRef.current.setTurns(store.loadTurns(threadIdRef.current));
   }
@@ -978,4 +982,16 @@ export function App({
       />
     </box>
   );
+}
+
+/**
+ * The workspace port, with a write approval's "before" read from the file the
+ * write will replace: the cwd for a `local_*` tool, the thread's workspace on
+ * the harness for `write_file` (`routedDiffReader`).
+ */
+function withHarnessDiffs(
+  workspace: ReturnType<typeof createWorkspace>,
+  client: Parameters<typeof routedDiffReader>[0],
+): ReturnType<typeof createWorkspace> {
+  return { ...workspace, readForDiff: routedDiffReader(client, workspace.readForDiff) };
 }

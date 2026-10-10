@@ -7,6 +7,7 @@ import {
   LeaseRefusedError,
   type ManifestEntry,
   mergeSessions,
+  routedDiffReader,
   snapshotToEvents,
   type ThreadMeta,
   titleFromText,
@@ -445,7 +446,12 @@ export function AppShell() {
         const created = createChatEngine({
           client: felix,
           threadId: () => id,
-          clientTools: { execute: executeClientTool, readForDiff: readWorkspaceFile },
+          clientTools: {
+            execute: executeClientTool,
+            // A `local_*` write's before is the browser's file; any other write's
+            // is the harness's, on the thread the write is on.
+            readForDiff: routedDiffReader(felix, readWorkspaceFile),
+          },
           onToolStart: () => {
             if (debugRef.current && threadIdRef.current === id) revealInspector();
           },
@@ -579,6 +585,14 @@ export function AppShell() {
     },
     [navigate],
   );
+  // A note the harness recorded at once (the thread was idle) is in the log, not
+  // in this tab's transcript: re-read it so the note shows where it now is —
+  // unless a run started meanwhile, whose own frames will carry it.
+  const showRecordedNote = useCallback((id: string) => {
+    if (threadIdRef.current !== id) return;
+    if (!poolRef.current?.get(id)?.state.streaming) hydrateFromServerRef.current(id);
+  }, []);
+
   // The operator's own save, told to the agent so it does not go on working from
   // what it read before. The harness writes the words; the pane says what came of it.
   const tellAgentEdited = useCallback(
@@ -589,18 +603,14 @@ export function AppShell() {
       try {
         const told = await workspaceEdited({ threadId: id, ...edit });
         if (!told) return 'unsupported' as const;
-        // Idle, the note went straight into the log: show it where it now is.
-        if (told.status === 'recorded' && threadIdRef.current === id) {
-          const engine = poolRef.current?.get(id);
-          if (!engine?.state.streaming) hydrateFromServerRef.current(id);
-        }
+        if (told.status === 'recorded') showRecordedNote(id);
         return told.status;
       } catch (err) {
         if (err instanceof LeaseRefusedError) return 'watching' as const;
         return 'failed' as const;
       }
     },
-    [],
+    [showRecordedNote],
   );
   // A draft lives in this tab's session storage, which a closed tab takes with it.
   useEffect(() => {
@@ -2626,6 +2636,7 @@ export function AppShell() {
     setInspectorOpen,
     openInPane,
     tellAgentEdited,
+    showRecordedNote: () => showRecordedNote(threadIdRef.current),
   };
 
   return (

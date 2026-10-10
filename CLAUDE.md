@@ -1607,7 +1607,11 @@ that are easy to break:
   (`components/workspace/harness-files.tsx`) is drawn only when the thread's agent's
   `/v1/models` entry says `felix.workspace.tools` is `server` or `both`, and not for a thread with
   a repository checkout, whose files the repository section now opens instead. Changes rows open
-  the workspace their tool wrote to (`local_*` → browser, else harness).
+  the workspace their tool wrote to (`local_*` → browser, else harness). **So does a write
+  approval's diff**: `readForDiff(path, {tool, threadId})` goes through `routedDiffReader`
+  (`@felix/client`), which reads the client's own file for `local_*` and the harness's for any
+  other tool — reading the browser's copy for a `write_file` drew a "replaces six lines" diff
+  for a file the write was creating. Both clients use it.
 - `?open=<path>` names the active **browser** file in the address; other kinds come back from
   session storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
 
