@@ -1577,6 +1577,17 @@ that are easy to break:
   re-read finding something else (`disk`) is a conflict that blocks Save until the operator takes
   the agent's version or keeps the edit, with the agent's write as a diff. Saving over a file the
   run in flight wrote (`landedPaths(turns, lastUser)`) asks first.
+- **Content becomes a file only by the operator's hand.** A code block or a spilled output has
+  *Save to the workspace* (`save-to-workspace.tsx`): the path is prefilled from the path a model
+  writes on a block's first line (`// src/x.ts`, `# file: x.sh`) or `snippet.<ext>`, refused if
+  absolute or containing `..`, and a path that already holds a file says so and asks again
+  (Replace) — it never overwrites on the first press. The written file opens as a tab, and
+  `WORKSPACE_WRITTEN` (`lib/workspace-events.ts`, not `lib/cowork`, which tests mock whole) makes
+  the file tree re-read, since a save is not a run.
+- **`Mod+'` is the right zone's binding.** In debug it is the instrument's, as before; off, there
+  is no instrument, so it shows and hides the pane (tabs kept), as does a header *Side pane*
+  toggle drawn only while something is open in it. The phone overlay is `data-shortcut-surface=
+  "pane"` (`pane-drawer`), so the same key closes it.
 - `?open=<path>` names the active **file** in the address; other kinds come back from session
   storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
 

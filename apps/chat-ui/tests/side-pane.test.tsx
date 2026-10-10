@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { PaneDivider } from '../src/components/pane/pane-divider';
+import { invalidPath, suggestedName } from '../src/components/pane/save-to-workspace';
 import { SidePane } from '../src/components/pane/side-pane';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { WorkspaceSection } from '../src/components/workspace/workspace-section';
@@ -345,6 +346,64 @@ describe('editing a workspace file', () => {
   });
 });
 
+describe('saving content into the workspace', () => {
+  it('names a code block by the path on its first line, and opens the file it wrote', async () => {
+    const user = userEvent.setup();
+    mount();
+    act(() =>
+      openInPane(THREAD, {
+        kind: 'code',
+        code: '// src/util.ts\nexport const x = 1;\n',
+        language: 'ts',
+        title: 'ts · 2 lines',
+      }),
+    );
+    await openedPane();
+    await user.click(screen.getByRole('button', { name: 'Save to the workspace' }));
+    const field = screen.getByRole('textbox', { name: /Save as a file in/ });
+    expect((field as HTMLInputElement).value).toBe('src/util.ts');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(files.write).toHaveBeenCalledWith(
+        'src/util.ts',
+        '// src/util.ts\nexport const x = 1;\n',
+      ),
+    );
+    await waitFor(() => expect(paneState(THREAD).active).toBe('file:src/util.ts'));
+  });
+
+  it('says a file is already there, and replaces it only when asked again', async () => {
+    const user = userEvent.setup();
+    mount();
+    act(() =>
+      openInPane(THREAD, { kind: 'code', code: 'const b = 1;\n', language: 'ts', title: 'ts' }),
+    );
+    await openedPane();
+    await user.click(screen.getByRole('button', { name: 'Save to the workspace' }));
+    const field = screen.getByRole('textbox', { name: /Save as a file in/ });
+    await user.clear(field);
+    await user.type(field, 'app.ts');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(/A file is already at app\.ts/)).toBeTruthy();
+    expect(files.write).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Replace' }));
+    await waitFor(() => expect(files.write).toHaveBeenCalledWith('app.ts', 'const b = 1;\n'));
+  });
+
+  it('refuses a path that leaves the workspace', () => {
+    expect(invalidPath('notes/a.md')).toBeNull();
+    expect(invalidPath('')).toMatch(/Name the file/);
+    expect(invalidPath('/etc/passwd')).toMatch(/not an absolute/);
+    expect(invalidPath('C:\\x.txt')).toMatch(/not an absolute/);
+    expect(invalidPath('a/../../b')).toMatch(/cannot leave/);
+    expect(invalidPath('dir/')).toMatch(/folder/);
+    expect(suggestedName('# file: deploy.sh\necho', 'sh')).toBe('deploy.sh');
+    expect(suggestedName('<!-- site/index.html -->\n<p>', 'html')).toBe('site/index.html');
+    expect(suggestedName('// ../../escape.ts\n', 'ts')).toBe('snippet.ts');
+    expect(suggestedName('const a = 1;', 'ts')).toBe('snippet.ts');
+  });
+});
+
 describe('the pane store', () => {
   it('keeps the newest few, letting the oldest clean one go first', () => {
     openInPane(THREAD, { kind: 'file', path: 'edited.ts' });
@@ -444,6 +503,35 @@ describe('the pane and the instrument', () => {
   const toggle = () =>
     document.querySelector<HTMLElement>('header [aria-label="This thread"]') as HTMLElement;
   const instrument = () => document.querySelector('[data-rail="right"][data-state="open"]');
+
+  it("is the right zone's alone with debug off: a header toggle and Mod+' show and hide it", async () => {
+    localStorage.setItem('felix.debug', '0');
+    render(
+      <MemoryRouter initialEntries={['/t/daily-pane']}>
+        <ThemeProvider>
+          <TooltipProvider>
+            <App />
+          </TooltipProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Session' })).toBeTruthy());
+    // Nothing open, nothing to toggle.
+    expect(screen.queryByRole('button', { name: 'Side pane' })).toBeNull();
+    act(() => openInPane('daily-pane', { kind: 'file', path: 'app.ts' }));
+    await openedPane();
+    const toggle = screen.getByRole('button', { name: 'Side pane' });
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+
+    const user = userEvent.setup();
+    await user.click(toggle);
+    await waitFor(() => expect(pane()).toBeNull());
+    expect(paneState('daily-pane').items).toHaveLength(1);
+
+    const mac = /mac/i.test(navigator.platform);
+    fireEvent.keyDown(document, { key: "'", metaKey: mac, ctrlKey: !mac });
+    await openedPane();
+  });
 
   it('takes the zone, gives it back, and keeps its tabs', async () => {
     render(
