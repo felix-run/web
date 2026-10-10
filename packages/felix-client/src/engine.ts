@@ -25,7 +25,13 @@ import {
   type SessionEvent,
   type StreamEvent,
 } from '@felix/protocol';
-import { describeGate, type PendingApproval, summarizeToolArgs, syncApprovals } from './approvals';
+import {
+  describeGate,
+  type PendingApproval,
+  readsBefore,
+  summarizeToolArgs,
+  syncApprovals,
+} from './approvals';
 import type { DiffCall } from './diff-before';
 import { durableRunFailure } from './durable-runs';
 import {
@@ -35,7 +41,6 @@ import {
   RunInProgressError,
   StreamInProgressError,
 } from './errors';
-import { fileToolOp } from './local-files';
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
@@ -602,7 +607,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         };
         const args = data.args ?? {};
         let before: string | null = null;
-        if (fileToolOp(data.tool_name) === 'write' && typeof args.path === 'string') {
+        if (readsBefore(data.tool_name) && typeof args.path === 'string') {
           before =
             (await ports.clientTools?.readForDiff?.(args.path, {
               tool: data.tool_name,

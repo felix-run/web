@@ -2,7 +2,7 @@
  * The file tools a client runs against the user's own folder, and the one mapping that says
  * which tool names are file operations at all.
  *
- * Two families of names mean the same five operations. The harness's workspace tools
+ * Two families of names mean the same seven operations. The harness's workspace tools
  * (`list_dir`, `read_file`, …) act on a folder on the server; the cowork manifest's client
  * tools (`local_list`, `local_read`, …) act on the user's folder — the browser's mount or
  * in-tab files, or the terminal client's working directory. Everything that cares what a call
@@ -16,7 +16,7 @@
  */
 import type { ClientToolRequest, ClientToolResult } from './client-tools';
 
-export type FileToolOp = 'list' | 'read' | 'search' | 'write' | 'edit';
+export type FileToolOp = 'list' | 'read' | 'search' | 'write' | 'edit' | 'delete' | 'rename';
 
 const OPS: Readonly<Record<string, FileToolOp>> = {
   list_dir: 'list',
@@ -24,11 +24,15 @@ const OPS: Readonly<Record<string, FileToolOp>> = {
   search_files: 'search',
   write_file: 'write',
   edit_file: 'edit',
+  delete_file: 'delete',
+  rename_file: 'rename',
   local_list: 'list',
   local_read: 'read',
   local_search: 'search',
   local_write: 'write',
   local_edit: 'edit',
+  local_delete: 'delete',
+  local_rename: 'rename',
 };
 
 /** The prefix the engine gives a call the client ran (`client · local_shell`). */
@@ -61,6 +65,16 @@ export interface LocalFs {
   read(path: string): Promise<string>;
   /** Create or replace a file, creating parent directories. May throw a refusal. */
   write(path: string, content: string, opts: { append: boolean; summary: string }): Promise<void>;
+  /**
+   * Delete one file — never a directory. May throw a refusal. Absent from a
+   * filesystem that cannot, which `local_delete` then reports as an error.
+   */
+  remove?(path: string, opts: { summary: string }): Promise<void>;
+  /**
+   * Move one file to a path that holds nothing, creating its folders. Never
+   * overwrites: a taken destination throws. May throw a refusal.
+   */
+  rename?(path: string, toPath: string, opts: { summary: string }): Promise<void>;
 }
 
 /** Entries `local_list` prints before saying how many it left out. */
@@ -233,6 +247,26 @@ async function edit(fs: LocalFs, args: Record<string, unknown>): Promise<string>
   return JSON.stringify({ path, replacements: all ? found : 1 });
 }
 
+async function remove(fs: LocalFs, args: Record<string, unknown>): Promise<string> {
+  const path = clean(str(args.path));
+  if (!path) return 'error: path is required';
+  if (!fs.remove) return 'error: this client cannot delete files';
+  await fs.remove(path, { summary: 'delete' });
+  return JSON.stringify({ path, deleted: true });
+}
+
+async function rename(fs: LocalFs, args: Record<string, unknown>): Promise<string> {
+  const path = clean(str(args.path));
+  const toPath = clean(str(args.to_path));
+  if (!path) return 'error: path is required';
+  if (!toPath) return 'error: to_path is required';
+  if (toPath === path)
+    return `error: ${toPath} already exists; local_rename never replaces anything`;
+  if (!fs.rename) return 'error: this client cannot rename files';
+  await fs.rename(path, toPath, { summary: `rename to ${toPath}:` });
+  return JSON.stringify({ path, to_path: toPath });
+}
+
 /**
  * Answer one of the `local_*` file tools against `fs`.
  *
@@ -262,6 +296,12 @@ export async function runLocalFileTool(
         break;
       case 'edit':
         content = await edit(fs, args);
+        break;
+      case 'delete':
+        content = await remove(fs, args);
+        break;
+      case 'rename':
+        content = await rename(fs, args);
         break;
       default:
         return { content: `error: unknown client tool ${req.name}`, error: true };

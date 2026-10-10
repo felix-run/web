@@ -1,4 +1,4 @@
-import { approvalRuleLabel, fileToolOp, type PendingApproval } from '@felix/client';
+import { approvalRuleLabel, type PendingApproval, readsBefore } from '@felix/client';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 import { ariaShortcut, isMacPlatform } from '@/lib/shortcuts';
 
@@ -49,8 +49,9 @@ export function ApprovalBanner({
         <ApprovalDecision
           toolName={pending.toolName}
           args={pending.args}
-          // `before` is only meaningful for a write; anything else has no before/after.
-          before={fileToolOp(pending.toolName) === 'write' ? (pending.before ?? null) : undefined}
+          // `before` is the file as it stands: the side of a write's diff, or what a
+          // delete removes. Anything else has none.
+          before={readsBefore(pending.toolName) ? (pending.before ?? null) : undefined}
           // The rule that gated the call, in the slot already built for a quiet
           // subtitle beside the tool name.
           // A screening gate's id is `command:<reason>`, so the id is trimmed to the

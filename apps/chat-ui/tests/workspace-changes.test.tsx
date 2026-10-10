@@ -467,3 +467,43 @@ describe('the workspace file tree', () => {
     tab.files = [];
   });
 });
+
+describe('a delete or a rename in Changes', () => {
+  it('says the file was deleted, and offers nothing to open', () => {
+    const [row] = collectChanges([
+      assistant([
+        call('write_file', { path: 'old.md', content: 'x' }, OK_WRITE),
+        call('delete_file', { path: 'old.md' }, JSON.stringify({ path: 'old.md', deleted: true })),
+      ]),
+    ]);
+    expect(row).toMatchObject({ path: 'old.md', changed: true, gone: true });
+    expect(row?.stat).toEqual({ text: 'deleted', tone: 'count' });
+    expect(row?.evidence).toBeNull();
+  });
+
+  it('draws a rename on both of its paths, each saying which side it is', () => {
+    const rows = collectChanges([
+      assistant([
+        call(
+          'client · local_rename',
+          { path: 'a.md', to_path: 'docs/a.md' },
+          JSON.stringify({ path: 'a.md', to_path: 'docs/a.md' }),
+        ),
+      ]),
+    ]);
+    const by = new Map(rows.map((r) => [r.path, r]));
+    expect(by.get('a.md')?.stat.text).toBe('renamed to docs/a.md');
+    expect(by.get('a.md')?.gone).toBe(true);
+    expect(by.get('docs/a.md')?.stat.text).toBe('renamed from a.md');
+    expect(by.get('docs/a.md')?.gone).toBe(false);
+  });
+
+  it('reads a refused delete as refused, and the file as still there', () => {
+    const [row] = collectChanges([
+      assistant([call('local_delete', { path: 'keep.md' }, 'error: no such file: keep.md')]),
+    ]);
+    expect(row?.changed).toBe(false);
+    expect(row?.gone).toBe(false);
+    expect(row?.stat.tone).toBe('failed');
+  });
+});

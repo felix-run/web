@@ -115,7 +115,10 @@ export interface PendingApproval {
    * approvals no frame announced.
    */
   expiresAt?: number | null;
-  /** Existing file text for write_file diffs (null = new file / unreadable). */
+  /**
+   * Existing file text, for a write's diff or a delete's "this goes" (null = no
+   * such file / unreadable). Absent for any other call.
+   */
   before?: string | null;
 }
 
@@ -178,6 +181,15 @@ export function approvalRuleLabel(ruleId?: string, reason?: string): string | un
 }
 
 /**
+ * Whether a gated call's card shows the file as it stands: a write replaces it,
+ * a delete removes it — in both, what is there now is what is being decided.
+ */
+export function readsBefore(toolName: string): boolean {
+  const op = fileToolOp(toolName);
+  return op === 'write' || op === 'delete';
+}
+
+/**
  * A one-line description of what a gated call would do.
  *
  * The known client tools get a sentence; anything else falls back to pretty
@@ -191,6 +203,14 @@ export function summarizeToolArgs(toolName: string, args: Record<string, unknown
   }
   if (fileToolOp(toolName) === 'edit') {
     return `Edit ${typeof args.path === 'string' ? args.path : '?'}`;
+  }
+  if (fileToolOp(toolName) === 'delete') {
+    return `Delete ${typeof args.path === 'string' ? args.path : '?'}`;
+  }
+  if (fileToolOp(toolName) === 'rename') {
+    const from = typeof args.path === 'string' ? args.path : '?';
+    const to = typeof args.to_path === 'string' ? args.to_path : '?';
+    return `Rename ${from} to ${to}`;
   }
   if (toolName === 'local_shell') {
     return `Shell: ${typeof args.command === 'string' ? args.command : JSON.stringify(args)}`;
@@ -216,7 +236,12 @@ export function summarizeToolArgs(toolName: string, args: Record<string, unknown
  */
 export function describeGate(toolName: string, args: Record<string, unknown>): string {
   const op = fileToolOp(toolName);
-  return op === 'write' || op === 'edit' || toolName === 'local_shell' || toolName === 'local_open'
+  return op === 'write' ||
+    op === 'edit' ||
+    op === 'delete' ||
+    op === 'rename' ||
+    toolName === 'local_shell' ||
+    toolName === 'local_open'
     ? summarizeToolArgs(toolName, args)
     : toolName;
 }
@@ -397,11 +422,7 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
     opts.seen.add(item.id);
     const args = item.args ?? {};
     let before: string | null = null;
-    if (
-      fileToolOp(item.tool_name) === 'write' &&
-      typeof args.path === 'string' &&
-      opts.readForDiff
-    ) {
+    if (readsBefore(item.tool_name) && typeof args.path === 'string' && opts.readForDiff) {
       before = await opts.readForDiff(args.path, {
         tool: item.tool_name,
         // The row's own thread, else the one asking: what the write is on.

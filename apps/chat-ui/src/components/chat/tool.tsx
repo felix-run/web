@@ -664,8 +664,16 @@ function formatDuration(ms: number): string {
 }
 
 /** Tools with a sentence in `summarizeToolArgs`; everything else falls back to JSON there. */
-const summarized = (name: string) =>
-  fileToolOp(name) === 'write' || name === 'local_shell' || name === 'local_open';
+const summarized = (name: string) => {
+  const op = fileToolOp(name);
+  return (
+    op === 'write' ||
+    op === 'delete' ||
+    op === 'rename' ||
+    name === 'local_shell' ||
+    name === 'local_open'
+  );
+};
 
 /**
  * The argument names that say what a call is *about*, in the order they are

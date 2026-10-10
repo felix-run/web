@@ -31,7 +31,17 @@ import { collectTouchedPaths } from '@felix/cowork-client';
 /** The prefix the engine gives a call the browser ran (`client · local_shell`). */
 const CLIENT_PREFIX = 'client · ';
 
-export type CallKind = 'write' | 'append' | 'edit' | 'read' | 'list' | 'search' | 'shell' | 'open';
+export type CallKind =
+  | 'write'
+  | 'append'
+  | 'edit'
+  | 'delete'
+  | 'rename'
+  | 'read'
+  | 'list'
+  | 'search'
+  | 'shell'
+  | 'open';
 
 export type CallOutcome = 'running' | 'landed' | 'failed' | 'refused' | 'denied';
 
@@ -62,6 +72,11 @@ export interface PathChange {
   mutating: boolean;
   /** At least one write or edit *landed*: the file is not what it was. */
   changed: boolean;
+  /**
+   * The newest change that landed took the file away from this path — deleted,
+   * or renamed elsewhere — so there is nothing here to open.
+   */
+  gone: boolean;
   /** Newest first. */
   calls: PathCall[];
   /** The stat, split into the part that counts and the part that is a state. */
@@ -111,10 +126,10 @@ function kindOf(name: string, args: Record<string, unknown>): CallKind | null {
   }
 }
 
-const MUTATING: ReadonlySet<CallKind> = new Set(['write', 'append', 'edit']);
+const MUTATING: ReadonlySet<CallKind> = new Set(['write', 'append', 'edit', 'delete', 'rename']);
 
 /** The verb a landed non-mutating call reads as. */
-const VERB: Record<Exclude<CallKind, 'write' | 'append' | 'edit'>, string> = {
+const VERB: Record<Exclude<CallKind, 'write' | 'append' | 'edit' | 'delete' | 'rename'>, string> = {
   read: 'read',
   list: 'listed',
   search: 'searched',
@@ -127,6 +142,8 @@ const PROGRESSIVE: Record<CallKind, string> = {
   write: 'writing…',
   append: 'appending…',
   edit: 'editing…',
+  delete: 'deleting…',
+  rename: 'renaming…',
   read: 'reading…',
   list: 'listing…',
   search: 'searching…',
@@ -184,11 +201,43 @@ function str(value: unknown): string {
  * the edits that landed after it, summed — a write replaces the file, so edits
  * before it describe content that no longer exists.
  */
-function statOf(calls: readonly PathCall[]): ChangeStat {
+/**
+ * What the newest landed delete or rename did to this path, if it was the last
+ * change to land here: a rename is recorded on both of its paths, so the row
+ * says which side it is.
+ */
+function movedOf(path: string, calls: readonly PathCall[]): ChangeStat | null {
+  const landed = calls.find((c) => MUTATING.has(c.kind) && c.outcome === 'landed');
+  if (!landed) return null;
+  if (landed.kind === 'delete') return { text: 'deleted', tone: 'count' };
+  if (landed.kind !== 'rename') return null;
+  const args = record(landed.tool.input);
+  const to = str(args.to_path);
+  return samePath(to, path)
+    ? { text: `renamed from ${str(args.path)}`, tone: 'count' }
+    : { text: `renamed to ${to}`, tone: 'count' };
+}
+
+/** Two spellings of one workspace path: `./a/b` and `a/b`. */
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => p.trim().replace(/^\.\//, '').replace(/^\/+/, '');
+  return norm(a) === norm(b);
+}
+
+function statOf(path: string, calls: readonly PathCall[]): ChangeStat {
   const newest = calls[0];
   if (newest?.outcome === 'running') return { text: PROGRESSIVE[newest.kind], tone: 'pending' };
 
-  const mutations = calls.filter((c) => MUTATING.has(c.kind));
+  const moved = movedOf(path, calls);
+  if (moved) return moved;
+  const mutations = calls.filter(
+    (c) => MUTATING.has(c.kind) && c.kind !== 'delete' && c.kind !== 'rename',
+  );
+  const tried = calls.filter((c) => MUTATING.has(c.kind));
+  if (mutations.length === 0 && tried.length > 0) {
+    // Only deletes or renames were tried here, and none landed.
+    return { text: failureWord(tried[0]), tone: missTone(tried[0]) };
+  }
   if (mutations.length > 0) {
     const parts: string[] = [];
     let added = 0;
@@ -239,7 +288,8 @@ function statOf(calls: readonly PathCall[]): ChangeStat {
 
 function evidenceOf(calls: readonly PathCall[]): ChangeEvidence | null {
   const call = calls.find((c) => MUTATING.has(c.kind));
-  if (!call) return null;
+  // A delete or a rename carries no text to show: its stat says what it did.
+  if (!call || call.kind === 'delete' || call.kind === 'rename') return null;
   const args = record(call.tool.input);
   const missed =
     call.outcome === 'failed' || call.outcome === 'refused' || call.outcome === 'denied';
@@ -260,6 +310,13 @@ function evidenceOf(calls: readonly PathCall[]): ChangeEvidence | null {
     issue,
     denied,
   };
+}
+
+function isGone(path: string, calls: readonly PathCall[]): boolean {
+  const landed = calls.find((c) => MUTATING.has(c.kind) && c.outcome === 'landed');
+  if (!landed) return false;
+  if (landed.kind === 'delete') return true;
+  return landed.kind === 'rename' && !samePath(str(record(landed.tool.input).to_path), path);
 }
 
 /**
@@ -292,8 +349,9 @@ export function collectChanges(turns: readonly Turn[]): PathChange[] {
       path,
       mutating,
       changed: calls.some((c) => MUTATING.has(c.kind) && c.outcome === 'landed'),
+      gone: isGone(path, calls),
       calls,
-      stat: statOf(calls),
+      stat: statOf(path, calls),
       evidence: evidenceOf(calls),
     };
     return { change, newest };

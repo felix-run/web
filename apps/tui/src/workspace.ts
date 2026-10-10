@@ -38,7 +38,9 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   stat,
+  unlink,
   writeFile,
 } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -289,6 +291,19 @@ async function runShell(command: string, opts: WorkspaceOptions): Promise<string
 }
 
 /**
+ * A delete or rename acts on a name, not on what it points at: `resolveWithin`
+ * follows a link at the end of a path (right for a read, which reads the target),
+ * and deleting through it would remove the file the link points to. So a link
+ * there is refused, as the harness refuses one in its own workspace.
+ */
+async function refuseLink(realRoot: string, path: string): Promise<void> {
+  const named = isAbsolute(path) ? resolve(path) : resolve(realRoot, path);
+  const leaf = await lstat(named).catch(() => null);
+  if (leaf?.isSymbolicLink())
+    throw new Error(`${path} is a symbolic link; links are not followed here`);
+}
+
+/**
  * The working directory as the `local_*` file tools see it, under the same three rules as the
  * shell verbs above: every path through `resolveWithin`, every write through `assertWritable`
  * and the confirm prompt, and a refusal thrown so it reaches the model as `error: …`.
@@ -324,6 +339,41 @@ function workingDirFs(opts: WorkspaceOptions): LocalFs {
       await mkdir(dirname(target), { recursive: true });
       if (append) await appendFile(target, content, 'utf8');
       else await writeFile(target, content, 'utf8');
+    },
+    // A delete and a rename are writes for every rule above: contained, never
+    // inside .git/ or node_modules/, never an executable, and only after a `y`.
+    remove: async (path, { summary }) => {
+      const root = await realRoot();
+      await refuseLink(root, path);
+      const target = await resolveWithin(root, path);
+      const info = await lstat(target);
+      if (!info.isFile()) throw new Error(`${path} is not a file; only files are deleted`);
+      await assertWritable(root, target);
+      if (!(await opts.confirm(`${summary} ${target}`))) throw new Error('refused by the user');
+      await unlink(target);
+    },
+    rename: async (path, toPath, { summary }) => {
+      const root = await realRoot();
+      await refuseLink(root, path);
+      await refuseLink(root, toPath);
+      const from = await resolveWithin(root, path);
+      const to = await resolveWithin(root, toPath);
+      const info = await lstat(from);
+      if (!info.isFile()) throw new Error(`${path} is not a file; only files are renamed`);
+      await assertWritable(root, from);
+      await assertWritable(root, to);
+      if (
+        await lstat(to).then(
+          () => true,
+          () => false,
+        )
+      ) {
+        throw new Error(`${toPath} already exists; local_rename never replaces anything`);
+      }
+      if (!(await opts.confirm(`${summary} ${from} → ${to}`)))
+        throw new Error('refused by the user');
+      await mkdir(dirname(to), { recursive: true });
+      await rename(from, to);
     },
   };
 }

@@ -172,3 +172,31 @@ describe('ApprovalDecision', () => {
     expect(onDecide).not.toHaveBeenCalled();
   });
 });
+
+describe('a delete approval', () => {
+  it('shows the file it removes, and never offers its text as a write', () => {
+    render(
+      <ApprovalDecision
+        toolName="local_delete"
+        args={{ path: 'notes.txt' }}
+        before={'line one\nline two\n'}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Delete notes.txt')).toBeTruthy();
+    expect(screen.getByText('Deletes this file')).toBeTruthy();
+    expect(screen.queryByText('After')).toBeNull();
+  });
+
+  it('says when there is no such file to delete', () => {
+    render(
+      <ApprovalDecision
+        toolName="delete_file"
+        args={{ path: 'x.md' }}
+        before={null}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('No such file: nothing would be deleted')).toBeTruthy();
+  });
+});

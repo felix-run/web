@@ -180,3 +180,24 @@ describe('writeDiff rows', () => {
     expect(short?.omitted).toBe(8);
   });
 });
+
+describe('a delete approval', () => {
+  it('is every line of the file, removed', () => {
+    const diff = writeDiff({
+      approvalId: 'd',
+      toolName: 'local_delete',
+      args: { path: 'notes.md' },
+      before: 'one\ntwo\n',
+    });
+    expect(diff?.path).toBe('notes.md');
+    expect(diff?.patch).toContain('-one');
+    expect(diff?.patch).toContain('-two');
+    expect(diff?.patch).not.toMatch(/^\+[^+]/m);
+  });
+
+  it('draws nothing when there is no such file', () => {
+    expect(
+      writeDiff({ approvalId: 'd', toolName: 'delete_file', args: { path: 'x' }, before: null }),
+    ).toBeNull();
+  });
+});

@@ -145,7 +145,10 @@ export function ApprovalDecision({
   const inFlight = useRef(false);
   const [deciding, setDeciding] = useState<'approved' | 'denied' | null>(null);
 
-  const isWrite = before !== undefined;
+  const op = fileToolOp(toolName);
+  const isWrite = before !== undefined && op !== 'delete';
+  /** A delete's card shows the file it removes: that is the whole of the decision. */
+  const isDelete = before !== undefined && op === 'delete';
   /**
    * Whether arguments may be edited is a property of the tool, not of where the
    * card was drawn. Keyed on `before` it was offered for a `write_file` from the
@@ -154,7 +157,7 @@ export function ApprovalDecision({
    * wants, wherever the write is decided.
    */
   // A whole file body (`write_file`, `local_write`) is not offered for editing.
-  const editable = fileToolOp(toolName) !== 'write';
+  const editable = op !== 'write';
   const summary = oneLine(summarizeToolArgs(toolName, args));
 
   // Re-read every second while the card is up, and only then. The deadline is
@@ -243,7 +246,15 @@ export function ApprovalDecision({
       {/* The heading step: what is being asked, at the size of a sentence you answer. */}
       {summary && <p className="mt-2 text-lg font-semibold tracking-tight">{summary}</p>}
 
-      {isWrite ? (
+      {isDelete ? (
+        <div className="mt-2.5 space-y-2">
+          <CodePane
+            label={before === null ? 'No such file: nothing would be deleted' : 'Deletes this file'}
+          >
+            {before === null ? '(empty)' : (before ?? '')}
+          </CodePane>
+        </div>
+      ) : isWrite ? (
         <div className="mt-2.5 space-y-2">
           {/*
             Stacked, not side by side. The previous version used `md:grid-cols-2`,
