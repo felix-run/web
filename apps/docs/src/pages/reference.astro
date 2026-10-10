@@ -28,7 +28,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import '@fontsource-variable/onest';
+import '@fontsource-variable/geist';
 import '@fontsource-variable/jetbrains-mono';
 import { DARK, LIGHT, scalarThemeCss } from '@felix/design/tokens';
 
@@ -48,10 +48,10 @@ try {
 const origin = (process.env.FELIX_ORIGIN || 'https://api.felix.run').replace(/\/+$/, '');
 const title = version ? `Felix API reference · v${version}` : 'Felix API reference';
 
-// The faces chat-ui and the rest of the docs set: Onest for UI and prose, JetBrains Mono
+// The faces chat-ui and the rest of the docs set: Geist for UI and prose, JetBrains Mono
 // for what the harness said. Self-hosted by the imports above.
 const UI_SANS =
-  "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+  "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 const UI_MONO =
   "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 

@@ -1,12 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "./chat-utilities.css";
-/* Self-hosted variable faces (2026-10-10, the Warm Workbench redesign). Onest is the one
-   voice for prose and UI: a warm grotesk, slightly narrow, so a thread title keeps more of
-   itself before it truncates, and firm enough to sit beside the mono. Chosen over Figtree
-   and Atkinson Hyperlegible Next by a side-by-side at the app's real sizes. JetBrains Mono
-   marks what the harness said — ids, paths, tool names, JSON (the Provenance Rule). */
-@import "@fontsource-variable/onest";
+/* Self-hosted variable faces (2026-10-10, the Warm Workbench redesign). Geist is the one
+   voice for prose and UI: an engineered grotesk, precise at 12–14px and comfortable in a
+   long reply, so the warm material is carried by the surfaces and the type stays an
+   instrument's. It replaced Onest the same day, chosen over Barlow, Red Hat Text and
+   Archivo from a side-by-side at the app's real sizes. JetBrains Mono marks what the
+   harness said — ids, paths, tool names, JSON (the Provenance Rule). */
+@import "@fontsource-variable/geist";
 @import "@fontsource-variable/jetbrains-mono";
 
 /* `@felix/ui` is consumed as raw source from outside this app's root, so Tailwind's
@@ -67,7 +68,7 @@
   --text-sm--line-height: 1.5;
   --text-base: 1rem;
   --text-base--line-height: 1.65;
-  --font-sans: "Onest Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -530,7 +531,7 @@ html [data-sonner-toaster][data-theme] {
   --error-text: var(--state-failed);
 
   /* Sonner hardcodes 8px and its own sans stack; a toast takes the app's 14px `lg`
-     radius and inherits Onest. */
+     radius and inherits Geist. */
   --border-radius: var(--radius-lg);
   font-family: inherit;
 }

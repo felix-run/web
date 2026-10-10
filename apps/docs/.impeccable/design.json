@@ -62,7 +62,7 @@
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Prose in Onest Variable, the full 48rem column (~100 characters)."
+        "purpose": "Prose in Geist Variable, the full 48rem column (~100 characters)."
       },
       "code": {
         "displayName": "Code",
@@ -121,8 +121,8 @@
     ],
     "fonts": [
       {
-        "name": "Onest Variable",
-        "source": "@fontsource-variable/onest, self-hosted via customCss",
+        "name": "Geist Variable",
+        "source": "@fontsource-variable/geist, self-hosted via customCss",
         "use": "Prose and UI; --sl-font; Scalar UI_SANS"
       },
       {
@@ -139,7 +139,7 @@
       "refersTo": "button-primary",
       "description": "Starlight LinkButton, primary: the one action a page most wants — \"Run it locally\" on the home hero.",
       "html": "<a class=\"ds-btn-primary\" href=\"#\">Run it locally →</a>",
-      "css": ".ds-btn-primary { display:inline-flex; align-items:center; gap:.5rem; padding:.5rem 1.125rem; border:1px solid var(--sl-color-white, #fefdfc); border-radius:8px; background:var(--sl-color-white, #fefdfc); color:var(--sl-color-black, #1b1816); font:600 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-decoration:none; } .ds-btn-primary:hover { opacity:.9; } .ds-btn-primary:focus-visible { outline: 2px solid var(--sl-color-white, #fefdfc); outline-offset: 2px; }"
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; gap:.5rem; padding:.5rem 1.125rem; border:1px solid var(--sl-color-white, #fefdfc); border-radius:8px; background:var(--sl-color-white, #fefdfc); color:var(--sl-color-black, #1b1816); font:600 .875rem/1.5 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-decoration:none; } .ds-btn-primary:hover { opacity:.9; } .ds-btn-primary:focus-visible { outline: 2px solid var(--sl-color-white, #fefdfc); outline-offset: 2px; }"
     },
     {
       "name": "Secondary Button",
@@ -147,7 +147,7 @@
       "refersTo": "button-secondary",
       "description": "Starlight LinkButton, secondary: an ink outline on the page.",
       "html": "<a class=\"ds-btn-secondary\" href=\"#\">Understand it</a>",
-      "css": ".ds-btn-secondary { display:inline-flex; padding:.5rem 1.125rem; border:1px solid var(--sl-color-white, #fefdfc); border-radius:8px; background:transparent; color:var(--sl-color-white, #fefdfc); font:600 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-decoration:none; } .ds-btn-secondary:hover { background:color-mix(in srgb, var(--sl-color-white, #fefdfc) 8%, var(--sl-color-black, #1b1816)); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--sl-color-white, #fefdfc); outline-offset: 2px; }"
+      "css": ".ds-btn-secondary { display:inline-flex; padding:.5rem 1.125rem; border:1px solid var(--sl-color-white, #fefdfc); border-radius:8px; background:transparent; color:var(--sl-color-white, #fefdfc); font:600 .875rem/1.5 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-decoration:none; } .ds-btn-secondary:hover { background:color-mix(in srgb, var(--sl-color-white, #fefdfc) 8%, var(--sl-color-black, #1b1816)); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--sl-color-white, #fefdfc); outline-offset: 2px; }"
     },
     {
       "name": "Caution Callout",
@@ -155,7 +155,7 @@
       "refersTo": "callout-caution",
       "description": "An aside on the state ramp: hairline border at 40% of the hue, 6% flat tint, title in the hue, body in body text. Caution is for things that can hurt a deployment.",
       "html": "<aside class=\"ds-callout ds-callout--caution\"><p class=\"ds-callout__title\">Caution</p><p><code>FELIX_AUTH_MODE=none</code> is only legal on a loopback bind.</p></aside>",
-      "css": ".ds-callout { --hue:var(--sl-color-white, #fefdfc); padding:1rem; border:1px solid color-mix(in srgb, var(--hue) 40%, var(--sl-color-black, #1b1816)); border-radius:8px; background:color-mix(in srgb, var(--hue) 6%, var(--sl-color-black, #1b1816)); color:var(--sl-color-gray-2, #d2cdc8); font:400 1rem/1.75 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-callout--caution { --hue:var(--felix-state-blocked, #ffd230); } .ds-callout__title { margin:0 0 .5rem; color:var(--hue); font-weight:600; font-size:1.125rem; line-height:1.35; } .ds-callout p { margin:0; } .ds-callout code { font:400 .8125rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
+      "css": ".ds-callout { --hue:var(--sl-color-white, #fefdfc); padding:1rem; border:1px solid color-mix(in srgb, var(--hue) 40%, var(--sl-color-black, #1b1816)); border-radius:8px; background:color-mix(in srgb, var(--hue) 6%, var(--sl-color-black, #1b1816)); color:var(--sl-color-gray-2, #d2cdc8); font:400 1rem/1.75 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-callout--caution { --hue:var(--felix-state-blocked, #ffd230); } .ds-callout__title { margin:0 0 .5rem; color:var(--hue); font-weight:600; font-size:1.125rem; line-height:1.35; } .ds-callout p { margin:0; } .ds-callout code { font:400 .8125rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
     },
     {
       "name": "Note Callout",
@@ -163,7 +163,7 @@
       "refersTo": "callout-note",
       "description": "A note is information, not a state: the same shape in ink, so hue is left for callouts that need action.",
       "html": "<aside class=\"ds-note\"><p class=\"ds-note__title\">Authenticated by default</p><p>Compose sets <code>FELIX_AUTH_MODE=api_key</code>.</p></aside>",
-      "css": ".ds-note { padding:1rem; border:1px solid color-mix(in srgb, var(--sl-color-white, #fefdfc) 40%, var(--sl-color-black, #1b1816)); border-radius:8px; background:color-mix(in srgb, var(--sl-color-white, #fefdfc) 6%, var(--sl-color-black, #1b1816)); color:var(--sl-color-gray-2, #d2cdc8); font:400 1rem/1.75 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-note__title { margin:0 0 .5rem; color:var(--sl-color-white, #fefdfc); font-weight:600; font-size:1.125rem; line-height:1.35; } .ds-note p { margin:0; } .ds-note code { font:400 .8125rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
+      "css": ".ds-note { padding:1rem; border:1px solid color-mix(in srgb, var(--sl-color-white, #fefdfc) 40%, var(--sl-color-black, #1b1816)); border-radius:8px; background:color-mix(in srgb, var(--sl-color-white, #fefdfc) 6%, var(--sl-color-black, #1b1816)); color:var(--sl-color-gray-2, #d2cdc8); font:400 1rem/1.75 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-note__title { margin:0 0 .5rem; color:var(--sl-color-white, #fefdfc); font-weight:600; font-size:1.125rem; line-height:1.35; } .ds-note p { margin:0; } .ds-note code { font:400 .8125rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
     },
     {
       "name": "RunTrace Row (blocked)",
@@ -171,7 +171,7 @@
       "refersTo": "",
       "description": "The docs' signature: one frame of a run on a 1px rail. The blocked row carries a flat tint and says \"Waiting on you\" in words.",
       "html": "<ol class=\"ds-trace\"><li><span class=\"ds-dot\"></span><code>tool_start</code><span>It calls write_file.</span></li><li class=\"ds-blocked\"><span class=\"ds-dot\"></span><code>approval_required</code><span><strong>Waiting on you</strong> The call is gated by a manifest rule. The run waits.</span></li></ol>",
-      "css": ".ds-trace { list-style:none; margin:0; padding:0; font:400 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color:var(--sl-color-gray-2, #d2cdc8); } .ds-trace li { --hue:var(--felix-state-running, #74d4ff); display:grid; grid-template-columns:1.5rem 11rem 1fr; gap:0 .75rem; align-items:baseline; padding:.4rem .75rem .4rem 0; } .ds-trace .ds-blocked { --hue:var(--felix-state-blocked, #ffd230); background:color-mix(in srgb, var(--hue) 7%, var(--sl-color-black, #1b1816)); border-radius:6px; } .ds-dot { justify-self:center; align-self:center; width:.5rem; height:.5rem; border-radius:999px; background:var(--hue); } .ds-trace code { font:400 .875rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--sl-color-white, #fefdfc); background:none; } .ds-trace strong { color:var(--hue); margin-right:.5ch; }"
+      "css": ".ds-trace { list-style:none; margin:0; padding:0; font:400 .875rem/1.5 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color:var(--sl-color-gray-2, #d2cdc8); } .ds-trace li { --hue:var(--felix-state-running, #74d4ff); display:grid; grid-template-columns:1.5rem 11rem 1fr; gap:0 .75rem; align-items:baseline; padding:.4rem .75rem .4rem 0; } .ds-trace .ds-blocked { --hue:var(--felix-state-blocked, #ffd230); background:color-mix(in srgb, var(--hue) 7%, var(--sl-color-black, #1b1816)); border-radius:6px; } .ds-dot { justify-self:center; align-self:center; width:.5rem; height:.5rem; border-radius:999px; background:var(--hue); } .ds-trace code { font:400 .875rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--sl-color-white, #fefdfc); background:none; } .ds-trace strong { color:var(--hue); margin-right:.5ch; }"
     },
     {
       "name": "Route Index Row",
@@ -179,7 +179,7 @@
       "refersTo": "",
       "description": "One route: verb and path in mono, the spec's summary, and where it is explained. Hairline-separated.",
       "html": "<ul class=\"ds-routes\"><li><code><span>POST</span> /approvals/{approval_id}/decide</code><span class=\"ds-sum\">Decide Approval</span><a href=\"#\">Management API</a></li></ul>",
-      "css": ".ds-routes { list-style:none; margin:0; padding:0; font:400 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-routes li { display:grid; grid-template-columns:minmax(0,22rem) minmax(0,1fr) minmax(0,9rem); gap:.25rem 1rem; align-items:baseline; padding:.45rem 0; border-bottom:1px solid var(--sl-color-hairline, #292623); } .ds-routes code { font:400 .875rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--sl-color-white, #fefdfc); background:none; overflow-wrap:anywhere; } .ds-routes code span { display:inline-block; min-width:3.25rem; color:var(--sl-color-gray-3, #aaa39c); } .ds-sum { color:var(--sl-color-gray-2, #d2cdc8); } .ds-routes a { color:var(--sl-color-white, #fefdfc); text-underline-offset:.2em; }"
+      "css": ".ds-routes { list-style:none; margin:0; padding:0; font:400 .875rem/1.5 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-routes li { display:grid; grid-template-columns:minmax(0,22rem) minmax(0,1fr) minmax(0,9rem); gap:.25rem 1rem; align-items:baseline; padding:.45rem 0; border-bottom:1px solid var(--sl-color-hairline, #292623); } .ds-routes code { font:400 .875rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--sl-color-white, #fefdfc); background:none; overflow-wrap:anywhere; } .ds-routes code span { display:inline-block; min-width:3.25rem; color:var(--sl-color-gray-3, #aaa39c); } .ds-sum { color:var(--sl-color-gray-2, #d2cdc8); } .ds-routes a { color:var(--sl-color-white, #fefdfc); text-underline-offset:.2em; }"
     },
     {
       "name": "Sidebar Current Page",
@@ -187,15 +187,15 @@
       "refersTo": "sidebar-current",
       "description": "Where you are, as a tonal step: hairline fill, ink text, 600. Not an inverted pill.",
       "html": "<nav class=\"ds-side\"><a href=\"#\">Route index</a><a href=\"#\" aria-current=\"page\">REST API</a><a href=\"#\">Management API</a></nav>",
-      "css": ".ds-side { display:flex; flex-direction:column; gap:.125rem; width:14rem; font:400 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-side a { padding:.25rem .5rem; border-radius:6px; color:var(--sl-color-gray-2, #d2cdc8); text-decoration:none; } .ds-side a:hover { color:var(--sl-color-white, #fefdfc); } .ds-side a[aria-current=page] { background:var(--sl-color-hairline, #292623); color:var(--sl-color-white, #fefdfc); font-weight:600; } .ds-side a:focus-visible { outline:2px solid var(--sl-color-white, #fefdfc); outline-offset:2px; }"
+      "css": ".ds-side { display:flex; flex-direction:column; gap:.125rem; width:14rem; font:400 .875rem/1.5 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-side a { padding:.25rem .5rem; border-radius:6px; color:var(--sl-color-gray-2, #d2cdc8); text-decoration:none; } .ds-side a:hover { color:var(--sl-color-white, #fefdfc); } .ds-side a[aria-current=page] { background:var(--sl-color-hairline, #292623); color:var(--sl-color-white, #fefdfc); font-weight:600; } .ds-side a:focus-visible { outline:2px solid var(--sl-color-white, #fefdfc); outline-offset:2px; }"
     }
   ],
   "narrative": {
     "northStar": "The Operator's Manual",
-    "overview": "The manual that ships with the instrument. chat-ui is the Workbench; the docs are the same machine written down, for the moments the operator is not at the bench. The material is the Workbench's — since 2026-10-10 chat-ui's warm stone and charcoal, and its Onest and JetBrains Mono — hue still means state, and the page shows the mechanism: real event names, routes and error reasons.",
+    "overview": "The manual that ships with the instrument. chat-ui is the Workbench; the docs are the same machine written down, for the moments the operator is not at the bench. The material is the Workbench's — since 2026-10-10 chat-ui's warm stone and charcoal, and its Geist and JetBrains Mono — hue still means state, and the page shows the mechanism: real event names, routes and error reasons.",
     "keyCharacteristics": [
       "A warm neutral field — stone and paper in light, charcoal in dark — with no hue in it; dark is the default.",
-      "Onest for prose and UI, JetBrains Mono for code: chat-ui's faces, self-hosted.",
+      "Geist for prose and UI, JetBrains Mono for code: chat-ui's faces, self-hosted.",
       "Hue only from the four-state ramp, only where there is something to do or know.",
       "One 48rem column for everything; tables and code scroll inside it when wider.",
       "The mechanism drawn as data: RunTrace on the home page, events as a stacked list.",
