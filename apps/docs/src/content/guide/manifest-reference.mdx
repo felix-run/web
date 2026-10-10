@@ -199,6 +199,7 @@ spec:
 | `search_files` | `{query, path, regex, max_hits}` | ≤ 50 hits; skips files over 256 KB. |
 | `list_skills` / `activate_skill` / `deactivate_skill` / `read_skill_file` | `{name}`; `read_skill_file` also `{path}` | Bound to the real catalog when `spec.skills` or `spec.skill_authoring.enabled` is set; `read_skill_file` is added whenever any skill tool is. |
 | `ask_user` | `{question, kind, options, timeout_seconds}` | Asks the person watching the run and waits for the answer. `kind` is `confirm`, `select` (implied by `options`) or `input`; the timeout defaults to 300 s, max 900. Returns `{answered, value}`, or `{answered: false, reason}`. Only a live `/chat/stream` can reach a person, so anywhere else it returns `reason: "no_one_watching"` at once. |
+| `todo_write` | `{todos: [{content, status, active_form?}]}` | The agent's checklist for a task with several steps. Each call replaces the whole list (at most 100 items); `status` is `pending`, `in_progress` (at most one) or `completed`. The session snapshot returns it as `todos`, read off the conversation's current branch — so it survives a reload and follows a rewind or fork — and each write is announced on the stream as `todo_updated`. A write refused by governance changes nothing. |
 
 `ask_user` is how an agent puts a decision to a person instead of guessing: both web clients
 draw the question as a banner above the composer and post the answer back. Use it for choices that
