@@ -1352,7 +1352,11 @@ function hasFiles(e: DragEvent): boolean {
  * composer holding a previous `onSubmit` still posts to the current thread; checked
  * by switching between threads that share a manifest, where nothing below changes,
  * and confirming the request followed the selection. A future callback that closes
- * over state directly would go stale here with nothing to catch it.
+ * over state directly would go stale here with nothing to catch it — `send` did,
+ * over the render's `turns`, and every turn that arrived without re-rendering
+ * this (a snapshot rebuild after the side pane told the agent about an edit)
+ * was erased by the next send. It reads `engine.state.turns` now, and
+ * `tests/send-keeps-out-of-band-turns.test.tsx` holds the first handler to pin it.
  */
 export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.status !== next.status) return false;

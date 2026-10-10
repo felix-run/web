@@ -1656,9 +1656,16 @@ export function AppShell() {
         ...(hasAttachments ? { attachments } : {}),
       };
       const assistantId = crypto.randomUUID();
-      const firstTurn = turns.length === 0;
+      // The engine's transcript as it stands, not the render's `turns`: the
+      // composer is memoised without its callbacks (`MultimodalInput`), so this
+      // can be a closure from several renders ago. Anything that changed the
+      // transcript without re-rendering the composer — a snapshot rebuild after
+      // the side pane told the agent about an edit, a return's `hydrateIfAhead` —
+      // was dropped by the next send, which wrote the stale list back.
+      const before = engine.state.turns;
+      const firstTurn = before.length === 0;
       engine.setTurns([
-        ...turns,
+        ...before,
         userTurn,
         { id: assistantId, role: 'assistant', content: '', tools: [] },
       ]);
@@ -1692,11 +1699,11 @@ export function AppShell() {
         // holds it. The attempt goes from the transcript with it — whatever it had
         // streamed included — so the message is in one place at a time, and a
         // resend's replay is what shows what the harness actually kept.
-        if (outcome === 'failed' || outcome === 'key_reused') engine.setTurns(turns);
+        if (outcome === 'failed' || outcome === 'key_reused') engine.setTurns(before);
         return outcome;
       });
     },
-    [engine, streaming, manifest, threadId, turns, threads, streamInto],
+    [engine, streaming, manifest, threadId, threads, streamInto],
   );
 
   // Re-run the last assistant turn. Felix's session log is append-only, so a
