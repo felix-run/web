@@ -93,8 +93,8 @@ export function Inspector({
         className,
       )}
     >
-      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
-        <h2 id="inspector-heading" className="text-base font-semibold">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 px-3">
+        <h2 id="inspector-heading" className="text-lg font-semibold tracking-tight">
           This run
         </h2>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close inspector">
@@ -322,13 +322,18 @@ function RunReadout() {
   return (
     <section
       aria-label="Run status"
-      className="shrink-0 border-b border-border/60 px-3 py-2.5 text-xs"
+      // A stone tile rather than a rule: the run's state is the instrument's headline.
+      className="mx-2 shrink-0 rounded-2xl bg-ground px-3.5 py-3 text-xs"
     >
       <div className="flex items-center gap-2">
-        <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
+        <span aria-hidden className={cn('size-2 shrink-0 rounded-full', tone.dot)} />
         {/* The word alone is the live region: the stopwatch beside it changes every
             second and would be read out every second. */}
-        <p role="status" aria-live="polite" className={cn('text-sm font-medium', tone.text)}>
+        <p
+          role="status"
+          aria-live="polite"
+          className={cn('text-lg font-semibold tracking-tight', tone.text)}
+        >
           {tone.word}
         </p>
         {sessionPhase && sessionPhase !== 'turn' && (

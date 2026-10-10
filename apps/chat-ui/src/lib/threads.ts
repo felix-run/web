@@ -85,11 +85,18 @@ const PLACEHOLDER_TITLES = new Set([UNTITLED_THREAD_TITLE, titleFromText(''), ''
  * localStorage blob, so it only happens for a row that has no better title, and
  * callers memoise on the thread list.
  */
+/** `titleFromText`'s cut before it marked the cut with an ellipsis. */
+const TITLE_CAP = 48;
+
 export function threadLabel(meta: Pick<ThreadMeta, 'id' | 'title' | 'named'>): {
   text: string;
   isId: boolean;
 } {
   const title = meta.title.trim();
+  // A title this client minted before cut titles were marked is exactly the cap long;
+  // say it was cut rather than end mid-word.
+  if (!meta.named && title.length === TITLE_CAP && !title.endsWith('…'))
+    return { text: `${title}…`, isId: false };
   if (meta.named || !PLACEHOLDER_TITLES.has(title)) return { text: title, isId: false };
   const firstUser = loadTurns(meta.id).find((t) => t.role === 'user' && t.content.trim());
   if (firstUser) return { text: titleFromText(firstUser.content), isId: false };

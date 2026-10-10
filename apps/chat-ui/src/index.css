@@ -114,13 +114,16 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  /* The composer and the sheet: the largest radius, and on nothing else. */
+  /* The largest radius: the sheet, the composer, a user turn, a waiting approval and an
+     empty page — the soft objects a person reads or acts on. */
   --radius-2xl: calc(var(--radius) + 8px);
   --shadow-sheet: var(--sheet-shadow);
   /* The composer's two lifts as utilities (`shadow-lift`, `shadow-lift-focus`), for the
      few things that float with it: New chat, a tool card, a waiting approval. */
   --shadow-lift: var(--shadow-composer);
   --shadow-lift-focus: var(--shadow-composer-focus);
+  /* A run waiting on a person: the one lift above the focused composer. */
+  --shadow-approval: var(--approval-shadow);
 }
 
 /* Warm Workbench palette (2026-10-10), in oklch, light + dark. Two neutral levels carry the
@@ -194,6 +197,9 @@
   --shadow-composer: 0 1px 2px oklch(0.3 0.03 55 / 6%), 0 6px 20px -4px oklch(0.3 0.03 55 / 10%);
   --shadow-composer-focus:
     0 2px 4px oklch(0.3 0.03 55 / 7%), 0 12px 32px -6px oklch(0.3 0.03 55 / 16%);
+  --approval-shadow:
+    0 0 0 4px color-mix(in oklch, var(--state-blocked) 10%, transparent),
+    0 4px 8px oklch(0.3 0.03 55 / 8%), 0 20px 44px -10px oklch(0.3 0.03 55 / 22%);
   /* The sheet: one soft, warm lift off the ground. */
   --sheet-shadow:
     0 0 0 1px oklch(0.3 0.03 55 / 5%), 0 1px 2px oklch(0.3 0.03 55 / 5%),
@@ -251,6 +257,9 @@
   --scrollbar-thumb: oklch(0.62 0.01 70);
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 30%), 0 4px 16px oklch(0 0 0 / 35%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 35%), 0 8px 28px oklch(0 0 0 / 45%);
+  --approval-shadow:
+    0 0 0 4px color-mix(in oklch, var(--state-blocked) 12%, transparent),
+    0 4px 8px oklch(0 0 0 / 40%), 0 20px 44px -10px oklch(0 0 0 / 60%);
   --sheet-shadow: 0 0 0 1px oklch(0.95 0.02 70 / 6%), 0 8px 24px -12px oklch(0 0 0 / 50%);
   --code-surface: oklch(0.18 0.006 60);
 }
@@ -300,7 +309,7 @@
     overscroll-behavior: none;
   }
   ::selection {
-    background-color: color-mix(in oklch, var(--state-running) 22%, transparent);
+    background-color: color-mix(in oklch, var(--foreground) 14%, transparent);
   }
   input,
   textarea {

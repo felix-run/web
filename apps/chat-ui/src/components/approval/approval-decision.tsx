@@ -99,7 +99,9 @@ export interface ApprovalDecisionProps {
  * name, where an ellipsis would keep only the second.
  */
 export const DECISION_BUTTON =
-  'h-auto min-h-8 min-w-0 flex-1 py-1.5 whitespace-normal wrap-anywhere';
+  // `rounded-xl`, not the pill: a label that wraps to two lines (a long tool name in a
+  // phone-width card) read as a broken pill on the one object that must look decisive.
+  'h-auto min-h-8 min-w-0 flex-1 rounded-xl py-1.5 whitespace-normal wrap-anywhere';
 
 /**
  * The one place a gated tool call is approved or denied.
@@ -205,7 +207,7 @@ export function ApprovalDecision({
     <div
       // A run waiting on a person owns attention: the strongest edge and lift on screen.
       className={cn(
-        'rounded-2xl border-2 border-state-blocked/50 bg-solid-state-blocked/5 p-4 shadow-lift-focus',
+        'rounded-2xl border-2 border-state-blocked/50 bg-solid-state-blocked/5 p-5 shadow-approval',
         className,
       )}
     >
@@ -215,7 +217,7 @@ export function ApprovalDecision({
             wider than the card. Same override as DECISION_BUTTON, scoped here. */}
         <Badge
           variant="secondary"
-          className="max-w-full py-0 font-mono text-xs whitespace-normal wrap-anywhere"
+          className="max-w-full py-0.5 font-mono text-sm font-semibold whitespace-normal wrap-anywhere"
         >
           {toolName}
         </Badge>
@@ -238,7 +240,8 @@ export function ApprovalDecision({
           is, and the summary can be long enough to push a trailing line out of view. */}
       {reason && <p className="mt-1.5 text-sm text-muted-foreground">{reason}</p>}
 
-      {summary && <p className="mt-1.5 text-sm">{summary}</p>}
+      {/* The heading step: what is being asked, at the size of a sentence you answer. */}
+      {summary && <p className="mt-2 text-lg font-semibold tracking-tight">{summary}</p>}
 
       {isWrite ? (
         <div className="mt-2.5 space-y-2">
