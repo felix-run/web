@@ -53,6 +53,12 @@
     "/chat/workspace/write": {
       "post": {}
     },
+    "/chat/workspace/delete": {
+      "post": {}
+    },
+    "/chat/workspace/rename": {
+      "post": {}
+    },
     "/chat/tool_result": {
       "post": {}
     },

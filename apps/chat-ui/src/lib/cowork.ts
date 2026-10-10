@@ -15,6 +15,8 @@ import {
   readExisting,
   readExistingBytes,
   reconnectMount,
+  removeExisting,
+  renameExisting,
   restoreMount,
   supportsDirectoryPicker,
 } from '@felix/cowork-client';
@@ -47,6 +49,18 @@ export async function writeWorkspaceFile(path: string, content: string): Promise
   const cleaned = path.replace(/^\//, '');
   if (hasMount()) await mountWrite(cleaned, content);
   else vfs.write(cleaned, content);
+  window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+}
+
+/** The operator's delete from the side pane, in the store the pane read the file from. */
+export async function deleteWorkspaceFile(path: string): Promise<void> {
+  await removeExisting(path, vfs);
+  window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+}
+
+/** The operator's rename from the side pane: same store, never overwriting. */
+export async function renameWorkspaceFile(from: string, to: string): Promise<void> {
+  await renameExisting(from, to, vfs);
   window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
 }
 

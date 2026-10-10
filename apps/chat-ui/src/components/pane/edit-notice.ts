@@ -20,7 +20,12 @@ export function resetEditNotice() {
 export function useTellAgent() {
   const tell = useOptionalShell()?.tellAgentEdited;
   return useCallback(
-    async (edit: { path: string; op?: 'write' | 'delete' | 'rename'; bytes?: number }) => {
+    async (edit: {
+      path: string;
+      op?: 'write' | 'delete' | 'rename';
+      bytes?: number;
+      toPath?: string;
+    }) => {
       if (!tell) return null;
       const notice = await tell(edit);
       if (notice === 'unsupported') routeMissing = true;
@@ -37,19 +42,28 @@ export function useTellsAgent(): boolean {
 
 /** What the save bar says once a save has landed. */
 export function savedLine(notice: EditNotice | null): string {
+  return outcomeLine('Saved.', notice);
+}
+
+/**
+ * What landed, then what came of telling the agent: `Deleted notes/a.md. The
+ * agent reads this before its next step.` The lead is one sentence ending in a
+ * full stop; the rest is the same for a save, a delete and a rename.
+ */
+export function outcomeLine(lead: string, notice: EditNotice | null): string {
   switch (notice) {
     case 'queued':
-      return 'Saved. The agent reads this before its next step.';
+      return `${lead} The agent reads this before its next step.`;
     case 'recorded':
-      return 'Saved. The agent was told, and reads it on its next turn.';
+      return `${lead} The agent was told, and reads it on its next turn.`;
     case 'watching':
-      return "Saved. The agent wasn't told: another tab is driving this thread.";
+      return `${lead} The agent wasn't told: another tab is driving this thread.`;
     case 'unsupported':
-      return "Saved. This harness can't tell the agent about edits, so it wasn't told.";
+      return `${lead} This harness can't tell the agent about edits, so it wasn't told.`;
     case 'failed':
-      return 'Saved, but telling the agent failed. Mention the change in your next message.';
+      return `${lead.replace(/\.$/, ',')} but telling the agent failed. Mention the change in your next message.`;
     default:
-      return 'Saved.';
+      return lead;
   }
 }
 

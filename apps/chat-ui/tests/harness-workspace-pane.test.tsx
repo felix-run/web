@@ -26,6 +26,10 @@ const harness = vi.hoisted(() => ({
   tree: vi.fn(),
   read: vi.fn(),
   write: vi.fn(),
+  del: vi.fn(),
+  rename: vi.fn(),
+  localDelete: vi.fn(async (_p: string) => {}),
+  localRename: vi.fn(async (_a: string, _b: string) => {}),
 }));
 
 vi.mock('../src/api', async (importOriginal) => ({
@@ -33,6 +37,8 @@ vi.mock('../src/api', async (importOriginal) => ({
   workspaceTree: harness.tree,
   workspaceRead: harness.read,
   workspaceWrite: harness.write,
+  workspaceDelete: harness.del,
+  workspaceRename: harness.rename,
 }));
 
 vi.mock('../src/lib/cowork', () => ({
@@ -40,9 +46,12 @@ vi.mock('../src/lib/cowork', () => ({
   hasMount: () => false,
   mountTree: async () => [],
   vfs: { tree: () => [], read: () => '', write: () => {} },
-  readWorkspaceBytes: async () => null,
+  readWorkspaceBytes: async (p: string) =>
+    p === 'local.md' ? new TextEncoder().encode('# Local\n') : null,
   readWorkspaceFile: async () => null,
   writeWorkspaceFile: async () => {},
+  deleteWorkspaceFile: harness.localDelete,
+  renameWorkspaceFile: harness.localRename,
   executeClientTool: async () => ({ ok: true }),
   restoreMount: async () => ({ status: 'none' }),
   reconnectMount: async () => null,
@@ -111,6 +120,10 @@ afterEach(() => {
   harness.tree.mockReset();
   harness.read.mockReset();
   harness.write.mockReset();
+  harness.del.mockReset();
+  harness.rename.mockReset();
+  harness.localDelete.mockClear();
+  harness.localRename.mockClear();
 });
 
 async function editHarnessFile(user: ReturnType<typeof userEvent.setup>, text: string) {
@@ -209,5 +222,105 @@ describe('a harness file in the pane', () => {
       content: 'x = 3\n',
       expectedSha256: SHA2,
     });
+  });
+});
+
+describe('renaming and deleting', () => {
+  async function chooseFrom(user: ReturnType<typeof userEvent.setup>, item: RegExp) {
+    await user.click(await screen.findByRole('button', { name: 'More file actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: item }));
+  }
+
+  it('deletes a harness file at the hash it was read, closes its tab, and says the agent was told', async () => {
+    harness.del.mockResolvedValueOnce({ status: 'queued', eventId: null });
+    const user = userEvent.setup();
+    mount();
+    act(() => openInPane(T, { kind: 'file', path: 'src/app.py', source: 'harness' }));
+    await screen.findByText(/2 lines|1 line/);
+    await chooseFrom(user, /Delete/);
+    const ask = await screen.findByRole('alertdialog', { name: 'Delete the file' });
+    expect(ask.textContent).toContain('on the harness');
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(harness.del).toHaveBeenCalledWith({
+        threadId: T,
+        path: 'src/app.py',
+        expectedSha256: SHA1,
+        manifest: 'contributor',
+      }),
+    );
+    await waitFor(() => expect(paneState(T).items).toHaveLength(0));
+  });
+
+  it('renames a harness file and opens it under its new path', async () => {
+    harness.rename.mockResolvedValueOnce({
+      status: 'recorded',
+      toPath: 'src/main.py',
+      sha256: SHA1,
+      eventId: 'e2',
+    });
+    const user = userEvent.setup();
+    mount();
+    act(() => openInPane(T, { kind: 'file', path: 'src/app.py', source: 'harness' }));
+    await screen.findByText(/2 lines|1 line/);
+    await chooseFrom(user, /Rename/);
+    const field = await screen.findByRole('textbox', { name: /New path/ });
+    await user.clear(field);
+    await user.type(field, 'src/main.py{Enter}');
+    await waitFor(() =>
+      expect(harness.rename).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/app.py',
+          toPath: 'src/main.py',
+          expectedSha256: SHA1,
+        }),
+      ),
+    );
+    await waitFor(() => expect(paneState(T).active).toBe('harness:src/main.py'));
+    expect(paneState(T).items.map((i) => i.key)).toEqual(['harness:src/main.py']);
+  });
+
+  it('says a taken name is taken, and leaves the file where it was', async () => {
+    harness.localRename.mockRejectedValueOnce(
+      Object.assign(new Error('target exists: b.md'), { name: 'TargetExistsError' }),
+    );
+    const value = shell();
+    const user = userEvent.setup();
+    mount(value);
+    act(() => openInPane(T, { kind: 'file', path: 'local.md' }));
+    await screen.findByText(/1 line/);
+    await chooseFrom(user, /Rename/);
+    const field = await screen.findByRole('textbox', { name: /New path/ });
+    await user.clear(field);
+    await user.type(field, 'b.md{Enter}');
+    expect(await screen.findByText('A file is already at b.md. Choose another path.')).toBeTruthy();
+    expect(paneState(T).active).toBe('file:local.md');
+    expect(value.tellAgentEdited).not.toHaveBeenCalled();
+  });
+
+  it('deletes a browser file in its own store, then tells the agent', async () => {
+    const value = shell();
+    const user = userEvent.setup();
+    mount(value);
+    act(() => openInPane(T, { kind: 'file', path: 'local.md' }));
+    await screen.findByText(/1 line/);
+    await chooseFrom(user, /Delete/);
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(harness.localDelete).toHaveBeenCalledWith('local.md'));
+    await waitFor(() =>
+      expect(value.tellAgentEdited).toHaveBeenCalledWith({ path: 'local.md', op: 'delete' }),
+    );
+    expect(harness.del).not.toHaveBeenCalled();
+  });
+
+  it('holds both while the file has an unsaved edit', async () => {
+    const user = userEvent.setup();
+    mount();
+    await editHarnessFile(user, 'x = 9\n');
+    await user.click(screen.getByRole('button', { name: 'More file actions' }));
+    expect(
+      (await screen.findByRole('menuitem', { name: /Delete/ })).getAttribute('data-disabled'),
+    ).not.toBeNull();
+    expect(screen.getByText('Save or revert your edits first.')).toBeTruthy();
   });
 });

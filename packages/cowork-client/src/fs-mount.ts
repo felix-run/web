@@ -290,3 +290,78 @@ export async function readExistingBytes(
     return null;
   }
 }
+
+/** A delete or rename refused because the destination already holds something. */
+export class TargetExistsError extends Error {
+  constructor(readonly path: string) {
+    super(`target exists: ${path}`);
+    this.name = 'TargetExistsError';
+  }
+}
+
+/** Delete one file in the mounted folder. A directory is refused. */
+export async function mountRemove(path: string): Promise<void> {
+  const { parent, name } = await resolve(path);
+  if (!name) throw new Error('not a file');
+  // Asked for as a file first, so a folder of the same name is refused rather
+  // than removed: `removeEntry` takes either.
+  await parent.getFileHandle(name);
+  await parent.removeEntry(name);
+}
+
+/**
+ * Move one file within the mounted folder: written to the destination, then
+ * removed from the source. Not atomic — there is no move every browser offers
+ * — so it is ordered to fail safe: the destination is checked to be free and
+ * written in full before anything is removed, and a failure after the write
+ * leaves two copies, never none.
+ */
+export async function mountRename(from: string, to: string): Promise<void> {
+  const src = await resolve(from);
+  if (!src.name) throw new Error('not a file');
+  const handle = await src.parent.getFileHandle(src.name);
+  const bytes = new Uint8Array(await (await handle.getFile()).arrayBuffer());
+  const dst = await resolve(to, { create: true });
+  if (!dst.name) throw new Error('no destination');
+  const taken = await dst.parent
+    .getFileHandle(dst.name)
+    .then(() => true)
+    .catch(() =>
+      dst.parent
+        .getDirectoryHandle(dst.name)
+        .then(() => true)
+        .catch(() => false),
+    );
+  if (taken) throw new TargetExistsError(to);
+  const out = await dst.parent.getFileHandle(dst.name, { create: true });
+  const writable = await out.createWritable();
+  await writable.write(bytes);
+  await writable.close();
+  await src.parent.removeEntry(src.name);
+}
+
+/**
+ * Delete a file from whichever store the tools run against — the mounted
+ * folder first, the in-tab store otherwise — the same precedence as
+ * `readExisting`, so the pane deletes the file it showed.
+ */
+export async function removeExisting(
+  path: string,
+  vfs: { remove: (p: string) => void },
+): Promise<void> {
+  const cleaned = path.replace(/^\//, '');
+  if (hasMount()) await mountRemove(cleaned);
+  else vfs.remove(cleaned);
+}
+
+/** `removeExisting`'s rename: same store, never overwriting. */
+export async function renameExisting(
+  from: string,
+  to: string,
+  vfs: { rename: (a: string, b: string) => void },
+): Promise<void> {
+  const a = from.replace(/^\//, '');
+  const b = to.replace(/^\//, '');
+  if (hasMount()) await mountRename(a, b);
+  else vfs.rename(a, b);
+}

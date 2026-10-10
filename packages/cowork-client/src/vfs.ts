@@ -102,6 +102,34 @@ export class VirtualFs {
     this.save();
   }
 
+  /** Delete a file. A directory is refused: the side pane deletes files, not trees. */
+  remove(path: string): void {
+    const key = normalize(path);
+    const node = this.map[key];
+    if (!node) throw new Error(`not found: ${path}`);
+    if (node.type !== 'file') throw new Error(`not a file: ${path}`);
+    delete this.map[key];
+    this.save();
+  }
+
+  /**
+   * Move a file to a path that holds nothing, creating its folders. Never
+   * overwrites: a destination that exists is refused, so a typo in a rename
+   * cannot replace another file.
+   */
+  rename(from: string, to: string): void {
+    const src = normalize(from);
+    const node = this.map[src];
+    if (!node) throw new Error(`not found: ${from}`);
+    if (node.type !== 'file') throw new Error(`not a file: ${from}`);
+    const dst = normalize(to);
+    if (!dst) throw new Error('no destination');
+    if (this.map[dst]) throw new Error(`target exists: ${to}`);
+    this.write(dst, node.content);
+    delete this.map[src];
+    this.save();
+  }
+
   mkdir(path: string): void {
     const key = normalize(path);
     if (this.map[key]?.type === 'file') throw new Error(`file exists: ${path}`);

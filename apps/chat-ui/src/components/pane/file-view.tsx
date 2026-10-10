@@ -2,9 +2,17 @@ import { LeaseRefusedError, WorkspaceChangedError, WorkspaceRouteError } from '@
 import { Button } from '@felix/ui/button';
 import { RotateCwIcon } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { workspaceRead, workspaceWrite } from '@/api';
+import { toast } from 'sonner';
+import { workspaceDelete, workspaceRead, workspaceRename, workspaceWrite } from '@/api';
 import { CodeBlock } from '@/components/ai-elements/code-block';
-import { savedLine, useTellAgent, useTellsAgent, utf8Bytes } from '@/components/pane/edit-notice';
+import {
+  outcomeLine,
+  savedLine,
+  useTellAgent,
+  useTellsAgent,
+  utf8Bytes,
+} from '@/components/pane/edit-notice';
+import { type FileAction, FileActionStrip, FileActionsMenu } from '@/components/pane/file-actions';
 import {
   CopyAction,
   DownloadAction,
@@ -14,7 +22,13 @@ import {
   withoutFinalNewline,
 } from '@/components/pane/pane-parts';
 import { DiffView } from '@/components/skills/diff-view';
-import { getMountLabel, readWorkspaceBytes, writeWorkspaceFile } from '@/lib/cowork';
+import {
+  deleteWorkspaceFile,
+  getMountLabel,
+  readWorkspaceBytes,
+  renameWorkspaceFile,
+  writeWorkspaceFile,
+} from '@/lib/cowork';
 import {
   isMarkdown,
   languageFor,
@@ -22,7 +36,15 @@ import {
   type Preview,
   previewOfBytes,
 } from '@/lib/file-preview';
-import { cleanFile, hasConflict, isDirty, type PaneItem, updatePaneFile } from '@/lib/side-pane';
+import {
+  cleanFile,
+  closePaneItem,
+  hasConflict,
+  isDirty,
+  openInPane,
+  type PaneItem,
+  updatePaneFile,
+} from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 import type { EditNotice } from '@/shell-context';
@@ -147,6 +169,91 @@ export function FileView({
   const dirty = isDirty(item);
   const conflict = hasConflict(item);
 
+  // Rename and delete. Each acts on the store the file was read from — the
+  // harness, in one request that also tells the agent, or the browser's, then
+  // the browser path's own notice — and lands its outcome in a toast, because
+  // the tab it was opened from is gone (deleted) or replaced (renamed).
+  const [action, setAction] = useState<FileAction | null>(null);
+  const where = harness
+    ? 'the thread\u2019s workspace on the harness'
+    : (getMountLabel() ?? 'this tab\u2019s workspace');
+  const blockedBy = dirty
+    ? 'Save or revert your edits first.'
+    : read.status !== 'ready'
+      ? 'Nothing here to rename or delete.'
+      : undefined;
+  const refusal = async (err: unknown, verb: string, to?: string): Promise<Error> => {
+    if (err instanceof WorkspaceChangedError) {
+      await load();
+      return new Error(
+        `It changed on the harness since you opened it. Read it again, then ${verb}.`,
+      );
+    }
+    if (
+      (err instanceof WorkspaceRouteError && err.code === 'target_exists') ||
+      (err instanceof Error && err.name === 'TargetExistsError')
+    ) {
+      return new Error(`A file is already at ${to}. Choose another path.`);
+    }
+    if (err instanceof WorkspaceRouteError && err.code === 'not_found') {
+      return new Error('It is no longer there.');
+    }
+    if (err instanceof LeaseRefusedError) return new Error('Another tab is driving this thread.');
+    return new Error(`Could not ${verb} it: ${err instanceof Error ? err.message : String(err)}`);
+  };
+  const onDelete = async () => {
+    let notice: EditNotice | null;
+    try {
+      if (harness) {
+        const done = await workspaceDelete({
+          threadId,
+          path,
+          ...(sha.current ? { expectedSha256: sha.current } : {}),
+          ...(manifest ? { manifest } : {}),
+        });
+        window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+        if (done.status === 'recorded') showRecordedNote?.();
+        notice = done.status;
+      } else {
+        await deleteWorkspaceFile(path);
+        notice = await tellAgent({ path, op: 'delete' });
+      }
+    } catch (err) {
+      throw await refusal(err, 'delete');
+    }
+    closePaneItem(threadId, key);
+    toast(outcomeLine(`Deleted ${path}.`, notice));
+  };
+  const onRename = async (to: string) => {
+    let notice: EditNotice | null;
+    try {
+      if (harness) {
+        const done = await workspaceRename({
+          threadId,
+          path,
+          toPath: to,
+          ...(sha.current ? { expectedSha256: sha.current } : {}),
+          ...(manifest ? { manifest } : {}),
+        });
+        window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+        if (done.status === 'recorded') showRecordedNote?.();
+        notice = done.status;
+      } else {
+        await renameWorkspaceFile(path, to);
+        notice = await tellAgent({ path, op: 'rename', toPath: to });
+      }
+    } catch (err) {
+      throw await refusal(err, 'rename', to);
+    }
+    closePaneItem(threadId, key);
+    openInPane(threadId, {
+      kind: 'file',
+      path: to,
+      ...(harness ? { source: 'harness' as const } : {}),
+    });
+    toast(outcomeLine(`Renamed ${path} to ${to}.`, notice));
+  };
+
   const [view, setView] = useState<View>(() =>
     isDirty(item) ? 'edit' : isMarkdown(path) ? 'rendered' : 'source',
   );
@@ -208,9 +315,22 @@ export function FileView({
             >
               <RotateCwIcon aria-hidden className="size-3.5" />
             </Button>
+            <FileActionsMenu onChoose={setAction} {...(blockedBy ? { blockedBy } : {})} />
           </>
         }
       />
+
+      {action && !blockedBy && (
+        <FileActionStrip
+          key={action}
+          action={action}
+          path={path}
+          where={where}
+          onRename={onRename}
+          onDelete={onDelete}
+          onDone={() => setAction(null)}
+        />
+      )}
 
       {conflict && item.disk !== undefined && item.base !== undefined && (
         <Conflict

@@ -137,6 +137,55 @@ describe('POST /chat/workspace/write', () => {
   });
 });
 
+describe('POST /chat/workspace/delete and /rename', () => {
+  it('delete sends the hash it was read at, and reads the note status', async () => {
+    stub(() => json({ status: 'queued', path: 'a.md', event_id: null }));
+    await expect(
+      client().workspaceDelete({ threadId: 't1', path: 'a.md', expectedSha256: 'ab'.repeat(32) }),
+    ).resolves.toEqual({ status: 'queued', eventId: null });
+    expect(posted[0]).toEqual({
+      url: '/api/chat/workspace/delete',
+      body: { thread_id: 't1', path: 'a.md', expected_sha256: 'ab'.repeat(32) },
+    });
+  });
+
+  it('rename sends both paths and reads the new one back', async () => {
+    stub(() =>
+      json({
+        status: 'recorded',
+        path: 'a.md',
+        to_path: 'b/c.md',
+        sha256: 'ee'.repeat(32),
+        event_id: 'e5',
+      }),
+    );
+    await expect(
+      client().workspaceRename({ threadId: 't1', path: 'a.md', toPath: 'b/c.md' }),
+    ).resolves.toEqual({
+      status: 'recorded',
+      toPath: 'b/c.md',
+      sha256: 'ee'.repeat(32),
+      eventId: 'e5',
+    });
+    expect(posted[0]?.body).toEqual({ thread_id: 't1', path: 'a.md', to_path: 'b/c.md' });
+  });
+
+  it('tells a taken destination from a changed file, and both from a lease', async () => {
+    stub(() => json({ detail: 'target_exists' }, 409));
+    await expect(
+      client().workspaceRename({ threadId: 't1', path: 'a', toPath: 'b' }),
+    ).rejects.toMatchObject({ name: 'WorkspaceRouteError', code: 'target_exists' });
+    stub(() => json({ detail: 'workspace_changed', sha256: 'ff'.repeat(32), bytes: 4 }, 409));
+    await expect(client().workspaceDelete({ threadId: 't1', path: 'a' })).rejects.toBeInstanceOf(
+      WorkspaceChangedError,
+    );
+    stub(() => json({ detail: 'lease_read_only' }, 409));
+    await expect(client().workspaceDelete({ threadId: 't1', path: 'a' })).rejects.toBeInstanceOf(
+      LeaseRefusedError,
+    );
+  });
+});
+
 describe("the catalog's workspace field", () => {
   it('says which workspace an agent works in, and nothing for an older harness', async () => {
     stub(() =>

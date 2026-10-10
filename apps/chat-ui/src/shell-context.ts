@@ -193,6 +193,8 @@ export interface ShellValue {
     path: string;
     op?: 'write' | 'delete' | 'rename';
     bytes?: number;
+    /** A rename's destination. */
+    toPath?: string;
   }) => Promise<EditNotice>;
   /**
    * Show a note the harness recorded straight into the log — a harness save on

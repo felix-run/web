@@ -1612,6 +1612,15 @@ that are easy to break:
   (`@felix/client`), which reads the client's own file for `local_*` and the harness's for any
   other tool — reading the browser's copy for a `write_file` drew a "replaces six lines" diff
   for a file the write was creating. Both clients use it.
+- **Rename and delete are behind the file header's ⋯** (`components/pane/file-actions.tsx`),
+  files only, each opening a strip that says what will happen first; both wait while the file
+  holds an unsaved edit. They act on the store the file came from: the harness
+  (`/chat/workspace/{delete,rename}`, `felix-run/felix#582`, conditional on the read hash and
+  telling the agent itself) or the browser's (`removeExisting`/`renameExisting` in
+  `@felix/cowork-client`, then `tellAgentEdited` with `op`). A rename never overwrites — the
+  harness answers `409 target_exists`, the browser throws `TargetExistsError` — and a mount
+  rename is write-then-remove, ordered so a failure leaves two copies, never none. The outcome is
+  a toast (`outcomeLine`), since the tab is closed or replaced.
 - `?open=<path>` names the active **browser** file in the address; other kinds come back from
   session storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
 

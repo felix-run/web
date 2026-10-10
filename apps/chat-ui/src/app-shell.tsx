@@ -596,7 +596,12 @@ export function AppShell() {
   // The operator's own save, told to the agent so it does not go on working from
   // what it read before. The harness writes the words; the pane says what came of it.
   const tellAgentEdited = useCallback(
-    async (edit: { path: string; op?: 'write' | 'delete' | 'rename'; bytes?: number }) => {
+    async (edit: {
+      path: string;
+      op?: 'write' | 'delete' | 'rename';
+      bytes?: number;
+      toPath?: string;
+    }) => {
       const id = threadIdRef.current;
       // A thread that never reached the harness has no agent to tell.
       if (unsentRef.current.has(id)) return 'no-thread' as const;
