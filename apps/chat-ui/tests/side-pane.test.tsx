@@ -340,6 +340,12 @@ describe('editing a workspace file', () => {
     expect(ask.textContent).toContain('Discard your edits to app.ts?');
     await user.click(screen.getByRole('button', { name: 'Keep editing' }));
     expect(paneState(THREAD).items).toHaveLength(1);
+    // Escape answers it the safe way.
+    await user.click(screen.getByRole('button', { name: 'Close app.ts' }));
+    await screen.findByRole('alertdialog', { name: 'Unsaved edits' });
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(paneState(THREAD).items).toHaveLength(1);
     await user.click(screen.getByRole('button', { name: 'Close app.ts' }));
     await user.click(await screen.findByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(pane()).toBeNull());
@@ -401,6 +407,30 @@ describe('saving content into the workspace', () => {
     expect(suggestedName('<!-- site/index.html -->\n<p>', 'html')).toBe('site/index.html');
     expect(suggestedName('// ../../escape.ts\n', 'ts')).toBe('snippet.ts');
     expect(suggestedName('const a = 1;', 'ts')).toBe('snippet.ts');
+  });
+});
+
+describe('the tab strip', () => {
+  it('names an image by the tool that made it, and an output by its tool', async () => {
+    mount();
+    // The image last, so it is the tab in front and the output is never fetched.
+    act(() => {
+      openInPane(THREAD, {
+        kind: 'artifact',
+        manifestId: 'm',
+        artifactId: 'a'.repeat(32),
+        title: 'github__search_code',
+        chars: 9,
+      });
+      openInPane(THREAD, {
+        kind: 'image',
+        url: 'data:image/png;base64,AA==',
+        title: 'Image 2 from browser_screenshot',
+      });
+    });
+    await openedPane();
+    expect(screen.getByRole('tab', { name: /^browser_screenshot/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^github__search_code/ })).toBeTruthy();
   });
 });
 

@@ -8,15 +8,47 @@ import { cn } from '@/lib/utils';
  * what is open, and the two actions everything offers — copy and download.
  */
 
+/**
+ * Text cut from the middle by layout rather than by a character count: the head
+ * truncates and the last `keep` characters never do, so a file keeps its
+ * extension and a path keeps the part that tells it from its neighbours —
+ * `packages/felix-client/src/…/really-long-name.ts`, not `packages/felix-cli…`.
+ * It follows the width it is given, which a count cannot.
+ */
+export function MiddleCut({
+  text,
+  keep,
+  className,
+}: {
+  text: string;
+  keep: number;
+  className?: string;
+}) {
+  const head = text.length > keep * 2 ? text.slice(0, -keep) : text;
+  const tail = head === text ? '' : text.slice(-keep);
+  return (
+    <span className={cn('flex min-w-0', className)}>
+      <span className="truncate">{head}</span>
+      {tail && <span className="shrink-0 whitespace-pre">{tail}</span>}
+    </span>
+  );
+}
+
 export function ItemHeader({
   name,
+  mono = false,
+  keepName = 0,
   detail,
   meta,
   actions,
 }: {
   /** The item's own name: a file name, a tool, a language. */
   name: string;
-  /** Where it came from: a path, a tool call, a reply. */
+  /** The name is an identifier — a file or a tool — and is set in mono. */
+  mono?: boolean;
+  /** Cut the name from the middle, keeping this many characters at its end. */
+  keepName?: number;
+  /** Where it came from: a path, an id. Always an identifier, so always mono. */
   detail?: string;
   meta?: readonly (string | null | false | undefined)[];
   actions?: ReactNode;
@@ -25,16 +57,19 @@ export function ItemHeader({
   return (
     <header className="flex min-w-0 shrink-0 items-start gap-3 px-4 pt-3 pb-2.5">
       <div className="min-w-0 flex-1">
-        <h2 className="truncate font-mono text-sm font-medium" title={detail ?? name}>
-          {name}
+        <h2
+          className={cn('min-w-0 text-sm font-medium', mono && 'font-mono')}
+          title={detail ?? name}
+        >
+          {keepName ? (
+            <MiddleCut text={name} keep={keepName} />
+          ) : (
+            <span className="block truncate">{name}</span>
+          )}
         </h2>
         {(detail || facts.length > 0) && (
           <p className="mt-0.5 flex min-w-0 gap-1.5 text-xs text-muted-foreground">
-            {detail && (
-              <span className="min-w-0 truncate font-mono" title={detail}>
-                {detail}
-              </span>
-            )}
+            {detail && <MiddleCut text={detail} keep={24} className="font-mono" />}
             {detail && facts.length > 0 && <span aria-hidden>·</span>}
             {facts.length > 0 && <span className="shrink-0">{facts.join(' · ')}</span>}
           </p>
