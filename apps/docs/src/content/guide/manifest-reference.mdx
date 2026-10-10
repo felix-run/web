@@ -900,7 +900,7 @@ must be unique.
   delegating to an uncapped child. Every `task` call counts against `max_peer_hops`, shared with
   [`peers`](#specpeers).
 
-**Background children.** With `background: true` beside `agents`, the model may pass
+**Background children.** With `background: true` (and optionally `max_background`) beside `agents`, the model may pass
 `background: true` to `task`: the child starts as a [durable run](/guide/rest-api/#durable-runs) and
 `task` returns a task id at once, and a second tool, `task_result(task_id, wait_seconds)`, reads its
 status and — once it is done — its answer, waiting up to 60 seconds. The child runs in
@@ -910,8 +910,10 @@ child edited before the worker picks it up does not run. It expires no later tha
 that started it. Since the parent's run may end first, the child cannot share its counters; instead
 it runs on what is **left** of every budget above it when it starts — a lead capped at ten tool
 calls that has made four hands its background child six. A background child cannot start
-background children of its own (foreground delegation still nests). `task_result` reads only tasks
-its own thread started.
+background children of its own (foreground delegation still nests), and a conversation may have
+at most `max_background` (default 3, at most 16) in flight at once — the next start is refused until
+one ends, which is what bounds a thread's total exposure across turns. `task_result` reads only
+tasks its own thread started.
 
 Several `task` calls in one turn run side by side when
 [`spec.execution.tools`](#specexecution) is `parallel`. `delegation` and `sub_agents` on the same
