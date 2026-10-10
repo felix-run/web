@@ -86,7 +86,7 @@ export function RepoFileTree({ listing }: { listing: ThreadRepoFiles }) {
             <span
               aria-hidden
               title={mark.word}
-              className="ml-auto shrink-0 pl-2 font-mono text-[0.6875rem] text-muted-foreground"
+              className="ml-auto shrink-0 pl-2 font-mono text-xs text-muted-foreground"
             >
               {mark.letter}
             </span>
