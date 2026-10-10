@@ -24,6 +24,7 @@ import {
 } from '@/components/ai-elements/file-tree';
 import { ancestorsOf, buildTree, type TreeNode } from '@/lib/file-tree';
 import { cn } from '@/lib/utils';
+import { type FileRowAction, useFileRowMenu } from './file-row-menu';
 
 /** git's status as one letter beside the name, and in words for a screen reader. */
 const MARK: Record<Exclude<ThreadRepoFile['status'], 'clean'>, { letter: string; word: string }> = {
@@ -37,11 +38,15 @@ const MARK: Record<Exclude<ThreadRepoFile['status'], 'clean'>, { letter: string;
 export function RepoFileTree({
   listing,
   onOpenFile,
+  onFileAction,
 }: {
   listing: ThreadRepoFiles;
   /** Open a file in the side pane; absent, the tree only lists. */
   onOpenFile?: (path: string) => void;
+  /** A row's menu (right click, Shift+F10), for a file that is there to act on. */
+  onFileAction?: (path: string, action: FileRowAction) => void;
 }) {
+  const { rowProps, host } = useFileRowMenu((path, action) => onFileAction?.(path, action));
   const byPath = useMemo(() => new Map(listing.files.map((f) => [f.path, f])), [listing]);
   const tree = useMemo(() => buildTree(listing.files.map((f) => `f ${f.path}`)), [listing]);
   const changed = useMemo(
@@ -74,6 +79,13 @@ export function RepoFileTree({
           name={node.name}
           title={node.path}
           className={onOpenFile && file?.status !== 'deleted' ? undefined : 'cursor-default'}
+          {...(onFileAction &&
+          onOpenFile &&
+          file &&
+          file.status !== 'deleted' &&
+          file.kind !== 'symlink'
+            ? rowProps(node.path, () => onOpenFile(node.path))
+            : {})}
         >
           <span aria-hidden className="size-4 shrink-0" />
           <FileTreeIcon>
@@ -103,24 +115,28 @@ export function RepoFileTree({
       );
     });
 
+  const view = (
+    <FileTree
+      aria-label="Repository files"
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+      {...(onOpenFile
+        ? {
+            onSelect: (path: string) => {
+              const file = byPath.get(path);
+              if (file && file.status !== 'deleted' && file.kind !== 'symlink') onOpenFile(path);
+            },
+          }
+        : {})}
+      className="rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
+    >
+      {render(tree)}
+    </FileTree>
+  );
+
   return (
     <>
-      <FileTree
-        aria-label="Repository files"
-        expanded={expanded}
-        onExpandedChange={setExpanded}
-        {...(onOpenFile
-          ? {
-              onSelect: (path: string) => {
-                const file = byPath.get(path);
-                if (file && file.status !== 'deleted' && file.kind !== 'symlink') onOpenFile(path);
-              },
-            }
-          : {})}
-        className="rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
-      >
-        {render(tree)}
-      </FileTree>
+      {onFileAction ? host(view) : view}
       {listing.truncated && (
         <p className="mt-1 text-xs text-muted-foreground">
           Showing the first {listing.files.length.toLocaleString()} files; the repository has more.

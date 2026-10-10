@@ -9,6 +9,7 @@ import {
   FileTreeIcon,
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
+import { type FileRowAction, useFileRowMenu } from '@/components/workspace/file-row-menu';
 import { HarnessFilesSection } from '@/components/workspace/harness-files';
 import { ThreadRepoSection } from '@/components/workspace/thread-repo';
 import { collectChanges, treePath } from '@/lib/changes';
@@ -24,7 +25,7 @@ import {
   vfs,
 } from '@/lib/cowork';
 import { ancestorsOf, buildTree, type TreeNode } from '@/lib/file-tree';
-import { usePaneState } from '@/lib/side-pane';
+import { requestFileAction, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 import { useShell } from '@/shell-context';
@@ -373,6 +374,11 @@ export function WorkspaceSection({ className }: { className?: string }) {
                 changed={changedPaths}
                 selected={previewing}
                 onOpenFile={openFile}
+                onFileAction={(path, action) => {
+                  openFile(path);
+                  if (action !== 'open')
+                    requestFileAction(threadId, { kind: 'file', path }, action);
+                }}
               />
             ) : (
               // Files is this tab's own store; the instrument's Changes is every
@@ -414,10 +420,13 @@ export function WorkspaceFileTree({
   changed,
   selected,
   onOpenFile,
+  onFileAction,
   label = 'Files',
 }: {
   /** What a screen reader calls the tree, when there is more than one. */
   label?: string;
+  /** A row's menu (right click, Shift+F10): Open, Rename…, Delete…. Absent, no menu. */
+  onFileAction?: (path: string, action: FileRowAction) => void;
   paths: readonly string[];
   changed: ReadonlySet<string>;
   selected: string | null;
@@ -435,6 +444,7 @@ export function WorkspaceFileTree({
   // Seeded once, from the changes on screen when the tree first draws: after that
   // the folds are the operator's.
   const [expanded, setExpanded] = useState(() => ancestorsOf(changed));
+  const { rowProps, host } = useFileRowMenu((path, action) => onFileAction?.(path, action));
   const render = (nodes: TreeNode[]) =>
     nodes.map((node) =>
       node.kind === 'folder' ? (
@@ -442,7 +452,13 @@ export function WorkspaceFileTree({
           {render(node.children)}
         </FileTreeFolder>
       ) : (
-        <FileTreeFile key={node.path} path={node.path} name={node.name} title={node.path}>
+        <FileTreeFile
+          key={node.path}
+          path={node.path}
+          name={node.name}
+          title={node.path}
+          {...(onFileAction ? rowProps(node.path, () => onOpenFile(node.path)) : {})}
+        >
           <span aria-hidden className="size-4 shrink-0" />
           <FileTreeIcon>
             <FileIcon aria-hidden className="size-3.5 text-muted-foreground" />
@@ -456,7 +472,7 @@ export function WorkspaceFileTree({
         </FileTreeFile>
       ),
     );
-  return (
+  const view = (
     <FileTree
       aria-label={label}
       expanded={expanded}
@@ -470,4 +486,5 @@ export function WorkspaceFileTree({
       {render(tree)}
     </FileTree>
   );
+  return onFileAction ? host(view) : view;
 }

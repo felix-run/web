@@ -3,7 +3,7 @@ import { ChevronRightIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { workspaceTree } from '@/api';
 import { WorkspaceFileTree } from '@/components/workspace/workspace-section';
-import { usePaneState } from '@/lib/side-pane';
+import { requestFileAction, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 import { useShell } from '@/shell-context';
@@ -130,6 +130,11 @@ export function HarnessFilesSection({ changed }: { changed: ReadonlySet<string> 
             changed={changed}
             selected={selected}
             onOpenFile={(path) => openInPane?.({ kind: 'file', path, source: 'harness' })}
+            onFileAction={(path, action) => {
+              const item = { kind: 'file' as const, path, source: 'harness' as const };
+              openInPane?.(item);
+              if (action !== 'open') requestFileAction(threadId, item, action);
+            }}
           />
         ) : (
           <p className="text-xs text-muted-foreground">Nothing written here yet.</p>

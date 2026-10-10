@@ -324,3 +324,58 @@ describe('renaming and deleting', () => {
     expect(screen.getByText('Save or revert your edits first.')).toBeTruthy();
   });
 });
+
+describe("a tree row's menu", () => {
+  it('opens on a right click, and Rename… opens the file with its rename strip', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'src' }));
+    const row = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(
+        '[data-slot="harness-files"] [title="src/app.py"]',
+      );
+      if (!el) throw new Error('no row yet');
+      return el;
+    });
+    fireEvent.contextMenu(row);
+    await user.click(await screen.findByRole('menuitem', { name: /Rename/ }));
+    await waitFor(() => expect(paneState(T).active).toBe('harness:src/app.py'));
+    expect(await screen.findByRole('textbox', { name: /New path/ })).toBeTruthy();
+    // Nothing is renamed until the strip is answered.
+    expect(harness.rename).not.toHaveBeenCalled();
+  });
+
+  it('opens from the keyboard, and Delete… asks in the pane before anything is deleted', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'src' }));
+    const row = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(
+        '[data-slot="harness-files"] [title="src/app.py"]',
+      );
+      if (!el) throw new Error('no row yet');
+      return el;
+    });
+    row.focus();
+    await user.keyboard('{Shift>}{F10}{/Shift}');
+    await user.click(await screen.findByRole('menuitem', { name: /Delete/ }));
+    expect(await screen.findByRole('alertdialog', { name: 'Delete the file' })).toBeTruthy();
+    expect(harness.del).not.toHaveBeenCalled();
+  });
+
+  it('keeps Enter opening the file', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'src' }));
+    const row = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(
+        '[data-slot="harness-files"] [title="src/app.py"]',
+      );
+      if (!el) throw new Error('no row yet');
+      return el;
+    });
+    row.focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(paneState(T).active).toBe('harness:src/app.py'));
+  });
+});
