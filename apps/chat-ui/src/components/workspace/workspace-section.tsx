@@ -9,6 +9,7 @@ import {
   FileTreeIcon,
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
+import { HarnessFilesSection } from '@/components/workspace/harness-files';
 import { ThreadRepoSection } from '@/components/workspace/thread-repo';
 import { collectChanges, treePath } from '@/lib/changes';
 import {
@@ -337,6 +338,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
 
       <div id="workspace-body" hidden={folded} className="mt-3 space-y-4 px-2.5">
         <ThreadRepoSection threadId={threadId} streaming={streaming} />
+        <HarnessFilesSection changed={changedPaths} />
 
         <section aria-labelledby="workspace-files-heading">
           <h3 id="workspace-files-heading" className="mb-1.5">
@@ -407,12 +409,15 @@ export function WorkspaceSection({ className }: { className?: string }) {
  * mounted repository is one row per top-level entry instead of two hundred paths.
  * A file opens in the side pane; a folder's name still folds it.
  */
-function WorkspaceFileTree({
+export function WorkspaceFileTree({
   paths,
   changed,
   selected,
   onOpenFile,
+  label = 'Files',
 }: {
+  /** What a screen reader calls the tree, when there is more than one. */
+  label?: string;
   paths: readonly string[];
   changed: ReadonlySet<string>;
   selected: string | null;
@@ -453,7 +458,7 @@ function WorkspaceFileTree({
     );
   return (
     <FileTree
-      aria-label="Files"
+      aria-label={label}
       expanded={expanded}
       onExpandedChange={setExpanded}
       {...(selected ? { selectedPath: selected } : {})}

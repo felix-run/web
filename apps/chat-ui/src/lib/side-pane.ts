@@ -22,6 +22,13 @@ export type PaneItem =
       kind: 'file';
       key: string;
       path: string;
+      /**
+       * Where the file lives. Absent: the browser's workspace (the mounted folder
+       * or the in-tab store). `harness`: the thread's workspace on the harness
+       * (`/chat/workspace/*`), which is where an agent with server-side file tools
+       * works. A save goes back to the same place it was read from.
+       */
+      source?: 'harness';
       /** The operator's edit, when there is one. */
       draft?: string;
       /** The file's text when the draft began — what a save would overwrite. */
@@ -69,7 +76,7 @@ const listeners = new Set<() => void>();
 export function paneKey(item: PaneItemInput): string {
   switch (item.kind) {
     case 'file':
-      return `file:${item.path}`;
+      return item.source === 'harness' ? `harness:${item.path}` : `file:${item.path}`;
     case 'artifact':
       return `artifact:${item.manifestId}/${item.artifactId}`;
     case 'code':
@@ -87,6 +94,18 @@ function hash(text: string): string {
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0).toString(36);
+}
+
+/** A file item with its edit state dropped: what it is when nothing is unsaved. */
+export function cleanFile(
+  item: Extract<PaneItem, { kind: 'file' }>,
+): Extract<PaneItem, { kind: 'file' }> {
+  return {
+    kind: 'file',
+    key: item.key,
+    path: item.path,
+    ...(item.source ? { source: item.source } : {}),
+  };
 }
 
 export function isDirty(item: PaneItem): boolean {

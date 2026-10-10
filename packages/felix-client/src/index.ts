@@ -172,13 +172,17 @@ export {
   createFelixClient,
   type FelixClient,
   type FelixClientOptions,
+  type HarnessWorkspaceTree,
   type LeaseAcquireResult,
   type LeaseStatus,
   type ManifestEntry,
   type ManifestGreeting,
   type ManifestStarter,
+  type ManifestWorkspace,
   type StreamArgs,
   type StreamHandlers,
+  WorkspaceChangedError,
+  WorkspaceRouteError,
 } from './transport';
 export {
   closeTool,

@@ -44,6 +44,15 @@
     "/chat/workspace/edited": {
       "post": {}
     },
+    "/chat/workspace/tree": {
+      "get": {}
+    },
+    "/chat/workspace/file": {
+      "get": {}
+    },
+    "/chat/workspace/write": {
+      "post": {}
+    },
     "/chat/tool_result": {
       "post": {}
     },

@@ -33,6 +33,7 @@ import { ConfirmButton } from '@/components/confirm-button';
 import { RepoFileTree } from '@/components/workspace/repo-files';
 import { getSession, subscribeCredentials } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { useOptionalShell } from '@/shell-context';
 
 /** How often a cloning checkout is asked about. A clone is seconds to a few minutes. */
 const CLONING_POLL_MS = 2_000;
@@ -152,6 +153,7 @@ function RepoStatus({
   files: ThreadRepoFiles | null;
   onRemove: () => Promise<void>;
 }) {
+  const openInPane = useOptionalShell()?.openInPane;
   const facts =
     repo.state === 'ready'
       ? [
@@ -182,7 +184,17 @@ function RepoStatus({
           <span className="truncate">{facts.join(' · ')}</span>
         </p>
       )}
-      {repo.state === 'ready' && files && <RepoFileTree key={repo.repo} listing={files} />}
+      {repo.state === 'ready' && files && (
+        <RepoFileTree
+          key={repo.repo}
+          listing={files}
+          {...(openInPane
+            ? {
+                onOpenFile: (path: string) => openInPane({ kind: 'file', path, source: 'harness' }),
+              }
+            : {})}
+        />
+      )}
       {repo.state === 'failed' && (
         <p role="alert" className="text-xs text-state-failed">
           The clone failed: {repo.error ?? 'no reason given'}.

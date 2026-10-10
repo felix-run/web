@@ -1,6 +1,8 @@
+import { LeaseRefusedError, WorkspaceChangedError, WorkspaceRouteError } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { RotateCwIcon } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { workspaceRead, workspaceWrite } from '@/api';
 import { CodeBlock } from '@/components/ai-elements/code-block';
 import { savedLine, useTellAgent, useTellsAgent, utf8Bytes } from '@/components/pane/edit-notice';
 import {
@@ -20,9 +22,11 @@ import {
   type Preview,
   previewOfBytes,
 } from '@/lib/file-preview';
-import { hasConflict, isDirty, type PaneItem, updatePaneFile } from '@/lib/side-pane';
+import { cleanFile, hasConflict, isDirty, type PaneItem, updatePaneFile } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
+import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 import type { EditNotice } from '@/shell-context';
+import { useOptionalShell } from '@/shell-context';
 
 // The skill library's renderer, because it is the one that already trusts its
 // input less than the transcript does: no inline HTML becomes an element, and no
@@ -35,7 +39,11 @@ const CodeEditor = lazy(() =>
 );
 
 type FileItem = Extract<PaneItem, { kind: 'file' }>;
-type Read = { status: 'loading' } | { status: 'missing' } | { status: 'ready'; preview: Preview };
+type Read =
+  | { status: 'loading' }
+  | { status: 'missing' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; preview: Preview };
 type View = 'rendered' | 'source' | 'edit';
 
 /**
@@ -72,8 +80,14 @@ export function FileView({
   streaming: boolean;
 }) {
   const { path, key } = item;
+  const harness = item.source === 'harness';
   const [read, setRead] = useState<Read>({ status: 'loading' });
   const tellAgent = useTellAgent();
+  // The agent the thread will run under next, which the harness uses to find
+  // the workspace of a thread that has never run (afterwards it uses its own).
+  const manifest = useOptionalShell()?.manifest;
+  /** The harness file's hash as last read: a save is refused unless it still is. */
+  const sha = useRef<string | null>(null);
   // A slow mount read for one load must not land after the next.
   const seq = useRef(0);
   const itemRef = useRef(item);
@@ -81,8 +95,26 @@ export function FileView({
 
   const load = useCallback(async () => {
     const mine = ++seq.current;
-    const bytes = await readWorkspaceBytes(path);
-    if (mine !== seq.current) return;
+    let bytes: Uint8Array | null;
+    if (harness) {
+      try {
+        const file = await workspaceRead({ threadId, path, ...(manifest ? { manifest } : {}) });
+        if (mine !== seq.current) return;
+        bytes = file.bytes;
+        sha.current = file.sha256;
+      } catch (err) {
+        if (mine !== seq.current) return;
+        if (!(err instanceof WorkspaceRouteError && err.code === 'not_found')) {
+          setRead({ status: 'error', message: harnessReadProblem(err) });
+          return;
+        }
+        bytes = null;
+        sha.current = null;
+      }
+    } else {
+      bytes = await readWorkspaceBytes(path);
+      if (mine !== seq.current) return;
+    }
     const preview = bytes === null ? null : previewOfBytes(bytes);
     setRead(preview ? { status: 'ready', preview } : { status: 'missing' });
     // An open edit is measured against what is on disk now.
@@ -91,7 +123,7 @@ export function FileView({
       const disk = preview.text === now.base ? undefined : preview.text;
       if (disk !== now.disk) updatePaneFile(threadId, key, (i) => ({ ...i, disk }));
     }
-  }, [path, key, threadId]);
+  }, [path, key, threadId, harness, manifest]);
 
   useEffect(() => {
     setRead({ status: 'loading' });
@@ -122,9 +154,7 @@ export function FileView({
   const edit = (next: string) =>
     updatePaneFile(threadId, key, (i) => {
       const base = i.base ?? text ?? '';
-      return next === base
-        ? { kind: 'file', key: i.key, path: i.path }
-        : { ...i, draft: next, base };
+      return next === base ? cleanFile(i) : { ...i, draft: next, base };
     });
 
   const views = [
@@ -147,6 +177,7 @@ export function FileView({
           changed && 'Changed on this thread',
           lines !== null && `${lines.toLocaleString()} ${lines === 1 ? 'line' : 'lines'}`,
           preview?.kind === 'media' && mediaLabel(preview.type, preview.bytes.length),
+          harness && 'On the harness',
           dirty && 'Edited',
           preview?.kind === 'text' && preview.truncated && 'Too large to edit here',
         ]}
@@ -183,9 +214,7 @@ export function FileView({
         <Conflict
           base={item.base}
           disk={item.disk}
-          onTakeTheirs={() =>
-            updatePaneFile(threadId, key, (i) => ({ kind: 'file', key: i.key, path: i.path }))
-          }
+          onTakeTheirs={() => updatePaneFile(threadId, key, cleanFile)}
           onKeepMine={() =>
             updatePaneFile(threadId, key, (i) => ({ ...i, base: i.disk, disk: undefined }))
           }
@@ -200,6 +229,12 @@ export function FileView({
       >
         {read.status === 'loading' ? (
           <p className="text-xs text-muted-foreground">Reading…</p>
+        ) : read.status === 'error' ? (
+          <p className="text-sm text-state-failed">{read.message}</p>
+        ) : read.status === 'missing' && harness ? (
+          <Note>
+            This file is not in the thread's workspace on the harness. It may have been removed.
+          </Note>
         ) : read.status === 'missing' ? (
           // Not an error: a file the agent removed, one listed before the folder
           // was changed, or a Changes row for a write that ran on the harness.
@@ -247,12 +282,39 @@ export function FileView({
           dirty={dirty}
           blocked={conflict}
           warnRun={streaming && writtenThisRun}
-          onRevert={() =>
-            updatePaneFile(threadId, key, (i) => ({ kind: 'file', key: i.key, path: i.path }))
-          }
+          onRevert={() => updatePaneFile(threadId, key, cleanFile)}
+          where={harness ? 'the thread\u2019s workspace on the harness' : undefined}
           onSave={async () => {
+            if (harness) {
+              // One request writes the file and tells the agent; it is refused if
+              // the file is no longer the one this edit started from.
+              let written: Awaited<ReturnType<typeof workspaceWrite>>;
+              try {
+                written = await workspaceWrite({
+                  threadId,
+                  path,
+                  content: value,
+                  ...(sha.current ? { expectedSha256: sha.current } : {}),
+                  ...(manifest ? { manifest } : {}),
+                });
+              } catch (err) {
+                if (err instanceof WorkspaceChangedError) {
+                  // Read what is there now, which opens the choice above.
+                  await load();
+                  throw new Error('it changed on the harness since you opened it. Choose above.');
+                }
+                if (err instanceof LeaseRefusedError) {
+                  throw new Error('another tab is driving this thread.');
+                }
+                throw err;
+              }
+              updatePaneFile(threadId, key, cleanFile);
+              await load();
+              window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+              return written.status;
+            }
             await writeWorkspaceFile(path, value);
-            updatePaneFile(threadId, key, (i) => ({ kind: 'file', key: i.key, path: i.path }));
+            updatePaneFile(threadId, key, cleanFile);
             await load();
             return tellAgent({ path, bytes: utf8Bytes(value) });
           }}
@@ -334,6 +396,7 @@ function SaveBar({
   blocked,
   warnRun,
   onRevert,
+  where,
   onSave,
 }: {
   path: string;
@@ -343,6 +406,8 @@ function SaveBar({
   /** The run still going wrote this file. */
   warnRun: boolean;
   onRevert: () => void;
+  /** Where a save goes, when it is not the browser's workspace. */
+  where?: string;
   /** Resolves with what came of telling the agent, once the file is written. */
   onSave: () => Promise<EditNotice | null>;
 }) {
@@ -422,8 +487,9 @@ function SaveBar({
           )
         ) : (
           <>
-            Saves to {store ? <span className="font-mono">{store}</span> : "this tab's workspace"}.{' '}
-            {tellsAgent ? 'The agent is told when you save.' : "The agent isn't told."}
+            Saves to{' '}
+            {where ?? (store ? <span className="font-mono">{store}</span> : "this tab's workspace")}
+            . {tellsAgent ? 'The agent is told when you save.' : "The agent isn't told."}
           </>
         )}
       </p>
@@ -520,4 +586,25 @@ function MediaView({
     // biome-ignore lint/a11y/useMediaCaption: a workspace file has no captions to offer.
     <video src={url} controls className="max-h-[70vh] w-full rounded-lg border bg-black" />
   );
+}
+
+/** A harness read that failed for a reason the operator can act on, said as such. */
+function harnessReadProblem(err: unknown): string {
+  if (err instanceof WorkspaceRouteError) {
+    switch (err.code) {
+      case 'too_large':
+        return 'Over 500 KB, which is more than the harness will send. Open it from the workspace itself.';
+      case 'not_a_file':
+        return 'That is a folder, not a file.';
+      case 'reserved_path':
+        return 'The harness does not serve files under .git.';
+      case 'workspace_unavailable':
+        return 'The thread\u2019s workspace on the harness is not available right now. Try again in a moment.';
+      case 'workspace_not_configured':
+        return 'This harness has no workspace configured.';
+      default:
+        return `The harness refused to read it (${err.code}).`;
+    }
+  }
+  return 'Could not reach the harness.';
 }

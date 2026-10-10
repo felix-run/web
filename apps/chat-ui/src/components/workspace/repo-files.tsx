@@ -7,8 +7,9 @@
  * added, deleted, untracked, conflicted — so it covers what the agent's shell did as well as its
  * workspace tools, which the instrument's *Changes* tab (built from tool arguments) cannot.
  *
- * Nothing here opens a file: the harness lists a checkout but serves none of its contents, so a
- * file is not a tab stop (the tree makes one only when selecting does something).
+ * A file opens in the side pane, read from and saved back to the checkout through the harness's
+ * workspace routes (`/chat/workspace/*`, felix-run/felix#578), which resolve a thread with a
+ * checkout to the checkout. A deleted file has nothing to open.
  */
 
 import { FileIcon, LinkIcon } from 'lucide-react';
@@ -33,7 +34,14 @@ const MARK: Record<Exclude<ThreadRepoFile['status'], 'clean'>, { letter: string;
   conflicted: { letter: 'C', word: 'conflicted' },
 };
 
-export function RepoFileTree({ listing }: { listing: ThreadRepoFiles }) {
+export function RepoFileTree({
+  listing,
+  onOpenFile,
+}: {
+  listing: ThreadRepoFiles;
+  /** Open a file in the side pane; absent, the tree only lists. */
+  onOpenFile?: (path: string) => void;
+}) {
   const byPath = useMemo(() => new Map(listing.files.map((f) => [f.path, f])), [listing]);
   const tree = useMemo(() => buildTree(listing.files.map((f) => `f ${f.path}`)), [listing]);
   const changed = useMemo(
@@ -65,7 +73,7 @@ export function RepoFileTree({ listing }: { listing: ThreadRepoFiles }) {
           path={node.path}
           name={node.name}
           title={node.path}
-          className="cursor-default"
+          className={onOpenFile && file?.status !== 'deleted' ? undefined : 'cursor-default'}
         >
           <span aria-hidden className="size-4 shrink-0" />
           <FileTreeIcon>
@@ -101,6 +109,14 @@ export function RepoFileTree({ listing }: { listing: ThreadRepoFiles }) {
         aria-label="Repository files"
         expanded={expanded}
         onExpandedChange={setExpanded}
+        {...(onOpenFile
+          ? {
+              onSelect: (path: string) => {
+                const file = byPath.get(path);
+                if (file && file.status !== 'deleted' && file.kind !== 'symlink') onOpenFile(path);
+              },
+            }
+          : {})}
         className="rounded-none border-0 bg-transparent text-xs [&>div]:p-0"
       >
         {render(tree)}

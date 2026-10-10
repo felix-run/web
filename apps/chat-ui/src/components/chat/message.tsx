@@ -509,7 +509,14 @@ function WorkspaceEditNote({
   label?: string;
   onLabel?: (next: string | null) => void;
 }) {
-  const openInPane = useOptionalShell()?.openInPane;
+  const shell = useOptionalShell();
+  const openInPane = shell?.openInPane;
+  // The note does not say which workspace the edit was in; the agent's tools do.
+  // An agent that works on the harness was told about a harness file.
+  const agent =
+    shell?.threads?.find((t) => t.id === shell.threadId)?.manifest?.trim() || shell?.manifest;
+  const tools = shell?.manifestEntries?.find((m) => m.id === agent)?.workspace?.tools;
+  const onHarness = tools === 'server' || tools === 'both';
   const target = edit.op === 'rename' ? edit.toPath : edit.op === 'delete' ? undefined : edit.path;
   const verb = edit.op === 'delete' ? 'deleted' : edit.op === 'rename' ? 'renamed' : 'edited';
   return (
@@ -521,7 +528,13 @@ function WorkspaceEditNote({
           {target && openInPane ? (
             <button
               type="button"
-              onClick={() => openInPane({ kind: 'file', path: target })}
+              onClick={() =>
+                openInPane({
+                  kind: 'file',
+                  path: target,
+                  ...(onHarness ? { source: 'harness' as const } : {}),
+                })
+              }
               title="Open in the side pane"
               className="font-mono text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >

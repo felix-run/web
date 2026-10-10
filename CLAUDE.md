@@ -1595,8 +1595,21 @@ that are easy to break:
   is no instrument, so it shows and hides the pane (tabs kept), as does a header *Side pane*
   toggle drawn only while something is open in it. The phone overlay is `data-shortcut-surface=
   "pane"` (`pane-drawer`), so the same key closes it.
-- `?open=<path>` names the active **file** in the address; other kinds come back from session
-  storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
+- **A file lives in one of two workspaces, and saves back to the one it came from**
+  (felix-run/felix#578). The browser's (the mount or the in-tab store) is where `local_*` tools
+  work; the harness's (`/chat/workspace/{tree,file,write}`) is where `read_file`/`write_file` work,
+  and an agent of that kind never reads the browser's — a pane save there reached it as a note
+  about a file it could not find. A file item's `source: 'harness'` (key `harness:<path>`) reads
+  through `workspaceRead`, keeps the hash, and saves through `workspaceWrite` with
+  `expected_sha256`; a `409 workspace_changed` re-reads, which opens the same conflict choice as
+  an agent's write under an edit. That write tells the agent itself, so the browser path's
+  `tellAgentEdited` is not called too. The sidebar's *On the harness* tree
+  (`components/workspace/harness-files.tsx`) is drawn only when the thread's agent's
+  `/v1/models` entry says `felix.workspace.tools` is `server` or `both`, and not for a thread with
+  a repository checkout, whose files the repository section now opens instead. Changes rows open
+  the workspace their tool wrote to (`local_*` → browser, else harness).
+- `?open=<path>` names the active **browser** file in the address; other kinds come back from
+  session storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
 
 ### Docs
 
