@@ -1564,26 +1564,30 @@ that produced them.
 ```yaml
 spec:
   permissions:
-    default_mode: default                     # the mode a conversation starts in
-    allowed_modes: [default, plan, accept_edits]   # add bypass to allow it at all
-    read_only_tools: [search__*]              # more tools plan mode may run
-    edit_tools: [notes__save]                 # more tools accept_edits waives approvals for
+    default_mode: default                          # the mode a conversation starts in
+    allowed_modes: [default, plan, accept_edits]   # accept_edits and bypass are opt-in
+    read_only_tools: [search__*]                   # more tools plan mode may run
+    edit_tools: [notes__save]                      # more tools accept_edits waives approvals for
 ```
 
 Each conversation is in one **permission mode**, set with [`POST /chat/mode`](/guide/rest-api/) and
-shown on the session snapshot as `permissionMode`:
+shown on the session snapshot as `permissionMode`. It applies from the next run.
 
 | Mode | What the agent may do |
 |---|---|
 | `default` | Everything the rest of the manifest allows, with approvals as written. |
-| `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task` — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals` like any other), and the conversation returns to `default_mode`. |
+| `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task` — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals`), and the conversation returns to `default_mode`. |
 | `accept_edits` | Approvals for `write_file`, `edit_file`, `delete_file`, `rename_file` and `edit_tools` are skipped; every other approval is asked as written. |
-| `bypass` | Every approval is skipped except a plan's. Only if `allowed_modes` lists it; it cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
+| `bypass` | Every approval is skipped except a plan's. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
 
-A mode the manifest does not allow is ignored — the run uses `default_mode`. An MCP tool's own
-read-only annotation does not count for plan mode (the server wrote it); list the tool in
-`read_only_tools` instead. A child agent shares its parent's mode: plan mode applies to it, but a
-skipped approval needs the child's own manifest to allow the mode.
+`allowed_modes` defaults to `[default, plan]`: `accept_edits` and `bypass` skip approvals you wrote,
+so they apply only where you list them. **Plan mode binds every agent**, whatever its
+`allowed_modes` — it only narrows — and `allowed_modes` decides whether the agent offers
+`exit_plan_mode`; a conversation whose agent does not offer it leaves plan mode through
+`POST /chat/mode`. A plan approval is single-use, for the person who asked, bound to the
+conversation, and expires after 30 minutes. Every skipped approval is audited (`approval_waived`).
+An MCP tool's own read-only annotation does not count for plan mode (the server wrote it); list the
+tool in `read_only_tools`.
 
 ## `spec.approvals`
 
