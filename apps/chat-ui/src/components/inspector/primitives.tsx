@@ -172,7 +172,7 @@ export function Section({
         {/* Held to the reading measure like every `/harness` page. A section is
             never a full-bleed page, so it takes the constant rather than asking. */}
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div className={READING_MEASURE}>{children}</div>
+          <div className={`${READING_MEASURE} mx-auto`}>{children}</div>
         </div>
       </section>
     );

@@ -78,7 +78,7 @@ export function PageEmpty({ children }: { children: ReactNode }) {
   return (
     <div
       data-page-empty
-      className="flex min-h-40 items-center justify-center rounded-lg bg-muted/50 px-6 py-10"
+      className="flex min-h-40 items-center justify-center rounded-2xl bg-ground px-6 py-10"
     >
       <p className="max-w-prose text-center text-sm text-muted-foreground">{children}</p>
     </div>
@@ -188,7 +188,15 @@ export function PageHeader({
           rule under it sits on one line across all eight pages. It moved by a few
           pixels whenever a page had controls, which the eye reads as the page
           jumping on navigation. */}
-      <div className={cn('flex min-h-8 flex-wrap items-center gap-x-2 gap-y-2', measure)}>
+      {/* Centred on the sheet, like the transcript: held to the left, a page left half the
+          sheet empty beside it at any desktop width. */}
+      <div
+        className={cn(
+          'flex min-h-8 flex-wrap items-center gap-x-2.5 gap-y-2',
+          measure,
+          measure && 'mx-auto',
+        )}
+      >
         {back ? (
           // Pulled left by its own padding so the chevron sits on the column the
           // icon would have, and the title does not move between widths.
@@ -202,11 +210,11 @@ export function PageHeader({
         ) : (
           // Normalised here so a section's 14px row icon and a page's 16px one
           // are the same size on the page, where the nav beside it draws 16px.
-          <span aria-hidden className="shrink-0 text-muted-foreground [&>svg]:size-4">
+          <span aria-hidden className="shrink-0 text-muted-foreground [&>svg]:size-[1.125rem]">
             {icon}
           </span>
         )}
-        <h2 id={headingId} className="truncate text-sm font-semibold">
+        <h2 id={headingId} className="truncate text-lg font-semibold tracking-tight">
           {title}
         </h2>
         {value && valueLead ? (
@@ -289,7 +297,7 @@ export function ViewSwitch<T extends string>({
     <div
       role="group"
       aria-label={label}
-      className="inline-flex h-8 items-center rounded-lg bg-muted p-[3px] text-muted-foreground"
+      className="inline-flex h-8 items-center rounded-full bg-ground p-[3px] text-muted-foreground"
     >
       {options.map(([id, text]) => (
         <button
@@ -298,11 +306,9 @@ export function ViewSwitch<T extends string>({
           aria-pressed={value === id}
           onClick={() => onChange(id)}
           className={cn(
-            'h-full rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors',
+            'h-full rounded-full px-3 text-xs font-semibold whitespace-nowrap transition-colors',
             'focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
-            value === id
-              ? 'bg-background text-foreground shadow-sm dark:bg-input/30'
-              : 'hover:text-foreground',
+            value === id ? 'bg-background text-foreground shadow-sheet' : 'hover:text-foreground',
           )}
         >
           {text}
@@ -408,7 +414,7 @@ export function PanelBody({ children, className }: { children: ReactNode; classN
     // came out 32px narrower than the header row and ended short of the
     // controls that act on them. The Activity page's tabs were the one page right.
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
-      <div className={cn(measure, className)}>{children}</div>
+      <div className={cn(measure, measure && 'mx-auto', className)}>{children}</div>
     </div>
   );
 }
@@ -457,7 +463,7 @@ export function PageSection({
       <div
         className={cn('flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1', children && 'mb-2')}
       >
-        <h3 id={id} className="text-sm font-semibold">
+        <h3 id={id} className="text-base font-semibold">
           {title}
         </h3>
         {meta ? <span className="text-xs text-muted-foreground tabular-nums">{meta}</span> : null}
