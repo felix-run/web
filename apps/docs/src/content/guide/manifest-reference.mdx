@@ -1315,7 +1315,6 @@ spec:
 | `max_input_tokens` | int \| null | 1,000,000 | **20,000,000** |
 | `max_output_tokens` | int \| null | 100,000 | **100,000** |
 | `max_cost_usd` | float \| null | 1,000.00 | **1,000.00** |
-| `precount` | bool | `false` | Count input tokens before the call rather than after. |
 
 **An unset limit is not unlimited.** Every run is bounded on all six: a field left out, or set
 to `null`, is filled from the harness's defaults (`DEFAULT_LIMITS`), which are the ceiling for

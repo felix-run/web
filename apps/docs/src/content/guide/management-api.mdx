@@ -1034,7 +1034,11 @@ each firing then gets a thread of its own, so one run's transcript never sits in
 context. Both are fields on the web UI's job form, and a stored job's row says which mode it runs
 in.
 
-Schedules use standard five-field cron — see [Deploy](/guide/deploy/#cron-schedules).
+Schedules use standard five-field cron, evaluated in UTC — see [Deploy](/guide/deploy/#cron-schedules).
+`@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly` work too, as do plain intervals (`300` seconds,
+`every:5m`). Anything else is refused with `422` and nothing is stored. A job stored before that check
+existed, with a schedule it cannot read, does not fire: its `last_status` reads `error` and
+`last_error` says why.
 
 ### Run a job now
 
