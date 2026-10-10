@@ -123,7 +123,7 @@ function Sidebar({
           data-mobile="true"
           showCloseButton={false}
           className={cn(
-            'w-(--sidebar-width) max-w-full gap-0 bg-background p-0 text-foreground sm:max-w-none',
+            'w-(--sidebar-width) max-w-full gap-0 bg-ground p-0 text-foreground sm:max-w-none',
             sheetClassName,
           )}
           style={{ '--sidebar-width': SIDEBAR_WIDTH_MOBILE } as React.CSSProperties}
@@ -152,9 +152,8 @@ function Sidebar({
         data-sidebar="sidebar"
         data-slot="sidebar-inner"
         className={cn(
-          'flex h-full w-(--sidebar-width) flex-col overflow-hidden bg-background transition-[width] duration-200 ease-out motion-reduce:transition-none',
+          'flex h-full w-(--sidebar-width) flex-col overflow-hidden bg-ground transition-[width] duration-200 ease-out motion-reduce:transition-none',
           'group-data-[collapsible=icon]:w-(--sidebar-width-icon)',
-          side === 'left' ? 'border-r border-border/60' : 'border-l border-border/60',
           className,
         )}
         {...props}
@@ -310,11 +309,11 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md px-2 text-left text-sm outline-hidden transition-[width,height,padding,background-color,color] duration-200 ease-out hover:bg-accent/60 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-accent data-[active=true]:font-medium data-[active=true]:text-foreground group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
+  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-lg px-2.5 text-left text-sm outline-hidden transition-[width,height,padding,background-color,color,box-shadow] duration-200 ease-out hover:bg-sidebar-accent/70 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:shadow-sheet data-[active=true]:font-semibold data-[active=true]:text-foreground group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:p-2.5! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
   {
     variants: {
       size: {
-        default: 'h-8 coarse:h-10',
+        default: 'h-9 coarse:h-11',
         lg: 'h-auto min-h-12 py-1.5 group-data-[collapsible=icon]:min-h-0',
       },
     },

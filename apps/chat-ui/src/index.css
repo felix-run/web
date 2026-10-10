@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "./chat-utilities.css";
+/* Self-hosted variable faces (2026-10-10, the Warm Workbench redesign). Nunito Sans is the
+   one voice for prose and UI: humanist, open at 12px, warm without being rounded. JetBrains
+   Mono marks what the harness said — ids, paths, tool names, JSON (the Provenance Rule). */
+@import "@fontsource-variable/nunito-sans";
+@import "@fontsource-variable/jetbrains-mono";
 
 /* `@felix/ui` is consumed as raw source from outside this app's root, so Tailwind's
    automatic content detection never sees it. Without this, every utility that appears
@@ -61,18 +66,25 @@
    12 -> 14 pair was 1.17 but started too high to leave room beneath it, which is
    what pushed metadata down to 10px in the first place. */
 @theme {
-  --text-xs: 0.6875rem;
+  /* Warm Workbench (2026-10-10): the dense steps rose a pixel each, 11/13 -> 12/14. Nunito
+     Sans sets smaller than the system stack at the same size, and the surface is meant to be
+     comfortable to live in all day; 12px is now the floor rather than 11. */
+  --text-xs: 0.75rem;
   --text-xs--line-height: 1.45;
-  --text-sm: 0.8125rem;
+  --text-sm: 0.875rem;
   --text-sm--line-height: 1.5;
   --text-base: 1rem;
-  --text-base--line-height: 1.6;
+  --text-base--line-height: 1.65;
+  --font-sans: "Nunito Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* Map shadcn design tokens onto Tailwind's theme so `bg-background`,
    `text-muted-foreground`, `rounded-lg`, etc. resolve. */
 @theme inline {
   --color-background: var(--background);
+  --color-ground: var(--ground);
+  --color-sidebar-accent: var(--sidebar-accent);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -101,11 +113,20 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* The composer and the sheet: the largest radius, and on nothing else. */
+  --radius-2xl: calc(var(--radius) + 8px);
+  --shadow-sheet: var(--sheet-shadow);
 }
 
-/* Neutral (zinc) palette in oklch. Light + dark token sets. */
+/* Warm Workbench palette (2026-10-10), in oklch, light + dark. Two neutral levels carry the
+   layout: a warm stone *ground* (the shell and the sidebar) and a near-white *sheet*
+   (`--background`: header, transcript, instrument, every /harness page) floating on it. Stone,
+   never cream: chroma is held under 0.01 so the ground reads as warm grey, not paper. The
+   run-state ramp is unchanged and is still the only hue. Contrast measured 2026-10-10:
+   muted-foreground 6.20:1 on the sheet, 5.46:1 on the ground, 5.35:1 on --accent; every
+   state colour above 6.2:1 on either level and 6.4:1 on its own /10 tint. */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.875rem;
   /* The app header's height, and the offset the toast layer clears it by. It is a
      token because two unrelated files need the same number: the header sets its own
      height from this, and the `<Toaster>` positions itself below it. They used to
@@ -118,22 +139,25 @@
      readable over it. Named rather than a second literal, because this is the only
      value in the app that is *not* 50 and the reason needs somewhere to live. */
   --z-toast: 60;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
+  --ground: oklch(0.952 0.007 75);
+  --background: oklch(0.995 0.002 75);
+  --foreground: oklch(0.235 0.012 55);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
+  --card-foreground: oklch(0.235 0.012 55);
+  --popover: oklch(0.995 0.002 75);
+  --popover-foreground: oklch(0.235 0.012 55);
+  --primary: oklch(0.265 0.014 55);
+  --primary-foreground: oklch(0.985 0.004 75);
+  --secondary: oklch(0.945 0.008 75);
+  --secondary-foreground: oklch(0.265 0.014 55);
+  --muted: oklch(0.952 0.007 75);
   /* 0.552 measured 4.39:1 against --accent (the selected history row), under AA.
      0.53 clears it at 4.79:1 there and 5.27:1 on --background. */
-  --muted-foreground: oklch(0.53 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
+  --muted-foreground: oklch(0.49 0.016 58);
+  --accent: oklch(0.945 0.008 75);
+  /* A selected row on the ground is lifted to the sheet's own colour. */
+  --sidebar-accent: oklch(0.995 0.002 75);
+  --accent-foreground: oklch(0.265 0.014 55);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
   /* Run state, and nothing else. Each doubles as text colour and, at /15, as its own
@@ -149,21 +173,26 @@
   /* Recording, which is red by convention and is not a failure. Kept separate from
      `--state-failed` so changing how errors look cannot restyle the microphone. */
   --recording: oklch(0.5 0.2 25);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
+  --border: oklch(0.905 0.008 70);
+  --input: oklch(0.88 0.009 70);
   /* The focus indicator, which WCAG 1.4.11 holds to 3:1 against everything it sits
      next to. At the previous 0.705 it reached only 2.62:1 on the page and 2.45:1 on
      a control's own surface — and the primitives then drew it at 50% alpha, taking it
      to 1.55:1. Measured on both sides at 0.6: 3.96:1 and 3.70:1. The dark value is
      already compliant at full alpha, so only this one moves. */
-  --ring: oklch(0.6 0.015 286.067);
+  --ring: oklch(0.58 0.02 60);
   /* A scrollbar thumb is a control, not a hairline, so it is not `--border`: that
      token measured 1.27:1 here, which is invisible. WCAG 1.4.11 asks 3:1 of an
      essential UI component; these clear it on both the base and card surfaces. */
-  --scrollbar-thumb: oklch(0.62 0.01 285.9);
+  --scrollbar-thumb: oklch(0.6 0.012 60);
   /* Composer surface shadows (resting / focused) used by the multimodal input. */
-  --shadow-composer: 0 1px 2px oklch(0 0 0 / 5%), 0 4px 16px oklch(0 0 0 / 6%);
-  --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 6%), 0 8px 28px oklch(0 0 0 / 10%);
+  --shadow-composer: 0 1px 2px oklch(0.3 0.03 55 / 6%), 0 6px 20px -4px oklch(0.3 0.03 55 / 10%);
+  --shadow-composer-focus:
+    0 2px 4px oklch(0.3 0.03 55 / 7%), 0 12px 32px -6px oklch(0.3 0.03 55 / 16%);
+  /* The sheet: one soft, warm lift off the ground. */
+  --sheet-shadow:
+    0 0 0 1px oklch(0.3 0.03 55 / 5%), 0 1px 2px oklch(0.3 0.03 55 / 5%),
+    0 8px 24px -12px oklch(0.3 0.03 55 / 12%);
   /* The surface under a block of code or tool output. It is its own token because the
      block has to sit *off* the page in both themes — one step down from white here, one
      step up from near-black there — and neither `--muted` nor `--card` does both: the
@@ -184,24 +213,26 @@
      for one job — `/80`, `/60`, and none — which made a pane's colour a function of the
      tint behind it: the approval panes sat on `bg-state-blocked/5` and came out faintly
      amber, so a diff was coloured by the state of the banner around it. */
-  --code-surface: oklch(0.98 0.001 286.375);
+  --code-surface: oklch(0.972 0.005 75);
 }
 
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.92 0.004 286.32);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
+  --ground: oklch(0.17 0.006 60);
+  --background: oklch(0.212 0.007 60);
+  --foreground: oklch(0.95 0.006 75);
+  --card: oklch(0.235 0.008 60);
+  --card-foreground: oklch(0.95 0.006 75);
+  --popover: oklch(0.235 0.008 60);
+  --popover-foreground: oklch(0.95 0.006 75);
+  --primary: oklch(0.93 0.008 75);
+  --primary-foreground: oklch(0.22 0.01 55);
+  --secondary: oklch(0.27 0.008 60);
+  --secondary-foreground: oklch(0.95 0.006 75);
+  --muted: oklch(0.27 0.008 60);
+  --muted-foreground: oklch(0.72 0.013 70);
+  --accent: oklch(0.27 0.008 60);
+  --sidebar-accent: oklch(0.24 0.008 60);
+  --accent-foreground: oklch(0.95 0.006 75);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
   --state-blocked: oklch(0.879 0.169 91.605);
@@ -209,13 +240,14 @@
   --state-running: oklch(0.828 0.111 230.318);
   --state-failed: oklch(0.75 0.16 22.2);
   --recording: oklch(0.72 0.19 24);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
-  --scrollbar-thumb: oklch(1 0 0 / 36%);
+  --border: oklch(0.95 0.02 70 / 10%);
+  --input: oklch(0.95 0.02 70 / 16%);
+  --ring: oklch(0.6 0.015 70);
+  --scrollbar-thumb: oklch(0.62 0.01 70);
   --shadow-composer: 0 1px 2px oklch(0 0 0 / 30%), 0 4px 16px oklch(0 0 0 / 35%);
   --shadow-composer-focus: 0 2px 4px oklch(0 0 0 / 35%), 0 8px 28px oklch(0 0 0 / 45%);
-  --code-surface: oklch(0.205 0.006 285.885);
+  --sheet-shadow: 0 0 0 1px oklch(0.95 0.02 70 / 6%), 0 8px 24px -12px oklch(0 0 0 / 50%);
+  --code-surface: oklch(0.18 0.006 60);
 }
 
 @layer base {
@@ -262,8 +294,17 @@
   html {
     overscroll-behavior: none;
   }
+  ::selection {
+    background-color: color-mix(in oklch, var(--state-running) 22%, transparent);
+  }
+  input,
+  textarea {
+    caret-color: var(--foreground);
+  }
   body {
-    background-color: var(--background);
+    font-family: var(--font-sans);
+    font-optical-sizing: auto;
+    background-color: var(--ground);
     color: var(--foreground);
     overscroll-behavior: none;
     touch-action: manipulation;

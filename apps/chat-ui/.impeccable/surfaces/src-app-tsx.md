@@ -210,3 +210,39 @@ width, which put the most frequent navigation in this app two clicks deep.
   below the threads and folds. Where it sits relative to Threads was left open at confirmation;
   it went below them because the thread list is what is opened most often.
 - `Mod+\` and `Mod+K` are unchanged. The references' `Mod+B` was not taken (see `lib/shortcuts.ts`).
+
+## Direction contract — Warm Workbench (redesign, 2026-10-10)
+
+Supersedes the visual world (OWN-WORLD, palette, type) of the Workbench contract above. The
+zones, their breakpoints and yield order, and every pinned behaviour stand. Kept by the
+operator: the cat-prompt mark, and colour meaning run state. Webfonts are allowed now.
+
+**THESIS.** A tool the operator wants to open every day: warm, soft, plainly worded, with the
+harness's real states never hidden. It replaces the stock shadcn zinc look (flat hierarchy,
+system font, no identity) without hiding the mechanism.
+
+**OWN-WORLD.** Light by default: a warm stone ground (never cream) with white surfaces one
+step up. Dark is a warm charcoal. Large soft radii on what you touch (composer, cards,
+approvals, thread tiles). A rounded humanist UI face carries prose and UI, and a mono marks
+harness quotations. The four-hue ramp is the only hue. "You can act here" is a warm-ink pill,
+never a fifth colour. Separation comes from tone and one confident scale step, not hairline
+boxes.
+
+**STORY.** The operator opens it cold and sees, in plain words, what is waiting and what ran.
+They read the conversation at a comfortable size, see every call as a soft card titled in
+plain language over the raw call, and decide approvals on the largest object on screen.
+
+**FIRST VIEWPORT.** Left 17rem sidebar on the stone ground: brand row, New chat as an ink pill,
+thread tiles (rounded, with the current tile on white), then workspace and harness. Centre
+transcript on white at reading measure, with the composer as a large white rounded card
+anchored at the bottom, the primary action. Right: the instrument as soft tabs.
+
+**FORM.** Warm consumer app surface (user steer, round 2, adopted over the roll). Raises:
+nothing disappears, it cancels (ticket wallet); hierarchy by scale step, not boxes (type
+specimen); a waiting approval owns attention (vertical feed). Seed key `7726f8dc`.
+
+**FINISH.** unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+
+Staging: PR 1 is foundation + shell (tokens, fonts, primitives, header, sidebar). PR 2 is the
+transcript and composer. PR 3 is the instrument and the /harness pages. One branch per stage,
+never stacked.

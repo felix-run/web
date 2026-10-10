@@ -38,14 +38,18 @@ falls back to reading harness logs in a terminal.
 
 ## Brand Personality
 
-**Instrumented, calm, exact.**
+**Instrumented, calm, exact — and warm to live with.**
 
 - *Instrumented*: the mechanism is the product. Show real states, real numbers, real event types.
   Never summarize the machine into a friendlier fiction.
 - *Calm*: an autonomous process is already generating uncertainty. The UI does not add to it. No
   alarm colors for ordinary states, no motion that competes with streaming text, no celebration.
-- *Exact*: a number is a number, a status is the status the harness reported. Precision over warmth,
-  and never rounding away information the operator would act on.
+- *Exact*: a number is a number, a status is the status the harness reported. Precision over warmth
+  in what is *said*, and never rounding away information the operator would act on.
+- *Warm to live with* (2026-10-10): this is opened every day, so the *surface* is warm — a stone
+  ground, soft radii on what is touched, a humanist face, plain words. Warmth is a property of the
+  material, never of the facts: it never replaces a status with a friendlier one, never hides a
+  call, and never adds a colour that does not mean state.
 
 Voice: plain declaratives that name the mechanism. "Deciding resumes the paused run" over "You're
 all set!". Second person only where the operator must act.
@@ -60,10 +64,12 @@ Four failure modes, all of which this codebase is currently within reach of:
 2. **Density without hierarchy.** The observability-dashboard failure: every panel equally loud,
    chrome on every metric, nothing edited down, so the operator's eye has nowhere to land. Density
    is fine; undifferentiated density is not.
-3. **Consumer-chat warmth.** Big friendly empty states, avatars, the harness tucked out of sight.
-   Hiding the mechanism is the opposite of the product's purpose.
+3. **Consumer-chat fiction.** Avatars, inverted chat bubbles, the harness tucked out of sight,
+   statuses softened into reassurance. Hiding the mechanism is the opposite of the product's
+   purpose. (Amended 2026-10-10: consumer-grade *warmth* — soft surfaces, a friendly face, plain
+   labels — is now the chosen register. What stays out is the fiction, not the warmth.)
 4. **Warm-neutral editorial.** Cream body, serif display, marketing cadence leaking into product
-   copy. Wrong register entirely.
+   copy. Still the wrong register: the warm ground is stone, never cream, and the face is a sans.
 
 ## Design Principles
 
