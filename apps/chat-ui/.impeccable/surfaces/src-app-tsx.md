@@ -223,8 +223,8 @@ system font, no identity) without hiding the mechanism.
 
 **OWN-WORLD.** Light by default: a warm stone ground (never cream) with white surfaces one
 step up. Dark is a warm charcoal. Large soft radii on what you touch (composer, cards,
-approvals, thread tiles). A rounded humanist UI face carries prose and UI, and a mono marks
-harness quotations. The four-hue ramp is the only hue. "You can act here" is a warm-ink pill,
+approvals, thread tiles). An engineered grotesk (Geist, replacing Onest the same day) carries prose and UI,
+and a mono (JetBrains Mono) marks harness quotations. The four-hue ramp is the only hue. "You can act here" is a warm-ink pill,
 never a fifth colour. Separation comes from tone and one confident scale step, not hairline
 boxes.
 

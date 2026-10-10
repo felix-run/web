@@ -11,7 +11,7 @@
  * Rasterising needs `rsvg-convert` (librsvg) and `magick` (ImageMagick) on the
  * PATH; on macOS, `brew install librsvg imagemagick`. They are a dependency of
  * regenerating, not of building, which is why neither is in package.json. The
- * social card is the exception: it is set in Onest and JetBrains Mono, which rsvg
+ * social card is the exception: it is set in Geist and JetBrains Mono, which rsvg
  * cannot load, so it renders through `@resvg/resvg-js` with the faces decoded by
  * `wawoff2` — dev dependencies of this package, since they are npm and not a PATH.
  */
@@ -133,10 +133,10 @@ write(join(docsAssets, 'mark-dark.svg'), `${markSvg({ inverted: true })}\n`);
  * card warms with them; the mark is the tab mark at scale, set on a hairline so the
  * dark head does not dissolve into a dark field.
  *
- * Set in the docs' own faces, Onest and JetBrains Mono, so it is rendered by resvg,
+ * Set in the docs' own faces, Geist and JetBrains Mono, so it is rendered by resvg,
  * which takes font files directly, and not by rsvg-convert: on macOS rsvg lays text
- * out through CoreText and ignores any font it is pointed at (tested 2026-10-10: "Onest"
- * and a made-up family rendered byte-identically). resvg reads only TTF/OTF and does
+ * out through CoreText and ignores any font it is pointed at (tested 2026-10-10: a
+ * self-hosted face and a made-up family rendered byte-identically). resvg reads only TTF/OTF and does
  * not apply a variable font's weight axis (600 drew as 400), so the faces are the
  * static per-weight `@fontsource` files, decoded from woff2 into the scratch dir.
  * System fonts are off, so a missing face fails here rather than falling back.
@@ -148,7 +148,7 @@ function socialCard(): string {
   const x = 96;
   const y = 96;
   const k = size / MARK_GRID;
-  const sans = 'Onest';
+  const sans = 'Geist';
   const mono = 'JetBrains Mono';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <rect width="${w}" height="${h}" fill="${DARK.bg}"/>
@@ -165,12 +165,12 @@ function socialCard(): string {
 
 const fontFile = createRequire(import.meta.url);
 const CARD_FACES = [
-  '@fontsource/onest/files/onest-latin-400-normal.woff2',
-  '@fontsource/onest/files/onest-latin-600-normal.woff2',
+  '@fontsource/geist/files/geist-latin-400-normal.woff2',
+  '@fontsource/geist/files/geist-latin-600-normal.woff2',
   '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2',
 ];
 // One at a time: wawoff2 is a single wasm instance, and decoding concurrently handed
-// one face's bytes to another's file (the card came out with Onest and JetBrains Mono
+// one face's bytes to another's file (the card came out with its sans and JetBrains Mono
 // swapped).
 async function cardFonts(): Promise<string[]> {
   const files: string[] = [];
@@ -185,7 +185,7 @@ async function cardFonts(): Promise<string[]> {
 const og = join(docsPublic, 'og.png');
 const card = new Resvg(socialCard(), {
   fitTo: { mode: 'width', value: 1200 },
-  font: { fontFiles: await cardFonts(), loadSystemFonts: false, defaultFontFamily: 'Onest' },
+  font: { fontFiles: await cardFonts(), loadSystemFonts: false, defaultFontFamily: 'Geist' },
 }).render();
 if (card.width !== 1200 || card.height !== 630) {
   throw new Error(`social card rendered ${card.width}x${card.height}, expected 1200x630`);

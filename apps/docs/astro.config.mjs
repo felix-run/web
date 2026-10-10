@@ -46,7 +46,7 @@ export default defineConfig({
       // Palette from @felix/design (checked-in src/styles/theme.css).
       // theme.css is generated (see @felix/design); brand.css is hand-written.
       customCss: [
-        '@fontsource-variable/onest',
+        '@fontsource-variable/geist',
         '@fontsource-variable/jetbrains-mono',
         './src/styles/theme.css',
         './src/styles/brand.css',

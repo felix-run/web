@@ -26,28 +26,28 @@ colors:
   state-failed-light: "#a20002"
 typography:
   display:
-    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "clamp(1.8125rem, calc(0.5rem + 3.5vw), 2.625rem)"
     fontWeight: 600
     lineHeight: 1.1
     letterSpacing: "-0.02em"
   headline:
-    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "2.625rem"
     fontWeight: 600
     lineHeight: 1.2
   title:
-    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "2.1875rem"
     fontWeight: 600
     lineHeight: 1.2
   body:
-    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.75
   label:
-    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 600
     lineHeight: 1.5
@@ -56,7 +56,7 @@ typography:
     fontSize: "0.8125rem"
     fontWeight: 400
   wordmark:
-    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 650
     letterSpacing: "0.07em"
@@ -120,7 +120,7 @@ The manual that ships with the instrument. chat-ui is the Workbench, where an op
 run and decides what it may do; the docs are the same machine written down, for the moments that
 operator is not at the bench — setting it up, looking up a route, learning why a run behaved the
 way it did. The material is the Workbench's — since 2026-10-10 chat-ui's warm stone and charcoal,
-and its Onest and JetBrains Mono — hue still means state and nothing else, and the page
+and its Geist and JetBrains Mono — hue still means state and nothing else, and the page
 shows the mechanism rather than a friendlier account of it: real event names, real routes, real
 error reasons.
 
@@ -139,7 +139,7 @@ that once sat behind the top of the reading column was removed (2026-10-08).
 
 - A warm neutral field — stone and paper in light, charcoal in dark — with no hue in it; dark is
   the default.
-- Onest for prose and UI, JetBrains Mono for code: chat-ui's faces, self-hosted.
+- Geist for prose and UI, JetBrains Mono for code: chat-ui's faces, self-hosted.
 - Hue only from the four-state ramp, only where there is something to do or know.
 - One 48rem column for everything; tables and code scroll inside it when wider.
 - The mechanism drawn as data: RunTrace on the home page, events as a stacked list.
@@ -214,7 +214,7 @@ the light page and 6.51:1 on the stone sidebar.
 
 ## Typography
 
-**Body and display:** Onest Variable (`--sl-font`), falling back to the system sans stack.
+**Body and display:** Geist Variable (`--sl-font`), falling back to the system sans stack.
 **Code:** JetBrains Mono Variable (`--sl-font-mono`), falling back to the system mono stack.
 
 **Character:** chat-ui's two faces (2026-10-10), so the manual and the app read as one product:

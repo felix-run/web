@@ -26,51 +26,51 @@ colors:
   recording: "oklch(0.5 0.2 25)"
 typography:
   display:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1.75rem"
     fontWeight: 600
     lineHeight: 1.333
     letterSpacing: "-0.025em"
   figure:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1.5rem"
     fontWeight: 600
     lineHeight: 1.333
     letterSpacing: "-0.025em"
   page-title:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 600
     lineHeight: 1.4
     letterSpacing: "-0.025em"
   statement:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1.125rem"
     fontWeight: 600
     lineHeight: 1.556
     letterSpacing: "-0.025em"
   headline:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1rem"
     fontWeight: 600
     lineHeight: 1.65
   prose:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.65
   title:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 600
     lineHeight: 1.5
   body:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.5
   label:
-    fontFamily: "Onest Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 500
     lineHeight: 1.45
@@ -252,7 +252,7 @@ reported.
 
 Since 2026-10-10 the *material* is warm, because this is a tool opened every day. A stone ground
 carries the shell and the sidebar; a near-white sheet floats on it and holds everything that is
-read. Soft radii go on what is touched, a humanist grotesk (Onest) carries prose and UI, and a
+read. Soft radii go on what is touched, an engineered grotesk (Geist) carries prose and UI, and a
 mono (JetBrains Mono) marks what the harness said. The register underneath is unchanged:
 **instrumented, calm, exact**. Instrumented: real states, real numbers, real event types. Calm:
 no alarm colours for ordinary states, no motion competing with streaming text, no celebration.
@@ -275,7 +275,7 @@ cadence. The ground is stone, never cream, and the face is a sans.
 - Two neutral levels: a warm stone ground under a near-white floating sheet. Colour means run state and nothing else.
 - Tone and one confident scale step for separation; hairlines only where tone cannot do it.
 - One header grammar (icon, title, one at-a-glance value) repeated at every scale.
-- Monospace for anything the harness emitted; Onest for anything we wrote.
+- Monospace for anything the harness emitted; Geist for anything we wrote.
 - A 12/14/16 ramp, with single steps at 18, 20 and 24 reserved for named roles.
 - Pills for what you press, 22px corners for what you read or decide on.
 - Four shadows, each a role: the sheet, the lift, the focused lift, the approval.
@@ -366,14 +366,16 @@ the harness has answered for them.
 
 ## Typography
 
-**UI and Prose Font:** Onest Variable (with `ui-sans-serif, system-ui, sans-serif`)
+**UI and Prose Font:** Geist Variable (with `ui-sans-serif, system-ui, sans-serif`)
 **Value Font:** JetBrains Mono Variable (with `ui-monospace, SFMono-Regular, Menlo, monospace`)
 
 Both are self-hosted through `@fontsource-variable` and imported at the top of `index.css`; no
 request leaves the origin for a face.
 
-**Character:** a warm grotesk, slightly narrow, so a thread title keeps more of itself before it
-truncates, and firm enough to sit beside the mono without the pair reading as two products.
+**Character:** an engineered grotesk, precise at 12–14px and still comfortable in a long reply.
+The warmth is carried by the surfaces; the type stays an instrument's, close enough in shape to the
+mono that the pair reads as one product. It replaced Onest on 2026-10-10, the day the material
+changed, chosen over Barlow, Red Hat Text and Archivo from a side-by-side at the app's real sizes.
 Hierarchy comes from weight, one scale step, muting, and the mono/proportional split.
 
 The ramp redefines Tailwind's own steps, so every existing `text-xs`/`text-sm` landed on it:
@@ -408,7 +410,7 @@ semibold with tight tracking.
 
 ### Named Rules
 
-**The Provenance Rule.** Monospace marks what the harness said; Onest marks what we said. A
+**The Provenance Rule.** Monospace marks what the harness said; Geist marks what we said. A
 model id, a path, a tool name, an event type and a raw status are mono because they are
 quotations. Our own sentences about them are not.
 
@@ -666,7 +668,7 @@ the `>` are always neutral ink.
   and the prompt is `--background`, which is `primary`'s inversion with no theme branch.
 - **It is decorative beside the wordmark.** `aria-hidden` in chat-ui, because the wordmark is the
   accessible name; in chat-ui it sits inside the sidebar toggle, which carries its own name.
-- **Lockup:** mark (20px), then the wordmark in Onest 16px semibold, uppercase, `tracking-wider`,
+- **Lockup:** mark (20px), then the wordmark in Geist 16px semibold, uppercase, `tracking-wider`,
   `gap-2`. In chat-ui the lockup heads the sidebar on the ground.
 
 ### Buttons
@@ -902,7 +904,7 @@ stopwatch is not.
 
 **A soft white card, titled in our words over the raw call.** `rounded-xl` on `card` with a full
 `border` hairline and `shadow-sheet`. Collapsed, the header leads with the call's **summary**
-(its target, in Onest 14px medium, truncating), then the harness's name for the tool in 12px mono
+(its target, in Geist 14px medium, truncating), then the harness's name for the tool in 12px mono
 muted, then a shell call's duration in mono, then the state badge; a call with no summary leads
 with its mono name. There is no wrench: an icon on every card marks a row, not a kind. The state
 badge is honest about outcome: a shell tool shows its exit status, and a result the harness
@@ -979,7 +981,7 @@ resting `--input` edge it replaces it is 3.00:1 light, exactly at the threshold.
   destructive action, `recording` for the microphone. Warmth lives in the neutrals.
 - **Do** put the shell and the sidebar on the stone ground and everything read on the sheet.
 - **Do** give every panel header one at-a-glance value.
-- **Do** set monospace for anything the harness emitted and Onest for anything we wrote.
+- **Do** set monospace for anything the harness emitted and Geist for anything we wrote.
 - **Do** set what is read at 16px and what is scanned at 12/14px, and give 18/20/24px only to
   Statement, Page Title and Figure.
 - **Do** separate with tone first: a stone tray under white tiles, a stone note in white space.
