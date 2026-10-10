@@ -101,6 +101,10 @@ describe('route', () => {
     const inst = state({ overlay: 'instrument-drawer' });
     expect(route(ctrl("'"), inst)).toBe('toggle-instrument');
     expect(route(ctrl('\\'), inst)).toBeNull();
+    // The side pane's phone overlay answers the right zone's binding, and only it.
+    const pane = state({ overlay: 'pane-drawer' });
+    expect(route(ctrl("'"), pane)).toBe('toggle-instrument');
+    expect(route(ctrl('k'), pane)).toBeNull();
   });
 
   it('on /harness, reaches the approval and the sidebar, and nothing the workbench owns', () => {
@@ -159,6 +163,9 @@ describe('reading the DOM', () => {
     expect(openOverlay()).toBe('none');
     document.body.innerHTML = `<div role="dialog" data-state="open" data-shortcut-surface="instrument"></div>`;
     expect(openOverlay()).toBe('instrument-drawer');
+    document.body.innerHTML = `<div role="dialog" data-state="open" data-shortcut-surface="pane"></div>`;
+    expect(openOverlay()).toBe('pane-drawer');
+    document.body.innerHTML = `<div role="dialog" data-state="open" data-shortcut-surface="instrument"></div>`;
     // A popover inside the drawer: two layers, and the inner one owns the keys.
     document.body.innerHTML += `<div role="dialog" data-state="open"></div>`;
     expect(openOverlay()).toBe('other');

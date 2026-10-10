@@ -25,6 +25,7 @@ import {
 import { ancestorsOf, buildTree, type TreeNode } from '@/lib/file-tree';
 import { usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
+import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 import { useShell } from '@/shell-context';
 
 /**
@@ -122,6 +123,11 @@ export function WorkspaceSection({ className }: { className?: string }) {
   useEffect(() => {
     void refresh();
   }, [refresh, mountLabel]);
+  useEffect(() => {
+    const onWritten = () => void refresh();
+    window.addEventListener(WORKSPACE_WRITTEN, onWritten);
+    return () => window.removeEventListener(WORKSPACE_WRITTEN, onWritten);
+  }, [refresh]);
 
   // A folder mounted last session may still be usable; whether it is depends on a
   // grant boot cannot ask for. See `restoreMount`.

@@ -470,6 +470,7 @@ export function Workbench() {
           <SheetContent
             side="right"
             showCloseButton={false}
+            data-shortcut-surface="pane"
             className={cn('w-full max-w-full gap-0 p-0 sm:max-w-none', DRAWER_MOTION)}
           >
             <SheetTitle className="sr-only">Side pane</SheetTitle>

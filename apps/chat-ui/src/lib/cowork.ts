@@ -18,6 +18,7 @@ import {
   restoreMount,
   supportsDirectoryPicker,
 } from '@felix/cowork-client';
+import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 
 const vfs = getVfs('felix.chat.vfs');
 
@@ -46,6 +47,7 @@ export async function writeWorkspaceFile(path: string, content: string): Promise
   const cleaned = path.replace(/^\//, '');
   if (hasMount()) await mountWrite(cleaned, content);
   else vfs.write(cleaned, content);
+  window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
 }
 
 export {

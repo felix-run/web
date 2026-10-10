@@ -46,10 +46,11 @@ export type ShortcutAction =
 /**
  * Which overlay has the keyboard.
  *
- * The two drawers are named because a binding opened them and the same binding
- * has to be able to close them; anything else Radix has open is `other`.
+ * The drawers are named because a binding opened them and the same binding
+ * has to be able to close them; anything else Radix has open is `other`. The
+ * side pane's overlay (a phone) answers the right zone's binding, `Mod+'`.
  */
-export type Overlay = 'none' | 'workspace-drawer' | 'instrument-drawer' | 'other';
+export type Overlay = 'none' | 'workspace-drawer' | 'instrument-drawer' | 'pane-drawer' | 'other';
 
 export interface ShortcutState {
   /** Mac reads `Mod` as ⌘ (metaKey); everywhere else it is Ctrl. */
@@ -163,7 +164,7 @@ export function route(event: KeyInput, state: ShortcutState): ShortcutAction | n
       ? match.action
       : null;
   }
-  if (state.overlay === 'instrument-drawer') {
+  if (state.overlay === 'instrument-drawer' || state.overlay === 'pane-drawer') {
     return match.action === 'toggle-instrument' ? match.action : null;
   }
 
@@ -219,6 +220,7 @@ export function openOverlay(doc: Document = document): Overlay {
     const surface = open[0]?.getAttribute('data-shortcut-surface');
     if (surface === 'workspace') return 'workspace-drawer';
     if (surface === 'instrument') return 'instrument-drawer';
+    if (surface === 'pane') return 'pane-drawer';
   }
   return 'other';
 }

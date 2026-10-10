@@ -21,6 +21,11 @@ import {
   ItemHeader,
   withoutFinalNewline,
 } from '@/components/pane/pane-parts';
+import {
+  SaveToWorkspaceButton,
+  SaveToWorkspaceForm,
+  suggestedName,
+} from '@/components/pane/save-to-workspace';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { middleTruncate } from '@/lib/format';
 import {
@@ -177,9 +182,9 @@ export function SidePane({
                 streaming={streaming}
               />
             ) : item.kind === 'artifact' ? (
-              <ArtifactView item={item} />
+              <ArtifactView threadId={threadId} item={item} />
             ) : item.kind === 'code' ? (
-              <CodeView item={item} />
+              <CodeView threadId={threadId} item={item} />
             ) : (
               <ImageView item={item} />
             )}
@@ -269,7 +274,14 @@ function PaneTab({ item, onClose }: { item: PaneItem; onClose: () => void }) {
 /** Fetched outputs, kept for the page: an inactive tab unmounts, and these are big by definition. */
 const artifactCache = new Map<string, string>();
 
-function ArtifactView({ item }: { item: Extract<PaneItem, { kind: 'artifact' }> }) {
+function ArtifactView({
+  threadId,
+  item,
+}: {
+  threadId: string;
+  item: Extract<PaneItem, { kind: 'artifact' }>;
+}) {
+  const [saving, setSaving] = useState(false);
   const [state, setState] = useState<
     { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; text: string }
   >(() => {
@@ -301,6 +313,7 @@ function ArtifactView({ item }: { item: Extract<PaneItem, { kind: 'artifact' }> 
 
   const text = state.status === 'ready' ? state.text : null;
   const json = text === null ? null : prettyJson(text);
+  const outputName = `${item.title.replace(/[^\w.-]+/g, '-')}-output.${json ? 'json' : 'txt'}`;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ItemHeader
@@ -310,15 +323,21 @@ function ArtifactView({ item }: { item: Extract<PaneItem, { kind: 'artifact' }> 
         actions={
           text !== null && (
             <>
+              <SaveToWorkspaceButton open={saving} onToggle={() => setSaving((v) => !v)} />
               <CopyAction text={text} what="output" />
-              <DownloadAction
-                name={`${item.title}-${item.artifactId.slice(0, 8)}.${json ? 'json' : 'txt'}`}
-                get={() => text}
-              />
+              <DownloadAction name={outputName} get={() => json ?? text} />
             </>
           )
         }
       />
+      {saving && text !== null && (
+        <SaveToWorkspaceForm
+          threadId={threadId}
+          suggested={outputName}
+          text={json ?? text}
+          onDone={() => setSaving(false)}
+        />
+      )}
       <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
         {state.status === 'loading' ? (
           <p className="text-xs text-muted-foreground">Reading the stored output…</p>
@@ -376,9 +395,17 @@ function useShikiKnows(language: string): boolean | null {
   return known;
 }
 
-function CodeView({ item }: { item: Extract<PaneItem, { kind: 'code' }> }) {
+function CodeView({
+  threadId,
+  item,
+}: {
+  threadId: string;
+  item: Extract<PaneItem, { kind: 'code' }>;
+}) {
   const known = useShikiKnows(item.language);
   const code = withoutFinalNewline(item.code);
+  const [saving, setSaving] = useState(false);
+  const name = suggestedName(item.code, extensionFor(item.language));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ItemHeader
@@ -386,11 +413,20 @@ function CodeView({ item }: { item: Extract<PaneItem, { kind: 'code' }> }) {
         meta={['From a reply']}
         actions={
           <>
+            <SaveToWorkspaceButton open={saving} onToggle={() => setSaving((v) => !v)} />
             <CopyAction text={item.code} what="code" />
-            <DownloadAction name={`snippet.${extensionFor(item.language)}`} get={() => item.code} />
+            <DownloadAction name={name.split('/').pop() || name} get={() => item.code} />
           </>
         }
       />
+      {saving && (
+        <SaveToWorkspaceForm
+          threadId={threadId}
+          suggested={name}
+          text={item.code}
+          onDone={() => setSaving(false)}
+        />
+      )}
       <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
         {known ? (
           <CodeBlock

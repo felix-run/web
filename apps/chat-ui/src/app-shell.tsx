@@ -116,6 +116,7 @@ import {
   anyUnsaved,
   openInPane as openPaneItem,
   type PaneItemInput,
+  paneState,
   setPaneShown,
   usePaneState,
 } from '@/lib/side-pane';
@@ -1548,8 +1549,16 @@ export function AppShell() {
   useShortcuts(onHarness ? 'harness' : 'workbench', {
     'toggle-workspace': () => setHistoryOpen((o) => !o),
     // The instrument exists only in debug; off, the binding has nothing to open.
+    // The right zone's binding. In debug it is the instrument's — which hands the
+    // zone to and from the side pane where they share it — except over the
+    // pane's own overlay on a phone, which the binding closes. Off, there is no
+    // instrument, so it shows and hides the pane.
     'toggle-instrument': () => {
-      if (debugRef.current) setInspectorOpen((o) => !o);
+      const id = threadIdRef.current;
+      const { hasItems, inline } = paneZone.current;
+      const paneShown = paneState(id).shown && hasItems;
+      if (debugRef.current && !(paneShown && !inline)) setInspectorOpen((o) => !o);
+      else if (hasItems) setPaneShown(id, !paneShown);
     },
     'open-threads': () => {
       // The search lives in the sidebar, so it has to be open first — expanded
@@ -2886,7 +2895,23 @@ export function AppShell() {
                 )}
                 {/* The instrument is debug's: off, neither address has the toggle,
                     so nothing moves between them. */}
-                {!debug ? null : onHarness ? (
+                {!debug ? (
+                  // Off, the right zone is the side pane's alone: its toggle shows
+                  // while anything is open in it, so a hidden pane is one press back.
+                  paneHasItems && !onHarness ? (
+                    <Button
+                      variant={pane.shown ? 'secondary' : 'ghost'}
+                      size="icon-sm"
+                      onClick={() => setPaneShown(threadId, !pane.shown)}
+                      aria-pressed={pane.shown}
+                      aria-label="Side pane"
+                      aria-keyshortcuts={ariaShortcut('toggle-instrument', mac)}
+                      title={`Side pane (${shortcutLabel('toggle-instrument', mac)})`}
+                    >
+                      <PanelRightIcon className="size-4" />
+                    </Button>
+                  ) : null
+                ) : onHarness ? (
                   // The instrument toggle's slot, held empty so the attention line
                   // beside it stays put: without it the line moved on every switch
                   // between the two addresses.
