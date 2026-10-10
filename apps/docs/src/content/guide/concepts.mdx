@@ -370,7 +370,7 @@ Every tool is cloned through a fixed wrapper stack before the model can call it.
 load-bearing** and enforced by tests:
 
 **secret masking → policies → command screening → content screening → limits → guardrails → judges →
-approvals → artifact spill**
+approvals → permission mode → artifact spill**
 
 | Layer | Manifest block | Question it answers |
 |---|---|---|
@@ -382,6 +382,7 @@ approvals → artifact spill**
 | Guardrails | `spec.guardrails` | Does the text match a blocked pattern (e.g. PII)? |
 | Judges | `spec.guardrails.judges` | Does a model score this as acceptable? |
 | Approvals | `spec.approvals` | Has a human said yes? |
+| Permission mode | `spec.permissions` | Does this conversation's mode (plan, accept edits, bypass) let it run, or waive its approval? |
 | Artifacts | `spec.artifacts` | Is this output too large to put in context? |
 
 A denial is stamped with a module-private marker, so a model cannot forge one by emitting a
