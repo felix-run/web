@@ -126,7 +126,7 @@ export function Message({
   return (
     <div className="group flex w-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">Felix</span>
+        <span className="text-xs font-semibold text-foreground">Felix</span>
         {streaming && !empty && !turn.runStatus && (
           <span className="text-xs text-muted-foreground">streaming</span>
         )}
@@ -298,9 +298,9 @@ function UserTurn({
 
   return (
     <div className="group flex w-full flex-col gap-1.5">
-      <div className="border-l-2 border-foreground/25 py-0.5 pl-3">
+      <div className="rounded-2xl bg-ground px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">You</span>
+          <span className="text-xs font-semibold text-muted-foreground">You</span>
           {/* Outside the actions row on purpose: that row is hidden until hover,
               and a label nobody can see without hunting for it is not a label. */}
           {label && <LabelChip label={label} />}
@@ -329,7 +329,7 @@ function UserTurn({
                   save();
                 }
               }}
-              className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 text-base text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={save} disabled={!changed}>

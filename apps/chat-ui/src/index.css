@@ -1,10 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "./chat-utilities.css";
-/* Self-hosted variable faces (2026-10-10, the Warm Workbench redesign). Nunito Sans is the
-   one voice for prose and UI: humanist, open at 12px, warm without being rounded. JetBrains
-   Mono marks what the harness said — ids, paths, tool names, JSON (the Provenance Rule). */
-@import "@fontsource-variable/nunito-sans";
+/* Self-hosted variable faces (2026-10-10, the Warm Workbench redesign). Onest is the one
+   voice for prose and UI: a warm grotesk, slightly narrow, so a thread title keeps more of
+   itself before it truncates, and firm enough to sit beside the mono. Chosen over Figtree
+   and Atkinson Hyperlegible Next by a side-by-side at the app's real sizes. JetBrains Mono
+   marks what the harness said — ids, paths, tool names, JSON (the Provenance Rule). */
+@import "@fontsource-variable/onest";
 @import "@fontsource-variable/jetbrains-mono";
 
 /* `@felix/ui` is consumed as raw source from outside this app's root, so Tailwind's
@@ -66,16 +68,15 @@
    12 -> 14 pair was 1.17 but started too high to leave room beneath it, which is
    what pushed metadata down to 10px in the first place. */
 @theme {
-  /* Warm Workbench (2026-10-10): the dense steps rose a pixel each, 11/13 -> 12/14. Nunito
-     Sans sets smaller than the system stack at the same size, and the surface is meant to be
-     comfortable to live in all day; 12px is now the floor rather than 11. */
+  /* Warm Workbench (2026-10-10): the dense steps rose a pixel each, 11/13 -> 12/14, because
+     the surface is meant to be comfortable to live in all day; 12px is now the floor. */
   --text-xs: 0.75rem;
   --text-xs--line-height: 1.45;
   --text-sm: 0.875rem;
   --text-sm--line-height: 1.5;
   --text-base: 1rem;
   --text-base--line-height: 1.65;
-  --font-sans: "Nunito Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Onest Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -116,6 +117,10 @@
   /* The composer and the sheet: the largest radius, and on nothing else. */
   --radius-2xl: calc(var(--radius) + 8px);
   --shadow-sheet: var(--sheet-shadow);
+  /* The composer's two lifts as utilities (`shadow-lift`, `shadow-lift-focus`), for the
+     few things that float with it: New chat, a tool card, a waiting approval. */
+  --shadow-lift: var(--shadow-composer);
+  --shadow-lift-focus: var(--shadow-composer-focus);
 }
 
 /* Warm Workbench palette (2026-10-10), in oklch, light + dark. Two neutral levels carry the
@@ -303,7 +308,6 @@
   }
   body {
     font-family: var(--font-sans);
-    font-optical-sizing: auto;
     background-color: var(--ground);
     color: var(--foreground);
     overscroll-behavior: none;
