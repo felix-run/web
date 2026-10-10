@@ -544,6 +544,10 @@ function MultimodalInputInner({
     onKeptTaken?.();
     const typed = controller.textInput.value;
     controller.textInput.setInput(typed.trim() ? `${kept.text}\n\n${typed}` : kept.text);
+    // To the composer, so the message is edited where it now is: a denied call's
+    // "Ask again" is pressed from the transcript, and left there the focus kept
+    // the operator one Tab-walk away from the text they were handed.
+    textareaRef.current?.focus();
     if (kept.files.length > 0) {
       void filesFromParts(kept.files).then(
         (files) => attachments.add(files),

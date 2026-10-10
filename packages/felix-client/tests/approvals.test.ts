@@ -356,12 +356,17 @@ describe('describeRefusal', () => {
     const { describeRefusal } = await import('../src/approvals');
     expect(
       describeRefusal({ note: 'timeout', toolName: 'write_file', ruleId: 'workspace-write' }),
-    ).toBe('Refused: nobody approved write_file (workspace-write) before the deadline.');
+    ).toBe(
+      'Timed out waiting for approval. The harness denied it, so write_file (workspace-write) did not run.',
+    );
     expect(describeRefusal({ note: 'denied', toolName: 'local_shell' })).toBe(
-      'Refused: local_shell was denied.',
+      'Denied, so local_shell did not run.',
+    );
+    expect(describeRefusal({ note: 'aborted', toolName: 'write_file' })).toBe(
+      'The run was stopped while write_file waited for approval, so it did not run.',
     );
     expect(describeRefusal({ note: 'wrong path', toolName: 'write_file' })).toBe(
-      'Refused: write_file was denied — wrong path',
+      'Denied, so write_file did not run. Their note: wrong path',
     );
   });
 

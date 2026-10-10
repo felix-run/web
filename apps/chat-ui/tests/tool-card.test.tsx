@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -116,36 +116,114 @@ describe('the tool card for a shell result', () => {
  * a tool that ran and printed a bracket. What actually happened is that nobody
  * approved it in time, which is the sentence the operator needs.
  */
-describe('the tool card for a refused gate', () => {
-  it('says nobody approved it, not that it ran', async () => {
-    const { Tool } = await import('../src/components/chat/tool');
-    render(
-      <Tool
-        tool={{
-          name: 'write_file',
-          done: true,
-          input: { path: 'notes/todo.md' },
-          output: '[approval timeout] tool=write_file rule=workspace-write',
-        }}
-        verbose
-      />,
-    );
-    expect(screen.getByText('not approved in time')).toBeTruthy();
-    expect(screen.getByText(/nobody approved write_file/)).toBeTruthy();
-    expect(screen.queryByText('done')).toBeNull();
-    expect(screen.queryByText(/\[approval timeout\]/)).toBeNull();
+/**
+ * An approval gate's no is not a failure. One declined `write_file` read
+ * `refused` in red here, with a reason that said it was denied and not by whom.
+ * It is `denied` now, in the neutral tone, with a subject and a way forward.
+ */
+describe('the tool card for a denied call', () => {
+  const DENIED = '[approval denied] tool=write_file rule=workspace-write';
+  const write = (output: string) => ({
+    name: 'write_file',
+    done: true,
+    input: { path: 'notes.txt', content: 'Deploy checklist reviewed.' },
+    output,
+  });
+  const record = (over: Record<string, unknown> = {}) => ({
+    id: 'a1',
+    decidedBy: 'local-dev',
+    decidedAt: new Date(2026, 9, 10, 14, 2).getTime(),
+    ttlSeconds: 300,
+    here: false,
+    ...over,
   });
 
-  it('carries the refuser\x27s note when someone said no', async () => {
+  it('says denied, never failed, and draws nothing in the failure colour', async () => {
     const { Tool } = await import('../src/components/chat/tool');
-    render(
+    const { container } = render(<Tool tool={write(DENIED)} verbose />);
+    expect(screen.getByText('denied')).toBeTruthy();
+    expect(screen.queryByText(/refused|failed|done/)).toBeNull();
+    // The no-red rule, on every element of the card.
+    expect(container.querySelector('[class*="state-failed"]')).toBeNull();
+    // Cancelled, not gone: dashed and struck through, in the neutral tone.
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.className).toMatch(/border-dashed/);
+    const struck = container.querySelector('.line-through');
+    expect(struck?.textContent).toContain('notes.txt');
+    expect(struck?.className).toMatch(/decoration-muted-foreground/);
+    expect(
+      screen.getByText(/Denied, so write_file \(workspace-write\) did not run\./),
+    ).toBeTruthy();
+    expect(screen.queryByText(/\[approval denied\]/)).toBeNull();
+  });
+
+  it('says only "Denied" when nothing says who, and offers no way forward on its own', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    const { container } = render(<Tool tool={write(DENIED)} />);
+    const subject = container.querySelector('[data-slot="denial-subject"]');
+    expect(subject?.textContent).toBe('Denied');
+    expect(screen.queryByRole('button', { name: 'Ask again' })).toBeNull();
+  });
+
+  it('says "by you" only when this browser decided, and names the recorded principal otherwise', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    const { setDenials } = await import('../src/components/chat/denial-context');
+    const tool = write(DENIED);
+    const at = (r: ReturnType<typeof record>) =>
+      act(() => setDenials({ recordOf: () => r, askAgainFor: () => null }));
+    at(record({ here: true }));
+    const { container } = render(<Tool tool={tool} />);
+    const subject = () => container.querySelector('[data-slot="denial-subject"]')?.textContent;
+    expect(subject()).toMatch(/^Denied by you · \d{1,2}:02/);
+    at(record({ here: false }));
+    expect(subject()).toMatch(/^Denied by local-dev · \d{1,2}:02/);
+    expect(subject()).not.toMatch(/you/);
+  });
+
+  it('says a timeout was the harness denying it, not a person', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    const { setDenials } = await import('../src/components/chat/denial-context');
+    const r = record({ decidedBy: 'felix' });
+    setDenials({ recordOf: () => r, askAgainFor: () => null });
+    const { container } = render(
+      <Tool tool={write('[approval timeout] tool=write_file rule=workspace-write')} />,
+    );
+    expect(container.querySelector('[data-slot="denial-subject"]')?.textContent).toMatch(
+      /^Timed out after 5 min · .*\. The harness denied it\.$/,
+    );
+    expect(screen.getByText('denied')).toBeTruthy();
+  });
+
+  it('offers "Ask again", which hands the composer a request and sends nothing', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    const { setDenials } = await import('../src/components/chat/denial-context');
+    const asked = vi.fn();
+    setDenials({ recordOf: () => null, askAgainFor: () => asked });
+    render(<Tool tool={write(DENIED)} />);
+    screen.getByRole('button', { name: 'Ask again' }).click();
+    expect(asked).toHaveBeenCalledOnce();
+  });
+
+  it('carries the refuser\x27s own note', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    const { container } = render(
       <Tool
-        tool={{ name: 'local_shell', done: true, output: '[approval denied] tool=local_shell' }}
-        verbose
+        tool={{ name: 'local_shell', done: true, output: '[approval wrong dir] tool=local_shell' }}
       />,
     );
-    expect(screen.getByText('refused')).toBeTruthy();
-    expect(screen.getByText(/local_shell was denied/)).toBeTruthy();
+    expect(container.querySelector('[data-slot="denial-subject"]')?.textContent).toBe(
+      'Denied. “wrong dir”',
+    );
+  });
+
+  it('keeps a policy rule\x27s refusal as a refusal, in red', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    const { container } = render(
+      <Tool tool={{ name: 'x', done: true, output: '[policy needs-scope] missing tools:x' }} />,
+    );
+    expect(screen.getByText('refused by policy')).toBeTruthy();
+    expect(container.querySelector('[class*="state-failed"]')).toBeTruthy();
+    expect(container.querySelector('[data-slot="denial-subject"]')).toBeNull();
   });
 });
 

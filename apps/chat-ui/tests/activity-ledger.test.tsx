@@ -302,7 +302,8 @@ describe('filterLedger', () => {
 
   it('chooses threads, so a failure keeps its turn around it', () => {
     const only = filterLedger(ledger, { failuresOnly: true, layer: 'any' });
-    expect(only.map((t) => t.id).sort()).toEqual(['gated', 'thread-a']);
+    // `gated` holds only an approval's denial, which is not a failure.
+    expect(only.map((t) => t.id).sort()).toEqual(['thread-a']);
     // The whole turn comes with it, not the red row alone.
     expect(only.find((t) => t.id === 'thread-a')?.turns[0].events).toHaveLength(3);
   });
@@ -488,8 +489,10 @@ describe('the ledger page', () => {
     // Newest activity first.
     const rows = document.querySelectorAll('[data-ledger-row]');
     expect(rows[0]).toBe(b);
-    // The header and the account sentence both carry the failing count.
-    expect(await screen.findAllByText('1 with failures', { selector: 'span' })).toHaveLength(2);
+    // The header carries the failing count, once: the 24px sentence under it
+    // that said the same three facts again is gone.
+    expect(await screen.findAllByText('1 with failures', { selector: 'span' })).toHaveLength(1);
+    expect(screen.queryByText(/threads? ran/)).toBeNull();
   });
 
   it('is one Tab stop, moved with the arrow keys, opened and closed from the keyboard', async () => {
@@ -544,7 +547,7 @@ describe('the ledger page', () => {
     // The failed turn explains itself as one, now that it can be opened.
     const reply = within(turn).getByRole('button', { name: /Assistant reply/ });
     await user.click(reply);
-    expect(await screen.findByText(/not cleanly/)).toBeTruthy();
+    expect(await screen.findByText(/^The run stopped on an error/)).toBeTruthy();
 
     reply.focus();
     await user.keyboard('{Escape}');
@@ -685,5 +688,124 @@ describe('the ledger page', () => {
     await user.click(within(turn).getByRole('button', { name: /edit_file/ }));
     const detail = await screen.findByText('Payload');
     expect(within(detail.parentElement as HTMLElement).getByText('error_code')).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------------- denials */
+
+/**
+ * A denial is not a failure. One `write_file` an operator declined used to read
+ * `● Failed` in red with "write_file blocked by an approval · turn ended badly":
+ * the approval's `policy_deny`, then the reply the harness marks `error` because
+ * the run's last batch held a refused call. Both are drawn here as what they are.
+ */
+const deniedTurn = (thread: string, over: Record<string, unknown> = {}) => [
+  ev({
+    id: `${thread}-u`,
+    ts: now - 6 * MIN,
+    event_type: 'user_input',
+    payload: {
+      user_input:
+        'Use write_file to create notes.txt containing exactly: Deploy checklist reviewed.',
+      thread_id: `default:${thread}`,
+    },
+  }),
+  ev({
+    id: `${thread}-d`,
+    ts: now - 5 * MIN,
+    event_type: 'policy_deny',
+    status: 'denied',
+    payload: { tool: 'write_file', control: 'approvals', thread_id: `default:${thread}` },
+  }),
+  // A harness older than `denied_calls` writes none; the turn decides.
+  ev({
+    id: `${thread}-f`,
+    ts: now - 4 * MIN,
+    event_type: 'final_response',
+    status: 'error',
+    payload: { chars: 280, thread_id: `default:${thread}`, ...over },
+  }),
+];
+
+describe('a thread whose only miss was a denial', () => {
+  it('is denied, not failed, and its reply is not a second failure', () => {
+    const [t] = buildLedger(deniedTurn('gated'), null);
+    expect(t?.worst).toBe('denied');
+    expect(t?.failures).toEqual([]);
+    expect(t?.denials.map((e) => e.id)).toEqual(['gated-d']);
+    expect(t?.outcomes.get('gated-f')).toBe('after-denial');
+    // Nor on a harness that counts the denied calls itself.
+    const [n] = buildLedger(deniedTurn('newer', { denied_calls: 1 }), null);
+    expect(n?.worst).toBe('denied');
+  });
+
+  it('still fails a reply that followed a call that broke', () => {
+    const [t] = buildLedger(
+      [
+        ...deniedTurn('mixed'),
+        ev({
+          id: 'mixed-x',
+          ts: now - 4.5 * MIN,
+          status: 'error',
+          payload: { tool: 'read_file', thread_id: 'default:mixed' },
+        }),
+      ],
+      null,
+    );
+    expect(t?.worst).toBe('error');
+    expect(t?.outcomes.get('mixed-f')).toBe('error');
+  });
+
+  it('draws the row with no red, says what happened, and keeps the title whole', async () => {
+    const user = userEvent.setup();
+    stubHarness({ events: deniedTurn('gated') });
+    const shell = {
+      threads: [
+        {
+          id: 'gated',
+          // A title cut from the first message at 48 characters.
+          title: 'Use write_file to create notes.txt containing…',
+          manifest: 'quick',
+          updatedAt: now,
+        },
+      ],
+    } as unknown as ShellValue;
+    render(
+      <MemoryRouter initialEntries={['/harness/activity']}>
+        <ShellProvider value={shell}>
+          <ActivityLedger />
+        </ShellProvider>
+      </MemoryRouter>,
+    );
+    const row = await rowFor(/Denied/);
+    expect(row.textContent).toContain('write_file denied');
+    expect(row.textContent).not.toMatch(/Failed|turn ended badly|blocked by an approval/);
+    // The no-red rule: nothing in the row takes the failure colour.
+    expect(row.querySelector('[class*="state-failed"]')).toBeNull();
+    // The title is the whole first message, cut by the tile rather than at 48.
+    expect(row.textContent).toContain('Deploy checklist reviewed.');
+    // No "with failures" in the header, and the account says what happened.
+    expect(screen.queryByText(/with failures/, { selector: 'span' })).toBeNull();
+    expect(screen.getByText(/1 thread had a call denied at an approval\./)).toBeTruthy();
+
+    await user.click(row);
+    const turn = (await screen.findByRole('heading', { name: /Use write_file/ })).closest(
+      'section',
+    ) as HTMLElement;
+    expect(within(turn).getByText('Approval')).toBeTruthy();
+    expect(within(turn).getByText('Denied')).toBeTruthy();
+    expect(within(turn).getByText('after a denial')).toBeTruthy();
+    expect(turn.querySelector('[class*="state-failed"]')).toBeNull();
+  });
+
+  it('names the filter for what it shows, and does not count a denial as a failure', async () => {
+    const user = userEvent.setup();
+    stubHarness({ events: deniedTurn('gated') });
+    mount();
+    const select = await screen.findByRole('combobox', { name: 'Show threads' });
+    expect(select.textContent).toContain('All threads');
+    expect(screen.queryByText('Any denial or none')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Failures only' }));
+    expect(await screen.findByText('No thread in this window had a failure.')).toBeTruthy();
   });
 });
