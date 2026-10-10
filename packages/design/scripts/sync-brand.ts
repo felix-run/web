@@ -10,13 +10,20 @@
  *
  * Rasterising needs `rsvg-convert` (librsvg) and `magick` (ImageMagick) on the
  * PATH; on macOS, `brew install librsvg imagemagick`. They are a dependency of
- * regenerating, not of building, which is why neither is in package.json.
+ * regenerating, not of building, which is why neither is in package.json. The
+ * social card is the exception: it is set in Onest and JetBrains Mono, which rsvg
+ * cannot load, so it renders through `@resvg/resvg-js` with the faces decoded by
+ * `wawoff2` — dev dependencies of this package, since they are npm and not a PATH.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Resvg } from '@resvg/resvg-js';
+// @ts-expect-error -- wawoff2 ships no types; `decompress(Uint8Array): Promise<Uint8Array>`.
+import { decompress } from 'wawoff2';
 import {
   MARK_CHEVRON,
   MARK_CURSOR,
@@ -126,10 +133,13 @@ write(join(docsAssets, 'mark-dark.svg'), `${markSvg({ inverted: true })}\n`);
  * card warms with them; the mark is the tab mark at scale, set on a hairline so the
  * dark head does not dissolve into a dark field.
  *
- * The type is the platform's sans and mono, not the docs' Onest and JetBrains Mono:
- * rsvg-convert on macOS lays text out through CoreText and ignores a scratch
- * fontconfig, so a self-hosted face cannot reach it (tested 2026-10-10 — "Onest" and
- * a made-up family rendered byte-identically).
+ * Set in the docs' own faces, Onest and JetBrains Mono, so it is rendered by resvg,
+ * which takes font files directly, and not by rsvg-convert: on macOS rsvg lays text
+ * out through CoreText and ignores any font it is pointed at (tested 2026-10-10: "Onest"
+ * and a made-up family rendered byte-identically). resvg reads only TTF/OTF and does
+ * not apply a variable font's weight axis (600 drew as 400), so the faces are the
+ * static per-weight `@fontsource` files, decoded from woff2 into the scratch dir.
+ * System fonts are off, so a missing face fails here rather than falling back.
  */
 function socialCard(): string {
   const w = 1200;
@@ -138,8 +148,8 @@ function socialCard(): string {
   const x = 96;
   const y = 96;
   const k = size / MARK_GRID;
-  const sans = "-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  const mono = "ui-monospace, Menlo, 'SF Mono', monospace";
+  const sans = 'Onest';
+  const mono = 'JetBrains Mono';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <rect width="${w}" height="${h}" fill="${DARK.bg}"/>
   <g transform="translate(${x} ${y}) scale(${k})">
@@ -153,7 +163,36 @@ function socialCard(): string {
 </svg>`;
 }
 
-png(socialCard(), 1200, join(docsPublic, 'og.png'), 630);
+const fontFile = createRequire(import.meta.url);
+const CARD_FACES = [
+  '@fontsource/onest/files/onest-latin-400-normal.woff2',
+  '@fontsource/onest/files/onest-latin-600-normal.woff2',
+  '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2',
+];
+// One at a time: wawoff2 is a single wasm instance, and decoding concurrently handed
+// one face's bytes to another's file (the card came out with Onest and JetBrains Mono
+// swapped).
+async function cardFonts(): Promise<string[]> {
+  const files: string[] = [];
+  for (const [i, spec] of CARD_FACES.entries()) {
+    const ttf = join(scratch, `card-${i}.ttf`);
+    writeFileSync(ttf, await decompress(readFileSync(fontFile.resolve(spec))));
+    files.push(ttf);
+  }
+  return files;
+}
+
+const og = join(docsPublic, 'og.png');
+const card = new Resvg(socialCard(), {
+  fitTo: { mode: 'width', value: 1200 },
+  font: { fontFiles: await cardFonts(), loadSystemFonts: false, defaultFontFamily: 'Onest' },
+}).render();
+if (card.width !== 1200 || card.height !== 630) {
+  throw new Error(`social card rendered ${card.width}x${card.height}, expected 1200x630`);
+}
+mkdirSync(dirname(og), { recursive: true });
+writeFileSync(og, card.asPng());
+written.push(og.slice(root.length));
 
 rmSync(scratch, { recursive: true, force: true });
 console.log(`wrote ${written.length} files:\n  ${written.join('\n  ')}`);
