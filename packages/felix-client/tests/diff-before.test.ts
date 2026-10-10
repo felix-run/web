@@ -118,3 +118,16 @@ describe('an approval announced by frame', () => {
     expect(engine.state.approvals[0]?.before).toBe('before');
   });
 });
+
+describe('a delete or rename approval', () => {
+  it('reads the file a delete removes, and says what each does in a sentence', async () => {
+    const { readsBefore, summarizeToolArgs, describeGate } = await import('../src/approvals');
+    expect(readsBefore('local_delete')).toBe(true);
+    expect(readsBefore('delete_file')).toBe(true);
+    expect(readsBefore('rename_file')).toBe(false);
+    expect(summarizeToolArgs('delete_file', { path: 'a.md' })).toBe('Delete a.md');
+    expect(describeGate('local_rename', { path: 'a.md', to_path: 'b/a.md' })).toBe(
+      'Rename a.md to b/a.md',
+    );
+  });
+});

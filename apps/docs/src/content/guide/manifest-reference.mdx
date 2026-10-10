@@ -46,7 +46,7 @@ metadata:
   name: cowork
   greeting:
     headline: What should we do in this folder?
-    subtitle: cowork reads the workspace without asking, and asks before it writes a file or runs a command.
+    subtitle: cowork reads your folder without asking, and asks before it changes a file or runs a command.
   starters:
     - title: Find TODOs
       prompt: Search the workspace for TODO and summarize the matches by file.
@@ -816,7 +816,7 @@ spec:
 
 ### The user's folder: `local_*` file tools
 
-Both bundled clients answer five file tools by name, against the folder the person has open — in
+Both bundled clients answer seven file tools by name, against the folder the person has open — in
 chat-ui the mounted folder (or the tab's own files when none is mounted), in the terminal client
 its working directory. Declare them under `client_tools` and the agent works on that folder rather
 than on the server's workspace. The bundled `cowork` manifest does exactly this.
@@ -828,12 +828,16 @@ than on the server's workspace. The bundled `cowork` manifest does exactly this.
 | `local_search` | `query`, `path?`, `regex?`, `max_hits?` | `path:line:text` per matching line, binaries and `.git`/`node_modules` skipped, 20 hits unless `max_hits` (at most 200) says otherwise. |
 | `local_write` | `path`, `content`, `append?` | `wrote N chars to <path>`. |
 | `local_edit` | `path`, `old_string`, `new_string`, `replace_all?` | `{"path", "replacements"}`, the shape `edit_file` reports. Refused when `old_string` is missing, or appears more than once without `replace_all`. |
+| `local_delete` | `path` | `{"path", "deleted": true}`, the shape `delete_file` reports. Files only, never a folder; there is no undo. |
+| `local_rename` | `path`, `to_path` | `{"path", "to_path"}`. Never overwrites: refused when `to_path` exists. Folders on the way to `to_path` are created. |
 
 The arguments are the workspace tools' own, so the changes list and the approval diff treat both
 families alike. A failure comes back as `error: …`, which both clients draw as a failed call.
-Gate `local_write` and `local_edit` with an [approval](#specapprovals): chat-ui writes once the
-banner is approved, while the terminal client also asks on its own prompt, naming the absolute
-path, and refuses `.git/`, `.husky/`, `node_modules/` and executable files outright.
+Gate `local_write`, `local_edit`, `local_delete` and `local_rename` with an
+[approval](#specapprovals) — a delete must never be less gated than a write. chat-ui acts once the
+banner is approved, and a delete's banner shows the file it removes; the terminal client also asks
+on its own prompt, naming the absolute path, and refuses `.git/`, `.husky/`, `node_modules/`,
+executable files and symbolic links outright.
 
 On a [durable](#specexecution) run the agent is in the worker, not the process serving the stream,
 so the harness records each pending request and the durable stream announces it as the same

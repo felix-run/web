@@ -324,3 +324,61 @@ describe('the local_* file tools', () => {
     expect(existsSync(join(root, '.git'))).toBe(false);
   });
 });
+
+describe('local_delete and local_rename on the working directory', () => {
+  it('delete removes a file after a yes that names it absolutely, and nothing without one', async () => {
+    writeFileSync(join(root, 'gone.md'), 'x');
+    const asked: string[] = [];
+    const ws = createWorkspace({
+      root,
+      confirm: async (what) => {
+        asked.push(what);
+        return true;
+      },
+    });
+    const out = await ws.execute(call('local_delete', { path: 'gone.md' }));
+    expect(out.error).toBeUndefined();
+    expect(existsSync(join(root, 'gone.md'))).toBe(false);
+    expect(asked).toEqual([`delete ${join(root, 'gone.md')}`]);
+
+    writeFileSync(join(root, 'kept.md'), 'x');
+    const refused = await createWorkspace({ root, confirm: async () => false }).execute(
+      call('local_delete', { path: 'kept.md' }),
+    );
+    expect(refused.error).toBe(true);
+    expect(existsSync(join(root, 'kept.md'))).toBe(true);
+  });
+
+  it('refuses a folder, a link and anything under .git', async () => {
+    mkdirSync(join(root, '.git'));
+    writeFileSync(join(root, '.git', 'HEAD'), 'ref');
+    writeFileSync(join(outside, 'secret.txt'), 'secret');
+    symlinkSync(join(outside, 'secret.txt'), join(root, 'link.txt'));
+    const ws = permissive();
+    expect((await ws.execute(call('local_delete', { path: 'src' }))).error).toBe(true);
+    expect((await ws.execute(call('local_delete', { path: '.git/HEAD' }))).error).toBe(true);
+    const link = await ws.execute(call('local_delete', { path: 'link.txt' }));
+    expect(link.error).toBe(true);
+    expect(link.content).toMatch(/symbolic link/);
+    // Neither the link's target nor the link was touched.
+    expect(readFileSync(join(outside, 'secret.txt'), 'utf8')).toBe('secret');
+    expect(existsSync(join(root, 'link.txt'))).toBe(true);
+    expect(existsSync(join(root, '.git', 'HEAD'))).toBe(true);
+  });
+
+  it('rename moves a file into a new folder, never over another, never out of the root', async () => {
+    writeFileSync(join(root, 'a.md'), 'A');
+    writeFileSync(join(root, 'b.md'), 'B');
+    const ws = permissive();
+    const taken = await ws.execute(call('local_rename', { path: 'a.md', to_path: 'b.md' }));
+    expect(taken.error).toBe(true);
+    expect(readFileSync(join(root, 'b.md'), 'utf8')).toBe('B');
+    const climbing = await ws.execute(call('local_rename', { path: 'a.md', to_path: '../x.md' }));
+    expect(climbing.error).toBe(true);
+    expect(existsSync(join(root, 'a.md'))).toBe(true);
+    const moved = await ws.execute(call('local_rename', { path: 'a.md', to_path: 'docs/a.md' }));
+    expect(moved.error).toBeUndefined();
+    expect(readFileSync(join(root, 'docs', 'a.md'), 'utf8')).toBe('A');
+    expect(existsSync(join(root, 'a.md'))).toBe(false);
+  });
+});

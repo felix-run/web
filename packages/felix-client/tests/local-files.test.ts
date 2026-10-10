@@ -215,3 +215,84 @@ describe('local_edit', () => {
     expect(files['a.ts']).toBe("$& $' $1");
   });
 });
+
+describe('local_delete and local_rename', () => {
+  function movingFs(files: Record<string, string>, opts: { canMove?: boolean } = {}) {
+    const asked: string[] = [];
+    const fs: LocalFs = {
+      list: async () => [],
+      read: async (p) => {
+        const t = files[p];
+        if (t === undefined) throw new Error(`no such file: ${p}`);
+        return t;
+      },
+      write: async () => {},
+      ...(opts.canMove === false
+        ? {}
+        : {
+            remove: async (p: string, { summary }: { summary: string }) => {
+              asked.push(`${summary} ${p}`);
+              if (!(p in files)) throw new Error(`no such file: ${p}`);
+              delete files[p];
+            },
+            rename: async (p: string, to: string, { summary }: { summary: string }) => {
+              asked.push(`${summary} ${p}`);
+              if (to in files) throw new Error(`${to} already exists`);
+              files[to] = files[p] as string;
+              delete files[p];
+            },
+          }),
+    };
+    return { fs, asked };
+  }
+  const call = (name: string, args: Record<string, unknown>) => ({ id: 'c', name, args });
+
+  it('are file operations of their own, on both families', () => {
+    expect(fileToolOp('local_delete')).toBe('delete');
+    expect(fileToolOp('delete_file')).toBe('delete');
+    expect(fileToolOp('client · local_rename')).toBe('rename');
+    expect(fileToolOp('rename_file')).toBe('rename');
+    expect(isLocalFileTool('local_delete')).toBe(true);
+    expect(isLocalFileTool('delete_file')).toBe(false);
+  });
+
+  it('answer with the harness tools’ own shapes', async () => {
+    const files = { 'a.md': 'A', 'b.md': 'B' };
+    const { fs } = movingFs(files);
+    await expect(runLocalFileTool(call('local_delete', { path: './a.md' }), fs)).resolves.toEqual({
+      content: JSON.stringify({ path: 'a.md', deleted: true }),
+    });
+    await expect(
+      runLocalFileTool(call('local_rename', { path: 'b.md', to_path: 'deep/c.md' }), fs),
+    ).resolves.toEqual({ content: JSON.stringify({ path: 'b.md', to_path: 'deep/c.md' }) });
+    expect(files).toEqual({ 'deep/c.md': 'B' });
+  });
+
+  it('refuse as results the model reads, never throws', async () => {
+    const { fs } = movingFs({ 'a.md': 'A', 'b.md': 'B' });
+    const run = (name: string, args: Record<string, unknown>) =>
+      runLocalFileTool(call(name, args), fs);
+    expect(await run('local_delete', {})).toEqual({
+      content: 'error: path is required',
+      error: true,
+    });
+    expect(await run('local_rename', { path: 'a.md' })).toEqual({
+      content: 'error: to_path is required',
+      error: true,
+    });
+    expect((await run('local_rename', { path: 'a.md', to_path: 'b.md' })).error).toBe(true);
+    expect((await run('local_rename', { path: 'a.md', to_path: './a.md' })).content).toMatch(
+      /never replaces anything/,
+    );
+    expect((await run('local_delete', { path: 'gone.md' })).content).toMatch(/^error: /);
+    expect(classifyToolResult('local_delete', 'error: path is required')).not.toBeNull();
+  });
+
+  it('say so on a client that cannot move files', async () => {
+    const { fs } = movingFs({ 'a.md': 'A' }, { canMove: false });
+    expect(await runLocalFileTool(call('local_delete', { path: 'a.md' }), fs)).toEqual({
+      content: 'error: this client cannot delete files',
+      error: true,
+    });
+  });
+});

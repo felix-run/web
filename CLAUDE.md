@@ -1628,6 +1628,14 @@ that are easy to break:
   open the strip (`requestFileAction` → `PaneState.request`, not persisted), so a tree delete has
   the pane's guards — the read hash, the hold while an edit is unsaved. The row's own Enter is
   kept: the menu's `onKeyDown` replaces `FileTreeFile`'s and re-implements it.
+- **The agent can delete and rename too** (`felix-run/felix#584`): `delete_file`/`rename_file` on
+  the harness, `local_delete`/`local_rename` on the client, gated by the same rule as writes.
+  `fileToolOp` has `delete` and `rename`; `runLocalFileTool` answers both over `LocalFs.remove`
+  and `.rename` (the browser's through #451's helpers, the terminal's behind `resolveWithin`,
+  `assertWritable`, its prompt and a refusal of symlinks — `resolveWithin` follows a link, which
+  is right for a read and would delete the target). Changes records a rename on both paths, each
+  row saying which side it is, and `PathChange.gone` keeps Open off a deleted or moved-away
+  path. `readsBefore` covers delete, so its approval card shows the file it removes.
 - `?open=<path>` names the active **browser** file in the address; other kinds come back from
   session storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
 

@@ -14,6 +14,8 @@ import {
   mountList,
   mountMkdir,
   mountRead,
+  mountRemove,
+  mountRename,
   mountTree,
   mountWrite,
   pickDirectory,
@@ -99,8 +101,8 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
  * tab's own files — the same precedence every other client tool uses, decided per call so a
  * mount picked mid-run is what the next call sees.
  *
- * No confirmation here, unlike the terminal client: the cowork manifest gates `local_write`
- * and `local_edit` with an approval, so a write reaches this point only after a person said
+ * No confirmation here, unlike the terminal client: the cowork manifest gates `local_write`,
+ * `local_edit`, `local_delete` and `local_rename` with an approval, so a write reaches this point only after a person said
  * yes on the banner, which is where the diff is drawn.
  */
 export function workspaceFs(vfs: VirtualFs): LocalFs {
@@ -110,6 +112,16 @@ export function workspaceFs(vfs: VirtualFs): LocalFs {
     write: async (path, content, { append }) => {
       if (hasMount()) await mountWrite(path, content, append);
       else vfs.write(path, content, append);
+    },
+    // Files only, never overwriting — the same rules the operator's pane
+    // follows, through the same helpers, gated by the same approval rule.
+    remove: async (path) => {
+      if (hasMount()) await mountRemove(path);
+      else vfs.remove(path);
+    },
+    rename: async (path, toPath) => {
+      if (hasMount()) await mountRename(path, toPath);
+      else vfs.rename(path, toPath);
     },
   };
 }

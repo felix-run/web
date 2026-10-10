@@ -23,6 +23,7 @@ export {
   type PendingApproval,
   parseApprovalOutcome,
   parseEditedArgs,
+  readsBefore,
   summarizeToolArgs,
   syncApprovals,
 } from './approvals';

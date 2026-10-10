@@ -15,7 +15,7 @@
  * file arriving; a string means an edit.
  */
 
-import type { PendingApproval } from '@felix/client';
+import { fileToolOp, type PendingApproval } from '@felix/client';
 import { createPatch } from 'diff';
 
 /**
@@ -113,7 +113,11 @@ function drawnRows(lines: string[]): number {
 export function writeDiff(pending: PendingApproval, rows = DIFF_ROWS): WriteDiff | null {
   if (pending.before === undefined) return null;
   const args = (pending.args ?? {}) as Record<string, unknown>;
-  const next = args.content;
+  // A delete has no new content: the patch is every line of the file, removed —
+  // what is being decided is what goes.
+  const deleting = fileToolOp(pending.toolName) === 'delete';
+  if (deleting && pending.before === null) return null;
+  const next = deleting ? '' : args.content;
   if (typeof next !== 'string') return null;
 
   const path = typeof args.path === 'string' ? args.path : 'file';

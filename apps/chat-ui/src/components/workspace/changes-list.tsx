@@ -108,7 +108,7 @@ function ChangeRow({ change }: { change: PathChange }) {
 
   // A file a write landed on can be read whole, beside the conversation.
   const openFile =
-    openInPane && change.changed ? (
+    openInPane && change.changed && !change.gone ? (
       <button
         type="button"
         aria-label={`Open ${change.path} in the side pane`}

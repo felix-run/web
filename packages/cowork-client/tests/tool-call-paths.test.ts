@@ -129,3 +129,18 @@ describe('collectTouchedPaths', () => {
     expect(collectTouchedPaths('write_file', ['a/b.md'])).toEqual([]);
   });
 });
+
+describe('delete and rename', () => {
+  it('touch the deleted path, and both ends of a rename', async () => {
+    const { collectTouchedPaths } = await import('../src/tool-call-paths');
+    expect(collectTouchedPaths('local_delete', { path: 'a.md' })).toEqual(['a.md']);
+    expect(collectTouchedPaths('rename_file', { path: 'a.md', to_path: 'b/a.md' })).toEqual([
+      'a.md',
+      'b/a.md',
+    ]);
+    expect(collectTouchedPaths('client · local_rename', { path: 'x', to_path: 'y' })).toEqual([
+      'x',
+      'y',
+    ]);
+  });
+});

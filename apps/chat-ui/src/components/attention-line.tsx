@@ -1,9 +1,9 @@
 import {
   type ApprovalRequest,
   approvalRuleLabel,
-  fileToolOp,
   formatCountdown,
   msUntilDecision,
+  readsBefore,
   relativeTime,
   type ThreadMeta,
 } from '@felix/client';
@@ -63,7 +63,8 @@ import { cn } from '@/lib/utils';
  * arguments *are* the change (old text and new), and a shell command's are the
  * whole of it, so those stay decidable in place.
  */
-const needsItsThread = (toolName: string) => fileToolOp(toolName) === 'write';
+// A delete is the same: what it removes is the file, which only its own banner shows.
+const needsItsThread = (toolName: string) => readsBefore(toolName);
 
 const OPEN_KEY = 'felix.attentionOpen';
 
