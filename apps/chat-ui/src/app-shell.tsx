@@ -84,6 +84,7 @@ import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
 import type { SkillState } from '@/components/inspector/primitives';
 import { type Theme, useTheme } from '@/components/theme-provider';
+import { ThreadTitle } from '@/components/thread-title';
 import { useMessageQueue } from '@/hooks/use-message-queue';
 import { usePendingApprovals } from '@/hooks/use-pending-approvals';
 import { useRails, WORKSPACE_INLINE } from '@/hooks/use-rails';
@@ -2347,6 +2348,8 @@ export function AppShell() {
   const runBlocked = pendingQueue.length > 0 || uiPrompt != null;
   /** Whether the header's run-state chip is on screen, which the modes yield to. */
   const runShown = runBlocked || streaming;
+  /** The header names this thread from the same merged index the sidebar lists. */
+  const currentThread = threads.find((t) => t.id === threadId);
   // Read per render rather than stored: it cannot change, and costs a regex.
   const mac = isMacPlatform();
 
@@ -2472,11 +2475,12 @@ export function AppShell() {
                     aria-keyshortcuts={ariaShortcut('toggle-workspace', mac)}
                     title={`Sidebar (${shortcutLabel('toggle-workspace', mac)})`}
                   />
-                  {/* Below `sm`, while a run state is showing, the word steps aside
-                      the way the modes do: the mark beside it is the brand and the
-                      toggle, and the chip and the attention line need the room. It
-                      stays the page's `h1` for a reader. */}
-                  <Wordmark className={cn(runShown && 'max-sm:sr-only')} />
+                  {/* Below `sm` the word steps aside on `/t`, for the thread's title,
+                      and on `/harness` while a run state is showing: the mark beside
+                      it is the brand and the toggle, and at 320px the word, the title
+                      and the attention line do not fit together. It stays the page's
+                      `h1` for a reader. */}
+                  <Wordmark className={cn((runShown || !onHarness) && 'max-sm:sr-only')} />
                 </div>
               )}
               {/* The left cluster yields in a fixed order, because at 390px with both
@@ -2487,10 +2491,23 @@ export function AppShell() {
                   that — a 320px viewport, where the brand and the chip alone are wider
                   than the room — the cluster clips at its own edge rather than running
                   under the right cluster, which holds the controls. `py-1` is room for
-                  a focus ring the clip would otherwise cut. */}
+                  a focus ring the clip would otherwise cut.
+
+                  On `/t` the cluster also names the thread, and the title is the
+                  first thing in the whole header to give way: from `sm` this cluster
+                  carries a shrink weight far above the attention line's, so the title
+                  is cut from the middle down to a floor (`sm:min-w-52`) before the
+                  line loses a word of its sentence. The line is the signal; the title
+                  is whole in its `title`, the sidebar and the Session menu's id.
+                  Below `sm` the line is two words that do not shrink, so the floor
+                  goes and the title takes the whole squeeze, down to nothing at
+                  320px, before the brand mark or the run state yield anything. */}
               <div
                 data-slot="header-state"
-                className="flex min-w-0 items-center gap-2 overflow-hidden px-1.5 py-1"
+                className={cn(
+                  'flex min-w-0 items-center gap-2 overflow-hidden px-1.5 py-1',
+                  !onHarness && 'shrink-[10000] sm:min-w-52',
+                )}
               >
                 {/* This thread's run, in one slot that is the same on both addresses.
                     It used to ride the Chat door on `/harness` only, so `/t` said
@@ -2537,6 +2554,18 @@ export function AppShell() {
                     running
                   </span>
                 ) : null}
+                {/* The thread this sheet holds: after the run state, which keeps
+                    its first slot on both addresses, so the chip does not move
+                    between them. None on `/harness`: each page has its own title. */}
+                {!onHarness && (
+                  <ThreadTitle
+                    threadId={threadId}
+                    thread={currentThread}
+                    readOnly={watching}
+                    onRename={renameThread}
+                    className="shrink-[100]"
+                  />
+                )}
                 {/* The modes this tab is in, at every width. They were `hidden` below
                     `sm`, so on a phone, or at 200% zoom, verbose and a canary rollout
                     were states with nothing on screen to say so. What narrows instead
@@ -2644,8 +2673,9 @@ export function AppShell() {
                 cannot be somewhere they have to navigate to.
 
                 `ml-auto` puts it beside the controls. From `sm` a shrink weight far
-                above the run cluster's makes it the first thing to give way — its
-                sentence truncates. Below `sm` it is two words that cannot truncate,
+                above the controls' makes it give way — its sentence truncates — but
+                only once the thread's title in the cluster before it has reached its
+                floor: on `/t` that cluster's weight is higher still. Below `sm` it is two words that cannot truncate,
                 so it does not shrink at all: it shrank below them and drew "1
                 waiting" over New chat and the sidebar toggle at 390px and 320px.
                 There the run cluster gives instead, clipping at its own edge.
