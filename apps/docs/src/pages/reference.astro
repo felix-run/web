@@ -28,6 +28,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import '@fontsource-variable/onest';
+import '@fontsource-variable/jetbrains-mono';
 import { DARK, LIGHT, scalarThemeCss } from '@felix/design/tokens';
 
 // Biome parses only the frontmatter, so constants used in the markup read as dead.
@@ -46,9 +48,12 @@ try {
 const origin = (process.env.FELIX_ORIGIN || 'https://api.felix.run').replace(/\/+$/, '');
 const title = version ? `Felix API reference · v${version}` : 'Felix API reference';
 
-const SYSTEM_SANS =
-  "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
-const SYSTEM_MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace";
+// The faces chat-ui and the rest of the docs set: Onest for UI and prose, JetBrains Mono
+// for what the harness said. Self-hosted by the imports above.
+const UI_SANS =
+  "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+const UI_MONO =
+  "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
 // biome-ignore lint/correctness/noUnusedVariables: passed to the page via define:vars
 const config = {
@@ -84,8 +89,8 @@ const config = {
   withDefaultFonts: false,
   customCss: `${scalarThemeCss()}
   .scalar-app, .light-mode, .dark-mode {
-    --scalar-font: ${SYSTEM_SANS};
-    --scalar-font-code: ${SYSTEM_MONO};
+    --scalar-font: ${UI_SANS};
+    --scalar-font-code: ${UI_MONO};
   }
   /* The sidebar's method badges are 10px. The docs' floor for text is 13px, and this
      is the one named exception (DESIGN.md): Scalar's element, sized for its box, raised
@@ -133,7 +138,7 @@ body {
   padding-inline: 1.5rem;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  font-family: ${SYSTEM_SANS};
+  font-family: ${UI_SANS};
   font-size: 0.875rem;
   color: var(--muted);
 }

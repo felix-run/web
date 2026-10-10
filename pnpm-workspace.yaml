@@ -6,6 +6,9 @@ packages:
 # package. Bump the version here and it moves everywhere at once — see README.md.
 # A dependency used by exactly one package keeps its version in that package.json.
 catalog:
+  # The UI and code faces chat-ui and the docs share (Warm Workbench, 2026-10-10).
+  '@fontsource-variable/jetbrains-mono': ^5.3.0
+  '@fontsource-variable/onest': ^5.3.1
   # React
   react: ^19.2.8
   react-dom: ^19.2.8

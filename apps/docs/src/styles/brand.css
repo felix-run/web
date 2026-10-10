@@ -8,6 +8,19 @@
  * proper noun — screen readers can spell out a literal all-caps word letter by
  * letter, and "FELIX" in a search snippet reads as shouting.
  */
+/*
+ * The faces chat-ui sets (2026-10-10, the Warm Workbench redesign): Onest for
+ * prose and UI, JetBrains Mono for anything the harness said. Both self-hosted
+ * through `customCss` in `astro.config.mjs`, so the manual and the app read as
+ * one product.
+ */
+:root {
+  --sl-font:
+    "Onest Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --sl-font-mono:
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .site-title {
   text-transform: uppercase;
   /* Caps need air; the default tracking is tuned for mixed case. */

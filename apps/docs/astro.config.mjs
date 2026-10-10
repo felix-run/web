@@ -45,7 +45,12 @@ export default defineConfig({
       },
       // Palette from @felix/design (checked-in src/styles/theme.css).
       // theme.css is generated (see @felix/design); brand.css is hand-written.
-      customCss: ['./src/styles/theme.css', './src/styles/brand.css'],
+      customCss: [
+        '@fontsource-variable/onest',
+        '@fontsource-variable/jetbrains-mono',
+        './src/styles/theme.css',
+        './src/styles/brand.css',
+      ],
       // Served from apps/docs/public/. Previously hotlinked from the harness
       // host, which 404s — a docs site should not depend on an API server, and
       // that one now gates static paths behind auth anyway.
