@@ -505,6 +505,18 @@ chat-ui sends a fresh key with every message. When a send fails it puts the mess
 composer, and sending it again unchanged reuses the key, so the transcript shows what the first
 attempt left — once.
 
+### The agent's checklist
+
+An agent with [`todo_write`](/guide/manifest-reference/) in its tools announces each change to its
+checklist, with the whole list:
+
+```text
+data: {"event":"todo_updated","data":{"todos":[{"id":"1","content":"Reproduce the failure","status":"in_progress","active_form":"Reproducing the failure"},{"id":"2","content":"Fix it","status":"pending","active_form":""}]}}
+```
+
+The same list is on the session snapshot as `todos`, so a client that reloads draws it without
+waiting for the next write.
+
 ### Child agents on the stream
 
 When an agent hands work to a child through the [`task` tool](/guide/manifest-reference/#specdelegation),
