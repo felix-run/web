@@ -150,6 +150,21 @@ describe('collectChanges', () => {
     expect(row?.stat).toEqual({ text: 'refused by policy', tone: 'failed' });
   });
 
+  it('reports a denied write as denied, in the neutral tone, and not as a change', () => {
+    const [row] = collectChanges([
+      assistant([
+        call(
+          'write_file',
+          { path: 'notes.txt', content: 'x' },
+          '[approval denied] tool=write_file rule=workspace-write',
+        ),
+      ]),
+    ]);
+    expect(row?.changed).toBe(false);
+    expect(row?.stat).toEqual({ text: 'denied', tone: 'denied' });
+    expect(row?.evidence?.denied).toBe(true);
+  });
+
   it('says a call in flight is in flight', () => {
     const [row] = collectChanges([
       assistant([call('write_file', { path: 'a', content: 'x' }, undefined, false)]),
@@ -341,6 +356,27 @@ describe('the Changes tab', () => {
     });
     const stat = screen.getByText('failed');
     expect(stat.className).toContain('text-state-failed');
+  });
+
+  it('draws a denied write as the word denied, never in the failure colour', async () => {
+    changesTab({
+      turns: [
+        assistant([
+          call(
+            'write_file',
+            { path: 'notes.txt', content: 'a' },
+            '[approval denied] tool=write_file rule=workspace-write',
+          ),
+        ]),
+      ],
+    });
+    const stat = screen.getByText('denied');
+    expect(stat.className).toContain('text-muted-foreground');
+    await userEvent.click(screen.getByRole('button', { name: /notes\.txt/ }));
+    const row = screen.getByRole('button', { name: /notes\.txt/ });
+    const panel = document.getElementById(row.getAttribute('aria-controls') ?? '');
+    expect(panel?.textContent).toContain('Would have written');
+    expect(row.parentElement?.querySelector('[class*="state-failed"]')).toBeNull();
   });
 
   /**

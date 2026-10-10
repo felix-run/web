@@ -108,6 +108,11 @@ export interface ShellValue {
   kept: KeptMessage | null;
   /** The composer has the kept message: forget it, so a remount does not restore it twice. */
   takeKept(): void;
+  /**
+   * Put `text` in the composer, ahead of anything already typed, without sending it.
+   * A denied call's "Ask again": the operator reads, edits and sends it themselves.
+   */
+  draftMessage(text: string): void;
   /** Messages written mid-run, held until the thread is free or the operator steers with one. */
   queue: MessageQueue;
   /** Steer the run in flight with one queued message. Cancels the run's remaining tool calls. */

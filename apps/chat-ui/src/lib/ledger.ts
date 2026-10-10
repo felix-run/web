@@ -1,5 +1,6 @@
 import { threadSuffix } from '@felix/client';
-import { isFailure, tsToMs } from '@/components/inspector/primitives';
+import { tsToMs } from '@/components/inspector/primitives';
+import { type EventOutcome, eventOutcome, isFailureOutcome } from '@/lib/audit-outcome';
 import type { AuditEvent, UsageThreadItem } from '@/types';
 
 /**
@@ -109,16 +110,35 @@ export function writeLastVisit(at: number): void {
   }
 }
 
-/** `error` outranks `denied` outranks `ok`: a broken call beats a refused one. */
-export type Worst = 'ok' | 'denied' | 'error';
+/**
+ * `error` outranks `refused` outranks `denied` outranks `ok`: a broken call beats
+ * one a control stopped, and both beat one an approval gate declined, which is
+ * not something going wrong at all.
+ */
+export type Worst = 'ok' | 'denied' | 'refused' | 'error';
 
-function worstOf(events: AuditEvent[]): Worst {
+const RANK: Record<Worst, number> = { ok: 0, denied: 1, refused: 2, error: 3 };
+
+function worstOf(outcomes: Iterable<EventOutcome>): Worst {
   let worst: Worst = 'ok';
-  for (const e of events) {
-    if (e.status === 'error' || e.status === 'failed') return 'error';
-    if (e.status === 'denied') worst = 'denied';
+  for (const o of outcomes) {
+    // A reply after a denial is the denial's consequence, not an outcome of its own.
+    const w: Worst = o === 'after-denial' ? 'ok' : o;
+    if (RANK[w] > RANK[worst]) worst = w;
   }
   return worst;
+}
+
+/**
+ * Each event's outcome, read in its turn (`eventOutcome`). Keyed by id so a view
+ * can colour a row without re-cutting the thread.
+ */
+export type Outcomes = ReadonlyMap<string, EventOutcome>;
+
+function outcomesOf(groups: AuditEvent[][]): Map<string, EventOutcome> {
+  const out = new Map<string, EventOutcome>();
+  for (const g of groups) for (const e of g) out.set(e.id, eventOutcome(e, g));
+  return out;
 }
 
 /** A turn: a `user_input`, what the agent did about it, and its `final_response`. */
@@ -134,7 +154,12 @@ export interface LedgerTurn {
   /** No `final_response` yet: still running, or it ended without writing one. */
   open: boolean;
   worst: Worst;
+  /** Broken calls and control refusals. Never a denial, never a reply after one. */
   failures: AuditEvent[];
+  /** Calls an approval gate declined. */
+  denials: AuditEvent[];
+  /** Every event's outcome, read in this turn. */
+  outcomes: Outcomes;
   /** Calls that reached a tool, refused ones included. */
   tools: number;
   startTs: number;
@@ -149,8 +174,12 @@ export interface LedgerThread {
   /** Events with no thread are not cut into turns: there is no conversation to cut. */
   loose: AuditEvent[];
   worst: Worst;
-  /** Newest first. */
+  /** Newest first. Broken calls and control refusals; see `LedgerTurn.failures`. */
   failures: AuditEvent[];
+  /** Newest first. Calls an approval gate declined. */
+  denials: AuditEvent[];
+  /** Every event's outcome, read in its turn. */
+  outcomes: Outcomes;
   tools: number;
   /** The newest thing in the window, from either record. */
   lastTs: number;
@@ -185,6 +214,7 @@ export function cutTurns(events: AuditEvent[]): LedgerTurn[] {
     if (e.event_type === 'user_input' || groups.length === 0) groups.push([e]);
     else groups[groups.length - 1].push(e);
   }
+  const outcomes = outcomesOf(groups);
   return groups
     .map((g): LedgerTurn => {
       const first = g[0];
@@ -198,8 +228,10 @@ export function cutTurns(events: AuditEvent[]): LedgerTurn[] {
         prompt,
         partial: first.event_type !== 'user_input',
         open: !g.some((e) => e.event_type === 'final_response'),
-        worst: worstOf(g),
-        failures: g.filter((e) => isFailure(e.status)).reverse(),
+        worst: worstOf(g.map((e) => outcomes.get(e.id) ?? 'ok')),
+        failures: g.filter((e) => isFailureOutcome(outcomes.get(e.id) ?? 'ok')).reverse(),
+        denials: g.filter((e) => outcomes.get(e.id) === 'denied').reverse(),
+        outcomes,
         tools: g.filter(isTool).length,
         startTs: tsToMs(first.ts),
         endTs: tsToMs(g[g.length - 1].ts),
@@ -239,14 +271,24 @@ export function buildLedger(events: AuditEvent[], spend: UsageThreadItem[] | nul
     const own = spendBy.get(id) ?? null;
     const turns = id === NO_THREAD ? [] : cutTurns(evs);
     const loose = id === NO_THREAD ? [...evs].sort((a, b) => tsToMs(b.ts) - tsToMs(a.ts)) : [];
+    // Read in its turn where there are turns; the no-thread bucket has no turn to
+    // read an event in, so each stands alone.
+    const outcomes: Map<string, EventOutcome> = new Map(
+      turns.length > 0
+        ? turns.flatMap((t) => t.events.map((e) => [e.id, t.outcomes.get(e.id) ?? 'ok'] as const))
+        : evs.map((e) => [e.id, eventOutcome(e)] as const),
+    );
+    const newestFirst = (a: AuditEvent, b: AuditEvent) => tsToMs(b.ts) - tsToMs(a.ts);
     const lastEvent = evs.reduce((m, e) => Math.max(m, tsToMs(e.ts)), 0);
     const firstEvent = evs.reduce((m, e) => Math.min(m, tsToMs(e.ts)), Number.POSITIVE_INFINITY);
     return {
       id,
       turns,
       loose,
-      worst: worstOf(evs),
-      failures: evs.filter((e) => isFailure(e.status)).sort((a, b) => tsToMs(b.ts) - tsToMs(a.ts)),
+      worst: worstOf(outcomes.values()),
+      failures: evs.filter((e) => isFailureOutcome(outcomes.get(e.id) ?? 'ok')).sort(newestFirst),
+      denials: evs.filter((e) => outcomes.get(e.id) === 'denied').sort(newestFirst),
+      outcomes,
       tools: evs.filter(isTool).length,
       lastTs: Math.max(lastEvent, own ? tsToMs(own.last_ts) : 0),
       firstTs: Math.min(firstEvent, own ? tsToMs(own.first_ts) : Number.POSITIVE_INFINITY),
@@ -352,7 +394,8 @@ export function money(n: number): string {
  * thread either qualifies or does not, and an opened one shows all of its turns.
  * `layer` keeps threads holding a denial stamped with that governance layer
  * (`payload.control`); a harness older than the stamp writes none, which the
- * page's empty state says.
+ * page's empty state says. An approval's denials are not failures, so
+ * `failuresOnly` does not find them; `layer: 'approvals'` does.
  */
 export function filterLedger(
   threads: LedgerThread[],
@@ -361,7 +404,7 @@ export function filterLedger(
   return threads.filter((t) => {
     if (opts.failuresOnly && t.failures.length === 0) return false;
     if (opts.layer === 'any') return true;
-    return t.failures.some(
+    return [...t.failures, ...t.denials].some(
       (e) => e.event_type === 'policy_deny' && e.payload?.control === opts.layer,
     );
   });
@@ -393,7 +436,8 @@ export function groupFailures(events: AuditEvent[]): { event: AuditEvent; count:
 
 /**
  * A turn's rows as drawn: an event on its own, a run of routine events folded, or
- * a run of the same failure folded to one line that stays red.
+ * a run of the same failure or denial folded to one counted line, which stays
+ * red for a failure and muted for a denial.
  */
 export type TurnSegment =
   | { kind: 'event'; event: AuditEvent }
@@ -412,7 +456,12 @@ const FOLD_MIN = 3;
  * failure, a denial and a turn boundary always stand alone, and what went fine is
  * counted until someone asks to see it.
  */
-export function foldRoutine(events: AuditEvent[]): TurnSegment[] {
+export function foldRoutine(
+  events: AuditEvent[],
+  outcomes: Outcomes = new Map(events.map((e) => [e.id, eventOutcome(e, events)])),
+): TurnSegment[] {
+  // Anything not `ok` stands alone: a failure, a denial, and a reply after one.
+  const notable = (e: AuditEvent) => (outcomes.get(e.id) ?? 'ok') !== 'ok';
   const out: TurnSegment[] = [];
   let run: AuditEvent[] = [];
   const flush = () => {
@@ -425,23 +474,18 @@ export function foldRoutine(events: AuditEvent[]): TurnSegment[] {
     // the `skill_activation` rows the harness writes between them, which broke
     // every run into fragments when only calls folded.
     const boundary = e.event_type === 'user_input' || e.event_type === 'final_response';
-    if (!boundary && !isFailure(e.status)) {
+    if (!boundary && !notable(e)) {
       run.push(e);
       continue;
     }
     flush();
-    // The same failure again, straight after itself, joins it: one red line that
-    // says how many, rather than a column of identical rows. Never hidden — a
-    // repeat is still a failure, it is only counted.
+    // The same failure again, straight after itself, joins it: one line that says
+    // how many, rather than a column of identical rows. Never hidden — a repeat
+    // is still a failure (or a denial), it is only counted.
     const prev = out[out.length - 1];
     const prevEvent =
       prev?.kind === 'event' ? prev.event : prev?.kind === 'repeat' ? prev.events[0] : null;
-    if (
-      !boundary &&
-      prevEvent &&
-      isFailure(prevEvent.status) &&
-      failureKey(prevEvent) === failureKey(e)
-    ) {
+    if (!boundary && prevEvent && notable(prevEvent) && failureKey(prevEvent) === failureKey(e)) {
       if (prev.kind === 'repeat') prev.events.push(e);
       else out[out.length - 1] = { kind: 'repeat', id: prevEvent.id, events: [prevEvent, e] };
       continue;

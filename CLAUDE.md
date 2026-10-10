@@ -833,6 +833,25 @@ Flows worth knowing before editing the app:
   what a harness older than `felix-run/felix#308` returns. Both clients' tool cards draw a failed
   or refused call as such instead of `done`: a `write_file` that failed with `Errno 13` sat under
   a green `done` badge on the reference deployment.
+  **An `[approval <note>]` outcome is its own kind, `denied`, and is not a failure** (2026-10-10).
+  One declined `write_file` used to read red `refused` on its card and in Changes and `● Failed`
+  in the Activity ledger, while the run readout said Idle. Now every surface says `denied` in the
+  neutral tone; red stays for `failed` and for a control's `refused`. The result says only *that*
+  it was denied; who and when are on the decided `/approvals` row, which
+  `src/lib/denials.ts` matches back to the card **by order** (the n-th denied call of a tool on
+  the thread is the n-th denied row for it, and nothing when the counts disagree), read once per
+  thread by `DenialsSync` in the workbench, which publishes to a small store the card reads
+  (`components/chat/denial-context.ts`). `decided_by` names a principal, and through the
+  proxy every browser is the same one, so the card says **"Denied by you" only when this browser
+  made the decision** (`markDecided` records it in `felix.decidedHere`), the recorded principal
+  otherwise, and plain *Denied* when no row matches. The harness has no route that re-issues one
+  call, so the card's **Ask again** only puts an editable request in the composer
+  (`draftMessage`, the kept-message path) and sends nothing. In the audit, an approval's denial
+  is a `policy_deny` with `control: 'approvals'`, and the harness writes the turn's
+  `final_response` as `error` when its last batch held any denial; `src/lib/audit-outcome.ts`
+  reads that reply as `after-denial` (from `payload.denied_calls`, or, on a harness without it,
+  from a turn with a denial and no broken call), so it is not a second failure, in the ledger or
+  in the sidebar's Activity glance.
   The rule path now sends `reason` too — the manifest rule's `description`, so a banner can say
   `Confirm writes to the workspace` rather than only `workspace-write`. The `/approvals` row still
   carries none, so it is frame-only and stays optional.

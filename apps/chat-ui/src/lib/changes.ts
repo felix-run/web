@@ -16,9 +16,11 @@
  *   file's before-state (the approval card's `before` is read at decision time
  *   and gone after), so its stat is `+N written` and never a minus: drawing a
  *   diff against nothing would claim the file used to be empty.
- * - A call whose result the harness marked as a failure or a refusal changed
- *   nothing, whatever its arguments said. It is reported as `failed`/`refused`
- *   and contributes to no count.
+ * - A call whose result the harness marked as a failure, a refusal or a denial
+ *   changed nothing, whatever its arguments said. It is reported as
+ *   `failed`/`refused`/`denied` and contributes to no count. A denial is the one
+ *   that is not drawn as something going wrong: an approval gate said no, which
+ *   is the gate working.
  *
  * Which calls count at all is `collectTouchedPaths`' allowlist — a workspace
  * tool's path argument and nothing else — never the mention heuristic.
@@ -31,7 +33,7 @@ const CLIENT_PREFIX = 'client · ';
 
 export type CallKind = 'write' | 'append' | 'edit' | 'read' | 'list' | 'search' | 'shell' | 'open';
 
-export type CallOutcome = 'running' | 'landed' | 'failed' | 'refused';
+export type CallOutcome = 'running' | 'landed' | 'failed' | 'refused' | 'denied';
 
 /** One call against one path. */
 export interface PathCall {
@@ -51,8 +53,8 @@ export interface PathCall {
 
 /** The evidence for the newest call that tried to change a path. */
 export type ChangeEvidence =
-  | { kind: 'edit'; oldText: string; newText: string; issue?: string }
-  | { kind: 'write' | 'append'; content: string; issue?: string };
+  | { kind: 'edit'; oldText: string; newText: string; issue?: string; denied?: boolean }
+  | { kind: 'write' | 'append'; content: string; issue?: string; denied?: boolean };
 
 export interface PathChange {
   path: string;
@@ -69,12 +71,12 @@ export interface PathChange {
 
 /**
  * What the row's stat reads. `tone` is the colour the words take: `count` is the
- * plain mono figure, `pending` muted, `failed` the failure ramp — always as a
- * word beside it, never the colour alone.
+ * plain mono figure, `pending` and `denied` muted, `failed` the failure ramp —
+ * always as a word beside it, never the colour alone.
  */
 export interface ChangeStat {
   text: string;
-  tone: 'count' | 'pending' | 'failed';
+  tone: 'count' | 'pending' | 'failed' | 'denied';
 }
 
 /** Line count of a string as an editor would number it: `''` is 0, a trailing newline adds none. */
@@ -142,9 +144,15 @@ function outcomeOf(
   return { outcome: issue.kind, issue: issue.message || issue.label, label: issue.label };
 }
 
-/** A failed or refused call's word: the classifier's, or the outcome's when it has none. */
+/** A failed, refused or denied call's word: the classifier's, or the outcome's when it has none. */
 function failureWord(call: PathCall | undefined): string {
-  return call?.label || (call?.outcome === 'refused' ? 'refused' : 'failed');
+  if (call?.label) return call.label;
+  return call?.outcome === 'refused' || call?.outcome === 'denied' ? call.outcome : 'failed';
+}
+
+/** The tone of a call that changed nothing: neutral for a denial, the failure ramp otherwise. */
+function missTone(call: PathCall | undefined): ChangeStat['tone'] {
+  return call?.outcome === 'denied' ? 'denied' : 'failed';
 }
 
 /**
@@ -211,7 +219,7 @@ function statOf(calls: readonly PathCall[]): ChangeStat {
     if (parts.length > 0) return { text: parts.reverse().join(' · '), tone: 'count' };
     // Every attempt failed: report the newest, as a word.
     const last = mutations[0];
-    return { text: failureWord(last), tone: 'failed' };
+    return { text: failureWord(last), tone: missTone(last) };
   }
 
   const counts = new Map<CallKind, number>();
@@ -220,7 +228,7 @@ function statOf(calls: readonly PathCall[]): ChangeStat {
     counts.set(call.kind, (counts.get(call.kind) ?? 0) + 1);
   }
   if (counts.size === 0) {
-    return { text: failureWord(newest), tone: 'failed' };
+    return { text: failureWord(newest), tone: missTone(newest) };
   }
   const words = [...counts].map(([kind, n]) => {
     const verb = VERB[kind as keyof typeof VERB];
@@ -233,11 +241,25 @@ function evidenceOf(calls: readonly PathCall[]): ChangeEvidence | null {
   const call = calls.find((c) => MUTATING.has(c.kind));
   if (!call) return null;
   const args = record(call.tool.input);
-  const issue = call.outcome === 'failed' || call.outcome === 'refused' ? call.issue : undefined;
+  const missed =
+    call.outcome === 'failed' || call.outcome === 'refused' || call.outcome === 'denied';
+  const issue = missed ? call.issue : undefined;
+  const denied = call.outcome === 'denied';
   if (call.kind === 'edit') {
-    return { kind: 'edit', oldText: str(args.old_string), newText: str(args.new_string), issue };
+    return {
+      kind: 'edit',
+      oldText: str(args.old_string),
+      newText: str(args.new_string),
+      issue,
+      denied,
+    };
   }
-  return { kind: call.kind === 'append' ? 'append' : 'write', content: str(args.content), issue };
+  return {
+    kind: call.kind === 'append' ? 'append' : 'write',
+    content: str(args.content),
+    issue,
+    denied,
+  };
 }
 
 /**

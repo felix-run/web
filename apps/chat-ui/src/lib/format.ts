@@ -17,3 +17,15 @@ export function middleTruncate(s: string, max: number): string {
   const head = Math.floor(keep / 2);
   return `${s.slice(0, head)}…${s.slice(s.length - (keep - head))}`;
 }
+
+/** `2:21 PM`, or `Tue 2:21 PM` when it was not today. */
+export function clockTime(ms: number): string {
+  const d = new Date(ms);
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  return d.toLocaleString(undefined, {
+    ...(sameDay ? {} : { weekday: 'short' }),
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
