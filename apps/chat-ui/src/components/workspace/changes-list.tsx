@@ -113,7 +113,17 @@ function ChangeRow({ change }: { change: PathChange }) {
         type="button"
         aria-label={`Open ${change.path} in the side pane`}
         title="Open in the side pane"
-        onClick={() => openInPane({ kind: 'file', path: treePath(change.path) })}
+        onClick={() =>
+          openInPane({
+            kind: 'file',
+            path: treePath(change.path),
+            // A write from the browser's own tools (`local_*`) is in the browser's
+            // workspace; one from the harness's tools is on the harness.
+            ...(change.calls.some((c) => c.tool.name.startsWith('local_'))
+              ? {}
+              : { source: 'harness' as const }),
+          })
+        }
         className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent/40 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/change:opacity-100"
       >
         <PanelRightOpenIcon aria-hidden className="size-3.5" />

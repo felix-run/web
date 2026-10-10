@@ -129,6 +129,7 @@ interface RawModelEntry {
     contextWindow?: number | null;
     starters?: unknown;
     greeting?: unknown;
+    workspace?: unknown;
   } | null;
 }
 
@@ -186,6 +187,30 @@ export interface ManifestEntry {
    * default greeting stands, so the three need no telling apart.
    */
   greeting?: ManifestGreeting;
+  /**
+   * `felix.workspace` (`felix-run/felix#578`): which workspace this agent's file
+   * tools work in. `server`: the harness's own (`read_file`, `write_file`, …),
+   * so a file the operator should edit is there, not in the browser. `client`:
+   * the browser's (`local_*`). Absent from an older harness, or for a manifest
+   * that failed to resolve — a client then cannot know, and offers no harness files.
+   */
+  workspace?: ManifestWorkspace;
+}
+
+export interface ManifestWorkspace {
+  tools: 'server' | 'client' | 'both' | 'none';
+  scope: 'thread' | 'tenant' | 'deployment';
+}
+
+function toWorkspace(raw: unknown): ManifestWorkspace | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const { tools, scope } = raw as { tools?: unknown; scope?: unknown };
+  if (tools !== 'server' && tools !== 'client' && tools !== 'both' && tools !== 'none')
+    return undefined;
+  return {
+    tools,
+    scope: scope === 'tenant' || scope === 'deployment' ? scope : 'thread',
+  };
 }
 
 function toGreeting(raw: unknown): ManifestGreeting | undefined {
@@ -216,7 +241,56 @@ function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   if (starters) entry.starters = starters;
   const greeting = toGreeting(raw.felix?.greeting);
   if (greeting) entry.greeting = greeting;
+  const workspace = toWorkspace(raw.felix?.workspace);
+  if (workspace) entry.workspace = workspace;
   return entry;
+}
+
+/** The thread's workspace on the harness (`GET /chat/workspace/tree`). */
+export interface HarnessWorkspaceTree {
+  rootKind: 'scoped' | 'checkout';
+  scope: string | null;
+  manifest: string | null;
+  entries: Array<{ path: string; type: 'file' | 'dir'; bytes?: number }>;
+  truncated: boolean;
+}
+
+/** A harness workspace route's refusal, by the code in its `detail`. */
+/** A refusal's `detail` code (`not_found`, `too_large`, …), else the body's head. */
+async function codeOf(res: Response): Promise<string> {
+  const text = await res
+    .clone()
+    .text()
+    .catch(() => '');
+  try {
+    const detail = (JSON.parse(text) as { detail?: unknown } | null)?.detail;
+    if (typeof detail === 'string') return detail;
+  } catch {
+    // not JSON
+  }
+  return text.slice(0, 200);
+}
+
+export class WorkspaceRouteError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(`workspace: ${status} ${code}`);
+    this.name = 'WorkspaceRouteError';
+  }
+}
+
+/** The file changed on the harness since it was read: nothing was written. */
+export class WorkspaceChangedError extends Error {
+  constructor(
+    /** The file's hash now, or null when it is gone or over the read cap. */
+    readonly sha256: string | null,
+    readonly bytes: number | null,
+  ) {
+    super('workspace_changed');
+    this.name = 'WorkspaceChangedError';
+  }
 }
 
 export type FelixClient = ReturnType<typeof createFelixClient>;
@@ -582,6 +656,135 @@ export function createFelixClient(opts: FelixClientOptions) {
       const body = (await res.json()) as { status?: string; event_id?: string | null };
       return {
         status: body.status === 'recorded' ? 'recorded' : 'queued',
+        eventId: body.event_id ?? null,
+      };
+    },
+
+    /**
+     * GET /chat/workspace/tree — the thread's workspace on the harness, as its
+     * own file tools see it: the manifest's scope, or the thread's repository
+     * checkout when it has one. `manifest` only matters for a thread that has
+     * never run; afterwards the harness uses the one it last ran under. `null`
+     * from a harness without the route (older than felix-run/felix#578).
+     */
+    async workspaceTree(args: {
+      threadId: string;
+      manifest?: string;
+      limit?: number;
+    }): Promise<HarnessWorkspaceTree | null> {
+      const q = new URLSearchParams({ thread_id: args.threadId });
+      if (args.manifest) q.set('manifest', args.manifest);
+      if (args.limit) q.set('limit', String(args.limit));
+      const res = await chatFetch(`/chat/workspace/tree?${q}`);
+      if (res.status === 404 && (await codeOf(res)) !== 'unknown_manifest') return null;
+      if (!res.ok) throw new WorkspaceRouteError(res.status, await codeOf(res));
+      const body = (await res.json()) as {
+        root_kind?: string;
+        scope?: string | null;
+        manifest?: string | null;
+        entries?: Array<{ path?: unknown; type?: unknown; bytes?: unknown }>;
+        truncated?: boolean;
+      };
+      return {
+        rootKind: body.root_kind === 'checkout' ? 'checkout' : 'scoped',
+        scope: body.scope ?? null,
+        manifest: body.manifest ?? null,
+        entries: (body.entries ?? []).flatMap((e) =>
+          typeof e.path === 'string' && (e.type === 'file' || e.type === 'dir')
+            ? [
+                {
+                  path: e.path,
+                  type: e.type,
+                  ...(typeof e.bytes === 'number' ? { bytes: e.bytes } : {}),
+                },
+              ]
+            : [],
+        ),
+        truncated: body.truncated === true,
+      };
+    },
+
+    /**
+     * GET /chat/workspace/file — one file, as bytes, and the hash a conditional
+     * write sends back. Throws `WorkspaceRouteError` for `not_found`,
+     * `too_large`, `not_a_file` and the rest, which the caller words.
+     */
+    async workspaceRead(args: {
+      threadId: string;
+      path: string;
+      manifest?: string;
+    }): Promise<{ path: string; bytes: Uint8Array; sha256: string }> {
+      const q = new URLSearchParams({ thread_id: args.threadId, path: args.path });
+      if (args.manifest) q.set('manifest', args.manifest);
+      const res = await chatFetch(`/chat/workspace/file?${q}`);
+      if (!res.ok) throw new WorkspaceRouteError(res.status, await codeOf(res));
+      const body = (await res.json()) as {
+        path: string;
+        sha256: string;
+        encoding: 'utf-8' | 'base64';
+        content: string;
+      };
+      const bytes =
+        body.encoding === 'base64'
+          ? Uint8Array.from(atob(body.content), (c) => c.charCodeAt(0))
+          : new TextEncoder().encode(body.content);
+      return { path: body.path, bytes, sha256: body.sha256 };
+    },
+
+    /**
+     * POST /chat/workspace/write — the operator's save into the harness
+     * workspace, refused with `WorkspaceChangedError` if the file is no longer
+     * the one `expectedSha256` was read from. The harness tells the agent in the
+     * same request, so a caller does not also call `workspaceEdited`.
+     */
+    async workspaceWrite(args: {
+      threadId: string;
+      path: string;
+      content: string;
+      expectedSha256?: string;
+      manifest?: string;
+    }): Promise<{
+      status: 'queued' | 'recorded';
+      bytes: number;
+      sha256: string;
+      eventId: string | null;
+    }> {
+      const res = await chatFetch('/chat/workspace/write', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          path: args.path,
+          content: args.content,
+          ...(args.expectedSha256 ? { expected_sha256: args.expectedSha256 } : {}),
+          ...(args.manifest ? { manifest: args.manifest } : {}),
+        }),
+      });
+      if (res.status === 409) {
+        const body = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as {
+          detail?: unknown;
+          sha256?: string | null;
+          bytes?: number | null;
+        } | null;
+        if (body?.detail === 'workspace_changed') {
+          throw new WorkspaceChangedError(body.sha256 ?? null, body.bytes ?? null);
+        }
+      }
+      await refuseIfLease(res, 'workspace/write', args.threadId);
+      if (!res.ok) throw new WorkspaceRouteError(res.status, await codeOf(res));
+      const body = (await res.json()) as {
+        status?: string;
+        bytes: number;
+        sha256: string;
+        event_id?: string | null;
+      };
+      return {
+        status: body.status === 'recorded' ? 'recorded' : 'queued',
+        bytes: body.bytes,
+        sha256: body.sha256,
         eventId: body.event_id ?? null,
       };
     },

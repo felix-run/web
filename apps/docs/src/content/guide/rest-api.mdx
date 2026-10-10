@@ -757,6 +757,29 @@ appended at once and the next run reads it. Either way it lands in the log as a 
 (`role: "user"`, `metadata.type: "workspace_edit"`, `in_context: true`), so a snapshot carries it.
 The route is lease-guarded like `/chat/steer`.
 
+### Reading and writing the workspace
+
+An agent whose file tools are the harness's (`read_file`, `write_file`, …) works in a workspace on
+the harness — the manifest's `spec.workspace.scope`, or the thread's repository checkout when it has
+one — that a browser's own files never reach. Three routes open it to a client, resolved exactly as
+the tools resolve it: by the manifest the thread last ran under, or `manifest` for a thread that has
+not run.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/chat/workspace/tree?thread_id=&limit=&manifest=` | `{root_kind, scope, manifest, entries:[{path, type, bytes?}], truncated}`. Recursive, symlinks neither followed nor listed, `.git` left out; `limit` 1–5000, default 2000. |
+| `GET` | `/chat/workspace/file?thread_id=&path=&manifest=` | `{path, bytes, sha256, encoding: "utf-8"\|"base64", content}`. `413 too_large` past 512,000 bytes, `404 not_found`, `400 not_a_file` / `invalid_path` / `reserved_path`. |
+| `POST` | `/chat/workspace/write` | `{thread_id, path, content, expected_sha256?, manifest?}` → `{status, path, bytes, sha256, event_id}`. |
+
+The write is **conditional** when `expected_sha256` is sent: if the file is no longer what the
+client read, it is refused `409 {"detail":"workspace_changed","sha256","bytes"}` and nothing is
+written. A write also tells the agent, exactly as `/chat/workspace/edited` does — `status` is that
+note's `queued` or `recorded` — so a client does not call both. It is lease-guarded like a steer.
+
+Whether an agent works there at all is on its `/v1/models` entry:
+`felix.workspace: {"tools": "server"|"client"|"both"|"none", "scope": …}`. `client` means its
+file tools are the browser's (`local_*`), and its files are not on the harness.
+
 ## Abort, continue, thinking, compact
 
 | Method | Path | Body | Notes |
@@ -926,7 +949,7 @@ exclusive hold's, or the last observer's when there is none.
 Leases are advisory unless a client opts in. The routes that drive a thread accept an
 **`X-Felix-Lease-Token`** header: `POST /chat`, `/chat/stream`, `/chat/continue`, `/chat/abort`,
 `/chat/rewind`, `/chat/steer`, `/chat/tool_result`, `/chat/ui`, `/chat/compact`, `/chat/thinking`,
-`/chat/sessions/name`, `/chat/sessions/label`, `/chat/sessions/custom`, `/chat/workspace/edited` and
+`/chat/sessions/name`, `/chat/sessions/label`, `/chat/sessions/custom`, `/chat/workspace/edited`, `/chat/workspace/write` and
 `DELETE /chat/history/{thread_id}`. When the header is present, the request is refused unless it is
 the exclusive hold's token:
 
