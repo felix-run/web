@@ -2,6 +2,7 @@ import { Button } from '@felix/ui/button';
 import { RotateCwIcon } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { CodeBlock } from '@/components/ai-elements/code-block';
+import { savedLine, useTellAgent, useTellsAgent, utf8Bytes } from '@/components/pane/edit-notice';
 import {
   CopyAction,
   DownloadAction,
@@ -21,6 +22,7 @@ import {
 } from '@/lib/file-preview';
 import { hasConflict, isDirty, type PaneItem, updatePaneFile } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
+import type { EditNotice } from '@/shell-context';
 
 // The skill library's renderer, because it is the one that already trusts its
 // input less than the transcript does: no inline HTML becomes an element, and no
@@ -71,6 +73,7 @@ export function FileView({
 }) {
   const { path, key } = item;
   const [read, setRead] = useState<Read>({ status: 'loading' });
+  const tellAgent = useTellAgent();
   // A slow mount read for one load must not land after the next.
   const seq = useRef(0);
   const itemRef = useRef(item);
@@ -251,6 +254,7 @@ export function FileView({
             await writeWorkspaceFile(path, value);
             updatePaneFile(threadId, key, (i) => ({ kind: 'file', key: i.key, path: i.path }));
             await load();
+            return tellAgent({ path, bytes: utf8Bytes(value) });
           }}
         />
       )}
@@ -339,17 +343,24 @@ function SaveBar({
   /** The run still going wrote this file. */
   warnRun: boolean;
   onRevert: () => void;
-  onSave: () => Promise<void>;
+  /** Resolves with what came of telling the agent, once the file is written. */
+  onSave: () => Promise<EditNotice | null>;
 }) {
   const [armed, setArmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  /** The line a landed save left, until the next edit or a few seconds pass. */
+  const [saved, setSaved] = useState<string | null>(null);
+  const tellsAgent = useTellsAgent();
   useEffect(() => {
     if (!saved) return;
-    const t = window.setTimeout(() => setSaved(false), 2000);
+    // Long enough to read a sentence about the agent, not only "Saved."
+    const t = window.setTimeout(() => setSaved(null), saved === 'Saved.' ? 2000 : 8000);
     return () => window.clearTimeout(t);
   }, [saved]);
+  useEffect(() => {
+    if (dirty) setSaved(null);
+  }, [dirty]);
   useEffect(() => {
     if (!dirty || !warnRun) setArmed(false);
   }, [dirty, warnRun]);
@@ -362,8 +373,7 @@ function SaveBar({
     setSaving(true);
     setError(null);
     try {
-      await onSave();
-      setSaved(true);
+      setSaved(savedLine(await onSave()));
       setArmed(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -403,13 +413,17 @@ function SaveBar({
             The running agent wrote this file in this run. Saving replaces what it wrote.
           </span>
         ) : saved ? (
-          'Saved.'
+          saved
         ) : dirty ? (
-          <>Unsaved. The agent isn't told about edits made here.</>
+          tellsAgent ? (
+            'Unsaved. Saving tells the agent the file changed.'
+          ) : (
+            <>Unsaved. The agent isn't told about edits made here.</>
+          )
         ) : (
           <>
-            Saves to {store ? <span className="font-mono">{store}</span> : "this tab's workspace"}.
-            The agent isn't told.
+            Saves to {store ? <span className="font-mono">{store}</span> : "this tab's workspace"}.{' '}
+            {tellsAgent ? 'The agent is told when you save.' : "The agent isn't told."}
           </>
         )}
       </p>

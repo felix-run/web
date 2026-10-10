@@ -1572,8 +1572,15 @@ that are easy to break:
 - **The store is a module, per thread, in `sessionStorage`** (`felix.pane:<thread>`), because an
   inactive tab renders no children: an edit held in the editor's state died on a tab switch, and
   the workbench unmounts on `/harness`. Drafts live there; `beforeunload` warns while any is unsaved.
-- **A save is the operator's write** (`writeWorkspaceFile`, mount first): no approval, and the
-  agent is not told — the save bar says so. An edit records the text it started from (`base`); a
+- **A save is the operator's write** (`writeWorkspaceFile`, mount first): no approval. **The agent
+  is told** (`ShellValue.tellAgentEdited` → `POST /chat/workspace/edited`, `felix-run/felix#577`):
+  structured fields only, the harness writes the words; a live run reads it before its next model
+  call without losing its tool batch (`workspace_note`, drawn as a note turn by `interjectNote` in
+  the engine), an idle thread records it at once and the shell re-hydrates to show it. The save bar
+  says which (`components/pane/edit-notice.ts`), and says plainly when the agent was *not* told:
+  another tab drives the thread, the thread never ran, or a 404 from an older harness — after which
+  it stops promising for the page. In the transcript the note is one line, *You edited `path` · the
+  agent was told*, opening the file; the harness's wording is debug's. An edit records the text it started from (`base`); a
   re-read finding something else (`disk`) is a conflict that blocks Save until the operator takes
   the agent's version or keeps the edit, with the agent's write as a diff. Saving over a file the
   run in flight wrote (`landedPaths(turns, lastUser)`) asks first.

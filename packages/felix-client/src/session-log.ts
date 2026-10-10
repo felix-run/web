@@ -15,6 +15,7 @@ import {
   type TokenUsage,
 } from '@felix/protocol';
 import { type ReasoningBlock, type ToolCall, type Turn, toolImages } from './turns';
+import { workspaceEditOf } from './workspace-edits';
 
 /**
  * One row from GET /chat/sessions — the tenant's threads, as the harness knows
@@ -292,11 +293,18 @@ export function eventsToTurns(
     // own `include_in_llm_context` reads; anything but `true` means the model
     // never saw it, which is the harness's default too.
     if (ev.kind === 'custom') {
+      // The operator's own edit to a workspace file, which the harness told the
+      // agent about (`POST /chat/workspace/edited`): drawn as that, not as prose.
+      const workspaceEdit = workspaceEditOf(ev.metadata, { requireType: true });
       turns.push({
         id: ev.id ?? newId(),
         role: 'note',
         content: ev.content ?? '',
-        note: { role: ev.role ?? 'system', inContext: ev.metadata?.in_context === true },
+        note: {
+          role: ev.role ?? 'system',
+          inContext: ev.metadata?.in_context === true,
+          ...(workspaceEdit ? { workspaceEdit } : {}),
+        },
         eventId: ev.id,
       });
       continue;

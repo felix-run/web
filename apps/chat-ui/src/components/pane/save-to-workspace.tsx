@@ -2,6 +2,8 @@ import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { FilePlusIcon } from 'lucide-react';
 import { type FormEvent, useId, useState } from 'react';
+import { toast } from 'sonner';
+import { savedLine, useTellAgent, useTellsAgent, utf8Bytes } from '@/components/pane/edit-notice';
 import { getMountLabel, readWorkspaceBytes, writeWorkspaceFile } from '@/lib/cowork';
 import { openInPane } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
@@ -75,6 +77,8 @@ export function SaveToWorkspaceForm({
   const [occupied, setOccupied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const tellAgent = useTellAgent();
+  const tellsAgent = useTellsAgent();
   const target = path.trim();
   const replacing = occupied !== null && occupied === target;
 
@@ -95,6 +99,10 @@ export function SaveToWorkspaceForm({
       await writeWorkspaceFile(target, text);
       openInPane(threadId, { kind: 'file', path: target });
       onDone();
+      // The form and the view holding it are gone once the new file's tab is in
+      // front, so what came of telling the agent is said where it will be read.
+      const notice = await tellAgent({ path: target, bytes: utf8Bytes(text) });
+      toast(savedLine(notice).replace(/^Saved\./, `Saved ${target}.`));
     } catch (err) {
       setError(`Could not save ${target}: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -164,6 +172,8 @@ export function SaveToWorkspaceForm({
               <span className="text-foreground">A file is already at {target}.</span> Saving
               replaces it.
             </>
+          ) : tellsAgent ? (
+            'The agent is told when you save. The file opens here.'
           ) : (
             "The agent isn't told. The file opens here once it is saved."
           ))}

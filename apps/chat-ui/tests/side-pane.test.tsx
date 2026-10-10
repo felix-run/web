@@ -6,6 +6,8 @@ import { StrictMode, useState } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
+import { Message } from '../src/components/chat/message';
+import { resetEditNotice } from '../src/components/pane/edit-notice';
 import { PaneDivider } from '../src/components/pane/pane-divider';
 import { invalidPath, suggestedName } from '../src/components/pane/save-to-workspace';
 import { SidePane } from '../src/components/pane/side-pane';
@@ -81,9 +83,11 @@ const THREAD = 'now';
 function mount({
   streaming = false,
   runPaths = new Set<string>(),
+  tellAgentEdited,
 }: {
   streaming?: boolean;
   runPaths?: Set<string>;
+  tellAgentEdited?: ShellValue['tellAgentEdited'];
 } = {}) {
   const value = {
     turns: [],
@@ -91,6 +95,7 @@ function mount({
     streaming,
     openInPane: (item: Parameters<NonNullable<ShellValue['openInPane']>>[0]) =>
       openInPane(THREAD, item),
+    ...(tellAgentEdited ? { tellAgentEdited } : {}),
   } as unknown as ShellValue;
   const tree = (s: boolean) => (
     <TooltipProvider>
@@ -132,6 +137,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   resetPanes();
+  resetEditNotice();
   // Files starts folded; these are about what opens from the tree.
   localStorage.setItem('felix.sidebar.filesOpen', '1');
 });
@@ -349,6 +355,66 @@ describe('editing a workspace file', () => {
     await user.click(screen.getByRole('button', { name: 'Close app.ts' }));
     await user.click(await screen.findByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(pane()).toBeNull());
+  });
+});
+
+describe('telling the agent about a save', () => {
+  it('tells it the path and size, and says it will read it before its next step', async () => {
+    const tell = vi.fn(async () => 'queued' as const);
+    const user = userEvent.setup();
+    mount({ tellAgentEdited: tell });
+    await editAppTs(user, 'const a = 9;\n');
+    expect(pane()?.textContent).toContain('Saving tells the agent the file changed.');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(tell).toHaveBeenCalledWith({ path: 'app.ts', bytes: 13 }));
+    expect(
+      await screen.findByText('Saved. The agent reads this before its next step.'),
+    ).toBeTruthy();
+  });
+
+  it('stops promising it once the harness says it has no way to', async () => {
+    const tell = vi.fn(async () => 'unsupported' as const);
+    const user = userEvent.setup();
+    mount({ tellAgentEdited: tell });
+    await editAppTs(user, 'const a = 10;\n');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(/can't tell the agent about edits/)).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'app.ts source' }), {
+      target: { value: 'const a = 11;\n' },
+    });
+    expect(await screen.findByText(/The agent isn't told about edits made here/)).toBeTruthy();
+  });
+});
+
+describe('the edit, in the transcript', () => {
+  it('says you edited the file and the agent was told, and opens it', async () => {
+    const opened = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider>
+        <ShellProvider value={{ openInPane: opened } as unknown as ShellValue}>
+          <Message
+            turn={{
+              id: 'n1',
+              role: 'note',
+              content:
+                'The operator edited `notes/plan.md` directly in the workspace (now 1,204 bytes).',
+              note: {
+                role: 'user',
+                inContext: true,
+                workspaceEdit: { path: 'notes/plan.md', op: 'write', bytes: 1204 },
+              },
+            }}
+          />
+        </ShellProvider>
+      </TooltipProvider>,
+    );
+    const line = screen.getByText(/the agent was told/).parentElement as HTMLElement;
+    expect(line.textContent).toContain('You edited notes/plan.md · 1 KB');
+    // The model's own wording is debug's.
+    expect(screen.queryByText(/The operator edited/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'notes/plan.md' }));
+    expect(opened).toHaveBeenCalledWith({ kind: 'file', path: 'notes/plan.md' });
   });
 });
 

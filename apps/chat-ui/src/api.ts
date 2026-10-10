@@ -87,6 +87,7 @@ export const startChat = felix.startChat.bind(felix);
 export const getDurableRun = felix.getDurableRun.bind(felix);
 export const pollDurableRun = felix.pollDurableRun.bind(felix);
 export const steerChat = felix.steerChat.bind(felix);
+export const workspaceEdited = felix.workspaceEdited.bind(felix);
 export const getSessionSnapshot = felix.getSessionSnapshot.bind(felix);
 export const abortChat = felix.abortChat.bind(felix);
 export const continueChat = felix.continueChat.bind(felix);
