@@ -487,7 +487,7 @@ a plus alone below `sm`; the instrument toggle; and one ellipsis menu named **Se
 *Session* (Continue run, Copy thread id), *View* (Verbose tools), then *Theme* as Light/Dark/
 System radio items. Thinking is in the composer.
 
-The workbench is **three zones**: the app sidebar (17rem expanded, 3rem as icons) on the ground,
+The workbench is **three zones**: the app sidebar (17rem expanded, 3.25rem as icons: 8px either side of the 36px icon buttons, the gap the sheet keeps everywhere else) on the ground,
 and on the sheet the transcript at reading width (`max-w-3xl`, turns 24px apart) with the
 composer anchored beneath it, and the run instrument (`clamp(22rem, 24vw, 30rem)`; the panel is
 what widens on a large display, not the transcript). The **attention line** is a pill in the
