@@ -271,6 +271,22 @@ async function codeOf(res: Response): Promise<string> {
   return text.slice(0, 200);
 }
 
+/** `409 workspace_changed`: the file is not the one the caller read. Thrown, nothing else. */
+async function refuseIfChanged(res: Response): Promise<void> {
+  if (res.status !== 409) return;
+  const body = (await res
+    .clone()
+    .json()
+    .catch(() => null)) as {
+    detail?: unknown;
+    sha256?: string | null;
+    bytes?: number | null;
+  } | null;
+  if (body?.detail === 'workspace_changed') {
+    throw new WorkspaceChangedError(body.sha256 ?? null, body.bytes ?? null);
+  }
+}
+
 export class WorkspaceRouteError extends Error {
   constructor(
     readonly status: number,
@@ -760,19 +776,7 @@ export function createFelixClient(opts: FelixClientOptions) {
           ...(args.manifest ? { manifest: args.manifest } : {}),
         }),
       });
-      if (res.status === 409) {
-        const body = (await res
-          .clone()
-          .json()
-          .catch(() => null)) as {
-          detail?: unknown;
-          sha256?: string | null;
-          bytes?: number | null;
-        } | null;
-        if (body?.detail === 'workspace_changed') {
-          throw new WorkspaceChangedError(body.sha256 ?? null, body.bytes ?? null);
-        }
-      }
+      await refuseIfChanged(res);
       await refuseIfLease(res, 'workspace/write', args.threadId);
       if (!res.ok) throw new WorkspaceRouteError(res.status, await codeOf(res));
       const body = (await res.json()) as {
@@ -785,6 +789,82 @@ export function createFelixClient(opts: FelixClientOptions) {
         status: body.status === 'recorded' ? 'recorded' : 'queued',
         bytes: body.bytes,
         sha256: body.sha256,
+        eventId: body.event_id ?? null,
+      };
+    },
+
+    /**
+     * POST /chat/workspace/delete — the operator deletes one file in the thread's
+     * workspace on the harness, refused with `WorkspaceChangedError` if it is no
+     * longer the file `expectedSha256` was read from. Tells the agent itself.
+     */
+    async workspaceDelete(args: {
+      threadId: string;
+      path: string;
+      expectedSha256?: string;
+      manifest?: string;
+    }): Promise<{ status: 'queued' | 'recorded'; eventId: string | null }> {
+      const res = await chatFetch('/chat/workspace/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          path: args.path,
+          ...(args.expectedSha256 ? { expected_sha256: args.expectedSha256 } : {}),
+          ...(args.manifest ? { manifest: args.manifest } : {}),
+        }),
+      });
+      await refuseIfChanged(res);
+      await refuseIfLease(res, 'workspace/delete', args.threadId);
+      if (!res.ok) throw new WorkspaceRouteError(res.status, await codeOf(res));
+      const body = (await res.json()) as { status?: string; event_id?: string | null };
+      return {
+        status: body.status === 'recorded' ? 'recorded' : 'queued',
+        eventId: body.event_id ?? null,
+      };
+    },
+
+    /**
+     * POST /chat/workspace/rename — move one file within the thread's harness
+     * workspace. Never overwrites: a taken destination is
+     * `WorkspaceRouteError` `target_exists`. Tells the agent itself.
+     */
+    async workspaceRename(args: {
+      threadId: string;
+      path: string;
+      toPath: string;
+      expectedSha256?: string;
+      manifest?: string;
+    }): Promise<{
+      status: 'queued' | 'recorded';
+      toPath: string;
+      sha256: string | null;
+      eventId: string | null;
+    }> {
+      const res = await chatFetch('/chat/workspace/rename', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          path: args.path,
+          to_path: args.toPath,
+          ...(args.expectedSha256 ? { expected_sha256: args.expectedSha256 } : {}),
+          ...(args.manifest ? { manifest: args.manifest } : {}),
+        }),
+      });
+      await refuseIfChanged(res);
+      await refuseIfLease(res, 'workspace/rename', args.threadId);
+      if (!res.ok) throw new WorkspaceRouteError(res.status, await codeOf(res));
+      const body = (await res.json()) as {
+        status?: string;
+        to_path?: string;
+        sha256?: string | null;
+        event_id?: string | null;
+      };
+      return {
+        status: body.status === 'recorded' ? 'recorded' : 'queued',
+        toPath: body.to_path ?? args.toPath,
+        sha256: body.sha256 ?? null,
         eventId: body.event_id ?? null,
       };
     },

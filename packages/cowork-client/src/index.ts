@@ -21,11 +21,16 @@ export {
   mountMkdir,
   mountRead,
   mountReadBytes,
+  mountRemove,
+  mountRename,
   mountWrite,
   readExisting,
   readExistingBytes,
   reconnectMount,
+  removeExisting,
+  renameExisting,
   restoreMount,
+  TargetExistsError,
 } from './fs-mount';
 export { collectToolCallPaths, collectTouchedPaths } from './tool-call-paths';
 export { getVfs, VirtualFs } from './vfs';

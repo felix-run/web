@@ -182,3 +182,27 @@ describe('getVfs', () => {
     expect(getVfs(key).read('shared')).toBe('x');
   });
 });
+
+describe('VirtualFs delete and rename', () => {
+  it('deletes a file, refusing a folder and a path that is not there', () => {
+    const fs = new VirtualFs('test.vfs.delren');
+    fs.reset();
+    fs.write('notes/a.md', 'x');
+    fs.remove('notes/a.md');
+    expect(() => fs.read('notes/a.md')).toThrow();
+    expect(() => fs.remove('notes')).toThrow(/not a file/);
+    expect(() => fs.remove('gone.md')).toThrow(/not found/);
+  });
+
+  it('renames into a new folder and never overwrites', () => {
+    const fs = new VirtualFs('test.vfs.delren2');
+    fs.reset();
+    fs.write('a.md', 'A');
+    fs.write('b.md', 'B');
+    expect(() => fs.rename('a.md', 'b.md')).toThrow(/target exists/);
+    expect(fs.read('a.md')).toBe('A');
+    fs.rename('a.md', 'deep/c.md');
+    expect(fs.read('deep/c.md')).toBe('A');
+    expect(() => fs.read('a.md')).toThrow();
+  });
+});

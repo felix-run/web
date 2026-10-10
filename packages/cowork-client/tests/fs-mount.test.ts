@@ -7,12 +7,15 @@ import {
   mountMkdir,
   mountRead,
   mountReadBytes,
+  mountRemove,
+  mountRename,
   mountTree,
   mountWrite,
   pickDirectory,
   readExisting,
   readExistingBytes,
   supportsDirectoryPicker,
+  TargetExistsError,
 } from '../src/fs-mount';
 
 /**
@@ -89,6 +92,11 @@ class MockDirHandle {
     const file = new MockFileHandle(name);
     this.children.set(name, file);
     return file;
+  }
+
+  async removeEntry(name: string) {
+    this.check(name);
+    if (!this.children.delete(name)) throw new Error(`NotFoundError: ${name}`);
   }
 
   async *entries(): AsyncGenerator<[string, MockDirHandle | MockFileHandle]> {
@@ -344,5 +352,37 @@ describe('readExistingBytes', () => {
   it('returns null for a missing file or an escape, like readExisting', async () => {
     expect(await readExistingBytes('nowhere.png', vfs)).toBeNull();
     expect(await readExistingBytes('../outside', vfs)).toBeNull();
+  });
+});
+
+describe('deleting and renaming in the mount', () => {
+  it('deletes a file, and refuses a folder of the same name', async () => {
+    await mountWrite('notes/a.md', 'x');
+    await mountRemove('notes/a.md');
+    await expect(mountRead('notes/a.md')).rejects.toThrow();
+    await expect(mountRemove('notes')).rejects.toThrow();
+    expect(await mountList('.')).toEqual([{ path: 'notes', type: 'dir' }]);
+  });
+
+  it('moves a file into a new folder, bytes intact', async () => {
+    await mountWrite('a.bin', 'héllo');
+    await mountRename('a.bin', 'deep/new/b.bin');
+    expect(await mountRead('deep/new/b.bin')).toBe('héllo');
+    await expect(mountRead('a.bin')).rejects.toThrow();
+  });
+
+  it('never overwrites: a taken destination leaves both files as they were', async () => {
+    await mountWrite('a.md', 'A');
+    await mountWrite('b.md', 'B');
+    await expect(mountRename('a.md', 'b.md')).rejects.toBeInstanceOf(TargetExistsError);
+    expect(await mountRead('a.md')).toBe('A');
+    expect(await mountRead('b.md')).toBe('B');
+  });
+
+  it('keeps both sides inside the mount', async () => {
+    await mountWrite('a.md', 'A');
+    await expect(mountRemove('../outside.md')).rejects.toThrow(/escapes mount/);
+    await expect(mountRename('a.md', '..\\..\\x.md')).rejects.toThrow(/escapes mount/);
+    expect(await mountRead('a.md')).toBe('A');
   });
 });
