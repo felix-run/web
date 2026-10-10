@@ -350,15 +350,6 @@ export function AppShell() {
   } | null>(null);
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
-  // Workspace open by default wherever it fits inline: it is the subject (the
-  // folder, and the only door to other threads), and it used to open only once a
-  // profile had threads, so a first visit started with the subject hidden.
-  // The instrument starts open only where all three zones fit at their own
-  // widths (`useRails`). What is persisted is the
-  // *inline* preference — a drawer at a narrow width starts closed and is never
-  // written down; `useRails` says why.
-  const { historyOpen, setHistoryOpen, inspectorOpen, setInspectorOpen, revealInspector } =
-    useRails();
   const [verbose, setVerbose] = useState(() => readBool(VERBOSE_KEY, false));
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { theme, resolved, setTheme } = useTheme();
@@ -484,6 +475,19 @@ export function AppShell() {
     approvals: pendingQueue,
     uiPrompt,
   } = useSyncExternalStore(engine.subscribe, () => engine.state);
+  // Workspace open by default wherever it fits inline: it is the subject (the
+  // folder, and the only door to other threads), and it used to open only once a
+  // profile had threads, so a first visit started with the subject hidden.
+  // The instrument starts open only where all three zones fit at their own
+  // widths, and not over a thread with no turns (`useRails`). What is persisted
+  // is the *inline* preference — a drawer at a narrow width starts closed and is
+  // never written down; `useRails` says why.
+  //
+  // Called here, below the engine's state, because the default reads `turns`.
+  // The pool's `onToolStart` above names `revealInspector` before this line;
+  // it runs only once a tool starts, long after this render has passed it.
+  const { historyOpen, setHistoryOpen, inspectorOpen, setInspectorOpen, revealInspector } =
+    useRails({ emptyThread: turns.length === 0 });
   // `idle` is the engine's resting value and this renders a chip, so the chip
   // asks for the same thing the old nullable state did: a phase worth showing.
   const sessionPhase = engine.state.phase === 'idle' ? null : engine.state.phase;

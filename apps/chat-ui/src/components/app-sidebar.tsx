@@ -114,9 +114,14 @@ export function AppSidebar() {
 
           The mark sits 8px in, which is where the menu's icons sit, so collapsed
           to icons it heads their column; the wordmark beyond it is clipped by the
-          panel's edge as it narrows rather than snapping out. Inline, the wordmark
-          is the page's `h1`; in the drawer the header behind it already holds
-          that, so it is a span here. */}
+          panel's edge as it narrows rather than snapping out. Its first glyph
+          starts 2px short of the collapsed rail's edge, though, so at rest it
+          left a sliver beside the mark: it fades out over the last 75ms of the
+          narrowing, and back in at once when the panel widens, so the clip is
+          what is seen both ways. Opacity, not `invisible` or `sr-only`: it is
+          the page's one `h1`, and it stays in the accessibility tree collapsed.
+          Inline, the wordmark is the page's `h1`; in the drawer the header
+          behind it already holds that, so it is a span here. */}
       <div
         data-slot="sidebar-brand"
         className="flex h-[calc(var(--header-height)+env(safe-area-inset-top,0px))] shrink-0 items-center gap-2 px-2.5 pt-safe lg:mt-2"
@@ -140,7 +145,10 @@ export function AppSidebar() {
             title={`${open ? 'Collapse' : 'Expand'} sidebar (${shortcutLabel('toggle-workspace', mac)})`}
           />
         )}
-        <Wordmark heading={!isMobile} />
+        <Wordmark
+          heading={!isMobile}
+          className="transition-opacity duration-75 ease-out group-data-[collapsible=icon]:opacity-0 group-data-[collapsible=icon]:delay-[125ms] motion-reduce:transition-none"
+        />
       </div>
       <SidebarHeader className="pb-1">
         <SidebarMenu>

@@ -15,7 +15,7 @@ import {
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
- * The right rail's readout is headed "This run", and two things keep that heading true.
+ * The right rail is headed "This thread", and two things keep its readout true.
  *
  * The readout above the tabs is derived from the shell alone, so it must state
  * the run's state in words (never colour alone), say so at rest, and never
@@ -111,7 +111,7 @@ describe('the instrument and approvals', () => {
   });
 
   /**
-   * Each part says its own scope. "This run" heads the readout; each tab's first
+   * Each part says its own scope. "This thread" heads the panel; each tab's first
    * line says whose rows it lists. Changes comes first and open, because it reads
    * the transcript rather than the harness, so opening the rail asks for nothing.
    */
@@ -122,7 +122,8 @@ describe('the instrument and approvals', () => {
     expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools']);
     expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
     expect(readout().contains(screen.getByRole('tablist'))).toBe(false);
-    expect(screen.getByRole('heading', { name: 'This run' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'This thread' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'This run' })).toBeNull();
     expect(await screen.findByText('This thread · from its tool calls')).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Harness' })).toBeNull();
     expect(fetch.mock.calls.some(([url]) => String(url).includes('/plans'))).toBe(false);
@@ -152,6 +153,8 @@ describe('the instrument and approvals', () => {
       await screen.findByText('No tool calls on any thread in the last 60 minutes.'),
     ).toBeTruthy();
     expect(screen.queryByText(/Ask the agent to use a tool/)).toBeNull();
+    // Said once: the sr-only count used to read "0 tools called…" beside it.
+    expect(screen.queryByText(/tools called/)).toBeNull();
   });
 });
 
@@ -190,7 +193,9 @@ describe('the run readout', () => {
     expect(r.getByText('2d ago')).toBeTruthy();
     expect(r.queryByText(/No run/)).toBeNull();
     expect(r.getByText('1,200')).toBeTruthy();
-    expect(r.getByText('(floor)', { exact: false })).toBeTruthy();
+    // A partial sum says so on the figure; "floor" is the Activity page's cost word.
+    expect(r.getByText('at least', { exact: false })).toBeTruthy();
+    expect(r.queryByText(/floor/)).toBeNull();
   });
 
   it('says usage was not recorded rather than that there was none', () => {

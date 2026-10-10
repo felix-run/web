@@ -74,22 +74,33 @@ export function LibraryList({
     fetchNextPage,
   ]);
 
+  /**
+   * Known to hold nothing at all — no filter applied, nothing on this page and
+   * none after it. Eight filter buttons over an empty library filter nothing, so
+   * they wait until there is something to narrow. A filtered empty list keeps
+   * them, or the reader could not take the filter off again.
+   */
+  const libraryEmpty =
+    !filtered && !query.isPending && !query.error && items.length === 0 && !hasNextPage;
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <ViewSwitch
-          label="Status"
-          value={filter.status ?? 'all'}
-          options={STATUS_OPTIONS}
-          onChange={(v) => onFilter({ ...filter, status: v === 'all' ? undefined : v })}
-        />
-        <ViewSwitch
-          label="Written by"
-          value={filter.source ?? 'any'}
-          options={SOURCE_OPTIONS}
-          onChange={(v) => onFilter({ ...filter, source: v === 'any' ? undefined : v })}
-        />
-      </div>
+      {!libraryEmpty && (
+        <div className="flex flex-wrap items-center gap-2">
+          <ViewSwitch
+            label="Status"
+            value={filter.status ?? 'all'}
+            options={STATUS_OPTIONS}
+            onChange={(v) => onFilter({ ...filter, status: v === 'all' ? undefined : v })}
+          />
+          <ViewSwitch
+            label="Written by"
+            value={filter.source ?? 'any'}
+            options={SOURCE_OPTIONS}
+            onChange={(v) => onFilter({ ...filter, source: v === 'any' ? undefined : v })}
+          />
+        </div>
+      )}
 
       {query.error ? (
         <ReadFailure
@@ -108,7 +119,7 @@ export function LibraryList({
       ) : items.length === 0 && !query.error ? (
         // A line, as the queue's and the inbox's empty states are: a tinted box
         // here made the one quiet answer on the page its loudest element.
-        <p role="status" className="max-w-[72ch] text-sm text-muted-foreground">
+        <p role="status" className="max-w-[48ch] text-sm text-muted-foreground">
           {hasNextPage ? (
             // Said, because an empty filtered page is not an empty library.
             `No match in the first ${pages.length * 50} skills; there are more to look through.`

@@ -81,6 +81,7 @@ import { ContextMeter } from './context-meter';
 import { PaperclipIcon, StopIcon } from './icons';
 import { QueuedMessages } from './queued-messages';
 import { type SlashCommand, SlashCommandMenu, slashCommands } from './slash-commands';
+import { WATCHING_LABEL } from './watching-banner';
 
 /**
  * Why a reattaching thread will not take a message, said once.
@@ -758,7 +759,12 @@ function MultimodalInputInner({
                   agent={(models?.find((m) => m.id === modelId) ?? models?.[0])?.label}
                 />
               )}
-              <HelperHint text={helperText} />
+              <HelperHint
+                text={helperText}
+                // `readOnly` means watching (see the prop), and its sentence did
+                // not fit here — the footer cut it to "Watching read-".
+                label={readOnly !== null && helperText === readOnly ? WATCHING_LABEL : undefined}
+              />
             </PromptInputTools>
 
             <div className="flex shrink-0 items-center gap-2">
@@ -877,12 +883,27 @@ function AddMenu({
   );
 }
 
-function HelperHint({ text }: { text: string | null }) {
+/**
+ * The footer's one-line reason. `label` is a shorter word for a sentence too
+ * long for the space beside the pickers: drawn in its place, with the sentence
+ * kept as the `title` and as the text a screen reader reads.
+ */
+function HelperHint({ text, label }: { text: string | null; label?: string }) {
   if (!text) return null;
   return (
-    <span className="ml-1 hidden items-center gap-1.5 truncate text-xs text-muted-foreground sm:flex">
+    <span
+      title={text}
+      className="ml-1 hidden items-center gap-1.5 truncate text-xs text-muted-foreground sm:flex"
+    >
       {text === 'Reconnecting…' && <Loader2 className="size-3 animate-spin" />}
-      {text}
+      {label ? (
+        <>
+          <span aria-hidden>{label}</span>
+          <span className="sr-only">{text}</span>
+        </>
+      ) : (
+        text
+      )}
     </span>
   );
 }

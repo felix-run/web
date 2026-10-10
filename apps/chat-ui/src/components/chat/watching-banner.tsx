@@ -6,6 +6,12 @@ import { EyeIcon } from 'lucide-react';
  * Short, because the banner above it says the rest and the line truncates.
  */
 export const WATCHING_REFUSAL = 'Watching read-only.';
+/**
+ * The footer's word for it. Between the pickers and the context meter the
+ * footer had room for "Watching read-" and cut the rest; the sentence stays in
+ * the hint's `title` and is what a screen reader hears.
+ */
+export const WATCHING_LABEL = 'Watching';
 
 /** Who the harness says is driving, as far as this tab can tell without showing an id. */
 export type Driver = 'terminal' | 'other';

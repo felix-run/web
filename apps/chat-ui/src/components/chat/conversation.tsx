@@ -78,9 +78,17 @@ export function Conversation({
               the bottom of; with turns present the content is taller and it is inert.
               `aria-busy` while a reply is being written, so a screen reader reads the
               finished turn rather than every delta. */}
+          {/* The spacer's `-mb-0.5` takes back what the primitive's rounding adds.
+              It sizes the spacer to fill the viewport below the last anchor from
+              `clientHeight`, which is the viewport's height *rounded*, then
+              `Math.ceil`s the result — so a fractional viewport (664.92px) got
+              content up to ~1.5px taller than itself, and every short thread drew
+              a near-full scrollbar thumb for a 1px scroll (666 over 665). Two
+              pixels under is invisible; the anchor still reaches the top. */}
           <MessageScrollerContent
             aria-busy={streaming}
             className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6 md:py-8"
+            spacerClassName="-mb-0.5"
           >
             {children}
           </MessageScrollerContent>

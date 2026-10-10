@@ -65,6 +65,27 @@ describe('LibraryList', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
   });
 
+  // Eight filter buttons over an empty library filter nothing.
+  it('offers no filters over an empty library, and keeps them once filtered', async () => {
+    fakeHarness((req) =>
+      req.path.startsWith('/skill-library?')
+        ? { body: { items: [], next_cursor: null } }
+        : undefined,
+    );
+    mountWithProviders(<LibraryList filter={{}} onFilter={() => {}} linkTo={(x) => x} />);
+    expect((await screen.findByRole('status')).textContent).toMatch(/The library is empty/);
+    expect(screen.queryByRole('group', { name: 'Status' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Written by' })).toBeNull();
+    cleanup();
+
+    mountWithProviders(
+      <LibraryList filter={{ status: 'archived' }} onFilter={() => {}} linkTo={(x) => x} />,
+    );
+    expect((await screen.findByRole('status')).textContent).toMatch(/matches this filter/);
+    // Filtered to nothing, the way back out has to stay on screen.
+    expect(screen.getByRole('group', { name: 'Status' })).toBeTruthy();
+  });
+
   it('stops walking on its own after a bound, and says there is more rather than none', async () => {
     let n = 0;
     const h = fakeHarness((req) =>

@@ -14,7 +14,10 @@ export const INSTRUMENT_INLINE = '(min-width: 1280px)';
  * it fits but squeezes the transcript to its floor, so it starts closed there;
  * from 1600 all three zones sit at their own widths with the transcript at full
  * reading measure, and a rail PRODUCT.md calls the one-glance answer to "what is
- * it doing" has no reason to start hidden. A stored preference always wins.
+ * it doing" has no reason to start hidden — except over a thread with no turns,
+ * where it has nothing to answer: no run, no changes, no plans, and a rail that
+ * opens onto three empty states is wallpaper. It opens once the thread has a
+ * turn. A stored preference always wins, either way.
  */
 const INSTRUMENT_DEFAULT_OPEN = '(min-width: 1600px)';
 
@@ -24,8 +27,13 @@ const INSPECTOR_KEY = 'felix.inspectorOpen';
 type Zone = 'workspace' | 'instrument';
 
 function readBool(key: string, fallback: boolean): boolean {
+  return readStored(key) ?? fallback;
+}
+
+/** The stored choice, or null when this profile has never made one. */
+function readStored(key: string): boolean | null {
   const raw = localStorage.getItem(key);
-  if (raw === null) return fallback;
+  if (raw === null) return null;
   return raw === '1' || raw === 'true';
 }
 
@@ -75,16 +83,28 @@ export interface Rails {
  * engine's callbacks are built once and call them long after the render that
  * created them.
  */
-export function useRails(): Rails {
+export function useRails({
+  emptyThread = false,
+}: {
+  /** The thread on screen has no turns, so the instrument has nothing to show yet. */
+  emptyThread?: boolean;
+} = {}): Rails {
   const workspaceInline = useMediaQuery(WORKSPACE_INLINE);
   const instrumentInline = useMediaQuery(INSTRUMENT_INLINE);
   const inline = useRef<Record<Zone, boolean>>({ workspace: false, instrument: false });
   inline.current = { workspace: workspaceInline, instrument: instrumentInline };
 
   const [historyPref, setHistoryPref] = useState(() => readBool(HISTORY_KEY, true));
-  const [inspectorPref, setInspectorPref] = useState(() =>
-    readBool(INSPECTOR_KEY, matches(INSTRUMENT_DEFAULT_OPEN)),
+  // Null until someone chooses: the default is then derived on every render, so
+  // it can follow the thread from empty to not, and is never written down.
+  const [inspectorPref, setInspectorPref] = useState<boolean | null>(() =>
+    readStored(INSPECTOR_KEY),
   );
+  const [wideDefault] = useState(() => matches(INSTRUMENT_DEFAULT_OPEN));
+  const inspectorDefault = wideDefault && !emptyThread;
+  /** For the setter, which is built once: a toggle flips what is on screen. */
+  const defaults = useRef<Record<Zone, boolean>>({ workspace: true, instrument: false });
+  defaults.current = { workspace: true, instrument: inspectorDefault };
   const [drawer, setDrawer] = useState<Zone | null>(null);
 
   // A drawer belongs to the width it was opened at. Once its zone fits inline
@@ -100,11 +120,11 @@ export function useRails(): Rails {
 
   const { setHistoryOpen, setInspectorOpen } = useMemo(() => {
     const setter =
-      (zone: Zone, key: string, setPref: typeof setHistoryPref) =>
+      (zone: Zone, key: string, setPref: (update: (prev: boolean | null) => boolean) => void) =>
       (next: SetStateAction<boolean>) => {
         if (inline.current[zone]) {
           setPref((prev) => {
-            const value = resolve(next, prev);
+            const value = resolve(next, prev ?? defaults.current[zone]);
             // Written here rather than from an effect on the preference, so the
             // store changes only when an operator changes the rail — never on
             // mount, where it would freeze the default into an answer nobody
@@ -131,7 +151,7 @@ export function useRails(): Rails {
   return {
     historyOpen: workspaceInline ? historyPref : drawer === 'workspace',
     setHistoryOpen,
-    inspectorOpen: instrumentInline ? inspectorPref : drawer === 'instrument',
+    inspectorOpen: instrumentInline ? (inspectorPref ?? inspectorDefault) : drawer === 'instrument',
     setInspectorOpen,
     revealInspector,
   };

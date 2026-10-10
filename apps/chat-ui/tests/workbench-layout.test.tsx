@@ -627,8 +627,8 @@ describe('rail state across widths', () => {
     expect(drawers()).toHaveLength(1);
     expect(inst.getAttribute('aria-pressed')).toBe('true');
     expect(ws.getAttribute('aria-pressed')).toBe('false');
-    // Named for the heading it shows.
-    expect(screen.getByRole('dialog', { name: 'This run' })).toBeTruthy();
+    // Named for the heading it shows. (The header's toggle is still "This run".)
+    expect(screen.getByRole('dialog', { name: 'This thread' })).toBeTruthy();
 
     await toggle('This run');
     await waitFor(() => expect(drawers()).toHaveLength(0));

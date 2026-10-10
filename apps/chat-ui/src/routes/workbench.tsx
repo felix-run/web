@@ -400,7 +400,7 @@ export function Workbench() {
             {/* The dialog's name is the heading it shows. It read "Harness
                 inspector" — a name for a panel that no longer exists, announced
                 over a heading that says something else. */}
-            <SheetTitle className="sr-only">This run</SheetTitle>
+            <SheetTitle className="sr-only">This thread</SheetTitle>
             <Suspense fallback={<InspectorLoading className="w-full border-l-0 bg-transparent" />}>
               <Inspector
                 open={inspectorOpen}

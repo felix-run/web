@@ -204,7 +204,7 @@ function ArchiveSkill({ name, liveVersion }: { name: string; liveVersion: string
   const archive = useArchiveSkill();
   return (
     <PageSection title="Archive">
-      <p className="mb-2 max-w-[72ch] text-sm text-muted-foreground">
+      <p className="mb-2 max-w-[48ch] text-sm text-muted-foreground">
         Takes <span className="font-mono">{name}</span> out of every catalog. Every version is kept,
         and rolling back to one brings the skill back.
       </p>
