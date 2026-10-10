@@ -151,7 +151,7 @@ export function AppSidebar() {
                 newThread();
                 done();
               }}
-              className="rounded-full bg-primary font-semibold text-primary-foreground shadow-composer hover:bg-primary/90 hover:text-primary-foreground"
+              className="rounded-full bg-primary font-semibold text-primary-foreground shadow-lift hover:bg-primary/90 hover:text-primary-foreground"
             >
               <PlusIcon aria-hidden />
               <span>New chat</span>

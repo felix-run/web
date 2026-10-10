@@ -44,7 +44,7 @@ export function ApprovalBanner({
         aria-label={`Approval waiting: ${pending.toolName}`}
         aria-keyshortcuts={ariaShortcut('focus-approval', isMacPlatform())}
         data-approval-focus="banner"
-        className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <ApprovalDecision
           toolName={pending.toolName}

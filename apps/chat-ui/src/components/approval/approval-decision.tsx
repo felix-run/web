@@ -203,7 +203,11 @@ export function ApprovalDecision({
 
   return (
     <div
-      className={cn('rounded-xl border border-state-blocked/40 bg-state-blocked/5 p-3', className)}
+      // A run waiting on a person owns attention: the strongest edge and lift on screen.
+      className={cn(
+        'rounded-2xl border-2 border-state-blocked/50 bg-solid-state-blocked/5 p-4 shadow-lift-focus',
+        className,
+      )}
     >
       <div className="flex flex-wrap items-center gap-2">
         {/* The primitive's badge is nowrap and clips its overflow, which is a

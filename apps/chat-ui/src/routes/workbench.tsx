@@ -291,10 +291,11 @@ export function Workbench() {
           </Conversation>
           <div
             className={cn(
-              'border-t border-border/50 bg-background pt-3 transition-[background-color,border-color] duration-200 ease-out motion-reduce:transition-none',
+              // No rule above the dock: on the sheet the composer's own lift is the edge.
+              'bg-background pt-3 transition-[background-color] duration-200 ease-out motion-reduce:transition-none',
               // Rising, the dock sits under the greeting rather than under a
               // transcript, so the rule and the slab that divide it from one go.
-              empty && 'rise:border-transparent rise:bg-transparent',
+              empty && 'rise:bg-transparent',
             )}
           >
             {watching ? <WatchingBanner driver={driver} /> : null}

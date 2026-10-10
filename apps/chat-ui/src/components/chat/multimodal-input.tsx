@@ -639,7 +639,7 @@ function MultimodalInputInner({
             // Force column layout: InputGroup defaults can collapse the
             // textarea to a 1-char column when flex-col selectors miss.
             '[&>[data-slot=input-group]]:flex [&>[data-slot=input-group]]:flex-col [&>[data-slot=input-group]]:items-stretch',
-            '[&>[data-slot=input-group]]:rounded-2xl [&>[data-slot=input-group]]:border [&>[data-slot=input-group]]:border-border/50',
+            '[&>[data-slot=input-group]]:rounded-2xl [&>[data-slot=input-group]]:border [&>[data-slot=input-group]]:border-input',
             '[&>[data-slot=input-group]]:bg-card',
             '[&>[data-slot=input-group]]:shadow-[var(--shadow-composer)]',
             '[&>[data-slot=input-group]]:transition-[border-color,box-shadow,background-color] [&>[data-slot=input-group]]:duration-200',

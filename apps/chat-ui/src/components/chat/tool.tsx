@@ -83,19 +83,31 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className="overflow-hidden rounded-xl border border-border/60 bg-solid-muted/30 text-sm"
+      className={cn(
+        'overflow-hidden rounded-xl border bg-card text-sm shadow-sheet',
+        // Nothing disappears, it cancels: a call that changed nothing keeps its card,
+        // dashed, with its summary struck through, so it still reads as something tried.
+        issue ? 'border-dashed border-state-failed/40' : 'border-border',
+      )}
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-xs hover:bg-muted/40">
-        <span className="shrink-0 font-medium">{tool.name}</span>
-        {target && (
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left hover:bg-accent/50">
+        {/* Our sentence first, in our face; the harness's name for it after, in mono
+            (the Provenance Rule). A call with no summary leads with its name. */}
+        {target ? (
           <>
-            <span aria-hidden className="text-muted-foreground">
-              ·
-            </span>
-            <span className="min-w-0 truncate text-muted-foreground" title={target}>
+            <span
+              className={cn(
+                'min-w-0 truncate font-medium text-foreground',
+                issue && 'line-through decoration-state-failed/60',
+              )}
+              title={target}
+            >
               {target}
             </span>
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">{tool.name}</span>
           </>
+        ) : (
+          <span className="shrink-0 font-mono text-xs font-medium">{tool.name}</span>
         )}
         {/* Only a shell result carries timing; the frames carry none for any
             other tool, and a duration measured here would be the network's. */}
@@ -104,7 +116,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
             <span aria-hidden className="text-muted-foreground">
               ·
             </span>
-            <span className="shrink-0 text-muted-foreground tabular-nums">
+            <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
               {formatDuration(shell.duration_ms)}
             </span>
           </>
@@ -151,7 +163,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
       {/* Outside the fold: a screenshot is the result a person wants to see, and
           hiding it behind the chevron made every browser call read as text. */}
       {tool.images?.length ? <ToolImages images={tool.images} label={target ?? tool.name} /> : null}
-      <CollapsibleContent className="space-y-2 border-t border-border/50 px-3 py-2.5">
+      <CollapsibleContent className="space-y-2 border-t border-border/60 px-3.5 py-3">
         <Field label="Input" value={tool.input} />
         {shell ? (
           <ShellOutput result={shell} />

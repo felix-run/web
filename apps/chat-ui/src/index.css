@@ -116,6 +116,10 @@
   /* The composer and the sheet: the largest radius, and on nothing else. */
   --radius-2xl: calc(var(--radius) + 8px);
   --shadow-sheet: var(--sheet-shadow);
+  /* The composer's two lifts as utilities (`shadow-lift`, `shadow-lift-focus`), for the
+     few things that float with it: New chat, a tool card, a waiting approval. */
+  --shadow-lift: var(--shadow-composer);
+  --shadow-lift-focus: var(--shadow-composer-focus);
 }
 
 /* Warm Workbench palette (2026-10-10), in oklch, light + dark. Two neutral levels carry the
