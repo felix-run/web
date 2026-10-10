@@ -361,8 +361,9 @@ function Account({
         {cost && (
           <>
             {' '}
-            <span className="font-mono tabular-nums">{cost}</span>{' '}
-            {floor ? 'spent at least' : 'spent'}.
+            {/* Geist with tabular figures, not mono: this is our own formatted total, and at
+                24px a monospace full stop takes a whole cell and opens "$2 . 57". */}
+            <span className="tabular-nums">{cost}</span> {floor ? 'spent at least' : 'spent'}.
           </>
         )}
       </p>
@@ -1008,7 +1009,7 @@ function SpendByModel({ summary, recent }: { summary: UsageSummary; recent: Usag
         Where the spend went
       </h3>
       <p className="mt-1 text-sm">
-        <span className="font-mono text-2xl font-semibold tracking-tight tabular-nums">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">
           {totals.unpriced > 0 ? '≥ ' : ''}
           {money(totals.cost)}
         </span>{' '}
