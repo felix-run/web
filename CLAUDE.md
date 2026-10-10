@@ -370,6 +370,21 @@ inline, in the header narrow, and a span in the drawer, which opens over a heade
 one; `tests/harness-route.test.tsx` and `tests/workbench-layout.test.tsx` pin that there is exactly
 one. New chat is in the header only where the sidebar is a drawer.
 
+**The header names the thread on `/t`** (`src/components/thread-title.tsx`, 2026-10-10). Until
+then the sheet never said which conversation it held: identity was the sidebar's highlighted row
+alone, so collapsed or below 1024 nothing on screen told two "Use write_file to create notes.txt…"
+threads apart before an approval. After the run-state chip (which keeps its first slot, so it does
+not move between addresses) comes the title, from `threadLabel` over the same merged index the
+sidebar lists, and the agent the newest turn ran under in mono. The title is an **`h2`**, never a
+second `h1`, and is cut from the **middle** by CSS rather than by a character count — the head
+truncates, the last ten characters never do — so it follows the header as it narrows; below `sm`
+it is one end-cut, and under 23rem it goes `sr-only`. Clicking it renames in place through the
+shell's `renameThread`, the sidebar's own action; not while the tab is **watching**, and not
+before the thread is in the index (nothing to name yet). `/harness` shows none. **The title gives
+way before the attention line**: the left cluster carries a shrink weight far above the line's,
+down to a `sm:min-w-52` floor, so the line keeps its sentence. Below `sm` the wordmark goes
+`sr-only` on `/t` for the title's room. `tests/thread-title.test.tsx` pins it.
+
 **The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
 New chat; the threads, grouped as Waiting on you, Running, Pinned, Today, Yesterday, Previous 7 days
 and Older (Older starts folded, showing its count, is cut by month when open, and folded still draws

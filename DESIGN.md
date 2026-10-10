@@ -470,14 +470,27 @@ nothing: a word and a dot, never the dot alone, and never a finer phase, which i
 instrument's. It is drawn as a **state chip**: a pill 22px tall, the word and dot in the state's
 colour on that colour at `/10`. Its `title` and an `sr-only` prefix say it is this thread's run,
 because the attention line is tenant-wide. It is not a live region: the attention line already
-announces the same change. After it, the tab's modes: **Verbose**, a `secondary` badge that is
+announces the same change. After it, on `/t` only, **the thread's name**: its title as the sidebar
+row draws it (body 14px at 500; a title that is only the harness's id in muted mono), an `h2`
+under the wordmark's `h1`, then the agent the thread ran under in mono at 12px, because it is the
+harness's id. The title is cut from the middle, never the end: the head truncates and its last
+ten characters stay, since two titles that share a prefix differ at the end; its `title` holds
+the whole name and the thread id. Clicking it renames it in place (*Thread name*; Enter saves,
+Escape cancels), unless the tab is only watching the thread. `/harness` names no thread: each
+page has its own title. After that, the tab's modes: **Verbose**, a `secondary` badge that is
 also the button turning it off (named *Verbose on, turn off*), and the **canary** rollout as an
 outline badge in mono. The canary's words also say whether this thread is on the rollout, in an
 `sr-only` clause.
 
 The left cluster **yields in a fixed order**. The brand never shrinks and the wordmark is never
-truncated; the run state never yields either. Below `sm`, while a run state is showing, the
-wordmark steps aside (it stays the `h1` for a reader), and so does New chat. Below `sm` both modes
+truncated; the run state never yields either. **The thread's title is the first thing in the
+header to give way, before the attention line's sentence**: the line is the signal, and the title
+is whole in its `title` and in the sidebar. From `sm` the cluster shrinks first down to a 13rem
+floor, and only then does the attention line truncate. The agent leaves below `md`, where it left
+the title ~100px. Below `sm` the title is one end-cut, the wordmark steps aside on `/t` for it
+(and on `/harness` while a run state is showing; it stays the `h1` for a reader), and under 23rem
+(a 320–360px phone) the title leaves the screen too, read but not drawn, rather than show a
+sliver of a glyph. While a run state is showing below `sm`, New chat steps aside. Below `sm` both modes
 draw as icons (a scroll for Verbose, a bird for the canary), their words kept in the accessible
 name and the `title`. While the run state is showing below `sm`, the modes step off the screen:
 Verbose goes `hidden` (it is in the Session menu), and the canary goes `sr-only` and is still
@@ -493,8 +506,8 @@ The workbench is **three zones**: the app sidebar (17rem expanded, 3.25rem as ic
 and on the sheet the transcript at reading width (`max-w-3xl`, turns 24px apart) with the
 composer anchored beneath it, and the run instrument (`clamp(22rem, 24vw, 30rem)`; the panel is
 what widens on a large display, not the transcript). The **attention line** is a pill in the
-header, right-aligned before the instrument toggle and the menu, on every address. It is the
-first thing in the header to give way: the sentence truncates. Below `sm` it is two words that
+header, right-aligned before the instrument toggle and the menu, on every address. It gives way
+after the thread's title has reached its floor: the sentence truncates. Below `sm` it is two words that
 cannot truncate (*1 waiting*, *No approvals*, *Unreachable*) with *Review* as its chevron alone,
 the full sentence kept as the live region and the `title`. It is tinted only when it has
 something to say (`state-blocked` at `/10` while a person is asked, `state-failed` while it
