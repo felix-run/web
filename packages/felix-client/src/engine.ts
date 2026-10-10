@@ -356,7 +356,11 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     }
     const nextAssistantId = newId();
     set({
-      turns: [...state.turns, note, { id: nextAssistantId, role: 'assistant', content: '', tools: [] }],
+      turns: [
+        ...state.turns,
+        note,
+        { id: nextAssistantId, role: 'assistant', content: '', tools: [] },
+      ],
     });
     activeAssistantId = nextAssistantId;
   };
