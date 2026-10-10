@@ -350,7 +350,7 @@ function Account({
   return (
     <div className="mb-3">
       <p className="text-sm text-muted-foreground">{when}</p>
-      <p className="mt-0.5 text-base">
+      <p className="mt-1 text-2xl font-semibold tracking-tight text-balance">
         {plural(threads, 'thread')} ran
         {failing > 0 ? (
           <>
@@ -472,7 +472,7 @@ function LedgerList({
   };
 
   return (
-    <ol ref={ref} className="divide-y divide-border/50 border-y border-border/50">
+    <ol ref={ref} className="flex flex-col gap-1.5 rounded-2xl bg-ground p-1.5">
       {threads.map((t) => (
         <ThreadEntry
           key={t.id || 'none'}
@@ -610,7 +610,7 @@ function ThreadEntry({
   ].filter(Boolean);
 
   return (
-    <li>
+    <li className="rounded-xl bg-background shadow-sheet">
       <Collapsible open={open} onOpenChange={onToggle}>
         <CollapsibleTrigger
           data-ledger-row
@@ -618,7 +618,7 @@ function ThreadEntry({
           tabIndex={tabIndex}
           onFocus={onFocus}
           onKeyDown={onKeyDown}
-          className="group grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2 py-2.5 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2 rounded-xl px-3 py-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
         >
           <ChevronRightIcon
             aria-hidden
@@ -633,7 +633,7 @@ function ThreadEntry({
                 // Two lines on a phone, where the status column takes the width a
                 // title needs; one line, truncated, where there is room.
                 'line-clamp-2 break-words text-sm font-medium sm:line-clamp-1',
-                (title === null || title.isId) && 'font-mono text-xs font-normal leading-5',
+                title?.isId && 'font-mono text-xs font-normal leading-5',
               )}
               title={title?.isId === false ? undefined : t.id || undefined}
             >
@@ -668,7 +668,7 @@ function ThreadEntry({
             </span>
           </div>
         </CollapsibleTrigger>
-        <CollapsibleContent>
+        <CollapsibleContent className="px-3 pb-3">
           <ThreadDetail thread={t} spendKnown={spendKnown} spend={spend} />
         </CollapsibleContent>
       </Collapsible>
@@ -1004,11 +1004,11 @@ function SpendByModel({ summary, recent }: { summary: UsageSummary; recent: Usag
   const repriced = repricedRoutes(recent);
   return (
     <section aria-labelledby="spend-by-model" className="mt-8">
-      <h3 id="spend-by-model" className="text-sm font-semibold">
+      <h3 id="spend-by-model" className="text-base font-semibold">
         Where the spend went
       </h3>
       <p className="mt-1 text-sm">
-        <span className="font-mono text-base font-semibold tabular-nums">
+        <span className="font-mono text-2xl font-semibold tracking-tight tabular-nums">
           {totals.unpriced > 0 ? '≥ ' : ''}
           {money(totals.cost)}
         </span>{' '}
@@ -1035,43 +1035,47 @@ function SpendByModel({ summary, recent }: { summary: UsageSummary; recent: Usag
         </p>
       )}
       {buckets.length > 0 && (
-        <table className="mt-3 w-full text-xs">
-          <caption className="sr-only">Spend by agent and model, most first</caption>
-          <thead className="text-muted-foreground">
-            <tr className="border-b border-border/60">
-              <th scope="col" className="py-1 pr-3 text-left font-medium">
-                Agent · model
-              </th>
-              <th scope="col" className="py-1 pl-3 text-right font-medium">
-                Calls
-              </th>
-              <th scope="col" className="py-1 pl-3 text-right font-medium">
-                Tokens in + out
-              </th>
-              <th scope="col" className="py-1 pl-3 text-right font-medium">
-                Cost
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {buckets.map((b) => (
-              <tr key={`${b.manifest_id}:${b.model_id}`} className="border-b border-border/40">
-                <td className="py-1 pr-3 font-mono">
-                  {b.manifest_id || '—'} <span className="text-muted-foreground">{b.model_id}</span>
-                </td>
-                <td className="py-1 pl-3 text-right font-mono tabular-nums">
-                  {b.calls.toLocaleString()}
-                </td>
-                <td className="py-1 pl-3 text-right font-mono tabular-nums">
-                  {b.tokens.toLocaleString()}
-                </td>
-                <td className="py-1 pl-3 text-right font-mono tabular-nums">
-                  {b.unpriced ? <span className="font-sans">unpriced</span> : money(b.cost)}
-                </td>
+        // A stone tray, like the ledger above it: tone separates, not a rule per row.
+        <div className="mt-3 overflow-x-auto rounded-2xl bg-ground px-3 py-1.5">
+          <table className="w-full text-xs">
+            <caption className="sr-only">Spend by agent and model, most first</caption>
+            <thead className="text-muted-foreground">
+              <tr>
+                <th scope="col" className="py-1 pr-3 text-left font-medium">
+                  Agent · model
+                </th>
+                <th scope="col" className="py-1 pl-3 text-right font-medium">
+                  Calls
+                </th>
+                <th scope="col" className="py-1 pl-3 text-right font-medium">
+                  Tokens in + out
+                </th>
+                <th scope="col" className="py-1 pl-3 text-right font-medium">
+                  Cost
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {buckets.map((b) => (
+                <tr key={`${b.manifest_id}:${b.model_id}`} className="[&>td]:py-1.5">
+                  <td className="py-1 pr-3 font-mono">
+                    {b.manifest_id || '—'}{' '}
+                    <span className="text-muted-foreground">{b.model_id}</span>
+                  </td>
+                  <td className="py-1 pl-3 text-right font-mono tabular-nums">
+                    {b.calls.toLocaleString()}
+                  </td>
+                  <td className="py-1 pl-3 text-right font-mono tabular-nums">
+                    {b.tokens.toLocaleString()}
+                  </td>
+                  <td className="py-1 pl-3 text-right font-mono tabular-nums">
+                    {b.unpriced ? <span className="font-sans">unpriced</span> : money(b.cost)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {repriced.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-sm text-muted-foreground">

@@ -210,11 +210,14 @@ export function PageHeader({
         ) : (
           // Normalised here so a section's 14px row icon and a page's 16px one
           // are the same size on the page, where the nav beside it draws 16px.
-          <span aria-hidden className="shrink-0 text-muted-foreground [&>svg]:size-[1.125rem]">
+          <span
+            aria-hidden
+            className="grid size-8 shrink-0 place-items-center rounded-xl bg-ground text-foreground/80 [&>svg]:size-[1.125rem]"
+          >
             {icon}
           </span>
         )}
-        <h2 id={headingId} className="truncate text-lg font-semibold tracking-tight">
+        <h2 id={headingId} className="truncate text-xl font-semibold tracking-tight">
           {title}
         </h2>
         {value && valueLead ? (

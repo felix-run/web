@@ -31,6 +31,7 @@ describe('titleFromText', () => {
   it('truncates a long first message', () => {
     const title = titleFromText('x'.repeat(200));
     expect(title.length).toBeLessThan(200);
+    expect(title.endsWith('…')).toBe(true);
   });
 
   it('falls back for empty or whitespace-only text', () => {

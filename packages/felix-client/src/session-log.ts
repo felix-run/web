@@ -126,7 +126,9 @@ export function threadSuffix(full: string): string {
 /** A short conversation title from arbitrary text (e.g. the first user turn). */
 export function titleFromText(text: string): string {
   const t = text.trim().replace(/\s+/g, ' ');
-  return t ? t.slice(0, 48) : 'New conversation';
+  if (!t) return 'New conversation';
+  // Say it was cut: a title ending mid-word with no mark read as the whole message.
+  return t.length > 48 ? `${t.slice(0, 47).trimEnd()}…` : t;
 }
 
 /**
