@@ -19,7 +19,7 @@
  * `apps/chat-ui/src/lib/presence.ts`, the in-page lockups — builds from these
  * numbers, so none of them can drift from the others.
  */
-import { NEUTRAL, STATE_DARK } from './tokens';
+import { STATE_DARK } from './tokens';
 
 export const MARK_GRID = 32;
 
@@ -53,7 +53,9 @@ export type MarkState = 'idle' | 'working' | 'blocked';
  * the ramp tuned to read on near-black — and a white glyph on it holds its
  * shape against a dark strip as well as a light one.
  */
-export const MARK_INK = { tile: NEUTRAL[950], glyph: NEUTRAL[50] } as const;
+// Pinned rather than read from `NEUTRAL`: the favicons, touch icons and social card
+// are rendered from this and checked in, and the mark's ink is the brand, not a theme.
+export const MARK_INK = { tile: '#0a0a0a', glyph: '#fafafa' } as const;
 
 export const MARK_CURSOR_FILL: Record<MarkState, string> = {
   idle: MARK_INK.glyph,

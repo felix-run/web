@@ -1,9 +1,38 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-29T23:23:10Z",
+  "generatedAt": "2026-10-10T00:00:00Z",
   "title": "Design System: Felix docs",
   "extensions": {
     "colorMeta": {
+      "faint-text": {
+        "role": "neutral",
+        "displayName": "Faint text",
+        "note": "Light: 5.44:1 on the page, 4.79:1 on the stone (explorer sidebar, inline code) — the site's floor at 13px. Dark: 7.09:1."
+      },
+      "page": {
+        "role": "neutral",
+        "displayName": "Charcoal Sheet / Paper",
+        "note": "NEUTRAL[900] dark, NEUTRAL[0] light; converted from chat-ui's stone/charcoal oklch (hue ~60-75, chroma < 0.016).",
+        "tonalRamp": [
+          "#110f0d",
+          "#1b1816",
+          "#292623",
+          "#463e39",
+          "#5c534d",
+          "#706760",
+          "#aaa39c",
+          "#d2cdc8",
+          "#e3dfda",
+          "#f2eeea",
+          "#f8f6f4",
+          "#fefdfc"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Charcoal Ground / Stone",
+        "note": "NEUTRAL[950] dark (darker than the page), NEUTRAL[100] light. Reaches Starlight gray-6/7 and the explorer's sidebar; Starlight's own header and sidebar stay on the page colour (brand.css)."
+      },
       "state-running": {
         "role": "primary",
         "displayName": "Running",
@@ -24,11 +53,6 @@
         "role": "primary",
         "displayName": "Failed",
         "canonical": "oklch(0.44 0.19 27.3)"
-      },
-      "faint-text": {
-        "role": "neutral",
-        "displayName": "Faint text",
-        "note": "4.74:1 on the light page at 13px — the site's contrast floor."
       }
     },
     "typographyMeta": {
@@ -38,11 +62,11 @@
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Prose, held to 40rem (~76 characters)."
+        "purpose": "Prose in Onest Variable, the full 48rem column (~100 characters)."
       },
       "code": {
         "displayName": "Code",
-        "purpose": "Inline code, measured 13px; code blocks use Expressive Code's own size."
+        "purpose": "JetBrains Mono Variable; inline code 13px, code blocks at Expressive Code's own size."
       },
       "wordmark": {
         "displayName": "Wordmark",
@@ -80,29 +104,31 @@
     ],
     "layoutTokens": [
       {
-        "name": "--felix-measure",
-        "value": "40rem",
-        "purpose": "Prose measure inside the column."
-      },
-      {
         "name": "--sl-content-width",
-        "value": "58rem",
-        "purpose": "Content column; tables, code and figures use all of it."
+        "value": "48rem",
+        "purpose": "The one column: prose, tables, code and figures share its right edge."
       },
       {
         "name": "--sl-content-width (hero pages)",
         "value": "72rem",
-        "purpose": "The splash home, which has no sidebar or TOC."
-      },
-      {
-        "name": "--felix-dot-alpha",
-        "value": "16% dark / 7% light",
-        "purpose": "Dot-grid layer opacity, chat-ui's values."
+        "purpose": "The splash home, which has no sidebar or TOC; its prose held to 48rem."
       },
       {
         "name": "--scalar-custom-header-height",
         "value": "3.5rem",
         "purpose": "The explorer's header bar, reserved above Scalar."
+      }
+    ],
+    "fonts": [
+      {
+        "name": "Onest Variable",
+        "source": "@fontsource-variable/onest, self-hosted via customCss",
+        "use": "Prose and UI; --sl-font; Scalar UI_SANS"
+      },
+      {
+        "name": "JetBrains Mono Variable",
+        "source": "@fontsource-variable/jetbrains-mono, self-hosted via customCss",
+        "use": "Code; --sl-font-mono; Scalar UI_MONO"
       }
     ]
   },
@@ -113,7 +139,7 @@
       "refersTo": "button-primary",
       "description": "Starlight LinkButton, primary: the one action a page most wants — \"Run it locally\" on the home hero.",
       "html": "<a class=\"ds-btn-primary\" href=\"#\">Run it locally →</a>",
-      "css": ".ds-btn-primary { display:inline-flex; align-items:center; gap:.5rem; padding:.5rem 1.125rem; border:1px solid var(--sl-color-white, #ffffff); border-radius:8px; background:var(--sl-color-white, #ffffff); color:var(--sl-color-black, #0a0a0a); font:600 .875rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-decoration:none; } .ds-btn-primary:hover { opacity:.9; } .ds-btn-primary:focus-visible { outline: 2px solid var(--sl-color-white, #ffffff); outline-offset: 2px; }"
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; gap:.5rem; padding:.5rem 1.125rem; border:1px solid var(--sl-color-white, #fefdfc); border-radius:8px; background:var(--sl-color-white, #fefdfc); color:var(--sl-color-black, #1b1816); font:600 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-decoration:none; } .ds-btn-primary:hover { opacity:.9; } .ds-btn-primary:focus-visible { outline: 2px solid var(--sl-color-white, #fefdfc); outline-offset: 2px; }"
     },
     {
       "name": "Secondary Button",
@@ -121,7 +147,7 @@
       "refersTo": "button-secondary",
       "description": "Starlight LinkButton, secondary: an ink outline on the page.",
       "html": "<a class=\"ds-btn-secondary\" href=\"#\">Understand it</a>",
-      "css": ".ds-btn-secondary { display:inline-flex; padding:.5rem 1.125rem; border:1px solid var(--sl-color-white, #ffffff); border-radius:8px; background:transparent; color:var(--sl-color-white, #ffffff); font:600 .875rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-decoration:none; } .ds-btn-secondary:hover { background:color-mix(in srgb, var(--sl-color-white, #ffffff) 8%, var(--sl-color-black, #0a0a0a)); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--sl-color-white, #ffffff); outline-offset: 2px; }"
+      "css": ".ds-btn-secondary { display:inline-flex; padding:.5rem 1.125rem; border:1px solid var(--sl-color-white, #fefdfc); border-radius:8px; background:transparent; color:var(--sl-color-white, #fefdfc); font:600 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-decoration:none; } .ds-btn-secondary:hover { background:color-mix(in srgb, var(--sl-color-white, #fefdfc) 8%, var(--sl-color-black, #1b1816)); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--sl-color-white, #fefdfc); outline-offset: 2px; }"
     },
     {
       "name": "Caution Callout",
@@ -129,7 +155,7 @@
       "refersTo": "callout-caution",
       "description": "An aside on the state ramp: hairline border at 40% of the hue, 6% flat tint, title in the hue, body in body text. Caution is for things that can hurt a deployment.",
       "html": "<aside class=\"ds-callout ds-callout--caution\"><p class=\"ds-callout__title\">Caution</p><p><code>FELIX_AUTH_MODE=none</code> is only legal on a loopback bind.</p></aside>",
-      "css": ".ds-callout { --hue:var(--sl-color-white, #ffffff); padding:1rem; border:1px solid color-mix(in srgb, var(--hue) 40%, var(--sl-color-black, #0a0a0a)); border-radius:8px; background:color-mix(in srgb, var(--hue) 6%, var(--sl-color-black, #0a0a0a)); color:var(--sl-color-gray-2, #d4d4d4); font:400 1rem/1.75 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-callout--caution { --hue:var(--felix-state-blocked, #ffd230); } .ds-callout__title { margin:0 0 .5rem; color:var(--hue); font-weight:600; font-size:1.125rem; line-height:1.35; } .ds-callout p { margin:0; } .ds-callout code { font:400 .8125rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
+      "css": ".ds-callout { --hue:var(--sl-color-white, #fefdfc); padding:1rem; border:1px solid color-mix(in srgb, var(--hue) 40%, var(--sl-color-black, #1b1816)); border-radius:8px; background:color-mix(in srgb, var(--hue) 6%, var(--sl-color-black, #1b1816)); color:var(--sl-color-gray-2, #d2cdc8); font:400 1rem/1.75 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-callout--caution { --hue:var(--felix-state-blocked, #ffd230); } .ds-callout__title { margin:0 0 .5rem; color:var(--hue); font-weight:600; font-size:1.125rem; line-height:1.35; } .ds-callout p { margin:0; } .ds-callout code { font:400 .8125rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
     },
     {
       "name": "Note Callout",
@@ -137,7 +163,7 @@
       "refersTo": "callout-note",
       "description": "A note is information, not a state: the same shape in ink, so hue is left for callouts that need action.",
       "html": "<aside class=\"ds-note\"><p class=\"ds-note__title\">Authenticated by default</p><p>Compose sets <code>FELIX_AUTH_MODE=api_key</code>.</p></aside>",
-      "css": ".ds-note { padding:1rem; border:1px solid color-mix(in srgb, var(--sl-color-white, #ffffff) 40%, var(--sl-color-black, #0a0a0a)); border-radius:8px; background:color-mix(in srgb, var(--sl-color-white, #ffffff) 6%, var(--sl-color-black, #0a0a0a)); color:var(--sl-color-gray-2, #d4d4d4); font:400 1rem/1.75 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-note__title { margin:0 0 .5rem; color:var(--sl-color-white, #ffffff); font-weight:600; font-size:1.125rem; line-height:1.35; } .ds-note p { margin:0; } .ds-note code { font:400 .8125rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
+      "css": ".ds-note { padding:1rem; border:1px solid color-mix(in srgb, var(--sl-color-white, #fefdfc) 40%, var(--sl-color-black, #1b1816)); border-radius:8px; background:color-mix(in srgb, var(--sl-color-white, #fefdfc) 6%, var(--sl-color-black, #1b1816)); color:var(--sl-color-gray-2, #d2cdc8); font:400 1rem/1.75 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-note__title { margin:0 0 .5rem; color:var(--sl-color-white, #fefdfc); font-weight:600; font-size:1.125rem; line-height:1.35; } .ds-note p { margin:0; } .ds-note code { font:400 .8125rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
     },
     {
       "name": "RunTrace Row (blocked)",
@@ -145,7 +171,7 @@
       "refersTo": "",
       "description": "The docs' signature: one frame of a run on a 1px rail. The blocked row carries a flat tint and says \"Waiting on you\" in words.",
       "html": "<ol class=\"ds-trace\"><li><span class=\"ds-dot\"></span><code>tool_start</code><span>It calls write_file.</span></li><li class=\"ds-blocked\"><span class=\"ds-dot\"></span><code>approval_required</code><span><strong>Waiting on you</strong> The call is gated by a manifest rule. The run waits.</span></li></ol>",
-      "css": ".ds-trace { list-style:none; margin:0; padding:0; font:400 .875rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color:var(--sl-color-gray-2, #d4d4d4); } .ds-trace li { --hue:var(--felix-state-running, #74d4ff); display:grid; grid-template-columns:1.5rem 11rem 1fr; gap:0 .75rem; align-items:baseline; padding:.4rem .75rem .4rem 0; } .ds-trace .ds-blocked { --hue:var(--felix-state-blocked, #ffd230); background:color-mix(in srgb, var(--hue) 7%, var(--sl-color-black, #0a0a0a)); border-radius:6px; } .ds-dot { justify-self:center; align-self:center; width:.5rem; height:.5rem; border-radius:999px; background:var(--hue); } .ds-trace code { font:400 .875rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--sl-color-white, #ffffff); background:none; } .ds-trace strong { color:var(--hue); margin-right:.5ch; }"
+      "css": ".ds-trace { list-style:none; margin:0; padding:0; font:400 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color:var(--sl-color-gray-2, #d2cdc8); } .ds-trace li { --hue:var(--felix-state-running, #74d4ff); display:grid; grid-template-columns:1.5rem 11rem 1fr; gap:0 .75rem; align-items:baseline; padding:.4rem .75rem .4rem 0; } .ds-trace .ds-blocked { --hue:var(--felix-state-blocked, #ffd230); background:color-mix(in srgb, var(--hue) 7%, var(--sl-color-black, #1b1816)); border-radius:6px; } .ds-dot { justify-self:center; align-self:center; width:.5rem; height:.5rem; border-radius:999px; background:var(--hue); } .ds-trace code { font:400 .875rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--sl-color-white, #fefdfc); background:none; } .ds-trace strong { color:var(--hue); margin-right:.5ch; }"
     },
     {
       "name": "Route Index Row",
@@ -153,7 +179,7 @@
       "refersTo": "",
       "description": "One route: verb and path in mono, the spec's summary, and where it is explained. Hairline-separated.",
       "html": "<ul class=\"ds-routes\"><li><code><span>POST</span> /approvals/{approval_id}/decide</code><span class=\"ds-sum\">Decide Approval</span><a href=\"#\">Management API</a></li></ul>",
-      "css": ".ds-routes { list-style:none; margin:0; padding:0; font:400 .875rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-routes li { display:grid; grid-template-columns:minmax(0,22rem) minmax(0,1fr) minmax(0,9rem); gap:.25rem 1rem; align-items:baseline; padding:.45rem 0; border-bottom:1px solid var(--sl-color-hairline, #262626); } .ds-routes code { font:400 .875rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--sl-color-white, #ffffff); background:none; overflow-wrap:anywhere; } .ds-routes code span { display:inline-block; min-width:3.25rem; color:var(--sl-color-gray-3, #a3a3a3); } .ds-sum { color:var(--sl-color-gray-2, #d4d4d4); } .ds-routes a { color:var(--sl-color-white, #ffffff); text-underline-offset:.2em; }"
+      "css": ".ds-routes { list-style:none; margin:0; padding:0; font:400 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-routes li { display:grid; grid-template-columns:minmax(0,22rem) minmax(0,1fr) minmax(0,9rem); gap:.25rem 1rem; align-items:baseline; padding:.45rem 0; border-bottom:1px solid var(--sl-color-hairline, #292623); } .ds-routes code { font:400 .875rem 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--sl-color-white, #fefdfc); background:none; overflow-wrap:anywhere; } .ds-routes code span { display:inline-block; min-width:3.25rem; color:var(--sl-color-gray-3, #aaa39c); } .ds-sum { color:var(--sl-color-gray-2, #d2cdc8); } .ds-routes a { color:var(--sl-color-white, #fefdfc); text-underline-offset:.2em; }"
     },
     {
       "name": "Sidebar Current Page",
@@ -161,56 +187,62 @@
       "refersTo": "sidebar-current",
       "description": "Where you are, as a tonal step: hairline fill, ink text, 600. Not an inverted pill.",
       "html": "<nav class=\"ds-side\"><a href=\"#\">Route index</a><a href=\"#\" aria-current=\"page\">REST API</a><a href=\"#\">Management API</a></nav>",
-      "css": ".ds-side { display:flex; flex-direction:column; gap:.125rem; width:14rem; font:400 .875rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-side a { padding:.25rem .5rem; border-radius:6px; color:var(--sl-color-gray-2, #d4d4d4); text-decoration:none; } .ds-side a:hover { color:var(--sl-color-white, #ffffff); } .ds-side a[aria-current=page] { background:var(--sl-color-hairline, #262626); color:var(--sl-color-white, #ffffff); font-weight:600; } .ds-side a:focus-visible { outline:2px solid var(--sl-color-white, #ffffff); outline-offset:2px; }"
+      "css": ".ds-side { display:flex; flex-direction:column; gap:.125rem; width:14rem; font:400 .875rem/1.5 'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-side a { padding:.25rem .5rem; border-radius:6px; color:var(--sl-color-gray-2, #d2cdc8); text-decoration:none; } .ds-side a:hover { color:var(--sl-color-white, #fefdfc); } .ds-side a[aria-current=page] { background:var(--sl-color-hairline, #292623); color:var(--sl-color-white, #fefdfc); font-weight:600; } .ds-side a:focus-visible { outline:2px solid var(--sl-color-white, #fefdfc); outline-offset:2px; }"
     }
   ],
   "narrative": {
     "northStar": "The Operator's Manual",
-    "overview": "The manual that ships with the instrument. chat-ui is the Workbench; the docs are the same machine written down, for the moments the operator is not at the bench. Same palette, hue still means state, and the page shows the mechanism: real event names, routes and error reasons.",
+    "overview": "The manual that ships with the instrument. chat-ui is the Workbench; the docs are the same machine written down, for the moments the operator is not at the bench. The material is the Workbench's — since 2026-10-10 chat-ui's warm stone and charcoal, and its Onest and JetBrains Mono — hue still means state, and the page shows the mechanism: real event names, routes and error reasons.",
     "keyCharacteristics": [
-      "A pure neutral field in both themes; dark is the default.",
+      "A warm neutral field — stone and paper in light, charcoal in dark — with no hue in it; dark is the default.",
+      "Onest for prose and UI, JetBrains Mono for code: chat-ui's faces, self-hosted.",
       "Hue only from the four-state ramp, only where there is something to do or know.",
-      "Prose at 40rem inside a 58rem column; tables, code and figures use the column.",
-      "The mechanism drawn as data: RunTrace, the events list, the Route index.",
-      "Flat surfaces separated by hairlines; no authored shadow."
+      "One 48rem column for everything; tables and code scroll inside it when wider.",
+      "The mechanism drawn as data: RunTrace on the home page, events as a stacked list.",
+      "Flat surfaces separated by hairlines; no shadow authored anywhere in the docs' own CSS."
     ],
     "rules": [
       {
         "name": "The State-Only Hue Rule",
-        "body": "Hue appears only from the ramp, and only where the reader has something to do or know. Notes are neutral."
+        "body": "Hue appears only from the ramp, and only where the reader has something to do or know. A note is information, not a state, so notes are neutral; they used to draw in \"running\", the live colour, on text that was neither.",
+        "section": "colors"
       },
       {
         "name": "The Flat-Mix Rule",
-        "body": "Tints are mixed into the page colour, never laid on as alphas, so a callout is one flat colour whatever sits behind it."
-      },
-      {
-        "name": "The Two-Measure Rule",
-        "body": "Prose reads at 40rem; data takes the column."
-      },
-      {
-        "name": "The Whole-Token Rule",
-        "body": "Code is never broken mid-token to fit a table; scroll it or restack it."
+        "body": "A tint is mixed into the page colour (color-mix(in srgb, hue 6%, --sl-color-black)), never laid on as an alpha, so a callout is one flat colour whatever sits behind it.",
+        "section": "colors"
       },
       {
         "name": "The Route-Heading Rule",
-        "body": "A heading that is a route is set in the code face without the inline-code chip."
+        "body": "A heading that is a route is set in the code face without the inline-code chip; at heading size the chip was a slab heavier than every prose heading beside it.",
+        "section": "typography"
+      },
+      {
+        "name": "The One-Edge Rule",
+        "body": "Prose and data share one column and one right edge. Never widen the column to fit a table: a table or code line wider than 48rem scrolls inside its own box.",
+        "section": "layout"
+      },
+      {
+        "name": "The Whole-Token Rule",
+        "body": "Code is never broken mid-token. Tables stack on a phone; routes in headings and code in table cells break only between segments.",
+        "section": "layout"
       }
     ],
     "dos": [
-      "Hold prose to --felix-measure; let data take the column.",
-      "Take hue only from the state ramp.",
-      "Mix tints into the page colour.",
-      "Separate with 1px hairlines and tonal steps.",
-      "Show real names, with the source they were read from.",
-      "End a page on where to go next."
+      "Do keep everything on the one 48rem column; let wide tables and code scroll inside it.",
+      "Do take hue only from the state ramp, and only where there is something to do or know.",
+      "Do mix tints into the page colour (color-mix(…, --sl-color-black)), never alpha them.",
+      "Do separate with 1px hairlines and tonal steps.",
+      "Do show real names: event types, routes and error reasons exactly as the harness sends them, with the source they were read from.",
+      "Do end a page on where to go next."
     ],
     "donts": [
-      "Break code mid-token.",
-      "Draw a coloured border thicker than 1px.",
-      "Use caution for a version note, or hue for a plain note.",
-      "Hand-edit src/styles/theme.css.",
-      "Introduce text fainter than 4.74:1 light or smaller than 13px (the explorer's method badges, Scalar's element, are 11px).",
-      "Author a shadow."
+      "Don't break code mid-token to make a table fit; scroll it or restack it.",
+      "Don't draw a coloured border thicker than 1px, or a callout with a thick left rule.",
+      "Don't use caution for a version note, or hue for a plain note.",
+      "Don't hand-edit src/styles/theme.css; change packages/design/src/tokens.ts and run pnpm sync:theme.",
+      "Don't introduce text fainter than faint-text (4.79:1 on the light stone) or smaller than 13px. The one exception is Scalar's method badges in the explorer sidebar, raised from 10px to 11px, chat-ui's own floor for text — its element, sized for its box, so only its size is overridden.",
+      "Don't author a shadow; Starlight's and Scalar's are incumbent, not a pattern."
     ]
   }
 }

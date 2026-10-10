@@ -2,20 +2,20 @@
 name: Felix docs
 description: The operator's manual for a self-hosted agent harness — the same instrument as chat-ui, read rather than operated.
 colors:
-  page: "#0a0a0a"
-  page-light: "#ffffff"
-  panel: "#171717"
-  panel-light: "#fafafa"
-  hairline: "#262626"
-  hairline-light: "#e5e5e5"
-  ink: "#ffffff"
-  ink-light: "#0a0a0a"
-  body-text: "#d4d4d4"
-  body-text-light: "#404040"
-  faint-text: "#a3a3a3"
-  faint-text-light: "#737373"
-  inline-code-surface: "#262626"
-  inline-code-surface-light: "#f5f5f5"
+  page: "#1b1816"
+  page-light: "#fefdfc"
+  panel: "#110f0d"
+  panel-light: "#f2eeea"
+  hairline: "#292623"
+  hairline-light: "#e3dfda"
+  ink: "#fefdfc"
+  ink-light: "#110f0d"
+  body-text: "#d2cdc8"
+  body-text-light: "#463e39"
+  faint-text: "#aaa39c"
+  faint-text-light: "#706760"
+  inline-code-surface: "#292623"
+  inline-code-surface-light: "#f2eeea"
   state-running: "#74d4ff"
   state-running-light: "#00598a"
   state-done: "#5ee9b5"
@@ -26,42 +26,42 @@ colors:
   state-failed-light: "#a20002"
 typography:
   display:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "clamp(1.8125rem, calc(0.5rem + 3.5vw), 2.625rem)"
     fontWeight: 600
     lineHeight: 1.1
     letterSpacing: "-0.02em"
   headline:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "2.625rem"
     fontWeight: 600
     lineHeight: 1.2
   title:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "2.1875rem"
     fontWeight: 600
     lineHeight: 1.2
   body:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.75
   label:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 600
     lineHeight: 1.5
   code:
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    fontFamily: "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
     fontSize: "0.8125rem"
     fontWeight: 400
   wordmark:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "'Onest Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 650
     letterSpacing: "0.07em"
   explorer-method:
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    fontFamily: "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
     fontSize: "11px"
     fontWeight: 600
 rounded:
@@ -105,8 +105,8 @@ components:
 # Design System: Felix docs
 
 This file describes `apps/docs` — the Starlight site at docs.felix.run and the Scalar page at
-`/reference/`. chat-ui's system is the root `DESIGN.md`; the two share one palette and one state
-ramp, both from `@felix/design`, and this file records only what the docs do with them. It is
+`/reference/`. chat-ui's system is the root `DESIGN.md`; the two share one palette, one state
+ramp and one pair of faces, the colours from `@felix/design`, and this file records only what the docs do with them. It is
 **derived from the shipped code** (`src/styles/brand.css`, `src/components/`, the generated
 `src/styles/theme.css`), including the places where the code and the intent disagree. When the
 two drift, fix whichever is wrong and say which in the commit; do not tighten the prose to match a
@@ -119,7 +119,8 @@ wish.
 The manual that ships with the instrument. chat-ui is the Workbench, where an operator watches a
 run and decides what it may do; the docs are the same machine written down, for the moments that
 operator is not at the bench — setting it up, looking up a route, learning why a run behaved the
-way it did. The palette is the Workbench's, hue still means state and nothing else, and the page
+way it did. The material is the Workbench's — since 2026-10-10 chat-ui's warm stone and charcoal,
+and its Onest and JetBrains Mono — hue still means state and nothing else, and the page
 shows the mechanism rather than a friendlier account of it: real event names, real routes, real
 error reasons.
 
@@ -136,7 +137,9 @@ that once sat behind the top of the reading column was removed (2026-10-08).
 
 **Key Characteristics:**
 
-- A pure neutral field (Tailwind `neutral`) in both themes; dark is the default.
+- A warm neutral field — stone and paper in light, charcoal in dark — with no hue in it; dark is
+  the default.
+- Onest for prose and UI, JetBrains Mono for code: chat-ui's faces, self-hosted.
 - Hue only from the four-state ramp, only where there is something to do or know.
 - One 48rem column for everything; tables and code scroll inside it when wider.
 - The mechanism drawn as data: RunTrace on the home page, events as a stacked list.
@@ -144,7 +147,8 @@ that once sat behind the top of the reading column was removed (2026-10-08).
 
 ## Colors
 
-A neutral grey scale carries every surface and all text; four state hues are the only colour, and
+A warm stone/charcoal scale (hue ~60–75, chroma under 0.016 in chat-ui's oklch) carries every
+surface and all text; four state hues are the only colour, and
 they appear on callouts, RunTrace and the explorer's method labels — never as decoration.
 
 **Where the system and the code disagree.** Code blocks are highlighted by Expressive Code's
@@ -152,36 +156,47 @@ default themes — Night Owl in dark mode — and its cyans and violets are the 
 on the site outside the state ramp. Left as it is on purpose for now: a code theme that reads well
 is its own job, and replacing it is a decision rather than a fix. It is the open colour question.
 
-The neutral hexes are canonical in `packages/design/src/tokens.ts` and reach the site through the
-generated `src/styles/theme.css` (`pnpm sync:theme`; hand edits are hook-blocked). The state hexes
+The neutral hexes are canonical in `packages/design/src/tokens.ts` (`NEUTRAL`, converted to hex
+from the stone/charcoal oklch chat-ui authors in `apps/chat-ui/src/index.css`) and reach the site
+through the generated `src/styles/theme.css` (`pnpm sync:theme`; hand edits are hook-blocked). The state hexes
 are the same file's `STATE_DARK`/`STATE_LIGHT`, which are themselves derived from chat-ui's oklch
 values and held to them by `pnpm check-state-palette`. Starlight's semantic grey slots are filled
 from these, so `--sl-color-white` means "highest-contrast text" in both themes, not white.
 
 ### Neutral
 
-- **Page** (`#0a0a0a` / `#ffffff`): the page ground, `--sl-color-black`.
-- **Panel** (`#171717` / `#fafafa`): one tonal step off the page. The header and sidebar no
-  longer use it: both sit on the page colour (`--sl-color-bg-nav`, `--sl-color-bg-sidebar`),
-  separated by their hairlines alone.
-- **Hairline** (`#262626` / `#e5e5e5`): every rule, table border and row separator — and the
-  sidebar's current-page fill.
-- **Ink** (`#ffffff` / `#0a0a0a`): headings, links, the current page, button fills,
-  `--sl-color-white`.
-- **Body text** (`#d4d4d4` / `#404040`): prose. 13.36:1 and 10.37:1 measured on the page.
-- **Faint text** (`#a3a3a3` / `#737373`): the table of contents, captions, the verb column in the
-  Route index. 7.85:1 dark, **4.74:1 light** — the site's floor, passing AA at 13px with little
-  room. Nothing smaller or fainter should be introduced.
-- **Inline code surface** (`#262626` / `#f5f5f5`).
+- **Charcoal Sheet / Paper** (page): the page ground, `--sl-color-black`. Dark is chat-ui's
+  charcoal sheet (`NEUTRAL[900]`), no longer near-black; light is a barely warm paper
+  (`NEUTRAL[0]`).
+- **Charcoal Ground / Stone** (panel): one tonal step off the page — *darker* than the page in
+  dark (`NEUTRAL[950]`), the stone ground in light (`NEUTRAL[100]`). It fills Starlight's
+  `gray-6`/`gray-7` slots and the explorer's own sidebar and secondary background
+  (`--scalar-sidebar-background-1`, `--scalar-background-2`).
+  **Where the system and the code disagree:** `tokens.ts` says light's stone ground is there "so
+  the docs' sidebar matches" chat-ui's, but `brand.css` still puts Starlight's header and sidebar
+  on the page colour (`--sl-color-bg-nav`, `--sl-color-bg-sidebar`), separated by their hairlines
+  alone. So the stone sidebar ships in the explorer, not on the manual's pages. Recorded as built;
+  which one is wrong is a decision, not a fix.
+- **Hairline** (both themes' `NEUTRAL[800]` / `[200]`): every rule, table border and row
+  separator — and the sidebar's current-page fill.
+- **Ink**: headings, links, the current page, button fills, `--sl-color-white`.
+- **Body text**: prose. 11.19:1 dark and 10.29:1 light on the page.
+- **Faint text**: the table of contents, captions, the verb column in the Route index. 7.09:1
+  dark; light is **5.44:1 on the page and 4.79:1 on the stone** (the explorer's sidebar, the
+  inline-code surface) — the site's floor, passing AA at 13px with little room. `NEUTRAL[500]` sits
+  a step darker than an even ramp would put it for exactly that second number. Nothing smaller or
+  fainter should be introduced.
+- **Inline code surface** (dark `NEUTRAL[800]`, the hairline value; light the stone).
 
 ### State (the only hue)
 
-- **Running** (`#74d4ff` / `#00598a`): RunTrace's in-flight rows; `GET` in the explorer.
-- **Done** (`#5ee9b5` / `#006045`): tip callouts; RunTrace's finished rows; `POST` in the
+Unchanged by the warm material; on the new pages each clears 7:1 in light and in dark.
+
+- **Running**: RunTrace's in-flight rows; `GET` in the explorer.
+- **Done**: tip callouts; RunTrace's finished rows; `POST` in the explorer.
+- **Blocked**: caution callouts; RunTrace's "Waiting on you" row; `PUT` and `PATCH` in the
   explorer.
-- **Blocked** (`#ffd230` / `#973c00`): caution callouts; RunTrace's "Waiting on you" row; `PUT`
-  and `PATCH` in the explorer.
-- **Failed** (`#ff807f` / `#a20002`): danger callouts; `DELETE` in the explorer.
+- **Failed**: danger callouts; `DELETE` in the explorer.
 
 ### Named Rules
 
@@ -194,16 +209,21 @@ draw in "running", the live colour, on text that was neither.
 behind it.
 
 The explorer's method colours are a mapping by hue family, not meaning: a `POST` is not "done".
-It exists because Scalar's light defaults put `GET` at 3.78:1; on the ramp it measures 7.20:1.
+It exists because Scalar's light defaults put `GET` at 3.78:1; on the ramp it measures 7.39:1 on
+the light page and 6.51:1 on the stone sidebar.
 
 ## Typography
 
-**Body and display:** the system sans stack (Starlight's `--sl-font-system`).
-**Code:** the system mono stack (`--sl-font-system-mono`).
+**Body and display:** Onest Variable (`--sl-font`), falling back to the system sans stack.
+**Code:** JetBrains Mono Variable (`--sl-font-mono`), falling back to the system mono stack.
 
-**Character:** no webfont, on purpose — the docs read in the operator's own system face, the same
-face chat-ui and a terminal use, and load nothing to do it. Scalar's Inter is replaced with the
-same stacks.
+**Character:** chat-ui's two faces (2026-10-10), so the manual and the app read as one product:
+a plain, slightly rounded grotesque for prose and every label, and a mono for anything the
+harness said. Both are self-hosted — `@fontsource-variable/*` imported first in `customCss`
+(`astro.config.mjs`), the stacks set in `brand.css` — so the docs fetch no font from a third
+party. The explorer (`reference.astro`) imports the same packages, replaces Scalar's Inter with
+the same stacks (`UI_SANS`/`UI_MONO`, `withDefaultFonts: false`) and sets its own header in them.
+This replaces the earlier "no webfont, the operator's system face" decision.
 
 ### Hierarchy
 
@@ -338,7 +358,7 @@ service: shipped as authored, with its dimensions set), a 1px hairline frame at 
 image shown at its own pixel size and never enlarged — a full window scaled to the column was
 ~6px UI text, so the figure is a crop that reads at 1:1, linking the full capture — and a faint
 caption held to 30rem that says what the image shows and where it came from. Code in a caption
-takes the body colour (the faint colour on the code surface is 4.3:1). Alt text describes the
+takes the body colour (the faint colour on the light code surface measures 4.79:1, at the floor). Alt text describes the
 state on screen, not the file.
 
 ### Sidebar current page
@@ -385,7 +405,7 @@ are tabular.
 - **Don't** use caution for a version note, or hue for a plain note.
 - **Don't** hand-edit `src/styles/theme.css`; change `packages/design/src/tokens.ts` and run
   `pnpm sync:theme`.
-- **Don't** introduce text fainter than faint-text (4.74:1 light) or smaller than 13px. The one
+- **Don't** introduce text fainter than faint-text (4.79:1 on the light stone) or smaller than 13px. The one
   exception is Scalar's method badges in the explorer sidebar, raised from 10px to **11px**, chat-ui's
   own floor for text — its element, sized for its box, so only its size is overridden.
 - **Don't** author a shadow; Starlight's and Scalar's are incumbent, not a pattern.

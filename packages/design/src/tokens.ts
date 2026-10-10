@@ -9,20 +9,28 @@
  * together.
  */
 
-/** Tailwind `neutral` scale — the only colors the docs surfaces use. */
+/**
+ * The warm neutral scale (2026-10-10, the Warm Workbench redesign) — the only
+ * colors the docs surfaces use. Converted from the stone/charcoal oklch values
+ * chat-ui authors in `apps/chat-ui/src/index.css` (hue ~60–75, chroma under
+ * 0.016), so the docs and the app share one material: `100` is chat-ui's stone
+ * ground, `0` its sheet, `900`/`950` its charcoal sheet and ground. `500` sits a
+ * step darker than an even ramp would put it so faint text clears AA on the
+ * stone sidebar (4.80:1) as well as on the page (5.45:1).
+ */
 export const NEUTRAL = {
-  0: '#ffffff',
-  50: '#fafafa',
-  100: '#f5f5f5',
-  200: '#e5e5e5',
-  300: '#d4d4d4',
-  400: '#a3a3a3',
-  500: '#737373',
-  600: '#525252',
-  700: '#404040',
-  800: '#262626',
-  900: '#171717',
-  950: '#0a0a0a',
+  0: '#fefdfc',
+  50: '#f8f6f4',
+  100: '#f2eeea',
+  200: '#e3dfda',
+  300: '#d2cdc8',
+  400: '#aaa39c',
+  500: '#706760',
+  600: '#5c534d',
+  700: '#463e39',
+  800: '#292623',
+  900: '#1b1816',
+  950: '#110f0d',
 } as const;
 
 /** Semantic slots one scheme (light or dark) fills from the scale. */
@@ -49,7 +57,10 @@ export interface ThemePalette {
 
 export const LIGHT: ThemePalette = {
   bg: NEUTRAL[0],
-  bgSubtle: NEUTRAL[50],
+  // The stone ground, chat-ui's shell colour. In the docs it fills Starlight's gray-6/7
+  // slots and the Scalar explorer's sidebar; the manual's own nav and sidebar stay the
+  // page colour by choice (`brand.css`), so they do not read as separate surfaces.
+  bgSubtle: NEUTRAL[100],
   bgMuted: NEUTRAL[100],
   border: NEUTRAL[200],
   text: NEUTRAL[950],
@@ -60,8 +71,9 @@ export const LIGHT: ThemePalette = {
 };
 
 export const DARK: ThemePalette = {
-  bg: NEUTRAL[950],
-  bgSubtle: NEUTRAL[900],
+  // The charcoal sheet for the page and the darker ground for the panels, as chat-ui.
+  bg: NEUTRAL[900],
+  bgSubtle: NEUTRAL[950],
   bgMuted: NEUTRAL[800],
   border: NEUTRAL[800],
   text: NEUTRAL[50],
