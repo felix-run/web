@@ -9,9 +9,8 @@ import {
   FileTreeIcon,
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
-import { FilePreview } from '@/components/workspace/file-preview';
 import { ThreadRepoSection } from '@/components/workspace/thread-repo';
-import { collectChanges } from '@/lib/changes';
+import { collectChanges, treePath } from '@/lib/changes';
 import {
   clearMount,
   getMountLabel,
@@ -24,6 +23,7 @@ import {
   vfs,
 } from '@/lib/cowork';
 import { ancestorsOf, buildTree, type TreeNode } from '@/lib/file-tree';
+import { usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 
@@ -79,7 +79,7 @@ function readFilesOpen(): boolean {
 }
 
 export function WorkspaceSection({ className }: { className?: string }) {
-  const { turns, streaming, threadId } = useShell();
+  const { turns, streaming, threadId, openInPane } = useShell();
   const [folded, setFolded] = useState(readFolded);
   const toggleFolded = () =>
     setFolded((f) => {
@@ -105,8 +105,14 @@ export function WorkspaceSection({ className }: { className?: string }) {
   const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
   const [reconnectName, setReconnectName] = useState<string | null>(null);
   const [files, setFiles] = useState<string[]>([]);
-  /** The file open in the preview drawer. */
-  const [previewing, setPreviewing] = useState<string | null>(null);
+  // The file in front in the side pane, so the tree can mark the one being read.
+  const pane = usePaneState(threadId);
+  const previewing =
+    pane.shown && pane.active?.startsWith('file:') ? pane.active.slice('file:'.length) : null;
+  const openFile = useCallback(
+    (path: string) => openInPane?.({ kind: 'file', path }),
+    [openInPane],
+  );
   const canMount = supportsDirectoryPicker();
 
   const refresh = useCallback(async () => {
@@ -146,7 +152,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
   const changes = useMemo(() => collectChanges(turns), [turns]);
   /** Paths a write or edit landed on, normalised to the tree's spelling. */
   const changedPaths = useMemo(
-    () => new Set(changes.filter((c) => c.changed).map((c) => normalisePath(c.path))),
+    () => new Set(changes.filter((c) => c.changed).map((c) => treePath(c.path))),
     [changes],
   );
 
@@ -358,7 +364,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
                 paths={files.slice(0, TREE_VISIBLE)}
                 changed={changedPaths}
                 selected={previewing}
-                onOpenFile={setPreviewing}
+                onOpenFile={openFile}
               />
             ) : (
               // Files is this tab's own store; the instrument's Changes is every
@@ -381,19 +387,8 @@ export function WorkspaceSection({ className }: { className?: string }) {
           </div>
         </section>
       </div>
-      <FilePreview
-        path={previewing}
-        changed={previewing !== null && changedPaths.has(previewing)}
-        streaming={streaming}
-        onClose={() => setPreviewing(null)}
-      />
     </section>
   );
-}
-
-/** A tool's path argument as the tree spells it: no `./`, no leading slash. */
-function normalisePath(path: string): string {
-  return path.replace(/^\.\//, '').replace(/^\/+/, '');
 }
 
 /**
@@ -404,7 +399,7 @@ function normalisePath(path: string): string {
  * muted — the same distinction the instrument's *Changes* tab draws, carried into
  * the place an operator looks for a file. Everything else starts folded, so a
  * mounted repository is one row per top-level entry instead of two hundred paths.
- * A file opens in the preview drawer; a folder's name still folds it.
+ * A file opens in the side pane; a folder's name still folds it.
  */
 function WorkspaceFileTree({
   paths,

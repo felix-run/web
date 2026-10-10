@@ -328,3 +328,21 @@ export function runHasToolCalls(turns: readonly Turn[]): boolean {
   }
   return false;
 }
+
+/** A tool's path argument as the workspace tree spells it: no `./`, no leading slash. */
+export function treePath(path: string): string {
+  return path.replace(/^\.\//, '').replace(/^\/+/, '');
+}
+
+/**
+ * The paths a write or edit landed on, in the tree's spelling — over the whole
+ * thread, or from `from` (a turn index) on, which is how the side pane asks
+ * whether the run in flight has written the file it is about to save.
+ */
+export function landedPaths(turns: readonly Turn[], from = 0): Set<string> {
+  return new Set(
+    collectChanges(from > 0 ? turns.slice(from) : turns)
+      .filter((c) => c.changed)
+      .map((c) => treePath(c.path)),
+  );
+}

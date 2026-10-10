@@ -10,6 +10,7 @@ import {
   getVfs,
   hasMount,
   mountTree,
+  mountWrite,
   pickDirectory,
   readExisting,
   readExistingBytes,
@@ -34,6 +35,17 @@ export async function readWorkspaceFile(path: string): Promise<string | null> {
  */
 export async function readWorkspaceBytes(path: string): Promise<Uint8Array | null> {
   return readExistingBytes(path, vfs);
+}
+
+/**
+ * The operator's own save from the side pane, into the same store the tools
+ * read and write — the mounted folder first, the in-tab one otherwise — so the
+ * next tool call, the approval diff and the preview all see it.
+ */
+export async function writeWorkspaceFile(path: string, content: string): Promise<void> {
+  const cleaned = path.replace(/^\//, '');
+  if (hasMount()) await mountWrite(cleaned, content);
+  else vfs.write(cleaned, content);
 }
 
 export {

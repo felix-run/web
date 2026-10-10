@@ -1,9 +1,10 @@
 /** @vitest-environment happy-dom */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanup, render, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Response } from '../src/components/chat/response';
+import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
  * `Response` renders assistant markdown through a third-party renderer, and the parts
@@ -251,5 +252,46 @@ describe('math in a reply', () => {
     expect(withMath.filter(isKatex)).toHaveLength(1);
     expect(withMath.filter((p) => !isKatex(p))).toEqual(Object.values(rest));
     expect(withMath.findIndex(isKatex)).toBe(Object.keys(rest).indexOf('sanitize') + 1);
+  });
+});
+
+describe("a reply's code block", () => {
+  it('opens in the side pane, with its code and language, from its own header', async () => {
+    const openInPane = vi.fn();
+    const { container } = render(
+      <ShellProvider value={{ openInPane } as unknown as ShellValue}>
+        <Response>{'Here:\n\n```ts\nconst a = 1;\nconst b = 2;\n```\n'}</Response>
+      </ShellProvider>,
+    );
+    const open = await waitFor(() => {
+      const b = container.querySelector<HTMLButtonElement>(
+        '[data-slot="openable-code"] > button[aria-label="Open this ts block in the side pane"]',
+      );
+      if (!b) throw new Error('no Open yet');
+      return b;
+    });
+    // In the block, beside the renderer's own controls rather than replacing them.
+    await waitFor(() =>
+      expect(container.querySelector('[data-streamdown="code-block-copy-button"]')).not.toBeNull(),
+    );
+    fireEvent.click(open);
+    expect(openInPane).toHaveBeenCalledWith({
+      kind: 'code',
+      code: 'const a = 1;\nconst b = 2;\n',
+      language: 'ts',
+      title: 'ts · 2 lines',
+    });
+  });
+
+  it('offers nothing outside a shell, and nothing for a diagram', () => {
+    const plain = render(<Response>{'```ts\nx\n```\n'}</Response>);
+    expect(plain.container.querySelector('[data-slot="openable-code"]')).toBeNull();
+    plain.unmount();
+    const diagram = render(
+      <ShellProvider value={{ openInPane: vi.fn() } as unknown as ShellValue}>
+        <Response>{'```mermaid\ngraph TD; A-->B\n```\n'}</Response>
+      </ShellProvider>,
+    );
+    expect(diagram.container.querySelector('[data-slot="openable-code"]')).toBeNull();
   });
 });

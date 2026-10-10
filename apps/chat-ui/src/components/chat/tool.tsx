@@ -15,6 +15,7 @@ import {
   CircleAlertIcon,
   ImageOffIcon,
   LoaderIcon,
+  PanelRightOpenIcon,
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
@@ -32,6 +33,7 @@ import { type DenialRecord, denialSubject } from '@/lib/denials';
 import { clockTime } from '@/lib/format';
 import { parseSkillCall } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
+import { useOptionalShell } from '@/shell-context';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { useDenial } from './denial-context';
 import { ToolTable } from './tool-table';
@@ -208,7 +210,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
             {tool.phase && !tool.done && <span>phase {tool.phase}</span>}
           </div>
         )}
-        <Field label="Input" value={tool.input} />
+        <Field label="Input" value={tool.input} tool={tool.name} />
         {shell ? (
           <ShellOutput result={shell} />
         ) : denied && issue ? (
@@ -219,7 +221,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
           table ? (
             <ToolTable table={table} raw={render(tool.output)} />
           ) : (
-            <Field label="Output" value={tool.output} emphasis />
+            <Field label="Output" value={tool.output} tool={tool.name} emphasis />
           )
         ) : (
           verbose && (
@@ -325,6 +327,7 @@ function ToolImages({ images, label }: { images: NonNullable<ToolCall['images']>
 
 function ToolImage({ url, alt }: { url: string; alt: string }) {
   const src = useDrawableUrl(url);
+  const openInPane = useOptionalShell()?.openInPane;
   const [full, setFull] = useState(false);
   if (src === null) {
     return (
@@ -341,6 +344,19 @@ function ToolImage({ url, alt }: { url: string; alt: string }) {
         aria-label={`${alt}, loading`}
         className="h-40 w-64 max-w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none"
       />
+    );
+  }
+  if (openInPane) {
+    return (
+      <button
+        type="button"
+        title="Open in the side pane"
+        aria-label={`${alt} — open in the side pane`}
+        onClick={() => openInPane({ kind: 'image', url, title: alt })}
+        className="overflow-hidden rounded-md border border-border/60 cursor-zoom-in focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+      >
+        <img src={src} alt="" className="block max-h-72 max-w-full object-contain" />
+      </button>
     );
   }
   return (
@@ -363,7 +379,17 @@ function ToolImage({ url, alt }: { url: string; alt: string }) {
   );
 }
 
-function Field({ label, value, emphasis }: { label: string; value: unknown; emphasis?: boolean }) {
+function Field({
+  label,
+  value,
+  tool,
+  emphasis,
+}: {
+  label: string;
+  value: unknown;
+  tool: string;
+  emphasis?: boolean;
+}) {
   const text = render(value);
   const spilled = parseArtifactMarker(text);
   const json = useMemo(() => prettyJson(value), [value]);
@@ -371,7 +397,7 @@ function Field({ label, value, emphasis }: { label: string; value: unknown; emph
     <div>
       <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
       {spilled ? (
-        <SpilledOutput ref_={spilled} />
+        <SpilledOutput ref_={spilled} tool={tool} />
       ) : json !== null ? (
         <JsonBlock json={json} label={label} />
       ) : (
@@ -402,7 +428,8 @@ function Field({ label, value, emphasis }: { label: string; value: unknown; emph
  * Fetched on request rather than on render: a long transcript can hold many of
  * these, and the whole point is that they are big.
  */
-function SpilledOutput({ ref_ }: { ref_: ArtifactRef }) {
+function SpilledOutput({ ref_, tool }: { ref_: ArtifactRef; tool: string }) {
+  const openInPane = useOptionalShell()?.openInPane;
   const [full, setFull] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -433,7 +460,27 @@ function SpilledOutput({ ref_ }: { ref_: ArtifactRef }) {
             ? `${ref_.chars.toLocaleString()} chars`
             : `${ref_.chars.toLocaleString()} chars, ${ref_.preview.length.toLocaleString()} shown`}
         </span>
-        {full ? (
+        {openInPane ? (
+          // Beside the conversation rather than in a 24rem box inside it: the
+          // output is big by definition, and the turn that asked for it stays put.
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-2"
+            onClick={() =>
+              openInPane({
+                kind: 'artifact',
+                manifestId: ref_.manifestId,
+                artifactId: ref_.artifactId,
+                title: tool,
+                chars: ref_.chars,
+              })
+            }
+          >
+            <PanelRightOpenIcon aria-hidden className="size-3.5" />
+            Open full output
+          </Button>
+        ) : full ? (
           <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => setFull(null)}>
             Show preview
           </Button>

@@ -13,6 +13,7 @@ import type { Driver } from '@/components/chat/watching-banner';
 import type { SkillState } from '@/components/inspector/primitives';
 import type { MessageQueue } from '@/hooks/use-message-queue';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
+import type { PaneItemInput } from '@/lib/side-pane';
 import type { ImageAttachment, ThinkingLevel, TurnFeedback } from '@/types';
 
 /**
@@ -178,6 +179,12 @@ export interface ShellValue {
   setHistoryOpen: Dispatch<SetStateAction<boolean>>;
   inspectorOpen: boolean;
   setInspectorOpen: Dispatch<SetStateAction<boolean>>;
+  /**
+   * Open something in the side pane on this thread — from `/harness` too, where
+   * it goes to the thread first. Optional, so a test's partial shell leaves the
+   * pane's Open controls out rather than offering ones that do nothing.
+   */
+  openInPane?: (item: PaneItemInput) => void;
 }
 
 /** One engine in the pool, as the Debug tab reads it. */
@@ -234,6 +241,11 @@ export const ShellProvider = ShellContext.Provider;
  * here would be a lie a component would render — an empty transcript, a thread
  * that is not the one on screen — instead of failing where the mistake is.
  */
+/** The shell when there is one: for pieces also rendered outside it, in tests and previews. */
+export function useOptionalShell(): ShellValue | null {
+  return useContext(ShellContext);
+}
+
 export function useShell(): ShellValue {
   const value = useContext(ShellContext);
   if (!value) throw new Error('useShell must be used inside the app shell route');

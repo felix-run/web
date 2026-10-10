@@ -823,6 +823,24 @@ folding pane. While a durable run is in flight and has reported no call, the tab
 line, *Changes appear when the run finishes.*; with nothing at all it says *No tool on this thread
 has touched a workspace file yet.*
 
+### Side pane
+
+What the operator opened beside the conversation: a workspace file, a spilled tool output, a
+reply's code block or a tool's image. It takes the instrument's zone from 1280 (the instrument reads
+closed while it does, and returns as it stood when the pane closes), sits beside the transcript
+wherever the row fits a 24rem transcript and a 22rem pane, and covers the sheet on a phone with a
+Back control. Its surface is the sheet's own `background`; its left edge is the **divider**, the
+same `border/60` hairline every zone edge is, which thickens on hover, focus or drag into a 3px
+`ring` grip and nothing else. A 48px band under the header holds the tabs, the instrument's pill
+track at 12px, one per item with a kind icon and a middle-cut name (mono for a path), an unsaved
+dot, and a close that shows on the active tab and on hover (always on a coarse pointer). Each item
+heads itself with its name in mono 14px over its path and facts at 12px muted, and its actions at
+the right: a `role="group"` view switch (Rendered / Source or Read / Edit), copy, download,
+re-read. Code sits on `code-surface`. Editing ends in a save bar under a hairline: one muted
+sentence that says the agent is not told, Revert, and the primary Save. An agent's write under an
+edit is the one amber thing in the pane (`state-blocked` at `/10`, it waits on a person), with the
+diff folded under it.
+
 ### Sidebar
 
 On the ground, with no border: the sheet's edge is the divider. It has one order on both

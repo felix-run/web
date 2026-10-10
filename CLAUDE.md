@@ -1539,17 +1539,46 @@ with no model to price against, which reads as free rather than unpriced. `file-
 were `text-blue-500` (blue is `running` here), and each folder was three Tab stops — its wrapper,
 an unlabelled chevron and a name button that did nothing without `onSelect` — so a folder is now
 one stop, its name, which toggles it, and a file is a stop only when selecting does something.
-A file opens in a read-only drawer (`components/workspace/file-preview.tsx`), read as **bytes**
+A file opens in the **side pane** (below), read as **bytes**
 through `readWorkspaceBytes` — `readExistingBytes`, with the same mount-first precedence as the
 `readExisting` the approval diff uses, so the two never disagree about a file — and re-read when a
 run settles. It reads bytes because `File.text()` turns an image into replacement characters:
 `sniffMedia` (`src/lib/file-preview.ts`) recognises images, PDF, audio and video by **magic number,
-never extension**, and the drawer draws them through an object URL it revokes on close. Markdown
-opens rendered through the lazy `SkillMarkdown` (no inline HTML, no remote images) with a Source
-toggle. **HTML and SVG are only ever shown as source** — both can carry script, and rendering
+never extension**, and the pane draws them through an object URL it revokes when the tab closes.
+Markdown opens rendered through the lazy `SkillMarkdown` (no inline HTML, no remote images) with a
+Source toggle. **HTML and SVG are only ever shown as source** — both can carry script, and rendering
 either would run it in this origin. Anything else is decoded as text; a NUL in the first 8 KB is
 binary, and over 200 KB shows the head; `languageFor` is a short extension table rather than Shiki's map, because a
-language Shiki lacks makes `createHighlighter` reject and the code block does not catch it.
+language Shiki lacks makes `createHighlighter` reject and the code block does not catch it. (A
+reply's code block asks Shiki itself, `useShikiKnows`, since its fence can name anything.)
+
+**The side pane replaced that drawer** (2026-10-10, `components/pane/`, store `src/lib/side-pane.ts`).
+Four things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6, the oldest
+*clean* one dropped first): a workspace file (the file tree, a Changes row a write landed on), a
+spilled tool output (`Open full output` in the tool card), a reply's code block (an Open control
+`OpenablePre` adds to streamdown's header by wrapping the pass-through `pre`, so Shiki is kept),
+and a tool's image. Opening goes through `ShellValue.openInPane`, which is **optional** — a test's
+partial shell leaves every Open control out — and goes back to the thread from `/harness`. Rules
+that are easy to break:
+- **It takes the instrument's zone, never a fourth column.** From 1280 the shell reports the
+  instrument closed while the pane holds the zone (`paneHoldsZone` in `app-shell.tsx`) and leaves
+  `felix.inspectorOpen` alone, so closing the pane brings the instrument back as it stood; the
+  instrument's toggle takes the zone back with the pane's tabs kept, closing the instrument hands
+  it back, and `revealInspector` (a debug run's first tool call) never takes it from the pane.
+  Below that the pane sits beside the transcript wherever the **row** fits 24rem + 22rem
+  (`usePaneLayout`, measured, not a breakpoint — a collapsed sidebar buys the split back), and is a
+  full-screen overlay with a Back control under that. The divider is a focusable ARIA splitter
+  (arrows, Shift, Home/End, Enter or double-click resets); the share is `felix.pane.share`.
+- **The store is a module, per thread, in `sessionStorage`** (`felix.pane:<thread>`), because an
+  inactive tab renders no children: an edit held in the editor's state died on a tab switch, and
+  the workbench unmounts on `/harness`. Drafts live there; `beforeunload` warns while any is unsaved.
+- **A save is the operator's write** (`writeWorkspaceFile`, mount first): no approval, and the
+  agent is not told — the save bar says so. An edit records the text it started from (`base`); a
+  re-read finding something else (`disk`) is a conflict that blocks Save until the operator takes
+  the agent's version or keeps the edit, with the agent's write as a diff. Saving over a file the
+  run in flight wrote (`landedPaths(turns, lastUser)`) asks first.
+- `?open=<path>` names the active **file** in the address; other kinds come back from session
+  storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
 
 ### Docs
 
