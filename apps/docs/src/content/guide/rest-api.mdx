@@ -505,6 +505,23 @@ chat-ui sends a fresh key with every message. When a send fails it puts the mess
 composer, and sending it again unchanged reuses the key, so the transcript shows what the first
 attempt left — once.
 
+### Child agents on the stream
+
+When an agent hands work to a child through the [`task` tool](/guide/manifest-reference/#specdelegation),
+the stream marks where the child's work begins and ends, so a client can render it apart from
+the parent's:
+
+```text
+data: {"event":"subagent_start","data":{"agent":"researcher","background":false}}
+data: {"event":"subagent_end","data":{"agent":"researcher","outcome":"ok"}}
+```
+
+`outcome` is `ok` or `error`. Both arrive inside the `task` call — after its `tool_start`, before
+its `tool_end`. A background child sends only `subagent_start`, with `background: true`, its
+`task_id`, and the `thread_id` its transcript is written to (linked to the parent's as
+`parentSessionId`); it finishes after the turn that started it, and its answer is read with
+`task_result`.
+
 ### Frame format
 
 Almost every frame is a bare `data:` line, and the stream ends with a literal
