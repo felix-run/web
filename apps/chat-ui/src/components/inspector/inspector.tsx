@@ -23,13 +23,16 @@ import type { Plan, Turn } from '@/types';
 type SectionId = 'changes' | 'plans' | 'metrics';
 
 /**
- * Right-hand inspector: a readout of **this run**, then three tabs — what this
+ * Right-hand inspector: a readout of the thread's run, then three tabs — what this
  * thread's tool calls changed in the workspace, the harness's plans, and its tool
  * metrics.
  *
- * Each part says its own scope, because they differ. The readout is run-scoped:
- * it is derived from the engine the shell already holds, so it costs no request,
- * and "This run" heads it. Each tab's first line says whose rows it lists and
+ * Each part says its own scope, because they differ. "This thread" heads the
+ * panel: the readout is this thread's run and its tokens, derived from the
+ * engine the shell already holds so it costs no request, and Changes and Plans
+ * are this thread's too. It was "This run", which the tokens (summed over the
+ * thread) and Tools (every thread, an hour) both contradicted; the tab whose
+ * scope is wider says so on its own first line. Each tab's first line says whose rows it lists and
  * over what window. Changes is derived from the transcript too, which is why it
  * is first and open by default: opening the rail costs nothing until another
  * tab is chosen. (The tabs used to sit under a "Harness" heading, which stopped
@@ -95,7 +98,7 @@ export function Inspector({
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-2 px-3">
         <h2 id="inspector-heading" className="text-lg font-semibold tracking-tight">
-          This run
+          This thread
         </h2>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close inspector">
           <XIcon className="size-4" />
@@ -216,8 +219,9 @@ export function runState(
  * only for a single-step answer (see `storedUsage` in `@felix/client`). A turn
  * that ran tools, or was written by a durable run, may carry none — so a thread
  * holding any such turn has spent more than this adds up to, and the readout says
- * `floor` the way the Activity page says `Cost (floor)` rather than presenting a partial
- * sum as the total. There is no cost here at all: the frame carries tokens and
+ * "at least" rather than presenting a partial sum as the total. (It said `(floor)`
+ * on the label, borrowed from the Activity page's `Cost (floor)`, and read as a
+ * cost term on a row of tokens.) There is no cost here at all: the frame carries tokens and
  * nothing priced, and the Activity page is where spend is read.
  */
 export function threadTokens(turns: Turn[]): {
@@ -393,15 +397,10 @@ function RunReadout() {
             </dd>
           </>
         )}
-        <dt className="text-muted-foreground">
-          Tokens
-          {tokens.floor && (
-            <span title="Some turns on this thread reported no usage, so the true total is higher">
-              {' '}
-              (floor)
-            </span>
-          )}
-        </dt>
+        {/* A partial sum is said on the figure, as "at least", not as "(floor)"
+            on the label: "floor" is the Activity page's word for an unpriced
+            *cost*, and here nothing is priced — it was read as a cost term. */}
+        <dt className="text-muted-foreground">Tokens</dt>
         <dd className="min-w-0">
           {tokens.reported === 0 ? (
             // Two different truths: nothing has run, or things ran and the harness
@@ -414,6 +413,14 @@ function RunReadout() {
             </span>
           ) : (
             <>
+              {tokens.floor && (
+                <span
+                  className="text-muted-foreground"
+                  title="Some turns on this thread reported no usage, so the true total is higher"
+                >
+                  at least{' '}
+                </span>
+              )}
               <span className="font-mono tabular-nums">{nf.format(tokens.input)}</span>{' '}
               <span className="text-muted-foreground">in ·</span>{' '}
               <span className="font-mono tabular-nums">{nf.format(tokens.output)}</span>{' '}
@@ -632,8 +639,12 @@ function MetricsSection({
         // Tenant-wide over a window, so a thread that visibly ran tools yesterday
         // is not a contradiction of an empty list — the copy has to say why.
         emptyText="No tool calls on any thread in the last 60 minutes."
+        // Only a count is announced. Empty, the line above already says it, and
+        // the sr-only "0 tools called…" read the same fact twice before it.
         status={
-          data ? `${tools.length} tools called on all threads in the last 60 minutes` : undefined
+          data && tools.length > 0
+            ? `${tools.length} tools called on all threads in the last 60 minutes`
+            : undefined
         }
       >
         <ol className="space-y-2">

@@ -94,7 +94,7 @@ export function ReviewPanel({
           />
         )}
         {policy.data ? (
-          <p className="mt-3 max-w-[72ch] text-xs text-muted-foreground">
+          <p className="mt-3 max-w-[48ch] text-xs text-muted-foreground">
             {policySentence(policy.data)} The policy covers every skill in this tenant;{' '}
             <Link
               to={policyTo}
@@ -105,7 +105,7 @@ export function ReviewPanel({
             .
           </p>
         ) : policy.error ? (
-          <p className="mt-3 max-w-[72ch] text-xs text-muted-foreground">
+          <p className="mt-3 max-w-[48ch] text-xs text-muted-foreground">
             The policy itself could not be read, so only the gate's verdict is shown.
           </p>
         ) : null}
@@ -133,7 +133,7 @@ export function ReviewPanel({
           ) : undefined
         }
       >
-        <p className="mb-2 max-w-[72ch] text-xs text-muted-foreground">{SCORE_HELP.quality}</p>
+        <p className="mb-2 max-w-[48ch] text-xs text-muted-foreground">{SCORE_HELP.quality}</p>
         <ul aria-label="Review checks" className="space-y-1">
           {p.review_checks.map((c) => (
             <li key={c.id} className="flex items-start gap-2 text-sm">
@@ -173,7 +173,7 @@ export function ReviewPanel({
           ) : undefined
         }
       >
-        <p className="mb-2 max-w-[72ch] text-xs text-muted-foreground">
+        <p className="mb-2 max-w-[48ch] text-xs text-muted-foreground">
           {securityHelp(policy.data)}
         </p>
         {p.security_issues.length === 0 ? (

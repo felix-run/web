@@ -117,7 +117,7 @@ function PublishPolicySection() {
     <PageSection title="Publish policy" meta="every skill in this tenant">
       {policy.data ? (
         <>
-          <p className="max-w-[72ch] text-sm text-muted-foreground">
+          <p className="max-w-[48ch] text-sm text-muted-foreground">
             {policySentence(policy.data)}
           </p>
           <PolicyEditor policy={policy.data} />

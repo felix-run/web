@@ -395,7 +395,7 @@ semibold with tight tracking.
 - **Page Title** (600, 20px, tight): a `/harness` page's `h2`.
 - **Statement** (600, 18px, tight): what a person is being asked or told at a glance: an
   approval's summary (the sentence answered by Approve or Deny), the run readout's state word,
-  and the instrument's "This run" heading.
+  and the instrument's "This thread" heading.
 - **Headline** (600, 16px): a page section's `h3`, the uppercase wordmark (`tracking-wider`), and
   the headings of the access gate and the crash screen.
 - **Prose** (400, 16px, 1.65): transcript message bodies, both sides, and the composer's
@@ -451,7 +451,9 @@ has no rule above it, since the composer's own lift is its edge.
 height beside the header, and its top row is the header's line (the same `--header-height` plus
 the top safe-area inset) carrying the mark and the wordmark. The mark sits where the menu's icons
 sit, so collapsed to icons it heads their column and the wordmark is clipped by the narrowing
-panel rather than snapping out. The mark *is* the toggle (named *Sidebar*, `aria-pressed`, ⌘\),
+panel rather than snapping out. Its first glyph starts 2px short of the 52px rail, so it also fades
+out over the last 75ms of the narrowing (and back at once on widening): collapsed, it is at
+opacity 0, never a sliver beside the mark, and still the page's `h1` for a reader. The mark *is* the toggle (named *Sidebar*, `aria-pressed`, ⌘\),
 and it points the way a click will move the sidebar: closed, it faces the way it was drawn, `>_`;
 open, it turns round to face back. The turn is a horizontal flip about the tile's own centre,
 played as the sidebar moves; reduced motion makes it instant. Below 1024, where the sidebar is a
@@ -515,7 +517,9 @@ and its readout sits on the floor beside the banner.
 
 The sidebar is expanded by default wherever it fits inline; collapsing it leaves a column of
 icons with their names in tooltips, never nothing. The instrument starts open from **1600px**,
-where all three zones sit at their own widths, and closed below. A stored choice outranks both.
+where all three zones sit at their own widths, and closed below — and closed over a thread with no
+turns at any width, where it would open onto three empty states; it opens once the thread has a
+turn. A stored choice outranks all of it.
 
 Spacing is Tailwind's default scale used narrowly: rows sit at `px-2.5`–`px-3` and `py-1.5`,
 panels pad at `p-4`, trays at `p-1.5` with `gap-1.5` between tiles, the approval card at `p-5`.
@@ -703,7 +707,10 @@ the `>` are always neutral ink.
 
 **Pills on the ground.** `@felix/ui/tabs` draws its list as a stone track (`bg-ground`,
 `rounded-full`, 3px inset, 36px) and the active tab as a sheet-coloured pill with `shadow-sheet`,
-semibold. The instrument's tabs (Changes, Plans, Tools) use it at 12px. `ViewSwitch` on
+semibold. An inactive tab is `muted-foreground` in both themes (5.5:1 on the track in light, 7.7:1
+in dark, measured at 12px); it was `foreground/60`, 4.24:1, under AA at the size every caller
+uses. The instrument's tabs (Changes, Plans, Tools) use it at 12px, as do the skill page's and the
+skill editor's. `ViewSwitch` on
 `/harness` pages is the same shape at 32px; it is a `role="group"` of `aria-pressed` buttons, not
 tabs, because it switches the input above a list its modes share.
 
@@ -832,13 +839,16 @@ waits, each with the glance's own sentence for a reader.
 
 ### Run readout
 
-The top of the instrument, above its tabs, under the 18px "This run" heading (no rule beneath it
-now). It is a **stone tile** inset 8px from the instrument's sides (`rounded-2xl bg-ground`,
+The top of the instrument, above its tabs, under the 18px "This thread" heading (no rule beneath
+it now). It was "This run", which the readout's tokens (summed over the thread) and the Tools tab
+(every thread, an hour) contradicted; a tab whose scope is wider says so on its own first line. It is a **stone tile** inset 8px from the instrument's sides (`rounded-2xl bg-ground`,
 `px-3.5 py-3`), because the run's state is the instrument's headline. An 8px dot and the **state
 word** as a Statement (18px semibold) in the ramp colour (*Waiting on you*, *Running*, *Rejoining
 thread*, *Failed*, *Idle*), then a stopwatch (`for 3:07` live, `last run 42s` at rest) in tabular
 mono, or `last activity 2d ago` on a thread this tab never ran. Beneath, a 12px definition list:
-what it is asking, which tool is in flight and on what, tokens. The word is the live region; the
+what it is asking, which tool is in flight and on what, tokens. A token sum missing turns that
+reported no usage reads `at least 3,393 in`, on the figure: the label stays `Tokens`, because
+"floor" is the Activity page's word for an unpriced *cost*. The word is the live region; the
 stopwatch is not.
 
 ### Transcript turns

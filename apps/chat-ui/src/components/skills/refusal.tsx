@@ -16,10 +16,12 @@ export function isForbidden(err: unknown): boolean {
  * "blocked" can say *against what*. Read from `/-/policy`, never assumed.
  */
 export function policySentence(policy: SkillPolicy): string {
-  const parts = [`a quality score of at least ${policy.min_quality}`];
-  parts.push(
-    policy.security_fail_blocks ? 'a security scan that does not fail' : 'any security result',
-  );
+  // A threshold of 0 is no threshold: every score clears it, so "at least 0"
+  // described a gate that does not exist. Likewise a security result that never
+  // blocks is not something publishing *needs*.
+  const parts: string[] = [];
+  if (policy.min_quality > 0) parts.push(`a quality score of at least ${policy.min_quality}`);
+  if (policy.security_fail_blocks) parts.push('a security scan that does not fail');
   if (policy.block_on_advisory) parts.push('no advisory security finding');
   const uplift = policy.min_eval_uplift;
   if (uplift != null) {
@@ -30,7 +32,9 @@ export function policySentence(policy: SkillPolicy): string {
   } else if (policy.require_eval) {
     parts.push('a succeeded evaluation that counts for the gate');
   }
-  return `Publishing needs ${parts.join(', ')}. A rollback is held to the same gate, without the evaluation.`;
+  const lead = policy.min_quality > 0 ? '' : 'No minimum quality score. ';
+  if (parts.length === 0) return `${lead}Nothing else in the policy blocks a publish.`;
+  return `${lead}Publishing needs ${parts.join(', ')}. A rollback is held to the same gate, without the evaluation.`;
 }
 
 /**

@@ -401,6 +401,25 @@ describe('the publish policy', () => {
       'a succeeded evaluation that counts for the gate',
     );
   });
+
+  // "At least 0" is a gate every score clears, which is to say no gate.
+  it('says there is no minimum rather than a minimum of 0', () => {
+    const none = policySentence(policy({ min_quality: 0 }));
+    expect(none).toMatch(/^No minimum quality score\. Publishing needs a security scan/);
+    expect(none).not.toContain('at least 0');
+    expect(
+      policySentence(
+        policy({
+          min_quality: 0,
+          security_fail_blocks: false,
+          block_on_advisory: false,
+          require_eval: false,
+          min_eval_uplift: null,
+        }),
+      ),
+    ).toBe('No minimum quality score. Nothing else in the policy blocks a publish.');
+    expect(policySentence(policy())).toMatch(/^Publishing needs a quality score of at least 60/);
+  });
 });
 
 describe('a publish pinned to the live version it named', () => {

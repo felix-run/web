@@ -72,7 +72,7 @@ export function PolicyEditor({ policy }: { policy: SkillPolicy }) {
           ))}
         </tbody>
       </table>
-      <p className="max-w-[72ch] text-xs text-muted-foreground">
+      <p className="max-w-[48ch] text-xs text-muted-foreground">
         {policy.source === 'settings'
           ? 'No tenant policy: the deployment settings alone decide.'
           : policy.source === 'tenant+settings'

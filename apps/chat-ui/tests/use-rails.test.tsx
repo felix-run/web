@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useRails } from '../src/hooks/use-rails';
 
@@ -37,6 +37,37 @@ describe('rail defaults', () => {
     const wide = renderHook(() => useRails()).result.current;
     expect(wide.inspectorOpen).toBe(true);
     expect(wide.historyOpen).toBe(true);
+  });
+
+  /**
+   * An empty thread has no run, no changes and no plans, so the instrument would
+   * open onto three empty states. It waits for a turn — unless someone chose.
+   */
+  it('keeps the instrument closed over an empty thread until it has a turn', () => {
+    width(1920);
+    const { result, rerender } = renderHook(({ emptyThread }) => useRails({ emptyThread }), {
+      initialProps: { emptyThread: true },
+    });
+    expect(result.current.inspectorOpen).toBe(false);
+    rerender({ emptyThread: false });
+    expect(result.current.inspectorOpen).toBe(true);
+    // The default is never written down.
+    expect(localStorage.getItem('felix.inspectorOpen')).toBeNull();
+  });
+
+  it('lets a stored open outrank the empty-thread default, and toggles what is shown', () => {
+    localStorage.setItem('felix.inspectorOpen', '1');
+    width(1920);
+    expect(renderHook(() => useRails({ emptyThread: true })).result.current.inspectorOpen).toBe(
+      true,
+    );
+    localStorage.clear();
+    // Unchosen and empty: shown closed, so a toggle opens it rather than writing
+    // "closed" over a rail that was never on screen.
+    const { result } = renderHook(() => useRails({ emptyThread: true }));
+    act(() => result.current.setInspectorOpen((open) => !open));
+    expect(result.current.inspectorOpen).toBe(true);
+    expect(localStorage.getItem('felix.inspectorOpen')).toBe('1');
   });
 
   it('lets a stored choice outrank the default', () => {

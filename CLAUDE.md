@@ -362,7 +362,10 @@ sidebar's **toggle** (`BrandToggle` in `src/components/brand-mark.tsx`, named *S
 `aria-pressed`); there is no panel button in the header from 1024 and no slot held empty for one,
 so the brand cannot move between addresses. Below 1024 the sidebar has no edge on screen, so the
 brand and its toggle stand at the start of the header instead, and the drawer heads itself with the
-same row (its mark named *Close sidebar*). **The wordmark is the page's one `h1`** — in the sidebar
+same row (its mark named *Close sidebar*). Collapsed to the 52px rail the wordmark is at opacity 0
+(fading over the narrowing's last 75ms), because its first glyph starts at x=50 and the rail's edge
+left a 2px sliver of it; opacity rather than `invisible`, so it stays in the accessibility tree.
+**The wordmark is the page's one `h1`** — in the sidebar
 inline, in the header narrow, and a span in the drawer, which opens over a header already holding
 one; `tests/harness-route.test.tsx` and `tests/workbench-layout.test.tsx` pin that there is exactly
 one. New chat is in the header only where the sidebar is a drawer.
@@ -421,6 +424,16 @@ sidebar's workspace section, which keeps *where* tools work — the mount, the t
 the files — while the instrument holds what this thread's calls did. The tabs no longer sit under a
 "Harness" heading, since Changes reads no harness route; each tab's first line says its scope.
 `tests/inspector-run.test.tsx` pins that it neither renders a decision nor asks `/approvals`.
+**The panel is headed "This thread"** (2026-10-10), as is its drawer's dialog name. It was "This
+run", which its own readout (tokens summed over the thread) and Tools (*All threads · last 60
+minutes*, since `/audit/metrics` takes no thread filter) contradicted; the wider tab says so on its
+first line. The header's toggle is still named *This run* (and `shortcuts.ts` with it) — a rename
+waiting on the header. A partial token sum reads `at least …` on the figure, not `Tokens (floor)`:
+"floor" is the Activity page's word for unpriced cost. **The instrument starts closed over a thread
+with no turns**, even from 1600px: `useRails({ emptyThread })` derives the unchosen default each
+render (null pref, never written), so it opens once the thread has a turn and a stored choice
+still wins; `useRails` is called below the engine's state in `app-shell.tsx` for that reason.
+`tests/use-rails.test.tsx` pins it.
 
 **The Changes tab is a workspace tool's path argument, and nothing else.** `ThreadChanges`
 (`components/workspace/changes-list.tsx`) derives it from `Turn.tools[]` through `collectChanges` (`src/lib/changes.ts`), which is gated by
@@ -558,7 +571,11 @@ Flows worth knowing before editing the app:
   off-screen placeholders, the opening jump to the newest question was measured against a long
   reply's 10rem stand-in and missed by ~900px at 1440. `OpenAtLastAnchor` makes that opening jump
   itself, because a cached thread has rows on the first render, before the scroller's own default
-  can apply. `tests/conversation.test.tsx` pins the anchors and the full-height rows.
+  can apply. `tests/conversation.test.tsx` pins the anchors and the full-height rows. **The
+  spacer is `-mb-0.5`** (`spacerClassName` in `conversation.tsx`): the primitive sizes it from
+  `clientHeight` — the viewport's height *rounded* — and `Math.ceil`s it, so a fractional viewport
+  made content up to ~1.5px taller than itself and every short thread drew a near-full scrollbar
+  thumb for a 1px scroll (666 over 665). Measured after: 695/695 and 841/841 at 1000 and 1101px.
 
   Three more were found only against a live harness (2026-10-03), where a thread opens from the
   local cache and is then rebuilt from the snapshot. **The viewport is `overflow-anchor: none`**:

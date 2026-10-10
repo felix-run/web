@@ -165,7 +165,9 @@ export function SkillsSection({
           )}
           {thread && isChatAgent && (
             <p className="text-sm text-muted-foreground">
-              From{' '}
+              {/* Unknown, the line says where to find out — the same advice as
+                  "Ask it in Chat" below, naming the thread it would be asked in. */}
+              {skills ? 'From' : 'Ask in'}{' '}
               <Link
                 to={thread.to}
                 className="text-foreground underline underline-offset-2 hover:no-underline focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
@@ -181,7 +183,7 @@ export function SkillsSection({
                   thread.text
                 )}
               </Link>
-              {skills ? '.' : ', where asking it is one message.'}
+              {skills ? '.' : ' to see which are active.'}
             </p>
           )}
           {!thread && isChatAgent && !skills && chatTo && (
