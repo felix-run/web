@@ -39,7 +39,7 @@ function InspectorLoading({ className }: { className?: string }) {
   return (
     <div
       role="status"
-      aria-label="Loading this run"
+      aria-label="Loading this thread"
       className={cn(
         'h-full w-[clamp(22rem,24vw,30rem)] shrink-0 border-l border-border/60 bg-solid-card/40',
         className,
