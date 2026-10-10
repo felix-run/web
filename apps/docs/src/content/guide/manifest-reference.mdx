@@ -905,10 +905,13 @@ must be unique.
 `task` returns a task id at once, and a second tool, `task_result(task_id, wait_seconds)`, reads its
 status and — once it is done — its answer, waiting up to 60 seconds. The child runs in
 `felix-worker` (so the worker and `felix-scheduler` must be running), on a thread of its own linked
-to the parent's, as the caller who started it, pinned to the manifest the parent compiled — a child
-edited before the worker picks it up does not run — and held to the caps of every agent above it.
-It has counters of its own, since the parent's run may end first. `task_result` reads only tasks its
-own thread started.
+to the parent's, as the caller who started it, and pinned to the manifest the parent compiled — a
+child edited before the worker picks it up does not run. It expires no later than the token or run
+that started it. Since the parent's run may end first, the child cannot share its counters; instead
+it runs on what is **left** of every budget above it when it starts — a lead capped at ten tool
+calls that has made four hands its background child six. A background child cannot start
+background children of its own (foreground delegation still nests). `task_result` reads only tasks
+its own thread started.
 
 Several `task` calls in one turn run side by side when
 [`spec.execution.tools`](#specexecution) is `parallel`. `delegation` and `sub_agents` on the same
