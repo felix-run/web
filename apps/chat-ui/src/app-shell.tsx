@@ -2644,6 +2644,7 @@ export function AppShell() {
                     thread={currentThread}
                     readOnly={watching}
                     onRename={renameThread}
+                    empty={turns.length === 0}
                     showAgent={debug}
                     className="shrink-[100]"
                   />

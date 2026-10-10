@@ -473,7 +473,8 @@ because the attention line is tenant-wide. It is not a live region: the attentio
 announces the same change. After it, on `/t` only, **the thread's name**: its title as the sidebar
 row draws it (body 14px at 500; a title that is only the harness's id in muted mono), an `h2`
 under the wordmark's `h1`, then the agent the thread ran under in mono at 12px, because it is the
-harness's id. The title is cut from the middle, never the end: the head truncates and its last
+harness's id; a thread with no turns yet reads *New conversation*, muted, with the id in its
+`title`. The title is cut from the middle, never the end: the head truncates and its last
 ten characters stay, since two titles that share a prefix differ at the end; its `title` holds
 the whole name and the thread id. Clicking it renames it in place (*Thread name*; Enter saves,
 Escape cancels), unless the tab is only watching the thread. `/harness` names no thread: each
