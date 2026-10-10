@@ -194,6 +194,11 @@ export interface ShellValue {
     op?: 'write' | 'delete' | 'rename';
     bytes?: number;
   }) => Promise<EditNotice>;
+  /**
+   * Show a note the harness recorded straight into the log — a harness save on
+   * an idle thread, which tells the agent itself (`/chat/workspace/write`).
+   */
+  showRecordedNote?: () => void;
 }
 
 /**

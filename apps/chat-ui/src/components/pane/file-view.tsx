@@ -85,7 +85,9 @@ export function FileView({
   const tellAgent = useTellAgent();
   // The agent the thread will run under next, which the harness uses to find
   // the workspace of a thread that has never run (afterwards it uses its own).
-  const manifest = useOptionalShell()?.manifest;
+  const shell = useOptionalShell();
+  const manifest = shell?.manifest;
+  const showRecordedNote = shell?.showRecordedNote;
   /** The harness file's hash as last read: a save is refused unless it still is. */
   const sha = useRef<string | null>(null);
   // A slow mount read for one load must not land after the next.
@@ -311,6 +313,7 @@ export function FileView({
               updatePaneFile(threadId, key, cleanFile);
               await load();
               window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+              if (written.status === 'recorded') showRecordedNote?.();
               return written.status;
             }
             await writeWorkspaceFile(path, value);

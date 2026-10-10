@@ -9,6 +9,7 @@
  * one, which is why the poll lives here — beside the engine, in reach of every
  * client — rather than in one app's component tree.
  */
+import type { DiffCall } from './diff-before';
 import { fileToolOp } from './local-files';
 
 /**
@@ -303,7 +304,7 @@ export interface ApprovalSyncOptions {
   /** Ids already on screen, however they got there. Mutated as new ones adopt. */
   seen: Set<string>;
   /** The pre-edit file text for a `write_file` diff, where a client can read one. */
-  readForDiff?: (path: string) => Promise<string | null>;
+  readForDiff?: (path: string, call?: DiffCall) => Promise<string | null>;
 }
 
 /**
@@ -401,7 +402,11 @@ export async function syncApprovals(opts: ApprovalSyncOptions): Promise<Approval
       typeof args.path === 'string' &&
       opts.readForDiff
     ) {
-      before = await opts.readForDiff(args.path);
+      before = await opts.readForDiff(args.path, {
+        tool: item.tool_name,
+        // The row's own thread, else the one asking: what the write is on.
+        threadId: item.thread_id || opts.threadId || '',
+      });
     }
     entries.push({
       approvalId: item.id,
