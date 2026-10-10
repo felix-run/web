@@ -355,6 +355,22 @@ becomes one too. The instrument goes first because it is reference material, and
 cannot wait is already in the attention line and the banner above the composer — neither of which
 lives in a rail. The sidebar goes last because it holds every way to anywhere else.
 
+**Debug off is the daily surface, and most of the above is debug's** (2026-10-10). One mode,
+`ShellValue.debug` (`felix.debug`; `felix.verbose`, Verbose's old key, migrates on), toggled from
+the menu's View group on both addresses, `/debug` (`/verbose` is an alias in `slash-commands.tsx`)
+or the header badge. Off, the shell renders **no instrument** — `useRails({ enabled })` reads it
+closed and refuses to open it, keeping the stored preference for when debug returns, and the
+`Mod+'` handler checks `debugRef` — **no harness pages** in the sidebar (a *Skill drafts* row from
+`useDraftGlance` stands in while drafts wait), no agent id or canary in the header, no context
+meter below 90% full, and no tokens under turns. Approvals, questions, the attention line, the
+run-state chip and failed/denied tool cards are never debug's. On, the instrument's fourth tab is
+**Debug** (`components/inspector/debug-section.tsx`): `ShellValue.inspectClient()` reads the
+pool (`EnginePool.entries()`), each engine's `inspect()` — a read-only copy of the resume token,
+durable status, cursor and liveness proof the engine already keeps, never a new piece of state —
+and the lease keeper, once a second while the tab is open; `/usage?thread_id=` is its one
+request. **Tests that pin the instrument or the harness nav seed `felix.debug` = `'1'`** after
+`localStorage.clear()`; `tests/debug-mode.test.tsx` pins the daily surface.
+
 **The sidebar runs full height, and its top row is the brand.** The header and the attention line
 live in the `SidebarInset` beside it, so the sidebar's first row sits on the header's line — same
 height, same safe-area inset, same rule — and carries the mark and wordmark. The mark is the
@@ -1494,7 +1510,7 @@ the registry JSON and writing files with imports rewritten, as this one was.
 JSON input/output highlighted with a copy control, a shell result's streams with ANSI colour;
 **Plan**, drawn in the turn from the `deep` pattern's `plan_create`/`plan_update_step`/`plan_get`
 calls, each of which returns the whole plan (`plansInTurn` in `@felix/client`; one card per plan where it
-first appears, newest state, the later calls folded except in verbose); a **version switcher** on
+first appears, newest state, the later calls folded except in debug); a **version switcher** on
 an edited message, from `branchPoints` in `@felix/client` (`MessageBranch` itself holds every
 version client-side, so the selector is rebuilt from the same `ButtonGroup`); **Context**, the
 meter's hover/focus breakdown, *without* its cost line — it prices from `tokenlens`, the harness

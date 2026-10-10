@@ -8,7 +8,23 @@ export type SlashCommand = {
   icon: ReactNode;
   action: string;
   shortcut?: string;
+  /** Older names that still run it — typed whole, or matched as a prefix. */
+  aliases?: string[];
 };
+
+/** The commands a typed prefix offers: by name, or by an alias it once had. */
+export function matchSlashCommands(query: string): SlashCommand[] {
+  const q = query.toLowerCase();
+  return slashCommands.filter(
+    (c) => c.name.startsWith(q) || (c.aliases?.some((a) => a.startsWith(q)) ?? false),
+  );
+}
+
+/** The command a whole typed name runs, alias included. */
+export function findSlashCommand(name: string): SlashCommand | undefined {
+  const n = name.toLowerCase();
+  return slashCommands.find((c) => c.name === n || c.aliases?.includes(n));
+}
 
 // Adapted for the chat-ui example. The menu component below is generic; only
 // this command list and the actions App wires up are example-specific.
@@ -38,10 +54,11 @@ export const slashCommands: SlashCommand[] = [
     action: 'think',
   },
   {
-    name: 'verbose',
-    description: 'Toggle tool I/O + inspector',
+    name: 'debug',
+    description: 'Toggle debug: instrument, harness pages, ids',
     icon: <Bug className="size-3.5" />,
-    action: 'verbose',
+    action: 'debug',
+    aliases: ['verbose'],
   },
   {
     name: 'theme',
@@ -62,7 +79,7 @@ export function SlashCommandMenu({
   selectedIndex: number;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const filtered = slashCommands.filter((cmd) => cmd.name.startsWith(query.toLowerCase()));
+  const filtered = matchSlashCommands(query);
 
   // re-run when the selection moves — the [data-selected] attribute this queries is rendered from selectedIndex
   useEffect(() => {

@@ -31,7 +31,12 @@ to log tool calls; it is a window onto a running process that happens to accept 
 the harness does — tool invocations, approvals, plans, skills, token meters, audit events — is
 supposed to be visible, in near real time, without leaving the conversation.
 
-Success looks like: an operator can answer "what is it doing, is it healthy, and what did it cost"
+It has **two postures** (2026-10-10). Debug off is the daily one: a conversation and whatever
+waits on its operator, with no instrument to read. Debug on is the instrument panel described
+here, for an operator diagnosing a run and for whoever builds Felix. The panel is still the
+product's reason to exist; it is simply not on screen until someone asks for it.
+
+Success looks like: in debug, an operator can answer "what is it doing, is it healthy, and what did it cost"
 in one glance at the right rail, and can find a past session in the left rail in under three
 seconds. Failure looks like: the transcript is readable but the rails are wallpaper, so the operator
 falls back to reading harness logs in a terminal.
@@ -73,9 +78,15 @@ Four failure modes, all of which this codebase is currently within reach of:
 
 ## Design Principles
 
-1. **The mechanism is the interface.** When a choice is between showing what the harness actually
-   reported and showing a tidier abstraction of it, show the harness. Tidy the *presentation*, never
-   the truth.
+1. **Outcomes by default, the mechanism one toggle away.** (Amended 2026-10-10.) The daily
+   surface shows what the agent did and what waits on a person: the conversation, its tool calls,
+   approvals, questions, failures and denials, and the run's state. Everything else — the run
+   instrument, the harness's pages, ids, token counts, the agent id and canary in the header — is
+   **debug mode**, and debug never shows a tidier version of what the harness reported. Hiding is
+   allowed; softening is not: nothing that needs a person, and no failed or denied call, ever
+   leaves the daily surface. When a choice is between showing what the harness actually reported
+   and a tidier abstraction of it, debug shows the harness. Tidy the *presentation*, never the
+   truth.
 2. **Rank before you render.** Every panel must answer "what should the eye hit first" before it
    answers "what data do I have". Uniform treatment of non-uniform information is the house bug.
 3. **One shell, not three panes.** The transcript and both rails are one instrument. They share a

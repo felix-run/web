@@ -119,7 +119,7 @@ describe('the instrument and approvals', () => {
     const fetch = stub([]);
     mount();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools', 'Debug']);
     expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
     expect(readout().contains(screen.getByRole('tablist'))).toBe(false);
     expect(screen.getByRole('heading', { name: 'This thread' })).toBeTruthy();

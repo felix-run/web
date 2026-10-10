@@ -69,8 +69,28 @@ describe('ContextMeter', () => {
 });
 
 describe('the per-turn usage line', () => {
-  it('counts cached tokens as part of the prompt', () => {
+  it('counts cached tokens as part of the prompt, and says the split, in debug', () => {
     // `input: 3` was the whole of what the line used to show for a 1,035-token call.
+    render(
+      <TooltipProvider>
+        <Message
+          debug
+          turn={{
+            id: 'a1',
+            role: 'assistant',
+            content: 'GAMMA',
+            tools: [],
+            usage: { input: 3, output: 7, cacheWrite: 1025 },
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(document.body.textContent).toContain(
+      '1,028 in (3 new · 0 cache read · 1,025 cache write) · 7 out',
+    );
+  });
+
+  it('draws no tokens on the daily surface', () => {
     render(
       <TooltipProvider>
         <Message
@@ -84,6 +104,7 @@ describe('the per-turn usage line', () => {
         />
       </TooltipProvider>,
     );
-    expect(document.body.textContent).toContain('1,028 in · 7 out · 1,035 tok');
+    expect(document.body.textContent).not.toContain(' in');
+    expect(document.querySelector('[data-slot="turn-debug"]')).toBeNull();
   });
 });

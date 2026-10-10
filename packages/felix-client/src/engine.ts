@@ -218,6 +218,31 @@ export interface ChatEngine {
    * are reattach streams. Returns whether it acted.
    */
   checkLiveness(now?: number): boolean;
+  /**
+   * What the engine believes about its stream and run, read once — for a debug
+   * readout, never for a decision. A copy of values the engine already keeps; it
+   * adds no state and notifies nobody, so a reader re-reads it on a state change
+   * or a tick.
+   */
+  inspect(now?: number): EngineDiagnostics;
+}
+
+/** `ChatEngine.inspect`'s answer. Every field is the engine's own, unrounded. */
+export interface EngineDiagnostics {
+  /** Set by `run_accepted`, cleared only by `final`: an unsettled durable run. */
+  resumeToken: string | null;
+  /** The durable run's last reported status, while one is in flight. */
+  durableStatus: string | null;
+  /** The newest `id:` the stream stamped — what a reattach sends as `Last-Event-ID`. */
+  cursor: string | null;
+  /** The stream open now, if any: how long since it last carried anything. */
+  stream: { quietMs: number; heartbeats: boolean } | null;
+  /** Whether any stream from this harness has sent a `: keep-alive`. */
+  harnessHeartbeats: boolean;
+  /** Approval ids this engine has already offered or decided not to. */
+  seenApprovals: number;
+  /** Client `tool_request` ids already taken, so a second stream's copy is not run twice. */
+  takenToolRequests: number;
 }
 
 /** Three missed 15-second heartbeats. */
@@ -1168,6 +1193,22 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       liveStream = null;
       stream.abort.abort(new Error('stream stalled'));
       return true;
+    },
+    inspect(now = Date.now()) {
+      return {
+        resumeToken,
+        durableStatus,
+        cursor: lastEventId ?? null,
+        stream: liveStream
+          ? {
+              quietMs: Math.max(0, now - liveStream.lastActivityAt),
+              heartbeats: liveStream.heartbeats,
+            }
+          : null,
+        harnessHeartbeats,
+        seenApprovals: seenApprovals.size,
+        takenToolRequests: takenToolRequests.size,
+      };
     },
     async syncApprovals(opts = {}) {
       // Taken before the request, so an approval a frame queues while it is in

@@ -68,7 +68,22 @@ export interface EnginePool {
   /** Every engine with a run in flight, foreground included. */
   live(): ChatEngine[];
   runs(): PoolRuns;
+  /**
+   * Every engine the pool holds, with its thread and how it is kept — for the
+   * debug readout. A fresh array each call; nothing in it is live.
+   */
+  entries(): PoolEntry[];
   subscribe(listener: () => void): () => void;
+}
+
+/** One engine as `entries()` reports it. */
+export interface PoolEntry {
+  threadId: string;
+  engine: ChatEngine;
+  /** The thread the shell last named as on screen (`prune`'s `keep`). */
+  foreground: boolean;
+  /** Sends on their way that hold it through a prune (`pin`). */
+  pins: number;
 }
 
 interface Entry {
@@ -199,6 +214,14 @@ export function createEnginePool(options: EnginePoolOptions): EnginePool {
     },
     runs() {
       return snapshot;
+    },
+    entries() {
+      return [...entries].map(([threadId, entry]) => ({
+        threadId,
+        engine: entry.engine,
+        foreground: threadId === foreground,
+        pins: entry.pins,
+      }));
     },
     subscribe(listener) {
       listeners.add(listener);

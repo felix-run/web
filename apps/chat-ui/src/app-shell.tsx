@@ -26,13 +26,13 @@ import {
 import { SidebarInset, SidebarProvider } from '@felix/ui/sidebar';
 import {
   BirdIcon,
+  BugIcon,
   CopyIcon,
   EllipsisIcon,
   MonitorIcon,
   MoonIcon,
   PanelRightIcon,
   PlusIcon,
-  ScrollTextIcon,
   SunIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -118,7 +118,13 @@ import {
   writePins,
 } from '@/lib/threads';
 import { cn } from '@/lib/utils';
-import { NO_RUN, type RunClock, ShellProvider, type ShellValue } from '@/shell-context';
+import {
+  type ClientDiagnostics,
+  NO_RUN,
+  type RunClock,
+  ShellProvider,
+  type ShellValue,
+} from '@/shell-context';
 import type {
   ChatMessage,
   ImageAttachment,
@@ -133,7 +139,13 @@ const MANIFEST_KEY = 'felix.manifest';
 /** How long a deleted conversation can be restored, and how long the server delete waits. */
 const DELETE_UNDO_MS = 7000;
 
-const VERBOSE_KEY = 'felix.verbose';
+/**
+ * Debug mode, per browser. `felix.verbose` was its name while it only opened tool
+ * I/O; a browser that had it on starts in debug, so nobody loses what they had,
+ * and the old key is dropped the first time the new one is written.
+ */
+const DEBUG_KEY = 'felix.debug';
+const LEGACY_VERBOSE_KEY = 'felix.verbose';
 const HOLDER_KEY = 'felix.holderId';
 const THINKING_LEVELS: ThinkingLevel[] = [
   'off',
@@ -230,6 +242,16 @@ function readBool(key: string, fallback: boolean): boolean {
   const raw = localStorage.getItem(key);
   if (raw === null) return fallback;
   return raw === '1' || raw === 'true';
+}
+
+function readDebug(): boolean {
+  try {
+    return localStorage.getItem(DEBUG_KEY) !== null
+      ? readBool(DEBUG_KEY, false)
+      : readBool(LEGACY_VERBOSE_KEY, false);
+  } catch {
+    return false;
+  }
 }
 
 export function AppShell() {
@@ -351,10 +373,10 @@ export function AppShell() {
   } | null>(null);
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
-  const [verbose, setVerbose] = useState(() => readBool(VERBOSE_KEY, false));
+  const [debug, setDebug] = useState(readDebug);
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { theme, resolved, setTheme } = useTheme();
-  /** Where focus lands when the Verbose badge turns verbose off and unmounts. */
+  /** Where focus lands when the Debug badge turns debug off and unmounts. */
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   /** Which thread the shell last loaded — see `loadThread`. */
@@ -368,7 +390,7 @@ export function AppShell() {
   const hydrateFromServerRef = useRef<(id: string, opts?: { transcript?: boolean }) => void>(
     () => {},
   );
-  const verboseRef = useRef(verbose);
+  const debugRef = useRef(debug);
   /**
    * Mirrored at render rather than from an effect. The engine pool reads this to
    * tell the thread on screen from a run kept going in the background, and
@@ -407,7 +429,7 @@ export function AppShell() {
           threadId: () => id,
           clientTools: { execute: executeClientTool, readForDiff: readWorkspaceFile },
           onToolStart: () => {
-            if (verboseRef.current && threadIdRef.current === id) revealInspector();
+            if (debugRef.current && threadIdRef.current === id) revealInspector();
           },
           onSkills: (s) => {
             if (threadIdRef.current === id) setSkills(s);
@@ -488,7 +510,7 @@ export function AppShell() {
   // The pool's `onToolStart` above names `revealInspector` before this line;
   // it runs only once a tool starts, long after this render has passed it.
   const { historyOpen, setHistoryOpen, inspectorOpen, setInspectorOpen, revealInspector } =
-    useRails({ emptyThread: turns.length === 0 });
+    useRails({ emptyThread: turns.length === 0, enabled: debug });
   // `idle` is the engine's resting value and this renders a chip, so the chip
   // asks for the same thing the old nullable state did: a phase worth showing.
   const sessionPhase = engine.state.phase === 'idle' ? null : engine.state.phase;
@@ -539,15 +561,22 @@ export function AppShell() {
   }, [threadId]);
   const queue = useMessageQueue(threadId);
   useEffect(() => {
-    verboseRef.current = verbose;
-  }, [verbose]);
+    debugRef.current = debug;
+  }, [debug]);
 
   useEffect(() => localStorage.setItem(MANIFEST_KEY, manifest), [manifest]);
   // Whether the harness answered the last request, for the composer's connection
   // hint. The rails' breakpoints moved to the workbench route with the rails.
   const harnessReachable = useHarnessReachable();
 
-  useEffect(() => localStorage.setItem(VERBOSE_KEY, verbose ? '1' : '0'), [verbose]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEBUG_KEY, debug ? '1' : '0');
+      localStorage.removeItem(LEGACY_VERBOSE_KEY);
+    } catch {
+      // Storage blocked: the mode lasts for this page.
+    }
+  }, [debug]);
   useEffect(() => {
     // `turns` lags a thread change that came from outside this app's own
     // handlers — Back, or a pasted link — because the engine is not reset until
@@ -1441,7 +1470,10 @@ export function AppShell() {
   }, [navigate]);
   useShortcuts(onHarness ? 'harness' : 'workbench', {
     'toggle-workspace': () => setHistoryOpen((o) => !o),
-    'toggle-instrument': () => setInspectorOpen((o) => !o),
+    // The instrument exists only in debug; off, the binding has nothing to open.
+    'toggle-instrument': () => {
+      if (debugRef.current) setInspectorOpen((o) => !o);
+    },
     'open-threads': () => {
       // The search lives in the sidebar, so it has to be open first — expanded
       // inline or as the drawer, whichever this width gets.
@@ -2341,12 +2373,8 @@ export function AppShell() {
         case 'theme':
           setTheme(resolved === 'dark' ? 'light' : 'dark');
           break;
-        case 'verbose':
-          setVerbose((v) => {
-            const next = !v;
-            if (next) setInspectorOpen(true);
-            return next;
-          });
+        case 'debug':
+          setDebug((v) => !v);
           break;
       }
     },
@@ -2362,6 +2390,46 @@ export function AppShell() {
   const currentThread = threads.find((t) => t.id === threadId);
   // Read per render rather than stored: it cannot change, and costs a regex.
   const mac = isMacPlatform();
+
+  /**
+   * What this tab believes, assembled when the Debug tab asks. Nothing here is
+   * kept for it: each field is read from the shell, the pool or the lease keeper
+   * at call time, so the readout cannot hold a copy that has drifted.
+   */
+  const inspectClient = (): ClientDiagnostics => {
+    const at = Date.now();
+    const lease = sessionLeases.state(threadId);
+    let leaf: string | null = null;
+    for (let i = turns.length - 1; i >= 0 && leaf === null; i--) leaf = turns[i]?.eventId ?? null;
+    return {
+      at,
+      threadId,
+      holderId: tabHolderId(),
+      lease: {
+        mode: lease.mode,
+        heldByOther: lease.heldByOther,
+        token: sessionLeases.token(threadId) ?? null,
+      },
+      manifest,
+      threadAgent: currentThread?.manifest?.trim() || null,
+      canary,
+      leaf,
+      turns: turns.length,
+      harnessReachable,
+      engines: pool.entries().map(({ threadId: id, engine: e, foreground, pins }) => ({
+        threadId: id,
+        foreground,
+        pins,
+        phase: e.state.phase,
+        streaming: e.state.streaming,
+        reattaching: e.state.reattaching,
+        approvals: e.state.approvals.length,
+        question: e.state.uiPrompt != null,
+        error: e.state.error,
+        diagnostics: e.inspect(at),
+      })),
+    };
+  };
 
   /**
    * Everything below the `<Outlet/>`.
@@ -2430,7 +2498,9 @@ export function AppShell() {
     thinkingLevel,
     thinkingLevels: THINKING_LEVELS,
     chooseThinking,
-    verbose,
+    debug,
+    setDebug,
+    inspectClient,
     harnessReachable,
     historyOpen,
     setHistoryOpen,
@@ -2533,7 +2603,7 @@ export function AppShell() {
                     page while the run timed out behind it.
 
                     A tinted chip the height of the badges beside it, not bare text:
-                    as `text-xs` with no surface it lost to the filled Verbose pill, so
+                    as `text-xs` with no surface it lost to the filled mode pill, so
                     the header ranked a viewing preference above the run. The tint is
                     the state's own hue at /10 — the ramp is tuned for text on its own
                     tint up to /15 in both themes.
@@ -2574,11 +2644,12 @@ export function AppShell() {
                     thread={currentThread}
                     readOnly={watching}
                     onRename={renameThread}
+                    showAgent={debug}
                     className="shrink-[100]"
                   />
                 )}
                 {/* The modes this tab is in, at every width. They were `hidden` below
-                    `sm`, so on a phone, or at 200% zoom, verbose and a canary rollout
+                    `sm`, so on a phone, or at 200% zoom, debug and a canary rollout
                     were states with nothing on screen to say so. What narrows instead
                     is their words: below `sm` each draws as its icon, and the word
                     stays in the accessible name and the `title`.
@@ -2587,56 +2658,53 @@ export function AppShell() {
                     step off the screen. Measured at 390px, the wordmark and a
                     `blocked` chip leave no room for even one icon beside them, and
                     the alternatives were both worse: a badge clipped part-way reads
-                    as broken, and one pushed out of view by overflow is a Verbose
-                    button keyboard focus can land on and nobody can see. So Verbose
+                    as broken, and one pushed out of view by overflow is a Debug
+                    button keyboard focus can land on and nobody can see. So Debug
                     is `hidden`, which takes it out of the tab order as well — the
                     Session menu still holds it — and the canary, which is not
                     focusable, goes `sr-only` and is still read. Both come back when
                     the run settles. Nothing else in the cluster shrinks, so this row
                     is `min-w-0` for the widths between, where it is the one to give. */}
-                {/* Verbose changes how the transcript draws tool calls, and
-                    `/harness` has no transcript: there it was a filled pill on every
-                    page reporting a mode nothing on screen obeyed. Its menu item is
-                    absent there too, so the way out was never on the same page. */}
-                {((verbose && !onHarness) || canary) && (
+                {/* Debug governs both addresses now — the sidebar's harness pages
+                    come and go with it — so its badge is on both, where Verbose's
+                    was on `/t` only. The canary is mechanism, and shows in debug alone. */}
+                {debug && (
                   <div
                     data-slot="header-modes"
                     // `contents` while the modes have stepped off a narrow screen, so
                     // the row leaves no empty box and no gap behind them.
                     className={cn('flex min-w-0 items-center gap-2', runShown && 'max-sm:contents')}
                   >
-                    {verbose && !onHarness && (
-                      <Badge
-                        variant="secondary"
-                        className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
-                        asChild
-                      >
-                        {/* A button, because a badge that reports a mode should also be
-                            the way out of it — otherwise the way out is two clicks into
-                            a menu whose trigger says nothing about verbose. Focus moves
-                            to that menu's trigger, since the badge unmounts under the
-                            click.
+                    <Badge
+                      variant="secondary"
+                      className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
+                      asChild
+                    >
+                      {/* A button, because a badge that reports a mode should also be
+                          the way out of it — otherwise the way out is two clicks into
+                          a menu whose trigger says nothing about debug. Focus moves
+                          to that menu's trigger, since the badge unmounts under the
+                          click.
 
-                            No `aria-pressed`: the badge exists only while verbose is
-                            on, so it was permanently true — a toggle that could never
-                            read unpressed. The name says the state and the action
-                            instead, which is also what lets the word go below `sm`. */}
-                        <button
-                          type="button"
-                          data-slot="verbose-mode"
-                          aria-label="Verbose on, turn off"
-                          title="Verbose tools is on. Click to turn it off."
-                          onClick={() => {
-                            setVerbose(false);
-                            menuTriggerRef.current?.focus();
-                          }}
-                          className="cursor-pointer hover:bg-solid-secondary/80"
-                        >
-                          <ScrollTextIcon aria-hidden className="sm:hidden" />
-                          <span className="hidden sm:inline">Verbose</span>
-                        </button>
-                      </Badge>
-                    )}
+                          No `aria-pressed`: the badge exists only while debug is on,
+                          so it was permanently true — a toggle that could never read
+                          unpressed. The name says the state and the action instead,
+                          which is also what lets the word go below `sm`. */}
+                      <button
+                        type="button"
+                        data-slot="debug-mode"
+                        aria-label="Debug on, turn off"
+                        title="Debug is on. Click to turn it off."
+                        onClick={() => {
+                          setDebug(false);
+                          menuTriggerRef.current?.focus();
+                        }}
+                        className="cursor-pointer hover:bg-solid-secondary/80"
+                      >
+                        <BugIcon aria-hidden className="sm:hidden" />
+                        <span className="hidden sm:inline">Debug</span>
+                      </button>
+                    </Badge>
                     {canary && (
                       // Outline and mono, never a filled pill: the version is the
                       // harness's number quoted back, and a filled badge made it the
@@ -2737,7 +2805,9 @@ export function AppShell() {
                     <span className="sr-only sm:not-sr-only">New chat</span>
                   </Button>
                 )}
-                {onHarness ? (
+                {/* The instrument is debug's: off, neither address has the toggle,
+                    so nothing moves between them. */}
+                {!debug ? null : onHarness ? (
                   // The instrument toggle's slot, held empty so the attention line
                   // beside it stays put: without it the line moved on every switch
                   // between the two addresses.
@@ -2762,13 +2832,13 @@ export function AppShell() {
                 {/* One menu, in one place on both addresses. On `/t` it is named
                     Session and opens on Session — it used to open on a View group,
                     so the name promised one thing and the first row was another.
-                    View follows, then Theme under a label of its own: the Verbose
+                    View follows, then Theme under a label of its own: the Debug
                     checkbox and the theme radios ran together as one unlabelled list.
 
-                    On `/harness` it holds Theme alone, so it is named **Theme** there
-                    and its one label says the same word: a menu called Session with no
-                    session in it would be the "More tools" problem again, and one
-                    called View holding only Theme names a group it does not show.
+                    On `/harness` it holds View and Theme, so it is named **View**
+                    there: a menu called Session with no session in it would be the
+                    "More tools" problem again. Debug is on both addresses because it
+                    governs both — the sidebar's harness pages come and go with it.
                     Theme is a set-once preference, so it holds no header slot of its
                     own. */}
                 <DropdownMenu>
@@ -2777,8 +2847,8 @@ export function AppShell() {
                       ref={menuTriggerRef}
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={onHarness ? 'Theme' : 'Session'}
-                      title={onHarness ? 'Theme' : 'Session'}
+                      aria-label={onHarness ? 'View' : 'Session'}
+                      title={onHarness ? 'View' : 'Session'}
                     >
                       <EllipsisIcon className="size-4" />
                     </Button>
@@ -2817,19 +2887,20 @@ export function AppShell() {
                           </span>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuLabel>View</DropdownMenuLabel>
-                        <DropdownMenuCheckboxItem
-                          checked={verbose}
-                          onCheckedChange={(checked) => {
-                            setVerbose(checked);
-                            if (checked) setInspectorOpen(true);
-                          }}
-                        >
-                          Verbose tools
-                        </DropdownMenuCheckboxItem>
-                        <DropdownMenuSeparator />
                       </>
                     )}
+                    <DropdownMenuLabel>View</DropdownMenuLabel>
+                    {/* What it adds is said on the row, because the word alone
+                        does not say the off state is the everyday one. */}
+                    <DropdownMenuCheckboxItem checked={debug} onCheckedChange={setDebug}>
+                      <span className="flex flex-col">
+                        Debug
+                        <span className="text-xs text-muted-foreground">
+                          Run instrument, harness pages, ids
+                        </span>
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuLabel>Theme</DropdownMenuLabel>
                     {/* Radio items, so the checked theme is announced rather than marked
                         with a glyph only a sighted reader could see. */}

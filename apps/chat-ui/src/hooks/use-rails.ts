@@ -58,7 +58,7 @@ export interface Rails {
   setInspectorOpen: (next: SetStateAction<boolean>) => void;
   /**
    * Show the instrument only where that costs nothing — where it is a column.
-   * For opens nobody asked for (a verbose run's first tool call): at a narrow
+   * For opens nobody asked for (a debug run's first tool call): at a narrow
    * width the instrument is a modal, and a modal the run opens on its own takes
    * the transcript away mid-reply.
    */
@@ -85,9 +85,16 @@ export interface Rails {
  */
 export function useRails({
   emptyThread = false,
+  enabled = true,
 }: {
   /** The thread on screen has no turns, so the instrument has nothing to show yet. */
   emptyThread?: boolean;
+  /**
+   * Whether the instrument exists at all. It is debug mode's: off, it reads
+   * closed and refuses to open, and its stored preference is kept untouched for
+   * the next time debug comes on.
+   */
+  enabled?: boolean;
 } = {}): Rails {
   const workspaceInline = useMediaQuery(WORKSPACE_INLINE);
   const instrumentInline = useMediaQuery(INSTRUMENT_INLINE);
@@ -144,15 +151,29 @@ export function useRails({
     };
   }, []);
 
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  // A drawer open when debug went off is gone, not waiting to reappear.
+  useEffect(() => {
+    if (!enabled) setDrawer((d) => (d === 'instrument' ? null : d));
+  }, [enabled]);
+  const guardedSetInspectorOpen = useCallback(
+    (next: SetStateAction<boolean>) => {
+      if (enabledRef.current) setInspectorOpen(next);
+    },
+    [setInspectorOpen],
+  );
+
   const revealInspector = useCallback(() => {
-    if (inline.current.instrument) setInspectorOpen(true);
-  }, [setInspectorOpen]);
+    if (inline.current.instrument) guardedSetInspectorOpen(true);
+  }, [guardedSetInspectorOpen]);
 
   return {
     historyOpen: workspaceInline ? historyPref : drawer === 'workspace',
     setHistoryOpen,
-    inspectorOpen: instrumentInline ? (inspectorPref ?? inspectorDefault) : drawer === 'instrument',
-    setInspectorOpen,
+    inspectorOpen:
+      enabled && (instrumentInline ? (inspectorPref ?? inspectorDefault) : drawer === 'instrument'),
+    setInspectorOpen: guardedSetInspectorOpen,
     revealInspector,
   };
 }

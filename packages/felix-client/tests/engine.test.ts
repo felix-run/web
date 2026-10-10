@@ -1130,3 +1130,41 @@ describe('a send the harness refuses on the lease', () => {
     );
   });
 });
+
+describe('inspect', () => {
+  it('reports nothing in flight on a fresh engine', () => {
+    const engine = engineOn([]);
+    expect(engine.inspect(0)).toEqual({
+      resumeToken: null,
+      durableStatus: null,
+      cursor: null,
+      stream: null,
+      harnessHeartbeats: false,
+      seenApprovals: 0,
+      takenToolRequests: 0,
+    });
+  });
+
+  it('reports the newest id: the stream stamped, which a reattach would send', async () => {
+    stubFetch((url) =>
+      url.includes('/chat/stream')
+        ? new Response(
+            `id: 7\ndata: ${JSON.stringify(delta('hi'))}\n\nid: 8\ndata: ${JSON.stringify({ event: 'done', data: {} })}\n\ndata: [DONE]\n\n`,
+            { status: 200, headers: { 'content-type': 'text/event-stream' } },
+          )
+        : new Response('{}'),
+    );
+    const engine = createChatEngine({
+      client: createFelixClient({ baseUrl: '/api' }),
+      threadId: () => 't1',
+    } as Parameters<typeof createChatEngine>[0]);
+    engine.setTurns([
+      { id: 'u1', role: 'user', content: 'hello' },
+      { id: 'a1', role: 'assistant', content: '', tools: [] },
+    ]);
+    await run(engine);
+    expect(engine.inspect().cursor).toBe('8');
+    // The stream has ended, so nothing is open to be quiet.
+    expect(engine.inspect().stream).toBeNull();
+  });
+});

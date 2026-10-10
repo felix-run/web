@@ -100,7 +100,21 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     manifestOptions: ['cowork'],
     manifestEntries: [],
     refreshCanary: () => {},
-    verbose: false,
+    debug: true,
+    setDebug: () => {},
+    inspectClient: () => ({
+      at: 0,
+      threadId: 't1',
+      holderId: 'holder',
+      lease: { mode: null, heldByOther: false, token: null },
+      manifest: 'cowork',
+      threadAgent: null,
+      canary: null,
+      leaf: null,
+      turns: 0,
+      harnessReachable: true,
+      engines: [],
+    }),
     harnessReachable: true,
     historyOpen: true,
     setHistoryOpen: () => {},
@@ -155,6 +169,8 @@ function mountInstrument(over: Partial<ShellValue> = {}) {
 
 beforeEach(() => {
   localStorage.clear();
+  // These pin debug-mode surfaces (the instrument, the harness pages).
+  localStorage.setItem('felix.debug', '1');
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response(JSON.stringify({ requests: [], items: [] }), { status: 200 })),
@@ -421,7 +437,7 @@ describe('the run instrument', () => {
     );
 
     const tabs = await screen.findAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools', 'Debug']);
 
     for (const tab of tabs) {
       const id = tab.getAttribute('aria-controls');

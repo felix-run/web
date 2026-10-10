@@ -66,6 +66,8 @@ function mount(at: string) {
 
 beforeEach(() => {
   localStorage.clear();
+  // These pin debug-mode surfaces (the instrument, the harness pages).
+  localStorage.setItem('felix.debug', '1');
   // Presence is module state, and the title is the document's: both outlive a test.
   resetPresence();
   document.title = 'Felix';
@@ -276,9 +278,9 @@ describe('the harness address', () => {
     const header = document.querySelector('header') as HTMLElement;
     expect(header.textContent).not.toContain('New chat');
     expect(header.querySelector('[aria-label="Session"]')).toBeNull();
-    // The menu stays, named for the one thing it holds here, so the right-hand
-    // cluster does not jump between the two addresses.
-    expect(header.querySelector('[aria-label="Theme"]')).not.toBeNull();
+    // The menu stays, named for what it holds here — View (Debug) and Theme — so
+    // the right-hand cluster does not jump between the two addresses.
+    expect(header.querySelector('[aria-label="View"]')).not.toBeNull();
   });
 
   it('keeps Theme reachable on /harness, as radio items, with no toggle of its own', async () => {
@@ -286,7 +288,7 @@ describe('the harness address', () => {
     await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
     expect(document.querySelector('header [aria-label="Toggle theme"]')).toBeNull();
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Theme' }));
+    await user.click(screen.getByRole('button', { name: 'View' }));
     const group = await screen.findByRole('group', { name: 'Theme' });
     const items = within(group).getAllByRole('menuitemradio');
     expect(items.map((i) => i.textContent)).toEqual(['Light', 'Dark', 'System']);

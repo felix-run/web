@@ -325,6 +325,11 @@ the gate's verdict, evaluations and feedback. Every publish confirm states the g
 it asks. A `create_skill` or `update_skill` result renders in the chat as a proposal card with
 Publish and Reject. The routes underneath are in the [Management API](/guide/management-api/#skill-library).
 
+chat-ui lists its harness pages — Skills, Activity, Memory and the rest — in the sidebar in
+**debug mode** (the menu's *View → Debug*, or `/debug`), along with the run instrument and the
+ids and token counts under each turn. With debug off, the sidebar shows a *Skill drafts* row only
+while a draft is waiting for review, which links straight to this page.
+
 ## Tool
 
 Every tool, wherever it runs, is compiled to the same interface and tagged with a **transport** that
