@@ -886,12 +886,19 @@ must be unique.
 - **Resolved and pinned like a sub-agent.** Children resolve through the tenant's store, then object
   storage, then bundled YAML. A name that resolves nowhere, a cycle, or nesting deeper than four
   fails the compile, and [`pin_compile`](#specgovernance) covers the children.
+- **The child's own door.** Each call checks the child's
+  [`spec.auth.inbound`](#specauth) against the caller — anonymity, schemes, `required_scopes` — so a
+  caller who could not call the child by name cannot reach it through `task`, however the model was
+  steered. A refusal is a tool error the model sees; the child never runs. (A router's children
+  inherit its admission instead; there the caller chose the route, not the model.)
 - **Governed twice.** `task` passes the parent's governance stack like any tool — a policy, approval
-  or screening rule can name it — and each child runs its own manifest's stack on its own tools.
-  The child's answer is treated as untrusted output by content screening, as a peer's reply is.
-- **One budget.** The child spends the parent run's [`limits`](#speclimits), and every `task` call
-  counts against `max_peer_hops`, shared with [`peers`](#specpeers).
-- A child inherits the caller's admission, as a sub-agent does.
+  or screening rule can name it — and each child runs its own manifest's stack on its own tools,
+  including inbound screening of the prompt it is handed. The child's answer is treated as untrusted
+  output by the parent's content screening, as a peer's reply is.
+- **One budget, every cap.** The child spends the parent run's counters, and is held to the parent's
+  [`limits`](#speclimits) as well as its own: a lead capped at `max_cost_usd: 0.50` cannot buy more by
+  delegating to an uncapped child. Every `task` call counts against `max_peer_hops`, shared with
+  [`peers`](#specpeers).
 
 Several `task` calls in one turn run side by side when
 [`spec.execution.tools`](#specexecution) is `parallel`. `delegation` and `sub_agents` on the same
