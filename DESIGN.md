@@ -389,8 +389,9 @@ semibold with tight tracking.
 - **Display** (600, 24px rising to 28px at `md`, tight): the empty thread's welcome headline,
   and nothing else. It exists only while a thread is empty.
 - **Figure** (600, 24px, tight): the Activity page's account sentence (`2 threads ran, 1 with
-  failures. $1.41 spent.`) and, in mono, its *Where the spend went* total. The one number a page
-  is opened to read.
+  failures. $1.41 spent.`) and its *Where the spend went* total. The one number a page is opened
+  to read, so it is Geist with tabular figures, never mono: it is our own formatted total, and at
+  24px a monospace full stop takes a whole cell and opens a gap (`$2 . 57`).
 - **Page Title** (600, 20px, tight): a `/harness` page's `h2`.
 - **Statement** (600, 18px, tight): what a person is being asked or told at a glance: an
   approval's summary (the sentence answered by Approve or Deny), the run readout's state word,
