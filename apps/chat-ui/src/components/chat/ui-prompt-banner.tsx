@@ -10,6 +10,7 @@ import {
   QuestionnaireTitle,
 } from '@felix/ui/questionnaire';
 import { useCallback, useRef } from 'react';
+import { DECISION_BUTTON } from '@/components/approval/approval-decision';
 import type { PendingUiRequest } from '@/types';
 
 /**
@@ -72,20 +73,31 @@ export function UiPromptBanner({
     // different widths. `--state-blocked` and `max-w-3xl` are what the rest of the
     // column uses.
     <div className="mx-auto mb-3 w-full max-w-3xl px-4 md:px-6">
-      <div className="rounded-xl border border-state-blocked/40 bg-state-blocked/5 p-3">
-        <Badge variant="secondary" className="py-0 text-xs">
+      {/* The approval card's container, statement and lift: a question blocks the run
+          exactly as an approval does, so it owns the screen the same way. */}
+      <div className="rounded-2xl border-2 border-state-blocked/50 bg-solid-state-blocked/5 p-5 shadow-approval">
+        <Badge variant="secondary" className="py-0.5 text-sm font-semibold">
           {kindLabel}
         </Badge>
-        <h2 className="mt-1.5 text-sm font-semibold">{pending.prompt}</h2>
+        <h2 className="mt-2 text-lg font-semibold tracking-tight text-balance">{pending.prompt}</h2>
 
         {pending.kind === 'confirm' ? (
+          // Yes and No as Approve and Deny are: equal width, both outline, so the
+          // styling never picks the answer. The decline is a third, quieter way out.
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" disabled={resolving} onClick={() => onRespond(true)}>
+            <Button
+              size="sm"
+              variant="outline"
+              className={DECISION_BUTTON}
+              disabled={resolving}
+              onClick={() => onRespond(true)}
+            >
               Yes
             </Button>
             <Button
               size="sm"
               variant="outline"
+              className={DECISION_BUTTON}
               disabled={resolving}
               onClick={() => onRespond(false)}
             >
