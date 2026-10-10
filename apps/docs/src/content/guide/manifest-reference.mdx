@@ -861,6 +861,43 @@ else a child declares (tools, policies, approvals, screening, limits) is compile
 however it was reached. A `router` with [`spec.decider`](#specdecider) picks its child with the
 decider and falls back to its model classifier when the decider is unsure.
 
+## `spec.delegation`
+
+```yaml
+spec:
+  pattern: react
+  delegation:
+    agents:
+      - name: researcher                 # a manifest name, resolved like `sub_agents`
+        description: Looks things up and reports back with sources.
+      - name: reviewer
+        description: Reviews a draft against the style guide.
+```
+
+Binds a `task` tool: the model hands a self-contained job to one of `agents` and gets that agent's
+final answer back as the tool result. Unlike [`sub_agents`](#specsub_agents-and-specaggregator_prompt),
+which make the agent a composite with no tools of its own, a delegating agent keeps its tools and
+decides at run time whether to delegate. `description` is what the model reads to choose; names
+must be unique.
+
+- **Fresh context.** The child starts with its own system prompt and only the `prompt` the model
+  wrote — none of the parent's conversation — so a long search spends the child's context and the
+  parent keeps one tool result.
+- **Resolved and pinned like a sub-agent.** Children resolve through the tenant's store, then object
+  storage, then bundled YAML. A name that resolves nowhere, a cycle, or nesting deeper than four
+  fails the compile, and [`pin_compile`](#specgovernance) covers the children.
+- **Governed twice.** `task` passes the parent's governance stack like any tool — a policy, approval
+  or screening rule can name it — and each child runs its own manifest's stack on its own tools.
+  The child's answer is treated as untrusted output by content screening, as a peer's reply is.
+- **One budget.** The child spends the parent run's [`limits`](#speclimits), and every `task` call
+  counts against `max_peer_hops`, shared with [`peers`](#specpeers).
+- A child inherits the caller's admission, as a sub-agent does.
+
+Several `task` calls in one turn run side by side when
+[`spec.execution.tools`](#specexecution) is `parallel`. `delegation` and `sub_agents` on the same
+manifest are refused: the composite pattern would never offer the tool to a model. For an agent
+on another deployment, use [`spec.peers`](#specpeers).
+
 ## `spec.max_turns` and `spec.recursion_limit`
 
 ```yaml
