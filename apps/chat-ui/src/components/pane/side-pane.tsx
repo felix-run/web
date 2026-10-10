@@ -10,7 +10,14 @@ import {
   PackageOpenIcon,
   XIcon,
 } from 'lucide-react';
-import { type KeyboardEvent, useEffect, useState } from 'react';
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { getArtifact } from '@/api';
 import { CodeBlock } from '@/components/ai-elements/code-block';
 import { FileView } from '@/components/pane/file-view';
@@ -19,6 +26,8 @@ import {
   DownloadAction,
   extensionFor,
   ItemHeader,
+  MiddleCut,
+  ViewSwitch,
   withoutFinalNewline,
 } from '@/components/pane/pane-parts';
 import {
@@ -27,7 +36,6 @@ import {
   suggestedName,
 } from '@/components/pane/save-to-workspace';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
-import { middleTruncate } from '@/lib/format';
 import {
   closeAllPaneItems,
   closePaneItem,
@@ -90,6 +98,41 @@ export function SidePane({
   };
   const unsaved = items.filter(isDirty);
 
+  // The strip scrolls once it holds more tabs than it has room for, and the one
+  // in front has to be one you can see — opening a seventh item used to select a
+  // tab scrolled past the edge, with nothing on screen to say which.
+  const strip = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  const measureStrip = useCallback(() => {
+    const el = strip.current;
+    if (!el) return;
+    const start = el.scrollLeft > 1;
+    const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setEdges((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
+  }, []);
+  useLayoutEffect(() => {
+    const el = strip.current;
+    const tab = el?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
+    const box = tab?.parentElement;
+    if (el && box) {
+      const left = box.offsetLeft - el.offsetLeft;
+      const right = left + box.offsetWidth;
+      // A tab's worth of the fade is kept clear on either side.
+      const pad = 32;
+      if (left - pad < el.scrollLeft) el.scrollLeft = Math.max(0, left - pad);
+      else if (right + pad > el.scrollLeft + el.clientWidth)
+        el.scrollLeft = right + pad - el.clientWidth;
+    }
+    measureStrip();
+  }, [active, items.length, measureStrip]);
+  useEffect(() => {
+    const el = strip.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measureStrip);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureStrip]);
+
   if (!items.length || !active) return null;
 
   return (
@@ -121,8 +164,22 @@ export function SidePane({
             </Button>
           )}
           <TabsList
+            ref={strip}
+            onScroll={measureStrip}
             aria-label="Open in the pane"
-            className="h-8 min-w-0 flex-1 justify-start overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            data-overflow-start={edges.start || undefined}
+            data-overflow-end={edges.end || undefined}
+            className={cn(
+              'h-8 min-w-0 flex-1 justify-start overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+              // A strip with tabs out of sight says so at the edge they are past.
+              edges.start && edges.end
+                ? '[mask-image:linear-gradient(to_right,transparent,black_2rem,black_calc(100%-2rem),transparent)]'
+                : edges.start
+                  ? '[mask-image:linear-gradient(to_right,transparent,black_2rem)]'
+                  : edges.end
+                    ? '[mask-image:linear-gradient(to_left,transparent,black_2rem)]'
+                    : '',
+            )}
           >
             {items.map((item) => (
               <PaneTab key={item.key} item={item} onClose={() => requestClose(item.key)} />
@@ -143,6 +200,13 @@ export function SidePane({
           <div
             role="alertdialog"
             aria-label="Unsaved edits"
+            onKeyDown={(e) => {
+              // Escape answers the safe way: nothing is discarded.
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setDiscarding(null);
+              }
+            }}
             className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/60 bg-ground px-4 py-2.5 text-sm"
           >
             <p className="min-w-0 flex-1">
@@ -200,12 +264,22 @@ function labelOf(item: PaneItem): string {
     case 'file':
       return item.path.split('/').pop() || item.path;
     case 'artifact':
-      return `${item.title} output`;
+      return item.title;
     case 'code':
       return item.title;
     case 'image':
-      return item.title;
+      return toolOfImage(item.title);
   }
+}
+
+/** `Image 2 from browser_screenshot` is the tool card's alt text; the tab wants the tool. */
+function toolOfImage(title: string): string {
+  return title.replace(/^Image(?: \d+)? from /, '') || title;
+}
+
+/** An identifier — a file or a tool — is set in mono; a code block's "bash · 4 lines" is not. */
+function isIdentifier(item: PaneItem): boolean {
+  return item.kind !== 'code';
 }
 
 const ICONS = {
@@ -223,7 +297,7 @@ const ICONS = {
 function PaneTab({ item, onClose }: { item: PaneItem; onClose: () => void }) {
   const Icon = ICONS[item.kind];
   const label = labelOf(item);
-  const full = item.kind === 'file' ? item.path : label;
+  const full = item.kind === 'file' ? item.path : item.title;
   const dirty = isDirty(item);
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -241,12 +315,14 @@ function PaneTab({ item, onClose }: { item: PaneItem; onClose: () => void }) {
           if (e.button === 1) onClose();
         }}
         aria-keyshortcuts="Delete"
-        className="peer max-w-44 gap-1.5 pr-7 pl-2.5 text-xs"
+        className="peer max-w-48 gap-1.5 pr-7 pl-2.5 text-xs"
       >
         <Icon aria-hidden className="size-3.5 text-muted-foreground" />
-        <span className={cn('truncate', item.kind === 'file' && 'font-mono')}>
-          {middleTruncate(label, 26)}
-        </span>
+        {item.kind === 'file' ? (
+          <MiddleCut text={label} keep={8} className="font-mono" />
+        ) : (
+          <span className={cn('truncate', isIdentifier(item) && 'font-mono')}>{label}</span>
+        )}
         {dirty && (
           <>
             <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground" />
@@ -317,7 +393,8 @@ function ArtifactView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ItemHeader
-        name={`${item.title} output`}
+        name={item.title}
+        mono
         detail={`artifact ${item.artifactId.slice(0, 8)}`}
         meta={[`${item.chars.toLocaleString()} chars`, 'Stored by the harness']}
         actions={
@@ -452,20 +529,21 @@ function ImageView({ item }: { item: Extract<PaneItem, { kind: 'image' }> }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ItemHeader
-        name={item.title}
-        meta={[natural && `${natural.w} × ${natural.h}`]}
+        name={toolOfImage(item.title)}
+        mono
+        meta={['Image', natural && `${natural.w} × ${natural.h}`]}
         actions={
           src && (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                aria-pressed={actual}
-                onClick={() => setActual((v) => !v)}
-              >
-                {actual ? 'Fit' : 'Actual size'}
-              </Button>
+              <ViewSwitch
+                label="Size"
+                value={actual ? 'actual' : 'fit'}
+                options={[
+                  { value: 'fit', label: 'Fit' },
+                  { value: 'actual', label: 'Actual size' },
+                ]}
+                onChange={(v) => setActual(v === 'actual')}
+              />
               <DownloadAction name={imageName(item.title, src)} get={() => src} />
             </>
           )

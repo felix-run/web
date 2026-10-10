@@ -137,6 +137,8 @@ export function FileView({
     <div className="flex min-h-0 flex-1 flex-col">
       <ItemHeader
         name={name}
+        mono
+        keepName={12}
         detail={path}
         meta={[
           changed && 'Changed on this thread',
