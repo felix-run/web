@@ -57,7 +57,9 @@ export interface ThemePalette {
 
 export const LIGHT: ThemePalette = {
   bg: NEUTRAL[0],
-  // The stone ground: chat-ui's sidebar and shell, so the docs' sidebar matches.
+  // The stone ground, chat-ui's shell colour. In the docs it fills Starlight's gray-6/7
+  // slots and the Scalar explorer's sidebar; the manual's own nav and sidebar stay the
+  // page colour by choice (`brand.css`), so they do not read as separate surfaces.
   bgSubtle: NEUTRAL[100],
   bgMuted: NEUTRAL[100],
   border: NEUTRAL[200],
