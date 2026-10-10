@@ -38,12 +38,14 @@ import {
 } from '@/lib/file-preview';
 import {
   cleanFile,
+  clearFileRequest,
   closePaneItem,
   hasConflict,
   isDirty,
   openInPane,
   type PaneItem,
   updatePaneFile,
+  usePaneState,
 } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
@@ -174,6 +176,20 @@ export function FileView({
   // the browser path's own notice — and lands its outcome in a toast, because
   // the tab it was opened from is gone (deleted) or replaced (renamed).
   const [action, setAction] = useState<FileAction | null>(null);
+  // Asked for from the sidebar tree, which opened this file to ask it.
+  const request = usePaneState(threadId).request;
+  useEffect(() => {
+    if (request?.key !== key) return;
+    clearFileRequest(threadId);
+    setAction(request.action);
+  }, [request, key, threadId]);
+  // Held for an unsaved edit, the strip does not open: say why where it would have.
+  useEffect(() => {
+    if (action && dirty) {
+      toast.message('Save or revert your edits first.');
+      setAction(null);
+    }
+  }, [action, dirty]);
   const where = harness
     ? 'the thread\u2019s workspace on the harness'
     : (getMountLabel() ?? 'this tab\u2019s workspace');

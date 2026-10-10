@@ -1621,6 +1621,13 @@ that are easy to break:
   harness answers `409 target_exists`, the browser throws `TargetExistsError` — and a mount
   rename is write-then-remove, ordered so a failure leaves two copies, never none. The outcome is
   a toast (`outcomeLine`), since the tab is closed or replaced.
+- **The sidebar's file trees have the same actions** (`components/workspace/file-row-menu.tsx`):
+  a right click, or Shift+F10 / the context-menu key on a focused row, opens Open, Rename…,
+  Delete… — one menu per tree, anchored at the pointer, never a control inside a `treeitem`.
+  Rename and Delete do not act from the tree: they open the file in the pane and ask its view to
+  open the strip (`requestFileAction` → `PaneState.request`, not persisted), so a tree delete has
+  the pane's guards — the read hash, the hold while an edit is unsaved. The row's own Enter is
+  kept: the menu's `onKeyDown` replaces `FileTreeFile`'s and re-implements it.
 - `?open=<path>` names the active **browser** file in the address; other kinds come back from
   session storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
 

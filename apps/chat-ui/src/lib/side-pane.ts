@@ -59,6 +59,12 @@ export interface PaneState {
   active: string | null;
   /** On screen. False with items open means the instrument has the zone. */
   shown: boolean;
+  /**
+   * An action asked for from outside the pane — the sidebar tree's Rename… or
+   * Delete… — for the file view of `key` to open when it mounts, then clear.
+   * Not persisted: a reload does not re-ask.
+   */
+  request?: { key: string; action: 'rename' | 'delete' };
 }
 
 /** How many items stay open. The oldest clean one goes when a seventh arrives. */
@@ -170,7 +176,8 @@ function persist(threadId: string, s: PaneState) {
     }
     // An item too large to keep is left out of the copy, not out of the pane.
     const items = s.items.filter((i) => JSON.stringify(i).length <= PERSIST_LIMIT);
-    sessionStorage.setItem(key, JSON.stringify({ ...s, items }));
+    const { request: _request, ...kept } = s;
+    sessionStorage.setItem(key, JSON.stringify({ ...kept, items }));
   } catch {
     // Storage full or blocked: the pane lasts for this page.
   }
@@ -197,6 +204,25 @@ export function openInPane(threadId: string, input: PaneItemInput) {
     }
     return { items, active: key, shown: true };
   });
+}
+
+/**
+ * Ask a file's view to start renaming or deleting it, once it is open — the sidebar
+ * tree's actions, which go through the pane so they get its guards: the hash
+ * the file was read at, the hold while an edit is unsaved, the same wording.
+ */
+export function requestFileAction(
+  threadId: string,
+  input: Extract<PaneItemInput, { kind: 'file' }>,
+  action: 'rename' | 'delete',
+) {
+  const key = paneKey(input);
+  update(threadId, (s) => ({ ...s, request: { key, action } }));
+}
+
+/** The file view took the request: forget it. */
+export function clearFileRequest(threadId: string) {
+  update(threadId, (s) => (s.request ? { ...s, request: undefined } : s));
 }
 
 export function closePaneItem(threadId: string, key: string) {

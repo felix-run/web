@@ -30,8 +30,10 @@ import {
   type ThreadRepoFiles,
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
+import type { FileRowAction } from '@/components/workspace/file-row-menu';
 import { RepoFileTree } from '@/components/workspace/repo-files';
 import { getSession, subscribeCredentials } from '@/lib/auth';
+import { requestFileAction } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/shell-context';
 
@@ -153,7 +155,8 @@ function RepoStatus({
   files: ThreadRepoFiles | null;
   onRemove: () => Promise<void>;
 }) {
-  const openInPane = useOptionalShell()?.openInPane;
+  const shell = useOptionalShell();
+  const openInPane = shell?.openInPane;
   const facts =
     repo.state === 'ready'
       ? [
@@ -191,6 +194,11 @@ function RepoStatus({
           {...(openInPane
             ? {
                 onOpenFile: (path: string) => openInPane({ kind: 'file', path, source: 'harness' }),
+                onFileAction: (path: string, action: FileRowAction) => {
+                  const item = { kind: 'file' as const, path, source: 'harness' as const };
+                  openInPane(item);
+                  if (action !== 'open' && shell) requestFileAction(shell.threadId, item, action);
+                },
               }
             : {})}
         />
