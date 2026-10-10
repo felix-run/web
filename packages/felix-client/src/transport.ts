@@ -548,6 +548,44 @@ export function createFelixClient(opts: FelixClientOptions) {
       if (!res.ok) throw new Error(`steer: ${res.status} ${await detailOf(res)}`);
     },
 
+    /**
+     * POST /chat/workspace/edited — tell the agent the operator changed a
+     * workspace file, so it does not go on working from what it read before.
+     * `queued`: a run is in flight and reads it before its next model call.
+     * `recorded`: the thread is idle and the note is in the log for the next run.
+     * `null`: this harness has no such route (older than felix-run/felix#577) —
+     * the agent is not told, which the caller says rather than reports as an error.
+     * Only structured fields go up; the harness writes the words the model reads.
+     */
+    async workspaceEdited(args: {
+      threadId: string;
+      path: string;
+      op?: 'write' | 'delete' | 'rename';
+      bytes?: number;
+      toPath?: string;
+    }): Promise<{ status: 'queued' | 'recorded'; eventId: string | null } | null> {
+      const op = args.op ?? 'write';
+      const res = await chatFetch('/chat/workspace/edited', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          path: args.path,
+          op,
+          ...(op !== 'delete' && args.bytes !== undefined ? { bytes: args.bytes } : {}),
+          ...(op === 'rename' ? { to_path: args.toPath } : {}),
+        }),
+      });
+      await refuseIfLease(res, 'workspace/edited', args.threadId);
+      if (res.status === 404 || res.status === 405) return null;
+      if (!res.ok) throw new Error(`workspace/edited: ${res.status} ${await detailOf(res)}`);
+      const body = (await res.json()) as { status?: string; event_id?: string | null };
+      return {
+        status: body.status === 'recorded' ? 'recorded' : 'queued',
+        eventId: body.event_id ?? null,
+      };
+    },
+
     /** GET /chat/sessions/{thread_id} — authoritative snapshot (truth over local cache). */
     async getSessionSnapshot(threadId: string): Promise<SessionSnapshot | null> {
       try {

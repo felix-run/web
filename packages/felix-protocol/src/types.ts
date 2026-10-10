@@ -138,6 +138,23 @@ export type StreamEvent =
   | { event: 'steer'; data: { content: string } }
   | { event: 'follow_up'; data: { content: string } }
   /**
+   * The run picked up a note that the operator edited a workspace file
+   * (`POST /chat/workspace/edited`) and put it in front of the model before its
+   * next call — without cancelling the tool calls in flight, unlike a steer. Only
+   * a live run's drain emits it; a note recorded on an idle thread is in the log
+   * and arrives with the snapshot.
+   */
+  | {
+      event: 'workspace_note';
+      data: {
+        path: string;
+        op: 'write' | 'delete' | 'rename';
+        bytes: number | null;
+        /** A rename's destination; absent otherwise. */
+        to_path?: string;
+      };
+    }
+  /**
    * A `react` loop ran out of `spec.recursion_limit` steps with the model still
    * asking for tools. The session is recorded `truncated` and `done` says
    * `stop_reason: max_turns`; this frame is the one that carries the limit.

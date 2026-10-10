@@ -41,6 +41,9 @@
     "/chat/steer": {
       "post": {}
     },
+    "/chat/workspace/edited": {
+      "post": {}
+    },
     "/chat/tool_result": {
       "post": {}
     },
@@ -97,6 +100,9 @@
       "post": {}
     },
     "/chat/thinking": {
+      "post": {}
+    },
+    "/chat/ask": {
       "post": {}
     },
     "/chat/compact": {
@@ -284,9 +290,40 @@
     "/skill-library/{name}/-/update": {
       "post": {}
     },
-    "/skill-library": {
+    "/skill-library/~{library}": {
       "get": {},
       "post": {}
+    },
+    "/skill-library/~{library}/{name}": {
+      "get": {},
+      "delete": {}
+    },
+    "/skill-library/~{library}/{name}/versions/{version}": {
+      "get": {}
+    },
+    "/skill-library/~{library}/{name}/versions/{version}/files/{path}": {
+      "get": {}
+    },
+    "/skill-library/~{library}/{name}/versions/{version}/preview": {
+      "get": {}
+    },
+    "/skill-library/~{library}/{name}/versions": {
+      "put": {}
+    },
+    "/skill-library/~{library}/{name}/versions/{version}/publish": {
+      "post": {}
+    },
+    "/skill-library/~{library}/{name}/versions/{version}/rollback": {
+      "post": {}
+    },
+    "/skill-library/~{library}/{name}/versions/{version}/reject": {
+      "post": {}
+    },
+    "/skill-library/~{library}/{name}/versions/{version}/promote": {
+      "post": {}
+    },
+    "/skill-library/-/personal": {
+      "get": {}
     },
     "/skill-library/-/review": {
       "get": {}
@@ -295,6 +332,13 @@
       "get": {},
       "delete": {},
       "patch": {}
+    },
+    "/skill-library/{name}/versions/{version}/adopt": {
+      "post": {}
+    },
+    "/skill-library": {
+      "get": {},
+      "post": {}
     },
     "/skill-library/{name}": {
       "get": {},
@@ -319,9 +363,6 @@
       "post": {}
     },
     "/skill-library/{name}/versions/{version}/reject": {
-      "post": {}
-    },
-    "/skill-library/{name}/versions/{version}/adopt": {
       "post": {}
     },
     "/skill-library/-/feedback": {

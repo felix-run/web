@@ -1,6 +1,6 @@
 {
   "$comment": "Every SSE event the harness can emit, recorded from a checkout by scripts/sync-harness-contract.mjs. check-protocol-parity fails when one of these has no StreamEvent arm — the direction the type system cannot see, because the union ends in an open arm. Do not hand-edit: re-run the sync.",
-  "harnessCommit": "6bc1d91b",
+  "harnessCommit": "2c5baa13",
   "harnessVersion": "0.12.1",
   "eventsSource": "schemas/sse-events.json",
   "normalised": {
@@ -33,6 +33,7 @@
     "tool_execution_update",
     "tool_request",
     "tool_start",
-    "ui_request"
+    "ui_request",
+    "workspace_note"
   ]
 }

@@ -4,6 +4,7 @@ import {
   type ChatEngine,
   createChatEngine,
   eventsToTurns,
+  LeaseRefusedError,
   type ManifestEntry,
   mergeSessions,
   snapshotToEvents,
@@ -75,6 +76,7 @@ import {
   setSessionLabel,
   setThinkingLevel,
   steerChat,
+  workspaceEdited,
 } from '@/api';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import { AppSidebar } from '@/components/app-sidebar';
@@ -576,6 +578,29 @@ export function AppShell() {
       if (onHarnessRef.current) navigate(`/t/${id}`);
     },
     [navigate],
+  );
+  // The operator's own save, told to the agent so it does not go on working from
+  // what it read before. The harness writes the words; the pane says what came of it.
+  const tellAgentEdited = useCallback(
+    async (edit: { path: string; op?: 'write' | 'delete' | 'rename'; bytes?: number }) => {
+      const id = threadIdRef.current;
+      // A thread that never reached the harness has no agent to tell.
+      if (unsentRef.current.has(id)) return 'no-thread' as const;
+      try {
+        const told = await workspaceEdited({ threadId: id, ...edit });
+        if (!told) return 'unsupported' as const;
+        // Idle, the note went straight into the log: show it where it now is.
+        if (told.status === 'recorded' && threadIdRef.current === id) {
+          const engine = poolRef.current?.get(id);
+          if (!engine?.state.streaming) hydrateFromServerRef.current(id);
+        }
+        return told.status;
+      } catch (err) {
+        if (err instanceof LeaseRefusedError) return 'watching' as const;
+        return 'failed' as const;
+      }
+    },
+    [],
   );
   // A draft lives in this tab's session storage, which a closed tab takes with it.
   useEffect(() => {
@@ -2593,6 +2618,7 @@ export function AppShell() {
     inspectorOpen,
     setInspectorOpen,
     openInPane,
+    tellAgentEdited,
   };
 
   return (

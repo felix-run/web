@@ -185,7 +185,30 @@ export interface ShellValue {
    * pane's Open controls out rather than offering ones that do nothing.
    */
   openInPane?: (item: PaneItemInput) => void;
+  /**
+   * Tell the agent the operator changed a workspace file (`POST
+   * /chat/workspace/edited`). Optional for the same reason as `openInPane`.
+   */
+  tellAgentEdited?: (edit: {
+    path: string;
+    op?: 'write' | 'delete' | 'rename';
+    bytes?: number;
+  }) => Promise<EditNotice>;
 }
+
+/**
+ * What came of telling the agent about an edit. `queued`: a run is going and
+ * reads it before its next step. `recorded`: it is in the thread for the next
+ * run. The rest are reasons the agent was not told: the thread has never run,
+ * another tab drives it, the harness predates the route, or the request failed.
+ */
+export type EditNotice =
+  | 'queued'
+  | 'recorded'
+  | 'no-thread'
+  | 'watching'
+  | 'unsupported'
+  | 'failed';
 
 /** One engine in the pool, as the Debug tab reads it. */
 export interface EngineReport {

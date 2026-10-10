@@ -190,4 +190,6 @@ export {
   type ToolCall,
   type Turn,
   type TurnSegment,
+  type WorkspaceEdit,
 } from './turns';
+export { describeWorkspaceEdit, workspaceEditOf } from './workspace-edits';

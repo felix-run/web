@@ -38,7 +38,8 @@ import { fileToolOp } from './local-files';
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
-import { closeTool, markToolPhase, type Turn, toolImages } from './turns';
+import { closeTool, markToolPhase, type Turn, toolImages, type WorkspaceEdit } from './turns';
+import { describeWorkspaceEdit, workspaceEditOf } from './workspace-edits';
 
 export interface EngineState {
   turns: Turn[];
@@ -328,6 +329,34 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         { id: newId(), role: 'user', content },
         { id: nextAssistantId, role: 'assistant', content: '', tools: [] },
       ],
+    });
+    activeAssistantId = nextAssistantId;
+  };
+
+  /** As `interject`, for a note the run read rather than a message someone sent. */
+  const interjectNote = (workspaceEdit: WorkspaceEdit) => {
+    const note: Turn = {
+      id: newId(),
+      role: 'note',
+      content: describeWorkspaceEdit(workspaceEdit),
+      note: { role: 'user', inContext: true, workspaceEdit },
+    };
+    // Drained before the run's first model call, the reply has not started: the
+    // note goes in front of it rather than leaving an empty turn behind.
+    const last = state.turns.at(-1);
+    if (
+      last?.role === 'assistant' &&
+      last.id === activeAssistantId &&
+      !last.content &&
+      !last.tools?.length &&
+      !last.reasoning?.length
+    ) {
+      set({ turns: [...state.turns.slice(0, -1), note, last] });
+      return;
+    }
+    const nextAssistantId = newId();
+    set({
+      turns: [...state.turns, note, { id: nextAssistantId, role: 'assistant', content: '', tools: [] }],
     });
     activeAssistantId = nextAssistantId;
   };
@@ -765,6 +794,14 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       case 'follow_up': {
         const content = (ev.data as { content?: string }).content?.trim();
         if (content) interject(content);
+        break;
+      }
+      // The run put the operator's edit to a workspace file in front of the model.
+      // It is a note in the log, between the step before it and the one after, so
+      // it is drawn there: the reply that follows is written knowing about it.
+      case 'workspace_note': {
+        const workspaceEdit = workspaceEditOf(ev.data);
+        if (workspaceEdit) interjectNote(workspaceEdit);
         break;
       }
       // The react loop ran out of `recursion_limit` steps with the model still

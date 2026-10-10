@@ -79,6 +79,18 @@ export interface ReasoningBlock {
 }
 
 /** A turn in the UI transcript. Assistant turns may carry inline tool calls. */
+/**
+ * The operator edited a workspace file and the harness told the agent
+ * (`POST /chat/workspace/edited`): read off a `workspace_note` frame, or off the
+ * custom log entry (`metadata.type: "workspace_edit"`) a snapshot carries.
+ */
+export interface WorkspaceEdit {
+  path: string;
+  op: 'write' | 'delete' | 'rename';
+  bytes?: number | null;
+  toPath?: string;
+}
+
 export interface Turn {
   id: string;
   role: Exclude<Role, 'tool' | 'system'> | 'note';
@@ -93,7 +105,7 @@ export interface Turn {
    * model — so a note keeps its role here for the renderer to say, and
    * `inContext` for the renderer to say whether the model read it.
    */
-  note?: { role: Role; inContext: boolean };
+  note?: { role: Role; inContext: boolean; workspaceEdit?: WorkspaceEdit };
   content: string;
   tools?: ToolCall[];
   /** Reasoning the model streamed, if the harness is new enough to name it. */

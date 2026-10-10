@@ -571,6 +571,9 @@ present, else `data.text` or `data.delta`, else `""`.
   <dt>`follow_up`</dt>
   <dd>A queued follow-up was drained after idle</dd>
   <dd class="event-data">`{"content":str}`</dd>
+  <dt>`workspace_note`</dt>
+  <dd>A run put an operator's workspace edit in front of the model before its next call</dd>
+  <dd class="event-data">`{"path","op","bytes","to_path"?}`</dd>
   <dt>`max_turns`</dt>
   <dd>A `react` loop ran out of `spec.recursion_limit` steps with tool calls still pending. The session is recorded `truncated` and `done` says `stop_reason: max_turns`; this frame is the one that carries the limit</dd>
   <dd class="event-data">`{"limit":int}`</dd>
@@ -732,6 +735,27 @@ rather than being lost. Every held steer is delivered then, whatever `steering_m
 does not cancel that run's tools. A steer or follow-up that arrives just after a run's last check
 is kept for the next run the same way. `queuedSteerCount` on `GET /chat/sessions/{thread_id}`
 counts what is waiting.
+
+### Telling the agent about an edit
+
+When an operator changes a workspace file the agent is working on — in chat-ui's side pane, say —
+the agent still holds what it read before. `POST /chat/workspace/edited` tells it.
+
+```bash
+curl -s -X POST "$BASE_URL/chat/workspace/edited" \
+  -H "Authorization: Bearer $FELIX_API_KEY" -H 'content-type: application/json' \
+  -d '{"thread_id":"demo","path":"notes/plan.md","op":"write","bytes":1204}'
+```
+
+The body is structured fields only — `path`, `op` (`write`, `delete` or `rename`), `bytes` (not on
+a delete) and `to_path` (a rename's destination, and only then); the harness writes the sentence the
+model reads, so no client prose reaches it. With a run in flight the answer is `status: "queued"`:
+the note is put in front of the model **before its next call**, without cancelling the tool calls in
+progress — unlike a steer — several edits to one path collapse to the last, and the stream emits
+`workspace_note`. With the thread idle it is `status: "recorded"` with an `event_id`: the note is
+appended at once and the next run reads it. Either way it lands in the log as a `custom` entry
+(`role: "user"`, `metadata.type: "workspace_edit"`, `in_context: true`), so a snapshot carries it.
+The route is lease-guarded like `/chat/steer`.
 
 ## Abort, continue, thinking, compact
 
@@ -902,7 +926,7 @@ exclusive hold's, or the last observer's when there is none.
 Leases are advisory unless a client opts in. The routes that drive a thread accept an
 **`X-Felix-Lease-Token`** header: `POST /chat`, `/chat/stream`, `/chat/continue`, `/chat/abort`,
 `/chat/rewind`, `/chat/steer`, `/chat/tool_result`, `/chat/ui`, `/chat/compact`, `/chat/thinking`,
-`/chat/sessions/name`, `/chat/sessions/label`, `/chat/sessions/custom` and
+`/chat/sessions/name`, `/chat/sessions/label`, `/chat/sessions/custom`, `/chat/workspace/edited` and
 `DELETE /chat/history/{thread_id}`. When the header is present, the request is refused unless it is
 the exclusive hold's token:
 

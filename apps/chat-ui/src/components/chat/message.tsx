@@ -1,4 +1,4 @@
-import { type BranchPoint, interleaveTurn, plansInTurn } from '@felix/client';
+import { type BranchPoint, interleaveTurn, plansInTurn, type WorkspaceEdit } from '@felix/client';
 import {
   Attachment,
   AttachmentContent,
@@ -9,10 +9,17 @@ import {
 import { Button } from '@felix/ui/button';
 import { ButtonGroup, ButtonGroupText } from '@felix/ui/button-group';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
-import { ChevronLeftIcon, ChevronRightIcon, ImageOffIcon, OctagonPauseIcon } from 'lucide-react';
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  FilePenLineIcon,
+  ImageOffIcon,
+  OctagonPauseIcon,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { cn } from '@/lib/utils';
+import { useOptionalShell } from '@/shell-context';
 import type { Turn, TurnFeedback } from '@/types';
 import { MessageActions } from './message-actions';
 import { PlanCard } from './plan-card';
@@ -77,6 +84,19 @@ export function Message({
   /** Debug mode: the turn's ids and the spend the client holds, under it. */
   debug?: boolean;
 }) {
+  if (turn.role === 'note' && turn.note?.workspaceEdit) {
+    return (
+      <WorkspaceEditNote
+        edit={turn.note.workspaceEdit}
+        debug={debug}
+        text={turn.content}
+        onRewind={onRewind}
+        {...(label === undefined ? {} : { label })}
+        {...(onLabel ? { onLabel } : {})}
+      />
+    );
+  }
+
   if (turn.role === 'note') {
     // Neither side of the conversation, so neither bubble. Whether the model read
     // it is said in words rather than by styling alone, because an entry that is
@@ -465,4 +485,81 @@ function VersionSwitcher({
       </Button>
     </ButtonGroup>
   );
+}
+
+/**
+ * The operator's own edit to a workspace file, which the harness put in front
+ * of the agent (`POST /chat/workspace/edited`). It is one line in the
+ * transcript's own voice — the person reading it made the edit, so it says
+ * "you", and what the model was actually given (the harness's wording) is
+ * debug's. Where the file still exists it opens in the side pane.
+ */
+function WorkspaceEditNote({
+  edit,
+  text,
+  debug,
+  onRewind,
+  label,
+  onLabel,
+}: {
+  edit: WorkspaceEdit;
+  text: string;
+  debug?: boolean;
+  onRewind?: () => void;
+  label?: string;
+  onLabel?: (next: string | null) => void;
+}) {
+  const openInPane = useOptionalShell()?.openInPane;
+  const target = edit.op === 'rename' ? edit.toPath : edit.op === 'delete' ? undefined : edit.path;
+  const verb = edit.op === 'delete' ? 'deleted' : edit.op === 'rename' ? 'renamed' : 'edited';
+  return (
+    <div className="group flex w-full flex-col gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <FilePenLineIcon aria-hidden className="size-3.5 shrink-0" />
+        <span className="min-w-0">
+          You {verb}{' '}
+          {target && openInPane ? (
+            <button
+              type="button"
+              onClick={() => openInPane({ kind: 'file', path: target })}
+              title="Open in the side pane"
+              className="font-mono text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              {edit.op === 'rename' ? edit.path : target}
+            </button>
+          ) : (
+            <span className="font-mono text-foreground">{edit.path}</span>
+          )}
+          {edit.op === 'rename' && edit.toPath && (
+            <>
+              {' '}
+              to <span className="font-mono text-foreground">{edit.toPath}</span>
+            </>
+          )}
+          {edit.op === 'write' && typeof edit.bytes === 'number' && (
+            <span className="tabular-nums"> · {formatBytes(edit.bytes)}</span>
+          )}
+        </span>
+        <span aria-hidden>·</span>
+        <span>the agent was told</span>
+        {label && <LabelChip label={label} />}
+      </div>
+      {debug && text && (
+        <p className="ml-5.5 text-xs whitespace-pre-wrap wrap-anywhere text-muted-foreground/80">
+          {text}
+        </p>
+      )}
+      <MessageActions
+        content={text}
+        onRewind={onRewind}
+        {...(label === undefined ? {} : { label })}
+        {...(onLabel ? { onLabel } : {})}
+      />
+    </div>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n.toLocaleString()} B`;
+  return `${Math.round(n / 1024).toLocaleString()} KB`;
 }
