@@ -2,6 +2,7 @@ import type { HarnessWorkspaceTree } from '@felix/client';
 import { ChevronRightIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { workspaceTree } from '@/api';
+import { requestFolderAction } from '@/components/workspace/folder-action';
 import { WorkspaceFileTree } from '@/components/workspace/workspace-section';
 import { requestFileAction, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
@@ -135,6 +136,9 @@ export function HarnessFilesSection({ changed }: { changed: ReadonlySet<string> 
               openInPane?.(item);
               if (action !== 'open') requestFileAction(threadId, item, action);
             }}
+            onFolderAction={(path, action) =>
+              requestFolderAction({ path, action, source: 'harness' })
+            }
           />
         ) : (
           <p className="text-xs text-muted-foreground">Nothing written here yet.</p>

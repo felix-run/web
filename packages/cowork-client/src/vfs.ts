@@ -130,6 +130,66 @@ export class VirtualFs {
     this.save();
   }
 
+  /** The files under a folder, recursively — what a folder delete takes with it. */
+  filesUnder(path: string): string[] {
+    const dir = normalize(path);
+    const prefix = dir ? `${dir}/` : '';
+    return Object.keys(this.map)
+      .filter((k) => k.startsWith(prefix) && this.map[k]?.type === 'file')
+      .sort();
+  }
+
+  /**
+   * Delete a folder and everything in it. The root is refused, and so is a
+   * path that is a file or not there. `expectedFiles`, when given, is the
+   * count the operator was shown: a different count now refuses, deleting
+   * nothing, so a confirmation never covers files it did not name.
+   */
+  removeDir(path: string, expectedFiles?: number): number {
+    const dir = normalize(path);
+    if (!dir) throw new Error('the workspace root cannot be deleted');
+    const node = this.map[dir];
+    if (!node) throw new Error(`not found: ${path}`);
+    if (node.type !== 'dir') throw new Error(`not a folder: ${path}`);
+    const files = this.filesUnder(dir).length;
+    if (expectedFiles !== undefined && files !== expectedFiles) {
+      throw new FolderChangedError(path, files);
+    }
+    for (const key of Object.keys(this.map)) {
+      if (key === dir || key.startsWith(`${dir}/`)) delete this.map[key];
+    }
+    this.save();
+    return files;
+  }
+
+  /** Move a folder and everything in it. Never over anything, never into itself. */
+  renameDir(from: string, to: string): void {
+    const src = normalize(from);
+    const dst = normalize(to);
+    if (!src) throw new Error('the workspace root cannot be renamed');
+    if (!dst) throw new Error('no destination');
+    const node = this.map[src];
+    if (!node) throw new Error(`not found: ${from}`);
+    if (node.type !== 'dir') throw new Error(`not a folder: ${from}`);
+    if (dst === src || dst.startsWith(`${src}/`))
+      throw new Error('a folder cannot move into itself');
+    if (this.map[dst]) throw new Error(`target exists: ${to}`);
+    // Parents of the destination, as a write would make them.
+    const parts = dst.split('/');
+    for (let i = 0; i < parts.length - 1; i++) {
+      const parent = parts.slice(0, i + 1).join('/');
+      if (this.map[parent]?.type === 'file') throw new Error(`not a directory: ${parent}`);
+      this.map[parent] ??= { type: 'dir', updatedAt: Date.now() };
+    }
+    for (const key of Object.keys(this.map)) {
+      if (key !== src && !key.startsWith(`${src}/`)) continue;
+      const moved = `${dst}${key.slice(src.length)}`;
+      this.map[moved] = this.map[key] as VfsNode;
+      delete this.map[key];
+    }
+    this.save();
+  }
+
   mkdir(path: string): void {
     const key = normalize(path);
     if (this.map[key]?.type === 'file') throw new Error(`file exists: ${path}`);
@@ -148,6 +208,17 @@ export class VirtualFs {
   reset(): void {
     this.map = { '': { type: 'dir', updatedAt: Date.now() } };
     this.save();
+  }
+}
+
+/** A folder delete refused because the folder no longer holds what the operator was shown. */
+export class FolderChangedError extends Error {
+  constructor(
+    readonly path: string,
+    readonly count: number,
+  ) {
+    super(`${path} now holds ${count} files`);
+    this.name = 'FolderChangedError';
   }
 }
 

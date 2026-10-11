@@ -9,6 +9,9 @@ import {
   getMountLabel,
   getVfs,
   hasMount,
+  mountFilesUnder,
+  mountRemoveDir,
+  mountRenameDir,
   mountTree,
   mountWrite,
   pickDirectory,
@@ -61,6 +64,31 @@ export async function deleteWorkspaceFile(path: string): Promise<void> {
 /** The operator's rename from the side pane: same store, never overwriting. */
 export async function renameWorkspaceFile(from: string, to: string): Promise<void> {
   await renameExisting(from, to, vfs);
+  window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+}
+
+/** The files under a folder in the store the tools run against, for the count a delete is confirmed on. */
+export async function filesUnderWorkspaceFolder(path: string): Promise<string[]> {
+  const cleaned = path.replace(/^\//, '').replace(/\/+$/, '');
+  return hasMount() ? await mountFilesUnder(cleaned) : vfs.filesUnder(cleaned);
+}
+
+/** The operator's folder delete, at the count they were shown. */
+export async function deleteWorkspaceFolder(path: string, expectedFiles: number): Promise<number> {
+  const cleaned = path.replace(/^\//, '').replace(/\/+$/, '');
+  const files = hasMount()
+    ? await mountRemoveDir(cleaned, expectedFiles)
+    : vfs.removeDir(cleaned, expectedFiles);
+  window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+  return files;
+}
+
+/** The operator's folder rename: same store, never over anything. */
+export async function renameWorkspaceFolder(from: string, to: string): Promise<void> {
+  const a = from.replace(/^\//, '').replace(/\/+$/, '');
+  const b = to.replace(/^\//, '').replace(/\/+$/, '');
+  if (hasMount()) await mountRenameDir(a, b);
+  else vfs.renameDir(a, b);
   window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
 }
 

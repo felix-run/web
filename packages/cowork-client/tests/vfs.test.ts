@@ -206,3 +206,33 @@ describe('VirtualFs delete and rename', () => {
     expect(() => fs.read('a.md')).toThrow();
   });
 });
+
+describe('VirtualFs folders', () => {
+  it('deletes a folder only at the count it was shown, and never the root', () => {
+    const fs = new VirtualFs('test.vfs.folders');
+    fs.reset();
+    fs.write('notes/a.md', 'A');
+    fs.write('notes/deep/b.md', 'B');
+    fs.write('keep.md', 'K');
+    expect(() => fs.removeDir('notes', 1)).toThrow(/now holds 2 files/);
+    expect(fs.read('notes/a.md')).toBe('A');
+    expect(fs.removeDir('notes', 2)).toBe(2);
+    expect(fs.tree()).toEqual(['f keep.md']);
+    expect(() => fs.removeDir('.')).toThrow(/root/);
+    expect(() => fs.removeDir('keep.md')).toThrow(/not a folder/);
+  });
+
+  it('moves a folder and everything in it, never over anything or into itself', () => {
+    const fs = new VirtualFs('test.vfs.folders2');
+    fs.reset();
+    fs.write('src/a.ts', 'A');
+    fs.write('src/lib/b.ts', 'B');
+    fs.write('taken.md', 'T');
+    expect(() => fs.renameDir('src', 'taken.md')).toThrow(/target exists/);
+    expect(() => fs.renameDir('src', 'src/lib/x')).toThrow(/into itself/);
+    fs.renameDir('src', 'pkg/src');
+    expect(fs.read('pkg/src/lib/b.ts')).toBe('B');
+    expect(fs.filesUnder('pkg')).toEqual(['pkg/src/a.ts', 'pkg/src/lib/b.ts']);
+    expect(() => fs.read('src/a.ts')).toThrow();
+  });
+});

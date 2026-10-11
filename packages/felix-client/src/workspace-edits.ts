@@ -17,6 +17,11 @@ export function workspaceEditOf(raw: unknown, { requireType = false } = {}): Wor
   const edit: WorkspaceEdit = { path: o.path, op };
   if (typeof o.bytes === 'number' && Number.isFinite(o.bytes)) edit.bytes = o.bytes;
   if (op === 'rename' && typeof o.to_path === 'string' && o.to_path) edit.toPath = o.to_path;
+  // A missing `kind` is a file: only a folder op carries one.
+  if (o.kind === 'folder') {
+    edit.folder = true;
+    if (typeof o.files === 'number' && Number.isFinite(o.files)) edit.files = o.files;
+  }
   return edit;
 }
 
@@ -26,6 +31,13 @@ export function workspaceEditOf(raw: unknown, { requireType = false } = {}): Wor
  * reads under the conversation, where "the operator" is "you".
  */
 export function describeWorkspaceEdit(edit: WorkspaceEdit): string {
+  if (edit.folder) {
+    if (edit.op === 'rename')
+      return `You renamed the folder ${edit.path} to ${edit.toPath ?? '…'}.`;
+    const n = edit.files;
+    const count = typeof n === 'number' ? ` and its ${n} ${n === 1 ? 'file' : 'files'}` : '';
+    return `You deleted the folder ${edit.path}${count} from the workspace.`;
+  }
   if (edit.op === 'delete') return `You deleted ${edit.path} from the workspace.`;
   if (edit.op === 'rename') return `You renamed ${edit.path} to ${edit.toPath ?? '…'}.`;
   return `You edited ${edit.path} in the workspace.`;

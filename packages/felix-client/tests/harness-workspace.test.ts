@@ -186,6 +186,38 @@ describe('POST /chat/workspace/delete and /rename', () => {
   });
 });
 
+describe('the folder routes (felix#594)', () => {
+  it('delete sends the count it showed, and reads the files that went', async () => {
+    stub(() => json({ status: 'recorded', path: 'notes', files: 3, event_id: 'e8' }));
+    await expect(
+      client().workspaceDeleteFolder({ threadId: 't1', path: 'notes', expectedCount: 3 }),
+    ).resolves.toEqual({ status: 'recorded', files: 3, eventId: 'e8' });
+    expect(posted[0]).toEqual({
+      url: '/api/chat/workspace/delete_folder',
+      body: { thread_id: 't1', path: 'notes', expected_count: 3 },
+    });
+  });
+
+  it('carries the count a refusal names', async () => {
+    stub(() => json({ detail: 'workspace_changed', count: 5 }, 409));
+    await expect(
+      client().workspaceDeleteFolder({ threadId: 't1', path: 'notes', expectedCount: 3 }),
+    ).rejects.toMatchObject({ code: 'workspace_changed', count: 5 });
+    stub(() => json({ detail: 'too_many_entries', count: 2001 }, 409));
+    await expect(
+      client().workspaceRenameFolder({ threadId: 't1', path: 'big', toPath: 'b' }),
+    ).rejects.toMatchObject({ code: 'too_many_entries', count: 2001 });
+  });
+
+  it('rename sends both paths', async () => {
+    stub(() => json({ status: 'queued', path: 'a', to_path: 'b/a', event_id: null }));
+    await expect(
+      client().workspaceRenameFolder({ threadId: 't1', path: 'a', toPath: 'b/a' }),
+    ).resolves.toEqual({ status: 'queued', toPath: 'b/a', eventId: null });
+    expect(posted[0]?.body).toEqual({ thread_id: 't1', path: 'a', to_path: 'b/a' });
+  });
+});
+
 describe("the catalog's workspace field", () => {
   it('says which workspace an agent works in, and nothing for an older harness', async () => {
     stub(() =>

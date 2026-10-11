@@ -10,6 +10,11 @@ import {
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
 import { type FileRowAction, useFileRowMenu } from '@/components/workspace/file-row-menu';
+import {
+  FolderActionDialog,
+  requestFolderAction,
+  useFolderRequest,
+} from '@/components/workspace/folder-action';
 import { HarnessFilesSection } from '@/components/workspace/harness-files';
 import { ThreadRepoSection } from '@/components/workspace/thread-repo';
 import { collectChanges, treePath } from '@/lib/changes';
@@ -83,6 +88,7 @@ function readFilesOpen(): boolean {
 
 export function WorkspaceSection({ className }: { className?: string }) {
   const { turns, streaming, threadId, openInPane } = useShell();
+  const folderRequest = useFolderRequest();
   const [folded, setFolded] = useState(readFolded);
   const toggleFolded = () =>
     setFolded((f) => {
@@ -379,6 +385,9 @@ export function WorkspaceSection({ className }: { className?: string }) {
                   if (action !== 'open')
                     requestFileAction(threadId, { kind: 'file', path }, action);
                 }}
+                onFolderAction={(path, action) =>
+                  requestFolderAction({ path, action, source: 'browser' })
+                }
               />
             ) : (
               // Files is this tab's own store; the instrument's Changes is every
@@ -401,6 +410,7 @@ export function WorkspaceSection({ className }: { className?: string }) {
           </div>
         </section>
       </div>
+      <FolderActionDialog request={folderRequest} onClose={() => requestFolderAction(null)} />
     </section>
   );
 }
@@ -421,12 +431,15 @@ export function WorkspaceFileTree({
   selected,
   onOpenFile,
   onFileAction,
+  onFolderAction,
   label = 'Files',
 }: {
   /** What a screen reader calls the tree, when there is more than one. */
   label?: string;
   /** A row's menu (right click, Shift+F10): Open, Rename…, Delete…. Absent, no menu. */
   onFileAction?: (path: string, action: FileRowAction) => void;
+  /** A folder row's menu: Rename folder…, Delete folder…. Absent, folders have none. */
+  onFolderAction?: (path: string, action: 'rename' | 'delete') => void;
   paths: readonly string[];
   changed: ReadonlySet<string>;
   selected: string | null;
@@ -444,11 +457,22 @@ export function WorkspaceFileTree({
   // Seeded once, from the changes on screen when the tree first draws: after that
   // the folds are the operator's.
   const [expanded, setExpanded] = useState(() => ancestorsOf(changed));
-  const { rowProps, host } = useFileRowMenu((path, action) => onFileAction?.(path, action));
+  const { rowProps, host } = useFileRowMenu((path, action, kind) => {
+    if (kind === 'folder') {
+      if (action !== 'open') onFolderAction?.(path, action);
+    } else onFileAction?.(path, action);
+  });
+  const hasMenu = Boolean(onFileAction || onFolderAction);
   const render = (nodes: TreeNode[]) =>
     nodes.map((node) =>
       node.kind === 'folder' ? (
-        <FileTreeFolder key={node.path} path={node.path} name={node.name} title={node.path}>
+        <FileTreeFolder
+          key={node.path}
+          path={node.path}
+          name={node.name}
+          title={node.path}
+          {...(onFolderAction ? rowProps(node.path, undefined, 'folder') : {})}
+        >
           {render(node.children)}
         </FileTreeFolder>
       ) : (
@@ -486,5 +510,5 @@ export function WorkspaceFileTree({
       {render(tree)}
     </FileTree>
   );
-  return onFileAction ? host(view) : view;
+  return hasMenu ? host(view) : view;
 }

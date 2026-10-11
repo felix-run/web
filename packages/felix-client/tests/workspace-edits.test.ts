@@ -161,3 +161,37 @@ describe('the custom entry a snapshot carries', () => {
     expect(workspaceEditOf({ path: 'x', op: 'shred' })).toEqual({ path: 'x', op: 'write' });
   });
 });
+
+describe('a folder note (felix#594)', () => {
+  it('reads a folder delete and rename off the log, and says them as folders', () => {
+    const turns = eventsToTurns([
+      {
+        id: 'f1',
+        kind: 'custom',
+        role: 'user',
+        content: 'The operator deleted the folder `notes` (3 files)…',
+        metadata: {
+          type: 'workspace_edit',
+          path: 'notes',
+          op: 'delete',
+          bytes: null,
+          kind: 'folder',
+          files: 3,
+          in_context: true,
+        },
+      },
+    ] as unknown as Parameters<typeof eventsToTurns>[0]);
+    const edit = turns[0]?.note?.workspaceEdit;
+    expect(edit).toEqual({ path: 'notes', op: 'delete', folder: true, files: 3 });
+    expect(describeWorkspaceEdit(edit as NonNullable<typeof edit>)).toBe(
+      'You deleted the folder notes and its 3 files from the workspace.',
+    );
+    expect(describeWorkspaceEdit({ path: 'a', op: 'rename', toPath: 'b', folder: true })).toBe(
+      'You renamed the folder a to b.',
+    );
+  });
+
+  it('reads a missing kind as a file', () => {
+    expect(workspaceEditOf({ path: 'a.md', op: 'delete' })).toEqual({ path: 'a.md', op: 'delete' });
+  });
+});

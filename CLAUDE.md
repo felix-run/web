@@ -1636,6 +1636,15 @@ that are easy to break:
   is right for a read and would delete the target). Changes records a rename on both paths, each
   row saying which side it is, and `PathChange.gone` keeps Open off a deleted or moved-away
   path. `readsBefore` covers delete, so its approval card shows the file it removes.
+- **Folders too, from the trees only** (`components/workspace/folder-action.tsx`,
+  `felix-run/felix#594`): a folder row's menu offers Rename folder… and Delete folder…, which
+  open a dialog — a folder is not a pane item, and a recursive delete earns the interruption.
+  The delete names the files it takes and is confirmed **at that count** (`expected_count`;
+  the browser stores' `removeDir`/`mountRemoveDir` take the same guard), so a folder that
+  changed under the dialog is refused untouched. Both are held while a file under the folder
+  has an unsaved edit, and close the pane's tabs under it after. The row menu ignores events
+  from nested rows (`ownEvent`): a folder's `treeitem` wraps its children's. The agent's tools
+  stay files-only.
 - `?open=<path>` names the active **browser** file in the address; other kinds come back from
   session storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
 

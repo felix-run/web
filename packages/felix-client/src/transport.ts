@@ -271,6 +271,20 @@ async function codeOf(res: Response): Promise<string> {
   return text.slice(0, 200);
 }
 
+/** A folder route's refusal, with the count its body carries when it has one. */
+async function folderRefusal(res: Response): Promise<WorkspaceRouteError> {
+  const body = (await res
+    .clone()
+    .json()
+    .catch(() => null)) as { detail?: unknown; count?: unknown } | null;
+  const code = typeof body?.detail === 'string' ? body.detail : await codeOf(res);
+  return new WorkspaceRouteError(
+    res.status,
+    code,
+    typeof body?.count === 'number' ? body.count : undefined,
+  );
+}
+
 /** `409 workspace_changed`: the file is not the one the caller read. Thrown, nothing else. */
 async function refuseIfChanged(res: Response): Promise<void> {
   if (res.status !== 409) return;
@@ -291,6 +305,8 @@ export class WorkspaceRouteError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    /** A folder route's count: the files there now, or the entries over the cap. */
+    readonly count?: number,
   ) {
     super(`workspace: ${status} ${code}`);
     this.name = 'WorkspaceRouteError';
@@ -865,6 +881,72 @@ export function createFelixClient(opts: FelixClientOptions) {
         status: body.status === 'recorded' ? 'recorded' : 'queued',
         toPath: body.to_path ?? args.toPath,
         sha256: body.sha256 ?? null,
+        eventId: body.event_id ?? null,
+      };
+    },
+
+    /**
+     * POST /chat/workspace/delete_folder — the operator deletes a folder and
+     * everything in it, at the file count they were shown: another count now is
+     * `WorkspaceRouteError` `workspace_changed` with `count`, and nothing goes.
+     */
+    async workspaceDeleteFolder(args: {
+      threadId: string;
+      path: string;
+      expectedCount?: number;
+      manifest?: string;
+    }): Promise<{ status: 'queued' | 'recorded'; files: number; eventId: string | null }> {
+      const res = await chatFetch('/chat/workspace/delete_folder', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          path: args.path,
+          ...(args.expectedCount !== undefined ? { expected_count: args.expectedCount } : {}),
+          ...(args.manifest ? { manifest: args.manifest } : {}),
+        }),
+      });
+      await refuseIfLease(res, 'workspace/delete_folder', args.threadId);
+      if (!res.ok) throw await folderRefusal(res);
+      const body = (await res.json()) as {
+        status?: string;
+        files?: number;
+        event_id?: string | null;
+      };
+      return {
+        status: body.status === 'recorded' ? 'recorded' : 'queued',
+        files: body.files ?? 0,
+        eventId: body.event_id ?? null,
+      };
+    },
+
+    /** POST /chat/workspace/rename_folder — move a folder; never over anything, never into itself. */
+    async workspaceRenameFolder(args: {
+      threadId: string;
+      path: string;
+      toPath: string;
+      manifest?: string;
+    }): Promise<{ status: 'queued' | 'recorded'; toPath: string; eventId: string | null }> {
+      const res = await chatFetch('/chat/workspace/rename_folder', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          path: args.path,
+          to_path: args.toPath,
+          ...(args.manifest ? { manifest: args.manifest } : {}),
+        }),
+      });
+      await refuseIfLease(res, 'workspace/rename_folder', args.threadId);
+      if (!res.ok) throw await folderRefusal(res);
+      const body = (await res.json()) as {
+        status?: string;
+        to_path?: string;
+        event_id?: string | null;
+      };
+      return {
+        status: body.status === 'recorded' ? 'recorded' : 'queued',
+        toPath: body.to_path ?? args.toPath,
         eventId: body.event_id ?? null,
       };
     },

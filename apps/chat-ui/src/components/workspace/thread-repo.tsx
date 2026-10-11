@@ -31,6 +31,7 @@ import {
 } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import type { FileRowAction } from '@/components/workspace/file-row-menu';
+import { requestFolderAction } from '@/components/workspace/folder-action';
 import { RepoFileTree } from '@/components/workspace/repo-files';
 import { getSession, subscribeCredentials } from '@/lib/auth';
 import { requestFileAction } from '@/lib/side-pane';
@@ -199,6 +200,8 @@ function RepoStatus({
                   openInPane(item);
                   if (action !== 'open' && shell) requestFileAction(shell.threadId, item, action);
                 },
+                onFolderAction: (path: string, action: 'rename' | 'delete') =>
+                  requestFolderAction({ path, action, source: 'harness' }),
               }
             : {})}
         />
