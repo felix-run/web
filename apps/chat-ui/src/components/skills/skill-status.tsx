@@ -1,14 +1,17 @@
-import type { SkillSource, SkillVersion } from '@felix/client';
+import type { SkillSource, SkillUpstreamState, SkillVersion } from '@felix/client';
 import { relativeTime } from '@felix/client';
 import {
   ArchiveIcon,
+  ArrowUpFromLineIcon,
   BotIcon,
   CircleCheckIcon,
   CircleDashedIcon,
   CircleSlashIcon,
+  DownloadIcon,
   TriangleAlertIcon,
   UserIcon,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { tsToMs } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
 
@@ -61,9 +64,19 @@ export function VersionStateBadge({ state }: { state: VersionState }) {
   );
 }
 
-/** Who wrote a version: an agent through `create_skill`/`update_skill`, or an operator. */
+const SOURCE_ICON: Record<string, typeof UserIcon> = {
+  agent: BotIcon,
+  operator: UserIcon,
+  import: DownloadIcon,
+  promoted: ArrowUpFromLineIcon,
+};
+
+/**
+ * Who wrote a version: an agent (`create_skill`/`update_skill`), an operator, an import from a
+ * GitHub source, or a promotion of someone's personal skill into this library.
+ */
 export function SourceLabel({ source, author }: { source: SkillSource; author?: string }) {
-  const Icon = source === 'agent' ? BotIcon : UserIcon;
+  const Icon = SOURCE_ICON[source] ?? UserIcon;
   return (
     <span className="inline-flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
       <Icon aria-hidden className="size-3 shrink-0" />
@@ -127,4 +140,103 @@ export function ShadowsUploadNotice({ name, compact }: { name: string; compact?:
       </p>
     </div>
   );
+}
+
+/** A short commit id, as git prints one. */
+function shortCommit(sha: string): string {
+  return sha.slice(0, 7);
+}
+
+/**
+ * Where a version came from beyond its author: the GitHub source an import was taken from,
+ * that it still counts as an import (`lineage_import` — the gate judges it as one and an
+ * agent's use of it is screened), and what an adoption or a promotion copied. Nothing for a
+ * version written here, which is most of them.
+ */
+export function VersionProvenance({ version: v }: { version: SkillVersion }) {
+  const lines: ReactNode[] = [];
+  if (v.origin_source) {
+    lines.push(
+      <span key="origin">
+        from <span className="font-mono">{v.origin_source}</span>
+        {v.origin_ref ? (
+          <>
+            {' '}
+            at <span className="font-mono">{v.origin_ref}</span>
+          </>
+        ) : null}
+        {v.origin_commit ? (
+          <span className="font-mono" title={v.origin_commit}>
+            {' '}
+            ({shortCommit(v.origin_commit)})
+          </span>
+        ) : null}
+        {v.origin_license ? <> · {v.origin_license}</> : null}
+      </span>,
+    );
+  }
+  if (v.adopted_from) {
+    lines.push(
+      <span key="adopted">
+        adopted from <span className="font-mono">{v.adopted_from}</span>, vouched for by its author
+      </span>,
+    );
+  }
+  if (v.promoted_from) {
+    lines.push(
+      <span key="promoted">
+        promoted from <span className="font-mono">{v.promoted_from}</span> of its author's personal
+        library
+      </span>,
+    );
+  }
+  if (!lines.length && !v.lineage_import) return null;
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      {v.lineage_import && (
+        <span
+          className="rounded-full border border-state-blocked/40 px-1.5 text-state-blocked"
+          title="Imported, or built on an import: the publish gate judges it as one, and an agent's use of it is screened as untrusted. An operator's adoption clears it."
+        >
+          import lineage
+        </span>
+      )}
+      {lines}
+    </p>
+  );
+}
+
+/**
+ * An imported skill's origin, as the harness last checked it (`SkillDetail.upstream`): whether
+ * its source has changed since the newest version, when that was checked, and why the last
+ * check failed if it did. Nothing for a skill that was never imported.
+ */
+export function UpstreamLine({ upstream }: { upstream: SkillUpstreamState | null | undefined }) {
+  if (!upstream) return null;
+  const checked = upstream.checked_at ? ` · checked ${ago(upstream.checked_at)}` : '';
+  if (upstream.error) {
+    return (
+      <p className="text-xs text-state-failed">
+        Its source could not be checked: <span className="font-mono">{upstream.error}</span>
+        {checked}
+      </p>
+    );
+  }
+  if (upstream.update_available) {
+    const waiting =
+      upstream.eligible === false && upstream.eligible_at
+        ? ` It can be taken from ${new Date(tsToMs(upstream.eligible_at)).toLocaleDateString()}.`
+        : '';
+    return (
+      <p className="text-xs text-state-blocked">
+        Its source has changed since the newest version
+        {upstream.upstream_commit ? (
+          <span className="font-mono"> ({upstream.upstream_commit.slice(0, 7)})</span>
+        ) : null}
+        .{waiting}
+        <span className="text-muted-foreground">{checked}</span>
+      </p>
+    );
+  }
+  return <p className="text-xs text-muted-foreground">Up to date with its source{checked}.</p>;
 }

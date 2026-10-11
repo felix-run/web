@@ -42,7 +42,12 @@ export const REQUEST_BODY_LIMIT_BYTES = 1024 * 1024;
 export const SKILL_BUNDLE_BODY_LIMIT_BYTES = 12 * 1024 * 1024;
 
 export type SkillStatus = 'draft' | 'published' | 'archived';
-export type SkillSource = 'agent' | 'operator';
+/**
+ * Who wrote a version: an agent (`create_skill`), an operator (here, or the API), an import
+ * from a GitHub source (`POST /-/import`), or a promotion of someone's personal skill into the
+ * org library (`POST /~me/.../promote`). Open, so a newer harness's kind still reads.
+ */
+export type SkillSource = 'agent' | 'operator' | 'import' | 'promoted' | (string & {});
 export type SecurityStatus = 'pass' | 'advisory' | 'fail';
 export type SecuritySeverity = 'low' | 'medium' | 'high' | 'critical';
 export type SkillBump = 'patch' | 'minor' | 'major';
@@ -122,6 +127,45 @@ export interface SkillVersion {
   created_at: number;
   decided_at: number | null;
   published_at: number | null;
+  /**
+   * Where an imported version came from (`source: import`), null on any other: the canonical
+   * source (`github:owner/repo/path`), the ref asked for, the commit it resolved to, the skill
+   * folder's tree digest, the repository's SPDX license, and the folder's committer date.
+   * Absent from a harness older than imports.
+   */
+  origin_source?: string | null;
+  origin_ref?: string | null;
+  origin_commit?: string | null;
+  origin_tree_hash?: string | null;
+  origin_license?: string | null;
+  origin_committed_at?: number | null;
+  /**
+   * Imported, or built on an import: the gate judges it as one, and an agent's activation of it
+   * is screened as untrusted output. Cleared from an operator's adoption onwards.
+   */
+  lineage_import?: boolean;
+  /** The import-lineage version an operator vouched for to make this one (`POST .../adopt`). */
+  adopted_from?: string | null;
+  /** The version of the promoter's personal library this was copied from (`source: promoted`). */
+  promoted_from?: string | null;
+}
+
+/**
+ * The last recorded check of an imported skill's origin — by an import, a check, the upstream
+ * listing or the harness's periodic sweep. Null fields were never seen.
+ */
+export interface SkillUpstreamState {
+  upstream_commit?: string | null;
+  upstream_tree_hash?: string | null;
+  /** The source's files differ from the newest version's. */
+  update_available?: boolean;
+  first_seen_at?: number | null;
+  /** When the import cooldown (`import_min_age_days`) lets these files in. */
+  eligible_at?: number | null;
+  eligible?: boolean;
+  checked_at?: number | null;
+  /** The last check's refusal code, when it failed; the other fields are the last good check's. */
+  error?: string | null;
 }
 
 export interface SkillFileMeta {
@@ -146,6 +190,8 @@ export interface SkillDetail {
   shadows_operator_upload: boolean;
   /** Newest first. */
   versions: SkillVersion[];
+  /** For an imported skill, the last recorded check of its origin; null for any other. */
+  upstream?: SkillUpstreamState | null;
 }
 
 export interface ReviewQueueItem extends SkillVersion {
@@ -192,6 +238,8 @@ export interface SkillPolicyValues {
   block_on_advisory: boolean;
   require_eval: boolean;
   min_eval_uplift: number | null;
+  /** Days an imported file must have been seen before an import takes it; 0 is off. */
+  import_min_age_days?: number;
 }
 
 /**
@@ -363,6 +411,10 @@ export async function refusalOf(route: string, res: Response): Promise<SkillLibr
         issues: parsed.issues ?? null,
         reasons: parsed.reasons ?? null,
       };
+    } else if (typeof parsed.detail === 'string' && /^[a-z][a-z0-9_]*$/.test(parsed.detail)) {
+      // A bare code — the personal-library 403s (`no_personal_library`,
+      // `personal_library_read_only`) come this way rather than as `{error, message}`.
+      refusal = { error: parsed.detail, message: parsed.detail.replaceAll('_', ' ') };
     } else if (parsed.detail !== undefined) {
       // FastAPI's own 422 for a body that failed the request model.
       refusal = { error: 'invalid_request', message: JSON.stringify(parsed.detail).slice(0, 400) };

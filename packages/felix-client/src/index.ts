@@ -137,6 +137,7 @@ export {
   type SkillSource,
   type SkillStatus,
   type SkillSummary,
+  type SkillUpstreamState,
   type SkillVersion,
   type SkillVersionDetail,
   type SkillVersionHead,

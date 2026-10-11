@@ -267,3 +267,20 @@ describe('addresses', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe('a refusal that is only a code', () => {
+  it('reads `{detail: "<code>"}` as that code, as the personal-library 403s send it', async () => {
+    const { refusalOf } = await import('../src/management/skills');
+    const err = await refusalOf(
+      'skills/~me',
+      new Response(JSON.stringify({ detail: 'no_personal_library' }), { status: 403 }),
+    );
+    expect(err.code).toBe('no_personal_library');
+    // FastAPI's own validation detail is still the request's fault, not a code.
+    const invalid = await refusalOf(
+      'skills',
+      new Response(JSON.stringify({ detail: [{ loc: ['body'], msg: 'bad' }] }), { status: 422 }),
+    );
+    expect(invalid.code).toBe('invalid_request');
+  });
+});
