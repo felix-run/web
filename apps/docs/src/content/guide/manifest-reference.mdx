@@ -652,6 +652,7 @@ spec:
 | `commands` | string[] | required | argv prefixes, matched token for token from `argv[0]`. `git status` covers `git status --short`, not `git push` and not `git -c x status`. |
 | `timeout_ms` | int \| null | `null` | Default 300 s; the process is killed at the limit. |
 | `fatal` | bool | `false` | |
+| `background` | bool | `false` | Offer `run_in_background`, and bind `shell_output` and `shell_kill`. See [background commands](#background-commands). |
 
 The tool takes `argv` (list), `cwd` (relative to the workspace root) and optional `stdin`, and
 returns `exit_code`, `stdout`, `stderr` (each capped and marked `truncated`), `timed_out` and
@@ -667,6 +668,55 @@ cannot bound: a listed command runs repository code. Without a shell runner that
 API's user, beside it, and can read the API process's environment through `/proc` — model keys,
 database credentials, any token the API holds. Run untrusted work through a runner.
 :::
+
+### Background commands
+
+A dev server, a file watcher or a long build should not hold the turn. A shell tool with
+`background: true` takes one more argument, `run_in_background`. The command starts, and the call
+answers at once with an `id` and `status: running`. Two tools are bound beside it, once however many
+shell tools set `background`:
+
+| Tool | Arguments | What it does |
+|---|---|---|
+| `shell_output` | `id`, optional `wait_ms` (≤ 20,000) | The command's status, and what it wrote to each stream since the last read: at most the last 64 KB of each, with `stdout_skipped` / `stderr_skipped` counting what was passed over. While the command runs, waits up to `wait_ms` for something new. Without `id`, lists every background command in this workspace scope. Read-only. |
+| `shell_kill` | `id` | Ends the command and every process it started, and answers its status. |
+
+`status` is `running`, `exited` (with `exit_code`), `killed`, `timed_out`, `output_exceeded`, `failed`
+(it could not start; `error` says why) or `lost` (its supervisor is gone, so nothing will end or
+report it, and it no longer counts against the limits below).
+
+- **The same gates.** A background start passes the manifest's and the operator's allowlists and the
+  command screening a foreground call does, and runs in the same place: the API process on a
+  development box, the shell runner, or the hosted workspace's sandbox. Off a development box it is
+  refused in the API, as a foreground call is.
+- **Bounded.** A command still ends at the tool's `timeout_ms`, and when its two streams pass the
+  foreground's 8 MB budget. At most 4 run at once per workspace scope, 8 per tenant across its
+  scopes, and 32 on the host that runs them; a start past any of them is refused with a message
+  saying which. A finished command is kept for
+  an hour, and at most 16 are kept per scope.
+- **Reads take turns.** Two `shell_output` calls on one command never return the same output: each
+  byte goes to one reader.
+- **Per scope.** An id is only found in the workspace scope that started it: one thread's tools cannot
+  read or end another's command. The commands themselves are another matter: where scopes share a
+  host they run as one user and can reach each other's state, as they can each other's files — see
+  `deploy/GOVERNANCE.md`, "Background commands", in the harness repository.
+- **Outside the workspace.** Each command runs under a small supervisor, detached from the call that
+  started it, that writes its output to a private directory under the host's temp directory. The
+  model's file tools never see those files. A restart of the API or runner process leaves the
+  command running; a restart of its container or host ends it, after which it reads `lost` or is
+  no longer found.
+- **On the hosted backend,** the command lives in the scope's sandbox, which stops after 10 minutes
+  with no workspace call. A `shell_output` poll counts as one, so polling keeps the sandbox and its
+  command alive; an unpolled command ends when the sandbox stops.
+
+```yaml
+spec:
+  shell_tools:
+    - name: dev
+      commands: [npm run dev, npm test]
+      timeout_ms: 3600000   # a dev server for up to an hour
+      background: true
+```
 
 **The shell runner.** `felix-shell-runner` executes shell tools in a container of its own. With
 `FELIX_SHELL_RUNNER_URL` set, the API runs every check above, then sends the argv to the runner;
