@@ -162,6 +162,7 @@ export const rollbackSkillVersion = felix.rollbackSkillVersion.bind(felix);
 export const rejectSkillVersion = felix.rejectSkillVersion.bind(felix);
 export const archiveLibrarySkill = felix.archiveLibrarySkill.bind(felix);
 export const promoteSkillVersion = felix.promoteSkillVersion.bind(felix);
+export const listPersonalLibraries = felix.listPersonalLibraries.bind(felix);
 export const browseSkillSource = felix.browseSkillSource.bind(felix);
 export const importSkill = felix.importSkill.bind(felix);
 export const listOutdatedSkills = felix.listOutdatedSkills.bind(felix);

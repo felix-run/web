@@ -1,4 +1,4 @@
-import { isSkillName } from '@felix/client';
+import { isSkillLibraryError, isSkillName } from '@felix/client';
 import { createSkillTemplate, isValidSkillName, validateSkillName } from '@felix/skill-format';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
@@ -26,11 +26,12 @@ import {
   invalidateLibrary,
   SkillLibraryContext,
   useLibraryId,
+  usePersonalLibraries,
   usePublishPolicy,
   useReviewQueue,
 } from './queries';
 import { QueryRoot } from './query-root';
-import { policySentence, RefusalNotice } from './refusal';
+import { isForbidden, policySentence, RefusalNotice } from './refusal';
 import { ReviewQueue } from './review-queue';
 import { ImportSection, UpdatesSection } from './skill-import';
 import { SkillNotFound, SkillPage } from './skill-page';
@@ -84,12 +85,28 @@ export function SkillLibrary({
   useEffect(() => onPendingText?.(pending.text), [onPendingText, pending.text]);
   const [creating, setCreating] = useState(false);
   const formId = useId();
+  if (nav.lib && nav.lib !== 'me') {
+    // Someone else's library, opened by an administrator: readable, archivable, nothing more.
+    return (
+      <SkillLibraryContext.Provider value={nav.lib}>
+        <LibrarySwitch current={nav.lib} to={nav.libraryTo} />
+        <PageSection title="A personal library" meta="read-only">
+          <p className="mb-3 max-w-[60ch] text-sm text-muted-foreground">
+            Someone’s own skills, which only they and administrators can see. You can read them and
+            archive one; editing, publishing and promoting are the owner’s. Each look is recorded in
+            the audit log.
+          </p>
+          <LibraryList filter={nav.filter} onFilter={nav.setFilter} linkTo={nav.linkTo} />
+        </PageSection>
+      </SkillLibraryContext.Provider>
+    );
+  }
   if (nav.lib) {
     // The caller's own library: their skills, written and published by them through the same
     // gate, with no review queue, feedback, evaluations or tenant policy — those are the team's.
     return (
       <SkillLibraryContext.Provider value={nav.lib}>
-        <LibrarySwitch current={nav.lib} to={nav.libraryTo} />
+        <LibrarySwitch current="me" to={nav.libraryTo} />
         <PageSection
           title="My skills"
           meta="only you can see these"
@@ -144,6 +161,7 @@ export function SkillLibrary({
       </PageSection>
       <UpdatesSection linkTo={nav.linkTo} />
       <ImportSection linkTo={nav.linkTo} />
+      <PersonalLibrariesSection libraryTo={nav.libraryTo} />
       <PublishPolicySection />
     </>
   );
@@ -180,6 +198,78 @@ function PublishPolicySection() {
 }
 
 /**
+ * Everyone's personal libraries, for an administrator. Listed only on request, because the
+ * harness records every listing in the audit log — opening the page must not count as a look.
+ * A key that is not an administrator's is refused, and said so; a harness without the route
+ * shows nothing.
+ */
+function PersonalLibrariesSection({ libraryTo }: { libraryTo: (next: string) => string }) {
+  const [asked, setAsked] = useState(false);
+  const query = usePersonalLibraries(asked);
+  if (isSkillLibraryError(query.error) && query.error.status === 404) return null;
+  const items = query.data?.items ?? [];
+  return (
+    <PageSection
+      title="Personal libraries"
+      meta={query.data ? `${items.length}${query.data.truncated ? '+' : ''}` : undefined}
+      actions={
+        !asked && (
+          <Button size="sm" variant="ghost" onClick={() => setAsked(true)}>
+            Show
+          </Button>
+        )
+      }
+    >
+      {!asked ? (
+        <p className="max-w-[60ch] text-sm text-muted-foreground">
+          Each person’s own skills, which an administrator can read and archive. Listing them is
+          recorded in the audit log.
+        </p>
+      ) : isForbidden(query.error) ? (
+        <p className="max-w-[60ch] text-sm text-muted-foreground">
+          Only an administrator can list personal libraries.
+        </p>
+      ) : query.error ? (
+        <RefusalNotice error={query.error} doing="list personal libraries" />
+      ) : !query.data ? (
+        <Skeleton className="h-16 w-full rounded-md" aria-label="Loading personal libraries" />
+      ) : items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No one has a personal library yet.</p>
+      ) : (
+        <>
+          <ul className="divide-y divide-border/60 border-y border-border/60">
+            {items.map((l) => {
+              const cut = l.owner.lastIndexOf('|');
+              const issuer = cut > 0 ? l.owner.slice(0, cut) : '';
+              const subject = cut > 0 ? l.owner.slice(cut + 1) : l.owner;
+              return (
+                <li key={l.library} className="flex flex-wrap items-baseline gap-x-3 py-2 text-sm">
+                  <Link
+                    to={libraryTo(l.library)}
+                    className="font-mono font-medium underline underline-offset-2"
+                  >
+                    {subject}
+                  </Link>
+                  {issuer && <span className="text-xs text-muted-foreground">{issuer}</span>}
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                    {l.skills === 1 ? '1 skill' : `${l.skills} skills`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {query.data.truncated && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Showing the first {items.length}; the harness stopped listing there.
+            </p>
+          )}
+        </>
+      )}
+    </PageSection>
+  );
+}
+
+/**
  * Team library or my skills: two addresses (`?lib=me`), so a link to either opens it. Links with
  * `aria-current`, not a toggle, because each is a different place rather than a setting.
  */
@@ -187,8 +277,9 @@ function LibrarySwitch({
   current,
   to,
 }: {
-  current: 'me' | undefined;
-  to: (next: 'me' | undefined) => string;
+  /** The library on screen; someone else's (a 32-hex id) marks neither link current. */
+  current: string | undefined;
+  to: (next: string | undefined) => string;
 }) {
   const item = (label: string, value: 'me' | undefined) => {
     const here = current === value;

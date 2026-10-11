@@ -331,6 +331,22 @@ describe('a personal library', () => {
     expect(sent[1]?.body).toEqual({});
   });
 
+  it('lists every personal library for an administrator, each id ready to open', async () => {
+    const hex = 'b'.repeat(32);
+    const { calls, client } = stub(() => ({
+      body: { items: [{ library: `~${hex}`, owner: 'iss|sub', skills: 2 }], truncated: true },
+    }));
+    const listed = await client.listPersonalLibraries();
+    expect(calls.map((c) => c.url)).toEqual(['http://h/skill-library/-/personal']);
+    expect(listed).toEqual({
+      items: [{ library: hex, owner: 'iss|sub', skills: 2 }],
+      truncated: true,
+    });
+    // The id it returns is one the per-skill calls accept.
+    await client.getLibrarySkill('notes', listed.items[0]?.library);
+    expect(calls[1]?.url).toBe(`http://h/skill-library/~${hex}/notes`);
+  });
+
   it('refuses a library that could not be one, before asking', async () => {
     const { sent, felix } = await client();
     await expect(felix.getLibrarySkill('notes', '../org')).rejects.toMatchObject({

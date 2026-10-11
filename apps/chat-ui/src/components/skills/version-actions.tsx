@@ -15,6 +15,7 @@ import {
   useFreshPreview,
   useFreshSkill,
   useKnownPreview,
+  useLibraryReadOnly,
   useVersionActions,
 } from './queries';
 import { isForbidden, RefusalNotice } from './refusal';
@@ -54,7 +55,13 @@ const DECISION_SLOT = 'min-w-0 flex-1';
  * already in hand — read by a `GateLine` on screen or by a confirm that armed —
  * and when it is not, Publish stays, and arming reads it.
  */
-export function VersionDecision({
+/** A draft's Publish and Reject — not drawn in someone else's library, which can only be read. */
+export function VersionDecision(props: Parameters<typeof VersionDecisionControls>[0]) {
+  if (useLibraryReadOnly()) return null;
+  return <VersionDecisionControls {...props} />;
+}
+
+function VersionDecisionControls({
   name,
   version,
   liveVersion,
@@ -224,7 +231,13 @@ export function VersionDecision({
 }
 
 /** Roll a once-live version back into place, through the same gate as a publish. */
-export function RollbackButton({ name, version }: { name: string; version: string }) {
+/** Rollback — not drawn in someone else's library, which can only be read. */
+export function RollbackButton(props: { name: string; version: string }) {
+  if (useLibraryReadOnly()) return null;
+  return <RollbackControl {...props} />;
+}
+
+function RollbackControl({ name, version }: { name: string; version: string }) {
   const { rollback } = useVersionActions();
   return (
     <MakeLiveButton

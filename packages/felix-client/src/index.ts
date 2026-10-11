@@ -125,6 +125,7 @@ export {
   isSkillName,
   isStaleWrite,
   librarySegment,
+  type PersonalLibrary,
   REQUEST_BODY_LIMIT_BYTES,
   type ReviewCheck,
   type ReviewQueueItem,

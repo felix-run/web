@@ -453,6 +453,16 @@ export function librarySegment(library: SkillLibraryId): string {
   return library;
 }
 
+/** One person's library, as an administrator's listing shows it. */
+export interface PersonalLibrary {
+  /** The 32-hex digest that opens it read-only (`~{library}`); the harness's leading `~` removed. */
+  library: string;
+  /** Whose it is: the principal's issuer and subject, `issuer|subject`. */
+  owner: string;
+  /** How many skills it holds, archived ones included. */
+  skills: number;
+}
+
 export function createSkillLibraryClient(http: FelixHttp) {
   const { chatFetch } = http;
 
@@ -785,7 +795,28 @@ export function createSkillLibraryClient(http: FelixHttp) {
     );
   }
 
+  /**
+   * GET /skill-library/-/personal → every personal library in the tenant, for an administrator
+   * (`admin`/`*`; anyone else is refused). **Audited** as a look into personal libraries, every
+   * time, so a caller asks when a person asks — never on a timer. The first 500 by owner;
+   * `truncated` says there are more.
+   */
+  async function listPersonalLibraries(): Promise<{
+    items: PersonalLibrary[];
+    truncated: boolean;
+  }> {
+    const body = await read<{ items?: PersonalLibrary[]; truncated?: boolean }>(
+      'skill-library/personal',
+      await chatFetch('/skill-library/-/personal'),
+    );
+    return {
+      items: (body.items ?? []).map((l) => ({ ...l, library: l.library.replace(/^~/, '') })),
+      truncated: body.truncated ?? false,
+    };
+  }
+
   return {
+    listPersonalLibraries,
     listLibrarySkills,
     listSkillReviewQueue,
     getLibrarySkill,
