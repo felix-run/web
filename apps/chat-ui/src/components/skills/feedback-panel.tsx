@@ -82,7 +82,7 @@ export function FeedbackPanel({
   detail: SkillDetail;
   /** The version the form offers as the feedback's target: the live one when there is one. */
   version: string;
-  onApplyToEditor: (version: string) => void;
+  onApplyToEditor?: (version: string) => void;
 }) {
   const name = detail.name;
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>('all');
@@ -366,7 +366,7 @@ function FeedbackOutcome({
         <ConfirmButton
           size="xs"
           variant="outline"
-          question={`The editor loads ${result} as a new edit based on it; unsaved edits there are discarded.`}
+          question={`Opens the editor in the side pane, starting from ${result}; your next save is based on it.`}
           confirmLabel={`Load ${result}`}
           onConfirm={() => onApplyToEditor(result)}
         >

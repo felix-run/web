@@ -270,10 +270,9 @@ cap before sending.
 **The shell is a layout route, and that is load-bearing.** `src/App.tsx` is now the route table
 alone (react-router v7, declarative — a literal version in `apps/chat-ui`, single-use, so not the
 catalog), mounted by `main.tsx` under a `createBrowserRouter` with one splat route rather than
-`BrowserRouter`: still no loaders or actions, but `useBlocker` (the skill editor's unsaved-changes
-guard) exists only under a data router, and `UnsavedChangesGuard` renders nothing under the
-`MemoryRouter` the tests mount (`tests/skill-library-actions.test.tsx` mounts a
-`createMemoryRouter` to hold it). TanStack Query is the skill library's alone and loads with it:
+`BrowserRouter`: still no loaders or actions (the skill editor's `useBlocker` guard that
+needed it went when the editor moved into the side pane, whose store keeps the edit across
+navigation). TanStack Query is the skill library's alone and loads with it:
 `components/skills/query-root.tsx` creates one client lazily and each lazy skills entry point
 wraps itself in it, unless a host (a test) already provided one; everything older polls through
 `usePoll`; `src/app-shell.tsx` is the layout route that owns the engine, the thread, the `/approvals`
@@ -1049,7 +1048,7 @@ Flows worth knowing before editing the app:
   diff against live open on the first row, publish or reject with a note), a feedback inbox, a list
   filtered by status and source, and the tenant's **publish policy** form, which lives here and not
   on a skill's page: it re-decides every skill's drafts. `?skill=&tab=&v=&against=` is a skill's
-  page (Edit, Versions, Gate, Evals, Feedback), so any view is a link; the Gate tab is still
+  page (Versions, Gate, Evals, Feedback; an old `tab=edit` opens Versions), so any view is a link; the Gate tab is still
   `tab=review` in the address, and a stored version's files are a section of Versions, so an old
   `tab=files` link lands there. **No decision is asked before the evidence:** every publish and
   rollback confirm reads the gate's verdict (`GET …/preview`) fresh alongside the live version, a
@@ -1116,9 +1115,25 @@ Flows worth knowing before editing the app:
   them **only on Show** — the harness audits every listing as `personal_library_accessed`, so a
   mount or a poll would record looks nobody took. That library is read-only except Archive:
   `useLibraryReadOnly()` (a library that is neither the team's nor `me`) makes `VersionDecision`
-  and `RollbackButton` render nothing, drops the Edit tab (an address naming it opens Versions,
-  and the working copy is never loaded), and leaves out New skill, Promote and Adopt.
+  and `RollbackButton` render nothing, `useOpenSkillEditor` answer null (so no Edit anywhere),
+  and leaves out New skill, Promote and Adopt.
   `tests/skill-admin-personal.test.tsx` pins it.
+  **A skill is edited in the side pane, and only there** (2026-10-11). The skill page's Edit,
+  *Edit to fix* on a refused draft, *Apply to editor* on an applied feedback rewrite, New skill
+  and the chat card's Edit all go through `useOpenSkillEditor` (`open-skill-editor.ts`), which
+  opens a `kind: 'skill'` pane item (key `skill:<library>/<name>`) and, from `/harness`, goes back
+  to the thread. The pane draws it through the lazy `skill-pane-view.tsx`, which is `EditPanel`
+  over `useSkillEditor` unchanged, plus a Versions link back to the page. **The editor's state
+  lives on the item** (`SkillEditSnapshot`: `loadedFrom`, `parent`, the working copy while it
+  differs, and a rebase's `onto`/`base`/`mine`/`resolutions`), handed back on every change
+  (`onKeep`) and read on the next mount (`kept`), because an inactive pane tab renders nothing —
+  and losing a rebase in progress would let a save undo files the newer version changed.
+  `useSkillBundle` takes the kept copy as `draft` once, on its first load, and guards that load
+  against StrictMode's second effect run, which otherwise put the stored files back over it (the
+  bug a first version shipped to dev; `tests/skill-library-actions.test.tsx` remounts under
+  `StrictMode` on a warm cache to pin it). An apply-from-version refuses rather than replace an
+  unsaved edit. The Versions tab no longer compares against "the editor".
+  `tests/skill-editor-pane.test.tsx` and the `PaneShell` fixture cover the rest.
   **Skills from GitHub** are `management/skill-import.ts` and `components/skills/skill-import.tsx`:
   *Import from GitHub* (browse, then import one as a draft; a file inside the cooldown says the day
   it can be taken rather than offering an import the harness would refuse), *Imported skills*
@@ -1630,11 +1645,11 @@ language Shiki lacks makes `createHighlighter` reject and the code block does no
 reply's code block asks Shiki itself, `useShikiKnows`, since its fence can name anything.)
 
 **The side pane replaced that drawer** (2026-10-10, `components/pane/`, store `src/lib/side-pane.ts`).
-Four things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6, the oldest
+Five things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6, the oldest
 *clean* one dropped first): a workspace file (the file tree, a Changes row a write landed on), a
 spilled tool output (`Open full output` in the tool card), a reply's code block (an Open control
 `OpenablePre` adds to streamdown's header by wrapping the pass-through `pre`, so Shiki is kept),
-and a tool's image. Opening goes through `ShellValue.openInPane`, which is **optional** — a test's
+a tool's image, and a skill's editor (see **Skill library**). Opening goes through `ShellValue.openInPane`, which is **optional** — a test's
 partial shell leaves every Open control out — and goes back to the thread from `/harness`. Rules
 that are easy to break:
 - **It takes the instrument's zone, never a fourth column.** From 1280 the shell reports the

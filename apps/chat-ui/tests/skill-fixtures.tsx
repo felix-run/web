@@ -4,6 +4,9 @@ import { render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import { expect, vi } from 'vitest';
+import SkillPaneView from '../src/components/skills/skill-pane-view';
+import { openInPane, type PaneItemInput, usePaneState } from '../src/lib/side-pane';
+import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
  * Shared by the skill library suites: a fake harness at the `fetch` seam and a
@@ -135,4 +138,43 @@ export function expectSameWeight(publish: HTMLElement, reject: HTMLElement) {
   for (const s of [publishSlot, rejectSlot]) {
     expect(classes(s).filter((c) => sizes.test(c))).toEqual([]);
   }
+}
+
+/**
+ * A skill's editor as the side pane holds it: opened into thread `t`'s pane, rendered from
+ * the pane's store, so what the editor keeps on its item is what the next mount reads back.
+ */
+export function SkillEditorInPane({ name, library }: { name: string; library?: string }) {
+  const { items } = usePaneState('t');
+  const item = items.find((i) => i.kind === 'skill' && i.name === name && i.library === library);
+  if (item?.kind !== 'skill') return null;
+  return <SkillPaneView threadId="t" item={item} />;
+}
+
+export function mountSkillEditor(name: string, library?: string) {
+  openInPane('t', { kind: 'skill', name, ...(library ? { library } : {}) });
+  return mountWithProviders(<SkillEditorInPane name={name} library={library} />);
+}
+
+/**
+ * Enough of the shell for a skill surface to open its editor: `openInPane` into thread `t`'s
+ * pane, and the pane's skill tabs drawn below the page, as the workbench would beside it.
+ */
+export function PaneShell({ children }: { children: ReactNode }) {
+  const { items, active } = usePaneState('t');
+  const shell = {
+    threadId: 't',
+    openInPane: (item: PaneItemInput) => openInPane('t', item),
+  } as unknown as ShellValue;
+  const front = items.find((i) => i.key === active);
+  return (
+    <ShellProvider value={shell}>
+      {children}
+      {front?.kind === 'skill' && (
+        <section aria-label="Side pane">
+          <SkillPaneView key={front.key} threadId="t" item={front} />
+        </section>
+      )}
+    </ShellProvider>
+  );
 }

@@ -3,13 +3,12 @@ import { Button } from '@felix/ui/button';
 import { Textarea } from '@felix/ui/textarea';
 import { CircleAlertIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { DECISION_BUTTON } from '@/components/approval/approval-decision';
 import { ConfirmButton } from '@/components/confirm-button';
-import { skillEditHref } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { GateVerdictLine } from './gate-line';
+import { useOpenSkillEditor } from './open-skill-editor';
 import {
   type MakeLive,
   useFreshPreview,
@@ -92,6 +91,7 @@ function VersionDecisionControls({
   className?: string;
 }) {
   const { publish, reject } = useVersionActions();
+  const openEditor = useOpenSkillEditor();
   const known = useKnownPreview(name, version);
   const refused = known?.policy_passes === false ? known : null;
   const failure = publish.error ?? reject.error;
@@ -137,10 +137,15 @@ function VersionDecisionControls({
       {refused && !showsVerdict && <GateVerdictLine preview={refused} />}
       {!rejecting ? (
         <div className="flex flex-wrap gap-2">
-          {canPublish && refused && (
+          {canPublish && refused && openEditor && (
             <div className={DECISION_SLOT}>
-              <Button asChild size="sm" variant="outline" className={cn(DECISION_BUTTON, 'w-full')}>
-                <Link to={skillEditHref(name)}>Edit to fix</Link>
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(DECISION_BUTTON, 'w-full')}
+                onClick={() => openEditor(name)}
+              >
+                Edit to fix
               </Button>
             </div>
           )}

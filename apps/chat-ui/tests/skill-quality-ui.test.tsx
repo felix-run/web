@@ -11,10 +11,12 @@ import { policySentence } from '../src/components/skills/refusal';
 import { SaveDialog } from '../src/components/skills/save-dialog';
 import { SkillLibrary, SkillLibraryPage } from '../src/components/skills/skill-library';
 import { VersionDecision } from '../src/components/skills/version-actions';
+import { paneState, resetPanes } from '../src/lib/side-pane';
 import {
   fakeHarness,
   fileBody,
   mountWithProviders,
+  PaneShell,
   type Recorded,
   SKILL_MD,
   versionRow,
@@ -31,6 +33,8 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  resetPanes();
+  sessionStorage.clear();
 });
 
 const ID = '0f8e2c1a-4b3d-4e5f-8a9b-0c1d2e3f4a5b';
@@ -674,14 +678,20 @@ describe('review fixes', () => {
       fireEvent.mouseDown(screen.getByRole('tab', { name: 'Feedback' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Apply to editor' }));
       fireEvent.click(screen.getByRole('button', { name: 'Load 0.1.2' }));
-      const source = (await screen.findByLabelText('SKILL.md source')) as HTMLTextAreaElement;
+      const pane = await screen.findByRole('region', { name: 'Side pane' });
+      const source = (await within(pane).findByLabelText('SKILL.md source')) as HTMLTextAreaElement;
       await waitFor(() => expect(source.value).toBe(DRAFT));
       return source;
     }
 
-    it('loads the draft into the editor, and the next save names it as the parent', async () => {
+    it('opens the draft in the pane editor, and the next save names it as the parent', async () => {
       const h = harness();
-      mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=roll-dice&tab=feedback');
+      mountWithProviders(
+        <PaneShell>
+          <SkillLibraryPage />
+        </PaneShell>,
+        '/harness/skills?skill=roll-dice&tab=feedback',
+      );
       const source = await apply();
       fireEvent.change(source, { target: { value: `${DRAFT}3. Done.\n` } });
       fireEvent.click(screen.getByRole('button', { name: /Save version/ }));
@@ -695,14 +705,20 @@ describe('review fixes', () => {
       );
     });
 
-    it('discards unsaved edits when the same draft is applied a second time', async () => {
+    it('never drops an unsaved edit when the draft is applied a second time', async () => {
       harness();
-      mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=roll-dice&tab=feedback');
+      mountWithProviders(
+        <PaneShell>
+          <SkillLibraryPage />
+        </PaneShell>,
+        '/harness/skills?skill=roll-dice&tab=feedback',
+      );
       const source = await apply();
       fireEvent.change(source, { target: { value: `${DRAFT}unsaved\n` } });
-      const again = await apply();
-      expect(again.value).toBe(DRAFT);
-      expect(document.body.textContent).not.toContain('unsaved changes');
+      fireEvent.click(screen.getByRole('button', { name: 'Apply to editor' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Load 0.1.2' }));
+      const kept = screen.getByLabelText('SKILL.md source') as HTMLTextAreaElement;
+      await waitFor(() => expect(kept.value).toBe(`${DRAFT}unsaved\n`));
     });
   });
 });
@@ -730,15 +746,18 @@ describe('the decision states the evidence', () => {
           ? { body: preview(false, ['quality 40 < 60.']) }
           : undefined,
     );
-    mountWithProviders(<VersionDecision name="roll-dice" version="0.1.1" liveVersion="0.1.0" />);
+    mountWithProviders(
+      <PaneShell>
+        <VersionDecision name="roll-dice" version="0.1.1" liveVersion="0.1.0" />
+      </PaneShell>,
+    );
     // Not known yet, so Publish is offered; arming reads the verdict.
     fireEvent.click(screen.getByRole('button', { name: 'Publish 0.1.1' }));
     expect(await screen.findByText('The gate would refuse 0.1.1: quality 40 < 60.')).toBeTruthy();
     expect(h.requests.some((r) => r.path.endsWith('/versions/0.1.1/preview'))).toBe(true);
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Publish 0.1.1' })).toBeNull());
-    expect(screen.getByRole('link', { name: 'Edit to fix' }).getAttribute('href')).toBe(
-      '/harness/skills?skill=roll-dice&tab=edit',
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit to fix' }));
+    expect(paneState('t').items.map((i) => i.key)).toEqual(['skill:/roll-dice']);
     expect(screen.getByRole('button', { name: 'Reject…' })).toBeTruthy();
     expect(h.requests.some((r) => r.method === 'POST')).toBe(false);
   });

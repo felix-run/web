@@ -8,10 +8,13 @@ import {
   ImageIcon,
   ImageOffIcon,
   PackageOpenIcon,
+  PuzzleIcon,
   XIcon,
 } from 'lucide-react';
 import {
   type KeyboardEvent,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -45,6 +48,10 @@ import {
   usePaneState,
 } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
+
+// The skill editor is the library's chunk (the YAML parser, Query): loaded with the first
+// skill opened here, never with the pane.
+const SkillPaneView = lazy(() => import('@/components/skills/skill-pane-view'));
 
 /**
  * The side pane: what the operator opened beside the conversation — a
@@ -249,6 +256,16 @@ export function SidePane({
               <ArtifactView threadId={threadId} item={item} />
             ) : item.kind === 'code' ? (
               <CodeView threadId={threadId} item={item} />
+            ) : item.kind === 'skill' ? (
+              <Suspense
+                fallback={
+                  <p role="status" className="px-4 py-3 text-sm text-muted-foreground">
+                    Opening {item.name}…
+                  </p>
+                }
+              >
+                <SkillPaneView threadId={threadId} item={item} />
+              </Suspense>
             ) : (
               <ImageView item={item} />
             )}
@@ -269,6 +286,8 @@ function labelOf(item: PaneItem): string {
       return item.title;
     case 'image':
       return toolOfImage(item.title);
+    case 'skill':
+      return item.name;
   }
 }
 
@@ -287,6 +306,7 @@ const ICONS = {
   artifact: PackageOpenIcon,
   code: BracesIcon,
   image: ImageIcon,
+  skill: PuzzleIcon,
 } as const;
 
 /**
@@ -297,7 +317,7 @@ const ICONS = {
 function PaneTab({ item, onClose }: { item: PaneItem; onClose: () => void }) {
   const Icon = ICONS[item.kind];
   const label = labelOf(item);
-  const full = item.kind === 'file' ? item.path : item.title;
+  const full = item.kind === 'file' ? item.path : item.kind === 'skill' ? item.name : item.title;
   const dirty = isDirty(item);
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Delete' || e.key === 'Backspace') {

@@ -26,7 +26,6 @@ import {
   VersionStateBadge,
   versionState,
 } from './skill-status';
-import { EDITOR } from './skill-tabs';
 import { RollbackButton, VersionDecision } from './version-actions';
 import { versionOptionLabel } from './version-picker';
 
@@ -43,24 +42,20 @@ export function VersionsPanel({
   detail,
   selected,
   against,
-  editorSkillMd,
   onCompare,
 }: {
   detail: SkillDetail;
   selected: string;
-  /** A version, or `EDITOR` for the working copy. */
   against: string;
-  /** The working copy's SKILL.md, when the editor has one loaded. */
-  editorSkillMd: string | null;
   onCompare: (selected: string, against: string) => void;
 }) {
   const name = detail.name;
-  const left = useSkillFile(name, against === EDITOR ? null : against);
+  const left = useSkillFile(name, against);
   const right = useSkillFile(name, selected);
   const leftId = useId();
   const rightId = useId();
 
-  const leftText = against === EDITOR ? editorSkillMd : (left.data?.content ?? null);
+  const leftText = left.data?.content ?? null;
   const rightText = right.data?.content ?? null;
   const error = left.error ?? right.error;
 
@@ -77,9 +72,6 @@ export function VersionsPanel({
             onChange={(e) => onCompare(selected, e.target.value)}
             className="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
           >
-            <option value={EDITOR} disabled={editorSkillMd === null}>
-              the editor
-            </option>
             {detail.versions.map((v) => (
               <option key={v.version} value={v.version}>
                 {versionOptionLabel(v, detail.live_version)}
@@ -105,22 +97,16 @@ export function VersionsPanel({
         {error ? (
           <RefusalNotice error={error} doing="read the versions to compare" />
         ) : leftText === null || rightText === null ? (
-          <p className="text-sm text-muted-foreground">
-            {against === EDITOR && editorSkillMd === null
-              ? 'The editor has not loaded this skill yet. Open the Edit tab, or compare two versions.'
-              : 'Reading both sides…'}
-          </p>
+          <p className="text-sm text-muted-foreground">Reading both sides…</p>
         ) : (
           <div className="space-y-2">
             <DiffView
               before={leftText}
               after={rightText}
-              beforeLabel={against === EDITOR ? 'editor' : against}
+              beforeLabel={against}
               afterLabel={selected}
             />
-            {against !== EDITOR && (
-              <BundleChanges name={name} before={against} after={selected} skipSkillMd />
-            )}
+            <BundleChanges name={name} before={against} after={selected} skipSkillMd />
           </div>
         )}
       </PageSection>

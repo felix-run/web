@@ -1,38 +1,29 @@
 import { isSkillLibraryError } from '@felix/client';
+import { Button } from '@felix/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
-import { ArrowLeftIcon, PuzzleIcon } from 'lucide-react';
-import { useContext, useEffect, useState } from 'react';
+import { ArrowLeftIcon, PencilIcon, PuzzleIcon } from 'lucide-react';
+import { useContext } from 'react';
 import { Link } from 'react-router';
 import { PageBack, PageHeader, Panel, PanelBody } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
-import { EditPanel } from './edit-panel';
 import { EvalsPanel } from './evals-panel';
 import { FeedbackPanel } from './feedback-panel';
-import { useLibraryId, useLibraryReadOnly, useLibrarySkill } from './queries';
+import { useOpenSkillEditor } from './open-skill-editor';
+import { useLibraryId, useLibrarySkill } from './queries';
 import { ReviewPanel } from './review-panel';
 import { SourceCheck } from './skill-import';
 import { ShadowsUploadNotice, UpstreamLine } from './skill-status';
-import {
-  EDITOR,
-  leavesSkill,
-  ORG_ONLY_TABS,
-  SKILL_TABS,
-  type SkillAddress,
-  type SkillTab,
-} from './skill-tabs';
-import { UnsavedChangesGuard } from './unsaved-guard';
-import { useSkillEditor } from './use-skill-editor';
+import { ORG_ONLY_TABS, SKILL_TABS, type SkillAddress, type SkillTab } from './skill-tabs';
 import { VersionPicker } from './version-picker';
 import { VersionsPanel } from './versions-panel';
 
 /**
- * One skill: its editor, its versions and their files, the gate's verdict,
- * its evaluations and its feedback, each a tab, all in the address (`?skill=&tab=&v=&against=`) so any view of it is
+ * One skill: its versions and their files, the gate's verdict, its evaluations and its
+ * feedback, each a tab, all in the address (`?skill=&tab=&v=&against=`) so any view of it is
  * a link someone else can open.
  *
- * The editor's working copy lives here, above the tabs, so a trip to Versions
- * to diff it — and back — keeps the edits. Leaving the page with edits unsaved
- * asks first.
+ * Editing is not a tab here: Edit opens the skill in the side pane, beside a conversation,
+ * which is the one editor (`useOpenSkillEditor`). An old `tab=edit` link opens Versions.
  */
 export function SkillPage({
   name,
@@ -48,24 +39,16 @@ export function SkillPage({
   const skill = useLibrarySkill(name);
   // A personal library has no evaluations or feedback; an address naming either opens Versions.
   const personal = useLibraryId() !== undefined;
-  // Someone else's library, for an administrator: there is nothing to edit there.
-  const readOnly = useLibraryReadOnly();
+  // Someone else's library, for an administrator: there is nothing to edit there, and
+  // `useOpenSkillEditor` answers null for it.
+  const openEditor = useOpenSkillEditor();
   // The draft an update saves is a version of this skill: its Versions tab, on that version.
   const sourceLink = (n: string, v?: string) =>
     `?skill=${encodeURIComponent(n)}${v ? `&v=${encodeURIComponent(v)}&tab=versions` : ''}`;
-  const tab: SkillTab =
-    (personal && ORG_ONLY_TABS.has(address.tab)) || (readOnly && address.tab === 'edit')
-      ? 'versions'
-      : address.tab;
+  const tab: SkillTab = personal && ORG_ONLY_TABS.has(address.tab) ? 'versions' : address.tab;
   const layoutBack = useContext(PageBack);
   const detail = skill.data;
   const missing = isMissing(skill.error);
-  // Sticky: once the Edit tab has been opened, the working copy stays loaded.
-  const [editing, setEditing] = useState(tab === 'edit');
-  useEffect(() => {
-    if (tab === 'edit') setEditing(true);
-  }, [tab]);
-  const editor = useSkillEditor(name, detail, editing);
 
   const newest = detail?.versions[0]?.version ?? null;
   const version =
@@ -75,10 +58,9 @@ export function SkillPage({
   // An `against` the skill does not hold is a stale or hand-edited link: it
   // falls back to the default comparison rather than asking for a version
   // that does not exist.
-  const knownAgainst =
-    address.against === EDITOR || detail?.versions.some((v) => v.version === address.against)
-      ? address.against
-      : null;
+  const knownAgainst = detail?.versions.some((v) => v.version === address.against)
+    ? address.against
+    : null;
   const against =
     knownAgainst ??
     (detail?.live_version && detail.live_version !== version
@@ -121,25 +103,22 @@ export function SkillPage({
                 )}
                 {/* No strip over a link to nothing: six tab stops that each led to
                     the same "no skill called" line. */}
+                {!missing && openEditor && detail && (
+                  <Button size="sm" variant="outline" onClick={() => openEditor(name)}>
+                    <PencilIcon aria-hidden className="size-3.5" />
+                    Edit
+                  </Button>
+                )}
                 {!missing && (
                   <TabsList
                     aria-label={`${name} view`}
                     className="w-auto group-data-[orientation=horizontal]/tabs:h-8"
                   >
                     {SKILL_TABS.filter(
-                      (t) =>
-                        t.ready &&
-                        !(personal && ORG_ONLY_TABS.has(t.id)) &&
-                        !(readOnly && t.id === 'edit'),
+                      (t) => t.ready && !(personal && ORG_ONLY_TABS.has(t.id)),
                     ).map((t) => (
                       <TabsTrigger key={t.id} value={t.id} className="px-2.5 text-xs">
                         {t.label}
-                        {t.id === 'edit' && editor.bundle.dirty && (
-                          <>
-                            <span aria-hidden className="size-1.5 rounded-full bg-foreground" />
-                            <span className="sr-only"> (unsaved)</span>
-                          </>
-                        )}
                       </TabsTrigger>
                     ))}
                   </TabsList>
@@ -148,13 +127,6 @@ export function SkillPage({
             }
           />
         </PageBack.Provider>
-        <UnsavedChangesGuard
-          when={editor.bundle.dirty}
-          leaves={leavesSkill}
-          onKeep={() =>
-            document.querySelector<HTMLTextAreaElement>('textarea[data-skill-source]')?.focus()
-          }
-        />
         <PanelBody className="space-y-4">
           {missing ? (
             <SkillNotFound name={name} backTo={backTo} />
@@ -177,16 +149,12 @@ export function SkillPage({
             ) : null
           ) : (
             <>
-              <TabsContent value="edit">
-                <EditPanel name={name} editor={editor} />
-              </TabsContent>
               <TabsContent value="versions">
                 {version && (
                   <VersionsPanel
                     detail={detail}
                     selected={version}
                     against={against ?? version}
-                    editorSkillMd={editing ? (editor.bundle.files['SKILL.md'] ?? null) : null}
                     onCompare={(v, a) => onAddress({ version: v, against: a })}
                   />
                 )}
@@ -226,13 +194,13 @@ export function SkillPage({
                   <FeedbackPanel
                     detail={detail}
                     version={detail.live_version ?? version}
-                    onApplyToEditor={(v) => {
-                      // A new edit based on the AI draft: the working copy is
-                      // replaced, and the next save names that draft as its parent.
-                      setEditing(true);
-                      editor.reloadFrom(v);
-                      onAddress({ tab: 'edit' });
-                    }}
+                    onApplyToEditor={
+                      openEditor
+                        ? // A new edit based on the AI draft, opened in the pane from that
+                          // version: the next save names it as its parent.
+                          (v) => openEditor(name, { from: v })
+                        : undefined
+                    }
                   />
                 )}
               </TabsContent>
