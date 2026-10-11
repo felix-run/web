@@ -18,7 +18,7 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-async function sheet(warnings: string[] | undefined) {
+async function sheet(warnings: string[] | undefined, activeAfter = 4) {
   const createManifestVersion = vi.fn().mockResolvedValue({
     name: 'ops',
     version: 5,
@@ -29,7 +29,10 @@ async function sheet(warnings: string[] | undefined) {
   vi.doMock('../src/api', () => ({
     listTenantManifests: vi
       .fn()
-      .mockResolvedValue([{ name: 'ops', version: 4, canary_version: null, canary_weight: 0 }]),
+      .mockResolvedValueOnce([{ name: 'ops', version: 4, canary_version: null, canary_weight: 0 }])
+      .mockResolvedValue([
+        { name: 'ops', version: activeAfter, canary_version: null, canary_weight: 0 },
+      ]),
     getResolvedManifest: vi.fn().mockResolvedValue({
       source: 'tenant_postgres',
       version: 4,
@@ -64,10 +67,22 @@ describe("a saved manifest's warnings", () => {
       if (!el) throw new Error('no note yet');
       return el;
     });
-    expect(note.textContent).toContain('v5 is saved and active, with a warning');
+    // A save appends without activating: v4 is still the one serving.
+    expect(note.textContent).toContain('v5 is saved, with a warning. It is not active');
+    expect(note.textContent).not.toContain('saved and active');
     expect(note.textContent).toContain('add delete_file to rule `workspace-write`');
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(document.querySelector('[data-slot="manifest-warnings"]')).toBeNull();
+  });
+
+  it('say the version is live only when it is the one serving', async () => {
+    await sheet([WARNING], 5);
+    const note = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-slot="manifest-warnings"]');
+      if (!el?.textContent?.includes('active,')) throw new Error('not yet');
+      return el;
+    });
+    expect(note.textContent).toContain('v5 is saved and active, with a warning');
   });
 
   it('say nothing for a clean save, or from a harness that sends none', async () => {
