@@ -1111,6 +1111,14 @@ Flows worth knowing before editing the app:
   **Promote** (`PromoteButton`), which drafts into the team library and never publishes. A 403
   that names its code (`no_personal_library`, `missing_scope:…`) is said in its words, not as
   the generic `skills:write` one.
+  **An administrator reads other people's libraries** (`?lib=<32 hex>`, `listPersonalLibraries`
+  → `GET /-/personal`, which strips the `~`). The team page's *Personal libraries* section lists
+  them **only on Show** — the harness audits every listing as `personal_library_accessed`, so a
+  mount or a poll would record looks nobody took. That library is read-only except Archive:
+  `useLibraryReadOnly()` (a library that is neither the team's nor `me`) makes `VersionDecision`
+  and `RollbackButton` render nothing, drops the Edit tab (an address naming it opens Versions,
+  and the working copy is never loaded), and leaves out New skill, Promote and Adopt.
+  `tests/skill-admin-personal.test.tsx` pins it.
   **Skills from GitHub** are `management/skill-import.ts` and `components/skills/skill-import.tsx`:
   *Import from GitHub* (browse, then import one as a draft; a file inside the cooldown says the day
   it can be taken rather than offering an import the harness would refuse), *Imported skills*

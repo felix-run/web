@@ -28,6 +28,7 @@ import {
   listFeedbackInbox,
   listLibrarySkills,
   listOutdatedSkills,
+  listPersonalLibraries,
   listSkillEvals,
   listSkillFeedback,
   listSkillReviewQueue,
@@ -77,6 +78,16 @@ export const SkillLibraryContext = createContext<SkillLibraryId | undefined>(und
 
 export function useLibraryId(): SkillLibraryId | undefined {
   return useContext(SkillLibraryContext);
+}
+
+/**
+ * Someone else's library, opened by an administrator: it can be read and its skills archived,
+ * and nothing else — the harness refuses every other write with `personal_library_read_only`, so
+ * the controls for them are not drawn.
+ */
+export function useLibraryReadOnly(): boolean {
+  const lib = useContext(SkillLibraryContext);
+  return lib !== undefined && lib !== 'me';
 }
 
 /** The cache's word for a library: the same name in two libraries is two skills. */
@@ -468,6 +479,20 @@ export function useOutdatedSkills(refresh: number) {
     queryKey: [...skillKeys.all, 'upstream', refresh] as const,
     queryFn: () => listOutdatedSkills({ refresh: refresh > 0, limit: 25 }),
     staleTime: 60_000,
+  });
+}
+
+/**
+ * Every personal library in the tenant, for an administrator. Read only when asked: the harness
+ * records each listing in the audit log, so it is a button and never a mount or a poll.
+ */
+export function usePersonalLibraries(asked: boolean) {
+  return useQuery({
+    queryKey: [...skillKeys.all, 'personal-libraries'] as const,
+    queryFn: () => listPersonalLibraries(),
+    enabled: asked,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
   });
 }
 

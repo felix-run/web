@@ -8,7 +8,7 @@ import { ReadFailure } from '@/components/inspector/primitives';
 import { EditPanel } from './edit-panel';
 import { EvalsPanel } from './evals-panel';
 import { FeedbackPanel } from './feedback-panel';
-import { useLibraryId, useLibrarySkill } from './queries';
+import { useLibraryId, useLibraryReadOnly, useLibrarySkill } from './queries';
 import { ReviewPanel } from './review-panel';
 import { SourceCheck } from './skill-import';
 import { ShadowsUploadNotice, UpstreamLine } from './skill-status';
@@ -48,18 +48,23 @@ export function SkillPage({
   const skill = useLibrarySkill(name);
   // A personal library has no evaluations or feedback; an address naming either opens Versions.
   const personal = useLibraryId() !== undefined;
+  // Someone else's library, for an administrator: there is nothing to edit there.
+  const readOnly = useLibraryReadOnly();
   // The draft an update saves is a version of this skill: its Versions tab, on that version.
   const sourceLink = (n: string, v?: string) =>
     `?skill=${encodeURIComponent(n)}${v ? `&v=${encodeURIComponent(v)}&tab=versions` : ''}`;
-  const tab: SkillTab = personal && ORG_ONLY_TABS.has(address.tab) ? 'versions' : address.tab;
+  const tab: SkillTab =
+    (personal && ORG_ONLY_TABS.has(address.tab)) || (readOnly && address.tab === 'edit')
+      ? 'versions'
+      : address.tab;
   const layoutBack = useContext(PageBack);
   const detail = skill.data;
   const missing = isMissing(skill.error);
   // Sticky: once the Edit tab has been opened, the working copy stays loaded.
-  const [editing, setEditing] = useState(address.tab === 'edit');
+  const [editing, setEditing] = useState(tab === 'edit');
   useEffect(() => {
-    if (address.tab === 'edit') setEditing(true);
-  }, [address.tab]);
+    if (tab === 'edit') setEditing(true);
+  }, [tab]);
   const editor = useSkillEditor(name, detail, editing);
 
   const newest = detail?.versions[0]?.version ?? null;
@@ -122,7 +127,10 @@ export function SkillPage({
                     className="w-auto group-data-[orientation=horizontal]/tabs:h-8"
                   >
                     {SKILL_TABS.filter(
-                      (t) => t.ready && !(personal && ORG_ONLY_TABS.has(t.id)),
+                      (t) =>
+                        t.ready &&
+                        !(personal && ORG_ONLY_TABS.has(t.id)) &&
+                        !(readOnly && t.id === 'edit'),
                     ).map((t) => (
                       <TabsTrigger key={t.id} value={t.id} className="px-2.5 text-xs">
                         {t.label}
