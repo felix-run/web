@@ -1,4 +1,4 @@
-import { Brain, Bug, Eraser, Palette, PenSquare, Play } from 'lucide-react';
+import { Brain, Bug, ClipboardList, Eraser, Palette, PenSquare, Play } from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -52,6 +52,12 @@ export const slashCommands: SlashCommand[] = [
     description: 'Cycle thinking level (off → max)',
     icon: <Brain className="size-3.5" />,
     action: 'think',
+  },
+  {
+    name: 'plan',
+    description: 'Plan mode on or off: read and propose only',
+    icon: <ClipboardList className="size-3.5" />,
+    action: 'plan',
   },
   {
     name: 'debug',

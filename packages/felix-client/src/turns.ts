@@ -43,6 +43,39 @@ export interface ToolCall {
    * what a client may draw without asking anyone else for it.
    */
   images?: ImageAttachment[];
+  /**
+   * A `todo_write` call's list as the harness confirmed it (`todo_updated`), set
+   * while the call is still running. The frame is sent only for a write it
+   * accepted, so this is what lets a checklist show before the call's result.
+   */
+  todos?: TodoItem[];
+  /**
+   * A `task` call's child agent as the stream reported it (`subagent_start` /
+   * `subagent_end`). A transcript rebuilt from the log has none, and
+   * `subagentOf` reads the same facts off the call's arguments and result.
+   */
+  subagent?: SubagentRun;
+}
+
+/** One item of the agent's checklist (`todo_write`). */
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  /** The item as it reads while under way ("Running tests"); empty when not given. */
+  activeForm: string;
+}
+
+/**
+ * A child agent a `task` call started. `running` and `ok`/`failed` are a
+ * foreground child's, bracketed by the call; `background` is a durable run of its
+ * own, which this thread's stream never reports the end of.
+ */
+export interface SubagentRun {
+  agent: string;
+  state: 'running' | 'ok' | 'failed' | 'background';
+  /** A background child's id, which `task_result` reads it by. */
+  taskId?: string;
 }
 
 /**

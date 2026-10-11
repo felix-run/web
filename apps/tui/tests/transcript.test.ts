@@ -728,3 +728,76 @@ describe('an edited message', () => {
     }
   });
 });
+
+describe('what an agent does beside its calls', () => {
+  const turnWith = (tools: Turn['tools']): Turn => ({
+    id: 'a1',
+    role: 'assistant',
+    content: '',
+    tools,
+  });
+
+  it('draws a task call as the child agent it started', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [
+          turnWith([
+            {
+              name: 'task',
+              input: { agent: 'researcher', prompt: 'find the notes' },
+              done: false,
+              subagent: { agent: 'researcher', state: 'running' },
+            },
+            {
+              name: 'task',
+              input: { agent: 'reviewer', prompt: 'review it', background: true },
+              output: "[task] agent 'reviewer' is working in the background as task tok9. Call …",
+              done: true,
+            },
+          ]),
+        ],
+      }),
+      { width: 80, height: 10 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'task researcher · find the notes · researcher working')).toBe(true);
+      expect(shows(frame, 'working in the background as task tok9')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('draws the checklist as a plan, the item under way in its own words', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [
+          turnWith([
+            {
+              name: 'todo_write',
+              input: {
+                todos: [
+                  { content: 'Read the config', status: 'completed' },
+                  { content: 'Fix the parser', status: 'in_progress', active_form: 'Fixing it' },
+                ],
+              },
+              output: 'Todo list updated: 1/2 completed.',
+              done: true,
+            },
+          ]),
+        ],
+      }),
+      { width: 80, height: 10 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, 'Checklist')).toBe(true);
+      expect(shows(frame, 'Fixing it')).toBe(true);
+      expect(shows(frame, 'todo_write')).toBe(false);
+    } finally {
+      ui.stop();
+    }
+  });
+});

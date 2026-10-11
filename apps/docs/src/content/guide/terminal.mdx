@@ -140,6 +140,7 @@ looks like the rest of the code on your machine.
 | `/clear` | Forget this one (`DELETE /chat/history/{id}`). |
 | `/continue` | Let the agent keep going. |
 | `/think <level>` | `off` `minimal` `low` `medium` `high` `xhigh` `max`. |
+| `/plan` | Plan mode on or off, from the next run: the agent only reads and proposes until you approve its plan. The status line says when a thread is in a mode other than its default. |
 | `/manifest [name]` | Switch agent, or list what the harness serves. |
 | `/start <n>` | Put the agent's `n`th starter prompt in the composer, to read and send with Enter. The empty thread numbers them; they come from the manifest's `metadata.starters`, and an agent that declares none has none here. |
 | `/rename <name>` | A durable name, replacing the title derived from the first message. |

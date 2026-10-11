@@ -25,6 +25,7 @@ import {
   formatElapsed,
   interleaveTurn,
   plansInTurn,
+  subagentOf,
 } from '@felix/client';
 import { promptTokens } from '@felix/protocol';
 import {
@@ -187,7 +188,10 @@ function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
     : tool.name.startsWith('client · ')
       ? 'local'
       : '';
-  const arg = summarize(tool.input);
+  // A `task` call is a child agent's job: named by the agent and what it was
+  // handed, and running as that agent. A background child is started, not done.
+  const child = subagentOf(tool);
+  const arg = child ? childSummary(child.agent, tool.input) : summarize(tool.input);
   const spinner = useSpinner(!tool.done);
   // A spill's preview is the part the harness kept inline; everything else is
   // the output as it stands.
@@ -196,7 +200,14 @@ function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
   // `[tool error/permission_denied] …` marker is what the model reads; a person
   // reading it saw a tool that ran and printed a bracket, and then nothing.
   const issue = tool.done ? classifyToolResult(tool.name, tool.output) : null;
-  const result = oneLine(issue ? `${issue.label}: ${issue.message}` : body, RESULT_WIDTH);
+  const result = oneLine(
+    issue
+      ? `${issue.label}: ${issue.message}`
+      : child?.state === 'background'
+        ? `working in the background${child.taskId ? ` as task ${child.taskId}` : ''}`
+        : body,
+    RESULT_WIDTH,
+  );
   return (
     <box>
       <text attributes={DIM}>
@@ -204,7 +215,8 @@ function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
         {name}
         {arg ? ` ${arg}` : ''}
         {kind ? ` · ${kind}` : ''}
-        {!tool.done && tool.phase ? ` · ${tool.phase}` : ''}
+        {!tool.done && child ? ` · ${child.agent} working` : ''}
+        {!tool.done && !child && tool.phase ? ` · ${tool.phase}` : ''}
       </text>
       {tool.done && (result || spill) ? (
         <text attributes={DIM}>
@@ -225,6 +237,12 @@ const TOOL_ARG_WIDTH = 68;
  * narrower than the argument line above it.
  */
 const RESULT_WIDTH = 66;
+
+/** A `task` call's line: which agent, and the job it was handed. */
+function childSummary(agent: string, input: unknown): string {
+  const prompt = (input as { prompt?: unknown } | undefined)?.prompt;
+  return oneLine(typeof prompt === 'string' ? `${agent} · ${prompt}` : agent, TOOL_ARG_WIDTH);
+}
 
 /** One line of the arguments, because a tool card is a line. */
 function summarize(input: unknown): string {

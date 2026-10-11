@@ -6,6 +6,8 @@
  * storage, no notifications, no DOM. A client supplies its own origin,
  * credentials, persistence and renderer; this owns the conversation.
  */
+
+export { subagentOf, TASK_TOOL, TODO_TOOL, todosFromCall } from './agent-work';
 export {
   type ApprovalOutcome,
   type ApprovalRequest,
@@ -147,6 +149,8 @@ export type {
   UsageThreadItem,
 } from './management/usage';
 export {
+  CHECKLIST_ID,
+  checklistFromCall,
   PLAN_TOOLS,
   type PlanCallStep,
   type PlanState,
@@ -193,6 +197,8 @@ export {
   interleaveTurn,
   markToolPhase,
   type ReasoningBlock,
+  type SubagentRun,
+  type TodoItem,
   type ToolCall,
   type Turn,
   type TurnSegment,

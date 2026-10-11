@@ -233,6 +233,15 @@ describe('slash commands', () => {
     h.restore();
   });
 
+  it('/plan stores plan mode on the thread and says so in the status line', async () => {
+    const { ui, h, frame } = await run('/plan');
+    await ui.until(() => h.to('/chat/mode').length > 0);
+    expect(h.to('/chat/mode')[0]?.body).toMatchObject({ mode: 'plan' });
+    await ui.until(() => shows(frame(), 'plan mode'));
+    ui.stop();
+    h.restore();
+  });
+
   it('shows help for a command that does not exist', async () => {
     const { ui, h, frame } = await run('/nope');
     // The help text is the list of real commands, so any one of them proves it.

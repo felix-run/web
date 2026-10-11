@@ -249,10 +249,8 @@ export function App({
   /** `/start <n>` → the composer. `n` bumps so choosing one twice fills twice. */
   const [prefill, setPrefill] = useState<{ text: string; n: number } | null>(null);
   const fill = useCallback((text: string) => setPrefill((p) => ({ text, n: (p?.n ?? 0) + 1 })), []);
-  const { turns, error, streaming, reattaching, approvals, uiPrompt, phase } = useSyncExternalStore(
-    engine.subscribe,
-    () => engine.state,
-  );
+  const { turns, error, streaming, reattaching, approvals, uiPrompt, phase, permissionMode } =
+    useSyncExternalStore(engine.subscribe, () => engine.state);
   const pending = approvals[0] ?? null;
   const blocked = Boolean(pending || uiPrompt || writePrompt);
 
@@ -294,6 +292,8 @@ export function App({
       branchesRef.current = branchPoints(snapshot);
       setBranches(branchesRef.current);
       if (snapshot.phase) engine.setPhase(snapshot.phase);
+      // Absent from a harness older than permission modes: leave the engine's null.
+      if ('permissionMode' in snapshot) engine.setPermissionMode(snapshot.permissionMode ?? null);
     },
     [client, engine],
   );
@@ -973,6 +973,7 @@ export function App({
         origin={config.origin}
         connection={connection}
         phase={phase}
+        mode={permissionMode}
         reattaching={reattaching}
         error={error}
         root={root}

@@ -20,11 +20,13 @@ import {
   type ChatMessage,
   type DurableRun,
   type PendingUiRequest,
+  type PermissionMode,
   promptTokens,
   readUsage,
   type SessionEvent,
   type StreamEvent,
 } from '@felix/protocol';
+import { confirmTodos, endSubagent, readTodos, startSubagent } from './agent-work';
 import {
   describeGate,
   type PendingApproval,
@@ -59,6 +61,12 @@ export interface EngineState {
   /** Gated tool calls waiting on a decision, oldest first. */
   approvals: PendingApproval[];
   uiPrompt: PendingUiRequest | null;
+  /**
+   * The thread's permission mode as last stored, or null for the manifest's
+   * default — from the snapshot (`setPermissionMode`) or an approved plan's
+   * `permission_mode_changed`. Stored, not resolved: see `PermissionMode`.
+   */
+  permissionMode: PermissionMode | null;
 }
 
 export interface ClientToolPort {
@@ -210,6 +218,8 @@ export interface ChatEngine {
   clearUiPrompt(): void;
   setError(message: string | null): void;
   setPhase(phase: string): void;
+  /** Record the thread's stored permission mode — read off a snapshot, or just set. */
+  setPermissionMode(mode: PermissionMode | null): void;
   /** Abort the in-flight run, if any. */
   abort(): void;
   /**
@@ -278,6 +288,7 @@ const IDLE: EngineState = {
   error: null,
   approvals: [],
   uiPrompt: null,
+  permissionMode: null,
 };
 
 /** The status turn, now carrying the run's answer — no longer a status line. */
@@ -824,6 +835,41 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         if (workspaceEdit) interjectNote(workspaceEdit);
         break;
       }
+      // The agent's checklist, confirmed by the harness from inside the `todo_write`
+      // call. It lands on that call, which `plansInTurn` then draws as a checklist
+      // before the call has even returned.
+      case 'todo_updated': {
+        const todos = readTodos((ev.data as { todos?: unknown }).todos);
+        if (todos) patch((t) => ({ ...t, tools: confirmTodos(t.tools, todos) }));
+        break;
+      }
+      // A `task` call's child agent starting and, in the foreground, finishing. The
+      // card says whose work the wait is; an approval or question arriving between
+      // the two is the child's.
+      case 'subagent_start': {
+        const data = ev.data as { agent?: unknown; background?: unknown; task_id?: unknown };
+        if (typeof data.agent !== 'string') break;
+        const start = {
+          agent: data.agent,
+          background: data.background === true,
+          ...(typeof data.task_id === 'string' ? { task_id: data.task_id } : {}),
+        };
+        patch((t) => ({ ...t, tools: startSubagent(t.tools, start) }));
+        break;
+      }
+      case 'subagent_end': {
+        const data = ev.data as { agent?: unknown; outcome?: unknown };
+        if (typeof data.agent !== 'string') break;
+        const end = { agent: data.agent, outcome: String(data.outcome ?? '') };
+        patch((t) => ({ ...t, tools: endSubagent(t.tools, end) }));
+        break;
+      }
+      // An approved `exit_plan_mode` moved the thread out of plan mode mid-run.
+      case 'permission_mode_changed': {
+        const mode = (ev.data as { mode?: unknown }).mode;
+        if (typeof mode === 'string') set({ permissionMode: mode === 'default' ? null : mode });
+        break;
+      }
       // The react loop ran out of `recursion_limit` steps with the model still
       // asking for tools. The harness records the session `truncated` and the
       // `done` frame's `stop_reason` agrees, but nothing in the transcript would:
@@ -1236,7 +1282,14 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       resumeToken = null;
       durableStatus = null;
       lastEventId = undefined;
-      set({ turns: [], error: null, phase: 'idle', approvals: [], uiPrompt: null });
+      set({
+        turns: [],
+        error: null,
+        phase: 'idle',
+        approvals: [],
+        uiPrompt: null,
+        permissionMode: null,
+      });
     },
     send,
     rejoinRun,
@@ -1332,6 +1385,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     },
     setPhase(phase) {
       set({ phase });
+    },
+    setPermissionMode(mode) {
+      // `default` is what null means; one spelling keeps a renderer's test simple.
+      set({ permissionMode: mode === 'default' ? null : mode });
     },
     abort() {
       controller?.abort();
