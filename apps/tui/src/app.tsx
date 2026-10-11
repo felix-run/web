@@ -654,6 +654,10 @@ export function App({
     (text: string) => {
       setNotice(null);
       setQuitArmed(false);
+      // An error line is about the last thing that failed, and this is the next
+      // thing asked for. A send clears it itself; a command did not, so a refusal
+      // stayed above the status line after a later command had worked.
+      engine.setError(null);
       // Sending while scrolled up would otherwise put the reply somewhere you
       // are not looking. Landing at the bottom also re-engages sticky.
       scrollRef.current?.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER });
@@ -664,7 +668,7 @@ export function App({
       if (text.startsWith('/')) command(text);
       else send(text);
     },
-    [command, history, send],
+    [command, engine, history, send],
   );
 
   // The first message from argv, once the engine exists — and once the lease has
