@@ -178,8 +178,8 @@ since the pusher sets it. Every other version has them `null`. The save is audit
 
 | Kept | Dropped, and listed in `dropped_files` |
 |---|---|
-| `SKILL.md`; `plugin.json` at the root; `scripts/`, `references/`, `assets/` | `evals/` — a third party's scenarios would count toward the gate as if the tenant wrote them |
-| a binary asset under `assets/`, stored as base64 | any other file (examples, tests, a `LICENSE`), dot-files and dot-directories, a binary file outside `assets/`, and text that is not UTF-8 |
+| `SKILL.md`; `plugin.json` and a license file (`LICENSE`, `LICENSE.md` or `LICENSE.txt`) at the root; `scripts/`, `references/`, `assets/` | `evals/` — a third party's scenarios would count toward the gate as if the tenant wrote them |
+| a binary asset under `assets/`, stored as base64 | any other file (examples, tests, a README), dot-files and dot-directories, a binary file outside `assets/`, and text that is not UTF-8 |
 
 A `SKILL.md` description over 1,024 characters is clamped. The caps are the bundle format's, checked
 from the tree before any file is downloaded, and past any of them the import is

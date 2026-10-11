@@ -61,6 +61,9 @@ describe('validateSkillName', () => {
 describe('the path allowlist', () => {
   it.each([
     'plugin.json',
+    'LICENSE',
+    'LICENSE.md',
+    'LICENSE.txt',
     'scripts/run.py',
     'references/deep/notes.md',
     'assets/logo.png',
@@ -71,6 +74,8 @@ describe('the path allowlist', () => {
 
   it.each([
     ['README.md', 'unexpected file path'],
+    ['license.txt', 'unexpected file path'],
+    ['COPYING', 'unexpected file path'],
     ['lib/util.py', 'unexpected file path'],
     ['scripts', 'unexpected file path'],
     ['scripts/../secret', "must not contain '..'"],
