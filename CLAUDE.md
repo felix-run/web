@@ -1656,7 +1656,10 @@ reply's code block asks Shiki itself, `useShikiKnows`, since its fence can name 
 Five things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6, the oldest
 *clean* one dropped first): a workspace file (the file tree, a Changes row a write landed on, or
 the agent's `local_open` — into the pane of the call's own thread, never a new window; a URL
-still opens a tab), a
+still opens a tab — or its `open_file` for a harness-side file: the harness only checks the file
+can be served, and the engine's `onOpenFile` fires once per call from a live `tool_end` or a
+durable run's `tool_result` row, never from a snapshot rebuild or a replay, so a reload reopens
+nothing; `tests/open-file-pane.test.tsx`), a
 spilled tool output (`Open full output` in the tool card), a reply's code block (an Open control
 `OpenablePre` adds to streamdown's header by wrapping the pass-through `pre`, so Shiki is kept),
 a tool's image, and a skill's editor (see **Skill library**). Opening goes through `ShellValue.openInPane`, which is **optional** — a test's

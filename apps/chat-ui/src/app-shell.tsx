@@ -477,6 +477,10 @@ export function AppShell() {
           onSkills: (s) => {
             if (threadIdRef.current === id) setSkills(s);
           },
+          // `open_file`: the agent showing the operator a file from the harness's workspace,
+          // opened as the sidebar's *On the harness* tree opens one — in this engine's own
+          // thread's pane, so a run on another thread fills that thread's.
+          onOpenFile: (path) => openPaneItem(id, { kind: 'file', path, source: 'harness' }),
           /**
            * Re-read the session once a durable run lands.
            *

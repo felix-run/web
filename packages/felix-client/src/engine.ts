@@ -44,6 +44,7 @@ import {
   SendRefusedError,
   StreamInProgressError,
 } from './errors';
+import { OPEN_FILE_TOOL, openedPath } from './open-file';
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
 import type { FelixClient } from './transport';
@@ -102,6 +103,15 @@ export interface EnginePorts {
   onToolStart?: () => void;
   /** A `list_skills` result, for a client that shows which skills a manifest loaded. */
   onSkills?: (skills: { declared: string[]; active: string[] }) => void;
+  /**
+   * The agent asked to show the user a file from the harness's workspace (`open_file`,
+   * felix-run/felix#620). Fired once per call, when its result says it opened: the harness
+   * opens nothing, and the result is the whole instruction, because it reaches this engine on
+   * both paths — `tool_end` live, a durable run's `session_event` — where a side event never
+   * crosses from the worker. Never fired for a transcript rebuilt from the snapshot or a
+   * reattach's replay, or a reload would reopen every file the thread ever opened.
+   */
+  onOpenFile?: (path: string) => void;
   /**
    * A durable run finished, and the transcript it left here may be incomplete.
    *
@@ -405,6 +415,16 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     activeAssistantId = nextAssistantId;
   };
 
+  /** Calls whose `open_file` result has been handed to `onOpenFile`, so each opens once. */
+  const openedCalls = new Set<string>();
+  const captureOpen = (name: string, output: unknown, id: string | undefined) => {
+    if (name !== OPEN_FILE_TOOL || !ports.onOpenFile || !id || openedCalls.has(id)) return;
+    const path = openedPath(output);
+    if (path === null) return;
+    openedCalls.add(id);
+    ports.onOpenFile(path);
+  };
+
   /** Capture a `list_skills` tool result so a client can show declared vs active. */
   const captureSkills = (name: string, output: unknown) => {
     if (name !== 'list_skills' || !ports.onSkills) return;
@@ -553,6 +573,15 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     // `run_status` keeps reporting into the same place.
     const status = state.turns.find((t) => t.id === activeAssistantId);
     set({ turns: status ? [...durablePrefix, ...folded, status] : [...durablePrefix, ...folded] });
+    // Read off the rows, not the folded cards, which carry no call id. The run's own calls
+    // only: `durableEvents` starts at this run's cursor.
+    const names = new Map<string, string>();
+    for (const row of durableEvents) {
+      for (const call of row.tool_calls ?? []) names.set(call.id, call.name);
+      if (row.kind === 'tool_result' && row.tool_call_id) {
+        captureOpen(names.get(row.tool_call_id) ?? '', row.content, row.tool_call_id);
+      }
+    }
   };
 
   const applyEvent = async (ev: StreamEvent): Promise<void> => {
@@ -625,6 +654,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         const images = toolImages(data.attachments);
         patch((t) => ({ ...t, tools: closeTool(t.tools, name, data.output, data.id, images) }));
         captureSkills(name, data.output);
+        captureOpen(name, data.output, data.id);
         break;
       }
       case 'approval_required': {
