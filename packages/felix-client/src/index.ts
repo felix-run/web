@@ -166,6 +166,7 @@ export type {
   UsageSummaryTotals,
   UsageThreadItem,
 } from './management/usage';
+export { OPEN_FILE_TOOL, openedPath } from './open-file';
 export {
   CHECKLIST_ID,
   checklistFromCall,

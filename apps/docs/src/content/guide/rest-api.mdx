@@ -839,6 +839,15 @@ Whether an agent works there at all is on its `/v1/models` entry:
 `felix.workspace: {"tools": "server"|"client"|"both"|"none", "scope": …}`. `client` means its
 file tools are the browser's (`local_*`), and its files are not on the harness.
 
+An agent can also ask to **show** the operator one of these files, with the `open_file` tool. The
+harness opens nothing: it checks the file is one `GET /chat/workspace/file` would serve and answers
+`{"opened": "<path>", "kind": "file", "in": "side_pane", "size": N}`, or a `[tool error/…]`
+refusal. A client that has a file pane opens what a successful result names, once per tool call id,
+and only for a call it watched finish — a `tool_end` frame, or a durable run's `tool_result`
+`session_event` — never for one in a transcript it rebuilt from the session, or a reload would
+reopen every file the thread ever opened. The result is the whole signal on purpose: it reaches a
+durable run's stream, where a side event cannot. chat-ui opens it in the thread's side pane.
+
 ## Abort, continue, thinking, compact
 
 | Method | Path | Body | Notes |
