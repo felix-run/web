@@ -12,9 +12,12 @@ const FIELDS: { key: keyof SkillPolicyValues; label: string }[] = [
   { key: 'block_on_advisory', label: 'Block on an advisory finding' },
   { key: 'require_eval', label: 'Require an evaluation' },
   { key: 'min_eval_uplift', label: 'Minimum evaluation uplift' },
+  { key: 'import_min_age_days', label: 'Days before an import is taken' },
 ];
 
-function show(value: number | boolean | null): string {
+function show(value: number | boolean | null | undefined): string {
+  // Absent from a harness older than imports: it has no such setting to show.
+  if (value === undefined) return '—';
   if (value === null) return 'none';
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
   return String(value);

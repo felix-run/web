@@ -31,6 +31,8 @@ const SOURCE_OPTIONS = [
   ['any', 'Anyone'],
   ['agent', 'Agent'],
   ['operator', 'Operator'],
+  ['import', 'Imported'],
+  ['promoted', 'Promoted'],
 ] as const;
 
 export function LibraryList({

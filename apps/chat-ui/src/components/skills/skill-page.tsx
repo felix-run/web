@@ -10,7 +10,7 @@ import { EvalsPanel } from './evals-panel';
 import { FeedbackPanel } from './feedback-panel';
 import { useLibrarySkill } from './queries';
 import { ReviewPanel } from './review-panel';
-import { ShadowsUploadNotice } from './skill-status';
+import { ShadowsUploadNotice, UpstreamLine } from './skill-status';
 import { EDITOR, leavesSkill, SKILL_TABS, type SkillAddress, type SkillTab } from './skill-tabs';
 import { UnsavedChangesGuard } from './unsaved-guard';
 import { useSkillEditor } from './use-skill-editor';
@@ -143,6 +143,7 @@ export function SkillPage({
             />
           ) : null}
           {detail?.shadows_operator_upload && <ShadowsUploadNotice name={name} />}
+          <UpstreamLine upstream={detail?.upstream} />
           {!detail ? (
             skill.isPending ? (
               <p role="status" className="text-sm text-muted-foreground">

@@ -11,7 +11,13 @@ import { useArchiveSkill, usePublishPolicy, useSkillFile } from './queries';
 import { RefusalNotice } from './refusal';
 import { ScoreReadout } from './score-readout';
 import { SkillBundleBrowser } from './skill-bundle-browser';
-import { ago, SourceLabel, VersionStateBadge, versionState } from './skill-status';
+import {
+  ago,
+  SourceLabel,
+  VersionProvenance,
+  VersionStateBadge,
+  versionState,
+} from './skill-status';
 import { EDITOR } from './skill-tabs';
 import { RollbackButton, VersionDecision } from './version-actions';
 import { versionOptionLabel } from './version-picker';
@@ -167,6 +173,7 @@ function VersionRow({
           </span>
         )}
       </div>
+      <VersionProvenance version={v} />
       {v.reason && <p className="text-sm whitespace-pre-wrap break-words">{v.reason}</p>}
       <ScoreReadout quality={v.quality_score} security={v.security_status} policy={policy} />
       {v.decided_by && (

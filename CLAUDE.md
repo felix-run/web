@@ -1093,6 +1093,12 @@ Flows worth knowing before editing the app:
   because the policy is tighten-only (the deployment settings are a floor). Every publish and rollback
   re-reads the skill before arming and sends `expected_live_version` — the live version its
   question named — and a 409 `live_changed` re-asks naming the new one; it never retries.
+  **A version says where it came from** (`VersionProvenance`): an import's GitHub source, ref,
+  commit and license, `import lineage` while the gate still judges it as an import, and what an
+  adoption or a promotion copied; `SkillSource` is open (`agent`, `operator`, `import`,
+  `promoted`). An imported skill's page says whether its source has moved on (`UpstreamLine`,
+  from `SkillDetail.upstream`). `refusalOf` reads a bare `{detail: "<code>"}` as that code — the
+  personal-library 403s arrive that way, not as `{error, message}`.
 - **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and
   the snapshot's `labels` map reads them back. It was a write-only route here for a different reason
   than the rest: `SessionSnapshot` did not model the field the harness had always sent, so a label

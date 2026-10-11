@@ -19,7 +19,10 @@ export function useSkillsAddress() {
   const source = params.get('source');
   const filter: LibraryFilter = {
     status: status === 'live' || status === 'draft' || status === 'archived' ? status : undefined,
-    source: source === 'agent' || source === 'operator' ? source : undefined,
+    source:
+      source === 'agent' || source === 'operator' || source === 'import' || source === 'promoted'
+        ? source
+        : undefined,
   };
   const tab = params.get('tab');
   const address: SkillAddress = {
