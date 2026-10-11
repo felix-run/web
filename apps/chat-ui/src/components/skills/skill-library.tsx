@@ -6,7 +6,7 @@ import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { createLibrarySkill } from '@/api';
 import {
@@ -22,7 +22,13 @@ import { cn } from '@/lib/utils';
 import { FeedbackInbox } from './feedback-panel';
 import { LibraryList } from './library-list';
 import { PolicyEditor } from './policy-form';
-import { invalidateLibrary, usePublishPolicy, useReviewQueue } from './queries';
+import {
+  invalidateLibrary,
+  SkillLibraryContext,
+  useLibraryId,
+  usePublishPolicy,
+  useReviewQueue,
+} from './queries';
 import { QueryRoot } from './query-root';
 import { policySentence, RefusalNotice } from './refusal';
 import { ReviewQueue } from './review-queue';
@@ -52,8 +58,11 @@ export function SkillLibraryPageEntry() {
 }
 
 /** The pending-draft count for a header, `50+` when the queue's first page was full. */
-export function usePendingDraftCount(): { count: number | null; text: string | undefined } {
-  const queue = useReviewQueue();
+export function usePendingDraftCount(enabled = true): {
+  count: number | null;
+  text: string | undefined;
+} {
+  const queue = useReviewQueue(enabled);
   const first = queue.data?.pages[0];
   if (!first) return { count: null, text: undefined };
   const n = (queue.data?.pages ?? []).reduce((sum, p) => sum + p.items.length, 0);
@@ -69,12 +78,43 @@ export function SkillLibrary({
   onPendingText?: (text: string | undefined) => void;
 } = {}) {
   const nav = useSkillsAddress();
-  const pending = usePendingDraftCount();
+  // The team's queue: not asked for while showing someone's own library, which has none.
+  const pending = usePendingDraftCount(!nav.lib);
   useEffect(() => onPendingText?.(pending.text), [onPendingText, pending.text]);
   const [creating, setCreating] = useState(false);
   const formId = useId();
+  if (nav.lib) {
+    // The caller's own library: their skills, written and published by them through the same
+    // gate, with no review queue, feedback, evaluations or tenant policy — those are the team's.
+    return (
+      <SkillLibraryContext.Provider value={nav.lib}>
+        <LibrarySwitch current={nav.lib} to={nav.libraryTo} />
+        <PageSection
+          title="My skills"
+          meta="only you can see these"
+          actions={
+            <CreateToggle open={creating} onToggle={() => setCreating((o) => !o)} controls={formId}>
+              New skill
+            </CreateToggle>
+          }
+        >
+          <p className="mb-3 max-w-[60ch] text-sm text-muted-foreground">
+            Skills you keep for yourself. You publish your own drafts, through the same publish gate
+            as the team library; promote a version you have published to offer it to the team.
+          </p>
+          {creating && (
+            <div id={formId} className={CREATE_FORM}>
+              <NewSkillForm onCancel={() => setCreating(false)} linkTo={nav.linkTo} />
+            </div>
+          )}
+          <LibraryList filter={nav.filter} onFilter={nav.setFilter} linkTo={nav.linkTo} />
+        </PageSection>
+      </SkillLibraryContext.Provider>
+    );
+  }
   return (
     <>
+      <LibrarySwitch current={undefined} to={nav.libraryTo} />
       <PageSection
         title="Waiting for review"
         // Only a count: an empty queue says so in its own line, and "none" above
@@ -136,9 +176,53 @@ function PublishPolicySection() {
   );
 }
 
+/**
+ * Team library or my skills: two addresses (`?lib=me`), so a link to either opens it. Links with
+ * `aria-current`, not a toggle, because each is a different place rather than a setting.
+ */
+function LibrarySwitch({
+  current,
+  to,
+}: {
+  current: 'me' | undefined;
+  to: (next: 'me' | undefined) => string;
+}) {
+  const item = (label: string, value: 'me' | undefined) => {
+    const here = current === value;
+    return (
+      <Link
+        to={to(value)}
+        aria-current={here ? 'page' : undefined}
+        className={cn(
+          'rounded-full px-3 py-1 text-sm transition-colors',
+          here
+            ? 'bg-foreground text-background'
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+        )}
+      >
+        {label}
+      </Link>
+    );
+  };
+  return (
+    <nav aria-label="Skill library" className="mb-4 flex gap-1">
+      {item('Team library', undefined)}
+      {item('My skills', 'me')}
+    </nav>
+  );
+}
+
 /** One skill's page, at the address `useSkillsAddress` reads. */
 export function SkillLibraryPage() {
   const nav = useSkillsAddress();
+  return (
+    <SkillLibraryContext.Provider value={nav.lib}>
+      <SkillLibraryPageIn nav={nav} />
+    </SkillLibraryContext.Provider>
+  );
+}
+
+function SkillLibraryPageIn({ nav }: { nav: ReturnType<typeof useSkillsAddress> }) {
   if (!nav.skill) return null;
   // A name no library could hold is a broken link, answered without asking.
   if (!isSkillName(nav.skill)) {
@@ -179,6 +263,7 @@ function NewSkillForm({
 }) {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const lib = useLibraryId();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [attempted, setAttempted] = useState(false);
@@ -195,7 +280,8 @@ function NewSkillForm({
       ? 'A description is required — it is how an agent decides to use the skill.'
       : null;
   const create = useMutation({
-    mutationFn: () => createLibrarySkill({ files: createSkillTemplate(name, description.trim()) }),
+    mutationFn: () =>
+      createLibrarySkill({ files: createSkillTemplate(name, description.trim()) }, lib),
     onSuccess: (result) => {
       void invalidateLibrary(client);
       toast.success(`Created ${result.name} ${result.version} as a draft.`);

@@ -411,7 +411,11 @@ export async function refusalOf(route: string, res: Response): Promise<SkillLibr
         issues: parsed.issues ?? null,
         reasons: parsed.reasons ?? null,
       };
-    } else if (typeof parsed.detail === 'string' && /^[a-z][a-z0-9_]*$/.test(parsed.detail)) {
+    } else if (
+      typeof parsed.detail === 'string' &&
+      /^[a-z][a-z0-9_]*(:[a-z0-9_:.*-]+)?$/.test(parsed.detail)
+    ) {
+      // `missing_scope:skills:personal` keeps its scope after the colon.
       // A bare code — the personal-library 403s (`no_personal_library`,
       // `personal_library_read_only`) come this way rather than as `{error, message}`.
       refusal = { error: parsed.detail, message: parsed.detail.replaceAll('_', ' ') };
@@ -423,6 +427,30 @@ export async function refusalOf(route: string, res: Response): Promise<SkillLibr
     // Not JSON: a proxy's page, or nothing. The raw text goes in the message.
   }
   return new SkillLibraryError(route, res.status, refusal, raw);
+}
+
+/**
+ * Which library a call reads or writes: the tenant's own (`undefined`), the caller's personal
+ * library (`'me'`, the `~me` routes), or — for an admin, read and archive only — someone else's,
+ * by the 32-hex digest `GET /-/personal` lists. A personal library holds one principal's skills:
+ * the owner saves and publishes there through the same gate, with no org review queue, no
+ * evaluations, no feedback and no upstream.
+ */
+export type SkillLibraryId = 'me' | (string & {});
+
+const LIBRARY_RE = /^(me|[0-9a-f]{32})$/;
+
+/** A library's path segment, refused before a request when it could not be one. */
+export function librarySegment(library: SkillLibraryId): string {
+  if (!LIBRARY_RE.test(library)) {
+    throw new SkillLibraryError(
+      'skill-library',
+      0,
+      { error: 'invalid_library', message: `Not a skill library: ${library}` },
+      '',
+    );
+  }
+  return library;
 }
 
 export function createSkillLibraryClient(http: FelixHttp) {
@@ -441,6 +469,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
       limit?: number;
       cursor?: string | null;
     } = {},
+    library?: SkillLibraryId,
   ): Promise<SkillPage<SkillSummary>> {
     const q = new URLSearchParams();
     if (opts.status) q.set('status', opts.status);
@@ -449,7 +478,9 @@ export function createSkillLibraryClient(http: FelixHttp) {
     if (opts.cursor) q.set('cursor', opts.cursor);
     const page = await read<SkillPage<SkillSummary>>(
       'skill-library',
-      await chatFetch(`/skill-library?${q}`),
+      library === undefined
+        ? await chatFetch(`/skill-library?${q}`)
+        : await chatFetch(`/skill-library/~${librarySegment(library)}?${q}`),
     );
     return { items: page.items ?? [], next_cursor: page.next_cursor ?? null };
   }
@@ -469,35 +500,65 @@ export function createSkillLibraryClient(http: FelixHttp) {
   }
 
   /** GET /skill-library/{name} → the skill and every version, newest first. */
-  async function getLibrarySkill(name: string): Promise<SkillDetail> {
-    return read('skill-library/skill', await chatFetch(`/skill-library/${nameSegment(name)}`));
+  async function getLibrarySkill(name: string, library?: SkillLibraryId): Promise<SkillDetail> {
+    return read(
+      'skill-library/skill',
+      library === undefined
+        ? await chatFetch(`/skill-library/${nameSegment(name)}`)
+        : await chatFetch(`/skill-library/~${librarySegment(library)}/${nameSegment(name)}`),
+    );
   }
 
   /** GET /skill-library/{name}/versions/{v} → review record, checks, issues, file digests. */
-  async function getSkillVersion(name: string, version: string): Promise<SkillVersionDetail> {
+  async function getSkillVersion(
+    name: string,
+    version: string,
+    library?: SkillLibraryId,
+  ): Promise<SkillVersionDetail> {
     return read(
       'skill-library/version',
-      await chatFetch(`/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}`),
+      library === undefined
+        ? await chatFetch(`/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}`)
+        : await chatFetch(
+            `/skill-library/~${librarySegment(library)}/${nameSegment(name)}/versions/${versionSegment(version)}`,
+          ),
     );
   }
 
   /** GET …/files/{path} → one file, checked against its saved digest. */
-  async function getSkillFile(name: string, version: string, path: string): Promise<SkillFile> {
+  async function getSkillFile(
+    name: string,
+    version: string,
+    path: string,
+    library?: SkillLibraryId,
+  ): Promise<SkillFile> {
     return read(
       'skill-library/file',
-      await chatFetch(
-        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/files/${encodePath(path)}`,
-      ),
+      library === undefined
+        ? await chatFetch(
+            `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/files/${encodePath(path)}`,
+          )
+        : await chatFetch(
+            `/skill-library/~${librarySegment(library)}/${nameSegment(name)}/versions/${versionSegment(version)}/files/${encodePath(path)}`,
+          ),
     );
   }
 
   /** GET …/preview → re-run review, the scan and the policy on the stored bytes. Read-only. */
-  async function previewSkillVersion(name: string, version: string): Promise<SkillPreview> {
+  async function previewSkillVersion(
+    name: string,
+    version: string,
+    library?: SkillLibraryId,
+  ): Promise<SkillPreview> {
     return read(
       'skill-library/preview',
-      await chatFetch(
-        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/preview`,
-      ),
+      library === undefined
+        ? await chatFetch(
+            `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/preview`,
+          )
+        : await chatFetch(
+            `/skill-library/~${librarySegment(library)}/${nameSegment(name)}/versions/${versionSegment(version)}/preview`,
+          ),
     );
   }
 
@@ -512,15 +573,16 @@ export function createSkillLibraryClient(http: FelixHttp) {
     name: string,
     version: string,
     known?: SkillFileMeta[],
+    library?: SkillLibraryId,
   ): Promise<{ files: Record<string, string>; meta: SkillFile[] }> {
-    const listed = known ?? (await getSkillVersion(name, version)).files;
+    const listed = known ?? (await getSkillVersion(name, version, library)).files;
     const meta: SkillFile[] = new Array(listed.length);
     let next = 0;
     const worker = async () => {
       while (next < listed.length) {
         const i = next++;
         const entry = listed[i];
-        if (entry) meta[i] = await getSkillFile(name, version, entry.path);
+        if (entry) meta[i] = await getSkillFile(name, version, entry.path, library);
       }
     };
     await Promise.all(Array.from({ length: Math.min(6, listed.length) }, worker));
@@ -543,7 +605,10 @@ export function createSkillLibraryClient(http: FelixHttp) {
   }
 
   /** POST /skill-library → a new skill as an operator draft (0.1.0); 409 `skill_exists` if taken. */
-  async function createLibrarySkill(input: SkillBundleWrite): Promise<SkillWriteResult> {
+  async function createLibrarySkill(
+    input: SkillBundleWrite,
+    library?: SkillLibraryId,
+  ): Promise<SkillWriteResult> {
     const init = sized('skill-library/create', {
       files: input.files,
       reason: input.reason ?? '',
@@ -551,7 +616,12 @@ export function createSkillLibraryClient(http: FelixHttp) {
     });
     return read(
       'skill-library/create',
-      await chatFetch('/skill-library', { method: 'POST', ...init }),
+      library === undefined
+        ? await chatFetch('/skill-library', { method: 'POST', ...init })
+        : await chatFetch(`/skill-library/~${librarySegment(library)}`, {
+            method: 'POST',
+            ...init,
+          }),
     );
   }
 
@@ -559,6 +629,7 @@ export function createSkillLibraryClient(http: FelixHttp) {
   async function saveSkillVersion(
     name: string,
     input: SkillVersionWrite,
+    library?: SkillLibraryId,
   ): Promise<SkillWriteResult> {
     const body: Record<string, unknown> = {
       files: input.files,
@@ -572,10 +643,18 @@ export function createSkillLibraryClient(http: FelixHttp) {
     const init = sized('skill-library/save', body);
     return read(
       'skill-library/save',
-      await chatFetch(`/skill-library/${nameSegment(name)}/versions`, {
-        method: 'PUT',
-        ...init,
-      }),
+      library === undefined
+        ? await chatFetch(`/skill-library/${nameSegment(name)}/versions`, {
+            method: 'PUT',
+            ...init,
+          })
+        : await chatFetch(
+            `/skill-library/~${librarySegment(library)}/${nameSegment(name)}/versions`,
+            {
+              method: 'PUT',
+              ...init,
+            },
+          ),
     );
   }
 
@@ -599,14 +678,20 @@ export function createSkillLibraryClient(http: FelixHttp) {
     name: string,
     version: string,
     opts: { expectedLive?: string | null } = {},
+    library?: SkillLibraryId,
   ): Promise<SkillVersion> {
     const init = makeLive(opts.expectedLive);
     return read(
       'skill-library/publish',
-      await chatFetch(
-        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/publish`,
-        { method: 'POST', ...init },
-      ),
+      library === undefined
+        ? await chatFetch(
+            `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/publish`,
+            { method: 'POST', ...init },
+          )
+        : await chatFetch(
+            `/skill-library/~${librarySegment(library)}/${nameSegment(name)}/versions/${versionSegment(version)}/publish`,
+            { method: 'POST', ...init },
+          ),
     );
   }
 
@@ -615,14 +700,20 @@ export function createSkillLibraryClient(http: FelixHttp) {
     name: string,
     version: string,
     opts: { expectedLive?: string | null } = {},
+    library?: SkillLibraryId,
   ): Promise<SkillVersion> {
     const init = makeLive(opts.expectedLive);
     return read(
       'skill-library/rollback',
-      await chatFetch(
-        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/rollback`,
-        { method: 'POST', ...init },
-      ),
+      library === undefined
+        ? await chatFetch(
+            `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/rollback`,
+            { method: 'POST', ...init },
+          )
+        : await chatFetch(
+            `/skill-library/~${librarySegment(library)}/${nameSegment(name)}/versions/${versionSegment(version)}/rollback`,
+            { method: 'POST', ...init },
+          ),
     );
   }
 
@@ -631,25 +722,66 @@ export function createSkillLibraryClient(http: FelixHttp) {
     name: string,
     version: string,
     note: string,
+    library?: SkillLibraryId,
   ): Promise<SkillVersion> {
+    const init: RequestInit = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ note }),
+    };
     return read(
       'skill-library/reject',
-      await chatFetch(
-        `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/reject`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ note }),
-        },
-      ),
+      library === undefined
+        ? await chatFetch(
+            `/skill-library/${nameSegment(name)}/versions/${versionSegment(version)}/reject`,
+            { method: 'POST', ...init },
+          )
+        : await chatFetch(
+            `/skill-library/~${librarySegment(library)}/${nameSegment(name)}/versions/${versionSegment(version)}/reject`,
+            { method: 'POST', ...init },
+          ),
     );
   }
 
   /** DELETE /skill-library/{name} → out of every catalog; versions kept, and a rollback restores one. */
-  async function archiveLibrarySkill(name: string): Promise<SkillArchived> {
+  async function archiveLibrarySkill(
+    name: string,
+    library?: SkillLibraryId,
+  ): Promise<SkillArchived> {
     return read(
       'skill-library/archive',
-      await chatFetch(`/skill-library/${nameSegment(name)}`, { method: 'DELETE' }),
+      library === undefined
+        ? await chatFetch(`/skill-library/${nameSegment(name)}`, { method: 'DELETE' })
+        : await chatFetch(`/skill-library/~${librarySegment(library)}/${nameSegment(name)}`, {
+            method: 'DELETE',
+          }),
+    );
+  }
+
+  /**
+   * POST /skill-library/~me/{name}/versions/{v}/promote → copy a version of the caller's own
+   * library that was once published, byte for byte, into the tenant library as a draft
+   * (`source: promoted`). It never publishes: the draft waits in the org review queue. Needs
+   * `skills:personal`. 409 `promotion_pending` while an earlier promotion of that skill is
+   * undecided; 409 `origin_mismatch` when the org skill of that name is still an import.
+   */
+  async function promoteSkillVersion(
+    name: string,
+    version: string,
+    reason?: string,
+  ): Promise<SkillWriteResult> {
+    // The personal library is interpolated rather than written as ~me: the drift check matches
+    // the harness's ~{library} by shape, and a literal "me" there is a path it does not serve.
+    return read(
+      'skill-library/promote',
+      await chatFetch(
+        `/skill-library/~${librarySegment('me')}/${nameSegment(name)}/versions/${versionSegment(version)}/promote`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(reason ? { reason } : {}),
+        },
+      ),
     );
   }
 
@@ -667,5 +799,6 @@ export function createSkillLibraryClient(http: FelixHttp) {
     rollbackSkillVersion,
     rejectSkillVersion,
     archiveLibrarySkill,
+    promoteSkillVersion,
   };
 }

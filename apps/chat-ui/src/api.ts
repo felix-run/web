@@ -161,6 +161,7 @@ export const publishSkillVersion = felix.publishSkillVersion.bind(felix);
 export const rollbackSkillVersion = felix.rollbackSkillVersion.bind(felix);
 export const rejectSkillVersion = felix.rejectSkillVersion.bind(felix);
 export const archiveLibrarySkill = felix.archiveLibrarySkill.bind(felix);
+export const promoteSkillVersion = felix.promoteSkillVersion.bind(felix);
 export const updateSkillPublishPolicy = felix.updateSkillPublishPolicy.bind(felix);
 export const resetSkillPublishPolicy = felix.resetSkillPublishPolicy.bind(felix);
 export const listFeedbackInbox = felix.listFeedbackInbox.bind(felix);

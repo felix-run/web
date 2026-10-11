@@ -2,6 +2,7 @@ import type {
   FeedbackStatus,
   SkillEval,
   SkillFeedback,
+  SkillLibraryId,
   SkillPage,
   SkillPolicyPatch,
   SkillSource,
@@ -13,7 +14,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   acceptSkillFeedback,
   archiveLibrarySkill,
@@ -27,6 +28,7 @@ import {
   listSkillFeedback,
   listSkillReviewQueue,
   previewSkillVersion,
+  promoteSkillVersion,
   publishSkillVersion,
   queueSkillEval,
   readSkillBundle,
@@ -60,17 +62,39 @@ export type LibraryFilter = {
   source?: SkillSource;
 };
 
+/**
+ * Which library the skills surface below is showing: the tenant's (`undefined`) or the caller's
+ * own (`'me'`). Provided by the page from its address; every hook here reads it, so the list,
+ * a skill's page, the editor and the version actions work on either without being told.
+ * Anything with no provider — the chat transcript's proposal card — is the tenant's.
+ */
+export const SkillLibraryContext = createContext<SkillLibraryId | undefined>(undefined);
+
+export function useLibraryId(): SkillLibraryId | undefined {
+  return useContext(SkillLibraryContext);
+}
+
+/** The cache's word for a library: the same name in two libraries is two skills. */
+const scope = (lib: SkillLibraryId | undefined) => lib ?? 'org';
+
+// The library is the last element, so `invalidateLibrary`'s prefix and its test of the key's
+// kind (`queryKey[1]`) read every key as they did before libraries existed.
 export const skillKeys = {
   all: ['skill-library'] as const,
-  list: (filter: LibraryFilter) => [...skillKeys.all, 'list', filter] as const,
+  list: (filter: LibraryFilter, lib?: SkillLibraryId) =>
+    [...skillKeys.all, 'list', filter, scope(lib)] as const,
   queue: () => [...skillKeys.all, 'queue'] as const,
   policy: () => [...skillKeys.all, 'policy'] as const,
-  skill: (name: string) => [...skillKeys.all, 'skill', name] as const,
-  version: (name: string, version: string) => [...skillKeys.all, 'version', name, version] as const,
-  bundle: (name: string, version: string) => [...skillKeys.all, 'bundle', name, version] as const,
-  preview: (name: string, version: string) => [...skillKeys.all, 'preview', name, version] as const,
-  file: (name: string, version: string, path: string) =>
-    [...skillKeys.all, 'file', name, version, path] as const,
+  skill: (name: string, lib?: SkillLibraryId) =>
+    [...skillKeys.all, 'skill', name, scope(lib)] as const,
+  version: (name: string, version: string, lib?: SkillLibraryId) =>
+    [...skillKeys.all, 'version', name, version, scope(lib)] as const,
+  bundle: (name: string, version: string, lib?: SkillLibraryId) =>
+    [...skillKeys.all, 'bundle', name, version, scope(lib)] as const,
+  preview: (name: string, version: string, lib?: SkillLibraryId) =>
+    [...skillKeys.all, 'preview', name, version, scope(lib)] as const,
+  file: (name: string, version: string, path: string, lib?: SkillLibraryId) =>
+    [...skillKeys.all, 'file', name, version, path, scope(lib)] as const,
   evals: (name: string, version: string | null) =>
     [...skillKeys.all, 'evals', name, version ?? ''] as const,
   feedback: (name: string, status: FeedbackStatus | null) =>
@@ -109,11 +133,12 @@ export const LIBRARY_PAGE = 50;
  * empty page is not the end of the list.
  */
 export function useLibraryPages(filter: LibraryFilter) {
+  const lib = useLibraryId();
   return useInfiniteQuery({
-    queryKey: skillKeys.list(filter),
+    queryKey: skillKeys.list(filter, lib),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
-      listLibrarySkills({ ...filter, limit: LIBRARY_PAGE, cursor: pageParam }),
+      listLibrarySkills({ ...filter, limit: LIBRARY_PAGE, cursor: pageParam }, lib),
     getNextPageParam: (last: SkillPage<unknown>) => last.next_cursor ?? undefined,
   });
 }
@@ -138,17 +163,19 @@ export function usePublishPolicy() {
 }
 
 export function useLibrarySkill(name: string | null) {
+  const lib = useLibraryId();
   return useQuery({
-    queryKey: skillKeys.skill(name ?? ''),
-    queryFn: () => getLibrarySkill(name ?? ''),
+    queryKey: skillKeys.skill(name ?? '', lib),
+    queryFn: () => getLibrarySkill(name ?? '', lib),
     enabled: !!name,
   });
 }
 
 export function useSkillVersion(name: string, version: string | null | undefined) {
+  const lib = useLibraryId();
   return useQuery({
-    queryKey: skillKeys.version(name, version ?? ''),
-    queryFn: () => getSkillVersion(name, version ?? ''),
+    queryKey: skillKeys.version(name, version ?? '', lib),
+    queryFn: () => getSkillVersion(name, version ?? '', lib),
     enabled: !!name && !!version,
   });
 }
@@ -158,9 +185,10 @@ export function useSkillVersion(name: string, version: string | null | undefined
  * one — so a bundle once read is fresh for as long as it is cached.
  */
 export function useSkillBundleFiles(name: string, version: string | null | undefined) {
+  const lib = useLibraryId();
   return useQuery({
-    queryKey: skillKeys.bundle(name, version ?? ''),
-    queryFn: () => readSkillBundle(name, version ?? ''),
+    queryKey: skillKeys.bundle(name, version ?? '', lib),
+    queryFn: () => readSkillBundle(name, version ?? '', undefined, lib),
     enabled: !!name && !!version,
     staleTime: Number.POSITIVE_INFINITY,
   });
@@ -168,18 +196,20 @@ export function useSkillBundleFiles(name: string, version: string | null | undef
 
 /** One file of a stored version — the SKILL.md a diff needs, without the rest of the bundle. */
 export function useSkillFile(name: string, version: string | null | undefined, path = 'SKILL.md') {
+  const lib = useLibraryId();
   return useQuery({
-    queryKey: skillKeys.file(name, version ?? '', path),
-    queryFn: () => getSkillFile(name, version ?? '', path),
+    queryKey: skillKeys.file(name, version ?? '', path, lib),
+    queryFn: () => getSkillFile(name, version ?? '', path, lib),
     enabled: !!name && !!version,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
 
 export function useSkillPreview(name: string, version: string | null | undefined) {
+  const lib = useLibraryId();
   return useQuery({
-    queryKey: skillKeys.preview(name, version ?? ''),
-    queryFn: () => previewSkillVersion(name, version ?? ''),
+    queryKey: skillKeys.preview(name, version ?? '', lib),
+    queryFn: () => previewSkillVersion(name, version ?? '', lib),
     enabled: !!name && !!version,
   });
 }
@@ -194,30 +224,45 @@ export interface MakeLive {
 
 export function useVersionActions() {
   const client = useQueryClient();
+  const lib = useLibraryId();
   const after = { onSettled: () => invalidateLibrary(client) };
   const publish = useMutation({
     mutationFn: (v: MakeLive) =>
-      publishSkillVersion(v.name, v.version, { expectedLive: v.expectedLive }),
+      publishSkillVersion(v.name, v.version, { expectedLive: v.expectedLive }, lib),
     ...after,
   });
   const rollback = useMutation({
     mutationFn: (v: MakeLive) =>
-      rollbackSkillVersion(v.name, v.version, { expectedLive: v.expectedLive }),
+      rollbackSkillVersion(v.name, v.version, { expectedLive: v.expectedLive }, lib),
     ...after,
   });
   const reject = useMutation({
     mutationFn: (v: { name: string; version: string; note: string }) =>
-      rejectSkillVersion(v.name, v.version, v.note),
+      rejectSkillVersion(v.name, v.version, v.note, lib),
     ...after,
   });
   return { publish, rollback, reject };
 }
 
+/**
+ * Promote a version of the caller's own library into the tenant's, as a draft for its review
+ * queue (`POST /~me/.../promote`). Never publishes; the personal skill is unchanged.
+ */
+export function usePromoteVersion() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string; version: string; reason?: string }) =>
+      promoteSkillVersion(v.name, v.version, v.reason),
+    onSettled: () => invalidateLibrary(client),
+  });
+}
+
 /** Archive a skill: out of every catalog, its versions kept. */
 export function useArchiveSkill() {
   const client = useQueryClient();
+  const lib = useLibraryId();
   return useMutation({
-    mutationFn: (name: string) => archiveLibrarySkill(name),
+    mutationFn: (name: string) => archiveLibrarySkill(name, lib),
     onSettled: () => invalidateLibrary(client),
   });
 }
@@ -225,14 +270,15 @@ export function useArchiveSkill() {
 /** The skill as it stands now, from the harness and never the cache — what a confirm must show. */
 export function useFreshSkill() {
   const client = useQueryClient();
+  const lib = useLibraryId();
   return useCallback(
     (name: string) =>
       client.fetchQuery({
-        queryKey: skillKeys.skill(name),
-        queryFn: () => getLibrarySkill(name),
+        queryKey: skillKeys.skill(name, lib),
+        queryFn: () => getLibrarySkill(name, lib),
         staleTime: 0,
       }),
-    [client],
+    [client, lib],
   );
 }
 
@@ -244,14 +290,15 @@ export function useFreshSkill() {
  */
 export function useFreshPreview() {
   const client = useQueryClient();
+  const lib = useLibraryId();
   return useCallback(
     (name: string, version: string) =>
       client.fetchQuery({
-        queryKey: skillKeys.preview(name, version),
-        queryFn: () => previewSkillVersion(name, version),
+        queryKey: skillKeys.preview(name, version, lib),
+        queryFn: () => previewSkillVersion(name, version, lib),
         staleTime: 0,
       }),
-    [client],
+    [client, lib],
   );
 }
 
@@ -262,9 +309,10 @@ export function useFreshPreview() {
  * queue of fifty rows into fifty previews.
  */
 export function useKnownPreview(name: string, version: string) {
+  const lib = useLibraryId();
   return useQuery({
-    queryKey: skillKeys.preview(name, version),
-    queryFn: () => previewSkillVersion(name, version),
+    queryKey: skillKeys.preview(name, version, lib),
+    queryFn: () => previewSkillVersion(name, version, lib),
     enabled: false,
   }).data;
 }

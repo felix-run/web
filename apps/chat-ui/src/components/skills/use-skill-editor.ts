@@ -17,7 +17,13 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { getLibrarySkill, saveSkillVersion } from '@/api';
 import { compareBundles, type FileChange } from './bundle-compare';
 import { errorLinesForSkillMd } from './frontmatter-lines';
-import { invalidateLibrary, skillKeys, useSkillBundleFiles, useSkillVersion } from './queries';
+import {
+  invalidateLibrary,
+  skillKeys,
+  useLibraryId,
+  useSkillBundleFiles,
+  useSkillVersion,
+} from './queries';
 import type { SaveChoice } from './save-dialog';
 import { useSkillBundle } from './use-skill-bundle';
 
@@ -74,6 +80,7 @@ interface Rebase {
  */
 export function useSkillEditor(name: string, detail: SkillDetail | undefined, enabled = true) {
   const client = useQueryClient();
+  const lib = useLibraryId();
   const newest = detail?.versions[0]?.version ?? null;
   const [loadedFrom, setLoadedFrom] = useState<string | null>(null);
   const [parent, setParent] = useState<string | null>(null);
@@ -147,13 +154,17 @@ export function useSkillEditor(name: string, detail: SkillDetail | undefined, en
 
   const save = useMutation({
     mutationFn: (choice: SaveChoice & { files: Record<string, string>; parent: string }) => {
-      return saveSkillVersion(name, {
-        files: choice.files,
-        parent_version: choice.parent,
-        bump: choice.bump,
-        reason: choice.reason,
-        publish: choice.publish,
-      });
+      return saveSkillVersion(
+        name,
+        {
+          files: choice.files,
+          parent_version: choice.parent,
+          bump: choice.bump,
+          reason: choice.reason,
+          publish: choice.publish,
+        },
+        lib,
+      );
     },
     onSuccess: (result, choice) => {
       // The saved files *are* the new version's bundle, so they seed its cache
@@ -168,7 +179,7 @@ export function useSkillEditor(name: string, detail: SkillDetail | undefined, en
           content_type: binary ? binaryAssetMimeType(f.path) : 'text/plain; charset=utf-8',
         };
       });
-      client.setQueryData(skillKeys.bundle(name, result.version), {
+      client.setQueryData(skillKeys.bundle(name, result.version, lib), {
         files: choice.files,
         meta,
       });
@@ -188,8 +199,8 @@ export function useSkillEditor(name: string, detail: SkillDetail | undefined, en
       let now: string | null = null;
       try {
         const fresh = await client.fetchQuery({
-          queryKey: skillKeys.skill(name),
-          queryFn: () => getLibrarySkill(name),
+          queryKey: skillKeys.skill(name, lib),
+          queryFn: () => getLibrarySkill(name, lib),
           staleTime: 0,
         });
         now = fresh.versions[0]?.version ?? null;

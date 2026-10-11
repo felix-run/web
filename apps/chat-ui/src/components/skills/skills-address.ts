@@ -15,6 +15,8 @@ import { isSkillTab, type SkillAddress } from './skill-tabs';
 export function useSkillsAddress() {
   const [params, setParams] = useSearchParams();
   const skill = params.get('skill');
+  // Only the caller's own library is addressable here; anything else is the tenant's.
+  const lib = params.get('lib') === 'me' ? ('me' as const) : undefined;
   const status = params.get('status');
   const source = params.get('source');
   const filter: LibraryFilter = {
@@ -43,6 +45,16 @@ export function useSkillsAddress() {
 
   return {
     skill,
+    lib,
+    /** Switch library: the list of the other one, keeping nothing of a skill page. */
+    libraryTo: (next: 'me' | undefined) =>
+      href(
+        withParams((n) => {
+          for (const k of ['skill', 'tab', 'v', 'against']) n.delete(k);
+          if (next) n.set('lib', next);
+          else n.delete('lib');
+        }),
+      ),
     filter,
     address,
     /** A skill's page, keeping the agent and the filter; a version opens Versions on it. */

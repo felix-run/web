@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils';
 import { BundleChanges } from './bundle-changes';
 import { DiffView } from './diff-view';
 import { GateLine } from './gate-line';
-import { useArchiveSkill, usePublishPolicy, useSkillFile } from './queries';
+import { PromoteButton } from './promote-button';
+import { useArchiveSkill, useLibraryId, usePublishPolicy, useSkillFile } from './queries';
 import { RefusalNotice } from './refusal';
 import { ScoreReadout } from './score-readout';
 import { SkillBundleBrowser } from './skill-bundle-browser';
@@ -153,6 +154,8 @@ function VersionRow({
 }) {
   const state = versionState(v, liveVersion);
   const policy = usePublishPolicy().data;
+  // Your own library: a version once published can be offered to the team.
+  const personal = useLibraryId() === 'me';
   return (
     <li className={cn('space-y-1.5 py-3', selected && 'bg-accent/40 -mx-2 rounded-md px-2')}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -198,6 +201,7 @@ function VersionRow({
         />
       )}
       {state === 'superseded' && <RollbackButton name={v.name} version={v.version} />}
+      {personal && v.published_at != null && <PromoteButton name={v.name} version={v.version} />}
     </li>
   );
 }

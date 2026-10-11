@@ -18,6 +18,9 @@ export const SKILL_TABS = [
   { id: 'evals', label: 'Evals', ready: true },
   { id: 'feedback', label: 'Feedback', ready: true },
 ] as const;
+
+/** Tabs the tenant library has and a personal one does not: evaluations and feedback are org-only. */
+export const ORG_ONLY_TABS: ReadonlySet<string> = new Set(['evals', 'feedback']);
 // A stored version's files are a section of Versions now, under the comparison
 // that already lists what changed in them; `tab=files` falls to Versions with
 // the version it named.
