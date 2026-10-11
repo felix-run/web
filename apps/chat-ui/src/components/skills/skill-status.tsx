@@ -153,6 +153,28 @@ function shortCommit(sha: string): string {
  * agent's use of it is screened), and what an adoption or a promotion copied. Nothing for a
  * version written here, which is most of them.
  */
+/**
+ * The version's reason, unless it only restates where the version came from. The harness writes
+ * an import's reason as `imported from <source>@<commit>` (`updated from …` for an update), which
+ * `VersionProvenance` already says beside it, with the ref and a readable commit: shown twice, the
+ * second line was the same source with forty hex characters. A reason anyone wrote is kept.
+ */
+export function ownReason(v: SkillVersion): string | null {
+  const reason = v.reason?.trim();
+  if (!reason) return null;
+  if (v.origin_source && v.origin_commit) {
+    const restated = new RegExp(
+      `^(?:imported|updated) from ${escapeRegExp(v.origin_source)}@${escapeRegExp(v.origin_commit)}$`,
+    );
+    if (restated.test(reason)) return null;
+  }
+  return reason;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function VersionProvenance({ version: v }: { version: SkillVersion }) {
   const lines: ReactNode[] = [];
   if (v.origin_source) {

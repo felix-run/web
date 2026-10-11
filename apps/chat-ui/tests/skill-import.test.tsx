@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetsAt } from '../src/components/skills/refusal';
 import {
   AdoptButton,
   ImportSection,
@@ -302,5 +303,44 @@ describe('movedLine', () => {
     expect(
       movedLine({ 'showcase.pdf': 'assets/showcase.pdf', 'themes/a.md': 'references/themes/a.md' }),
     ).toBe(' · moved showcase.pdf and themes/ (2 files) under references/ and assets/');
+  });
+});
+
+describe('a GitHub rate limit', () => {
+  it('says when the limit lifts, rather than a raw epoch and "a few minutes"', async () => {
+    const reset = Math.floor(Date.now() / 1000) + 57 * 60;
+    fakeHarness((req) =>
+      req.path.startsWith('/skill-library/-/browse?')
+        ? {
+            status: 502,
+            body: {
+              error: 'upstream_rate_limited',
+              message: `GitHub's rate limit is exhausted (resets at ${reset}); FELIX_SKILL_IMPORT_GITHUB_TOKEN raises it`,
+            },
+          }
+        : undefined,
+    );
+    mountWithProviders(<ImportSection linkTo={linkTo} />);
+    fireEvent.change(screen.getByLabelText(/Source/), { target: { value: 'github:acme/skills' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+
+    const time = new Date(reset * 1000).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    expect(
+      await screen.findByText(`GitHub is rate-limiting the harness until ${time} (in 57 minutes).`),
+    ).toBeTruthy();
+    expect(screen.queryByText(/a few minutes/)).toBeNull();
+    expect(
+      screen.getByText(new RegExp(`resets at ${time.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`)),
+    ).toBeTruthy();
+  });
+
+  it('reads no reset from a message that names none', () => {
+    expect(resetsAt('GitHub said no')).toBeNull();
+    expect(resetsAt('resets at 1791760021', 1791760021 * 1000 - 30_000)?.in).toBe(
+      'about a minute from now',
+    );
   });
 });

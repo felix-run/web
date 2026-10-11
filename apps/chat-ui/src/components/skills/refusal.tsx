@@ -142,6 +142,9 @@ export function RefusalNotice({
     invalid_policy:
       'Every policy field needs a value; only the evaluation uplift floor can be left empty.',
   };
+  const resets = code === 'upstream_rate_limited' ? resetsAt(refusal.message) : null;
+  if (resets)
+    lead[code] = `GitHub is rate-limiting the harness until ${resets.time} (${resets.in}).`;
   return (
     <Notice action={action}>
       <p>
@@ -151,7 +154,9 @@ export function RefusalNotice({
             : `Could not ${doing}.`)}
       </p>
       {code !== 'publish_blocked' || reasons.length === 0 ? (
-        <p className="mt-0.5 break-words">{refusal.message}</p>
+        <p className="mt-0.5 break-words">
+          {resets ? refusal.message.replace(resets.raw, resets.time) : refusal.message}
+        </p>
       ) : null}
       {reasons.length > 0 && (
         <ul className="mt-1 list-disc space-y-0.5 pl-4">
@@ -187,4 +192,24 @@ function Notice({ children, action }: { children: ReactNode; action?: ReactNode 
       {action}
     </div>
   );
+}
+
+/**
+ * When GitHub's limit lifts, from the harness's `resets at <epoch seconds>`: a local time and how
+ * long until then. Said, because "try again in a few minutes" was wrong by an hour, and the epoch
+ * it carried was a ten-digit number nobody could read. Null when the message names no reset.
+ */
+export function resetsAt(
+  message: string,
+  now: number = Date.now(),
+): { raw: string; time: string; in: string } | null {
+  const m = /resets at (\d{9,})/.exec(message);
+  if (!m?.[1]) return null;
+  const at = Number(m[1]) * 1000;
+  const minutes = Math.max(0, Math.ceil((at - now) / 60_000));
+  return {
+    raw: m[1],
+    time: new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    in: minutes <= 1 ? 'about a minute from now' : `in ${minutes} minutes`,
+  };
 }

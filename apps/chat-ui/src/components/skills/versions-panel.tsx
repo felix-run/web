@@ -21,6 +21,7 @@ import { SkillBundleBrowser } from './skill-bundle-browser';
 import { AdoptButton } from './skill-import';
 import {
   ago,
+  ownReason,
   SourceLabel,
   VersionProvenance,
   VersionStateBadge,
@@ -171,7 +172,7 @@ function VersionRow({
         )}
       </div>
       <VersionProvenance version={v} />
-      {v.reason && <p className="text-sm whitespace-pre-wrap break-words">{v.reason}</p>}
+      {ownReason(v) && <p className="text-sm whitespace-pre-wrap break-words">{ownReason(v)}</p>}
       <ScoreReadout quality={v.quality_score} security={v.security_status} policy={policy} />
       {v.decided_by && (
         <p className="text-xs text-muted-foreground">
