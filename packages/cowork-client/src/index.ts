@@ -1,10 +1,10 @@
 export {
+  type BrowserToolOptions,
   clearMount,
   executeClientTool,
   getMountLabel,
   hasMount,
   mountTree,
-  openWorkspaceFile,
   pickDirectory,
   supportsDirectoryPicker,
 } from './client-tools';

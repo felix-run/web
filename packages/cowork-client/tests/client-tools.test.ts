@@ -41,6 +41,51 @@ describe('executeClientTool', () => {
     expect(listed.content).toBe('notes/');
   });
 
+  // A file `local_open` names goes to the host's pane, never to a blob in a new
+  // window — which is what the tool did, and what nobody asking for it wanted.
+  describe('local_open', () => {
+    it('hands an existing file to openFile and opens no window', async () => {
+      vfs.write('README.md', '# hi\n');
+      const open = vi.fn();
+      vi.stubGlobal('window', { open });
+      const openFile = vi.fn();
+      const result = await executeClientTool(
+        { id: 'o1', name: 'local_open', args: { target: '/README.md' } },
+        vfs,
+        { openFile },
+      );
+      expect(openFile).toHaveBeenCalledWith('README.md');
+      expect(open).not.toHaveBeenCalled();
+      expect(result.error).toBeUndefined();
+      expect(JSON.parse(result.content)).toMatchObject({ opened: 'README.md', in: 'side_pane' });
+      vi.unstubAllGlobals();
+    });
+
+    it('refuses a file that does not exist without opening anything', async () => {
+      const openFile = vi.fn();
+      const result = await executeClientTool(
+        { id: 'o2', name: 'local_open', args: { target: 'missing.md' } },
+        vfs,
+        { openFile },
+      );
+      expect(openFile).not.toHaveBeenCalled();
+      expect(result).toEqual({ content: 'error: no such file: missing.md', error: true });
+    });
+
+    it('refuses a file rather than falling back to a new window when there is no pane', async () => {
+      vfs.write('README.md', '# hi\n');
+      const open = vi.fn();
+      vi.stubGlobal('window', { open });
+      const result = await executeClientTool(
+        { id: 'o3', name: 'local_open', args: { target: 'README.md' } },
+        vfs,
+      );
+      expect(open).not.toHaveBeenCalled();
+      expect(result.error).toBe(true);
+      vi.unstubAllGlobals();
+    });
+  });
+
   it('reports an unknown tool as an error rather than throwing', async () => {
     const result = await executeClientTool({ id: 't2', name: 'nope', args: {} }, vfs);
     expect(result.error).toBe(true);

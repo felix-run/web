@@ -463,7 +463,10 @@ export function AppShell() {
           client: felix,
           threadId: () => id,
           clientTools: {
-            execute: executeClientTool,
+            // `local_open` on a file opens it in this thread's side pane: the
+            // engine's own thread, so a run on another thread fills that one's.
+            execute: (req) =>
+              executeClientTool(req, (path) => openPaneItem(id, { kind: 'file', path })),
             // A `local_*` write's before is the browser's file; any other write's
             // is the harness's, on the thread the write is on.
             readForDiff: routedDiffReader(felix, readWorkspaceFile),

@@ -1654,7 +1654,9 @@ reply's code block asks Shiki itself, `useShikiKnows`, since its fence can name 
 
 **The side pane replaced that drawer** (2026-10-10, `components/pane/`, store `src/lib/side-pane.ts`).
 Five things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6, the oldest
-*clean* one dropped first): a workspace file (the file tree, a Changes row a write landed on), a
+*clean* one dropped first): a workspace file (the file tree, a Changes row a write landed on, or
+the agent's `local_open` — into the pane of the call's own thread, never a new window; a URL
+still opens a tab), a
 spilled tool output (`Open full output` in the tool card), a reply's code block (an Open control
 `OpenablePre` adds to streamdown's header by wrapping the pass-through `pre`, so Shiki is kept),
 a tool's image, and a skill's editor (see **Skill library**). Opening goes through `ShellValue.openInPane`, which is **optional** — a test's
