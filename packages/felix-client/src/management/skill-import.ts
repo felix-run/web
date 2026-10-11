@@ -60,8 +60,14 @@ export interface SkillSourceListing {
 export interface SkillImportResult extends SkillWriteResult {
   /** The source's files were already the newest version's: nothing was saved. */
   unchanged: boolean;
-  /** Files the import did not keep (outside the bundle's layout, or too large). */
+  /** Files the import did not keep: `evals/`, dot-paths, tests, build output, what did not fit. */
   dropped_files: string[];
+  /**
+   * Files the bundle has no place for, kept anyway: source path → where it went (`references/…`,
+   * or `assets/…` for a binary asset), with the SKILL.md's references rewritten to match. Absent
+   * from a harness older than felix-run/felix#613, which dropped them.
+   */
+  relocated_files?: Record<string, string>;
 }
 
 /** One file that differs between two versions of a skill, or a skill and its source. */

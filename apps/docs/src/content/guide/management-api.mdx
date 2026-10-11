@@ -796,7 +796,8 @@ resolved commit, and `POST /-/import` with `{source, ref}` fetches one as a draf
 import`, pinned to that commit. An import is never published in the same request (`publish: true` is
 `422 publish_not_allowed`); it is reviewed and then published with `…/publish` like any draft,
 through a stricter gate. A re-import whose files are unchanged saves nothing and answers `200` with
-`unchanged: true`; `dropped_files` lists what the import left out. Sources, refs, the allowlist,
+`unchanged: true`; `dropped_files` lists what the import left out, and `relocated_files` what it
+moved under `references/` or `assets/`. Sources, refs, the allowlist,
 the cooldown and the call budgets are in [Skill import](/guide/skill-import/).
 
 An imported skill can be checked against its origin: `GET /{name}/-/upstream` re-resolves its stored

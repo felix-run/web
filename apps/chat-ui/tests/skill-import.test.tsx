@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AdoptButton,
   ImportSection,
+  movedLine,
   SourceCheck,
   UpdatesSection,
 } from '../src/components/skills/skill-import';
@@ -63,7 +64,11 @@ describe('importing from GitHub', () => {
           body: {
             ...versionRow({ name: 'pdf', source: 'import' }),
             unchanged: false,
-            dropped_files: [],
+            dropped_files: ['tests/test_forms.py'],
+            relocated_files: {
+              'forms/w9.md': 'references/forms/w9.md',
+              'forms/1099.md': 'references/forms/1099.md',
+            },
           },
         };
       }
@@ -86,6 +91,10 @@ describe('importing from GitHub', () => {
     );
     expect((await screen.findByRole('link', { name: '0.1.0' })).getAttribute('href')).toContain(
       '?skill=pdf&v=0.1.0',
+    );
+    // What moved is said beside what was left out, so the draft's references/forms/ is explained.
+    expect(document.body.textContent).toContain(
+      'moved forms/ (2 files) under references/ · left out 1 file',
     );
   });
 
@@ -270,5 +279,28 @@ describe('adopting an imported version', () => {
       }),
     );
     expect(await screen.findByText(/Adopted as draft/)).toBeTruthy();
+  });
+});
+
+describe('movedLine', () => {
+  it('names one or two folders, counts past that, and says nothing for no moves', () => {
+    expect(movedLine(undefined)).toBe('');
+    expect(movedLine({})).toBe('');
+    expect(movedLine({ 'reference.md': 'references/reference.md' })).toBe(
+      ' · moved reference.md (1 file) under references/',
+    );
+    expect(movedLine({ 'a/x.md': 'references/a/x.md', 'b/y.md': 'references/b/y.md' })).toBe(
+      ' · moved a/ and b/ (2 files) under references/',
+    );
+    expect(
+      movedLine({
+        'a/x.md': 'references/a/x.md',
+        'b/y.md': 'references/b/y.md',
+        'c/z.md': 'references/c/z.md',
+      }),
+    ).toBe(' · moved 3 files under references/');
+    expect(
+      movedLine({ 'showcase.pdf': 'assets/showcase.pdf', 'themes/a.md': 'references/themes/a.md' }),
+    ).toBe(' · moved showcase.pdf and themes/ (2 files) under references/ and assets/');
   });
 });
