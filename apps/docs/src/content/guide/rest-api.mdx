@@ -584,7 +584,7 @@ present, else `data.text` or `data.delta`, else `""`.
   <dd>A model token chunk</dd>
   <dd class="event-data">`{"chunk":{"content":str},"delta":str}`</dd>
   <dt>`on_chat_model_stream`</dt>
-  <dd>Composite patterns only (`deep`, `router`, `parallel`, `groupchat`, `reflect`, `plan_execute`)</dd>
+  <dd>**Legacy — no longer emitted.** A harness older than `felix-run/felix#603` sent each chunk of a composite pattern's streamed answer (`parallel`, `plan_execute`) a second time under this name, beside the `text_delta`. A client that reads both should ignore it once a `text_delta` has arrived, or draw the answer twice</dd>
   <dd class="event-data">`{"chunk":{"content":str}}`</dd>
   <dt>`tool_start`</dt>
   <dd>Before a tool runs</dd>

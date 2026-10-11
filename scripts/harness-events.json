@@ -1,15 +1,16 @@
 {
   "$comment": "Every SSE event the harness can emit, recorded from a checkout by scripts/sync-harness-contract.mjs. check-protocol-parity fails when one of these has no StreamEvent arm — the direction the type system cannot see, because the union ends in an open arm. Do not hand-edit: re-run the sync.",
-  "harnessCommit": "59da8635",
+  "harnessCommit": "ee2d8e90",
   "harnessVersion": "0.12.1",
   "eventsSource": "schemas/sse-events.json",
   "normalised": {
     "error": "on_error"
   },
-  "$legacyComment": "Renamed to tool_start/tool_end in the harness on 2026-08-22. The harness is self-hosted and versions independently, so a deployment older than that still emits these and the arms must stay. Maintained by hand — the sync cannot infer what a past version sent.",
+  "$legacyComment": "on_tool_start/on_tool_end were renamed to tool_start/tool_end in the harness on 2026-08-22; on_chat_model_stream, a second copy of text_delta, stopped being emitted in felix-run/felix#603 (2026-10-11). The harness is self-hosted and versions independently, so a deployment older than that still emits these and the arms must stay. Maintained by hand — the sync cannot infer what a past version sent.",
   "legacy": [
     "on_tool_start",
-    "on_tool_end"
+    "on_tool_end",
+    "on_chat_model_stream"
   ],
   "emitted": [
     "aborted",
@@ -20,7 +21,6 @@
     "follow_up",
     "max_turns",
     "on_chain_end",
-    "on_chat_model_stream",
     "permission_mode_changed",
     "run_accepted",
     "run_status",
