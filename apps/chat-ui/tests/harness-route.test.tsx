@@ -9,6 +9,7 @@ import App from '../src/App';
 import { PageHeader, Panel, PanelBody, READING_MEASURE } from '../src/components/harness/panel';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { resetPresence } from '../src/lib/presence';
+import { openInPane, paneState, resetPanes } from '../src/lib/side-pane';
 import { HARNESS_DESTINATIONS } from '../src/routes/harness';
 
 /**
@@ -80,6 +81,7 @@ afterEach(() => {
   // down `window` — an unhandled error that failed CI with every test passing.
   cleanup();
   vi.unstubAllGlobals();
+  resetPanes();
   document.body.innerHTML = '';
 });
 
@@ -544,5 +546,35 @@ describe('the harness address', () => {
     const main = document.querySelector('main') as HTMLElement;
     expect(main.querySelector('h2')?.textContent).toBe('Jobs');
     expect(main.querySelector('nav[aria-label="Harness"]')).toBeNull();
+  });
+});
+
+describe('the side pane on /harness', () => {
+  it('sits beside the page, and opening into it stays on the page', async () => {
+    sessionStorage.setItem('felix.tabThread', 'pane-thread');
+    openInPane('pane-thread', {
+      kind: 'code',
+      code: 'const a = 1;',
+      language: 'ts',
+      title: 'ts · 1 line',
+    });
+    mount('/harness/activity');
+    await waitFor(() => expect(address).toBe('/harness/activity'));
+    expect(await screen.findByRole('complementary', { name: 'Side pane' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /ts · 1 line/ })).toBeTruthy();
+
+    // A second item opened from here is drawn here too: no trip back to the thread.
+    act(() => {
+      openInPane('pane-thread', { kind: 'code', code: 'b', language: 'ts', title: 'second' });
+    });
+    expect(await screen.findByRole('tab', { name: /second/ })).toBeTruthy();
+    expect(address).toBe('/harness/activity');
+
+    // The header's toggle hides it, as it does on a thread.
+    fireEvent.click(screen.getByRole('button', { name: 'Side pane' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('complementary', { name: 'Side pane' })).toBeNull(),
+    );
+    expect(paneState('pane-thread').items).toHaveLength(2);
   });
 });

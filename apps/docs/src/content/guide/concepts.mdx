@@ -328,9 +328,9 @@ task, so they need `felix-worker` and `felix-scheduler` running.
 chat-ui's Skills page is the operator surface over all of this: the library list, a review queue and
 feedback inbox, the tenant's publish policy, and for each skill its versions with diffs, the gate's
 verdict, evaluations and feedback. Every publish confirm states the gate's verdict before it asks.
-A skill is edited in the **side pane**, beside a conversation: **Edit** on its page, *Edit to fix* on
-a draft the gate refused, and **New skill** all open it there, and an unsaved edit survives
-switching tabs or visiting another page. A `create_skill` or `update_skill` result renders in the
+A skill is edited in the **side pane**, beside the skill's own page or a conversation: **Edit** on
+its page, *Edit to fix* on a draft the gate refused, and **New skill** all open it there, and an
+unsaved edit survives switching tabs or moving between pages. A `create_skill` or `update_skill` result renders in the
 chat as a proposal card with Publish, Reject and Edit. The routes underneath are in the [Management API](/guide/management-api/#skill-library).
 
 chat-ui lists its harness pages — Skills, Activity, Memory and the rest — in the sidebar in

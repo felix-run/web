@@ -1,5 +1,5 @@
 import { isSkillLibraryError } from '@felix/client';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { ItemHeader } from '@/components/pane/pane-parts';
 import { type PaneItem, updatePaneSkill } from '@/lib/side-pane';
@@ -38,6 +38,12 @@ function SkillPaneEditor({ threadId, item }: { threadId: string; item: SkillItem
   const q = new URLSearchParams({ skill: item.name });
   if (item.library) q.set('lib', item.library);
   const missing = isSkillLibraryError(skill.error) && skill.error.status === 404;
+  // Beside the skill's own page, a link to that page is a link to what is already on screen.
+  const here = useLocation();
+  const onItsPage =
+    here.pathname === '/harness/skills' &&
+    new URLSearchParams(here.search).get('skill') === item.name &&
+    (new URLSearchParams(here.search).get('lib') ?? undefined) === item.library;
 
   return (
     <>
@@ -49,12 +55,14 @@ function SkillPaneEditor({ threadId, item }: { threadId: string; item: SkillItem
           detail ? (detail.live_version ? `live ${detail.live_version}` : 'nothing live') : null,
         ]}
         actions={
-          <Link
-            to={`/harness/skills?${q}`}
-            className="inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-          >
-            Versions
-          </Link>
+          !onItsPage && (
+            <Link
+              to={`/harness/skills?${q}`}
+              className="inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              Versions
+            </Link>
+          )
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
