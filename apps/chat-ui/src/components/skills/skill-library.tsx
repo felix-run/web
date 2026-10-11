@@ -21,6 +21,7 @@ import { ReadFailure } from '@/components/inspector/primitives';
 import { cn } from '@/lib/utils';
 import { FeedbackInbox } from './feedback-panel';
 import { LibraryList } from './library-list';
+import { useOpenSkillEditor } from './open-skill-editor';
 import { PolicyEditor } from './policy-form';
 import {
   invalidateLibrary,
@@ -373,14 +374,16 @@ function NewSkillForm({
     attempted && !description.trim()
       ? 'A description is required — it is how an agent decides to use the skill.'
       : null;
+  const openEditor = useOpenSkillEditor();
   const create = useMutation({
     mutationFn: () =>
       createLibrarySkill({ files: createSkillTemplate(name, description.trim()) }, lib),
     onSuccess: (result) => {
       void invalidateLibrary(client);
       toast.success(`Created ${result.name} ${result.version} as a draft.`);
-      const to = linkTo(result.name);
-      navigate(`${to}${to.endsWith('?') ? '' : '&'}tab=edit`);
+      // Straight into the editor, beside the conversation; without one, its page.
+      if (openEditor) openEditor(result.name);
+      else navigate(linkTo(result.name));
     },
   });
   const ready = isValidSkillName(name) && description.trim().length > 0;

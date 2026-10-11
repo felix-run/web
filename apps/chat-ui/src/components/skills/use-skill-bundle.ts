@@ -40,15 +40,24 @@ function sameFiles(a: Record<string, string>, b: Record<string, string>): boolea
 export function useSkillBundle({
   initialFiles,
   versionId,
+  draft,
 }: {
   initialFiles: Record<string, string> | undefined;
   versionId: string | undefined;
+  /**
+   * A working copy kept from an earlier mount, over `versionId`'s files. Taken once, on the
+   * first load: the side pane unmounts the editor on every tab switch, and the edit outlives it.
+   */
+  draft?: Record<string, string>;
 }): SkillBundleState {
   const [files, setFilesState] = useState<Record<string, string>>({});
   const [baseline, setBaseline] = useState<Record<string, string>>({});
   const [activePath, setActivePath] = useState('SKILL.md');
   const [pendingDirs, setPendingDirs] = useState<string[]>([]);
   const loadedVersionRef = useRef<string | undefined>(undefined);
+  const draftRef = useRef(draft);
+  /** The version a kept draft was put over, so a second run of the load cannot replace it. */
+  const draftedRef = useRef<string | undefined>(undefined);
 
   // Mutations read current files through this ref so their callbacks can
   // return success synchronously without depending on `files` identity.
@@ -68,25 +77,27 @@ export function useSkillBundle({
     const loaded: Record<string, string> = { 'SKILL.md': '', ...initialFiles };
     const versionChanged = versionId !== loadedVersionRef.current;
     if (!versionChanged && dirty) return;
+    // StrictMode runs this twice on mount, the second time before the draft has reached state:
+    // `dirty` still reads false then, and loading again would put the stored files over the
+    // draft. `filesRef` already holds it.
+    if (
+      !versionChanged &&
+      draftedRef.current === versionId &&
+      !sameFiles(filesRef.current, loaded)
+    ) {
+      return;
+    }
     if (!versionChanged && sameFiles(files, loaded)) return;
+    const kept = loadedVersionRef.current === undefined ? draftRef.current : undefined;
+    draftRef.current = undefined;
+    if (kept) draftedRef.current = versionId;
     loadedVersionRef.current = versionId;
-    setFiles(loaded);
+    const start = kept ?? loaded;
+    setFiles(start);
     setBaseline(loaded);
     setPendingDirs([]);
-    setActivePath((path) => (loaded[path] !== undefined ? path : 'SKILL.md'));
+    setActivePath((path) => (start[path] !== undefined ? path : 'SKILL.md'));
   }, [initialFiles, versionId, dirty, files, setFiles]);
-
-  // A reload or a closed tab. Navigation inside the app is the router's to
-  // stop (`UnsavedChangesGuard`), and the two are kept apart so neither warns
-  // on a page with nothing unsaved.
-  useEffect(() => {
-    if (!dirty) return;
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [dirty]);
 
   const setFileContent = useCallback(
     (path: string, content: string) => {

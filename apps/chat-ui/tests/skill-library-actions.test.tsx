@@ -1,10 +1,9 @@
 // @vitest-environment happy-dom
-import { TooltipProvider } from '@felix/ui/tooltip';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SkillLibrary, SkillLibraryPage } from '../src/components/skills/skill-library';
+import { anyUnsaved, isDirty, openInPane, paneState, resetPanes } from '../src/lib/side-pane';
 import {
   expectSameWeight,
   fakeHarness,
@@ -12,14 +11,14 @@ import {
   mountWithProviders,
   type Recorded,
   SKILL_MD,
+  SkillEditorInPane,
   versionRow,
 } from './skill-fixtures';
 
 /**
  * The library's decisions at the wire — reject carries its note, rollback and
  * archive send their verbs, an approved draft leaves the queue — and the
- * unsaved-changes guard, mounted on a real data router, because `useBlocker`
- * does nothing under the `MemoryRouter` every other suite uses.
+ * editor's edit outliving the side pane's unmounting of it.
  */
 
 afterEach(() => {
@@ -210,68 +209,49 @@ describe('the review queue', () => {
   });
 });
 
-describe('the unsaved-changes guard', () => {
-  function mountOnDataRouter() {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const router = createMemoryRouter(
-      [
-        {
-          path: '/harness/skills',
-          element: (
-            <QueryClientProvider client={client}>
-              <TooltipProvider>
-                <SkillLibraryPage />
-              </TooltipProvider>
-            </QueryClientProvider>
-          ),
-        },
-      ],
-      { initialEntries: ['/harness/skills?skill=roll-dice&tab=edit'] },
+describe('the editor in the side pane', () => {
+  afterEach(() => {
+    resetPanes();
+    sessionStorage.clear();
+  });
+
+  function Remount() {
+    const [shown, setShown] = useState(true);
+    return (
+      <>
+        <button type="button" onClick={() => setShown(false)}>
+          away
+        </button>
+        <button type="button" onClick={() => setShown(true)}>
+          back
+        </button>
+        {shown && <SkillEditorInPane name="roll-dice" />}
+      </>
     );
-    render(<RouterProvider router={router} />);
-    return router;
   }
 
-  async function editThenLeave() {
+  it('keeps an edit across the unmount a tab switch is, and marks the tab unsaved', async () => {
+    library(THREE().slice(1), '0.1.1');
+    openInPane('t', { kind: 'skill', name: 'roll-dice' });
+    // Under StrictMode, as the app runs in development: every effect runs twice on mount.
+    mountWithProviders(
+      <StrictMode>
+        <Remount />
+      </StrictMode>,
+    );
     const source = (await screen.findByLabelText('SKILL.md source')) as HTMLTextAreaElement;
     await waitFor(() => expect(source.value).toContain('Version 0.1.1'));
     fireEvent.change(source, { target: { value: `${source.value}more\n` } });
-    fireEvent.click(screen.getByRole('link', { name: 'Library' }));
-    expect(await screen.findByText('Leave without saving?')).toBeTruthy();
-    return source;
-  }
+    await waitFor(() => expect(paneState('t').items.some(isDirty)).toBe(true));
+    expect(anyUnsaved()).toBe(true);
 
-  it('asks before leaving with edits, and Keep stays — edits and focus in the editor', async () => {
-    library(THREE().slice(1), '0.1.1');
-    const router = mountOnDataRouter();
-    const source = await editThenLeave();
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
-    });
-    await waitFor(() => expect(screen.queryByText('Leave without saving?')).toBeNull());
-    expect(router.state.location.search).toContain('skill=roll-dice');
-    const after = screen.getByLabelText('SKILL.md source') as HTMLTextAreaElement;
-    expect(after.value).toContain('more');
-    await waitFor(() => expect(document.activeElement).toBe(source));
-  });
-
-  it('Discard leaves', async () => {
-    library(THREE().slice(1), '0.1.1');
-    const router = mountOnDataRouter();
-    await editThenLeave();
-    fireEvent.click(screen.getByRole('button', { name: 'Discard and leave' }));
-    await waitFor(() => expect(router.state.location.search).not.toContain('skill='));
-  });
-
-  it('does not ask on a tab switch with edits', async () => {
-    library(THREE().slice(1), '0.1.1');
-    const router = mountOnDataRouter();
-    const source = (await screen.findByLabelText('SKILL.md source')) as HTMLTextAreaElement;
-    await waitFor(() => expect(source.value).toContain('Version 0.1.1'));
-    fireEvent.change(source, { target: { value: `${source.value}more\n` } });
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Versions' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Versions' }));
-    await waitFor(() => expect(router.state.location.search).toContain('tab=versions'));
-    expect(screen.queryByText('Leave without saving?')).toBeNull();
+    // The pane renders only the tab in front: switching away unmounts the editor, and coming
+    // back mounts it over a cache that already holds the files.
+    fireEvent.click(screen.getByRole('button', { name: 'away' }));
+    expect(screen.queryByLabelText('SKILL.md source')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    const again = (await screen.findByLabelText('SKILL.md source')) as HTMLTextAreaElement;
+    await waitFor(() => expect(again.value).toContain('more'));
+    expect(screen.getByRole('button', { name: /Save version/ })).toBeTruthy();
   });
 });

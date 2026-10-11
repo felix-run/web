@@ -11,6 +11,7 @@ import {
 } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
 import { GateLine } from './gate-line';
+import { useOpenSkillEditor } from './open-skill-editor';
 import { useLibrarySkill, usePublishPolicy } from './queries';
 import { QueryRoot } from './query-root';
 import { isForbidden } from './refusal';
@@ -106,6 +107,7 @@ function SavedDraft({
   const [forbidden, setForbidden] = useState(false);
   const [open, setOpen] = useState(false);
   const onForbidden = useCallback(() => setForbidden(true), []);
+  const openEditor = useOpenSkillEditor();
   const row = skill.data?.versions.find((v) => v.version === result.version);
   const live = skill.data?.live_version ?? null;
   // The library's word for it now; the result's, said as such, when the library is unreadable.
@@ -236,7 +238,18 @@ function SavedDraft({
               : 'This key can read the skill library but not change it: approving or rejecting needs skills:write. Someone with that scope can decide it from the library.'}
           </p>
         )}
-        <OpenInLibrary name={result.name} version={result.version} />
+        <div className="flex flex-wrap items-center gap-3">
+          {openEditor && !forbidden && !cannotRead && (
+            <button
+              type="button"
+              onClick={() => openEditor(result.name)}
+              className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              Edit
+            </button>
+          )}
+          <OpenInLibrary name={result.name} version={result.version} />
+        </div>
       </div>
     </div>
   );

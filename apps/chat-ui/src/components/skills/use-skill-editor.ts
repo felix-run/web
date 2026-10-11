@@ -13,8 +13,9 @@ import {
   validateSkillBundle,
 } from '@felix/skill-format';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { getLibrarySkill, saveSkillVersion } from '@/api';
+import type { SkillEditSnapshot } from '@/lib/side-pane';
 import { compareBundles, type FileChange } from './bundle-compare';
 import { errorLinesForSkillMd } from './frontmatter-lines';
 import {
@@ -78,33 +79,64 @@ interface Rebase {
  *
  * Nothing is ever saved over a newer version without those choices being made.
  */
-export function useSkillEditor(name: string, detail: SkillDetail | undefined, enabled = true) {
+export function useSkillEditor(
+  name: string,
+  detail: SkillDetail | undefined,
+  {
+    kept,
+    onKeep,
+  }: {
+    /** State kept from an earlier mount: where it was loaded from, the edit, a merge in progress. */
+    kept?: SkillEditSnapshot;
+    /** Called with the state to keep whenever it changes. */
+    onKeep?: (snapshot: SkillEditSnapshot) => void;
+  } = {},
+) {
   const client = useQueryClient();
   const lib = useLibraryId();
   const newest = detail?.versions[0]?.version ?? null;
-  const [loadedFrom, setLoadedFrom] = useState<string | null>(null);
-  const [parent, setParent] = useState<string | null>(null);
+  const [loadedFrom, setLoadedFrom] = useState<string | null>(kept?.loadedFrom ?? null);
+  const [parent, setParent] = useState<string | null>(kept?.parent ?? null);
   const [stale, setStale] = useState<StaleSave | null>(null);
   /** Set by "keep my edits": the version saved over, whose changes the page shows. */
-  const [rebase, setRebase] = useState<Rebase | null>(null);
-  const [resolutions, setResolutions] = useState<Record<string, Resolution>>({});
+  const [rebase, setRebase] = useState<Rebase | null>(kept?.rebase ?? null);
+  const [resolutions, setResolutions] = useState<Record<string, Resolution>>(
+    kept?.resolutions ?? {},
+  );
   const [lastSave, setLastSave] = useState<SkillWriteResult | null>(null);
 
   // The first answer about the skill decides where editing starts: its newest.
-  // Not before the Edit tab is first opened: loading a bundle is a request per
-  // file, and a page visited to read the versions list should not pay for it.
   useEffect(() => {
-    if (enabled && newest && loadedFrom === null) {
+    if (newest && loadedFrom === null) {
       setLoadedFrom(newest);
       setParent(newest);
     }
-  }, [enabled, newest, loadedFrom]);
+  }, [newest, loadedFrom]);
 
   const files = useSkillBundleFiles(name, loadedFrom);
   const bundle = useSkillBundle({
     initialFiles: files.data?.files,
     versionId: loadedFrom ?? undefined,
+    draft: kept?.files,
   });
+
+  // Hand the state back on every change, so the next mount starts where this one stopped.
+  // Only once the working copy holds the loaded files (SKILL.md is always among them). The
+  // query being answered is not enough: with the files cached, a remount's first commit has
+  // the answer and still an empty copy, and handing that back erased the kept edit.
+  const keepRef = useRef(onKeep);
+  keepRef.current = onKeep;
+  const ready = files.data !== undefined && bundle.files['SKILL.md'] !== undefined;
+  useEffect(() => {
+    if (!ready || !loadedFrom || !parent) return;
+    keepRef.current?.({
+      loadedFrom,
+      parent,
+      ...(bundle.dirty ? { files: bundle.files } : {}),
+      ...(rebase ? { rebase } : {}),
+      ...(Object.keys(resolutions).length ? { resolutions } : {}),
+    });
+  }, [ready, loadedFrom, parent, bundle.dirty, bundle.files, rebase, resolutions]);
 
   // From the working copy, not the load: a newer file taken during a rebase is
   // read redacted too, and saving it would write the placeholder.

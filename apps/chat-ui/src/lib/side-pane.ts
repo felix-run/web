@@ -46,7 +46,30 @@ export type PaneItem =
       chars: number;
     }
   | { kind: 'code'; key: string; code: string; language: string; title: string }
-  | { kind: 'image'; key: string; url: string; title: string };
+  | { kind: 'image'; key: string; url: string; title: string }
+  | {
+      kind: 'skill';
+      key: string;
+      name: string;
+      /** The library it is in: absent for the team's, `me` or a digest for a personal one. */
+      library?: string;
+      /** The editor's state, kept here because the tab unmounts it. Absent until it loads. */
+      edit?: SkillEditSnapshot;
+    };
+
+/**
+ * A skill editor's state between mounts. `files` is present only while the
+ * working copy differs from `loadedFrom`; `rebase` and `resolutions` are the
+ * "keep my edits on top of a newer version" choice in progress, which must
+ * survive too — losing them would let a save undo files the newer version changed.
+ */
+export interface SkillEditSnapshot {
+  loadedFrom: string;
+  parent: string;
+  files?: Record<string, string>;
+  rebase?: { onto: string; base: string; mine: Record<string, string> };
+  resolutions?: Record<string, 'theirs' | 'mine'>;
+}
 
 export type PaneItemInput = PaneItem extends infer T
   ? T extends PaneItem
@@ -89,6 +112,8 @@ export function paneKey(item: PaneItemInput): string {
       return `code:${hash(`${item.language}\n${item.code}`)}`;
     case 'image':
       return `image:${hash(item.url)}`;
+    case 'skill':
+      return `skill:${item.library ?? ''}/${item.name}`;
   }
 }
 
@@ -115,6 +140,7 @@ export function cleanFile(
 }
 
 export function isDirty(item: PaneItem): boolean {
+  if (item.kind === 'skill') return item.edit?.files !== undefined;
   return item.kind === 'file' && item.draft !== undefined && item.draft !== item.base;
 }
 
@@ -162,6 +188,8 @@ function isItem(v: unknown): v is PaneItem {
       return typeof o.code === 'string' && typeof o.language === 'string';
     case 'image':
       return typeof o.url === 'string';
+    case 'skill':
+      return typeof o.name === 'string';
     default:
       return false;
   }
@@ -262,6 +290,19 @@ export function updatePaneFile(
       const next = change(i);
       if (next !== i) changed = true;
       return next;
+    });
+    return changed ? { ...s, items } : s;
+  });
+}
+
+/** Keep a skill editor's state on its item. */
+export function updatePaneSkill(threadId: string, key: string, edit: SkillEditSnapshot) {
+  update(threadId, (s) => {
+    let changed = false;
+    const items = s.items.map((i) => {
+      if (i.key !== key || i.kind !== 'skill') return i;
+      changed = true;
+      return { ...i, edit };
     });
     return changed ? { ...s, items } : s;
   });
