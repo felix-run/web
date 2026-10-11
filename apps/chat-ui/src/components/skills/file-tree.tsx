@@ -1,4 +1,4 @@
-import { isAllowedPath, isBinaryAssetPath } from '@felix/skill-format';
+import { isAllowedPath, isBinaryAssetPath, LICENSE_FILES } from '@felix/skill-format';
 import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
@@ -280,6 +280,11 @@ export function FileTree({
               {files['plugin.json'] === undefined && (
                 <DropdownMenuItem onSelect={() => onCreateFile?.('plugin.json')}>
                   Add <span className="font-mono">plugin.json</span>
+                </DropdownMenuItem>
+              )}
+              {LICENSE_FILES.every((f) => files[f] === undefined) && (
+                <DropdownMenuItem onSelect={() => onCreateFile?.('LICENSE')}>
+                  Add <span className="font-mono">LICENSE</span>
                 </DropdownMenuItem>
               )}
               {onRequestUpload && (

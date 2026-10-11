@@ -27,6 +27,7 @@ export {
   extractDiscoveryMeta,
   isAllowedPath,
   isValidSkillName,
+  LICENSE_FILES,
   MAX_BUNDLE_FILES,
   MAX_SKILL_MD_CHARS,
   parseSkillMd,

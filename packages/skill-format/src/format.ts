@@ -52,7 +52,12 @@ export type ValidationResult =
 
 export const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const BUNDLE_DIRS = ['scripts', 'references', 'assets', 'evals'] as const;
-export const ALLOWED_ROOT_FILES = ['plugin.json'] as const;
+/**
+ * A license file at the root, so a skill keeps its terms: a third party's usually require the
+ * notice to travel with the files. Exact names, as the harness matches them.
+ */
+export const LICENSE_FILES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt'] as const;
+export const ALLOWED_ROOT_FILES = ['plugin.json', ...LICENSE_FILES] as const;
 const SEGMENT_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
 // `[\s\S]` is any character including a newline: the Python pattern runs DOTALL.
