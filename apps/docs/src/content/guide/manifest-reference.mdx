@@ -205,6 +205,45 @@ history shows the model each earlier command as it was answered. One request may
 type. A client that has slash commands of its own should send a name it does not handle itself
 through to the harness when it is on that list.
 
+## `spec.output_styles`
+
+How the agent writes its answers, picked per conversation. Each style is a block of prose that
+joins the end of the system prompt of the agent the person is talking to.
+
+```yaml
+spec:
+  output_styles:
+    default: concise
+    styles:
+      - name: concise
+        description: Short, direct answers
+        prompt: Answer in as few sentences as the question allows. No preamble.
+      - name: teach
+        description: Explain as you go
+        prompt: Explain each step and why it matters, for someone learning the codebase.
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `default` | string \| null | `null` | A declared style's name. `null` leaves the system prompt as written. |
+| `styles` | list, at most 16 | `[]` | Names are unique, ignoring case. |
+| `styles[].name` | string | required | Letters, digits, `-` and `_`, up to 64. |
+| `styles[].description` | string \| null, ≤200 chars | `null` | One line a client shows in its style picker. |
+| `styles[].prompt` | string, 1–16,000 chars | required | Inline only: a style cannot come from a file, since a workspace file is one the agent may write. |
+
+A conversation picks one with [`POST /chat/style`](/guide/rest-api/#abort-continue-thinking-compact), from its next run;
+`null` returns it to `default`. The choice is stored on the thread (`outputStyle` on the session
+snapshot), so it holds across turns until changed, and is not carried into a fork. If the thread
+later runs a manifest that does not declare that style, the run uses that manifest's `default`.
+
+The style goes at the end of the system prompt, after `append_system_md` (a transparency notice stays at the top),
+so the cached prompt prefix stays whole until the style changes. Sub-agents and `task` children
+keep their own prompts, background ones included: they answer their parent, not the person. Only a
+pattern whose own prompt writes the answer (`react`, `deep`) accepts the field; on a `router` the
+chosen child writes it, so the manifest is refused at compile rather than storing a style that
+changes nothing. `GET /v1/models` lists the styles
+as `felix.outputStyles` (`[{name, description}]`) and `felix.defaultOutputStyle`.
+
 ## `spec.tools`
 
 A list of built-in tool names.

@@ -846,6 +846,7 @@ file tools are the browser's (`local_*`), and its files are not on the harness.
 | `POST` | `/chat/abort` | `{thread_id}` | Sets a flag the loop polls each step; emits `aborted`, phase becomes `aborted`. |
 | `POST` | `/chat/continue` | `{thread_id, manifest, model?}` | Resumes after an abort or error with no new user message. `400 nothing_to_continue` / `already_complete`. |
 | `POST` | `/chat/mode` | `{thread_id, mode}` | `default` `plan` `accept_edits` `bypass` — the conversation's [permission mode](/guide/manifest-reference/#specpermissions), from the next run. `bypass` needs `approvals:bypass` (`403 missing_scope:approvals:bypass`). Audited as `permission_mode_change`. |
+| `POST` | `/chat/style` | `{thread_id, manifest, style}` | The conversation's [output style](/guide/manifest-reference/#specoutput_styles), from the next run: one `manifest` declares, or `null` for its default. `manifest` is required with a style (`422 manifest_required`; `404 unknown_manifest`), and a name it does not declare is `422 unknown_output_style`. Answers `{ok, thread_id, style}`. |
 | `POST` | `/chat/thinking` | `{thread_id, thinking_level}` | `off` `minimal` `low` `medium` `high` `xhigh` `max`. Persisted as a `thinking_level_change` event. |
 | `POST` | `/chat/compact` | `{thread_id, manifest, instructions?}` | Compact the transcript now. |
 
@@ -1008,7 +1009,7 @@ exclusive hold's, or the last observer's when there is none.
 
 Leases are advisory unless a client opts in. The routes that drive a thread accept an
 **`X-Felix-Lease-Token`** header: `POST /chat`, `/chat/stream`, `/chat/continue`, `/chat/abort`,
-`/chat/rewind`, `/chat/steer`, `/chat/tool_result`, `/chat/ui`, `/chat/compact`, `/chat/thinking`, `/chat/mode`,
+`/chat/rewind`, `/chat/steer`, `/chat/tool_result`, `/chat/ui`, `/chat/compact`, `/chat/thinking`, `/chat/mode`, `/chat/style`,
 `/chat/sessions/name`, `/chat/sessions/label`, `/chat/sessions/custom`, `/chat/workspace/edited`, `/chat/workspace/write`, `/chat/workspace/delete`,
 `/chat/workspace/rename`, `/chat/workspace/delete_folder`, `/chat/workspace/rename_folder` and
 `DELETE /chat/history/{thread_id}`. When the header is present, the request is refused unless it is
@@ -1090,7 +1091,7 @@ curl -s "$BASE_URL/v1/chat/completions" \
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/v1/models` | Bundled and published manifests as OpenAI model objects, each with a `felix` block: `providerModel`, `contextWindow`, `starters` (always a list, empty when the manifest declares none), `commands` (`[{name, description, argumentHint}]`, the prompts a person can run as `/name`; always a list) and `greeting` (`{headline, subtitle}`, or `null`) |
+| `GET` | `/v1/models` | Bundled and published manifests as OpenAI model objects, each with a `felix` block: `providerModel`, `contextWindow`, `starters` (always a list, empty when the manifest declares none), `commands` (`[{name, description, argumentHint}]`, the prompts a person can run as `/name`; always a list), `outputStyles` (`[{name, description}]`; always a list), `defaultOutputStyle` (a name, or `null`) and `greeting` (`{headline, subtitle}`, or `null`) |
 | `POST` | `/v1/chat/completions` | `stream: true` emits `chat.completion.chunk` frames, a final chunk carrying `usage`, then `data: [DONE]` |
 
 The optional `user` field becomes the thread suffix (`{tenant}:{user}`). Errors come back in OpenAI
