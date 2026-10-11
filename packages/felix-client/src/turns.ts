@@ -207,7 +207,11 @@ export interface Turn {
  */
 export function findOpenTool(tools: ToolCall[], name: string, callId?: string): number {
   if (callId) {
-    const byId = tools.findIndex((tool) => tool.callId === callId);
+    // The name too: the harness announces a client tool under the call's own id twice —
+    // `tool_start` for the call, `tool_request` for the client to run it — so the id
+    // alone matched the call's card and closed it with the client's result, leaving the
+    // `client · …` card open with no output.
+    const byId = tools.findIndex((tool) => tool.callId === callId && tool.name === name);
     if (byId !== -1) return byId;
   }
   for (let i = tools.length - 1; i >= 0; i--) {

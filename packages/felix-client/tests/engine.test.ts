@@ -89,6 +89,22 @@ describe('streaming a turn', () => {
     expect(engine.state.phase).toBe('idle');
   });
 
+  it('takes a composite answer once from a harness that sent it under both names', async () => {
+    // Before felix-run/felix#603, `parallel`/`plan_execute` sent each chunk as `text_delta`
+    // and again as the legacy alias; one that only knows the alias still renders.
+    const alias = (text: string) => ({
+      event: 'on_chat_model_stream',
+      data: { chunk: { content: text } },
+    });
+    const doubled = engineOn([delta('the '), alias('the '), delta('answer'), alias('answer')]);
+    await run(doubled);
+    expect(doubled.state.turns.at(-1)?.content).toBe('the answer');
+
+    const legacy = engineOn([alias('old '), alias('harness')]);
+    await run(legacy);
+    expect(legacy.state.turns.at(-1)?.content).toBe('old harness');
+  });
+
   it('falls back to the final message when a turn produced no deltas', async () => {
     const engine = engineOn([{ event: 'done', data: { final: { content: '42' } } }]);
     await run(engine);
@@ -290,6 +306,37 @@ describe('client-executed tools', () => {
   });
 
   /**
+   * The harness announces a client tool twice under one id: `tool_start` for the call and
+   * `tool_request` for the client to run it. Matched by id alone, the client's result closed
+   * the `tool_start` card and left its own `client · …` card open with no output — the card
+   * Changes and the denial matching read.
+   */
+  it('puts the client’s result on its own card, not on the call’s card with the same id', async () => {
+    const execute = vi.fn(async () => ({ content: 'wrote notes.md' }));
+    const engine = engineOn(
+      [
+        {
+          event: 'tool_start',
+          data: { name: 'local_write', id: 'c1', input: { path: 'notes.md' } },
+        },
+        {
+          event: 'tool_request',
+          data: { id: 'c1', name: 'local_write', args: { path: 'notes.md' } },
+        },
+        { event: 'tool_end', data: { name: 'local_write', id: 'c1', output: 'ok from harness' } },
+      ],
+      { clientTools: { execute } } as never,
+    );
+    await run(engine);
+
+    const tools = engine.state.turns.at(-1)?.tools ?? [];
+    expect(tools.map((t) => [t.name, t.output])).toEqual([
+      ['local_write', 'ok from harness'],
+      ['client · local_write', 'wrote notes.md'],
+    ]);
+  });
+
+  /**
    * Not answering is the one thing a client may never do: the harness blocks on
    * the waiter until the tool's timeout, default 120s, and the conversation looks
    * like it is still thinking the whole time.
@@ -323,6 +370,21 @@ describe('approvals', () => {
       toolName: 'write_file',
       before: 'the old text',
     });
+  });
+
+  it('takes the deadline off the frame when the harness sends one', async () => {
+    const at = Date.now() + 600_000;
+    const frame = (id: string, expires_at: number | null) => ({
+      event: 'approval_required',
+      data: { approval_id: id, tool_name: 'calc', args: {}, expires_at },
+    });
+    const engine = engineOn([frame('ap_t', at), frame('ap_n', null)]);
+    await run(engine);
+    const [timed, untimed] = engine.state.approvals;
+    expect(timed?.expiresAt).toBe(at);
+    // Null is "the rule set no TTL": the default runs from the row's creation, which the
+    // frame does not carry, so the poll fills it in.
+    expect(untimed?.expiresAt).toBeUndefined();
   });
 
   it('adopts one the stream never announced, from the poll', async () => {

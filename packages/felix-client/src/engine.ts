@@ -338,6 +338,13 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    * to a fresh assistant turn mid-run.
    */
   let activeAssistantId = '';
+  /**
+   * This harness names its reply deltas `text_delta`. An older one's composite patterns
+   * (`parallel`, `plan_execute`) sent every chunk again as the legacy
+   * `on_chat_model_stream`, so once `text_delta` has been seen the alias is a copy, and
+   * appending it drew the answer twice. Before felix-run/felix#603.
+   */
+  let textDeltaSeen = false;
 
   const emit = () => {
     for (const listener of listeners) listener(state);
@@ -552,6 +559,8 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     switch (ev.event) {
       case 'on_chat_model_stream':
       case 'text_delta': {
+        if (ev.event === 'text_delta') textDeltaSeen = true;
+        else if (textDeltaSeen) break;
         const data = ev.data as { chunk?: { content?: string }; delta?: string };
         const chunk = data.delta ?? data.chunk?.content ?? '';
         if (chunk) patch((t) => ({ ...t, content: t.content + chunk }));
@@ -625,6 +634,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           args?: Record<string, unknown>;
           rule_id?: string;
           reason?: string;
+          expires_at?: number | null;
         };
         const args = data.args ?? {};
         let before: string | null = null;
@@ -646,9 +656,11 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
               args,
               ruleId: data.rule_id,
               reason: data.reason,
-              // Deliberately absent: the frame carries no deadline. The
-              // `/approvals` poll fills it in a beat later, which is why a
-              // watched client keeps polling too.
+              // The row's deadline, in epoch ms, on a harness that sends it. Null means
+              // the rule set no TTL and the harness waits its default from the row's
+              // creation, which the frame does not carry — so that, and an older
+              // harness's frame, is left for the `/approvals` poll to fill in.
+              ...(typeof data.expires_at === 'number' ? { expiresAt: data.expires_at } : {}),
               before,
             },
           ],
