@@ -85,6 +85,8 @@ felix eval -d my-dataset -m quick --fixture ./dataset.json --mock
 | `felix eval …` | Offline eval runs |
 | `felix mint-jwt` | Self-issued JWT for `jwt` mode |
 | `felix bundle-manifests` | Validate bundled YAML |
+| `felix validate-manifest <file>` | Validate one manifest as `PUT /manifests` would, before it is stored |
+| `felix chat` | Chat with a manifest on a running server, one line at a time (`--url`, `--manifest`, `--api-key`/`FELIX_API_KEY`, `--stream`); `make cli` runs it |
 
 ## Local stack for integration
 
