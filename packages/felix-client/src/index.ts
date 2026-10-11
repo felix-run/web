@@ -98,6 +98,17 @@ export {
   type PlanWire,
 } from './management/plans';
 export type {
+  OutdatedSkill,
+  OutdatedSkillPage,
+  SkillDiff,
+  SkillFileChange,
+  SkillImportResult,
+  SkillSourceItem,
+  SkillSourceListing,
+  SkillUpdateResult,
+  SkillUpstreamCheck,
+} from './management/skill-import';
+export type {
   EvalScenario,
   EvalScenarioResult,
   EvalStatus,

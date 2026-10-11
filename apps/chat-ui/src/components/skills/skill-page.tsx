@@ -10,6 +10,7 @@ import { EvalsPanel } from './evals-panel';
 import { FeedbackPanel } from './feedback-panel';
 import { useLibraryId, useLibrarySkill } from './queries';
 import { ReviewPanel } from './review-panel';
+import { SourceCheck } from './skill-import';
 import { ShadowsUploadNotice, UpstreamLine } from './skill-status';
 import {
   EDITOR,
@@ -47,6 +48,9 @@ export function SkillPage({
   const skill = useLibrarySkill(name);
   // A personal library has no evaluations or feedback; an address naming either opens Versions.
   const personal = useLibraryId() !== undefined;
+  // The draft an update saves is a version of this skill: its Versions tab, on that version.
+  const sourceLink = (n: string, v?: string) =>
+    `?skill=${encodeURIComponent(n)}${v ? `&v=${encodeURIComponent(v)}&tab=versions` : ''}`;
   const tab: SkillTab = personal && ORG_ONLY_TABS.has(address.tab) ? 'versions' : address.tab;
   const layoutBack = useContext(PageBack);
   const detail = skill.data;
@@ -156,6 +160,7 @@ export function SkillPage({
           ) : null}
           {detail?.shadows_operator_upload && <ShadowsUploadNotice name={name} />}
           <UpstreamLine upstream={detail?.upstream} />
+          {detail?.upstream && !personal && <SourceCheck name={name} linkTo={sourceLink} />}
           {!detail ? (
             skill.isPending ? (
               <p role="status" className="text-sm text-muted-foreground">

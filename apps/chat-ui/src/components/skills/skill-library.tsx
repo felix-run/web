@@ -32,6 +32,7 @@ import {
 import { QueryRoot } from './query-root';
 import { policySentence, RefusalNotice } from './refusal';
 import { ReviewQueue } from './review-queue';
+import { ImportSection, UpdatesSection } from './skill-import';
 import { SkillNotFound, SkillPage } from './skill-page';
 import { useSkillsAddress } from './skills-address';
 
@@ -141,6 +142,8 @@ export function SkillLibrary({
         )}
         <LibraryList filter={nav.filter} onFilter={nav.setFilter} linkTo={nav.linkTo} />
       </PageSection>
+      <UpdatesSection linkTo={nav.linkTo} />
+      <ImportSection linkTo={nav.linkTo} />
       <PublishPolicySection />
     </>
   );

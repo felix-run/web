@@ -118,6 +118,27 @@ export function RefusalNotice({
       'An earlier promotion of this skill is still waiting for review in the team library. It has to be decided first.',
     origin_mismatch:
       'The team library’s skill of this name came from an import. An operator has to adopt it before anything else can be saved over it.',
+    too_recent:
+      'These files are newer than the import age this tenant requires. Nothing was saved; they can be imported once they have been seen for long enough.',
+    rate_limited:
+      'This tenant has used its hourly allowance of GitHub requests. Try again later in the hour.',
+    upstream_rate_limited: 'GitHub is rate-limiting the harness. Try again in a few minutes.',
+    upstream_error: 'GitHub did not answer as expected. Try again in a moment.',
+    egress_blocked:
+      'This harness is not allowed to reach GitHub (its network allow-list refuses it).',
+    source_not_found: 'No such repository, folder or ref on GitHub — or it is private.',
+    source_not_allowed: 'This harness is not allowed to import from that repository.',
+    invalid_source:
+      'That is not a source the harness can read. Use github:owner/repo, optionally followed by /path.',
+    source_too_large: 'That repository folder is larger than an import may be.',
+    commit_not_in_repo: 'That commit is not in the repository.',
+    ambiguous_ref: 'That ref names more than one thing (a branch and a tag). Name it more exactly.',
+    not_imported: 'This skill did not come from an import, so it has no source to check.',
+    agent_draft:
+      'An agent’s draft cannot be adopted: decide it, or adopt the version it was based on.',
+    adopt_mismatch: 'That version is not one an adoption can start from.',
+    reason_required: 'Say why you vouch for these files: the reason is recorded with the adoption.',
+    publish_not_allowed: 'An import is always saved as a draft; publish it after review.',
     invalid_policy:
       'Every policy field needs a value; only the evaluation uplift floor can be left empty.',
   };

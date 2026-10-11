@@ -17,13 +17,17 @@ import {
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   acceptSkillFeedback,
+  adoptSkillVersion,
   archiveLibrarySkill,
+  checkSkillUpstream,
   getLibrarySkill,
   getSkillFile,
   getSkillPublishPolicy,
   getSkillVersion,
+  importSkill,
   listFeedbackInbox,
   listLibrarySkills,
+  listOutdatedSkills,
   listSkillEvals,
   listSkillFeedback,
   listSkillReviewQueue,
@@ -37,6 +41,7 @@ import {
   resetSkillPublishPolicy,
   rollbackSkillVersion,
   submitSkillFeedback,
+  updateSkillFromSource,
   updateSkillPublishPolicy,
 } from '@/api';
 
@@ -451,4 +456,47 @@ export function usePolicyActions() {
   });
   const reset = useMutation({ mutationFn: () => resetSkillPublishPolicy(), ...after });
   return { update, reset };
+}
+
+/**
+ * Imported skills and their last recorded source check, the ones whose source moved first.
+ * `refresh` re-checks GitHub, which spends the tenant's hourly budget, so it is a button and
+ * never a poll.
+ */
+export function useOutdatedSkills(refresh: number) {
+  return useQuery({
+    queryKey: [...skillKeys.all, 'upstream', refresh] as const,
+    queryFn: () => listOutdatedSkills({ refresh: refresh > 0, limit: 25 }),
+    staleTime: 60_000,
+  });
+}
+
+/** One imported skill against its source now, read when asked: each check is a GitHub request. */
+export function useSourceCheck(name: string, asked: boolean) {
+  return useQuery({
+    queryKey: [...skillKeys.all, 'check', name] as const,
+    queryFn: () => checkSkillUpstream(name),
+    enabled: asked,
+    staleTime: 60_000,
+  });
+}
+
+/** Import one skill from a source, update one from its source, or adopt an imported version. */
+export function useImportActions() {
+  const client = useQueryClient();
+  const after = { onSettled: () => invalidateLibrary(client) };
+  const importOne = useMutation({
+    mutationFn: (v: { source: string; ref?: string }) => importSkill(v.source, v.ref),
+    ...after,
+  });
+  const update = useMutation({
+    mutationFn: (name: string) => updateSkillFromSource(name),
+    ...after,
+  });
+  const adopt = useMutation({
+    mutationFn: (v: { name: string; version: string; reason: string }) =>
+      adoptSkillVersion(v.name, v.version, v.reason),
+    ...after,
+  });
+  return { importOne, update, adopt };
 }

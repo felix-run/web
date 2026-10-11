@@ -25,6 +25,7 @@ import { createAuditClient } from './audit';
 import { createDocumentsClient } from './documents';
 import { createMemoryClient } from './memory';
 import { createPlansClient } from './plans';
+import { createSkillImportClient } from './skill-import';
 import { createSkillQualityClient } from './skill-quality';
 import { createSkillLibraryClient } from './skills';
 import { createUsageClient } from './usage';
@@ -39,5 +40,6 @@ export function createManagementClient(http: FelixHttp) {
     ...createArtifactsClient(http),
     ...createSkillLibraryClient(http),
     ...createSkillQualityClient(http),
+    ...createSkillImportClient(http),
   };
 }

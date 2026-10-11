@@ -12,6 +12,7 @@ import { useArchiveSkill, useLibraryId, usePublishPolicy, useSkillFile } from '.
 import { RefusalNotice } from './refusal';
 import { ScoreReadout } from './score-readout';
 import { SkillBundleBrowser } from './skill-bundle-browser';
+import { AdoptButton } from './skill-import';
 import {
   ago,
   SourceLabel,
@@ -202,6 +203,9 @@ function VersionRow({
       )}
       {state === 'superseded' && <RollbackButton name={v.name} version={v.version} />}
       {personal && v.published_at != null && <PromoteButton name={v.name} version={v.version} />}
+      {!personal && v.lineage_import && v.source !== 'agent' && state !== 'rejected' && (
+        <AdoptButton version={v} />
+      )}
     </li>
   );
 }
