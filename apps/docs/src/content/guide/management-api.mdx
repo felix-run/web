@@ -358,8 +358,18 @@ The `deep` pattern records a plan and its step transitions.
 | `PUT` | `/plans/{plan_id}` | `plans:write` |
 | `DELETE` | `/plans/{plan_id}` | `plans:write` |
 
-`PUT` takes `{plan, manifest_id, expires_at}` where `plan` is the plan document and `expires_at` is
-epoch ms. `limit` is 1–200, default 50.
+`PUT` takes `{plan, manifest_id, expires_at, expected_updated_at}` where `plan` is the plan
+document and `expires_at` is epoch ms. `limit` is 1–200, default 50. `expected_updated_at` makes the
+write conditional on the version the edit was based on — the agent updates step statuses while a
+run is live — and a plan that moved since is `409 plan_changed`, with the current row in `detail`.
+
+`PUT` is how a person edits a plan; the agent writes through its plan tools. So a plan written here
+says so: the harness stores `plan.edited = {by, at}` (any `edited` the caller sends is replaced),
+records a `plan_edit` audit event, and, for a plan written in a conversation, tells the agent — a
+`workspace_note` with `kind: "plan"` before its next model call if a run is going, a log entry
+otherwise — naming the plan's id and asking it to `plan_get` it. The response adds `agent_told`:
+`queued`, `recorded`, or `null` for a plan with no conversation. chat-ui's run panel edits plans
+this way and marks an edited plan wherever it draws one.
 
 Each plan names the conversation it was written in: `thread_id`, as `{tenant}:{suffix}`, or `''`
 for a plan written outside a chat or before the harness recorded it. `?thread_id=` narrows the list

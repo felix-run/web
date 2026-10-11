@@ -1,4 +1,4 @@
-/** Agent-authored plans (`GET /plans`, `DELETE /plans/{id}`). */
+/** Agent-authored plans (`GET /plans`, `PUT` and `DELETE /plans/{id}`). */
 
 import type { FelixHttp } from '../http';
 import { threadSuffix } from '../session-log';
@@ -26,12 +26,25 @@ export interface PlanStep {
   note?: string;
 }
 
+/**
+ * Who changed a plan by hand, and when (`felix-run/felix#605`): set by `PUT /plans/{id}`
+ * and never by the agent's plan tools, which cannot write it. Kept through the agent's later
+ * step updates; gone when the agent rewrites the plan with `plan_create`.
+ */
+export interface PlanEdited {
+  by: string;
+  /** Epoch ms. */
+  at: number;
+}
+
 /** The blob a plan row carries — written by `plan_create`, opaque to the harness. */
 export interface PlanBody {
   title?: string;
   goal?: string;
   status?: string;
   steps?: PlanStep[];
+  /** Absent from a plan no one has edited, and from a harness older than #605. */
+  edited?: PlanEdited;
 }
 
 /**
@@ -70,7 +83,23 @@ export interface Plan {
   title: string;
   steps: PlanStep[];
   created_at: number;
+  /** The version an edit is based on: sent back as `expected_updated_at`. */
   updated_at: number;
+  /** Set when a person edited it (`PUT /plans/{id}`), on a harness that records it. */
+  edited?: PlanEdited;
+  /** The stored blob as it came, so an edit replaces only what it changes. */
+  body: PlanBody;
+}
+
+/** `PUT /plans/{id}` refused with `409 plan_changed`: the plan moved since it was read. */
+export class PlanChangedError extends Error {
+  /** The plan as it is now, or null when it no longer exists. */
+  readonly current: Plan | null;
+  constructor(current: Plan | null) {
+    super('plans: 409 plan_changed');
+    this.name = 'PlanChangedError';
+    this.current = current;
+  }
 }
 
 /** A wire plan row as the panel consumes it: blob hoisted, steps always an array. */
@@ -93,7 +122,15 @@ export function flattenPlan(row: PlanWire): Plan {
     })),
     created_at: row.created_at,
     updated_at: row.updated_at,
+    ...(isEdited(plan.edited) ? { edited: plan.edited } : {}),
+    body: plan,
   };
+}
+
+function isEdited(raw: unknown): raw is PlanEdited {
+  if (!raw || typeof raw !== 'object') return false;
+  const e = raw as Record<string, unknown>;
+  return typeof e.by === 'string' && typeof e.at === 'number';
 }
 
 /**
@@ -139,12 +176,9 @@ export function createPlansClient(http: FelixHttp) {
    * DELETE /plans/{plan_id} → drop a plan the agent left behind.
    *
    * The list route already carries the whole plan document, so there is nothing
-   * `GET /plans/{id}` could add to this panel and it stays uncalled. `PUT` stays
-   * uncalled too, deliberately: the body is the agent-authored plan blob, and a
-   * hand-edited one is a plan the agent did not write claiming that it did.
-   *
-   * Deleting is different — it is the plans equivalent of forgetting a memory, a
-   * way to clear a stale or wrong plan without a database console.
+   * `GET /plans/{id}` could add to this panel and it stays uncalled. Deleting is the
+   * plans equivalent of forgetting a memory, a way to clear a stale or wrong plan
+   * without a database console.
    */
   async function deletePlan(planId: string): Promise<void> {
     const res = await chatFetch(`/plans/${encodeURIComponent(planId)}`, { method: 'DELETE' });
@@ -154,8 +188,47 @@ export function createPlansClient(http: FelixHttp) {
     }
   }
 
+  /**
+   * PUT /plans/{plan_id} → replace a plan's steps and title by hand, based on the version
+   * read (`expected_updated_at`). The agent updates step status while a run is live, so a
+   * plan that moved since is a `PlanChangedError` carrying the current one, never a silent
+   * overwrite. The harness marks the plan edited, audits it, and tells the plan's conversation
+   * (`felix-run/felix#605`); `agentTold` says how, and is `undefined` from an older harness,
+   * which does none of the three.
+   */
+  async function updatePlan(
+    planId: string,
+    body: PlanBody,
+    expectedUpdatedAt: number,
+  ): Promise<{ plan: Plan; agentTold?: 'queued' | 'recorded' | null }> {
+    // `edited` is the harness's to set: sending the old one back would claim it again.
+    const { edited: _, ...plan } = body;
+    const res = await chatFetch(`/plans/${encodeURIComponent(planId)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plan, expected_updated_at: expectedUpdatedAt }),
+    });
+    if (res.status === 409) {
+      const detail = await res
+        .json()
+        .then((b: unknown) => (b as { detail?: { current?: PlanWire | null } } | null)?.detail)
+        .catch(() => undefined);
+      throw new PlanChangedError(detail?.current ? flattenPlan(detail.current) : null);
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`plans/put: ${res.status} ${text.slice(0, 200)}`);
+    }
+    const row = (await res.json()) as PlanWire & { agent_told?: 'queued' | 'recorded' | null };
+    return {
+      plan: flattenPlan(row),
+      ...('agent_told' in row ? { agentTold: row.agent_told ?? null } : {}),
+    };
+  }
+
   return {
     listPlans,
+    updatePlan,
     deletePlan,
   };
 }

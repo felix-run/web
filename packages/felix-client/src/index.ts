@@ -91,6 +91,8 @@ export {
   isThreadScoped,
   type Plan,
   type PlanBody,
+  PlanChangedError,
+  type PlanEdited,
   type PlanStep,
   type PlanStepStatus,
   type PlanWire,
