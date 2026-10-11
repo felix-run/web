@@ -165,6 +165,14 @@ export interface ShellValue {
   thinkingLevels: readonly ThinkingLevel[];
   chooseThinking(level: ThinkingLevel): void;
   /**
+   * The thread's stored permission mode, null for the manifest's default: from
+   * the snapshot, or an approved plan mid-run. `choosePermissionMode` stores a new
+   * one on the thread on screen, from its next run; only `default` and `plan` are
+   * offered, because those are the two every agent honours.
+   */
+  permissionMode: string | null;
+  choosePermissionMode(mode: 'default' | 'plan'): void;
+  /**
    * Debug mode. Off, the tab is the daily surface: the conversation, its threads
    * and workspace, and whatever waits on a person. On, the mechanism comes back —
    * the run instrument, the harness's pages, the header's agent, canary and

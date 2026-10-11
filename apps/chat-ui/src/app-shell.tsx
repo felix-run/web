@@ -73,6 +73,7 @@ import {
   renameSession,
   respondUiRequest,
   rewindChat,
+  setPermissionMode,
   setSessionFeedback,
   setSessionLabel,
   setThinkingLevel,
@@ -521,6 +522,7 @@ export function AppShell() {
     reattaching,
     approvals: pendingQueue,
     uiPrompt,
+    permissionMode,
   } = useSyncExternalStore(engine.subscribe, () => engine.state);
   // Workspace open by default wherever it fits inline: it is the subject (the
   // folder, and the only door to other threads), and it used to open only once a
@@ -843,6 +845,11 @@ export function AppShell() {
   const applySnapshot = useCallback(
     async (id: string, snap: SessionSnapshot | null, withTranscript: boolean): Promise<void> => {
       try {
+        // Absent from a harness older than permission modes, which leaves the engine's
+        // value (null, the default) alone rather than claiming one.
+        if (snap && 'permissionMode' in snap) {
+          poolRef.current?.peek(id)?.setPermissionMode(snap.permissionMode ?? null);
+        }
         if (snap && id === threadIdRef.current) {
           setLabels(snap.labels ?? {});
           setFeedback(snap.feedback ?? {});
@@ -1825,6 +1832,39 @@ export function AppShell() {
   }, []);
 
   /**
+   * Store a permission mode on the thread on screen, from its next run. Shown at
+   * once and put back if the harness refuses it. Thread and engine are read at
+   * call time, for the composer's memo as with `chooseThinking`.
+   */
+  const choosePermissionMode = useCallback((mode: 'default' | 'plan') => {
+    const id = threadIdRef.current;
+    const target = poolRef.current?.peek(id);
+    const before = target?.state.permissionMode ?? null;
+    target?.setPermissionMode(mode);
+    setPermissionMode({ threadId: id, mode })
+      .then(() =>
+        toast.message(mode === 'plan' ? 'Plan mode' : 'Left plan mode', {
+          description:
+            mode === 'plan'
+              ? 'From the next run the agent only reads and proposes, and asks you to approve its plan before it changes anything.'
+              : 'From the next run the agent works as its manifest says.',
+        }),
+      )
+      .catch((err) => {
+        target?.setPermissionMode(before);
+        toastError(err, 'change the permission mode', {
+          retry: () => choosePermissionMode(mode),
+        });
+      });
+  }, []);
+
+  /** `/plan`: into plan mode, or back out of it. */
+  const togglePlanMode = useCallback(() => {
+    const current = poolRef.current?.peek(threadIdRef.current)?.state.permissionMode ?? null;
+    choosePermissionMode(current === 'plan' ? 'default' : 'plan');
+  }, [choosePermissionMode]);
+
+  /**
    * Put the thread id on the clipboard.
    *
    * It is the one identifier the harness, its logs and the `/harness` pages all
@@ -2503,6 +2543,9 @@ export function AppShell() {
         case 'think':
           cycleThinking();
           break;
+        case 'plan':
+          togglePlanMode();
+          break;
         case 'theme':
           setTheme(resolved === 'dark' ? 'light' : 'dark');
           break;
@@ -2511,7 +2554,7 @@ export function AppShell() {
           break;
       }
     },
-    [newThread, clearThread, continueRun, cycleThinking, setTheme, resolved],
+    [newThread, clearThread, continueRun, cycleThinking, togglePlanMode, setTheme, resolved],
   );
 
   const options = manifests.length ? manifests : [manifest];
@@ -2631,6 +2674,8 @@ export function AppShell() {
     thinkingLevel,
     thinkingLevels: THINKING_LEVELS,
     chooseThinking,
+    permissionMode,
+    choosePermissionMode,
     debug,
     setDebug,
     inspectClient,

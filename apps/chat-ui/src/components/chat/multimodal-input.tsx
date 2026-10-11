@@ -30,6 +30,7 @@ import equal from 'fast-deep-equal';
 import {
   ArrowUp,
   BrainIcon,
+  ClipboardListIcon,
   Clock,
   CornerDownLeft,
   FileIcon,
@@ -239,6 +240,14 @@ export type MultimodalInputProps = {
   thinkingLevel?: string;
   onThinkingChange?: (level: string) => void;
   /**
+   * The thread's stored permission mode, null for the manifest's default. Drawn
+   * as a chip only when it is not the default, since then the next run may do
+   * less (plan) or ask less (a waiver) than the agent's manifest says; the chip
+   * returns the thread to default.
+   */
+  permissionMode?: string | null;
+  onLeavePermissionMode?: () => void;
+  /**
    * Tokens in the context after the last reply, against the selected agent's
    * window. Omitted when either is unknown, and the meter with it.
    */
@@ -289,6 +298,8 @@ function MultimodalInputInner({
   thinkingLevels,
   thinkingLevel,
   onThinkingChange,
+  permissionMode = null,
+  onLeavePermissionMode,
   placeholder = 'Message Felix…',
   className,
 }: MultimodalInputProps) {
@@ -757,6 +768,13 @@ function MultimodalInputInner({
                   onChange={onThinkingChange}
                   disabled={readOnly !== null}
                   className="shrink-0"
+                />
+              )}
+              {permissionMode && (
+                <PermissionModeChip
+                  mode={permissionMode}
+                  onLeave={onLeavePermissionMode}
+                  disabled={readOnly !== null}
                 />
               )}
               {context && (
@@ -1358,6 +1376,59 @@ function hasFiles(e: DragEvent): boolean {
  * was erased by the next send. It reads `engine.state.turns` now, and
  * `tests/send-keeps-out-of-band-turns.test.tsx` holds the first handler to pin it.
  */
+const MODE_LABEL: Record<string, { short: string; wide: string; long: string; danger?: boolean }> =
+  {
+    plan: { short: 'Plan', wide: 'Plan mode', long: 'Plan mode: read and propose only' },
+    accept_edits: {
+      short: 'Edits',
+      wide: 'Accepting edits',
+      long: 'Accepting edits without approval',
+    },
+    bypass: {
+      short: 'Bypass',
+      wide: 'Bypassing approvals',
+      long: 'Bypassing approvals',
+      danger: true,
+    },
+  };
+
+/**
+ * A thread that is not in its manifest's default mode, said where the next
+ * message is written: plan mode changes what that message can get done. One
+ * press returns the thread to default, from the next run.
+ */
+function PermissionModeChip({
+  mode,
+  onLeave,
+  disabled,
+}: {
+  mode: string;
+  onLeave?: () => void;
+  disabled: boolean;
+}) {
+  const label = MODE_LABEL[mode] ?? { short: mode, wide: mode, long: `Mode: ${mode}` };
+  const leave = mode === 'plan' ? 'Leave plan mode' : 'Back to the default mode';
+  return (
+    <button
+      type="button"
+      onClick={onLeave}
+      disabled={disabled || !onLeave}
+      title={`${label.long}. ${leave}, from the next run.`}
+      aria-label={`${label.long}. ${leave}`}
+      className={cn(
+        'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors coarse:h-9',
+        'hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+        label.danger ? 'border-state-failed/40 text-state-failed' : 'border-border text-foreground',
+      )}
+    >
+      <ClipboardListIcon aria-hidden className="size-3.5 text-muted-foreground" />
+      <span className="sm:hidden">{label.short}</span>
+      <span className="hidden sm:inline">{label.wide}</span>
+      <XIcon aria-hidden className="size-3 text-muted-foreground" />
+    </button>
+  );
+}
+
 export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.status !== next.status) return false;
   if (prev.isConnected !== next.isConnected) return false;
@@ -1369,6 +1440,7 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.threadAgent !== next.threadAgent) return false;
   if (prev.thinkingLevel !== next.thinkingLevel) return false;
   if (prev.thinkingLevels !== next.thinkingLevels) return false;
+  if (prev.permissionMode !== next.permissionMode) return false;
   if (prev.context?.used !== next.context?.used) return false;
   if (prev.context?.window !== next.context?.window) return false;
   // Changes with the items and with the thread, which also re-binds `onSteerQueued`.

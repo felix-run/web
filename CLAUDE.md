@@ -911,6 +911,22 @@ Flows worth knowing before editing the app:
   URL and **drops anything else**: a remote URL in an `<img>` is a request the tool's author chose,
   made from the operator's browser as the card renders. References resolve through
   `useDrawableUrl` (`hooks/use-drawable-url.ts`), the same fetch-once path a message's attachments use.
+- **A checklist, a child agent and a permission mode** (`@felix/client`, `agent-work.ts`). Three
+  harness features announce themselves beside the tool calls, and each is also readable off the
+  calls, which is all a transcript rebuilt from the log has. `todo_updated` lands on the open
+  `todo_write` call (`ToolCall.todos`, so a list shows before the call returns), and
+  `checklistFromCall` makes any accepted write a `PlanState` keyed `CHECKLIST_ID`, so
+  `plansInTurn` draws it with the plan card in both clients and folds the later writes. A refused
+  write (no frame, a `[` result) is no checklist. `subagent_start`/`subagent_end` carry no call
+  id, so they mark the open `task` call by agent name (`ToolCall.subagent`); `subagentOf` reads
+  the same from the call's `agent`/`background` arguments and a background result's task id, and
+  a background child reads *in background*, never *done*, because nothing on this thread's stream
+  says when it ends. The permission mode is `EngineState.permissionMode` (null is the default),
+  filled from the snapshot's `permissionMode` when the key is present and by
+  `permission_mode_changed` (an approved `exit_plan_mode`; `POST /chat/mode` emits none). The
+  composer draws a chip off the default that returns the thread to default, and `/plan` toggles
+  plan mode in both clients; the waiver modes are shown, never offered, because `/v1/models`
+  does not say which an agent allows.
 - **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
   with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
   `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only

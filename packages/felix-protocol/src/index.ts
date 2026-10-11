@@ -17,6 +17,7 @@ export type {
   DurableRunAccepted,
   ImageAttachment,
   PendingUiRequest,
+  PermissionMode,
   Role,
   SessionEvent,
   SessionSnapshot,

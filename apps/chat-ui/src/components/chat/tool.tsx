@@ -2,6 +2,7 @@ import {
   describeError,
   fileToolOp,
   parseTabular,
+  subagentOf,
   summarizeToolArgs,
   type ToolResultIssue,
 } from '@felix/client';
@@ -87,7 +88,11 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         : null,
     [tool.done, tool.name, tool.output],
   );
-  const target = toolTarget(tool.name, tool.input);
+  // A `task` call is a child agent's job: named by the agent and the job, not by
+  // the first string argument, and running as that agent rather than as a tool.
+  const child = subagentOf(tool);
+  const target = child ? childTarget(child.agent, tool.input) : toolTarget(tool.name, tool.input);
+  const inBackground = child?.state === 'background' && !issue;
   // A skill an agent drafted is a decision waiting on a person, so it gets the
   // proposal card above the ordinary one — which stays, folded, for the raw call.
   const skillCall = useMemo(
@@ -170,6 +175,17 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
             )}
             {issue.label}
           </Badge>
+        ) : inBackground ? (
+          // Started, not finished: the child is a run of its own now, and nothing on
+          // this thread's stream will say when it ends. `task_result` reads it.
+          <Badge
+            variant="outline"
+            className="ml-auto gap-1 py-0 font-sans text-muted-foreground"
+            title={child?.taskId ? `Task ${child.taskId}` : undefined}
+          >
+            <span className="size-1.5 rounded-full bg-state-running" aria-hidden />
+            in background
+          </Badge>
         ) : tool.done ? (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
             <CheckCircle2Icon className="size-3 text-state-done" />
@@ -178,7 +194,9 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
         ) : (
           <Badge variant="secondary" className="ml-auto gap-1 py-0 font-sans">
             <LoaderIcon className="size-3 motion-safe:animate-spin" />
-            <span className="shimmer shimmer-color-foreground">{tool.phase ?? 'running'}</span>
+            <span className="shimmer shimmer-color-foreground">
+              {child ? `${child.agent} working` : (tool.phase ?? 'running')}
+            </span>
           </Badge>
         )}
         <ChevronDownIcon
@@ -754,6 +772,12 @@ export function toolTarget(name: string, input: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+/** A `task` call's summary: which agent, and the job it was handed. */
+function childTarget(agent: string, input: unknown): string {
+  const prompt = (input as { prompt?: unknown } | undefined)?.prompt;
+  return typeof prompt === 'string' && prompt.trim() ? oneLine(`${agent} · ${prompt}`) : agent;
 }
 
 /** `owner/repo`, plus `#12` when the call names an issue or pull request. */

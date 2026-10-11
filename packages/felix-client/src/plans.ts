@@ -1,4 +1,5 @@
-import type { ToolCall } from './turns';
+import { todosFromCall } from './agent-work';
+import type { TodoItem, ToolCall } from './turns';
 
 /**
  * Plans, read off the transcript.
@@ -104,11 +105,41 @@ function sentTitles(tool: ToolCall): Map<string, string> {
   return out;
 }
 
+/** The id a turn's checklist card is keyed by: a thread has one list, so a turn draws one card. */
+export const CHECKLIST_ID = 'checklist';
+
+const TODO_STATE: Record<TodoItem['status'], { state: StepState; status: string }> = {
+  completed: { state: 'done', status: 'done' },
+  in_progress: { state: 'running', status: 'now' },
+  pending: { state: 'pending', status: 'to do' },
+};
+
+/**
+ * The agent's checklist (`todo_write`) as a plan, so it draws as one: the same card
+ * and the same fold, with the item under way read in its `active_form` when the agent
+ * gave one. Null for any other call, and for a write that did not take.
+ */
+export function checklistFromCall(tool: ToolCall): PlanState | null {
+  const todos = todosFromCall(tool);
+  if (!todos) return null;
+  return {
+    id: CHECKLIST_ID,
+    title: 'Checklist',
+    goal: '',
+    steps: todos.map((t) => ({
+      id: t.id,
+      title: t.status === 'in_progress' && t.activeForm ? t.activeForm : t.content,
+      ...TODO_STATE[t.status],
+    })),
+  };
+}
+
 /**
  * For one turn: the newest state of each plan, and which tool calls the plan card
  * stands in for. The card goes where the plan first appears and shows its newest
  * state, so it does not jump down the turn as steps check off; the calls after
- * the first are what it summarises.
+ * the first are what it summarises. The agent's checklist is one more plan here
+ * (`checklistFromCall`), keyed `CHECKLIST_ID`.
  */
 export function plansInTurn(tools: readonly ToolCall[] | undefined): {
   latest: Map<string, PlanState>;
@@ -122,7 +153,7 @@ export function plansInTurn(tools: readonly ToolCall[] | undefined): {
   const folded = new Set<number>();
   const titles = new Map<string, Map<string, string>>();
   (tools ?? []).forEach((tool, i) => {
-    const plan = planFromCall(tool);
+    const plan = planFromCall(tool) ?? checklistFromCall(tool);
     if (!plan) return;
     if (tool.name === 'plan_create') titles.set(plan.id, sentTitles(tool));
     const sent = titles.get(plan.id);

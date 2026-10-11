@@ -122,6 +122,8 @@ export function Workbench() {
     thinkingLevel,
     thinkingLevels,
     chooseThinking,
+    permissionMode,
+    choosePermissionMode,
     debug,
     harnessReachable,
     inspectorOpen,
@@ -395,6 +397,8 @@ export function Workbench() {
                 const known = thinkingLevels.find((l) => l === level);
                 if (known) chooseThinking(known);
               }}
+              permissionMode={permissionMode}
+              onLeavePermissionMode={() => choosePermissionMode('default')}
               placeholder={
                 streaming
                   ? 'Write the next message…'

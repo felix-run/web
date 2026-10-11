@@ -616,6 +616,18 @@ present, else `data.text` or `data.delta`, else `""`.
   <dt>`workspace_note`</dt>
   <dd>A run put an operator's workspace edit in front of the model before its next call</dd>
   <dd class="event-data">`{"path","op","bytes","to_path"?}`</dd>
+  <dt>`todo_updated`</dt>
+  <dd>The agent rewrote its checklist (`todo_write`). Sent from inside the call, before its `tool_end`, and only for a write the harness accepted; the list is also the call's arguments, and the snapshot's `todos` holds the current one</dd>
+  <dd class="event-data">`{"todos":[{"id","content","status","active_form"}]}`</dd>
+  <dt>`subagent_start`</dt>
+  <dd>A `task` call handed a job to a child agent. A background child (`background: true`) runs as a durable run on a thread of its own and sends no `subagent_end`. Neither frame carries the call id</dd>
+  <dd class="event-data">`{"agent","background","task_id"?,"thread_id"?}`</dd>
+  <dt>`subagent_end`</dt>
+  <dd>A foreground child agent finished</dd>
+  <dd class="event-data">`{"agent","outcome":"ok"|"error"}`</dd>
+  <dt>`permission_mode_changed`</dt>
+  <dd>An approved `exit_plan_mode` moved the thread out of plan mode mid-run. `POST /chat/mode` emits none; the snapshot's `permissionMode` carries it</dd>
+  <dd class="event-data">`{"mode"}`</dd>
   <dt>`max_turns`</dt>
   <dd>A `react` loop ran out of `spec.recursion_limit` steps with tool calls still pending. The session is recorded `truncated` and `done` says `stop_reason: max_turns`; this frame is the one that carries the limit</dd>
   <dd class="event-data">`{"limit":int}`</dd>

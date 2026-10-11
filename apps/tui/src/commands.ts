@@ -53,7 +53,7 @@ const SEARCH_LIMIT = 5;
  * eight while this string still named six.
  */
 export const HELP = [
-  '/new /clear /continue /think <level> /manifest [name] /start <n> /quit',
+  '/new /clear /continue /think <level> /plan /manifest [name] /start <n> /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n] /version <n>',
   '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
   ...(['chat', 'threads', 'inspector'] as const).flatMap((where) => [
@@ -164,6 +164,28 @@ export function runCommand(ctx: CommandContext, line: string): void {
         })
         .then(() => setNotice(`thinking: ${level}`))
         .catch((err) => engine.setError(explainError(err, 'set the thinking level', config)));
+      return;
+    }
+    // Plan mode on or off: the two modes every agent honours. The waiver modes
+    // depend on what the agent's manifest allows, which the catalog does not say,
+    // so they are not offered here — a thread already in one shows it all the same.
+    case 'plan': {
+      const mode = engine.state.permissionMode === 'plan' ? 'default' : 'plan';
+      const before = engine.state.permissionMode;
+      engine.setPermissionMode(mode);
+      void client
+        .setPermissionMode({ threadId: threadIdRef.current, mode })
+        .then(() =>
+          setNotice(
+            mode === 'plan'
+              ? 'plan mode from the next run: read and propose only, until you approve its plan'
+              : 'left plan mode, from the next run',
+          ),
+        )
+        .catch((err) => {
+          engine.setPermissionMode(before);
+          engine.setError(explainError(err, 'change the permission mode', config));
+        });
       return;
     }
     case 'manifest':

@@ -17,6 +17,7 @@
 import {
   type ChatMessage,
   type DurableRun,
+  type PermissionMode,
   readSseStream,
   type SessionSnapshot,
   type StreamEvent,
@@ -1008,6 +1009,24 @@ export function createFelixClient(opts: FelixClientOptions) {
       });
       await refuseIfLease(res, 'thinking', args.threadId);
       if (!res.ok) throw new Error(`thinking: ${res.status} ${await detailOf(res)}`);
+    },
+
+    /**
+     * POST /chat/mode — set the thread's permission mode, from its next run.
+     *
+     * A mode the thread's agent does not allow is stored and ignored (the run falls
+     * back to the manifest's default), so success does not mean the mode is in
+     * force. `bypass` needs `approvals:bypass` and is a 403 `missing_scope:…`
+     * without it. Only the thread's driver may set it.
+     */
+    async setPermissionMode(args: { threadId: string; mode: PermissionMode }): Promise<void> {
+      const res = await chatFetch('/chat/mode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        body: JSON.stringify({ thread_id: args.threadId, mode: args.mode }),
+      });
+      await refuseIfLease(res, 'mode', args.threadId);
+      if (!res.ok) throw new Error(`mode: ${res.status} ${await detailOf(res)}`);
     },
 
     /**

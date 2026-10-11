@@ -159,6 +159,41 @@ export type StreamEvent =
       };
     }
   /**
+   * The agent rewrote its checklist (`todo_write`): the whole list, in order, as
+   * the harness normalised it. Emitted inside the call, before its `tool_end`, and
+   * only for a write that was accepted, so it is what confirms a call still in
+   * flight. The list is also the call's own arguments, which is how a reload or a
+   * durable run (no side events cross from the worker) shows it.
+   */
+  | {
+      event: 'todo_updated';
+      data: {
+        todos: Array<{
+          id: string;
+          content: string;
+          status: 'pending' | 'in_progress' | 'completed';
+          active_form?: string;
+        }>;
+      };
+    }
+  /**
+   * A `task` call handed a job to a child agent. A foreground child is bracketed
+   * by `subagent_end`; a background one (`background: true`) runs as a durable
+   * run on a thread of its own, named by `task_id`, and never sends an end here.
+   * Neither carries the tool call's id, so a client matches by the agent's name.
+   */
+  | {
+      event: 'subagent_start';
+      data: { agent: string; background: boolean; task_id?: string; thread_id?: string };
+    }
+  | { event: 'subagent_end'; data: { agent: string; outcome: 'ok' | 'error' } }
+  /**
+   * The thread's permission mode changed mid-run — an approved `exit_plan_mode`.
+   * A change through `POST /chat/mode` emits nothing; the snapshot's
+   * `permissionMode` carries it.
+   */
+  | { event: 'permission_mode_changed'; data: { mode: PermissionMode } }
+  /**
    * A `react` loop ran out of `spec.recursion_limit` steps with the model still
    * asking for tools. The session is recorded `truncated` and `done` says
    * `stop_reason: max_turns`; this frame is the one that carries the limit.
@@ -251,6 +286,14 @@ export interface ActiveRun {
   expiresAt?: number | null;
 }
 
+/**
+ * How much the agent may do on its own in a thread (`felix/governance/permission_mode.py`).
+ * `plan` runs only read-only tools, and every agent honours it; `accept_edits` and
+ * `bypass` waive approvals and are honoured only where the manifest allows them.
+ * A closed set on the harness, open here so a newer mode still reads.
+ */
+export type PermissionMode = 'default' | 'plan' | 'accept_edits' | 'bypass' | (string & {});
+
 export interface SessionSnapshot {
   id: string;
   name?: string | null;
@@ -275,6 +318,12 @@ export interface SessionSnapshot {
    * labelled turn is one anyone can also return to.
    */
   labels?: Record<string, string>;
+  /**
+   * The mode the thread was last set to (`POST /chat/mode`, or an approved plan),
+   * or null for the manifest's default. Stored, not resolved: a run falls back from
+   * a waiver mode its agent does not allow. Absent from an older harness.
+   */
+  permissionMode?: PermissionMode | null;
   /**
    * A person's rating of an assistant turn, keyed by its event id
    * (`felix-run/felix#403`). Absent from an older harness. A cleared rating is

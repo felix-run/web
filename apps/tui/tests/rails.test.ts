@@ -210,6 +210,18 @@ describe('the status line', () => {
    * It has to stay one row. A status line that wraps pushes the composer up the
    * screen every time the working directory is long.
    */
+  it('names a permission mode beside the agent it governs', async () => {
+    const ui = await mount(
+      createElement(StatusLine, { theme: testTheme, ...base, mode: 'plan', width: 100 }),
+      { width: 100, height: 4 },
+    );
+    try {
+      expect(shows(ui.frame(), 'quick · plan mode · localhost:8080')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
   it('cuts rather than wraps, however narrow the terminal', async () => {
     const ui = await mount(
       createElement(StatusLine, {

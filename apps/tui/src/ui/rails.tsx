@@ -202,11 +202,19 @@ const MIN_HINT = 28;
 /** What the client currently believes about the harness. */
 export type Connection = 'ok' | 'unreachable' | 'rejected';
 
+/** A permission mode as the status line says it: beside the agent it governs. */
+const MODE_WORD: Record<string, string> = {
+  plan: 'plan mode',
+  accept_edits: 'accepting edits',
+  bypass: 'bypassing approvals',
+};
+
 export function StatusLine({
   manifest,
   origin,
   connection = 'ok',
   phase,
+  mode = null,
   reattaching,
   error,
   root,
@@ -225,6 +233,11 @@ export function StatusLine({
    */
   connection?: Connection;
   phase: string;
+  /**
+   * The thread's permission mode when it is not the default. Part of the state
+   * half, because plan mode changes what the next message can get done.
+   */
+  mode?: string | null;
   reattaching: boolean;
   error: string | null;
   root: string;
@@ -250,7 +263,7 @@ export function StatusLine({
       : connection === 'rejected'
         ? 'key rejected'
         : shortOrigin(origin);
-  const state = `${manifest} · ${where} · ${basename(root)}${
+  const state = `${manifest}${mode ? ` · ${MODE_WORD[mode] ?? mode}` : ''} · ${where} · ${basename(root)}${
     phase && phase !== 'idle' ? ` · ${phase}` : ''
   }`;
 
