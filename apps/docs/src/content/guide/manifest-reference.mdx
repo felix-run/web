@@ -1232,9 +1232,49 @@ spec:
 | `follow_up_mode` | `all` \| `one-at-a-time` | `all` | How queued follow-ups are answered once the run has an answer: `all` gives every one waiting to a single further turn; `one-at-a-time` gives each its own. A follow-up's turn is an ordinary step — tools run, it streams — and counts against `recursion_limit`; a run with no step left, or that stopped on a budget, truncation or abort, keeps them for the thread's next run. |
 | `branch_summary` | bool | `true` | Summarize an abandoned branch on rewind. |
 | `compact_after_turn` | bool | `false` | |
+| `clear_tool_results` | `{keep_turns, min_chars}` \| null | `null` (off) | Stub stale tool results in what the model is sent. See below. |
 
 The session log is append-only and lives *outside* the context window; the strategy decides what the
 model actually sees. See [Persistence](/internals/persistence/).
+
+### Clearing stale tool results
+
+A long run piles up tool results — file reads, search hits, command output, screenshots — that the
+agent needed once and never reads again, and every later model call pays for them.
+`clear_tool_results` replaces each old one with a one-line stub in what the model is sent:
+
+```yaml
+spec:
+  session:
+    clear_tool_results:
+      keep_turns: 10    # 1–1000
+      min_chars: 1000   # text results this size or smaller are kept, unless they carry an image
+```
+
+- **Which results.** A tool result is stubbed when it sits behind the newest `keep_turns` user
+  messages and is longer than `min_chars` or carries an image. The cut-off advances `keep_turns`
+  user messages at a time, so between `keep_turns` and `2 × keep_turns − 1` of the newest are always
+  whole. A steer or a compaction summary counts as a user message, which only ever keeps more.
+- **Only the request changes.** The session log keeps every result, so a rewind, fork, export or
+  compaction summary still has them.
+- **The call stays paired.** Only the result's content and images are replaced; the assistant's
+  tool call and the result's id are kept, so every provider still sees a result for every call.
+- **A spilled result keeps its handle.** A result that [`spec.artifacts`](#specartifacts) spilled
+  names its artifact id in the stub, so `read_artifact` still reaches the full output.
+- **The stub asks the model to re-run only a tool that reads**, never to repeat an action to see
+  what it returned. A result content screening replaced with a `[quarantined]` notice is never
+  stubbed.
+- **What the caller sent is left alone.** A client that re-sends the whole conversation (the
+  OpenAI-compatible `/v1` surface) has its messages passed through as written.
+- **Prompt caching.** For `full_replay` and `compacting`, the cached prefix changes once every
+  `keep_turns` user messages rather than on every call. `windowed:N`, `summarizing:N` and
+  `semantic:N` change their prefix every turn anyway.
+- Clearing runs before replay image screening, so a stubbed screenshot is not screened again.
+  `POST /chat/ask` reads the thread the same way its next turn would. A router's setting also
+  applies to the children it hands the thread to.
+
+The `compacting` strategy measures the window before results are stubbed, so it can still compact
+when clearing alone would have made room.
 
 ## `spec.auth`
 
