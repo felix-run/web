@@ -41,6 +41,7 @@ import {
   IdempotencyKeyReusedError,
   isLeaseRefusal,
   RunInProgressError,
+  SendRefusedError,
   StreamInProgressError,
 } from './errors';
 import { reattachThread } from './reattach';
@@ -162,6 +163,9 @@ export interface SendArgs {
  *   with no `idempotencyKey` is `done` too: it may have been appended before it
  *   failed, and without a key a resend could not tell, so the thread is rejoined.
  * - `lease_refused`: another client drives the thread; the message never landed.
+ * - `refused`: the harness answered 4xx before taking the message — a pinned
+ *   thread, an unknown agent — for a reason a resend will not change. It never
+ *   landed; the reason is in `error`, and the caller hands the message back.
  * - `failed`: a keyed send failed — no answer, a 5xx, a stream that dropped — and
  *   may or may not have landed. Its turns are left for the caller to take back
  *   with the message; resending it under the same key with the same body is safe,
@@ -173,7 +177,13 @@ export interface SendArgs {
  *   (`422 idempotency_key_reused`). Nothing ran; the message can only go again
  *   as a new one, under a new key.
  */
-export type SendOutcome = 'done' | 'lease_refused' | 'run_in_progress' | 'failed' | 'key_reused';
+export type SendOutcome =
+  | 'done'
+  | 'lease_refused'
+  | 'run_in_progress'
+  | 'failed'
+  | 'key_reused'
+  | 'refused';
 
 export interface ChatEngine {
   readonly state: EngineState;
@@ -1156,7 +1166,12 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       } catch (err) {
         // A lease refusal is the harness declining to start the run at all —
         // nothing was torn down, so there is nothing to rejoin.
-        if (ctrl.signal.aborted || isLeaseRefusal(err) || err instanceof RunInProgressError)
+        if (
+          ctrl.signal.aborted ||
+          isLeaseRefusal(err) ||
+          err instanceof RunInProgressError ||
+          err instanceof SendRefusedError
+        )
           throw err;
         // A resend under a key whose first attempt is still streaming: that
         // attempt's turn is the one running, so watch it rather than start one.
@@ -1239,6 +1254,17 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           turns: state.turns.filter(
             (t) => !(t.id === target && !t.content && !(t.tools ?? []).length),
           ),
+        });
+      } else if (err instanceof SendRefusedError) {
+        // Turned away before anything ran, for a reason a resend will not change: the
+        // message never landed, so the placeholder goes and the reason is said.
+        outcome = 'refused';
+        const target = activeAssistantId;
+        set({
+          turns: state.turns.filter(
+            (t) => !(t.id === target && !t.content && !(t.tools ?? []).length),
+          ),
+          error: describeError(err, 'send this message').message,
         });
       } else if (err instanceof IdempotencyKeyReusedError) {
         outcome = 'key_reused';

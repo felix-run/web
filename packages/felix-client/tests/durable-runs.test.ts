@@ -295,7 +295,8 @@ describe('a send the harness refuses for the run already on the thread', () => {
       }),
     );
     const engine = engineWith();
-    expect(await send(engine)).toBe('done');
+    // Refused outright, for a reason a resend would only repeat — and no run polled.
+    expect(await send(engine)).toBe('refused');
     expect(fetched.some((u) => u.includes('/chat/runs/'))).toBe(false);
   });
 });

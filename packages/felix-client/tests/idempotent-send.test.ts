@@ -127,6 +127,29 @@ describe('a keyed send', () => {
     expect(e.state.streaming).toBe(false);
   });
 
+  it("resolves 'refused' for a 4xx a resend would only repeat, and says why", async () => {
+    harness([
+      new Response(
+        JSON.stringify({ detail: 'thread pinned to triage: quick cannot continue it' }),
+        { status: 409 },
+      ),
+    ]);
+    const e = engine();
+    expect(await open(e, 1)).toBe('refused');
+    // Nothing landed: the placeholder reply goes, nothing is rejoined, and the
+    // reason is said rather than "no longer pending".
+    expect(contents(e)).toEqual(['user:earlier', 'assistant:earlier reply', 'user:hello again']);
+    expect(sent.filter((r) => r.method === 'GET' && r.url.includes('/chat/stream/'))).toEqual([]);
+    expect(e.state.error).toContain('this thread is pinned to triage');
+  });
+
+  it("keeps 'failed' for a 429 and a 408, which are worth a retry", async () => {
+    harness([new Response('slow down', { status: 429 }), new Response('', { status: 408 })]);
+    const e = engine();
+    expect(await open(e, 1)).toBe('failed');
+    expect(await open(e, 2)).toBe('failed');
+  });
+
   it("resolves 'failed' for a 5xx and for a stream that stopped short of [DONE]", async () => {
     harness([
       new Response('upstream gone', { status: 502 }),

@@ -88,6 +88,7 @@ import {
   KEPT_NOTICE,
   type KeptMessage,
   REATTACHING_REFUSAL,
+  REFUSED_NOTICE,
   REKEYED_NOTICE,
   RESEND_NOTICE,
   RUN_BUSY_NOTICE,
@@ -199,7 +200,7 @@ const LAPSE_GRACE_MS = 2_000;
 type KeyedMessage = PromptInputMessage & { key?: string };
 
 /** Why a message came back: the lease, a send that failed, or a key the harness refused. */
-type KeptReason = 'lease' | 'run' | 'failed' | 'key_reused';
+type KeptReason = 'lease' | 'run' | 'failed' | 'key_reused' | 'refused';
 
 /** What a failed streamed send carried, so a resend under its key is the same body. */
 interface UnsettledSend {
@@ -1714,7 +1715,7 @@ export function AppShell() {
         // so it goes now, and whoever holds the message gives it back.
         // Refused for a run already going on the thread: the same — it never landed — and
         // the engine is now watching that run.
-        if (outcome === 'lease_refused' || outcome === 'run_in_progress') {
+        if (outcome === 'lease_refused' || outcome === 'run_in_progress' || outcome === 'refused') {
           engine.setTurns(engine.state.turns.filter((t) => t.id !== userTurn.id));
         }
         // It may or may not have landed, and the message is going back to whoever
@@ -2284,7 +2285,9 @@ export function AppShell() {
           ? RUN_BUSY_NOTICE
           : reason === 'failed'
             ? RESEND_NOTICE
-            : REKEYED_NOTICE,
+            : reason === 'refused'
+              ? REFUSED_NOTICE
+              : REKEYED_NOTICE,
     );
   }, []);
   const takeKept = useCallback(() => setKept(null), []);
@@ -2416,6 +2419,11 @@ export function AppShell() {
               attachments,
             });
             giveBack(sent, 'failed');
+          } else if (outcome === 'refused') {
+            // Turned away before anything ran: the key holds nothing, and a resend
+            // goes out as a new message.
+            unsettled.current.delete(key);
+            giveBack({ text: message.text, files: message.files }, 'refused');
           } else {
             // The harness will never send this body under this key.
             unsettled.current.delete(key);
@@ -2488,7 +2496,11 @@ export function AppShell() {
         queue.restore(next);
         return;
       }
-      queue.restore(reason === 'key_reused' ? { ...next, key: crypto.randomUUID() } : next);
+      queue.restore(
+        reason === 'key_reused' || reason === 'refused'
+          ? { ...next, key: crypto.randomUUID() }
+          : next,
+      );
       queue.setPaused(true);
     }).then(
       () => {
