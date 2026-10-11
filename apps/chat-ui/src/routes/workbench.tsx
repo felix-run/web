@@ -166,6 +166,11 @@ export function Workbench() {
     () => contextFill(turns, manifestEntries.find((m) => m.id === manifest)?.contextWindow),
     [turns, manifestEntries, manifest],
   );
+  // The selected agent's own `/name` commands, expanded by the harness.
+  const agentCommands = useMemo(
+    () => manifestEntries.find((m) => m.id === manifest)?.commands,
+    [manifestEntries, manifest],
+  );
   // The meter is debug's — except a window nearly full, which is about to change
   // what the agent can see, and so is the daily user's to know too.
   const context = debug || (fill && fill.share >= NEARLY_FULL) ? fill : null;
@@ -384,6 +389,7 @@ export function Workbench() {
               onBackground={(message) => submit(message, 'background')}
               onStop={stopRun}
               onSlashCommand={onSlashCommand}
+              agentCommands={agentCommands}
               models={modelOptions}
               modelId={manifest}
               onModelChange={setManifest}

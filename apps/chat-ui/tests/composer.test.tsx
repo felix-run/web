@@ -199,6 +199,53 @@ describe('refusing a submission', () => {
     expect(box.value).toBe('/nosuchcommand');
   });
 
+  it("sends the agent's own command as typed, for the harness to expand", async () => {
+    // `felix.commands` (felix-run/felix#599): without it, `/review` is refused above.
+    const streamed: string[] = [];
+    let modelsServed = false;
+    localStorage.setItem('felix.manifest', 'cowork');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/v1/models')) {
+          modelsServed = true;
+          const data = [
+            { id: 'cowork', felix: { commands: [{ name: 'review', argumentHint: '<file>' }] } },
+          ];
+          return new Response(JSON.stringify({ object: 'list', data }), { status: 200 });
+        }
+        if (url.includes('/chat/stream')) {
+          streamed.push(String(init?.body ?? ''));
+          return new Response('data: [DONE]\n\n', {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          });
+        }
+        if (url.includes('/chat/sessions')) {
+          return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
+        }
+        if (url.includes('/approvals')) {
+          return new Response(JSON.stringify({ requests: [] }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    const box = await mount();
+    await waitFor(() => expect(modelsServed).toBe(true));
+
+    await act(async () => {
+      await userEvent.type(box, '/review a.py', { delay: null });
+    });
+    await act(async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+
+    await waitFor(() => expect(streamed.length).toBe(1));
+    expect(JSON.parse(streamed[0] ?? '{}').messages.at(-1).content).toBe('/review a.py');
+    await waitFor(() => expect(box.value).toBe(''));
+  });
+
   /** Pasted, not typed: 32k keystrokes is not what this measures. */
   const OVERLONG = 'x'.repeat(32_001);
 

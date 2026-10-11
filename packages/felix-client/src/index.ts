@@ -182,6 +182,7 @@ export {
   type HarnessWorkspaceTree,
   type LeaseAcquireResult,
   type LeaseStatus,
+  type ManifestCommand,
   type ManifestEntry,
   type ManifestGreeting,
   type ManifestStarter,
