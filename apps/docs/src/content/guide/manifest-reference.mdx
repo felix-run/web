@@ -1593,6 +1593,44 @@ conversation, and expires after 30 minutes. Every skipped approval is audited (`
 An MCP tool's own read-only annotation does not count for plan mode (the server wrote it); list the
 tool in `read_only_tools`.
 
+## `spec.hooks`
+
+```yaml
+spec:
+  hooks:
+    - id: no-friday-deploys
+      event: pre_tool_use
+      tools: [deploy__*]          # tool events only; empty means every tool
+      endpoint: policy            # an id from FELIX_WEBHOOK_ENDPOINTS, never a URL
+      timeout_ms: 3000            # at most 10000
+      on_error: block             # allow (default) or block
+```
+
+On each event Felix sends a [signed](/guide/rest-api/) POST to the endpoint — the operator registers
+it for your tenant and opens it to hooks (`"hooks": true`) — and acts on the JSON it answers:
+
+```json
+{"decision": "block", "reason": "No deploys on Fridays", "additional_context": "..."}
+```
+
+| `event` | Fires | `decision: block` |
+|---|---|---|
+| `session_start` | a conversation's first run | refuses the run (422; an `error` frame of type `blocked_by_hook` on a stream) |
+| `user_prompt_submit` | each run, before the model sees the prompt | refuses the run (as above) |
+| `pre_tool_use` | before a call to one of the agent's tools — ahead of policies and approvals | refuses the call |
+| `post_tool_use` | after a tool call, with its result (or its error) | — |
+| `stop` | when the agent would finish | sends it back with `reason` (up to 3 times a run, never on its last step) |
+| `subagent_stop` | when a [`task`](#specdelegation) child finishes | — |
+
+The request body is `{type: "hook.<event>", hook, tenant_id, manifest_id, thread_id, data}`, with
+`data` carrying the prompt, the tool's name/arguments/result, or the answer (each cut to 32,000
+characters). An empty 2xx is `allow`. `additional_context` — and a `stop` reason — reach the model
+screened, fenced as reference material from that hook, for that call only; one event's hooks share
+8,000 characters of it and 15 seconds. A `stop` hook that errors lets the agent finish. An endpoint that is down, slow, or answers anything else is an error, and
+`on_error` decides — `allow` treats the hook as advisory, `block` makes it a control that fails
+closed. Every call is audited (`hook_call`). Hooks run on `react` and `deep`; any other pattern
+refuses a manifest that declares them. Hook ids must be unique; at most 16.
+
 ## `spec.approvals`
 
 Human-in-the-loop gates on named tools.

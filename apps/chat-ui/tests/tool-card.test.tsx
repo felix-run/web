@@ -132,7 +132,9 @@ describe('the tool card for a denied call', () => {
   const record = (over: Record<string, unknown> = {}) => ({
     id: 'a1',
     decidedBy: 'local-dev',
-    decidedAt: new Date(2026, 9, 10, 14, 2).getTime(),
+    // Today at 14:02, not a fixed date: the card shows a time alone for a decision made today and
+    // prefixes the weekday otherwise, so a pinned date passed on the day it was written only.
+    decidedAt: new Date(new Date().setHours(14, 2, 0, 0)).getTime(),
     ttlSeconds: 300,
     here: false,
     ...over,
