@@ -51,14 +51,18 @@ No Vitest / miniflare. Run via:
 
 ```bash
 make check                                          # ruff + ty + pytest with the coverage floor + format check
+make check-ci                                       # + every other gate CI runs without infrastructure
 ./scripts/test.sh                                   # the full suite
 ./scripts/test.sh tests/unit/test_react_loop.py -q  # one file
 ./scripts/test.sh -k compact                        # one theme
 ```
 
+`ty` needs the optional extras (`make install-full`). On a lean install `make check` skips it, says so
+as its last line, and still exits `0`; `make check-ci` and `STRICT=1 make check` fail instead.
+
 ## Patterns when adding tests
 
-1. **Settings** — construct `Settings(auth_mode="none", allow_insecure=True, database_url="memory://…", object_store="memory")` so tests stay hermetic.
+1. **Settings** — `tests/support/factories.py:make_settings(**overrides)` builds the hermetic `memory://` baseline (no inbound auth, in-memory object store); name only the fields the test cares about. Shared helpers live in `tests/support/`, and a test never imports another test module or a conftest.
 2. **Stub tools** — pass an explicit `ToolProvider` / in-memory tools; don't depend on full Compose wiring.
 3. **Manifests** — build with `apiVersion: felix/v1` dicts or `parse_manifest`; don't require the on-disk bundle.
 4. **Tenant isolation** — assert another tenant cannot read rows you wrote.
@@ -85,8 +89,8 @@ felix eval -d my-dataset -m quick --fixture ./dataset.json --mock
 ## Local stack for integration
 
 ```bash
-make install && make up && make migrate
-# API :8080 — see getting started
+make bootstrap && make up            # the whole stack in Docker; it migrates before the API starts
+make db migrate dev                  # or: Postgres + Valkey in Docker, the API from the checkout
 ```
 
 Lean hosts: `make up-lite`. Details: [getting started](/guide/getting-started/), [deploy](/guide/deploy/).

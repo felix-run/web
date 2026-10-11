@@ -15,7 +15,7 @@ Felix is cloud-agnostic: Postgres, a cache, and an object store behind Protocols
 | **Valkey / Redis** | `FELIX_REDIS_URL` | Taskiq broker, rate-limit / short-lived cache, queue-tool lists |
 | **Object store** | `FELIX_OBJECT_STORE=fs\|s3\|gcs\|memory` | Artifacts, uploads, skill bytes (operator uploads and the tenant library), optional policy bundles / bulk blobs |
 
-Migrations: Alembic via `felix migrate` (or `make migrate`). Local Compose uses pgvector + Valkey; `fs` object store needs no MinIO. Cloud notes: [deploy](/guide/deploy/), `deploy/aws/`, `deploy/gcp/`.
+Migrations: Alembic via `felix migrate` (or `make migrate`); `make up` runs them in a one-shot `migrate` service, and `make db` starts Postgres + Valkey alone for a checkout-run API. Local Compose uses pgvector + Valkey; `fs` object store needs no MinIO. Cloud notes: [deploy](/guide/deploy/), `deploy/aws/`, `deploy/gcp/`.
 
 ## Tenant isolation
 
