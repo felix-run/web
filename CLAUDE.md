@@ -1121,9 +1121,10 @@ Flows worth knowing before editing the app:
   **A skill is edited in the side pane, and only there** (2026-10-11). The skill page's Edit,
   *Edit to fix* on a refused draft, *Apply to editor* on an applied feedback rewrite, New skill
   and the chat card's Edit all go through `useOpenSkillEditor` (`open-skill-editor.ts`), which
-  opens a `kind: 'skill'` pane item (key `skill:<library>/<name>`) and, from `/harness`, goes back
-  to the thread. The pane draws it through the lazy `skill-pane-view.tsx`, which is `EditPanel`
-  over `useSkillEditor` unchanged, plus a Versions link back to the page. **The editor's state
+  opens a `kind: 'skill'` pane item (key `skill:<library>/<name>`) — beside the skill's page when
+  opened from there, since the pane is drawn on `/harness` too. The pane draws it through the lazy
+  `skill-pane-view.tsx`, which is `EditPanel` over `useSkillEditor` unchanged, plus a Versions link
+  back to the page (left out when that page is the one beside it). **The editor's state
   lives on the item** (`SkillEditSnapshot`: `loadedFrom`, `parent`, the working copy while it
   differs, and a rebase's `onto`/`base`/`mine`/`resolutions`), handed back on every change
   (`onKeep`) and read on the next mount (`kept`), because an inactive pane tab renders nothing —
@@ -1650,8 +1651,12 @@ Five things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6
 spilled tool output (`Open full output` in the tool card), a reply's code block (an Open control
 `OpenablePre` adds to streamdown's header by wrapping the pass-through `pre`, so Shiki is kept),
 a tool's image, and a skill's editor (see **Skill library**). Opening goes through `ShellValue.openInPane`, which is **optional** — a test's
-partial shell leaves every Open control out — and goes back to the thread from `/harness`. Rules
-that are easy to break:
+partial shell leaves every Open control out — and stays where it is: **the pane is drawn beside
+every `/harness` page too** (`useHarnessPane` in `routes/harness.tsx`, through the shared
+`PaneColumn`/`PaneOverlay` in `components/pane/pane-zone.tsx`), so a skill opened for editing from
+its page sits beside that page. It is the tab's thread's pane, the same tabs and drafts, and there
+the header toggle and `Mod+'` are the pane's even in debug (`/harness` has no instrument). It
+used to send the operator back to the thread. Rules that are easy to break:
 - **It takes the instrument's zone, never a fourth column.** From 1280 the shell reports the
   instrument closed while the pane holds the zone (`paneHoldsZone` in `app-shell.tsx`) and leaves
   `felix.inspectorOpen` alone, so closing the pane brings the instrument back as it stood; the

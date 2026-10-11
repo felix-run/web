@@ -16,14 +16,14 @@ import { SideAnswerCard } from '@/components/chat/side-answer';
 import { TurnCheckpoint } from '@/components/chat/turn-checkpoint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { WATCHING_REFUSAL, WatchingBanner } from '@/components/chat/watching-banner';
-import { PaneDivider } from '@/components/pane/pane-divider';
+import { DRAWER_MOTION, PaneColumn, PaneOverlay } from '@/components/pane/pane-zone';
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { RailPresence } from '@/components/rail-presence';
 import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { landedPaths } from '@/lib/changes';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
-import { openInPane, setPaneShown, usePaneState } from '@/lib/side-pane';
+import { openInPane, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 
@@ -35,11 +35,6 @@ import { useShell } from '@/shell-context';
  */
 const Inspector = lazy(() =>
   import('@/components/inspector/inspector').then((m) => ({ default: m.Inspector })),
-);
-
-/** The side pane loads with the first thing opened in it. */
-const SidePane = lazy(() =>
-  import('@/components/pane/side-pane').then((m) => ({ default: m.SidePane })),
 );
 
 /**
@@ -58,15 +53,6 @@ function InspectorLoading({ className }: { className?: string }) {
     />
   );
 }
-
-/**
- * The narrow-width drawers' motion, at the inline rails' speed (`RAIL_MS`).
- * The primitive's own 500ms in / 300ms out, `ease-in-out`, made a zone that
- * snaps open at one width crawl open at another. `ease-out` because the drawer
- * answers a click: it should start fast and settle, not ramp up first.
- */
-const DRAWER_MOTION =
-  'ease-out data-[state=closed]:duration-200 data-[state=open]:duration-200 motion-reduce:animate-none';
 
 /**
  * The workbench: the transcript and composer, and the run-scoped inspector. The
@@ -212,17 +198,7 @@ export function Workbench() {
     [turns, streaming, lastUser],
   );
   const inRouter = useInRouterContext();
-  const sidePane = (onBack?: () => void) => (
-    <Suspense fallback={null}>
-      <SidePane
-        threadId={threadId}
-        changedPaths={changedPaths}
-        runPaths={runPaths}
-        streaming={streaming}
-        {...(onBack ? { onBack } : {})}
-      />
-    </Suspense>
-  );
+  const paneZone = { threadId, changedPaths, runPaths, streaming, open: paneOpen, layout };
 
   return (
     <>
@@ -453,26 +429,7 @@ export function Workbench() {
             )}
           />
         </main>
-        {paneOpen && layout.split && (
-          <>
-            <PaneDivider
-              share={layout.share}
-              min={layout.min}
-              max={layout.max}
-              onChange={layout.onChange}
-              onCommit={layout.onCommit}
-              onReset={layout.onReset}
-              controls="side-pane"
-            />
-            <div
-              id="side-pane"
-              style={{ width: `${(layout.share * 100).toFixed(2)}%` }}
-              className="flex min-h-0 shrink-0 animate-in fade-in-0 slide-in-from-right-3 duration-200 ease-out motion-reduce:animate-none"
-            >
-              {sidePane()}
-            </div>
-          </>
-        )}
+        <PaneColumn {...paneZone} />
         {instrumentInline && (
           <RailPresence open={inspectorOpen} side="right">
             <Suspense fallback={<InspectorLoading />}>
@@ -494,24 +451,7 @@ export function Workbench() {
         a fixed rem width is the whole story: the instrument's 22rem is 352px, and
         on a 320px phone it hung 32px off the left edge — its title, its first tab
         and the start of every row cut away, measured in a real browser. */}
-      {!layout.split && (
-        <Sheet
-          open={paneOpen}
-          onOpenChange={(open) => {
-            if (!open) setPaneShown(threadId, false);
-          }}
-        >
-          <SheetContent
-            side="right"
-            showCloseButton={false}
-            data-shortcut-surface="pane"
-            className={cn('w-full max-w-full gap-0 p-0 sm:max-w-none', DRAWER_MOTION)}
-          >
-            <SheetTitle className="sr-only">Side pane</SheetTitle>
-            {sidePane(() => setPaneShown(threadId, false))}
-          </SheetContent>
-        </Sheet>
-      )}
+      <PaneOverlay {...paneZone} />
 
       {!instrumentInline && (
         <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>

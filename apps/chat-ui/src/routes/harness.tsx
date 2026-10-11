@@ -11,15 +11,27 @@ import {
   type LucideIcon,
   PuzzleIcon,
 } from 'lucide-react';
-import { Fragment, type KeyboardEvent, lazy, Suspense, useEffect } from 'react';
+import {
+  Fragment,
+  type KeyboardEvent,
+  lazy,
+  type RefObject,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { Navigate, NavLink, Outlet, useMatch } from 'react-router';
 import { listAudit, listJobs, listSkillReviewQueue } from '@/api';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { DOCS_ORIGIN, PageBack, PageDocs } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
+import { PaneColumn, PaneOverlay, type PaneZoneProps } from '@/components/pane/pane-zone';
+import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
+import { landedPaths } from '@/lib/changes';
 import {
   ACTIVITY_FETCH,
   ACTIVITY_GLANCE_SPAN,
@@ -31,7 +43,9 @@ import {
   SKILL_QUEUE_POLL_KEY,
 } from '@/lib/harness-glances';
 import { setPresencePlace } from '@/lib/presence';
+import { usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
+import { useOptionalShell } from '@/shell-context';
 
 /**
  * `/harness`: the route table's half that the sidebar also reads — the eight
@@ -465,6 +479,7 @@ export function HarnessLayout() {
   const destination = HARNESS_DESTINATIONS.find((d) => d.path === at);
   const place = destination?.label ?? 'Harness';
   const { search } = useHarnessAgent();
+  const pane = useHarnessPane();
 
   // The tab strip names the page: eight open destinations all read "Felix chat".
   // Cleared on the way out, so the conversation's tab goes back to naming only
@@ -506,7 +521,7 @@ export function HarnessLayout() {
   // that is empty narrow; the way back is a context that is empty wide; the
   // `<Outlet/>` sits at the same depth either way.
   return (
-    <div className="flex min-h-0 flex-1">
+    <div ref={pane.row} className="flex min-h-0 flex-1">
       {wide && !sidebarInline && (
         <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60">
           <HarnessNav />
@@ -527,6 +542,41 @@ export function HarnessLayout() {
           </PageDocs.Provider>
         </PageBack.Provider>
       </main>
+      {pane.zone && <PaneColumn {...pane.zone} />}
+      {pane.zone && <PaneOverlay {...pane.zone} />}
     </div>
   );
+}
+
+/**
+ * The tab's side pane, beside a `/harness` page as it is beside the conversation: a skill opened
+ * for editing from its page stays next to that page rather than sending the operator back to the
+ * thread. It is the thread's pane — the same tabs and unsaved edits — so leaving for the thread
+ * and back finds it as it was. None without a shell (a test mounting the layout alone).
+ */
+function useHarnessPane(): { row: RefObject<HTMLDivElement | null>; zone: PaneZoneProps | null } {
+  const shell = useOptionalShell();
+  const row = useRef<HTMLDivElement>(null);
+  const layout = usePaneLayout(row);
+  const threadId = shell?.threadId ?? '';
+  const state = usePaneState(threadId);
+  const turns = shell?.turns;
+  const streaming = shell?.streaming ?? false;
+  const changedPaths = useMemo(() => landedPaths(turns ?? []), [turns]);
+  const runPaths = useMemo(() => {
+    const lastUser = (turns ?? []).map((t) => t.role).lastIndexOf('user');
+    return streaming && lastUser !== -1 ? landedPaths(turns ?? [], lastUser) : new Set<string>();
+  }, [turns, streaming]);
+  if (!shell) return { row, zone: null };
+  return {
+    row,
+    zone: {
+      threadId,
+      changedPaths,
+      runPaths,
+      streaming,
+      open: state.shown && state.items.length > 0,
+      layout,
+    },
+  };
 }
