@@ -37,6 +37,13 @@ export function policySentence(policy: SkillPolicy): string {
   return `${lead}Publishing needs ${parts.join(', ')}. A rollback is held to the same gate, without the evaluation.`;
 }
 
+/** The personal-library refusals, each with words of its own in `RefusalNotice`. */
+const PERSONAL_REFUSALS: ReadonlySet<string> = new Set([
+  'no_personal_library',
+  'personal_libraries_need_auth',
+  'personal_library_read_only',
+]);
+
 /**
  * A refused library write, in the words its refusal calls for.
  *
@@ -55,7 +62,13 @@ export function RefusalNotice({
   doing: string;
   action?: ReactNode;
 }) {
-  if (isForbidden(error)) {
+  // A 403 that names its own reason — no personal library, a scope it spells out — is said in
+  // those words below; only a bare one is the team library's write scope.
+  const named =
+    isSkillLibraryError(error) &&
+    !!error.refusal &&
+    (PERSONAL_REFUSALS.has(error.code) || error.code.startsWith('missing_scope:'));
+  if (isForbidden(error) && !named) {
     return (
       <Notice action={action}>
         This key can read the skill library but not change it. Deciding a draft needs the{' '}
@@ -93,12 +106,29 @@ export function RefusalNotice({
     eval_in_progress:
       'This version already has an evaluation queued or running. Wait for it to finish.',
     invalid_address: 'That is not a skill, version or item the library could hold.',
+    no_personal_library:
+      'Your sign-in has no personal library. Each person signed in with their own account has one; a shared key or an anonymous session does not.',
+    personal_libraries_need_auth:
+      'This harness runs without sign-in, so nobody has a personal library.',
+    personal_library_read_only:
+      'Someone else’s personal library can be read and archived, not changed.',
+    personal_library_full:
+      'Your personal library is full. Archive skills you no longer use to make room.',
+    promotion_pending:
+      'An earlier promotion of this skill is still waiting for review in the team library. It has to be decided first.',
+    origin_mismatch:
+      'The team library’s skill of this name came from an import. An operator has to adopt it before anything else can be saved over it.',
     invalid_policy:
       'Every policy field needs a value; only the evaluation uplift floor can be left empty.',
   };
   return (
     <Notice action={action}>
-      <p>{lead[code] ?? `Could not ${doing}.`}</p>
+      <p>
+        {lead[code] ??
+          (code.startsWith('missing_scope:')
+            ? `Your credential needs the ${code.slice('missing_scope:'.length)} scope to ${doing}.`
+            : `Could not ${doing}.`)}
+      </p>
       {code !== 'publish_blocked' || reasons.length === 0 ? (
         <p className="mt-0.5 break-words">{refusal.message}</p>
       ) : null}

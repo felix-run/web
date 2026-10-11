@@ -284,3 +284,58 @@ describe('a refusal that is only a code', () => {
     expect(invalid.code).toBe('invalid_request');
   });
 });
+
+describe('a personal library', () => {
+  async function client() {
+    const { createFelixClient } = await import('../src/transport');
+    const sent: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+      sent.push({
+        url: String(input),
+        method: init.method,
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return new Response(
+        JSON.stringify({ items: [], next_cursor: null, name: 'x', version: '0.1.0', versions: [] }),
+        {
+          status: 200,
+        },
+      );
+    }) as unknown as typeof globalThis.fetch;
+    return { sent, felix: createFelixClient({ baseUrl: '/api', headers: () => ({}), fetch }) };
+  }
+
+  it('reads and writes the ~me routes when asked, and the team’s otherwise', async () => {
+    const { sent, felix } = await client();
+    await felix.listLibrarySkills({ limit: 5 }, 'me');
+    await felix.getLibrarySkill('notes', 'me');
+    await felix.publishSkillVersion('notes', '1.0.0', {}, 'me');
+    await felix.getLibrarySkill('notes');
+    expect(sent.map((r) => `${r.method ?? 'GET'} ${r.url}`)).toEqual([
+      'GET /api/skill-library/~me?limit=5',
+      'GET /api/skill-library/~me/notes',
+      'POST /api/skill-library/~me/notes/versions/1.0.0/publish',
+      'GET /api/skill-library/notes',
+    ]);
+  });
+
+  it('promotes from the caller’s own library, with the reason when there is one', async () => {
+    const { sent, felix } = await client();
+    await felix.promoteSkillVersion('notes', '1.0.0', 'for everyone');
+    await felix.promoteSkillVersion('notes', '1.0.0');
+    expect(sent[0]).toEqual({
+      url: '/api/skill-library/~me/notes/versions/1.0.0/promote',
+      method: 'POST',
+      body: { reason: 'for everyone' },
+    });
+    expect(sent[1]?.body).toEqual({});
+  });
+
+  it('refuses a library that could not be one, before asking', async () => {
+    const { sent, felix } = await client();
+    await expect(felix.getLibrarySkill('notes', '../org')).rejects.toMatchObject({
+      code: 'invalid_library',
+    });
+    expect(sent).toEqual([]);
+  });
+});

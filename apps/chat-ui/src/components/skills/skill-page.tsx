@@ -8,10 +8,17 @@ import { ReadFailure } from '@/components/inspector/primitives';
 import { EditPanel } from './edit-panel';
 import { EvalsPanel } from './evals-panel';
 import { FeedbackPanel } from './feedback-panel';
-import { useLibrarySkill } from './queries';
+import { useLibraryId, useLibrarySkill } from './queries';
 import { ReviewPanel } from './review-panel';
 import { ShadowsUploadNotice, UpstreamLine } from './skill-status';
-import { EDITOR, leavesSkill, SKILL_TABS, type SkillAddress, type SkillTab } from './skill-tabs';
+import {
+  EDITOR,
+  leavesSkill,
+  ORG_ONLY_TABS,
+  SKILL_TABS,
+  type SkillAddress,
+  type SkillTab,
+} from './skill-tabs';
 import { UnsavedChangesGuard } from './unsaved-guard';
 import { useSkillEditor } from './use-skill-editor';
 import { VersionPicker } from './version-picker';
@@ -38,6 +45,9 @@ export function SkillPage({
   backTo: string;
 }) {
   const skill = useLibrarySkill(name);
+  // A personal library has no evaluations or feedback; an address naming either opens Versions.
+  const personal = useLibraryId() !== undefined;
+  const tab: SkillTab = personal && ORG_ONLY_TABS.has(address.tab) ? 'versions' : address.tab;
   const layoutBack = useContext(PageBack);
   const detail = skill.data;
   const missing = isMissing(skill.error);
@@ -69,7 +79,7 @@ export function SkillPage({
   return (
     <Panel>
       <Tabs
-        value={address.tab}
+        value={tab}
         onValueChange={(tab) => onAddress({ tab: tab as SkillTab })}
         className="min-h-0 flex-1 gap-0"
       >
@@ -107,7 +117,9 @@ export function SkillPage({
                     aria-label={`${name} view`}
                     className="w-auto group-data-[orientation=horizontal]/tabs:h-8"
                   >
-                    {SKILL_TABS.filter((t) => t.ready).map((t) => (
+                    {SKILL_TABS.filter(
+                      (t) => t.ready && !(personal && ORG_ONLY_TABS.has(t.id)),
+                    ).map((t) => (
                       <TabsTrigger key={t.id} value={t.id} className="px-2.5 text-xs">
                         {t.label}
                         {t.id === 'edit' && editor.bundle.dirty && (

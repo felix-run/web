@@ -1099,6 +1099,18 @@ Flows worth knowing before editing the app:
   `promoted`). An imported skill's page says whether its source has moved on (`UpstreamLine`,
   from `SkillDetail.upstream`). `refusalOf` reads a bare `{detail: "<code>"}` as that code — the
   personal-library 403s arrive that way, not as `{error, message}`.
+  **My skills is the caller's own library** (`?lib=me`, the `~me` routes). Every per-skill client
+  function takes a trailing `library` and keeps **two literal call sites** — org and
+  `` `/skill-library/~${librarySegment(library)}/…` `` — because `check-api-drift` reads only a
+  path literal right after the call's paren (a variable, a ternary or even a comment there hides
+  the call) and matches `~{library}` by shape, so a literal `~me` would read as a route the harness
+  lacks. chat-ui provides the library through `SkillLibraryContext`; every hook in `queries.ts`
+  reads it and keys its cache by it (last key element, so `invalidateLibrary` is unchanged), which
+  is what lets the list, page, editor and actions serve both. The team's queue, feedback, evals
+  and policy are not shown there (`ORG_ONLY_TABS`), and a once-published version offers
+  **Promote** (`PromoteButton`), which drafts into the team library and never publishes. A 403
+  that names its code (`no_personal_library`, `missing_scope:…`) is said in its words, not as
+  the generic `skills:write` one.
 - **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and
   the snapshot's `labels` map reads them back. It was a write-only route here for a different reason
   than the rest: `SessionSnapshot` did not model the field the harness had always sent, so a label

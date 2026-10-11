@@ -1,4 +1,5 @@
 import type { SkillSummary } from '@felix/client';
+import { isSkillLibraryError } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { Skeleton } from '@felix/ui/skeleton';
 import { TriangleAlertIcon } from 'lucide-react';
@@ -7,6 +8,7 @@ import { Link } from 'react-router';
 import { ViewSwitch } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { type LibraryFilter, useLibraryPages, usePublishPolicy } from './queries';
+import { RefusalNotice } from './refusal';
 import { ScoreReadout } from './score-readout';
 import { ago, SourceLabel } from './skill-status';
 
@@ -105,12 +107,18 @@ export function LibraryList({
       )}
 
       {query.error ? (
-        <ReadFailure
-          error={query.error}
-          doing="list the skill library"
-          lastOkAt={query.data ? query.dataUpdatedAt : null}
-          onRetry={() => void query.refetch()}
-        />
+        // A refusal the library names (no personal library, a missing scope) is said in its own
+        // words; anything else is a read that failed and may be retried.
+        isSkillLibraryError(query.error) && query.error.status === 403 ? (
+          <RefusalNotice error={query.error} doing="list this library" />
+        ) : (
+          <ReadFailure
+            error={query.error}
+            doing="list the skill library"
+            lastOkAt={query.data ? query.dataUpdatedAt : null}
+            onRetry={() => void query.refetch()}
+          />
+        )
       ) : null}
 
       {query.isPending ? (
