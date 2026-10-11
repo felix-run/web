@@ -496,6 +496,27 @@ export function usePersonalLibraries(asked: boolean) {
   });
 }
 
+/**
+ * Who owns a personal library, if the listing it was opened from is still in the cache. Never
+ * fetches: reading the listing is audited, and opening a library by its address is not a listing.
+ */
+export function useKnownLibraryOwner(library: string | undefined) {
+  const listed = useQuery({
+    queryKey: [...skillKeys.all, 'personal-libraries'] as const,
+    queryFn: () => listPersonalLibraries(),
+    enabled: false,
+  });
+  return listed.data?.items.find((l) => l.library === library)?.owner;
+}
+
+/** Split `issuer|subject` into its two halves; an owner with no issuer is all subject. */
+export function ownerParts(owner: string): { issuer: string; subject: string } {
+  const cut = owner.lastIndexOf('|');
+  return cut > 0
+    ? { issuer: owner.slice(0, cut), subject: owner.slice(cut + 1) }
+    : { issuer: '', subject: owner };
+}
+
 /** One imported skill against its source now, read when asked: each check is a GitHub request. */
 export function useSourceCheck(name: string, asked: boolean) {
   return useQuery({
