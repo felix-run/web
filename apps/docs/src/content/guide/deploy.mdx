@@ -22,9 +22,8 @@ runtime anywhere in the harness. A CDN may sit in front for DNS, TLS and WAF onl
 ## Compose
 
 ```bash
-cp .env.example .env   # set POSTGRES_PASSWORD
-make up
-make migrate
+make bootstrap   # .env with generated passwords, lean install (once per checkout)
+make up          # a one-shot migrate service applies the schema before api/worker/scheduler start
 ```
 
 Lean hosts: `make up-lite`. MinIO profile: `make up-full` with `FELIX_DOCKER_EXTRAS=aws`.

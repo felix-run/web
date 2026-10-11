@@ -1,15 +1,17 @@
 ---
 title: "Getting started"
-description: "Stand up the Python Felix harness locally and make your first chat request."
+description: "Stand up the Felix harness locally, send a first request, and build your first agent."
 sidebar:
   order: 1
 ---
 
 import { Steps } from '@astrojs/starlight/components';
 
-Stand up **Felix** locally and send your first request. Felix is a self-hostable
-**managed agents harness**: YAML manifests (`apiVersion: felix/v1`) compile into
-runnable agents with governance, durable execution, and multi-protocol surfaces.
+Stand up **Felix** locally, send your first request, then build an agent of your own. Felix is a
+self-hostable **agents harness**: the primitives and the runtime to build any agent, for any agentic
+workflow. You describe an agent as a YAML manifest (`apiVersion: felix/v1`), and Felix compiles it
+into a runnable agent with governance, durable execution, and multi-protocol surfaces. The bundled
+manifests are worked examples of those primitives, not the product.
 
 - **Harness (runtime):** [felix-run/felix](https://github.com/felix-run/felix) — CPython, Compose / Helm
 - **Web (optional):** [felix-run/web](https://github.com/felix-run/web) — chat-ui + docs on Cloudflare Workers
@@ -19,43 +21,42 @@ deploy shape, see [Deploy](/guide/deploy/).
 
 ## Prerequisites
 
-- Docker + Docker Compose
-- [uv](https://docs.astral.sh/uv/) (Python 3.14+) for local CLI / non-Compose runs
-- Optional: `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`, or a [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) token and account id for open-weight models
+- Docker with Compose v2
+- [uv](https://docs.astral.sh/uv/). It fetches Python 3.14 itself.
+- A model key in `.env`. A manifest that names no model runs on `claude-sonnet`, so
+  `FELIX_ANTHROPIC_API_KEY` is the short path. With only `FELIX_OPENAI_API_KEY`, also set
+  `FELIX_DEFAULT_MODEL_ID=gpt-4.1`. A [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
+  token and account id serve open-weight models.
 
 ## Bootstrap (Compose)
 
 <Steps>
 
-1. **Clone and configure**
+1. **Clone and bootstrap**
 
    ```bash
    git clone https://github.com/felix-run/felix.git && cd felix
-   cp .env.example .env
-   # set POSTGRES_PASSWORD (and keep FELIX_DATABASE_URL in sync):
-   openssl rand -hex 32
+   make bootstrap
    ```
+
+   `make bootstrap` checks for the tools above. It writes `.env` with generated `POSTGRES_PASSWORD`
+   and `MINIO_ROOT_PASSWORD`, installs the lean core, and adds the pre-commit hook. `.env`'s
+   `FELIX_DATABASE_URL` reads `${POSTGRES_PASSWORD}`, so the password is set in one place. Add your
+   model key to `.env` now.
 
 2. **Start the lean stack**
 
    ```bash
    make up
-   # or: docker compose up --build
    ```
 
-   Brings up **api** (`:8080`), **worker**, **scheduler**, Postgres+pgvector, and Valkey.
-   Object store defaults to `fs` under `/data` (no MinIO required).
+   Brings up **api** (`:8080`), **worker**, **scheduler**, Postgres+pgvector, and Valkey. A one-shot
+   `migrate` service applies the schema before the others start, so there is no separate
+   migration step. Object store defaults to `fs` under `/data` (no MinIO required).
 
-   Small hosts: `make up-lite`. MinIO + S3 extras: `make up-full`.
+   Small hosts: `make up-lite`. MinIO + S3 extras: `make up-full`. `make help` lists every target.
 
-3. **Migrate**
-
-   ```bash
-   make migrate
-   # or: docker compose exec api felix migrate head
-   ```
-
-4. **Health check**
+3. **Health check**
 
    ```bash
    curl -s http://localhost:8080/health | jq
@@ -73,7 +74,7 @@ deploy shape, see [Deploy](/guide/deploy/).
 
    A `503` from `/ready` with `"status": "not_ready"` names the failing check.
 
-5. **Export your local API key**
+4. **Export your local API key**
 
    `make up` runs `scripts/dev-key.sh`, which writes an API key into `.env` on first run and
    prints it. The Compose stack is **authenticated by default** and publishes on `127.0.0.1`.
@@ -114,7 +115,7 @@ curl -s … | jq 'keys'
 
 :::note[If it fails]
 - **`401` with `"reason": "missing_credentials"`** — no key was sent. `$FELIX_KEY` is empty in
-  this shell; re-run the `export` in step 5.
+  this shell; re-run the `export` in step 4.
 - **`401` with `"reason": "invalid_api_key"`** — the key is not one the running harness loaded.
   Export it again from the `.env` of the stack you started.
 - **`/health` is `ok` but requests fail** — check `/ready`. A dependency can be down while the
@@ -158,6 +159,56 @@ curl -s -X POST http://localhost:8080/v1/chat/completions \
     "messages": [{ "role": "user", "content": "Say hi." }]
   }' | jq
 ```
+
+## Build your first agent
+
+An agent is a manifest. Keep yours outside the clone, for example `~/felix-agents/triage.yaml`:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/felix-run/felix/main/schemas/manifest.schema.json
+apiVersion: felix/v1
+kind: Agent
+metadata:
+  name: triage
+  description: Sorts incoming requests into bug, question or feature, and says why.
+spec:
+  pattern: react
+  system_prompt:
+    inline: |
+      You triage incoming requests. Answer with one of bug, question or feature,
+      then one sentence on why.
+  tools: []   # built-ins, MCP servers and your own plugin tools go here
+  auth:
+    inbound:
+      allow_anonymous: true   # local development only; drop it once callers carry a key
+```
+
+Validate it, then store it in the running stack. `PUT /manifests/{name}` takes the manifest as
+JSON under `manifest` and needs the `manifests:write` scope, which the local key has. Validating
+first runs the same refusals the write does:
+
+```bash
+uv run felix validate-manifest ~/felix-agents/triage.yaml
+uv run python -c 'import json, sys; from ruamel.yaml import YAML; print(json.dumps({"manifest": YAML(typ="safe").load(open(sys.argv[1]))}))' \
+  ~/felix-agents/triage.yaml \
+  | curl -s -X PUT http://localhost:8080/manifests/triage \
+      -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' -d @- | jq '.version'
+
+curl -s -X POST http://localhost:8080/chat \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"manifest":"triage","messages":[{"role":"user","content":"The export button does nothing"}]}' | jq '.final'
+```
+
+Each `PUT` stores a new version without a restart. `GET /manifests/triage/versions` lists them, and
+[the management API](/guide/management-api/#manifests) covers canary and rollback. Running the API from the checkout instead (`make db migrate`,
+then `FELIX_MANIFESTS_DIR=~/felix-agents make dev`) serves the directory directly, with no `PUT`.
+
+The same manifest grows by adding primitives: `tools`, `skills`, `memory`, MCP servers and A2A
+peers, sub-agents and `delegation`, `approvals` and `guardrails`, `execution.mode: durable`, and a
+different `pattern`. The [manifest reference](/guide/manifest-reference/) covers every field, and
+the harness repo's `manifests/governed.yaml` uses most of them. For a tool, pattern, model
+provider or store of your own, write a plugin. `examples/felix-plugin-example` in the harness repo
+registers one of every seam.
 
 ## Where to next
 
