@@ -244,6 +244,48 @@ chosen child writes it, so the manifest is refused at compile rather than storin
 changes nothing. `GET /v1/models` lists the styles
 as `felix.outputStyles` (`[{name, description}]`) and `felix.defaultOutputStyle`.
 
+## `spec.network`
+
+Which hosts this agent's tools may reach. Unset, it is any public address the egress guard
+allows, as before; set, it is these and nothing else.
+
+```yaml
+spec:
+  network:
+    allow_hosts: [api.github.com, "*.githubusercontent.com", docs.example.com]
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `allow_hosts` | string[] \| null, at most 64 | `null` | `null` is unrestricted; `[]` allows nothing. |
+
+Each entry is a host (`api.github.com`), `*.` and a host (`*.github.com` matches any name under
+it, never `github.com` itself), or an IP address. No scheme, port or path. Write an
+internationalised name in punycode (`xn--mnchen-3ya.de`).
+
+- **[`http_tools`](#spechttp_tools)** refuse a URL on any other host, and the same check runs on
+  every redirect hop: `http_fetch_error: egress_blocked: destination not permitted`.
+- **[`browser_tools`](#specbrowser_tools) cannot be combined with it.** A page reaches hosts
+  through channels the browser's request interceptor never sees, so a browser held to a list
+  would look confined and not be: the manifest is refused when written, and a child with a
+  browser under a parent's list is refused at compile.
+- **URLs the manifest names** must be on the list: `mcp_servers[].url`, `peers[].url`, a container
+  `gateway_url`, and an `http_tools` `path_prefix`. A manifest naming one that
+  is not is refused when it is written.
+- **Child agents** (sub-agents and [`delegation`](#specdelegation) children, background ones
+  included) answer to this list as well as their own, so delegating cannot widen what an agent
+  reaches.
+- **A2A peers are pinned.** With a list set, a `peer__*` tool has no `manifest` argument: the
+  agent answering on the far side is the peer's default, not one the model picks.
+
+The list bounds the requests Felix sends for the model. It does not reach a process that opens
+its own connections — `shell_tools`, a sandbox, a stdio MCP server — nor what a listed MCP server
+or A2A peer fetches on its side, nor tools a plugin binds. Hooks, webhooks, push and model calls
+are the operator's traffic, not the agent's.
+
+On a host many people publish to — `*.github.io`, `*.vercel.app`, `docs.google.com` — a listed
+host still admits pages anyone wrote. Pair it with an `http_tools` `path_prefix` there.
+
 ## `spec.tools`
 
 A list of built-in tool names.

@@ -101,6 +101,26 @@ the guard never sees. Supplying a transport also disables httpx's environment pr
 `HTTP_PROXY` and `HTTPS_PROXY` do **not** apply to these calls — worth knowing if your egress
 containment is a proxy allowlist.
 
+### Per agent: `spec.network.allow_hosts`
+
+The halves above decide whether an address is safe for anyone; `allow_hosts`
+(`felix.security.host_allowlist`) decides whether a host is one this agent may reach. The builder
+turns it into an `EgressBound`: the agent's list beneath every list above it. Its children compile
+inside that bound, and the compile memo records the bound each child was built under, so a child
+shared by two parents is rebuilt rather than reused from the looser one. The fetch tool checks the
+bound before opening a client, and `GuardedAsyncTransport` checks it again for every request the
+client sends, so redirect hops are covered. The browser is refused under a list rather than bound by it: its request interceptor does not
+see every socket a page opens (WebRTC over TCP, WebTransport in a worker, worklet module fetches),
+so a list it enforced would look like a control and not be one. Every check runs before anything resolves, since a
+lookup of a refused name is itself a leak to that name's nameserver. Matching uses the request's
+ASCII `raw_host`, the form patterns are written in. The bound is a plain value: a background
+`task` child is compiled in the worker with none of its parents on the stack, so their lists ride
+its durable run (`egress_ceilings`), are re-validated onto the run's context, and seed the root of
+that compile once.
+
+The bound is opt-in per client: only the clients a tool builds for the model carry one, so the
+operator's own traffic (hooks, webhooks, push) is never refused by an agent's list.
+
 ### The browser is a partial exception
 
 `spec.browser_tools` hands its URL to Chromium, which resolves for itself. The navigation host
