@@ -149,7 +149,8 @@ curl -s -X POST "$BASE_URL/skill-library/-/import" \
 `POST /skill-library/-/import` takes `{source, ref, publish}` and saves the skill as a draft with
 `source: import`. `publish: true` is refused `422 publish_not_allowed`: an import is read first,
 then published by a separate request. The answer is the saved version's record — with `files`,
-`published: false` and `publish_blocked: null` — plus `unchanged` and `dropped_files`.
+`published: false` and `publish_blocked: null` — plus `unchanged`, `dropped_files` and
+`relocated_files`.
 
 - **The name is the folder's.** The skill is saved under the source's last path segment (the
   repository's name for a skill at its root), and a `SKILL.md` naming anything else is
@@ -176,10 +177,18 @@ since the pusher sets it. Every other version has them `null`. The save is audit
 
 ### What is kept
 
-| Kept | Dropped, and listed in `dropped_files` |
-|---|---|
-| `SKILL.md`; `plugin.json` and a license file (`LICENSE`, `LICENSE.md` or `LICENSE.txt`) at the root; `scripts/`, `references/`, `assets/` | `evals/` — a third party's scenarios would count toward the gate as if the tenant wrote them |
-| a binary asset under `assets/`, stored as base64 | any other file (examples, tests, a README), dot-files and dot-directories, a binary file outside `assets/`, and text that is not UTF-8 |
+| Kept where it is | Moved, and listed in `relocated_files` | Dropped, and listed in `dropped_files` |
+|---|---|---|
+| `SKILL.md`; `plugin.json` and a license file (`LICENSE`, `LICENSE.md` or `LICENSE.txt`) at the root; `scripts/`, `references/`, `assets/` | any other folder or file — a skill's own `themes/`, `forms/` or a `reference.md` beside its `SKILL.md` — under `references/<path>`, or `assets/<path>` for a binary asset | `evals/` — a third party's scenarios would count toward the gate as if the tenant wrote them |
+| a binary asset under `assets/`, stored as base64 | | `tests/`, `test/`, `__pycache__/`, `node_modules/`, dot-files and dot-directories, a binary file under `scripts/` or `references/`, text that is not UTF-8, and a move that would not fit the caps or would land on a path already taken |
+
+`relocated_files` maps each moved file's path in the source to where it was saved
+(`{"themes/arctic.md": "references/themes/arctic.md"}`), and the `SKILL.md` is rewritten to match:
+a moved folder named with its slash (`themes/`, `./themes/arctic.md`) and a moved root file named in
+full (`reference.md`) are pointed at the new path. Moves are made only while the bundle stays inside
+the caps below, counting the files kept in place first, so extra material never makes an import
+`source_too_large`; what does not fit is dropped. The change digest covers moved files, so a check
+compares them where they were saved.
 
 A `SKILL.md` description over 1,024 characters is clamped. The caps are the bundle format's, checked
 from the tree before any file is downloaded, and past any of them the import is

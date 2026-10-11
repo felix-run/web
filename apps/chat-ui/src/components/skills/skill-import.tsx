@@ -22,6 +22,27 @@ import { ago } from './skill-status';
 const day = (ts: number) => new Date(tsToMs(ts)).toLocaleDateString();
 
 /**
+ * What an import moved, said beside what it left out: a folder the bundle has no place for is
+ * kept under `references/`, and a reviewer reading the draft should know why its files sit there.
+ * Named by folder when every move came from one or two, counted otherwise.
+ */
+export function movedLine(moved: Record<string, string> | undefined): string {
+  const sources = Object.keys(moved ?? {});
+  if (sources.length === 0) return '';
+  const folders = [...new Set(sources.map((p) => (p.includes('/') ? `${p.split('/')[0]}/` : p)))];
+  const n = sources.length;
+  const files = `${n} ${n === 1 ? 'file' : 'files'}`;
+  // Text goes under references/, a binary asset under assets/: name where they actually went.
+  const into = [...new Set(Object.values(moved ?? {}).map((p) => `${p.split('/')[0]}/`))]
+    .sort()
+    .reverse()
+    .join(' and ');
+  return folders.length <= 2
+    ? ` · moved ${folders.join(' and ')} (${files}) under ${into}`
+    : ` · moved ${files} under ${into}`;
+}
+
+/**
  * Import a skill from GitHub: name a source, see what it offers, import one as a draft.
  *
  * Browsing is read-only but not free — each is a GitHub request against the tenant's hourly
@@ -163,6 +184,7 @@ function SourceRow({
           <Link className="underline underline-offset-2" to={linkTo(result.name, result.version)}>
             {result.version}
           </Link>
+          {movedLine(result.relocated_files)}
           {result.dropped_files.length
             ? ` · left out ${result.dropped_files.length} ${result.dropped_files.length === 1 ? 'file' : 'files'}`
             : ''}
