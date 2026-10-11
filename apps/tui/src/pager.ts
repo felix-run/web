@@ -32,7 +32,7 @@ export function pagerCommand(env: NodeJS.ProcessEnv = process.env): string[] | n
  * the agent read.
  */
 export function page(body: string, name: string): { path: string } {
-  const dir = mkdtempSync(join(tmpdir(), 'felix-artifact-'));
+  const dir = mkdtempSync(join(tmpdir(), 'felix-page-'));
   const path = join(dir, name);
   writeFileSync(path, body, { encoding: 'utf8', mode: 0o600 });
   const cmd = pagerCommand();

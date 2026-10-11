@@ -154,6 +154,8 @@ looks like the rest of the code on your machine.
 | `/search <text>` | Full-text across every thread the harness holds. |
 | `/open <n\|id>` | Open a numbered hit from the last `/search`, or a thread by id. |
 | `/artifact <n> [file]` | Read a spilled tool output — `n` is the handle on the card. With a path, writes it there instead of paging it; refuses to overwrite. |
+| `/skills` | The tenant's skill library in `$PAGER`: drafts waiting for review, oldest first, with where each came from and its scores, then the skills in use. |
+| `/skill <name>` | One skill in `$PAGER`: its versions newest first, who decided each, whether an imported skill's source has moved on, and the publish gate's verdict on its newest draft, with the reasons it would refuse. |
 | `/refresh` | Re-read the thread list from the harness. |
 | `/quit` | |
 
@@ -211,6 +213,11 @@ a question keeps the keyboard until it is answered, and `ctrl+c` still stops the
 Nothing here writes. Memory and the corpus can be read and searched but not added to or removed,
 which is the web UI's job — both write paths put text in front of the model that it reads back
 later, and the forms there say so.
+
+The tenant's skill library is read with `/skills` and `/skill <name>` rather than a ninth tab: eight
+tabs already fill the strip at eighty columns, and a report you can scroll, search and copy belongs in
+your pager. They are read-only too. Publishing, rejecting and editing a draft are the web client's,
+where every publish states the gate's verdict and the live version it replaces before it asks.
 
 ## Output too large to inline
 

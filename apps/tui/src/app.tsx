@@ -591,13 +591,13 @@ export function App({
   const showBody = useCallback(
     (body: string, name: string) => {
       if (!pagerCommand()) {
-        setNotice('set $PAGER to read a spilled output in place');
+        setNotice('set $PAGER to read this in place');
         return;
       }
       try {
         renderer.suspend();
         const { path } = page(body, name);
-        setNotice(`artifact written to ${path}`);
+        setNotice(`${name} shown; a copy is at ${path}`);
       } catch (err) {
         setNotice(`pager: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
