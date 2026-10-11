@@ -73,6 +73,14 @@ export const GUARDED = [
     serializer: 'felix/jobs/store.py:_job_dict',
   },
   {
+    // A job's run, as `GET /jobs/{name}/runs` lists it and `POST /jobs/{name}/run` returns
+    // it. `result` is a free dict on the wire (the answer, the trigger), so its keys are the
+    // scheduler's contract, not this check's.
+    type: 'JobRun',
+    file: 'apps/chat-ui/src/types.ts',
+    serializer: 'felix/jobs/store.py:_run_dict',
+  },
+  {
     // Moved with the inspector reads into @felix/client, the same way
     // ApprovalRequest was: a terminal client needs the row shape too. AuditEvent
     // rides along in that file because `extends` resolves only within one source.

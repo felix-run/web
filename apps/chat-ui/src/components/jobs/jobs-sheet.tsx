@@ -5,9 +5,9 @@ import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
-import { ClockIcon, HistoryIcon, Trash2Icon } from 'lucide-react';
+import { ClockIcon, HistoryIcon, LoaderIcon, PlayIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
-import { deleteJob, listJobRuns, listJobs, upsertJob } from '@/api';
+import { deleteJob, listJobRuns, listJobs, runJobNow, upsertJob } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import {
@@ -85,6 +85,9 @@ export function JobsSheet({
   // history was still in flight — the one moment the answer matters most.
   const [runs, setRuns] = useState<JobRun[] | null>(null);
   const [runsError, setRunsError] = useState<unknown>(null);
+  // The job a Run now is waiting on. The route answers when the run has finished, which is
+  // a whole agent turn, so the row says it is going rather than looking idle.
+  const [running, setRunning] = useState<string | null>(null);
 
   async function create() {
     if (!name.trim()) return;
@@ -141,6 +144,26 @@ export function JobsSheet({
       setActionError(err);
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Fire a job now and show what it did. The response is the finished run, so its history
+   * opens with that run on top; the list refreshes for the row's `last` and `ran`.
+   */
+  async function runNow(jobName: string) {
+    setRunning(jobName);
+    setActionError(null);
+    try {
+      const run = await runJobNow(jobName);
+      setExpanded(jobName);
+      setRunsError(null);
+      setRuns(await listJobRuns(jobName).catch(() => [run]));
+      refresh();
+    } catch (err) {
+      setActionError(err);
+    } finally {
+      setRunning(null);
     }
   }
 
@@ -352,6 +375,28 @@ export function JobsSheet({
                   size="xs"
                   variant="ghost"
                   className="ml-auto"
+                  disabled={running !== null}
+                  title={
+                    j.enabled === false
+                      ? 'Run once now. The job stays disabled for its schedule.'
+                      : 'Run once now, without waiting for the schedule'
+                  }
+                  onClick={() => runNow(j.name)}
+                >
+                  {running === j.name ? (
+                    <>
+                      <LoaderIcon className="size-3 motion-safe:animate-spin" />
+                      <span className="shimmer shimmer-color-foreground">Running…</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlayIcon className="size-3" /> Run now
+                    </>
+                  )}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
                   aria-expanded={expanded === j.name}
                   aria-controls={`job-runs-${j.name}`}
                   onClick={() => toggleRuns(j.name)}
@@ -413,7 +458,21 @@ export function JobsSheet({
                       >
                         {r.status ? <StatusDot status={r.status} /> : <span>—</span>}
                         {r.started_at && <span>{relativeTime(r.started_at)}</span>}
-                        {r.error && <span className="text-state-failed">{r.error}</span>}
+                        {/* Said only when it was not the schedule: the default is cron. */}
+                        {r.result?.trigger === 'manual' && <span>run by hand</span>}
+                        {r.error ? (
+                          <span className="text-state-failed">{r.error}</span>
+                        ) : r.result?.reason ? (
+                          <span>skipped: {r.result.reason}</span>
+                        ) : r.result?.answer ? (
+                          // One line of what the agent said; the whole of it on hover.
+                          <span
+                            className="min-w-0 truncate text-foreground/80"
+                            title={r.result.answer}
+                          >
+                            {r.result.answer}
+                          </span>
+                        ) : null}
                       </div>
                     ))
                   )}

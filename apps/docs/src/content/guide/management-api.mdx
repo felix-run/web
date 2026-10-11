@@ -1034,6 +1034,12 @@ each firing then gets a thread of its own, so one run's transcript never sits in
 context. Both are fields on the web UI's job form, and a stored job's row says which mode it runs
 in.
 
+`POST /jobs/{name}/run` fires a job at once and **waits for it**: the response is the finished run
+(`{job_name, run_id, status, error, started_at, finished_at, result}`, with the agent's reply in
+`result.answer`), recorded with the rest but `result.trigger: "manual"`. It runs a disabled job
+too, and leaves the schedule alone. The web UI's Jobs page has it as **Run now** on each row, which
+opens the job's run history with that run on top.
+
 Schedules use standard five-field cron, evaluated in UTC — see [Deploy](/guide/deploy/#cron-schedules).
 `@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly` work too, as do plain intervals (`300` seconds,
 `every:5m`). Anything else is refused with `422` and nothing is stored. A job stored before that check

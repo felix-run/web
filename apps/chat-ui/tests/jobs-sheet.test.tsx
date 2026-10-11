@@ -30,17 +30,22 @@ const job = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-async function sheet(jobs: unknown[] = []) {
+async function sheet(
+  jobs: unknown[] = [],
+  opts: { runJobNow?: () => Promise<unknown>; runs?: unknown[] } = {},
+) {
   const upsertJob = vi.fn().mockResolvedValue(job());
+  const runJobNow = vi.fn(opts.runJobNow ?? (() => Promise.resolve({})));
   vi.doMock('../src/api', () => ({
     listJobs: vi.fn().mockResolvedValue(jobs),
-    listJobRuns: vi.fn().mockResolvedValue([]),
+    listJobRuns: vi.fn().mockResolvedValue(opts.runs ?? []),
     upsertJob,
+    runJobNow,
     deleteJob: vi.fn(),
   }));
   const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
   render(<JobsSheet manifest="quick" manifestOptions={['quick']} />);
-  return { upsertJob };
+  return { upsertJob, runJobNow };
 }
 
 /** The form is behind a disclosure now; open it the way an operator would. */
@@ -138,5 +143,40 @@ describe('a failed read after a good one', () => {
     );
     expect(screen.getByText('digest')).toBeTruthy();
     vi.useRealTimers();
+  });
+});
+
+describe('running a job now', () => {
+  it('says it is running, then opens the history with what the agent answered', async () => {
+    let finish: (run: unknown) => void = () => {};
+    const run = {
+      job_name: 'nightly-digest',
+      run_id: 'r1',
+      status: 'ok',
+      error: '',
+      started_at: Date.now(),
+      finished_at: Date.now(),
+      result: { status: 'ok', answer: 'Three PRs merged today.', trigger: 'manual' },
+    };
+    const { runJobNow } = await sheet([job()], {
+      runJobNow: () => new Promise((r) => (finish = r)),
+      runs: [run],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }));
+    expect(runJobNow).toHaveBeenCalledWith('nightly-digest');
+    expect(await screen.findByText('Running…')).toBeTruthy();
+
+    await act(async () => finish(run));
+    expect(await screen.findByText('Three PRs merged today.')).toBeTruthy();
+    expect(screen.getByText('run by hand')).toBeTruthy();
+    expect(screen.queryByText('Running…')).toBeNull();
+  });
+
+  it('says why when the harness refuses it', async () => {
+    await sheet([job()], {
+      runJobNow: () => Promise.reject(new Error('jobs /nightly-digest/run: 403 missing scope')),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }));
+    expect(await screen.findByText(/not allowed to/)).toBeTruthy();
   });
 });

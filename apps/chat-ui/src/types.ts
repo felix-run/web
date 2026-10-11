@@ -336,6 +336,18 @@ export interface JobRun {
   error?: string;
   started_at?: number | null;
   finished_at?: number | null;
+  /**
+   * What the firing returned (`felix/jobs/scheduler.py`): the agent's `answer`, or a
+   * `reason` it was skipped, plus `trigger` (`schedule` or `manual`) and, for a manual run,
+   * who asked. A free dict on the wire, so every key is optional.
+   */
+  result?: {
+    status?: string;
+    answer?: string;
+    reason?: string;
+    trigger?: string;
+    requested_by?: string;
+  };
 }
 
 // --- A2A discovery card (/.well-known/agent-card.json) ---
