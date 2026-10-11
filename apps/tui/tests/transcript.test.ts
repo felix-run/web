@@ -801,3 +801,35 @@ describe('what an agent does beside its calls', () => {
     }
   });
 });
+
+describe('an edited plan', () => {
+  it('says so beside the count', async () => {
+    const output = JSON.stringify({
+      id: 'p1',
+      plan: {
+        title: 'Ship',
+        steps: [{ id: '1', title: 'Write', status: 'done' }],
+        edited: { by: 'blake', at: 5 },
+      },
+    });
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [
+          {
+            id: 'a',
+            role: 'assistant',
+            content: '',
+            tools: [{ name: 'plan_get', done: true, output }],
+          },
+        ],
+      }),
+      { width: 80, height: 8 },
+    );
+    try {
+      expect(shows(ui.frame(), 'Ship  1 of 1 done · edited')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+});

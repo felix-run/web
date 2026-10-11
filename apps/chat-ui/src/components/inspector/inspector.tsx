@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { type ShellValue, useShell } from '@/shell-context';
 import type { Plan, Turn } from '@/types';
 import { DebugSection } from './debug-section';
+import { PlanEditor } from './plan-editor';
 
 type SectionId = 'changes' | 'plans' | 'metrics' | 'debug';
 
@@ -512,8 +513,11 @@ function PlansSection({ enabled }: { enabled: boolean }) {
 }
 
 function ThreadPlans({ threadId, enabled }: { threadId: string; enabled: boolean }) {
+  // While one is being edited the poll stops, so the list does not move under the form; the
+  // save's own check (`expected_updated_at`) is what catches the agent changing it meanwhile.
+  const [editing, setEditing] = useState<string | null>(null);
   const { data, error, loading, refresh } = usePoll(() => listPlans(PLANS_LIMIT, { threadId }), {
-    enabled,
+    enabled: enabled && editing === null,
   });
   // Said only when the rows prove it — see `isThreadScoped`. Before the first
   // answer the line names the window alone.
@@ -549,6 +553,20 @@ function ThreadPlans({ threadId, enabled }: { threadId: string; enabled: boolean
           {data?.map((p: Plan) => {
             const done = p.steps.filter((s) => DONE_STATUSES.has(s.status)).length;
             const pct = p.steps.length ? (done / p.steps.length) * 100 : 0;
+            if (editing === p.id) {
+              return (
+                <article key={p.id} className="text-xs">
+                  <PlanEditor
+                    plan={p}
+                    onCancel={() => setEditing(null)}
+                    onSaved={() => {
+                      setEditing(null);
+                      refresh();
+                    }}
+                  />
+                </article>
+              );
+            }
             return (
               <article key={p.id} className="text-xs">
                 <div className="flex items-start justify-between gap-2">
@@ -557,6 +575,11 @@ function ThreadPlans({ threadId, enabled }: { threadId: string; enabled: boolean
                     {done}/{p.steps.length}
                   </span>
                 </div>
+                {p.edited && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Edited by {p.edited.by || 'a person'} · {relativeTime(p.edited.at)}
+                  </p>
+                )}
                 <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full bg-foreground/60 transition-[width] duration-300"
@@ -580,13 +603,14 @@ function ThreadPlans({ threadId, enabled }: { threadId: string; enabled: boolean
                   ))}
                 </ol>
                 {/*
-                  The plans equivalent of forgetting a memory: a way to clear a
-                  stale plan without a database console. Editing one is not
-                  offered — the body `PUT` takes is the agent-authored document,
-                  and a hand-written one is a plan the agent did not write while
-                  still claiming it did.
+                  Edit is offered now the harness marks a hand edit and tells the agent
+                  (felix-run/felix#605); before, a hand-written plan claimed to be the
+                  agent's. Delete is the plans equivalent of forgetting a memory.
                 */}
-                <div className="mt-1.5">
+                <div className="mt-1.5 flex gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(p.id)}>
+                    Edit
+                  </Button>
                   <ConfirmButton
                     size="sm"
                     variant="ghost"

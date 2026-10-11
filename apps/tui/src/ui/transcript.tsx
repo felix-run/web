@@ -396,6 +396,8 @@ function PlanBlock({ plan, theme }: { plan: PlanState; theme: Theme }) {
       <text>
         <b>{plan.title || 'Plan'}</b>
         <span attributes={DIM}>{`  ${done} of ${plan.steps.length} done`}</span>
+        {/* A person changed it by hand: steps the agent did not write never read as its own. */}
+        {plan.edited ? <span attributes={DIM}>{' · edited'}</span> : null}
       </text>
       {plan.goal ? <text attributes={DIM}>{oneLine(plan.goal, RESULT_WIDTH)}</text> : null}
       {plan.steps.map((step, i) => (

@@ -142,6 +142,7 @@ export const addDocument = felix.addDocument.bind(felix);
 export const deleteDocument = felix.deleteDocument.bind(felix);
 export const listPlans = felix.listPlans.bind(felix);
 export const deletePlan = felix.deletePlan.bind(felix);
+export const updatePlan = felix.updatePlan.bind(felix);
 export const getArtifact = felix.getArtifact.bind(felix);
 
 // The tenant skill library: the one management area with a full write surface,

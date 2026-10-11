@@ -46,6 +46,16 @@ export function PlanCard({ plan, live }: { plan: PlanState; live: boolean }) {
             </PlanDescription>
           ) : null}
         </div>
+        {plan.edited && (
+          // A person changed this plan by hand (felix-run/felix#605): said where the plan is
+          // drawn, so steps the agent did not write never read as the agent's.
+          <span
+            className="shrink-0 rounded-full border border-border/60 px-1.5 text-xs text-muted-foreground"
+            title={`Edited by ${plan.edited.by || 'a person'} · ${new Date(plan.edited.at).toLocaleString()}`}
+          >
+            edited
+          </span>
+        )}
         <span
           className={cn(
             'shrink-0 font-mono text-xs tabular-nums text-muted-foreground',

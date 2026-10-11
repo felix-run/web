@@ -30,6 +30,11 @@ export interface PlanState {
   title: string;
   goal: string;
   steps: PlanCallStep[];
+  /**
+   * Who edited it by hand and when, as the plan tool's answer carried it (felix-run/felix#605):
+   * a plan an operator changed says so wherever the agent's own plans are drawn.
+   */
+  edited?: { by: string; at: number };
 }
 
 /** The agent writes statuses freely; these are the spellings it uses for each state. */
@@ -57,13 +62,16 @@ export function planFromCall(tool: ToolCall): PlanState | null {
   }
   if (typeof v !== 'object' || v === null) return null;
   const o = v as { id?: unknown; plan?: unknown };
-  const plan = o.plan as { title?: unknown; goal?: unknown; steps?: unknown } | undefined;
+  const plan = o.plan as
+    | { title?: unknown; goal?: unknown; steps?: unknown; edited?: unknown }
+    | undefined;
   if (typeof o.id !== 'string' || !plan || typeof plan !== 'object') return null;
   const steps = Array.isArray(plan.steps) ? plan.steps : [];
   return {
     id: o.id,
     title: typeof plan.title === 'string' ? plan.title : '',
     goal: typeof plan.goal === 'string' ? plan.goal : '',
+    ...editedOf(plan.edited),
     steps: steps.flatMap((raw, i) => {
       if (typeof raw !== 'object' || raw === null) return [];
       const s = raw as { id?: unknown; title?: unknown; status?: unknown; note?: unknown };
@@ -79,6 +87,12 @@ export function planFromCall(tool: ToolCall): PlanState | null {
       ];
     }),
   };
+}
+
+function editedOf(raw: unknown): { edited?: { by: string; at: number } } {
+  if (!raw || typeof raw !== 'object') return {};
+  const { by, at } = raw as { by?: unknown; at?: unknown };
+  return typeof by === 'string' && typeof at === 'number' ? { edited: { by, at } } : {};
 }
 
 /**

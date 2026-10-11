@@ -124,6 +124,8 @@ export interface WorkspaceEdit {
   toPath?: string;
   /** A whole folder, not a file (felix#594). */
   folder?: boolean;
+  /** A plan, not a file: `path` is the plan's id (felix#605). */
+  plan?: boolean;
   /** A folder delete: how many files went with it. */
   files?: number;
 }

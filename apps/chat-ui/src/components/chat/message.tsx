@@ -517,15 +517,16 @@ function WorkspaceEditNote({
     shell?.threads?.find((t) => t.id === shell.threadId)?.manifest?.trim() || shell?.manifest;
   const tools = shell?.manifestEntries?.find((m) => m.id === agent)?.workspace?.tools;
   const onHarness = tools === 'server' || tools === 'both';
-  // A folder is nothing the pane opens; a deleted file is gone.
-  const target = edit.folder
-    ? undefined
-    : edit.op === 'rename'
-      ? edit.toPath
-      : edit.op === 'delete'
-        ? undefined
-        : edit.path;
-  const verb = `${edit.op === 'delete' ? 'deleted' : edit.op === 'rename' ? 'renamed' : 'edited'}${edit.folder ? ' the folder' : ''}`;
+  // A folder or a plan is nothing the pane opens; a deleted file is gone.
+  const target =
+    edit.folder || edit.plan
+      ? undefined
+      : edit.op === 'rename'
+        ? edit.toPath
+        : edit.op === 'delete'
+          ? undefined
+          : edit.path;
+  const verb = `${edit.op === 'delete' ? 'deleted' : edit.op === 'rename' ? 'renamed' : 'edited'}${edit.folder ? ' the folder' : edit.plan ? ' the plan' : ''}`;
   return (
     <div className="group flex w-full flex-col gap-1">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
