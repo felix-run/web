@@ -242,6 +242,23 @@ describe('slash commands', () => {
     h.restore();
   });
 
+  it('clears a failed command’s error once a later command runs', async () => {
+    const { ui, h, frame } = await run('/think high', {
+      routes: {
+        '/chat/thinking': () => new Response(JSON.stringify({ detail: 'boom' }), { status: 500 }),
+      },
+    });
+    await ui.until(() => shows(frame(), 'set the thinking level'));
+    // A command whose notice is one line, so nothing pushes the error off the frame.
+    await ui.keys.typeText('/manifest quick');
+    await ui.settle();
+    await ui.keys.pressEnter();
+    await ui.until(() => shows(frame(), 'manifest: quick'));
+    expect(shows(frame(), 'set the thinking level')).toBe(false);
+    ui.stop();
+    h.restore();
+  });
+
   it('shows help for a command that does not exist', async () => {
     const { ui, h, frame } = await run('/nope');
     // The help text is the list of real commands, so any one of them proves it.
