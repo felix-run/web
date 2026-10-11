@@ -164,21 +164,46 @@ Empty parts are dropped.
 
 ## `spec.prompts`
 
-Named user-message templates, expanded with `$1` / `$@` / `${1:-default}` and invoked by passing
-`template` and `template_args` on a chat request.
+Named user-message templates, expanded with `$1` / `$@` / `${1:-default}`. A chat request runs one
+by passing `template` and `template_args`, or a person runs one as a slash command.
 
 ```yaml
 spec:
   prompts:
     - name: triage
+      description: Triage a ticket
+      argument_hint: "<ticket> [priority]"
       body: "Triage this ticket: $1. Priority hint: ${2:-normal}"
 ```
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `name` | string, 1–64 chars | required | |
+| `name` | string, 1–64 chars | required | A slash command too when it is letters, digits, `-` and `_` only. |
 | `body` | string | `""` | |
 | `file` | string \| null | `null` | Object-store / workspace key; used when `body` is empty. |
+| `description` | string \| null, ≤200 chars | `null` | One line a client shows beside the command. |
+| `argument_hint` | string \| null, ≤80 chars | `null` | How a client hints the arguments after the name. |
+
+### Slash commands
+
+A user turn on `POST /chat`, `/chat/stream` or `/v1/chat/completions` whose text is
+`/triage FEL-12 high` is replaced, before screening and hooks see it, by the expansion of `triage`
+with `["FEL-12", "high"]`. Arguments split like a shell's, so `"two words"` is one; an unclosed
+quote falls back to splitting on whitespace. The name matches regardless of case.
+
+Only a declared name is a command. `/etc/hosts is gone` or `/shrug` on an agent with no such prompt
+is sent as written, and an agent with no `spec.prompts` behaves exactly as before. A command whose
+prompt expands to nothing is `404 empty_prompt:<name>`. A turn sent as content parts (text beside
+an image) is never a command.
+
+Every user turn in the request is expanded, not only the newest, so a `/v1` client resending its
+history shows the model each earlier command as it was answered. One request may expand at most 16
+(`404 too_many_commands:16`), and arguments longer than 16,000 characters split on whitespace only.
+
+`GET /v1/models` lists each agent's commands as `felix.commands`:
+`[{name, description, argumentHint}]`, empty when there are none, and only the names a person can
+type. A client that has slash commands of its own should send a name it does not handle itself
+through to the harness when it is on that list.
 
 ## `spec.tools`
 
