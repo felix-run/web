@@ -96,6 +96,34 @@ function statusOf(text: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** The `detail` of a FastAPI error body, or the body as it came when it is not one. */
+function harnessDetail(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    if (typeof parsed.detail === 'string') return parsed.detail;
+  } catch {
+    // Not JSON: the body is the words.
+  }
+  return body;
+}
+
+/**
+ * A send refused because the thread is pinned (`governance.pin_compile`), in words: the
+ * thread is held to the agent build it started on. The harness says either that another
+ * agent cannot continue a pinned thread, or that the agent drifted from its pin.
+ */
+function pinRefusal(detail: string): string | null {
+  const other = /thread pinned to (\S+): (\S+) cannot continue it/.exec(detail);
+  if (other) {
+    return `this thread is pinned to ${other[1]}, so ${other[2]} cannot continue it. Switch back to ${other[1]}, or start a new chat for ${other[2]}.`;
+  }
+  const drift = /(?:manifest hash|manifest version|sub-agent) drift for (\S+?):/.exec(detail);
+  if (drift) {
+    return `this thread is pinned to the build of ${drift[1]} it started on, and ${drift[1]} no longer matches it. Start a new chat to use ${drift[1]} as it is now.`;
+  }
+  return null;
+}
+
 /**
  * @param err   whatever was caught
  * @param doing what the user was trying to do, as a verb phrase that completes
@@ -118,7 +146,19 @@ export function describeError(err: unknown, doing: string): DescribedError {
     };
   }
 
+  const pinned = pinRefusal(detail);
+  if (pinned) return { message: `Could not ${doing}: ${pinned}`, detail };
+
   const status = statusOf(detail);
+  // A send the harness refused for a reason this client has no sentence for says the
+  // harness's own words: the 409 below is written for an approval, and read on a send it
+  // blamed "something else" for a refusal that named its cause.
+  if (status === 409 && detail.startsWith('chat/stream: 409 ')) {
+    return {
+      message: `Could not ${doing}: the harness refused it (${harnessDetail(detail.slice('chat/stream: 409 '.length))}).`,
+      detail,
+    };
+  }
   switch (status) {
     case 401:
       return { message: 'Your access key was rejected. Enter it again to continue.', detail };
