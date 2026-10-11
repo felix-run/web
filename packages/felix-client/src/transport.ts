@@ -132,6 +132,7 @@ interface RawModelEntry {
     starters?: unknown;
     greeting?: unknown;
     workspace?: unknown;
+    commands?: unknown;
   } | null;
 }
 
@@ -140,6 +141,17 @@ export interface ManifestGreeting {
   headline: string;
   /** Absent means the client says which agent this is itself. */
   subtitle?: string;
+}
+
+/**
+ * One `felix.commands` entry: a manifest prompt a person runs by typing `/name args`. The
+ * harness expands it (`felix-run/felix#599`); a client only offers it and sends the text.
+ */
+export interface ManifestCommand {
+  name: string;
+  description?: string;
+  /** How the arguments read after the name, e.g. `<file> [focus]`. */
+  argumentHint?: string;
 }
 
 /** One `metadata.starters` entry: a prompt a client may offer on an empty thread. */
@@ -197,6 +209,12 @@ export interface ManifestEntry {
    * that failed to resolve — a client then cannot know, and offers no harness files.
    */
   workspace?: ManifestWorkspace;
+  /**
+   * `felix.commands` (`felix-run/felix#599`): the manifest prompts a person can run as `/name
+   * args`, which the harness expands. `undefined` from a harness older than the key; `[]` when
+   * the manifest declares none. Entries without a typeable `name` are dropped.
+   */
+  commands?: ManifestCommand[];
 }
 
 export interface ManifestWorkspace {
@@ -222,6 +240,21 @@ function toGreeting(raw: unknown): ManifestGreeting | undefined {
   return typeof subtitle === 'string' && subtitle ? { headline, subtitle } : { headline };
 }
 
+// The harness lists only names a person can type; checked again so a malformed entry cannot
+// put a space or a slash into the composer.
+const COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+function toCommands(raw: unknown): ManifestCommand[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.flatMap((c) => {
+    if (!c || typeof c.name !== 'string' || !COMMAND_NAME.test(c.name)) return [];
+    const command: ManifestCommand = { name: c.name };
+    if (typeof c.description === 'string' && c.description) command.description = c.description;
+    if (typeof c.argumentHint === 'string' && c.argumentHint) command.argumentHint = c.argumentHint;
+    return [command];
+  });
+}
+
 function toStarters(raw: unknown): ManifestStarter[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   return raw.flatMap((s) =>
@@ -245,6 +278,8 @@ function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   if (greeting) entry.greeting = greeting;
   const workspace = toWorkspace(raw.felix?.workspace);
   if (workspace) entry.workspace = workspace;
+  const commands = toCommands(raw.felix?.commands);
+  if (commands) entry.commands = commands;
   return entry;
 }
 

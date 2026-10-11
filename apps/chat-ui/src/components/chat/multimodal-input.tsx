@@ -1,3 +1,4 @@
+import type { ManifestCommand } from '@felix/client';
 import type { TokenUsage } from '@felix/protocol';
 import {
   Attachment,
@@ -82,6 +83,8 @@ import { ContextMeter } from './context-meter';
 import { PaperclipIcon, StopIcon } from './icons';
 import { QueuedMessages } from './queued-messages';
 import {
+  AGENT_COMMAND,
+  agentSlashCommands,
   findSlashCommand,
   matchSlashCommands,
   type SlashCommand,
@@ -228,6 +231,12 @@ export type MultimodalInputProps = {
   onSlashCommand?: (command: SlashCommand) => void;
   /** Names of slash commands that won't toast as "not implemented". Default: every name in slashCommands. */
   enabledSlashCommands?: ReadonlySet<string>;
+  /**
+   * The selected agent's own commands (`felix.commands`). Offered in the slash menu after this
+   * client's, and sent to the harness as typed, which expands them; without it a `/name` this
+   * client does not know is refused here.
+   */
+  agentCommands?: readonly ManifestCommand[];
   /** Available manifests for the inline selector. Pass an empty array (default) to hide it. */
   models?: ReadonlyArray<ModelOption>;
   modelId?: string;
@@ -294,6 +303,7 @@ function MultimodalInputInner({
   onStop,
   onSlashCommand,
   enabledSlashCommands,
+  agentCommands,
   models,
   modelId,
   onModelChange,
@@ -368,9 +378,10 @@ function MultimodalInputInner({
   const [dismissedAt, setDismissedAt] = useState<string | null>(null);
   const isSlashy = text.startsWith('/') && !text.includes(' ') && !text.includes('\n');
   const slashQuery = isSlashy ? text.slice(1) : '';
+  const agentMenu = useMemo(() => agentSlashCommands(agentCommands), [agentCommands]);
   const filteredCommands = useMemo(
-    () => (isSlashy ? matchSlashCommands(slashQuery) : []),
-    [isSlashy, slashQuery],
+    () => (isSlashy ? matchSlashCommands(slashQuery, agentMenu) : []),
+    [isSlashy, slashQuery, agentMenu],
   );
   // Dismissed *at this text*, so the next keystroke re-opens the menu on its own.
   // An earlier version cleared the flag from an effect with an empty dependency
@@ -483,6 +494,13 @@ function MultimodalInputInner({
       } catch {
         /* unsupported */
       }
+      // The agent's own command is the harness's to run: put it in the composer, ready for
+      // its arguments, and let it be sent as text. The space closes the menu.
+      if (cmd.action === AGENT_COMMAND) {
+        controller.textInput.setInput(`/${cmd.name} `);
+        setSlashIndex(0);
+        return true;
+      }
       // Clearing came first here, so choosing a command this client does not
       // implement emptied the composer and then said so. The text is the only
       // copy of what was typed; it survives until something is actually run.
@@ -506,14 +524,17 @@ function MultimodalInputInner({
       const trimmed = message.text.trim();
       if (trimmed.startsWith('/')) {
         const name = trimmed.slice(1).split(/\s+/)[0]?.toLowerCase() ?? '';
-        const cmd = findSlashCommand(name);
-        if (cmd) {
+        const cmd = findSlashCommand(name, agentMenu);
+        if (cmd?.action === AGENT_COMMAND) {
+          // Sent as typed: the harness expands it into the agent's prompt.
+        } else if (cmd) {
           // `handleSlashSelect` toasts its own reason when the command is not
           // wired up; throw so the provider leaves the text to be edited.
           if (!handleSlashSelect(cmd)) throw new Error(`/${cmd.name} is not implemented yet`);
           return;
+        } else {
+          refuseSubmit(`Unknown command: /${name}. Your message is still in the composer.`);
         }
-        refuseSubmit(`Unknown command: /${name}. Your message is still in the composer.`);
       }
 
       // These three are backstops. `refusal` above disables the send button and
@@ -531,7 +552,16 @@ function MultimodalInputInner({
       await onSubmit(message);
       if (isBusy) controller.textInput.clear();
     },
-    [readOnly, isConnected, reattaching, isBusy, onSubmit, controller, handleSlashSelect],
+    [
+      readOnly,
+      isConnected,
+      reattaching,
+      isBusy,
+      onSubmit,
+      controller,
+      handleSlashSelect,
+      agentMenu,
+    ],
   );
 
   /**
@@ -655,6 +685,7 @@ function MultimodalInputInner({
             selectedIndex={slashIndex}
             onSelect={handleSlashSelect}
             onClose={() => setDismissedAt(text)}
+            agent={agentMenu}
           />
         )}
 
@@ -1449,6 +1480,8 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.thinkingLevel !== next.thinkingLevel) return false;
   if (prev.thinkingLevels !== next.thinkingLevels) return false;
   if (prev.permissionMode !== next.permissionMode) return false;
+  // Switching agent changes which commands the menu offers and which `/name` is sent.
+  if (prev.agentCommands !== next.agentCommands) return false;
   if (prev.context?.used !== next.context?.used) return false;
   if (prev.context?.window !== next.context?.window) return false;
   // Changes with the items and with the thread, which also re-binds `onSteerQueued`.

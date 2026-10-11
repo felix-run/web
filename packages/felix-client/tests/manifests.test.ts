@@ -72,6 +72,42 @@ describe('starters', () => {
   });
 });
 
+describe('commands', () => {
+  it("keeps the manifest's typeable commands and tells none from unknown", async () => {
+    const { client } = serve({
+      object: 'list',
+      data: [
+        {
+          id: 'cowork',
+          felix: {
+            commands: [
+              { name: 'review', description: 'Review a file', argumentHint: '<file>' },
+              { name: 'fix', description: null, argumentHint: null },
+              { name: 'two words' },
+              { name: '/etc' },
+              { description: 'no name' },
+              'not an object',
+            ],
+          },
+        },
+        { id: 'router', felix: { commands: [] } },
+        { id: 'quick', felix: {} },
+      ],
+    });
+    expect(await client.listManifestEntries()).toEqual([
+      {
+        id: 'cowork',
+        commands: [
+          { name: 'review', description: 'Review a file', argumentHint: '<file>' },
+          { name: 'fix' },
+        ],
+      },
+      { id: 'router', commands: [] },
+      { id: 'quick' },
+    ]);
+  });
+});
+
 describe('listManifestEntries', () => {
   it('keeps the provider model where it differs from the name, in the harness order', async () => {
     const { client, urls } = serve(MODELS);

@@ -1,4 +1,14 @@
-import { Brain, Bug, ClipboardList, Eraser, Palette, PenSquare, Play } from 'lucide-react';
+import type { ManifestCommand } from '@felix/client';
+import {
+  Brain,
+  Bug,
+  ClipboardList,
+  Eraser,
+  Palette,
+  PenSquare,
+  Play,
+  Sparkles,
+} from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -10,20 +20,55 @@ export type SlashCommand = {
   shortcut?: string;
   /** Older names that still run it — typed whole, or matched as a prefix. */
   aliases?: string[];
+  /** For an agent's command: how its arguments read after the name. */
+  argumentHint?: string;
 };
 
-/** The commands a typed prefix offers: by name, or by an alias it once had. */
-export function matchSlashCommands(query: string): SlashCommand[] {
+/**
+ * The action of a command the agent declares (`felix.commands`): not run here, but sent to the
+ * harness as typed, which expands it into the manifest's prompt.
+ */
+export const AGENT_COMMAND = 'agent';
+
+/**
+ * The agent's commands as menu entries, after this client's own: a name this client already
+ * answers to stays this client's, so `/new` always starts a chat whatever a manifest declares.
+ */
+export function agentSlashCommands(
+  commands: readonly ManifestCommand[] | undefined,
+): SlashCommand[] {
+  const taken = new Set(slashCommands.flatMap((c) => [c.name, ...(c.aliases ?? [])]));
+  return (commands ?? [])
+    .filter((c) => !taken.has(c.name.toLowerCase()))
+    .map((c) => ({
+      name: c.name,
+      description: c.description ?? "Run this agent's prompt",
+      icon: <Sparkles className="size-3.5" />,
+      action: AGENT_COMMAND,
+      argumentHint: c.argumentHint,
+    }));
+}
+
+/** The commands a typed prefix offers: by name, or by an alias it once had; the agent's after. */
+export function matchSlashCommands(
+  query: string,
+  agent: readonly SlashCommand[] = [],
+): SlashCommand[] {
   const q = query.toLowerCase();
-  return slashCommands.filter(
-    (c) => c.name.startsWith(q) || (c.aliases?.some((a) => a.startsWith(q)) ?? false),
+  return [...slashCommands, ...agent].filter(
+    (c) => c.name.toLowerCase().startsWith(q) || (c.aliases?.some((a) => a.startsWith(q)) ?? false),
   );
 }
 
-/** The command a whole typed name runs, alias included. */
-export function findSlashCommand(name: string): SlashCommand | undefined {
+/** The command a whole typed name runs, alias included; the harness matches an agent's by case. */
+export function findSlashCommand(
+  name: string,
+  agent: readonly SlashCommand[] = [],
+): SlashCommand | undefined {
   const n = name.toLowerCase();
-  return slashCommands.find((c) => c.name === n || c.aliases?.includes(n));
+  return [...slashCommands, ...agent].find(
+    (c) => c.name.toLowerCase() === n || c.aliases?.includes(n),
+  );
 }
 
 // Adapted for the chat-ui example. The menu component below is generic; only
@@ -78,14 +123,17 @@ export function SlashCommandMenu({
   query,
   onSelect,
   selectedIndex,
+  agent = [],
 }: {
   query: string;
   onSelect: (command: SlashCommand) => void;
   onClose: () => void;
   selectedIndex: number;
+  /** The agent's own commands (`agentSlashCommands`), listed after this client's. */
+  agent?: readonly SlashCommand[];
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const filtered = matchSlashCommands(query);
+  const filtered = matchSlashCommands(query, agent);
 
   // re-run when the selection moves — the [data-selected] attribute this queries is rendered from selectedIndex
   useEffect(() => {
@@ -109,7 +157,7 @@ export function SlashCommandMenu({
               index === selectedIndex ? 'bg-muted' : 'hover:bg-muted/50',
             )}
             data-selected={index === selectedIndex}
-            key={cmd.name}
+            key={`${cmd.action}:${cmd.name}`}
             onClick={() => onSelect(cmd)}
             onMouseDown={(e) => e.preventDefault()}
             type="button"
@@ -118,6 +166,9 @@ export function SlashCommandMenu({
               {cmd.icon}
             </div>
             <span className="font-mono text-sm text-foreground">/{cmd.name}</span>
+            {cmd.argumentHint && (
+              <span className="font-mono text-xs text-muted-foreground/70">{cmd.argumentHint}</span>
+            )}
             <span className="text-xs text-muted-foreground/60">{cmd.description}</span>
             {cmd.shortcut && (
               <span className="ml-auto text-xs text-muted-foreground/40">{cmd.shortcut}</span>
