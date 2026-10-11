@@ -19,6 +19,7 @@ import {
   mountTree,
   mountWrite,
   pickDirectory,
+  readExisting,
   supportsDirectoryPicker,
 } from './fs-mount';
 import type { VirtualFs } from './vfs';
@@ -126,25 +127,14 @@ export function workspaceFs(vfs: VirtualFs): LocalFs {
   };
 }
 
-/**
- * Open a workspace file in a new tab.
- *
- * Shared by the `local_open` tool and by clicking a file mention in the
- * transcript, so the two cannot drift on which source wins or how the object
- * URL is cleaned up. Reads mount-first, VFS second — the same precedence every
- * other client tool uses.
- *
- * Returns which source answered. Throws when neither has the file.
- */
-export async function openWorkspaceFile(path: string, vfs: VirtualFs): Promise<'mount' | 'vfs'> {
-  const cleaned = path.replace(/^\//, '');
-  const mounted = hasMount();
-  const text = mounted ? await mountRead(cleaned) : vfs.read(cleaned);
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
-  window.open(url, '_blank', 'noopener,noreferrer');
-  // Revoking immediately races the new tab's own load.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  return mounted ? 'mount' : 'vfs';
+export interface BrowserToolOptions extends ClientToolOptions {
+  /**
+   * Where `local_open` puts a workspace file — chat-ui's side pane. Given the
+   * cleaned path of a file that exists. There is no new-tab fallback: a file
+   * opened as a plain-text blob in another window was never what was asked
+   * for, so without this a file target is refused and the run moves on.
+   */
+  openFile?: (path: string) => void;
 }
 
 /**
@@ -157,12 +147,17 @@ export async function openWorkspaceFile(path: string, vfs: VirtualFs): Promise<'
 export async function executeClientTool(
   req: ClientToolRequest,
   vfs: VirtualFs,
-  opts: ClientToolOptions = {},
+  opts: BrowserToolOptions = {},
 ): Promise<ClientToolResult> {
-  return settleClientTool(req, () => runClientTool(req, vfs), opts);
+  const { openFile, ...settle } = opts;
+  return settleClientTool(req, () => runClientTool(req, vfs, openFile), settle);
 }
 
-async function runClientTool(req: ClientToolRequest, vfs: VirtualFs): Promise<ClientToolResult> {
+async function runClientTool(
+  req: ClientToolRequest,
+  vfs: VirtualFs,
+  openFile?: (path: string) => void,
+): Promise<ClientToolResult> {
   try {
     if (isLocalFileTool(req.name)) return await runLocalFileTool(req, workspaceFs(vfs));
     if (req.name === 'local_shell') {
@@ -178,15 +173,17 @@ async function runClientTool(req: ClientToolRequest, vfs: VirtualFs): Promise<Cl
         window.open(target, '_blank', 'noopener,noreferrer');
         return { content: JSON.stringify({ opened: target, kind: 'url' }) };
       }
-      try {
-        const kind = await openWorkspaceFile(target, vfs);
-        return { content: JSON.stringify({ opened: target, kind }) };
-      } catch (err) {
-        return {
-          content: `error: ${err instanceof Error ? err.message : String(err)}`,
-          error: true,
-        };
+      if (!openFile) {
+        return { content: 'error: this client has nowhere to open files', error: true };
       }
+      // Checked first, so the pane never opens a tab on a file that is not there
+      // and the model hears that it was wrong about the path.
+      const cleaned = target.replace(/^\//, '');
+      if ((await readExisting(cleaned, vfs)) === null) {
+        return { content: `error: no such file: ${cleaned}`, error: true };
+      }
+      openFile(cleaned);
+      return { content: JSON.stringify({ opened: cleaned, kind: 'file', in: 'side_pane' }) };
     }
     return {
       content: `error: unknown client tool ${req.name}`,
