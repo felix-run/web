@@ -1111,6 +1111,14 @@ Flows worth knowing before editing the app:
   **Promote** (`PromoteButton`), which drafts into the team library and never publishes. A 403
   that names its code (`no_personal_library`, `missing_scope:…`) is said in its words, not as
   the generic `skills:write` one.
+  **Skills from GitHub** are `management/skill-import.ts` and `components/skills/skill-import.tsx`:
+  *Import from GitHub* (browse, then import one as a draft; a file inside the cooldown says the day
+  it can be taken rather than offering an import the harness would refuse), *Imported skills*
+  (`/-/upstream`, read from the recorded state, re-checked only on *Check now* — every check
+  spends the tenant's hourly GitHub budget, so nothing here polls GitHub), *Check the source* on an
+  imported skill's page (the harness's unified diffs, drawn as text, and the update saved as a
+  draft), and *Adopt* on an import-lineage version with its required reason. The section hides on a
+  404 (a harness without imports).
 - **Labels** — `POST /chat/sessions/label` names a turn by the same event id `rewindChat` takes, and
   the snapshot's `labels` map reads them back. It was a write-only route here for a different reason
   than the rest: `SessionSnapshot` did not model the field the harness had always sent, so a label

@@ -339,3 +339,39 @@ describe('a personal library', () => {
     expect(sent).toEqual([]);
   });
 });
+
+describe('skills from GitHub', () => {
+  it('asks the import routes with what each needs, and nothing more', async () => {
+    const { createFelixClient } = await import('../src/transport');
+    const sent: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+      sent.push({
+        url: String(input),
+        method: init.method,
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return new Response('{}', { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const felix = createFelixClient({ baseUrl: '/api', headers: () => ({}), fetch });
+    await felix.browseSkillSource('github:acme/skills', 'v1');
+    await felix.importSkill('github:acme/skills/pdf');
+    await felix.listOutdatedSkills({ refresh: true });
+    await felix.listOutdatedSkills();
+    await felix.checkSkillUpstream('pdf');
+    await felix.updateSkillFromSource('pdf');
+    await felix.adoptSkillVersion('pdf', '0.1.0', 'read it');
+    expect(
+      sent.map((r) =>
+        `${r.method ?? 'GET'} ${r.url} ${r.body ? JSON.stringify(r.body) : ''}`.trim(),
+      ),
+    ).toEqual([
+      'GET /api/skill-library/-/browse?source=github%3Aacme%2Fskills&ref=v1',
+      'POST /api/skill-library/-/import {"source":"github:acme/skills/pdf"}',
+      'GET /api/skill-library/-/upstream?refresh=true&limit=25',
+      'GET /api/skill-library/-/upstream?limit=25',
+      'GET /api/skill-library/pdf/-/upstream',
+      'POST /api/skill-library/pdf/-/update {}',
+      'POST /api/skill-library/pdf/versions/0.1.0/adopt {"reason":"read it"}',
+    ]);
+  });
+});

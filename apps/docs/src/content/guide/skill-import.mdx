@@ -72,6 +72,14 @@ The CLI authenticates with `--api-key` or `FELIX_API_KEY` (a key with `skills:re
 `skills:write` to add), else the token `felix login --save` kept for that server. `--url` defaults
 to `http://localhost:8080`.
 
+The web UI's Skills page does the same without a terminal. **Import from GitHub** takes a source
+and an optional ref, lists what it offers — saying, for files still inside the cooldown, the day
+they can be taken — and imports one as a draft. **Imported skills** lists every imported skill with
+its last recorded source check, the ones whose source moved first; *Check now* re-asks GitHub, which
+spends the hourly budget, so it is never automatic. An imported skill's page offers **Check the
+source** (the diff against its newest version) and saves the source's version as a new draft, and
+an import-lineage version offers **Adopt**, with the reason it requires. Nothing there publishes.
+
 ## Sources and refs
 
 A **source** is `github:owner/repo[/path]`; the path is the directory holding the skill's
