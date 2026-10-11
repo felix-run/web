@@ -936,6 +936,17 @@ Flows worth knowing before editing the app:
   composer draws a chip off the default that returns the thread to default, and `/plan` toggles
   plan mode in both clients; the waiver modes are shown, never offered, because `/v1/models`
   does not say which an agent allows.
+- **Output styles** (`spec.output_styles`, `POST /chat/style`). `/v1/models` lists an agent's
+  styles (`ManifestEntry.outputStyles`, `defaultOutputStyle`); the thread's choice is the
+  snapshot's `outputStyle`, null for the agent's default. chat-ui keeps it **keyed by thread**
+  (`storedStyle` in the shell), so a thread with no snapshot yet never shows the last thread's,
+  and draws a Style picker beside Thinking only when the selected agent declares styles. A stored
+  name the selected agent does not declare reads as **Default** — that is what the harness runs —
+  and a set is checked against the agent selected for the next message (`manifestRef`, since the
+  composer's memo can hold a stale callback). `InlinePicker` drops empty values, so Default is
+  the id `__default__`, labelled plain `default` — the trigger shows it in a 10rem cap, where
+  "Default (terse)" read "Defaul…" — with the style it stands for in its description. The
+  terminal has `/style [name|default]`.
 - **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
   with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
   `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only

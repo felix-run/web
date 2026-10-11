@@ -73,6 +73,7 @@ import {
   renameSession,
   respondUiRequest,
   rewindChat,
+  setOutputStyle,
   setPermissionMode,
   setSessionFeedback,
   setSessionLabel,
@@ -282,6 +283,9 @@ export function AppShell() {
     const stored = localStorage.getItem(MANIFEST_KEY)?.trim();
     return stored || DEFAULT_MANIFEST;
   });
+  // For callbacks the composer's memo can hold across an agent change.
+  const manifestRef = useRef(manifest);
+  manifestRef.current = manifest;
   /**
    * The address is the thread — but only the addresses that name one.
    *
@@ -394,6 +398,12 @@ export function AppShell() {
   } | null>(null);
   const [uiResolving, setUiResolving] = useState(false);
   const [thinkingLevel, setThinkingLevelState] = useState<ThinkingLevel>('off');
+  // Keyed by thread, so a thread with no snapshot yet (a new one) never shows the style the
+  // last thread was set to: it reads as the default until the harness says otherwise.
+  const [storedStyle, setStoredStyle] = useState<{ thread: string; style: string | null }>({
+    thread: '',
+    style: null,
+  });
   const [debug, setDebug] = useState(readDebug);
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { theme, resolved, setTheme } = useTheme();
@@ -852,6 +862,8 @@ export function AppShell() {
           poolRef.current?.peek(id)?.setPermissionMode(snap.permissionMode ?? null);
         }
         if (snap && id === threadIdRef.current) {
+          // Absent from an older harness, which offers no styles: null is the same answer.
+          setStoredStyle({ thread: id, style: snap.outputStyle ?? null });
           setLabels(snap.labels ?? {});
           setFeedback(snap.feedback ?? {});
           setBranches(branchPoints(snap));
@@ -1859,6 +1871,24 @@ export function AppShell() {
       });
   }, []);
 
+  /**
+   * Store an output style on the thread on screen, from its next run, checked against the
+   * agent selected for the next message. Shown at once and put back if the harness refuses
+   * it. Thread and agent are read at call time, for the composer's memo.
+   */
+  const chooseOutputStyle = useCallback((style: string | null) => {
+    const id = threadIdRef.current;
+    let before: string | null = null;
+    setStoredStyle((was) => {
+      before = was.thread === id ? was.style : null;
+      return { thread: id, style };
+    });
+    setOutputStyle({ threadId: id, manifest: manifestRef.current, style }).catch((err) => {
+      setStoredStyle((was) => (was.thread === id ? { thread: id, style: before } : was));
+      toastError(err, 'change the output style', { retry: () => chooseOutputStyle(style) });
+    });
+  }, []);
+
   /** `/plan`: into plan mode, or back out of it. */
   const togglePlanMode = useCallback(() => {
     const current = poolRef.current?.peek(threadIdRef.current)?.state.permissionMode ?? null;
@@ -2688,6 +2718,8 @@ export function AppShell() {
     chooseThinking,
     permissionMode,
     choosePermissionMode,
+    outputStyle: storedStyle.thread === threadId ? storedStyle.style : null,
+    chooseOutputStyle,
     debug,
     setDebug,
     inspectClient,

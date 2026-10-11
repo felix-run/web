@@ -259,6 +259,42 @@ describe('slash commands', () => {
     h.restore();
   });
 
+  it('/style lists the agent’s styles, and sets one checked against it', async () => {
+    const routes = {
+      '/v1/models': {
+        data: [
+          {
+            id: 'quick',
+            felix: {
+              outputStyles: [{ name: 'terse', description: 'Short answers' }, { name: 'teacher' }],
+              defaultOutputStyle: 'terse',
+            },
+          },
+        ],
+      },
+    };
+    const { ui, h, frame } = await run('/style', { routes });
+    await ui.until(() => shows(frame(), 'terse — Short answers'));
+    expect(shows(frame(), 'default (terse)')).toBe(true);
+
+    await ui.keys.typeText('/style Teacher');
+    await ui.settle();
+    await ui.keys.pressEnter();
+    await ui.until(() => h.to('/chat/style').length > 0);
+    expect(h.to('/chat/style')[0]?.body).toMatchObject({ manifest: 'quick', style: 'teacher' });
+    await ui.until(() => shows(frame(), 'style: teacher, from the next turn'));
+    ui.stop();
+    h.restore();
+  });
+
+  it('/style says so for an agent with none, and sends nothing', async () => {
+    const { ui, h, frame } = await run('/style');
+    await ui.until(() => shows(frame(), 'declares no output styles'));
+    expect(h.to('/chat/style')).toHaveLength(0);
+    ui.stop();
+    h.restore();
+  });
+
   it('shows help for a command that does not exist', async () => {
     const { ui, h, frame } = await run('/nope');
     // The help text is the list of real commands, so any one of them proves it.

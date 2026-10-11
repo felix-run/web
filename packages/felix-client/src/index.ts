@@ -185,6 +185,7 @@ export {
   type ManifestCommand,
   type ManifestEntry,
   type ManifestGreeting,
+  type ManifestOutputStyle,
   type ManifestStarter,
   type ManifestWorkspace,
   type StreamArgs,

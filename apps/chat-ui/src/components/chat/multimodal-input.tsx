@@ -34,6 +34,7 @@ import {
   ClipboardListIcon,
   Clock,
   CornerDownLeft,
+  FeatherIcon,
   FileIcon,
   ImagePlus,
   Loader2,
@@ -265,6 +266,15 @@ export type MultimodalInputProps = {
   permissionMode?: string | null;
   onLeavePermissionMode?: () => void;
   /**
+   * The selected agent's output styles (`spec.output_styles`), the one the thread is in
+   * (null: the agent's default) and that default's name, if it declares one. Pass them to
+   * show the Style picker beside Thinking; omitted, the agent has no styles to pick.
+   */
+  outputStyles?: ReadonlyArray<{ name: string; description?: string }>;
+  outputStyle?: string | null;
+  defaultOutputStyle?: string | null;
+  onOutputStyleChange?: (style: string | null) => void;
+  /**
    * Tokens in the context after the last reply, against the selected agent's
    * window. Omitted when either is unknown, and the meter with it.
    */
@@ -318,6 +328,10 @@ function MultimodalInputInner({
   onThinkingChange,
   permissionMode = null,
   onLeavePermissionMode,
+  outputStyles,
+  outputStyle = null,
+  defaultOutputStyle = null,
+  onOutputStyleChange,
   placeholder = 'Message Felix…',
   className,
 }: MultimodalInputProps) {
@@ -807,6 +821,43 @@ function MultimodalInputInner({
                   onChange={onThinkingChange}
                   disabled={readOnly !== null}
                   className="shrink-0"
+                />
+              )}
+              {outputStyles && outputStyles.length > 0 && (
+                // Not disabled mid-run, like Thinking: the style is the thread's, and the
+                // next run is the one that takes it.
+                <InlinePicker
+                  ariaLabel={`Style: ${outputStyle ?? 'default'}`}
+                  prefix={
+                    <>
+                      <FeatherIcon className="size-3.5 text-muted-foreground" aria-hidden />
+                      <span className="hidden font-sans text-muted-foreground sm:inline">
+                        Style:
+                      </span>
+                    </>
+                  }
+                  options={[
+                    {
+                      // Short, because it is what the trigger shows: "Default (terse)" cut
+                      // to "Defaul…" in a 10rem trigger, and widening it cut the agent's
+                      // name instead. The list says which style the default is.
+                      id: DEFAULT_STYLE,
+                      label: 'default',
+                      description: defaultOutputStyle
+                        ? `The agent's own: ${defaultOutputStyle}`
+                        : 'The agent as written',
+                    },
+                    ...outputStyles.map((st) => ({
+                      id: st.name,
+                      label: st.name,
+                      ...(st.description ? { description: st.description } : {}),
+                    })),
+                  ]}
+                  listLabel="How the agent writes, from the next turn"
+                  value={outputStyle ?? DEFAULT_STYLE}
+                  onChange={(id) => onOutputStyleChange?.(id === DEFAULT_STYLE ? null : id)}
+                  disabled={readOnly !== null}
+                  className="min-w-0 shrink"
                 />
               )}
               {permissionMode && (
@@ -1415,6 +1466,13 @@ function hasFiles(e: DragEvent): boolean {
  * was erased by the next send. It reads `engine.state.turns` now, and
  * `tests/send-keeps-out-of-band-turns.test.tsx` holds the first handler to pin it.
  */
+/**
+ * The picker's id for "the agent's default". `InlinePicker` drops an empty value (a Radix
+ * Select reports one while its list catches up), so the default needs a real id; it can never
+ * be a style's name, which starts with a letter or digit.
+ */
+const DEFAULT_STYLE = '__default__';
+
 const MODE_LABEL: Record<string, { short: string; wide: string; long: string; danger?: boolean }> =
   {
     plan: { short: 'Plan', wide: 'Plan mode', long: 'Plan mode: read and propose only' },
@@ -1480,6 +1538,9 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.thinkingLevel !== next.thinkingLevel) return false;
   if (prev.thinkingLevels !== next.thinkingLevels) return false;
   if (prev.permissionMode !== next.permissionMode) return false;
+  if (prev.outputStyles !== next.outputStyles) return false;
+  if (prev.outputStyle !== next.outputStyle) return false;
+  if (prev.defaultOutputStyle !== next.defaultOutputStyle) return false;
   // Switching agent changes which commands the menu offers and which `/name` is sent.
   if (prev.agentCommands !== next.agentCommands) return false;
   if (prev.context?.used !== next.context?.used) return false;

@@ -133,6 +133,8 @@ interface RawModelEntry {
     greeting?: unknown;
     workspace?: unknown;
     commands?: unknown;
+    outputStyles?: unknown;
+    defaultOutputStyle?: unknown;
   } | null;
 }
 
@@ -152,6 +154,16 @@ export interface ManifestCommand {
   description?: string;
   /** How the arguments read after the name, e.g. `<file> [focus]`. */
   argumentHint?: string;
+}
+
+/**
+ * One `felix.outputStyles` entry: a way of writing the agent declares (`spec.output_styles`),
+ * which a conversation picks with `POST /chat/style`. Its prompt stays on the harness.
+ */
+export interface ManifestOutputStyle {
+  name: string;
+  /** One line to show beside the name in a picker. */
+  description?: string;
 }
 
 /** One `metadata.starters` entry: a prompt a client may offer on an empty thread. */
@@ -215,6 +227,13 @@ export interface ManifestEntry {
    * the manifest declares none. Entries without a typeable `name` are dropped.
    */
   commands?: ManifestCommand[];
+  /**
+   * `felix.outputStyles`: the ways of writing a conversation with this agent may pick.
+   * `undefined` from a harness older than the key; `[]` when the agent declares none.
+   */
+  outputStyles?: ManifestOutputStyle[];
+  /** `felix.defaultOutputStyle`: the declared style a thread starts in, if any. */
+  defaultOutputStyle?: string;
 }
 
 export interface ManifestWorkspace {
@@ -255,6 +274,17 @@ function toCommands(raw: unknown): ManifestCommand[] | undefined {
   });
 }
 
+function toOutputStyles(raw: unknown): ManifestOutputStyle[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.flatMap((st) => {
+    // The harness's own name rule, so a malformed entry cannot become a value sent back.
+    if (!st || typeof st.name !== 'string' || !COMMAND_NAME.test(st.name)) return [];
+    const style: ManifestOutputStyle = { name: st.name };
+    if (typeof st.description === 'string' && st.description) style.description = st.description;
+    return [style];
+  });
+}
+
 function toStarters(raw: unknown): ManifestStarter[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   return raw.flatMap((s) =>
@@ -280,6 +310,12 @@ function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   if (workspace) entry.workspace = workspace;
   const commands = toCommands(raw.felix?.commands);
   if (commands) entry.commands = commands;
+  const styles = toOutputStyles(raw.felix?.outputStyles);
+  if (styles) entry.outputStyles = styles;
+  const fallback = raw.felix?.defaultOutputStyle;
+  if (typeof fallback === 'string' && styles?.some((st) => st.name === fallback)) {
+    entry.defaultOutputStyle = fallback;
+  }
   return entry;
 }
 
@@ -1048,6 +1084,30 @@ export function createFelixClient(opts: FelixClientOptions) {
       });
       await refuseIfLease(res, 'thinking', args.threadId);
       if (!res.ok) throw new Error(`thinking: ${res.status} ${await detailOf(res)}`);
+    },
+
+    /**
+     * POST /chat/style — how the thread's agent writes, from its next run: one of the
+     * agent's declared styles, or `null` for its default. `manifest` is the agent the style
+     * is checked against (required with a name); a name it does not declare is a 422
+     * `unknown_output_style`. Only the thread's driver may set it.
+     */
+    async setOutputStyle(args: {
+      threadId: string;
+      manifest: string;
+      style: string | null;
+    }): Promise<void> {
+      const res = await chatFetch('/chat/style', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
+        body: JSON.stringify({
+          thread_id: args.threadId,
+          manifest: args.manifest,
+          style: args.style,
+        }),
+      });
+      await refuseIfLease(res, 'style', args.threadId);
+      if (!res.ok) throw new Error(`style: ${res.status} ${await detailOf(res)}`);
     },
 
     /**

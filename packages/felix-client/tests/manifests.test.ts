@@ -108,6 +108,57 @@ describe('commands', () => {
   });
 });
 
+describe('output styles', () => {
+  it("keeps the agent's styles and a default it declares, and tells none from unknown", async () => {
+    const { client } = serve({
+      object: 'list',
+      data: [
+        {
+          id: 'cowork',
+          felix: {
+            outputStyles: [
+              { name: 'terse', description: 'Short answers' },
+              { name: 'teacher', description: null },
+              { name: 'two words' },
+              { description: 'no name' },
+            ],
+            defaultOutputStyle: 'terse',
+          },
+        },
+        // A default naming no style it lists is not offered as one.
+        { id: 'quick', felix: { outputStyles: [{ name: 'plain' }], defaultOutputStyle: 'gone' } },
+        { id: 'router', felix: { outputStyles: [], defaultOutputStyle: null } },
+        { id: 'old', felix: {} },
+      ],
+    });
+    expect(await client.listManifestEntries()).toEqual([
+      {
+        id: 'cowork',
+        outputStyles: [{ name: 'terse', description: 'Short answers' }, { name: 'teacher' }],
+        defaultOutputStyle: 'terse',
+      },
+      { id: 'quick', outputStyles: [{ name: 'plain' }] },
+      { id: 'router', outputStyles: [] },
+      { id: 'old' },
+    ]);
+  });
+
+  it('sets one through POST /chat/style, checked against the agent, and clears it with null', async () => {
+    const sent: Array<{ url: string; body: unknown }> = [];
+    const fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+      sent.push({ url: String(input), body: JSON.parse(String(init.body)) });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const client = createFelixClient({ baseUrl: '/api', headers: () => ({}), fetch });
+    await client.setOutputStyle({ threadId: 't1', manifest: 'cowork', style: 'terse' });
+    await client.setOutputStyle({ threadId: 't1', manifest: 'cowork', style: null });
+    expect(sent).toEqual([
+      { url: '/api/chat/style', body: { thread_id: 't1', manifest: 'cowork', style: 'terse' } },
+      { url: '/api/chat/style', body: { thread_id: 't1', manifest: 'cowork', style: null } },
+    ]);
+  });
+});
+
 describe('listManifestEntries', () => {
   it('keeps the provider model where it differs from the name, in the harness order', async () => {
     const { client, urls } = serve(MODELS);

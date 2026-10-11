@@ -24,6 +24,7 @@ import type {
   BranchPoint,
   ChatEngine,
   FelixClient,
+  ManifestOutputStyle,
   ManifestStarter,
   ThreadMeta,
 } from '@felix/client';
@@ -53,7 +54,7 @@ const SEARCH_LIMIT = 5;
  * eight while this string still named six.
  */
 export const HELP = [
-  '/new /clear /continue /think <level> /plan /manifest [name] /start <n> /quit',
+  '/new /clear /continue /think <level> /plan /style [name] /manifest [name] /start <n> /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n] /version <n>',
   '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
   ...(['chat', 'threads', 'inspector'] as const).flatMap((where) => [
@@ -92,6 +93,10 @@ export interface CommandContext {
   exit(): void;
   /** The current manifest's starter prompts, as the harness lists them — `/start <n>`. */
   starters(): ManifestStarter[];
+  /** The current manifest's output styles and default, as the harness lists them — `/style`. */
+  outputStyles(): { styles: ManifestOutputStyle[]; fallback: string | null };
+  /** The thread's stored style, null for the agent's default; kept by the app across hydrates. */
+  outputStyle: { current: string | null };
   /** Put text in the composer to be read and sent with Enter; never sends it. */
   fill(text: string): void;
   /** Spilled tool outputs in this thread, oldest first — `/artifact <n>`. */
@@ -185,6 +190,47 @@ export function runCommand(ctx: CommandContext, line: string): void {
         .catch((err) => {
           engine.setPermissionMode(before);
           engine.setError(explainError(err, 'change the permission mode', config));
+        });
+      return;
+    }
+    // How the agent writes: one of the styles it declares, or its default. Listed with no
+    // argument, the current one marked, since a name is the only way to pick here.
+    case 'style': {
+      const { styles, fallback } = ctx.outputStyles();
+      if (!styles.length) {
+        setNotice(`${manifest} declares no output styles`);
+        return;
+      }
+      const current = ctx.outputStyle.current;
+      const shown = styles.find((st) => st.name.toLowerCase() === current?.toLowerCase());
+      if (!arg) {
+        const line = styles
+          .map(
+            (st) =>
+              `${st === shown ? '›' : ' '} ${st.name}${st.description ? ` — ${st.description}` : ''}`,
+          )
+          .join('\n');
+        const head = `${shown ? ' ' : '›'} default${fallback ? ` (${fallback})` : ''}`;
+        setNotice(`styles, from the next turn — /style <name>:\n${head}\n${line}`);
+        return;
+      }
+      const wanted =
+        arg.toLowerCase() === 'default'
+          ? null
+          : styles.find((st) => st.name.toLowerCase() === arg.toLowerCase());
+      if (wanted === undefined) {
+        setNotice(`no style "${arg}". styles: default ${styles.map((st) => st.name).join(' ')}`);
+        return;
+      }
+      const style = wanted?.name ?? null;
+      const before = ctx.outputStyle.current;
+      ctx.outputStyle.current = style;
+      void client
+        .setOutputStyle({ threadId: threadIdRef.current, manifest, style })
+        .then(() => setNotice(`style: ${style ?? 'default'}, from the next turn`))
+        .catch((err) => {
+          ctx.outputStyle.current = before;
+          engine.setError(explainError(err, 'change the output style', config));
         });
       return;
     }
