@@ -273,6 +273,38 @@ cron sweep takes, so any number of workers, polling or sweeping, never run one f
 | `FELIX_FIBER_CONCURRENCY` | `8` | Fibers one worker advances at once. A run parked on an approval holds its slot until someone answers, so this bounds how many such waits can pile up before a new run waits for a slot. A full worker leaves further runs unclaimed for another worker. |
 | `FELIX_FIBER_MAX_ATTEMPTS` | `5` | Consecutive failed steps before a fiber is `dead`; retries back off 1m doubling to 1h. |
 
+## Credentials the model never holds
+
+An agent's `http_tools` can call an authenticated API without the model holding the key. Register
+the key once, per tenant, against one exact host; a manifest names the id in
+[`spec.network.credentials`](/guide/manifest-reference/#credentials-the-model-never-holds):
+
+```bash
+FELIX_EGRESS_CREDENTIALS='{
+  "github": {"host": "api.github.com", "path_prefix": "/repos/acme/",
+             "secret": "secret:GITHUB_TOKEN", "scheme": "Bearer", "tenants": ["acme"]}
+}'
+```
+
+| Key | Required | Notes |
+|---|---|---|
+| `host` | yes | One exact host; no wildcard, scheme, port or path. |
+| `port` | no | The port the API listens on; absent is the scheme's default. Another port on the host gets no key. |
+| `path_prefix` | no | Default `/`. Compared with the path as sent, after `..` is resolved; encoded traversal is refused. |
+| `header` | no | Default `Authorization`. `Host`, `Content-Length`, `Cookie` and the other transport headers are refused. |
+| `scheme` | no | A word put before the value, such as `Bearer`; empty sends the value alone. |
+| `secret` | yes | `secret:NAME` through `FELIX_SECRETS_BACKEND`, or a literal. Resolved when the agent compiles and masked everywhere from then. A value under 8 characters, with surrounding whitespace or a control character, or one the backend cannot find fails the compile (`422`), naming the id and never the value. |
+| `tenants` | yes | Tenant ids that may name it, or `"*"` for all. Any manifest in such a tenant may bind it; `"*"` and `default` include anonymous callers. |
+
+The egress transport attaches the header after the host check, over https only (plain http only
+with `FELIX_ENVIRONMENT=development` and `FELIX_ALLOW_INSECURE=true`), and judges each redirect hop
+again, and strips the header from any request the credential does not cover. A malformed registry fails the boot. The manifest must also set `network.allow_hosts`,
+naming the host, so what the agent reads with the key can only go where its list allows.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_EGRESS_CREDENTIALS` | empty | The registry above, as JSON. |
+
 ## Completion webhooks
 
 A durable run can announce its end to endpoints its manifest names in `spec.execution.webhooks`.

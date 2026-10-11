@@ -262,6 +262,7 @@ spec:
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `allow_hosts` | string[] \| null, at most 64 | `null` | `null` is unrestricted; `[]` allows nothing. |
+| `credentials` | string[], at most 64 | `[]` | Ids of [operator-registered credentials](/guide/deploy/#credentials-the-model-never-holds) this agent's `http_tools` may send. Needs `allow_hosts`, naming each credential's host. |
 
 Each entry is a host (`api.github.com`), `*.` and a host (`*.github.com` matches any name under
 it, never `github.com` itself), or an IP address. No scheme, port or path. Write an
@@ -281,6 +282,28 @@ internationalised name in punycode (`xn--mnchen-3ya.de`).
   reaches.
 - **A2A peers are pinned.** With a list set, a `peer__*` tool has no `manifest` argument: the
   agent answering on the far side is the peer's default, not one the model picks.
+
+### Credentials the model never holds
+
+With `credentials: [github]`, a fetch to the operator's registered host and path carries the
+registered header — `Authorization: Bearer …` — which the harness adds as the request leaves. The
+model never sees the key: not in its tools' arguments, the URL, the result or a log. A server that
+echoes the header back is shown to the model as `[REDACTED]`.
+
+```yaml
+spec:
+  network:
+    allow_hosts: [api.github.com]
+    credentials: [github]
+  http_tools:
+    - name: github_api
+      path_prefix: https://api.github.com/repos/acme/
+```
+
+The header goes only over https, only to that exact host and port, only under the credential's path
+prefix, and each redirect hop is judged again: a hop to another host goes without it. An id the
+operator has not registered for your tenant, or whose host `allow_hosts` does not name exactly,
+fails the compile. Child agents do not inherit a parent's credentials.
 
 The list bounds the requests Felix sends for the model. It does not reach a process that opens
 its own connections — `shell_tools`, a sandbox, a stdio MCP server — nor what a listed MCP server
