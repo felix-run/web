@@ -78,11 +78,6 @@ free as far as the budgets are concerned. `tests/conformance/test_model_provider
 against every wire format.
 </Aside>
 
-**Cloudflare: the line is compute, not vendor.** `workers_ai` is an outbound HTTPS call to
-`api.cloudflare.com`, the same shape as any other hosted provider — as is R2 through its S3 endpoint.
-Felix still does not **run on** Workers, Durable Objects or Hyperdrive, and does not depend on a
-binding only reachable from inside them.
-
 ## Pricing, and refusing to guess
 
 `felix_ai.catalog` records one entry per model family — context window, max output, accepted request
