@@ -3,6 +3,7 @@ import type { SkillVersion } from '@felix/client';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  ownReason,
   SourceLabel,
   UpstreamLine,
   VersionProvenance,
@@ -107,5 +108,38 @@ describe('an imported skill’s source', () => {
     cleanup();
     const { container } = render(<UpstreamLine upstream={null} />);
     expect(container.textContent).toBe('');
+  });
+});
+
+describe('ownReason', () => {
+  const imported = version({
+    source: 'import',
+    origin_source: 'github:acme/skills/pdf',
+    origin_commit: 'dbd4588f9e1033efb41dad4bef2f7947c8993d44',
+  });
+
+  it('leaves out a reason that only restates where an import came from', () => {
+    expect(
+      ownReason({
+        ...imported,
+        reason: 'imported from github:acme/skills/pdf@dbd4588f9e1033efb41dad4bef2f7947c8993d44',
+      }),
+    ).toBeNull();
+    expect(
+      ownReason({
+        ...imported,
+        reason: 'updated from github:acme/skills/pdf@dbd4588f9e1033efb41dad4bef2f7947c8993d44',
+      }),
+    ).toBeNull();
+  });
+
+  it('keeps a reason someone wrote, and one naming a different source or commit', () => {
+    expect(ownReason({ ...imported, reason: 'the team asked for forms' })).toBe(
+      'the team asked for forms',
+    );
+    expect(ownReason({ ...imported, reason: 'imported from github:acme/skills/pdf@0000' })).toBe(
+      'imported from github:acme/skills/pdf@0000',
+    );
+    expect(ownReason({ ...version({}), reason: '' })).toBeNull();
   });
 });
