@@ -24,11 +24,21 @@ export const AUTO_FOLLOW_PAGES = 4;
 const WANT_ROWS = 20;
 
 const STATUS_OPTIONS = [
-  ['all', 'All'],
+  ['in-use', 'In use'],
   ['live', 'Live'],
   ['draft', 'Drafts'],
   ['archived', 'Archived'],
+  ['all', 'All'],
 ] as const;
+
+/**
+ * Out of use: nothing live and no draft waiting — what archiving a skill, or rejecting its only
+ * drafts, leaves. The default view leaves these out; listed with the rest, each read "nothing
+ * live" beside skills in use, and a library of retired tests looked like one of live skills.
+ */
+export function isOutOfUse(s: SkillSummary): boolean {
+  return s.live_version == null && !s.pending_drafts;
+}
 const SOURCE_OPTIONS = [
   ['any', 'Anyone'],
   ['agent', 'Agent'],
@@ -49,8 +59,17 @@ export function LibraryList({
 }) {
   const query = useLibraryPages(filter);
   const pages = query.data?.pages ?? [];
-  const items = useMemo(() => pages.flatMap((p) => p.items), [pages]);
-  const filtered = filter.status !== undefined || filter.source !== undefined;
+  const read = useMemo(() => pages.flatMap((p) => p.items), [pages]);
+  const inUse = filter.status === undefined;
+  const items = useMemo(() => (inUse ? read.filter((s) => !isOutOfUse(s)) : read), [inUse, read]);
+  /** Rows the default view read and left out, so an empty one can say they exist. */
+  const setAside = read.length - items.length;
+  /** A filter the reader chose, as opposed to the default view. */
+  const chosen =
+    (filter.status !== undefined && filter.status !== 'all') || filter.source !== undefined;
+  // In use filters too, here rather than on the route, so once it has set rows aside it walks
+  // past pages that held none — and not before, or every short page would be walked.
+  const filtered = chosen || (inUse && setAside > 0);
 
   // Pages walked without the reader asking, reset whenever the filter changes.
   const walked = useRef(0);
@@ -85,7 +104,7 @@ export function LibraryList({
    * them, or the reader could not take the filter off again.
    */
   const libraryEmpty =
-    !filtered && !query.isPending && !query.error && items.length === 0 && !hasNextPage;
+    !chosen && !query.isPending && !query.error && read.length === 0 && !hasNextPage;
 
   return (
     <div className="space-y-3">
@@ -93,9 +112,9 @@ export function LibraryList({
         <div className="flex flex-wrap items-center gap-2">
           <ViewSwitch
             label="Status"
-            value={filter.status ?? 'all'}
+            value={filter.status ?? 'in-use'}
             options={STATUS_OPTIONS}
-            onChange={(v) => onFilter({ ...filter, status: v === 'all' ? undefined : v })}
+            onChange={(v) => onFilter({ ...filter, status: v === 'in-use' ? undefined : v })}
           />
           <ViewSwitch
             label="Written by"
@@ -133,7 +152,20 @@ export function LibraryList({
           {hasNextPage ? (
             // Said, because an empty filtered page is not an empty library.
             `No match in the first ${pages.length * 50} skills; there are more to look through.`
-          ) : filtered ? (
+          ) : inUse && setAside > 0 && !filter.source ? (
+            <>
+              No skill is in use.{' '}
+              {setAside === 1 ? 'One archived skill is' : `${setAside} archived skills are`} under{' '}
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-foreground"
+                onClick={() => onFilter({ ...filter, status: 'archived' })}
+              >
+                Archived
+              </button>
+              .
+            </>
+          ) : chosen || (inUse && setAside > 0) ? (
             'No skill in the library matches this filter.'
           ) : (
             <>

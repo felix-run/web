@@ -1046,7 +1046,9 @@ Flows worth knowing before editing the app:
   library — below them, or **above them while a draft is waiting**, since that queue is why an
   operator opens the page. The library is a review queue (oldest draft first, its gate verdict and
   diff against live open on the first row, publish or reject with a note), a feedback inbox, a list
-  filtered by status and source, and the tenant's **publish policy** form, which lives here and not
+  filtered by status and source (it opens on **In use** — anything live or with a draft waiting,
+  sorted out on the client since the route takes one status; archived skills are under Archived
+  and All, and an In use view that hid everything says how many rather than "empty"), and the tenant's **publish policy** form, which lives here and not
   on a skill's page: it re-decides every skill's drafts. `?skill=&tab=&v=&against=` is a skill's
   page (Versions, Gate, Evals, Feedback; an old `tab=edit` opens Versions), so any view is a link; the Gate tab is still
   `tab=review` in the address, and a stored version's files are a section of Versions, so an old

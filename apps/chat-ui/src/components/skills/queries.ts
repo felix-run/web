@@ -64,7 +64,11 @@ import {
  */
 
 export type LibraryFilter = {
-  status?: 'live' | 'draft' | 'archived';
+  /**
+   * Absent is *in use* — every row but the archived ones, sorted out here because the route
+   * takes one status at a time. `all` asks for every row, archived included.
+   */
+  status?: 'live' | 'draft' | 'archived' | 'all';
   source?: SkillSource;
 };
 
@@ -154,7 +158,15 @@ export function useLibraryPages(filter: LibraryFilter) {
     queryKey: skillKeys.list(filter, lib),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
-      listLibrarySkills({ ...filter, limit: LIBRARY_PAGE, cursor: pageParam }, lib),
+      listLibrarySkills(
+        {
+          source: filter.source,
+          ...(filter.status && filter.status !== 'all' ? { status: filter.status } : {}),
+          limit: LIBRARY_PAGE,
+          cursor: pageParam,
+        },
+        lib,
+      ),
     getNextPageParam: (last: SkillPage<unknown>) => last.next_cursor ?? undefined,
   });
 }

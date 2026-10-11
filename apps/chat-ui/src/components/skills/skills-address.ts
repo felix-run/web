@@ -21,7 +21,10 @@ export function useSkillsAddress() {
   const status = params.get('status');
   const source = params.get('source');
   const filter: LibraryFilter = {
-    status: status === 'live' || status === 'draft' || status === 'archived' ? status : undefined,
+    status:
+      status === 'live' || status === 'draft' || status === 'archived' || status === 'all'
+        ? status
+        : undefined,
     source:
       source === 'agent' || source === 'operator' || source === 'import' || source === 'promoted'
         ? source
