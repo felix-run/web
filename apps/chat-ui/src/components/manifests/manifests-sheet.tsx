@@ -6,7 +6,7 @@ import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
-import { GitBranchIcon, PencilIcon } from 'lucide-react';
+import { GitBranchIcon, PencilIcon, TriangleAlertIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   activateManifestVersion,
@@ -36,7 +36,7 @@ import {
   recordFromPointer,
   recordVersion,
 } from '@/lib/manifest-versions';
-import type { ManifestSummary } from '@/types';
+import type { ManifestSummary, ManifestVersionRow } from '@/types';
 
 /**
  * Manifest lifecycle workbench — the `/manifests` surface as a `/harness` page.
@@ -87,6 +87,8 @@ export function ManifestsSheet({
   // bare error rendered with one hardcoded phrase, so a failed *activation* — the
   // highest-stakes action here — reported "Could not reach the manifest registry".
   const [failure, setFailure] = useState<{ err: unknown; doing: string } | null>(null);
+  /** Per manifest: what the harness warned about the version this tab last stored. */
+  const [warned, setWarned] = useState<Record<string, SavedWarnings | null>>({});
   // The list's own read, apart from the actions. Sharing one slot meant a failed
   // reload was drawn exactly like a failed activation, and a failed activation
   // offered "Try again" that only reloaded the list.
@@ -140,6 +142,7 @@ export function ManifestsSheet({
         comment: created.comment,
         via: 'created',
       });
+      setWarned((w) => ({ ...w, [name]: warningsOf(created) }));
       await refresh();
       setSelected(name);
       setImporting(false);
@@ -390,6 +393,8 @@ export function ManifestsSheet({
           <VersionsPanel
             key={selectedRow.name}
             summary={selectedRow}
+            {...(warned[selectedRow.name] ? { warned: warned[selectedRow.name] } : {})}
+            onWarned={(v) => setWarned((w) => ({ ...w, [selectedRow.name]: v }))}
             onChanged={refresh}
             onError={(err, doing) => setFailure({ err, doing })}
           />
@@ -407,6 +412,58 @@ export function ManifestsSheet({
  * instead of acting directly — the confirmation step still stands between a click
  * here and production traffic moving.
  */
+/** The harness's warnings about one stored version: shown until dismissed or saved over. */
+interface SavedWarnings {
+  version: number;
+  warnings: string[];
+}
+
+function warningsOf(created: ManifestVersionRow): SavedWarnings | null {
+  const warnings = (created.warnings ?? []).filter((w) => typeof w === 'string' && w.trim());
+  return warnings.length ? { version: created.version, warnings } : null;
+}
+
+/**
+ * What the harness stored but would not stay quiet about — today, an approval
+ * rule that gates writes while deletes go ungated. The version is live: the
+ * harness warns rather than refuses so an upgrade cannot take an agent down,
+ * which is exactly why the operator has to be told here, where the save was
+ * made, and not only in a log they may never read.
+ */
+function SavedWarningsNote({
+  warned,
+  onDismiss,
+}: {
+  warned: SavedWarnings;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      data-slot="manifest-warnings"
+      className="mb-4 flex items-start gap-3 rounded-xl bg-ground px-4 py-3"
+    >
+      <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-state-blocked" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <p className="text-sm font-medium">
+          v{warned.version} is saved and active, with{' '}
+          {warned.warnings.length === 1 ? 'a warning' : `${warned.warnings.length} warnings`}
+        </p>
+        <ul className="space-y-1 text-sm text-muted-foreground">
+          {warned.warnings.map((w) => (
+            <li key={w} className="wrap-anywhere">
+              {w}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <Button variant="ghost" size="sm" className="h-7 shrink-0 px-2" onClick={onDismiss}>
+        Dismiss
+      </Button>
+    </div>
+  );
+}
+
 function VersionChips({
   known,
   activeV,
@@ -449,10 +506,15 @@ function VersionChips({
 
 function VersionsPanel({
   summary,
+  warned,
+  onWarned,
   onChanged,
   onError,
 }: {
   summary: ManifestSummary;
+  /** What the harness said about the version this tab last stored, if anything. */
+  warned?: SavedWarnings | null;
+  onWarned: (warned: SavedWarnings | null) => void;
   onChanged: () => void;
   onError: (err: unknown, doing: string) => void;
 }) {
@@ -517,6 +579,7 @@ function VersionsPanel({
         comment: created.comment ?? note,
         via: 'created',
       });
+      onWarned(warningsOf(created));
       setEditor(null);
     }, `save a new version of ${name}`);
   }
@@ -553,6 +616,7 @@ function VersionsPanel({
 
   return (
     <>
+      {warned && <SavedWarningsNote warned={warned} onDismiss={() => onWarned(null)} />}
       <PageSection
         title="Active"
         meta={
