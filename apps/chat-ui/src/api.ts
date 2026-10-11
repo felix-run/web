@@ -745,8 +745,8 @@ export async function clearManifestCanary(name: string): Promise<ManifestPointer
 // --- Scheduled jobs (/jobs) ---
 //
 // The worker's `run_scheduled_jobs` cron invokes each job's manifest on its
-// schedule — which needs felix-scheduler running alongside felix-worker. There
-// is no run-now route; inspect `listJobRuns` for what the sweep has done.
+// schedule — which needs felix-scheduler running alongside felix-worker.
+// `runJobNow` fires one at once, in the API process, without the schedule.
 
 async function jobsFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(`/api/jobs${path}`, init);
@@ -785,6 +785,15 @@ export async function listJobRuns(name: string, limit = 20): Promise<JobRun[]> {
     `/${encodeURIComponent(name)}/runs?limit=${limit}`,
   );
   return body.items ?? [];
+}
+
+/**
+ * POST /jobs/{name}/run → run a job now and wait for it: the response is the finished run,
+ * recorded like a scheduled one but `trigger: manual`. Runs a disabled job too, and leaves the
+ * schedule alone. Needs `jobs:write`.
+ */
+export async function runJobNow(name: string): Promise<JobRun> {
+  return jobsFetch<JobRun>(`/${encodeURIComponent(name)}/run`, { method: 'POST' });
 }
 
 /** DELETE /jobs/{name} → remove a job from the registry. */
