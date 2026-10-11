@@ -1628,7 +1628,13 @@ characters). An empty 2xx is `allow`. `additional_context` — and a `stop` reas
 screened, fenced as reference material from that hook, for that call only; one event's hooks share
 8,000 characters of it and 15 seconds. A `stop` hook that errors lets the agent finish. An endpoint that is down, slow, or answers anything else is an error, and
 `on_error` decides — `allow` treats the hook as advisory, `block` makes it a control that fails
-closed. Every call is audited (`hook_call`). Hooks run on `react` and `deep`; any other pattern
+closed. Every call is audited (`hook_call`).
+
+**A hook on your own host.** There is no way to point a hook at a command or script, on purpose:
+Felix can only run programs inside the agent's workspace, where the agent can write — so it could
+rewrite the very hook that decides its calls. Run the hook as a small HTTP service the agent cannot
+reach (a sidecar beside the API) and have the operator register it with `"private": true` and
+`"hooks": true`; it receives the same signed request and answers the same JSON. Hooks run on `react` and `deep`; any other pattern
 refuses a manifest that declares them. Hook ids must be unique; at most 16.
 
 ## `spec.approvals`
