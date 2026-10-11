@@ -220,6 +220,9 @@ Request (`extra: forbid`):
 | `template` | string \| null | `null` | Named template from `spec.prompts`. |
 | `template_args` | string[] | `[]` | |
 
+A user message written `/name args`, where `name` is one of the manifest's `spec.prompts`, is
+replaced by that prompt's expansion ([slash commands](/guide/manifest-reference/#slash-commands)); `/v1/chat/completions` does the same.
+
 Either `messages` or `template` must produce a message, else `400
 messages_or_template_required`. An empty `manifest` is `400 manifest_required`. A `model` outside the
 allowlist is `400 model_not_allowlisted:<id>`.
@@ -1075,7 +1078,7 @@ curl -s "$BASE_URL/v1/chat/completions" \
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/v1/models` | Bundled and published manifests as OpenAI model objects, each with a `felix` block: `providerModel`, `contextWindow`, `starters` (always a list, empty when the manifest declares none) and `greeting` (`{headline, subtitle}`, or `null`) |
+| `GET` | `/v1/models` | Bundled and published manifests as OpenAI model objects, each with a `felix` block: `providerModel`, `contextWindow`, `starters` (always a list, empty when the manifest declares none), `commands` (`[{name, description, argumentHint}]`, the prompts a person can run as `/name`; always a list) and `greeting` (`{headline, subtitle}`, or `null`) |
 | `POST` | `/v1/chat/completions` | `stream: true` emits `chat.completion.chunk` frames, a final chunk carrying `usage`, then `data: [DONE]` |
 
 The optional `user` field becomes the thread suffix (`{tenant}:{user}`). Errors come back in OpenAI
