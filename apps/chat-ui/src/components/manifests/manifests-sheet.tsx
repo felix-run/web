@@ -425,18 +425,24 @@ function warningsOf(created: ManifestVersionRow): SavedWarnings | null {
 
 /**
  * What the harness stored but would not stay quiet about — today, an approval
- * rule that gates writes while deletes go ungated. The version is live: the
- * harness warns rather than refuses so an upgrade cannot take an agent down,
- * which is exactly why the operator has to be told here, where the save was
- * made, and not only in a log they may never read.
+ * rule that gates writes while deletes go ungated. The harness warns rather
+ * than refuses so an upgrade cannot take an agent down, which is why the
+ * operator has to be told here, where the save was made. A save appends a
+ * version without activating it, so the note says which: a live version with a
+ * warning, or one that should not be activated until the warning is dealt with.
  */
 function SavedWarningsNote({
   warned,
+  activeVersion,
   onDismiss,
 }: {
   warned: SavedWarnings;
+  /** The version serving now: a save appends without activating. */
+  activeVersion: number | null;
   onDismiss: () => void;
 }) {
+  const live = activeVersion === warned.version;
+  const count = warned.warnings.length === 1 ? 'a warning' : `${warned.warnings.length} warnings`;
   return (
     <div
       role="status"
@@ -446,8 +452,9 @@ function SavedWarningsNote({
       <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-state-blocked" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <p className="text-sm font-medium">
-          v{warned.version} is saved and active, with{' '}
-          {warned.warnings.length === 1 ? 'a warning' : `${warned.warnings.length} warnings`}
+          {live
+            ? `v${warned.version} is saved and active, with ${count}`
+            : `v${warned.version} is saved, with ${count}. It is not active: deal with ${warned.warnings.length === 1 ? 'it' : 'them'} before activating it.`}
         </p>
         <ul className="space-y-1 text-sm text-muted-foreground">
           {warned.warnings.map((w) => (
@@ -616,7 +623,13 @@ function VersionsPanel({
 
   return (
     <>
-      {warned && <SavedWarningsNote warned={warned} onDismiss={() => onWarned(null)} />}
+      {warned && (
+        <SavedWarningsNote
+          warned={warned}
+          activeVersion={activeV ?? null}
+          onDismiss={() => onWarned(null)}
+        />
+      )}
       <PageSection
         title="Active"
         meta={

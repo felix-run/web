@@ -679,8 +679,10 @@ export async function getResolvedManifest(
 }
 
 /**
- * PUT /manifests/{name} → append a new version and activate it. The body's
- * `metadata.name` must equal `name` or the harness answers 400 `name_mismatch`.
+ * PUT /manifests/{name} → append a new version. It does **not** move the active
+ * pointer (`POST …/rollback` does) — except for a manifest's first version, which
+ * is the only one there is. The body's `metadata.name` must equal `name` or the
+ * harness answers 400 `name_mismatch`. The row carries `warnings` (felix#591).
  */
 export async function createManifestVersion(
   name: string,
