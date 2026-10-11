@@ -24,7 +24,9 @@ import { LibraryList } from './library-list';
 import { PolicyEditor } from './policy-form';
 import {
   invalidateLibrary,
+  ownerParts,
   SkillLibraryContext,
+  useKnownLibraryOwner,
   useLibraryId,
   usePersonalLibraries,
   usePublishPolicy,
@@ -85,16 +87,21 @@ export function SkillLibrary({
   useEffect(() => onPendingText?.(pending.text), [onPendingText, pending.text]);
   const [creating, setCreating] = useState(false);
   const formId = useId();
+  const owner = useKnownLibraryOwner(nav.lib);
+  const who = owner ? ownerParts(owner) : undefined;
   if (nav.lib && nav.lib !== 'me') {
     // Someone else's library, opened by an administrator: readable, archivable, nothing more.
     return (
       <SkillLibraryContext.Provider value={nav.lib}>
         <LibrarySwitch current={nav.lib} to={nav.libraryTo} />
-        <PageSection title="A personal library" meta="read-only">
+        <PageSection
+          title={who ? `${who.subject}’s skills` : 'A personal library'}
+          meta={who?.issuer ? `read-only · ${who.issuer}` : 'read-only'}
+        >
           <p className="mb-3 max-w-[60ch] text-sm text-muted-foreground">
-            Someone’s own skills, which only they and administrators can see. You can read them and
-            archive one; editing, publishing and promoting are the owner’s. Each look is recorded in
-            the audit log.
+            {who ? 'Their own skills' : 'Someone’s own skills'}, which only they and administrators
+            can see. You can read them and archive one; editing, publishing and promoting are the
+            owner’s. Each look is recorded in the audit log.
           </p>
           <LibraryList filter={nav.filter} onFilter={nav.setFilter} linkTo={nav.linkTo} />
         </PageSection>
@@ -239,9 +246,7 @@ function PersonalLibrariesSection({ libraryTo }: { libraryTo: (next: string) => 
         <>
           <ul className="divide-y divide-border/60 border-y border-border/60">
             {items.map((l) => {
-              const cut = l.owner.lastIndexOf('|');
-              const issuer = cut > 0 ? l.owner.slice(0, cut) : '';
-              const subject = cut > 0 ? l.owner.slice(cut + 1) : l.owner;
+              const { issuer, subject } = ownerParts(l.owner);
               return (
                 <li key={l.library} className="flex flex-wrap items-baseline gap-x-3 py-2 text-sm">
                   <Link

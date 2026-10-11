@@ -226,11 +226,18 @@ function VersionRow({
  */
 function ArchiveSkill({ name, liveVersion }: { name: string; liveVersion: string | null }) {
   const archive = useArchiveSkill();
+  // In someone else's library the administrator can archive but not roll back: the way back is
+  // the owner's.
+  const readOnly = useLibraryReadOnly();
   return (
     <PageSection title="Archive">
       <p className="mb-2 max-w-[48ch] text-sm text-muted-foreground">
         Takes <span className="font-mono">{name}</span> out of every catalog. Every version is kept,
-        and rolling back to one brings the skill back.
+        and{' '}
+        {readOnly
+          ? 'the owner can bring the skill back'
+          : 'rolling back to one brings the skill back'}
+        .
       </p>
       <ConfirmButton
         variant="outline"

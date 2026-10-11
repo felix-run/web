@@ -45,6 +45,29 @@ describe('Personal libraries, for an administrator', () => {
     expect(screen.getByText('https://github.com')).toBeTruthy();
   });
 
+  it('names the owner of a library opened from the list, without asking again', async () => {
+    const h = fakeHarness((req) => {
+      if (req.path === '/skill-library/-/personal') {
+        return {
+          body: {
+            items: [{ library: `~${LIB}`, owner: 'https://github.com|octocat', skills: 0 }],
+            truncated: false,
+          },
+        };
+      }
+      if (req.path.startsWith(`/skill-library/~${LIB}?`)) {
+        return { body: { items: [], next_cursor: null } };
+      }
+      return teamRoutes(req.path);
+    });
+    mountWithProviders(<SkillLibrary />, '/harness/skills');
+    fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'octocat' }));
+    expect(await screen.findByText('octocat’s skills')).toBeTruthy();
+    expect(screen.getByText('read-only · https://github.com')).toBeTruthy();
+    expect(h.requests.filter((r) => r.path === '/skill-library/-/personal')).toHaveLength(1);
+  });
+
   it('says only an administrator can list them when the key is refused', async () => {
     fakeHarness((req) =>
       req.path === '/skill-library/-/personal'
@@ -112,6 +135,9 @@ describe('Personal libraries, for an administrator', () => {
       `/harness/skills?lib=${LIB}&skill=their-notes&tab=edit`,
     );
     expect(await screen.findByRole('button', { name: /Archive skill/ })).toBeTruthy();
+    // The way back is the owner's: the administrator here cannot roll back.
+    expect(screen.getByText(/the owner can bring the skill back/)).toBeTruthy();
+    expect(screen.queryByText(/rolling back to one brings/)).toBeNull();
     // An address naming Edit opens Versions instead, and there is no Edit tab to choose.
     expect(screen.getByRole('tab', { name: 'Versions' }).getAttribute('aria-selected')).toBe(
       'true',
