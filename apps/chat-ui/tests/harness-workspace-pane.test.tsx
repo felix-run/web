@@ -30,6 +30,8 @@ const harness = vi.hoisted(() => ({
   rename: vi.fn(),
   localDelete: vi.fn(async (_p: string) => {}),
   localRename: vi.fn(async (_a: string, _b: string) => {}),
+  delFolder: vi.fn(),
+  renameFolder: vi.fn(),
 }));
 
 vi.mock('../src/api', async (importOriginal) => ({
@@ -39,6 +41,8 @@ vi.mock('../src/api', async (importOriginal) => ({
   workspaceWrite: harness.write,
   workspaceDelete: harness.del,
   workspaceRename: harness.rename,
+  workspaceDeleteFolder: harness.delFolder,
+  workspaceRenameFolder: harness.renameFolder,
 }));
 
 vi.mock('../src/lib/cowork', () => ({
@@ -124,6 +128,8 @@ afterEach(() => {
   harness.rename.mockReset();
   harness.localDelete.mockClear();
   harness.localRename.mockClear();
+  harness.delFolder.mockReset();
+  harness.renameFolder.mockReset();
 });
 
 async function editHarnessFile(user: ReturnType<typeof userEvent.setup>, text: string) {
@@ -377,5 +383,92 @@ describe("a tree row's menu", () => {
     row.focus();
     await user.keyboard('{Enter}');
     await waitFor(() => expect(paneState(T).active).toBe('harness:src/app.py'));
+  });
+});
+
+describe('folder actions from the tree', () => {
+  const folderRow = () =>
+    waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-slot="harness-files"] [title="src"]');
+      if (!el) throw new Error('no folder row yet');
+      return el;
+    });
+
+  it('deletes a harness folder at the file count it showed', async () => {
+    harness.delFolder.mockResolvedValueOnce({ status: 'queued', files: 1, eventId: null });
+    const user = userEvent.setup();
+    mount();
+    fireEvent.contextMenu(await folderRow());
+    expect(screen.queryByRole('menuitem', { name: /Open/ })).toBeNull();
+    await user.click(await screen.findByRole('menuitem', { name: /Delete folder/ }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(dialog.textContent).toContain('src/app.py'));
+    expect(dialog.textContent).toContain('the 1 file in it');
+    await user.click(screen.getByRole('button', { name: 'Delete 1 file' }));
+    await waitFor(() =>
+      expect(harness.delFolder).toHaveBeenCalledWith({
+        threadId: T,
+        path: 'src',
+        expectedCount: 1,
+        manifest: 'contributor',
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('says a folder that changed under the confirmation changed, deleting nothing here', async () => {
+    const { WorkspaceRouteError } = await import('@felix/client');
+    harness.delFolder.mockRejectedValueOnce(new WorkspaceRouteError(409, 'workspace_changed', 3));
+    const user = userEvent.setup();
+    mount();
+    fireEvent.contextMenu(await folderRow());
+    await user.click(await screen.findByRole('menuitem', { name: /Delete folder/ }));
+    await user.click(await screen.findByRole('button', { name: 'Delete 1 file' }));
+    expect(await screen.findByText(/it now holds 3 files/)).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('renames a harness folder, and closes tabs on the files that moved', async () => {
+    harness.renameFolder.mockResolvedValueOnce({ status: 'queued', toPath: 'lib', eventId: null });
+    const user = userEvent.setup();
+    mount();
+    act(() => openInPane(T, { kind: 'file', path: 'src/app.py', source: 'harness' }));
+    fireEvent.contextMenu(await folderRow());
+    await user.click(await screen.findByRole('menuitem', { name: /Rename folder/ }));
+    const field = await screen.findByRole('textbox', { name: 'New path' });
+    await user.clear(field);
+    await user.type(field, 'lib{Enter}');
+    await waitFor(() =>
+      expect(harness.renameFolder).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'src', toPath: 'lib' }),
+      ),
+    );
+    await waitFor(() => expect(paneState(T).items).toHaveLength(0));
+  });
+
+  it('opens the file menu, not the folder one, on a file inside the folder', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'src' }));
+    const file = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(
+        '[data-slot="harness-files"] [title="src/app.py"]',
+      );
+      if (!el) throw new Error('no file row yet');
+      return el;
+    });
+    fireEvent.contextMenu(file);
+    expect(await screen.findByRole('menuitem', { name: /Open/ })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /Delete folder/ })).toBeNull();
+  });
+
+  it('holds a folder action while a file under it has an unsaved edit', async () => {
+    const user = userEvent.setup();
+    mount();
+    await editHarnessFile(user, 'x = 42\n');
+    fireEvent.contextMenu(await folderRow());
+    await user.click(await screen.findByRole('menuitem', { name: /Delete folder/ }));
+    expect(await screen.findByText(/unsaved edits in the side pane/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Delete \d/ })).toBeNull();
   });
 });

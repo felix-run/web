@@ -152,6 +152,10 @@ export type StreamEvent =
         bytes: number | null;
         /** A rename's destination; absent otherwise. */
         to_path?: string;
+        /** `folder` for the operator's folder delete or rename (felix#594); absent for a file. */
+        kind?: 'folder';
+        /** A folder delete: how many files went with it. */
+        files?: number;
       };
     }
   /**

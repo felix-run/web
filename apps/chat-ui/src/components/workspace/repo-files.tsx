@@ -39,14 +39,21 @@ export function RepoFileTree({
   listing,
   onOpenFile,
   onFileAction,
+  onFolderAction,
 }: {
   listing: ThreadRepoFiles;
   /** Open a file in the side pane; absent, the tree only lists. */
   onOpenFile?: (path: string) => void;
   /** A row's menu (right click, Shift+F10), for a file that is there to act on. */
   onFileAction?: (path: string, action: FileRowAction) => void;
+  /** A folder row's menu: Rename folder…, Delete folder…. */
+  onFolderAction?: (path: string, action: 'rename' | 'delete') => void;
 }) {
-  const { rowProps, host } = useFileRowMenu((path, action) => onFileAction?.(path, action));
+  const { rowProps, host } = useFileRowMenu((path, action, kind) => {
+    if (kind === 'folder') {
+      if (action !== 'open') onFolderAction?.(path, action);
+    } else onFileAction?.(path, action);
+  });
   const byPath = useMemo(() => new Map(listing.files.map((f) => [f.path, f])), [listing]);
   const tree = useMemo(() => buildTree(listing.files.map((f) => `f ${f.path}`)), [listing]);
   const changed = useMemo(
@@ -64,7 +71,13 @@ export function RepoFileTree({
     nodes.map((node) => {
       if (node.kind === 'folder') {
         return (
-          <FileTreeFolder key={node.path} path={node.path} name={node.name} title={node.path}>
+          <FileTreeFolder
+            key={node.path}
+            path={node.path}
+            name={node.name}
+            title={node.path}
+            {...(onFolderAction ? rowProps(node.path, undefined, 'folder') : {})}
+          >
             {render(node.children)}
           </FileTreeFolder>
         );
@@ -136,7 +149,7 @@ export function RepoFileTree({
 
   return (
     <>
-      {onFileAction ? host(view) : view}
+      {onFileAction || onFolderAction ? host(view) : view}
       {listing.truncated && (
         <p className="mt-1 text-xs text-muted-foreground">
           Showing the first {listing.files.length.toLocaleString()} files; the repository has more.

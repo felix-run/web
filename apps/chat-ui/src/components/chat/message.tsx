@@ -517,8 +517,15 @@ function WorkspaceEditNote({
     shell?.threads?.find((t) => t.id === shell.threadId)?.manifest?.trim() || shell?.manifest;
   const tools = shell?.manifestEntries?.find((m) => m.id === agent)?.workspace?.tools;
   const onHarness = tools === 'server' || tools === 'both';
-  const target = edit.op === 'rename' ? edit.toPath : edit.op === 'delete' ? undefined : edit.path;
-  const verb = edit.op === 'delete' ? 'deleted' : edit.op === 'rename' ? 'renamed' : 'edited';
+  // A folder is nothing the pane opens; a deleted file is gone.
+  const target = edit.folder
+    ? undefined
+    : edit.op === 'rename'
+      ? edit.toPath
+      : edit.op === 'delete'
+        ? undefined
+        : edit.path;
+  const verb = `${edit.op === 'delete' ? 'deleted' : edit.op === 'rename' ? 'renamed' : 'edited'}${edit.folder ? ' the folder' : ''}`;
   return (
     <div className="group flex w-full flex-col gap-1">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -548,6 +555,12 @@ function WorkspaceEditNote({
               {' '}
               to <span className="font-mono text-foreground">{edit.toPath}</span>
             </>
+          )}
+          {edit.folder && edit.op === 'delete' && typeof edit.files === 'number' && (
+            <span className="tabular-nums">
+              {' '}
+              · {edit.files} {edit.files === 1 ? 'file' : 'files'}
+            </span>
           )}
           {edit.op === 'write' && typeof edit.bytes === 'number' && (
             <span className="tabular-nums"> · {formatBytes(edit.bytes)}</span>

@@ -365,3 +365,93 @@ export async function renameExisting(
   if (hasMount()) await mountRename(a, b);
   else vfs.rename(a, b);
 }
+
+/** Folders and files a mount folder delete or rename will touch, at most. */
+export const MAX_FOLDER_ENTRIES = 2_000;
+
+async function walkFiles(dir: DirHandle, base: string, out: string[], seen: { n: number }) {
+  for await (const [name, handle] of dir.entries()) {
+    if (++seen.n > MAX_FOLDER_ENTRIES) throw new TooManyEntriesError(seen.n);
+    const rel = `${base}/${name}`;
+    if (handle.kind === 'directory') await walkFiles(handle as DirHandle, rel, out, seen);
+    else out.push(rel);
+  }
+}
+
+/** A folder over the cap: refused before anything is touched. */
+export class TooManyEntriesError extends Error {
+  constructor(readonly count: number) {
+    super(`over ${MAX_FOLDER_ENTRIES} entries`);
+    this.name = 'TooManyEntriesError';
+  }
+}
+
+/** The files under a mounted folder, recursively, for the count a delete is confirmed on. */
+export async function mountFilesUnder(path: string): Promise<string[]> {
+  const { parent, name } = await resolve(path);
+  if (!name) throw new Error('the folder itself cannot be the root');
+  const dir = await parent.getDirectoryHandle(name);
+  const out: string[] = [];
+  await walkFiles(dir, path.replace(/\/+$/, ''), out, { n: 0 });
+  return out.sort();
+}
+
+/**
+ * Delete a mounted folder and everything in it, after counting it again: a
+ * count other than the one the operator confirmed refuses, deleting nothing.
+ * The File System Access API does not follow links, so nothing outside the
+ * mount is reachable from inside it.
+ */
+export async function mountRemoveDir(path: string, expectedFiles?: number): Promise<number> {
+  const files = (await mountFilesUnder(path)).length;
+  if (expectedFiles !== undefined && files !== expectedFiles) {
+    throw Object.assign(new Error(`${path} now holds ${files} files`), {
+      name: 'FolderChangedError',
+      count: files,
+    });
+  }
+  const { parent, name } = await resolve(path);
+  await parent.getDirectoryHandle(name);
+  await parent.removeEntry(name, { recursive: true });
+  return files;
+}
+
+/**
+ * Move a mounted folder: copied in full to the destination, then removed from
+ * the source. Not atomic — no move works on every browser — and ordered so a
+ * failure leaves two copies, never none. Never over anything, never into itself.
+ */
+export async function mountRenameDir(from: string, to: string): Promise<void> {
+  const src = splitContainedPath(from).join('/');
+  const dst = splitContainedPath(to).join('/');
+  if (!src) throw new Error('the workspace root cannot be renamed');
+  if (!dst) throw new Error('no destination');
+  if (dst === src || dst.startsWith(`${src}/`)) throw new Error('a folder cannot move into itself');
+  const files = await mountFilesUnder(src);
+  const target = await resolve(dst, { create: true });
+  const taken = await target.parent
+    .getFileHandle(target.name)
+    .then(() => true)
+    .catch(() =>
+      target.parent
+        .getDirectoryHandle(target.name)
+        .then(() => true)
+        .catch(() => false),
+    );
+  if (taken) throw new TargetExistsError(to);
+  await mountMkdir(dst);
+  for (const file of files) {
+    await mountWriteBytes(`${dst}${file.slice(src.length)}`, await mountReadBytes(file));
+  }
+  const origin = await resolve(src);
+  await origin.parent.removeEntry(origin.name, { recursive: true });
+}
+
+async function mountWriteBytes(path: string, bytes: Uint8Array): Promise<void> {
+  const { parent, name } = await resolve(path, { create: true });
+  if (!name) throw new Error('not a file');
+  const handle = await parent.getFileHandle(name, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(bytes as BufferSource);
+  await writable.close();
+}

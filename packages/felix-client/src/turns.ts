@@ -89,6 +89,10 @@ export interface WorkspaceEdit {
   op: 'write' | 'delete' | 'rename';
   bytes?: number | null;
   toPath?: string;
+  /** A whole folder, not a file (felix#594). */
+  folder?: boolean;
+  /** A folder delete: how many files went with it. */
+  files?: number;
 }
 
 export interface Turn {

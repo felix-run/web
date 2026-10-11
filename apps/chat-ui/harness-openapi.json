@@ -59,6 +59,12 @@
     "/chat/workspace/rename": {
       "post": {}
     },
+    "/chat/workspace/delete_folder": {
+      "post": {}
+    },
+    "/chat/workspace/rename_folder": {
+      "post": {}
+    },
     "/chat/tool_result": {
       "post": {}
     },
@@ -115,6 +121,9 @@
       "post": {}
     },
     "/chat/thinking": {
+      "post": {}
+    },
+    "/chat/mode": {
       "post": {}
     },
     "/chat/ask": {

@@ -3,12 +3,15 @@ import {
   clearMount,
   getMountLabel,
   hasMount,
+  mountFilesUnder,
   mountList,
   mountMkdir,
   mountRead,
   mountReadBytes,
   mountRemove,
+  mountRemoveDir,
   mountRename,
+  mountRenameDir,
   mountTree,
   mountWrite,
   pickDirectory,
@@ -384,5 +387,33 @@ describe('deleting and renaming in the mount', () => {
     await expect(mountRemove('../outside.md')).rejects.toThrow(/escapes mount/);
     await expect(mountRename('a.md', '..\\..\\x.md')).rejects.toThrow(/escapes mount/);
     expect(await mountRead('a.md')).toBe('A');
+  });
+});
+
+describe('folders in the mount', () => {
+  it('counts the files under a folder, and deletes it only at the count it was shown', async () => {
+    await mountWrite('notes/a.md', 'A');
+    await mountWrite('notes/deep/b.md', 'B');
+    expect(await mountFilesUnder('notes')).toEqual(['notes/a.md', 'notes/deep/b.md']);
+    await expect(mountRemoveDir('notes', 1)).rejects.toMatchObject({
+      name: 'FolderChangedError',
+      count: 2,
+    });
+    expect(await mountRead('notes/a.md')).toBe('A');
+    expect(await mountRemoveDir('notes', 2)).toBe(2);
+    expect(await mountList('.')).toEqual([]);
+  });
+
+  it('moves a folder with its bytes, never over anything and never into itself', async () => {
+    await mountWrite('src/a.ts', 'A');
+    await mountWrite('src/lib/b.ts', 'B');
+    await mountWrite('taken/x', 'X');
+    await expect(mountRenameDir('src', 'taken')).rejects.toBeInstanceOf(TargetExistsError);
+    await expect(mountRenameDir('src', 'src/inner')).rejects.toThrow(/into itself/);
+    await expect(mountRenameDir('src', '../out')).rejects.toThrow(/escapes mount/);
+    await mountRenameDir('src', 'pkg/src');
+    expect(await mountRead('pkg/src/lib/b.ts')).toBe('B');
+    expect(await mountRead('pkg/src/a.ts')).toBe('A');
+    await expect(mountRead('src/a.ts')).rejects.toThrow();
   });
 });

@@ -16,13 +16,17 @@ export {
 } from './file-mention-resolver';
 export { type FileMention, findFileMentions } from './file-mentions';
 export {
+  MAX_FOLDER_ENTRIES,
   type MountRestore,
+  mountFilesUnder,
   mountList,
   mountMkdir,
   mountRead,
   mountReadBytes,
   mountRemove,
+  mountRemoveDir,
   mountRename,
+  mountRenameDir,
   mountWrite,
   readExisting,
   readExistingBytes,
@@ -31,6 +35,7 @@ export {
   renameExisting,
   restoreMount,
   TargetExistsError,
+  TooManyEntriesError,
 } from './fs-mount';
 export { collectToolCallPaths, collectTouchedPaths } from './tool-call-paths';
-export { getVfs, VirtualFs } from './vfs';
+export { FolderChangedError, getVfs, VirtualFs } from './vfs';
