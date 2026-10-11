@@ -327,6 +327,12 @@ export interface SessionSnapshot {
    */
   permissionMode?: PermissionMode | null;
   /**
+   * The output style the thread was set to (`POST /chat/style`), or null for the agent's
+   * default. Stored, not resolved: a style the agent does not declare reads as its default.
+   * Absent from an older harness.
+   */
+  outputStyle?: string | null;
+  /**
    * A person's rating of an assistant turn, keyed by its event id
    * (`felix-run/felix#403`). Absent from an older harness. A cleared rating is
    * removed from the map, not set to `null`.

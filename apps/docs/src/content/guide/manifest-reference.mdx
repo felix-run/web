@@ -244,6 +244,10 @@ chosen child writes it, so the manifest is refused at compile rather than storin
 changes nothing. `GET /v1/models` lists the styles
 as `felix.outputStyles` (`[{name, description}]`) and `felix.defaultOutputStyle`.
 
+In chat-ui a **Style** picker appears beside Thinking whenever the selected agent declares styles,
+with `default` first (its description names the style it is); in the terminal, `/style` lists them and `/style <name>` (or
+`/style default`) sets one.
+
 ## `spec.network`
 
 Which hosts this agent's tools may reach. Unset, it is any public address the egress guard

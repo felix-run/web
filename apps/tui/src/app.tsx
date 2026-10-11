@@ -279,6 +279,8 @@ export function App({
   /** Edited messages' versions, read off the last snapshot (`branchPoints`). */
   const [branches, setBranches] = useState<ReadonlyMap<string, BranchPoint>>(NO_BRANCHES);
   const branchesRef = useRef<ReadonlyMap<string, BranchPoint>>(NO_BRANCHES);
+  /** The thread's stored output style (null: the agent's default), as the last hydrate read it. */
+  const styleRef = useRef<string | null>(null);
 
   /** The snapshot is authoritative; the local copy is a cache and a fallback. */
   const hydrate = useCallback(
@@ -292,6 +294,8 @@ export function App({
       branchesRef.current = branchPoints(snapshot);
       setBranches(branchesRef.current);
       if (snapshot.phase) engine.setPhase(snapshot.phase);
+      // The thread's output style, for `/style` to mark; absent from an older harness.
+      styleRef.current = snapshot.outputStyle ?? null;
       // Absent from a harness older than permission modes: leave the engine's null.
       if ('permissionMode' in snapshot) engine.setPermissionMode(snapshot.permissionMode ?? null);
     },
@@ -476,6 +480,7 @@ export function App({
     cancelWrite();
     engine.reset();
     branchesRef.current = NO_BRANCHES;
+    styleRef.current = null;
     setBranches(NO_BRANCHES);
     setThreadId(crypto.randomUUID());
     setNotice(null);
@@ -488,6 +493,7 @@ export function App({
       cancelWrite();
       engine.reset();
       branchesRef.current = NO_BRANCHES;
+      styleRef.current = null;
       setBranches(NO_BRANCHES);
       setThreadId(id);
       engine.setTurns(store.loadTurns(id));
@@ -624,6 +630,11 @@ export function App({
           exit,
           spills: () => spills(turns),
           starters: () => entry?.starters ?? [],
+          outputStyles: () => ({
+            styles: entry?.outputStyles ?? [],
+            fallback: entry?.defaultOutputStyle ?? null,
+          }),
+          outputStyle: styleRef,
           fill,
           show: showBody,
           fs: { exists: existsSync, write: writeFileSync },

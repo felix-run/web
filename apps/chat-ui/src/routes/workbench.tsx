@@ -124,6 +124,8 @@ export function Workbench() {
     chooseThinking,
     permissionMode,
     choosePermissionMode,
+    outputStyle,
+    chooseOutputStyle,
     debug,
     harnessReachable,
     inspectorOpen,
@@ -174,6 +176,14 @@ export function Workbench() {
   // The meter is debug's — except a window nearly full, which is about to change
   // what the agent can see, and so is the daily user's to know too.
   const context = debug || (fill && fill.share >= NEARLY_FULL) ? fill : null;
+  // The selected agent's styles. A stored name it does not declare reads as its default,
+  // which is what the harness runs, so the picker says Default rather than a stale name.
+  const agentEntry = manifestEntries.find((m) => m.id === manifest);
+  const outputStyles = agentEntry?.outputStyles;
+  const shownStyle =
+    outputStyle && outputStyles?.some((st) => st.name.toLowerCase() === outputStyle.toLowerCase())
+      ? outputStyle
+      : null;
 
   // Which agent this thread's turns last ran on, for the line under the composer.
   // Only the local index knows (the harness keeps no manifest per thread), and a
@@ -405,6 +415,14 @@ export function Workbench() {
               }}
               permissionMode={permissionMode}
               onLeavePermissionMode={() => choosePermissionMode('default')}
+              {...(outputStyles?.length
+                ? {
+                    outputStyles,
+                    outputStyle: shownStyle,
+                    defaultOutputStyle: agentEntry?.defaultOutputStyle ?? null,
+                    onOutputStyleChange: chooseOutputStyle,
+                  }
+                : {})}
               placeholder={
                 streaming
                   ? 'Write the next message…'

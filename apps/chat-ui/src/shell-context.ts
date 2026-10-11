@@ -173,6 +173,15 @@ export interface ShellValue {
   permissionMode: string | null;
   choosePermissionMode(mode: 'default' | 'plan'): void;
   /**
+   * The output style stored on the thread on screen (`POST /chat/style`), or null for
+   * the agent's default — from the snapshot, or just set. Stored, not resolved: a name
+   * the selected agent does not declare reads as its default, which the picker shows.
+   * `chooseOutputStyle` sets it on the thread on screen, checked against the agent
+   * selected for the next message, from the next run.
+   */
+  outputStyle: string | null;
+  chooseOutputStyle(style: string | null): void;
+  /**
    * Debug mode. Off, the tab is the daily surface: the conversation, its threads
    * and workspace, and whatever waits on a person. On, the mechanism comes back —
    * the run instrument, the harness's pages, the header's agent, canary and
