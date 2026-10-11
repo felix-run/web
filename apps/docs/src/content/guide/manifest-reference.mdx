@@ -327,7 +327,7 @@ spec:
 | `calculator` | `{expression}` | Safe expression evaluator. |
 | `list_dir` | `{path}` | Max 500 entries. |
 | `read_file` | `{path, offset, limit}` | Max 512 KB; flags binary files. |
-| `write_file` | `{path, content, append}` | Max 512 KB. |
+| `write_file` | `{path, content, append}` | Max 512 KB. Like `edit_file` and `multi_edit`, refuses any path inside `.git` and any `.gitattributes`: they decide what git runs. |
 | `edit_file` | `{path, old_string, new_string, replace_all}` | Replaces one exact string, leaving the rest of the file untouched. Max 4 MB file; refuses a match it cannot find, and a match it finds more than once unless `replace_all` is set; refuses when the resulting file would exceed the limit before writing it. |
 | `multi_edit` | `{path, edits: [{old_string, new_string, replace_all}]}` | Up to 50 exact-string edits to one file, applied in order, each to the result of the one before. All land or none do: an edit `edit_file` would refuse refuses them all, and the file is written once, only if it has not changed since it was read. Max 512 KB file; use `edit_file` above that. |
 | `search_files` | `{query, path, regex, max_hits}` | ≤ 50 hits; skips files over 256 KB. |
