@@ -289,6 +289,13 @@ export interface ManifestVersionRow {
   created_at?: number;
   created_by?: string;
   comment?: string;
+  /**
+   * What the harness found worth saying about the stored manifest without
+   * refusing it (`felix-run/felix#591`) — e.g. an approval rule that gates
+   * `write_file` while `delete_file` is bound ungated. `[]` when clean; absent
+   * from a harness older than that. The version is stored either way.
+   */
+  warnings?: string[];
 }
 
 /**
