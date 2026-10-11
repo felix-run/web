@@ -1280,7 +1280,12 @@ browser cannot do rather than about the chat:
   screen — it was nothing on screen, and every tool ran and returned into silence. The card now
   carries one truncated result line, and a spilled output gets `· 48k more [a1]`; `/artifact 1`
   fetches it into `$PAGER` between `renderer.suspend()` and `resume()`, the same dance `ctrl+e`
-  does, with `resume` in a `finally` for the same reason. Handles are numbered across the whole
+  does, with `resume` in a `finally` for the same reason. (Until 2026-10-11 that command was in
+  `/help` and documented but had **no `case` in `runCommand`**, so it printed the help; it is
+  there now, beside `/skills` and `/skill <name>` — the read-only skill library as plain text from
+  `src/skill-report.ts`, paged the same way rather than a ninth inspector tab, which would not
+  fit. `tests/skill-commands.test.ts` drives all three through `runCommand` with a stubbed
+  `show`, since the app's own runs a real pager.) Handles are numbered across the whole
   transcript in `src/artifacts.ts`, because the card and the command have to agree what `1` means.
   `parseArtifactMarker` matches only at the **end** of an output — one quoted mid-text is a tool
   talking *about* an artifact — and the id it validates is 32 hex characters, so a shorter one

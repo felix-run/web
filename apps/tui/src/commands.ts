@@ -35,6 +35,7 @@ import type { Config } from './config.js';
 import { explainError } from './errors.js';
 import { SECTIONS } from './inspector.js';
 import { BINDINGS } from './keys.js';
+import { skillReport, skillsOverview } from './skill-report.js';
 import { oneLine } from './text.js';
 import type { ThreadStore } from './threads.js';
 
@@ -57,6 +58,7 @@ export const HELP = [
   '/new /clear /continue /think <level> /plan /style [name] /ask <question> /manifest [name] /start <n> /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n] /version <n>',
   '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
+  '/skills /skill <name>   the skill library, read-only, in $PAGER',
   ...(['chat', 'threads', 'inspector'] as const).flatMap((where) => [
     '',
     `${where}:`,
@@ -469,6 +471,66 @@ export function runCommand(ctx: CommandContext, line: string): void {
       // rail has no way to have heard of it.
       void refreshThreads().then(() => setNotice('threads refreshed'));
       return;
+    case 'artifact': {
+      // `/artifact <n> [file]`: the full text behind a spilled output's `[a<n>]` handle, in the
+      // pager, or written to `file` when one is named (never over an existing file).
+      const [which, file] = arg.split(/\s+/).filter(Boolean);
+      const spill = ctx.spills().find((s) => String(s.handle) === which);
+      if (!spill) {
+        const n = ctx.spills().length;
+        setNotice(
+          n
+            ? `usage: /artifact <n>, n from 1 to ${n} — the [aN] on a tool card`
+            : 'nothing in this thread was spilled to an artifact',
+        );
+        return;
+      }
+      void client
+        .getArtifact(spill.ref.manifestId, spill.ref.artifactId)
+        .then((a) => {
+          if (!file) {
+            ctx.show(a.content, `artifact-${spill.handle}.txt`);
+            return;
+          }
+          const path = resolve(root, file);
+          if (existsSync(path)) {
+            setNotice(`${file} exists; not overwriting it`);
+            return;
+          }
+          writeFileSync(path, a.content, { encoding: 'utf8', mode: 0o600 });
+          setNotice(`artifact ${spill.handle} written to ${path}`);
+        })
+        .catch((err) => engine.setError(explainError(err, 'read that artifact', config)));
+      return;
+    }
+    case 'skills':
+      void Promise.all([
+        client.listSkillReviewQueue({ limit: 50 }),
+        client.listLibrarySkills({ limit: 100 }),
+      ])
+        .then(([queue, skills]) =>
+          ctx.show(skillsOverview(queue.items, skills.items), 'skills.txt'),
+        )
+        .catch((err) => engine.setError(explainError(err, 'read the skill library', config)));
+      return;
+    case 'skill': {
+      if (!arg) {
+        setNotice('usage: /skill <name> — /skills lists them');
+        return;
+      }
+      void client
+        .getLibrarySkill(arg)
+        .then(async (detail) => {
+          // The gate's verdict on the newest draft, if there is one: what a reviewer decides on.
+          const draft = detail.versions.find((v) => v.status === 'draft');
+          const preview = draft
+            ? await client.previewSkillVersion(detail.name, draft.version).catch(() => null)
+            : null;
+          ctx.show(skillReport(detail, preview), `skill-${detail.name}.txt`);
+        })
+        .catch((err) => engine.setError(explainError(err, `read the skill ${arg}`, config)));
+      return;
+    }
     case 'quit':
       exit();
       return;
