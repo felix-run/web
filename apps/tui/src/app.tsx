@@ -436,6 +436,12 @@ export function App({
           }
           // Refused for a durable run still going on the thread. It never landed either;
           // the engine is watching that run now, so the next send waits for it.
+          // Refused for a reason a resend will not change (a pinned thread, an
+          // unknown agent): it never landed, and the engine's error line says why.
+          if (outcome === 'refused') {
+            engine.setTurns(engine.state.turns.filter((t) => t.id !== userId));
+            fill(text);
+          }
           if (outcome === 'run_in_progress') {
             engine.setTurns(engine.state.turns.filter((t) => t.id !== userId));
             fill(text);

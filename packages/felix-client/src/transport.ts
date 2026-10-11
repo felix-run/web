@@ -31,6 +31,7 @@ import {
   IdempotencyKeyReusedError,
   LeaseRefusedError,
   RunInProgressError,
+  SendRefusedError,
   StreamInProgressError,
 } from './errors';
 import { createHttp, type FelixClientOptions } from './http';
@@ -463,6 +464,9 @@ export function createFelixClient(opts: FelixClientOptions) {
         if (res.status === 422 && detail === 'idempotency_key_reused') {
           throw new IdempotencyKeyReusedError();
         }
+      }
+      if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+        throw new SendRefusedError(res.status, await detailOf(res));
       }
       if (!res.ok || !res.body) {
         throw new Error(`chat/stream: ${res.status} ${await detailOf(res)}`);

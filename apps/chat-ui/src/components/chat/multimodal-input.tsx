@@ -127,6 +127,14 @@ export const RESEND_NOTICE =
 export const RUN_BUSY_NOTICE =
   'A run is still going on this conversation. Your message is back in the composer; sending it again queues it until the run finishes.';
 
+/**
+ * Said when the harness refused the message for a reason a resend will not change — a
+ * thread pinned to another agent, say. The reason is in the transcript's error line;
+ * this one must not promise that sending again will help.
+ */
+export const REFUSED_NOTICE =
+  'Your message is back in the composer. The harness refused it for the reason shown, so sending it unchanged will be refused again.';
+
 /** Said when the harness refused a resend's key (`422 idempotency_key_reused`). */
 export const REKEYED_NOTICE =
   'Your message is back in the composer. Sending it again sends it as a new message.';

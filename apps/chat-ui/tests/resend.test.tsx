@@ -273,6 +273,41 @@ describe('a send that failed', () => {
     expect(r.keys()[2]).not.toBe(r.keys()[0]);
   });
 
+  it('says why the harness refused it, and does not promise a resend will help', async () => {
+    const r = recorder();
+    const server = leaseServer({
+      stream: r.answer([
+        new Response(
+          JSON.stringify({ detail: 'thread pinned to triage: quick cannot continue it' }),
+          { status: 409 },
+        ),
+        sse(DONE),
+      ]),
+    });
+    mount('/t/thread-pin');
+    await READY(server, 'thread-pin');
+
+    await type('to the other agent');
+    await waitFor(() =>
+      expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+        'this thread is pinned to triage, so quick cannot continue it',
+      ),
+    );
+    await waitFor(() => expect(composer()?.value).toBe('to the other agent'));
+    expect(
+      await screen.findByText(
+        'Your message is back in the composer. The harness refused it for the reason shown, so sending it unchanged will be refused again.',
+      ),
+    ).toBeTruthy();
+    // Never landed, so it is in the composer and not the transcript.
+    expect(times('to the other agent')).toBe(0);
+
+    // Nothing ran under the first key, so a resend is a new message.
+    await resend();
+    await waitFor(() => expect(r.seen).toHaveLength(2));
+    expect(r.keys()[1]).not.toBe(r.keys()[0]);
+  });
+
   it('is a new message once edited, under a new key', async () => {
     const r = recorder();
     const server = leaseServer({ stream: r.answer([new TypeError('Failed to fetch')]) });

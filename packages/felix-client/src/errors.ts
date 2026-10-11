@@ -73,6 +73,21 @@ export class RunInProgressError extends Error {
 }
 
 /**
+ * `POST /chat/stream` answered 4xx before taking the message — a pinned thread, an
+ * unknown agent, a screening refusal — for a reason sending it again will not change.
+ * The message never landed. `408` and `429` are not this: those are worth a retry.
+ * The message keeps the `chat/stream: <status> <body>` shape `describeError` reads.
+ */
+export class SendRefusedError extends Error {
+  readonly status: number;
+  constructor(status: number, body: string) {
+    super(`chat/stream: ${status} ${body}`);
+    this.name = 'SendRefusedError';
+    this.status = status;
+  }
+}
+
+/**
  * `POST /chat/stream` refused an `Idempotency-Key` it had already seen with a
  * different body (`422 idempotency_key_reused`). Nothing ran, and the key can
  * never send this body: a resend has to go out as a new message, under a new key.
