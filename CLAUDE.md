@@ -947,6 +947,13 @@ Flows worth knowing before editing the app:
   the id `__default__`, labelled plain `default` — the trigger shows it in a 10rem cap, where
   "Default (terse)" read "Defaul…" — with the style it stands for in its description. The
   terminal has `/style [name|default]`.
+- **Side questions** (`/ask <question>`, `POST /chat/ask`). Answered from the thread's context and
+  added to nothing, so the answer is **never a turn**: chat-ui draws it as `SideAnswerCard` above
+  the composer (`ShellValue.sideQuestion`, keyed by thread), the terminal as a notice. The
+  composer answers `/ask` **before** its watching/reattaching/queue guards, because a side question
+  takes no lease and writes nothing — mid-run and watching are exactly when it is wanted. A thread
+  the harness has never seen is said (`SideQuestionError` `unknown_thread`, or `unsentRef`), not
+  asked. `/ask` is this client's, so an agent command of that name is shadowed, like `/new`.
 - **Spilled tool outputs** — a manifest with `artifacts.enabled` replaces any oversized tool result
   with a preview plus `[artifact:<id> key=… chars=N]`, and the rest lives in the object store.
   `parseArtifactMarker` in `@felix/protocol` reads that reference off the end of a tool output (only

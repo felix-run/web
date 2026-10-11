@@ -101,6 +101,7 @@ export const continueChat = felix.continueChat.bind(felix);
 export const setThinkingLevel = felix.setThinkingLevel.bind(felix);
 export const setPermissionMode = felix.setPermissionMode.bind(felix);
 export const setOutputStyle = felix.setOutputStyle.bind(felix);
+export const askAboutThread = felix.askAboutThread.bind(felix);
 export const acquireSessionLease = felix.acquireSessionLease.bind(felix);
 export const releaseSessionLease = felix.releaseSessionLease.bind(felix);
 export const getSessionLease = felix.getSessionLease.bind(felix);

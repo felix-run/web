@@ -319,6 +319,30 @@ function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   return entry;
 }
 
+/** `POST /chat/ask`'s answer. */
+export interface SideAnswer {
+  status: 'answered' | 'not_in_context' | 'withheld';
+  /** Empty when withheld. */
+  answer: string;
+  /** The agent that answered: the one the thread last ran under. */
+  manifest?: string;
+}
+
+/**
+ * `POST /chat/ask` refused: `code` is the `detail` (`unknown_thread`, `unknown_manifest`,
+ * a governance refusal's text) or the body's head.
+ */
+export class SideQuestionError extends Error {
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string) {
+    super(`ask: ${status} ${code}`);
+    this.name = 'SideQuestionError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 /** The thread's workspace on the harness (`GET /chat/workspace/tree`). */
 export interface HarnessWorkspaceTree {
   rootKind: 'scoped' | 'checkout';
@@ -1084,6 +1108,32 @@ export function createFelixClient(opts: FelixClientOptions) {
       });
       await refuseIfLease(res, 'thinking', args.threadId);
       if (!res.ok) throw new Error(`thinking: ${res.status} ${await detailOf(res)}`);
+    },
+
+    /**
+     * POST /chat/ask — answer one question from the thread's context, adding nothing to it.
+     *
+     * Answered by the thread's own agent under a turn's controls, with no tools and no write:
+     * no session event, no lease (so it works mid-run and from a tab that is only watching),
+     * one metered model call. `status` is `answered`, `not_in_context` when the conversation
+     * does not hold the answer, or `withheld` when a final-response judge refused it. A thread
+     * the harness has no record of is a 404 `unknown_thread`, thrown as `SideQuestionError`.
+     */
+    async askAboutThread(args: { threadId: string; question: string }): Promise<SideAnswer> {
+      const res = await chatFetch('/chat/ask', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ thread_id: args.threadId, question: args.question }),
+      });
+      if (!res.ok) throw new SideQuestionError(res.status, await codeOf(res));
+      const body = (await res.json()) as { status?: unknown; answer?: unknown; manifest?: unknown };
+      const status =
+        body.status === 'not_in_context' || body.status === 'withheld' ? body.status : 'answered';
+      return {
+        status,
+        answer: typeof body.answer === 'string' ? body.answer : '',
+        ...(typeof body.manifest === 'string' ? { manifest: body.manifest } : {}),
+      };
     },
 
     /**

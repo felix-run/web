@@ -28,7 +28,7 @@ import type {
   ManifestStarter,
   ThreadMeta,
 } from '@felix/client';
-import { threadSuffix } from '@felix/client';
+import { SideQuestionError, threadSuffix } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
 import type { Spill } from './artifacts.js';
 import type { Config } from './config.js';
@@ -54,7 +54,7 @@ const SEARCH_LIMIT = 5;
  * eight while this string still named six.
  */
 export const HELP = [
-  '/new /clear /continue /think <level> /plan /style [name] /manifest [name] /start <n> /quit',
+  '/new /clear /continue /think <level> /plan /style [name] /ask <question> /manifest [name] /start <n> /quit',
   '/rename <name> /fork /compact /export [file] /rewind [n] /version <n>',
   '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
   ...(['chat', 'threads', 'inspector'] as const).flatMap((where) => [
@@ -65,6 +65,9 @@ export const HELP = [
   '',
   `the inspector's sections: ${SECTIONS.map((s) => s.name.toLowerCase()).join(', ')}`,
 ].join('\n');
+
+/** How much of a side question's answer a notice shows; the rest is said, not dropped silently. */
+const ASIDE_MAX = 600;
 
 /** A hit, a title, a path — one line each, because a notice is one line each. */
 const NOTICE_WIDTH = 60;
@@ -232,6 +235,36 @@ export function runCommand(ctx: CommandContext, line: string): void {
           ctx.outputStyle.current = before;
           engine.setError(explainError(err, 'change the output style', config));
         });
+      return;
+    }
+    // A side question: answered from the thread's context and added to nothing, so it runs
+    // mid-run and from a watching client. The answer is a notice, never a turn.
+    case 'ask': {
+      if (!arg) {
+        setNotice('/ask <question> — answered from this conversation, and not added to it');
+        return;
+      }
+      setNotice('asking…');
+      void client
+        .askAboutThread({ threadId: threadIdRef.current, question: arg })
+        .then(({ status, answer }) => {
+          const body =
+            status === 'withheld'
+              ? "the agent's reply controls withheld this answer"
+              : status === 'not_in_context'
+                ? "this conversation doesn't hold the answer — ask the agent directly to have it look"
+                : answer.length > ASIDE_MAX
+                  ? `${answer.slice(0, ASIDE_MAX).trimEnd()}… (${answer.length - ASIDE_MAX} more characters)`
+                  : answer;
+          setNotice(`aside, not added to the conversation:\n${body}`);
+        })
+        .catch((err) =>
+          setNotice(
+            err instanceof SideQuestionError && err.code === 'unknown_thread'
+              ? 'nothing to ask about yet: the harness has no record of this conversation'
+              : explainError(err, 'answer that question', config),
+          ),
+        );
       return;
     }
     case 'manifest':

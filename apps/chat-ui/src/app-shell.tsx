@@ -3,11 +3,13 @@ import {
   branchPoints,
   type ChatEngine,
   createChatEngine,
+  describeError,
   eventsToTurns,
   LeaseRefusedError,
   type ManifestEntry,
   mergeSessions,
   routedDiffReader,
+  SideQuestionError,
   snapshotToEvents,
   type ThreadMeta,
   titleFromText,
@@ -52,6 +54,7 @@ import {
   abortChat,
   acquireSessionLease,
   addEvalItem,
+  askAboutThread as askThread,
   bindLeases,
   compactSession,
   continueChat,
@@ -146,6 +149,7 @@ import {
   type RunClock,
   ShellProvider,
   type ShellValue,
+  type SideQuestion,
 } from '@/shell-context';
 import type {
   ChatMessage,
@@ -1889,6 +1893,40 @@ export function AppShell() {
     });
   }, []);
 
+  // The last side question, keyed by thread like the style: another thread's answer never shows.
+  const [side, setSide] = useState<({ thread: string } & SideQuestion) | null>(null);
+
+  /**
+   * `/ask`: a side question about the thread on screen, answered beside the transcript. No
+   * lease and no write, so it runs mid-run and from a watching tab. A thread the harness has
+   * never seen has nothing to answer from, which is said rather than sent.
+   */
+  const askAboutThread = useCallback(async (question: string) => {
+    const id = threadIdRef.current;
+    const settle = (patch: Partial<SideQuestion>) =>
+      setSide((was) =>
+        was?.thread === id && was.question === question
+          ? { ...was, ...patch, pending: false }
+          : was,
+      );
+    setSide({ thread: id, question, pending: true });
+    if (unsentRef.current.has(id)) {
+      settle({ error: 'This conversation has nothing to ask about yet: send a message first.' });
+      return;
+    }
+    void askThread({ threadId: id, question })
+      .then((answer) => settle({ answer }))
+      .catch((err) =>
+        settle({
+          error:
+            err instanceof SideQuestionError && err.code === 'unknown_thread'
+              ? 'The harness has no record of this conversation yet, so there is nothing to ask about.'
+              : describeError(err, 'answer that question').message,
+        }),
+      );
+  }, []);
+  const dismissSideQuestion = useCallback(() => setSide(null), []);
+
   /** `/plan`: into plan mode, or back out of it. */
   const togglePlanMode = useCallback(() => {
     const current = poolRef.current?.peek(threadIdRef.current)?.state.permissionMode ?? null;
@@ -2720,6 +2758,9 @@ export function AppShell() {
     choosePermissionMode,
     outputStyle: storedStyle.thread === threadId ? storedStyle.style : null,
     chooseOutputStyle,
+    sideQuestion: side?.thread === threadId ? side : null,
+    askAboutThread,
+    dismissSideQuestion,
     debug,
     setDebug,
     inspectClient,

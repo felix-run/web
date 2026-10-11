@@ -12,6 +12,7 @@ import { InstallHint } from '@/components/chat/install-hint';
 import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { PushHint } from '@/components/chat/push-hint';
+import { SideAnswerCard } from '@/components/chat/side-answer';
 import { TurnCheckpoint } from '@/components/chat/turn-checkpoint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { WATCHING_REFUSAL, WatchingBanner } from '@/components/chat/watching-banner';
@@ -126,6 +127,9 @@ export function Workbench() {
     choosePermissionMode,
     outputStyle,
     chooseOutputStyle,
+    sideQuestion,
+    askAboutThread,
+    dismissSideQuestion,
     debug,
     harnessReachable,
     inspectorOpen,
@@ -386,6 +390,7 @@ export function Workbench() {
             ) : null}
             {!empty && <InstallHint />}
             {!empty && <PushHint />}
+            {sideQuestion && <SideAnswerCard side={sideQuestion} onDismiss={dismissSideQuestion} />}
             <MultimodalInput
               status={streaming ? 'streaming' : 'ready'}
               reattaching={reattaching}
@@ -400,6 +405,7 @@ export function Workbench() {
               onStop={stopRun}
               onSlashCommand={onSlashCommand}
               agentCommands={agentCommands}
+              onAsk={askAboutThread}
               models={modelOptions}
               modelId={manifest}
               onModelChange={setManifest}

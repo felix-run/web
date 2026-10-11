@@ -3,6 +3,7 @@ import type {
   ChatEngine,
   EngineDiagnostics,
   ManifestEntry,
+  SideAnswer,
   ThreadMeta,
 } from '@felix/client';
 import { createContext, type Dispatch, type SetStateAction, useContext } from 'react';
@@ -32,6 +33,14 @@ type EngineState = ChatEngine['state'];
  * narrow props: the split is by *lifetime*, not by topic, so the honest shape of
  * the seam is "all of the shell's state, read-only to whoever is below it".
  */
+/** A side question and how it stands: waiting, answered, or failed with a sentence. */
+export interface SideQuestion {
+  question: string;
+  pending: boolean;
+  answer?: SideAnswer;
+  error?: string;
+}
+
 export interface ShellValue {
   /** The live run. */
   turns: EngineState['turns'];
@@ -181,6 +190,14 @@ export interface ShellValue {
    */
   outputStyle: string | null;
   chooseOutputStyle(style: string | null): void;
+  /**
+   * The last `/ask` on the thread on screen and its answer (`POST /chat/ask`), or null. Never a
+   * turn: the harness adds nothing to the thread, so the transcript must not either.
+   */
+  sideQuestion: SideQuestion | null;
+  /** Ask about the thread on screen; resolves once the question is under way. */
+  askAboutThread(question: string): Promise<void>;
+  dismissSideQuestion(): void;
   /**
    * Debug mode. Off, the tab is the daily surface: the conversation, its threads
    * and workspace, and whatever waits on a person. On, the mechanism comes back —
