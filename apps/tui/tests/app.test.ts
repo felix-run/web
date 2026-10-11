@@ -295,6 +295,18 @@ describe('slash commands', () => {
     h.restore();
   });
 
+  it('/ask answers beside the conversation, and sends no message', async () => {
+    const { ui, h, frame } = await run('/ask which file did it edit?', {
+      routes: { '/chat/ask': { status: 'answered', answer: 'It edited notes.md.', usage: {} } },
+    });
+    await ui.until(() => shows(frame(), 'It edited notes.md.'));
+    expect(shows(frame(), 'not added to the conversation')).toBe(true);
+    expect(h.to('/chat/ask')[0]?.body).toMatchObject({ question: 'which file did it edit?' });
+    expect(h.to('/chat/stream')).toHaveLength(0);
+    ui.stop();
+    h.restore();
+  });
+
   it('shows help for a command that does not exist', async () => {
     const { ui, h, frame } = await run('/nope');
     // The help text is the list of real commands, so any one of them proves it.

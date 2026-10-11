@@ -85,6 +85,7 @@ import { PaperclipIcon, StopIcon } from './icons';
 import { QueuedMessages } from './queued-messages';
 import {
   AGENT_COMMAND,
+  ASK_COMMAND,
   agentSlashCommands,
   findSlashCommand,
   matchSlashCommands,
@@ -238,6 +239,11 @@ export type MultimodalInputProps = {
    * client does not know is refused here.
    */
   agentCommands?: readonly ManifestCommand[];
+  /**
+   * Answer `/ask <question>` beside the transcript (`POST /chat/ask`). Throw to keep the
+   * question in the composer. Without it `/ask` is refused.
+   */
+  onAsk?: (question: string) => Promise<void>;
   /** Available manifests for the inline selector. Pass an empty array (default) to hide it. */
   models?: ReadonlyArray<ModelOption>;
   modelId?: string;
@@ -314,6 +320,7 @@ function MultimodalInputInner({
   onSlashCommand,
   enabledSlashCommands,
   agentCommands,
+  onAsk,
   models,
   modelId,
   onModelChange,
@@ -510,7 +517,7 @@ function MultimodalInputInner({
       }
       // The agent's own command is the harness's to run: put it in the composer, ready for
       // its arguments, and let it be sent as text. The space closes the menu.
-      if (cmd.action === AGENT_COMMAND) {
+      if (cmd.action === AGENT_COMMAND || cmd.action === ASK_COMMAND) {
         controller.textInput.setInput(`/${cmd.name} `);
         setSlashIndex(0);
         return true;
@@ -539,6 +546,16 @@ function MultimodalInputInner({
       if (trimmed.startsWith('/')) {
         const name = trimmed.slice(1).split(/\s+/)[0]?.toLowerCase() ?? '';
         const cmd = findSlashCommand(name, agentMenu);
+        if (cmd?.action === ASK_COMMAND) {
+          // Answered before the guards below on purpose: a side question takes no lease and
+          // writes nothing, so it is the one thing a watching tab, or one mid-run, may send.
+          const question = trimmed.slice(1 + name.length).trim();
+          if (!onAsk) refuseSubmit('/ask is not available here.');
+          if (!question) refuseSubmit('Type a question after /ask. Nothing was sent.');
+          if (!isConnected) refuseSubmit('Not connected to the harness. Nothing was sent.');
+          await onAsk?.(question);
+          return;
+        }
         if (cmd?.action === AGENT_COMMAND) {
           // Sent as typed: the harness expands it into the agent's prompt.
         } else if (cmd) {
@@ -575,6 +592,7 @@ function MultimodalInputInner({
       controller,
       handleSlashSelect,
       agentMenu,
+      onAsk,
     ],
   );
 

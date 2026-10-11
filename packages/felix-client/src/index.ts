@@ -188,6 +188,8 @@ export {
   type ManifestOutputStyle,
   type ManifestStarter,
   type ManifestWorkspace,
+  type SideAnswer,
+  SideQuestionError,
   type StreamArgs,
   type StreamHandlers,
   WorkspaceChangedError,

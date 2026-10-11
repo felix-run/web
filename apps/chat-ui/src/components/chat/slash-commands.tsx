@@ -4,6 +4,7 @@ import {
   Bug,
   ClipboardList,
   Eraser,
+  MessageCircleQuestion,
   Palette,
   PenSquare,
   Play,
@@ -29,6 +30,13 @@ export type SlashCommand = {
  * harness as typed, which expands it into the manifest's prompt.
  */
 export const AGENT_COMMAND = 'agent';
+
+/**
+ * `/ask <question>`: a side question about the thread (`POST /chat/ask`), answered beside the
+ * transcript and added to nothing. Like an agent's command it takes words after the name, so
+ * choosing it from the menu fills the composer rather than running.
+ */
+export const ASK_COMMAND = 'ask';
 
 /**
  * The agent's commands as menu entries, after this client's own: a name this client already
@@ -97,6 +105,13 @@ export const slashCommands: SlashCommand[] = [
     description: 'Cycle thinking level (off → max)',
     icon: <Brain className="size-3.5" />,
     action: 'think',
+  },
+  {
+    name: 'ask',
+    description: 'Ask about this conversation without adding to it',
+    icon: <MessageCircleQuestion className="size-3.5" />,
+    action: ASK_COMMAND,
+    argumentHint: '<question>',
   },
   {
     name: 'plan',

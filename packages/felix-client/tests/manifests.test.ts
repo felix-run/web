@@ -204,3 +204,51 @@ describe('greeting', () => {
     ]);
   });
 });
+
+describe('side questions', () => {
+  function asking(status: number, body: unknown) {
+    const sent: Array<{ url: string; body: unknown; headers: Record<string, string> }> = [];
+    const fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+      sent.push({
+        url: String(input),
+        body: JSON.parse(String(init.body)),
+        headers: (init.headers ?? {}) as Record<string, string>,
+      });
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof globalThis.fetch;
+    return { sent, client: createFelixClient({ baseUrl: '/api', headers: () => ({}), fetch }) };
+  }
+
+  it('asks POST /chat/ask, with no lease, and reads each status', async () => {
+    const { sent, client } = asking(200, {
+      thread_id: 'default:t1',
+      manifest: 'cowork',
+      status: 'answered',
+      answer: 'notes.md',
+      usage: {},
+    });
+    await expect(
+      client.askAboutThread({ threadId: 't1', question: 'which file?' }),
+    ).resolves.toEqual({ status: 'answered', answer: 'notes.md', manifest: 'cowork' });
+    expect(sent[0]?.url).toBe('/api/chat/ask');
+    expect(sent[0]?.body).toEqual({ thread_id: 't1', question: 'which file?' });
+    // A side question writes nothing, so it carries no lease token to be refused on.
+    expect(Object.keys(sent[0]?.headers ?? {}).map((h) => h.toLowerCase())).not.toContain(
+      'x-felix-lease-token',
+    );
+
+    const missing = asking(200, { status: 'not_in_context', answer: '' });
+    await expect(
+      missing.client.askAboutThread({ threadId: 't1', question: 'q' }),
+    ).resolves.toMatchObject({ status: 'not_in_context' });
+  });
+
+  it('throws the refusal with its code', async () => {
+    const { client } = asking(404, { detail: 'unknown_thread' });
+    await expect(client.askAboutThread({ threadId: 't1', question: 'q' })).rejects.toMatchObject({
+      name: 'SideQuestionError',
+      status: 404,
+      code: 'unknown_thread',
+    });
+  });
+});
