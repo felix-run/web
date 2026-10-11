@@ -568,7 +568,10 @@ summary.
 Flows worth knowing before editing the app:
 
 - **Streaming** — `POST /chat/stream`, SSE decoded with a carry buffer (frames split across network
-  chunks). Deltas append to the current turn; `on_tool_start`/`on_tool_end` become inline tool cards;
+  chunks). Deltas append to the current turn (`on_chat_model_stream` only until a `text_delta` has
+  been seen: an older harness's composite patterns sent every chunk under both names); tool frames
+  become inline tool cards, matched to their card by id **and** name, because a client tool's
+  `tool_start` and `tool_request` share the call's id;
   usage arrives on `done` (`felix-run/felix#399`) as the final model call's block — never on
   `on_chain_end`, whose `output` reaches the wire as a Python repr string. `input` there is the
   **uncached** prompt only, so anything showing tokens goes through `promptTokens`; reading
@@ -803,9 +806,11 @@ Flows worth knowing before editing the app:
   the *grant's* lifetime — approving authorizes every byte-identical call to that tool, matched on
   a hash of the arguments, until it expires — which is why the prompt says so rather than implying
   `y` allows one call.
-  The deadline arrives only on the `/approvals` row; the **frame carries none**. So `syncApprovals`
-  returns deadlines for *every* pending approval rather than only the ones it is adding, and the
-  engine backfills them onto approvals that arrived by frame and are therefore already `seen`.
+  The frame carries the row's deadline as `expires_at` on a current harness, but **null when the
+  rule set no TTL** (the harness then waits its default from the row's creation, which the frame
+  does not carry) and absent on an older one. So `syncApprovals` still returns deadlines for
+  *every* pending approval rather than only the ones it is adding, and the engine backfills them
+  onto approvals that arrived by frame and are therefore already `seen`.
   **`/approvals` is tenant-wide, so adoption is thread-scoped.** It is the only channel a durable
   run's approval has, and without a filter every pending approval in the tenant was lifted into
   whichever thread happened to be open — the transcript banner asking an operator to authorise a

@@ -109,10 +109,10 @@ export interface PendingApproval {
   /**
    * Epoch ms after which the harness stops waiting and denies.
    *
-   * Absent on an approval known only from its frame: the frame carries no
-   * deadline, and the `/approvals` poll is what fills it in. That is a second
-   * reason the poll earns its place in a *watched* client, beyond finding the
-   * approvals no frame announced.
+   * From the frame's `expires_at` when the harness sends one; otherwise — a rule
+   * with no TTL, or an older harness — absent until the `/approvals` poll fills it
+   * in. That is a second reason the poll earns its place in a *watched* client,
+   * beyond finding the approvals no frame announced.
    */
   expiresAt?: number | null;
   /**

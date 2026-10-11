@@ -120,6 +120,8 @@ export type StreamEvent =
         reason?: string;
         thread_id?: string;
         tool_call_id?: string | null;
+        /** Epoch ms the harness stops waiting; null when the rule set no TTL. */
+        expires_at?: number | null;
       };
     }
   /** The agent is asking the user; answer with POST /chat/ui. */
