@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AUTO_FOLLOW_PAGES, LibraryList } from '../src/components/skills/library-list';
 import { fakeHarness, mountWithProviders } from './skill-fixtures';
@@ -144,5 +144,53 @@ describe('LibraryList', () => {
     expect((await screen.findByRole('status')).textContent).toMatch(
       /No skill in the library matches/,
     );
+  });
+
+  it('leaves out-of-use skills out of the default view, and says where they are', async () => {
+    const archived = { ...summary('retired'), pending_drafts: 0 };
+    const h = fakeHarness((req) =>
+      req.path.startsWith('/skill-library?')
+        ? { body: { items: [archived, summary('working')], next_cursor: null } }
+        : undefined,
+    );
+    const onFilter = vi.fn();
+    const { unmount } = mountWithProviders(
+      <LibraryList filter={{}} onFilter={onFilter} linkTo={(x) => x} />,
+    );
+    expect(await screen.findByRole('link', { name: 'working' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'retired' })).toBeNull();
+    // One route, no status: in use is sorted out here.
+    expect(h.requests[0]?.path).not.toContain('status=');
+    unmount();
+
+    // All has them, and asks the route for every row too.
+    mountWithProviders(
+      <LibraryList filter={{ status: 'all' }} onFilter={onFilter} linkTo={(x) => x} />,
+    );
+    expect(await screen.findByRole('link', { name: 'retired' })).toBeTruthy();
+    expect(h.requests.at(-1)?.path).not.toContain('status=');
+  });
+
+  it('says how many are archived when nothing is in use, rather than calling it empty', async () => {
+    fakeHarness((req) =>
+      req.path.startsWith('/skill-library?')
+        ? {
+            body: {
+              items: [
+                { ...summary('a'), pending_drafts: 0 },
+                { ...summary('b'), pending_drafts: 0 },
+              ],
+              next_cursor: null,
+            },
+          }
+        : undefined,
+    );
+    const onFilter = vi.fn();
+    mountWithProviders(<LibraryList filter={{}} onFilter={onFilter} linkTo={(x) => x} />);
+    const line = await screen.findByRole('status');
+    expect(line.textContent).toMatch(/No skill is in use\. 2 archived skills are under Archived/);
+    expect(line.textContent).not.toMatch(/empty/);
+    fireEvent.click(within(line).getByRole('button', { name: 'Archived' }));
+    expect(onFilter).toHaveBeenCalledWith({ status: 'archived' });
   });
 });
