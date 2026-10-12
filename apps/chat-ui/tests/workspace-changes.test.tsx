@@ -432,7 +432,7 @@ describe('the workspace file tree', () => {
    */
   it('opens onto what this thread changed and leaves the rest folded', async () => {
     tab.files = ['notes/one.md', 'notes/two.md', 'src/app.ts', 'README.md'];
-    mount({ turns: [assistant([call('write_file', { path: 'notes/one.md' })])] });
+    mount({ turns: [assistant([call('local_write', { path: 'notes/one.md' })])] });
     const tree = await screen.findByRole('tree', { name: 'Files' });
     const one = await within(tree).findByText('one.md');
     expect(one.textContent).toContain('changed on this thread');
@@ -440,6 +440,17 @@ describe('the workspace file tree', () => {
     expect(within(tree).getByText('two.md').className).toContain('text-muted-foreground');
     // `src` holds nothing this thread touched, so it starts folded.
     expect(within(tree).queryByText('app.ts')).toBeNull();
+    tab.files = [];
+  });
+
+  // A path names a file in each store. A write the harness's tools made is not
+  // a change to the browser's copy, so it neither unfolds nor marks it there.
+  it("leaves the browser's tree alone for a write that landed on the harness", async () => {
+    tab.files = ['notes/one.md', 'README.md'];
+    mount({ turns: [assistant([call('write_file', { path: 'notes/one.md' })])] });
+    const tree = await screen.findByRole('tree', { name: 'Files' });
+    await within(tree).findByText('README.md');
+    expect(within(tree).queryByText('one.md')).toBeNull();
     tab.files = [];
   });
 

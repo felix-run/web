@@ -10,7 +10,7 @@ import {
 import { HarnessFilesSection } from '@/components/workspace/harness-files';
 import { ThreadRepoSection } from '@/components/workspace/thread-repo';
 import { WorkspaceFileTree } from '@/components/workspace/workspace-section';
-import { collectChanges, treePath } from '@/lib/changes';
+import { changeSource, collectChanges, treePath } from '@/lib/changes';
 import { hasMount, mountTree, supportsDirectoryPicker, vfs } from '@/lib/cowork';
 import { disconnectFolder, mountFolder, reconnectFolder, useMount } from '@/lib/mount-state';
 import { lastOpenedFile, requestFileAction, usePaneState } from '@/lib/side-pane';
@@ -52,15 +52,18 @@ export function FilesView() {
   const canMount = supportsDirectoryPicker();
 
   /**
-   * Which files this thread's calls changed, so the trees open onto them and draw
-   * them in the foreground. The list itself is the instrument's Changes tab; see
-   * `collectChanges` for what counts as a change.
+   * Which files this thread's calls changed, per workspace, so each tree opens
+   * onto its own and draws them in the foreground. Split by store because a path
+   * names a file in each: one set for both trees unfolded `notes/` in the browser
+   * when the write had landed in `notes/` on the harness. The list itself is the
+   * instrument's Changes tab; see `collectChanges` for what counts as a change.
    */
   const changes = useMemo(() => collectChanges(turns), [turns]);
-  const changedPaths = useMemo(
-    () => new Set(changes.filter((c) => c.changed).map((c) => treePath(c.path))),
-    [changes],
-  );
+  const changed = useMemo(() => {
+    const out = { browser: new Set<string>(), harness: new Set<string>() };
+    for (const c of changes) if (c.changed) out[changeSource(c)].add(treePath(c.path));
+    return out;
+  }, [changes]);
 
   const facts = [
     browser &&
@@ -90,12 +93,12 @@ export function FilesView() {
       )}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain border-t border-border/60 px-4 pt-3 pb-6">
         <ThreadRepoSection threadId={threadId} streaming={streaming} />
-        {harness && <HarnessFilesSection changed={changedPaths} />}
+        {harness && <HarnessFilesSection changed={changed.harness} />}
         {browser && (
           <BrowserFiles
             threadId={threadId}
-            changedPaths={changedPaths}
-            anyChange={changes.some((c) => c.changed)}
+            changedPaths={changed.browser}
+            wroteOnHarness={changed.harness.size > 0}
             mounted={mount.label}
             streaming={streaming}
             labelled={harness}
@@ -197,7 +200,7 @@ function readBrowserOpen(): boolean {
 function BrowserFiles({
   threadId,
   changedPaths,
-  anyChange,
+  wroteOnHarness,
   mounted,
   streaming,
   labelled,
@@ -205,8 +208,8 @@ function BrowserFiles({
 }: {
   threadId: string;
   changedPaths: ReadonlySet<string>;
-  /** A write landed somewhere on this thread — on the harness, perhaps, not here. */
-  anyChange: boolean;
+  /** A write on this thread landed on the harness, not here. */
+  wroteOnHarness: boolean;
   mounted: string | null;
   streaming: boolean;
   /** Beside another root, so it needs its name. */
@@ -274,7 +277,7 @@ function BrowserFiles({
           <p className="text-xs text-muted-foreground">
             {mounted
               ? 'This folder is empty.'
-              : anyChange && !labelled
+              : wroteOnHarness && !labelled
                 ? "Nothing in this tab. This thread's writes ran on the harness."
                 : 'Nothing here yet. Files the agent writes appear here.'}
           </p>

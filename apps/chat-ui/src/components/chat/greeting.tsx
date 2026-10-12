@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { CutId } from '@/components/cut-id';
 import { getMountLabel } from '@/lib/cowork';
 import { cn } from '@/lib/utils';
+import { inBrowser, onHarness } from '@/lib/workspace-tools';
 import { useShell } from '@/shell-context';
 import { StarterPrompts } from './starter-prompts';
 
@@ -25,7 +26,12 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
   // The manifest's own words, when it has them (`metadata.greeting`); each half
   // falls back on its own, so a manifest can change the headline and keep the
   // sentence that names the agent.
-  const greeting = manifestEntries.find((m) => m.id === manifest)?.greeting;
+  const entry = manifestEntries.find((m) => m.id === manifest);
+  const greeting = entry?.greeting;
+  // Where this agent's file tools work. The folder is the browser's, so it is
+  // named only for an agent that works there; an agent with none has no
+  // workspace to read out, and "none mounted" beside it read as something to fix.
+  const tools = entry?.workspace?.tools;
 
   return (
     // `flex-1` + `justify-center`: the greeting is the only child of the transcript
@@ -82,12 +88,23 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
           <dt>Agent</dt>
           <dd className="truncate font-mono text-foreground">{manifest}</dd>
         </div>
-        <div className="flex min-w-0 gap-1.5">
-          <dt>Folder</dt>
-          <dd className="truncate">
-            {folder ? <span className="font-mono text-foreground">{folder}</span> : 'none mounted'}
-          </dd>
-        </div>
+        {inBrowser(tools) ? (
+          <div className="flex min-w-0 gap-1.5">
+            <dt>Folder</dt>
+            <dd className="truncate">
+              {folder ? (
+                <span className="font-mono text-foreground">{folder}</span>
+              ) : (
+                'none mounted'
+              )}
+            </dd>
+          </div>
+        ) : onHarness(tools) ? (
+          <div className="flex min-w-0 gap-1.5">
+            <dt>Files</dt>
+            <dd>on the harness</dd>
+          </div>
+        ) : null}
         <div className="flex min-w-0 gap-1.5">
           <dt>Thread</dt>
           {/* Cut from the middle, like every id that tells rows apart: the tail
