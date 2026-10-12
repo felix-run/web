@@ -1224,6 +1224,29 @@ and enums.
   stored and capped, and screened as an untrusted tool's are, which means they are quarantined
   when `content_screening.image_model` is unset.
 
+## `POST /triggers/{id}`
+
+Starts a durable run from a signed event, for a trigger the operator registered in
+`FELIX_TRIGGERS` ([setup](/guide/deploy/#inbound-triggers)). No `Authorization` header: the
+sender signs the body with the trigger's secret, as Standard Webhooks or GitHub specify. The body
+must be UTF-8 JSON of at most 256 KiB.
+
+| Status | Body | When |
+|---|---|---|
+| `202` | `{"status":"accepted","run_id"}` | The run is queued. Watch it with `GET /chat/runs/{run_id}`, or let the manifest's `spec.execution.webhooks` announce its end. |
+| `202` | the same, with `idempotent-replayed: true` | A delivery already accepted. For Standard Webhooks the same `webhook-id`; for GitHub the same signed body, whatever `X-GitHub-Delivery` says. |
+| `200` | `{"status":"ignored"}` | The event type is not one the trigger runs for (not in `events`, or GitHub's `ping`). Remembered like an accepted delivery. |
+| `401` | `invalid_signature` | No trigger has this id, or the signature is missing, stale or wrong, or the delivery id is malformed. One answer for all of them, so ids cannot be probed; the reason is in the server log. |
+| `409` | `delivery_in_progress` / `delivery_id_reused` | The same delivery is being handled now, or a `webhook-id` came back with a different body. |
+| `413` | `payload_too_large` | |
+| `422` | `invalid_payload` | Not UTF-8 JSON. |
+| `429` | `rate_limited` | The trigger's per-minute limit is spent. Not remembered: a retry may succeed. |
+| `503` | `trigger_unavailable` | The trigger cannot start its run: its secret did not resolve or is too short, its manifest is missing, refuses the trigger's principal, or does not list `trigger_event`. |
+
+The run's user turn is the trigger's `prompt`. The payload arrives only when the model calls
+`trigger_event`, which returns the event type, delivery id and the body as sent, marked as
+third-party data.
+
 ## Well-known
 
 | Method | Path | Notes |
