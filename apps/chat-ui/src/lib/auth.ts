@@ -18,6 +18,11 @@
 
 const KEY_STORAGE = 'felix.apiKey';
 const SESSION_STORAGE = 'felix.session';
+/**
+ * Which provider this browser last signed in with. Kept past sign-out on purpose — that is when
+ * the gate asks — and it names a provider, never an account.
+ */
+const LAST_PROVIDER_STORAGE = 'felix.lastSignInProvider';
 
 /** Who minted a session's identity: how it is renewed, and whether a GitHub connection can exist. */
 export type SignInProvider = 'github' | 'google';
@@ -131,7 +136,14 @@ export function activeSession(now = Date.now()): GitHubSession | null {
 export function setSession(session: GitHubSession): void {
   write(KEY_STORAGE, null);
   write(SESSION_STORAGE, JSON.stringify(session));
+  write(LAST_PROVIDER_STORAGE, session.provider ?? 'github');
   notify();
+}
+
+/** The provider this browser last signed in with, for the gate's "Last used" badge. */
+export function lastSignInProvider(): SignInProvider | null {
+  const value = read(LAST_PROVIDER_STORAGE);
+  return value === 'github' || value === 'google' ? value : null;
 }
 
 export function clearSession(): void {

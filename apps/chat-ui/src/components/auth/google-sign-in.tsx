@@ -9,6 +9,7 @@
 import { Button } from '@felix/ui/button';
 import { Loader2Icon } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
+import { LastUsedBadge } from './last-used-badge';
 
 /** Google's "G", in its own colours. Used only on the control that signs in with it. */
 export function GoogleMark({ className }: { className?: string }) {
@@ -38,9 +39,12 @@ export function GoogleMark({ className }: { className?: string }) {
 export function GoogleButton({
   redirect,
   variant = 'default',
+  lastUsed = false,
 }: {
   redirect: () => void;
   variant?: 'default' | 'outline';
+  /** This browser signed in with Google last: say so on the button. */
+  lastUsed?: boolean;
 }) {
   const [leaving, setLeaving] = useState(false);
   useEffect(() => {
@@ -53,7 +57,7 @@ export function GoogleButton({
     <Button
       type="button"
       variant={variant}
-      className="h-10 w-full"
+      className="relative h-10 w-full"
       disabled={leaving}
       aria-busy={leaving}
       onClick={() => {
@@ -67,6 +71,7 @@ export function GoogleButton({
         <GoogleMark className="size-4" />
       )}
       {leaving ? 'Opening Google…' : 'Continue with Google'}
+      {lastUsed && !leaving && <LastUsedBadge />}
     </Button>
   );
 }

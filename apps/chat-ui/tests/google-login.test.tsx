@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountChip } from '../src/components/account-chip';
 import { Gate } from '../src/components/gate';
-import { getSession, setRelockHandler, setSession } from '../src/lib/auth';
+import { getSession, setRelockHandler, setSession, signOut } from '../src/lib/auth';
 
 /**
  * Google sign-in, at the wire: the harness offers it on `/auth/methods` as `google_redirect`, the
@@ -208,5 +208,85 @@ describe('the account chip, for a Google session', () => {
     fireEvent.click(screen.getByRole('button', { name: /signed in as @octo/i }));
     expect(await screen.findByRole('button', { name: /^sign in again$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /continue with google/i })).toBeNull();
+  });
+});
+
+describe('the "Last used" badge', () => {
+  const BOTH = () =>
+    json({
+      github_device: true,
+      github_redirect: true,
+      google_redirect: true,
+      bearer_required: true,
+    });
+  const button = (name: RegExp) => screen.getByRole('button', { name });
+
+  it('marks nothing on a browser that has never signed in', async () => {
+    routes['/api/auth/methods'] = BOTH;
+    renderGate();
+    await screen.findByRole('button', { name: /continue with github/i });
+    expect(screen.getByText(/sign in with github or google/i)).toBeTruthy();
+    expect(screen.queryByText('Last used')).toBeNull();
+  });
+
+  it('marks Google, and leads with it, after a Google sign-in this browser signed out of', async () => {
+    routes['/api/auth/methods'] = BOTH;
+    setSession({
+      token: 'old',
+      expiresAt: Date.now() + 1000,
+      login: '',
+      tenant: 'kids',
+      scopes: [],
+      provider: 'google',
+    });
+    signOut();
+    renderGate();
+    await screen.findByRole('button', { name: /continue with github/i });
+    expect(button(/continue with google/i).textContent).toContain('Last used');
+    expect(button(/continue with github/i).textContent).not.toContain('Last used');
+    expect(button(/continue with google/i).getAttribute('data-variant')).toBe('default');
+    expect(button(/continue with github/i).getAttribute('data-variant')).toBe('outline');
+  });
+
+  it('marks GitHub after a GitHub sign-in, including one stored before providers were recorded', async () => {
+    routes['/api/auth/methods'] = BOTH;
+    setSession({
+      token: 'old',
+      expiresAt: Date.now() + 1000,
+      login: 'octo',
+      tenant: 'acme',
+      scopes: [],
+    });
+    signOut();
+    renderGate();
+    await screen.findByRole('button', { name: /continue with github/i });
+    expect(button(/continue with github/i).textContent).toContain('Last used');
+    expect(button(/continue with google/i).textContent).not.toContain('Last used');
+  });
+
+  it('is not drawn where there is only one way in', async () => {
+    setSession({
+      token: 'old',
+      expiresAt: Date.now() + 1000,
+      login: '',
+      tenant: 'kids',
+      scopes: [],
+      provider: 'google',
+    });
+    signOut();
+    renderGate();
+    await screen.findByRole('button', { name: /continue with google/i });
+    expect(screen.queryByText('Last used')).toBeNull();
+  });
+
+  it('is recorded by the sign-in itself, on the way back from Google', async () => {
+    routes['/api/auth/methods'] = BOTH;
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with google/i }));
+    cleanup();
+    window.history.replaceState(null, '', '/#felix_login=ok');
+    renderGate();
+    await screen.findByText('chat is open');
+    expect(localStorage.getItem('felix.lastSignInProvider')).toBe('google');
   });
 });
