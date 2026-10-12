@@ -37,6 +37,29 @@ export interface GitHubSession {
   scopes: string[];
   /** Absent means GitHub: every session stored before Google sign-in existed was one. */
   provider?: SignInProvider;
+  /** A Google session's account, as Google described it at sign-in; shown, never sent. */
+  email?: string;
+  name?: string;
+  /** An https URL on Google's image host, or absent. */
+  picture?: string;
+}
+
+/**
+ * A picture URL as the account chip may draw it: https, on Google's image host. The harness
+ * checks this too; it is checked again here because the session is read back from storage, and
+ * an `<img src>` is the one place a stored string reaches the network.
+ */
+export function safePicture(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 2048) return undefined;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return url.protocol === 'https:' && !url.username && host.endsWith('.googleusercontent.com')
+      ? value
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Which credential a 401 was answering — the gate says something different for each. */
@@ -111,6 +134,9 @@ function parseSession(raw: string | null): GitHubSession | null {
         tenant: s.tenant,
         scopes: Array.isArray(s.scopes) ? s.scopes.filter((x) => typeof x === 'string') : [],
         provider: s.provider === 'google' ? 'google' : 'github',
+        email: typeof s.email === 'string' && s.email ? s.email : undefined,
+        name: typeof s.name === 'string' && s.name ? s.name : undefined,
+        picture: safePicture(s.picture),
       };
     }
   } catch {

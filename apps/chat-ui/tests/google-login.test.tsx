@@ -290,3 +290,76 @@ describe('the "Last used" badge', () => {
     expect(localStorage.getItem('felix.lastSignInProvider')).toBe('google');
   });
 });
+
+describe("a Google session's profile", () => {
+  const PIC = 'https://lh3.googleusercontent.com/a/ACg8oc=s96-c';
+
+  it('is kept from the sign-in, for the chip to show', async () => {
+    routes['/api/auth/google/exchange'] = () =>
+      json({ ...TOKEN, email: 'jade@example.com', name: 'Jade Bauman', picture: PIC });
+    sessionStorage.setItem('felix.signInProvider', 'google');
+    window.history.replaceState(null, '', '/#felix_login=ok');
+    renderGate();
+    await screen.findByText('chat is open');
+    expect(getSession()).toMatchObject({
+      email: 'jade@example.com',
+      name: 'Jade Bauman',
+      picture: PIC,
+    });
+  });
+
+  it('names the person, by first name on the chip and in full with their email inside', async () => {
+    setSession({
+      token: 'felix-jwt',
+      expiresAt: Date.now() + 3_600_000,
+      login: '',
+      tenant: 'kids',
+      scopes: [],
+      provider: 'google',
+      email: 'jade@example.com',
+      name: 'Jade Bauman',
+      picture: PIC,
+    });
+    render(<AccountChip />);
+    const chip = screen.getByRole('button', { name: 'Signed in as Jade Bauman' });
+    expect(chip.textContent).toContain('Jade');
+    expect(chip.textContent).not.toContain('Bauman');
+    fireEvent.click(chip);
+    expect(await screen.findByText('jade@example.com')).toBeTruthy();
+  });
+
+  it('falls back to the email, then the tenant, when Google withheld the name', () => {
+    setSession({
+      token: 't',
+      expiresAt: Date.now() + 3_600_000,
+      login: '',
+      tenant: 'kids',
+      scopes: [],
+      provider: 'google',
+      email: 'jade@example.com',
+    });
+    render(<AccountChip />);
+    expect(screen.getByRole('button', { name: 'Signed in as jade@example.com' })).toBeTruthy();
+  });
+
+  it('drops a stored picture that is not on Google’s image host', () => {
+    for (const bad of [
+      'http://lh3.googleusercontent.com/a',
+      'https://evil.example.com/a.googleusercontent.com',
+      'https://lh3.googleusercontent.com@evil.example.com/a',
+      'javascript:alert(1)',
+    ]) {
+      localStorage.setItem(
+        'felix.session',
+        JSON.stringify({
+          token: 't',
+          expiresAt: Date.now() + 60_000,
+          tenant: 'kids',
+          provider: 'google',
+          picture: bad,
+        }),
+      );
+      expect(getSession()?.picture).toBeUndefined();
+    }
+  });
+});

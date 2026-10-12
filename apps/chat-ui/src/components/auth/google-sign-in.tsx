@@ -105,7 +105,7 @@ export function GoogleSignIn({
         <GoogleButton redirect={redirect} />
         <p className="text-xs text-muted-foreground">
           Only the accounts this deployment has listed can sign in. Felix keeps your Google email
-          address and nothing else from Google.
+          address; your name and picture are shown in this browser and kept nowhere else.
         </p>
       </div>
       {alternative && <div className="border-t border-border/60 pt-4">{alternative}</div>}
