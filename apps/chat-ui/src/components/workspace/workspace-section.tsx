@@ -86,16 +86,29 @@ function readFilesOpen(): boolean {
   }
 }
 
-export function WorkspaceSection({ className }: { className?: string }) {
+export function WorkspaceSection({
+  className,
+  foldedByDefault = false,
+}: {
+  className?: string;
+  /**
+   * Start folded and do not remember the fold — on `/harness`, where the section
+   * follows the page's own navigation and opening it is a one-off. The stored
+   * fold is the thread side's, and left as it was.
+   */
+  foldedByDefault?: boolean;
+}) {
   const { turns, streaming, threadId, openInPane } = useShell();
   const folderRequest = useFolderRequest();
-  const [folded, setFolded] = useState(readFolded);
+  const [folded, setFolded] = useState(() => foldedByDefault || readFolded());
   const toggleFolded = () =>
     setFolded((f) => {
-      try {
-        localStorage.setItem(FOLD_KEY, f ? '0' : '1');
-      } catch {
-        // Storage blocked: the fold lasts for this page.
+      if (!foldedByDefault) {
+        try {
+          localStorage.setItem(FOLD_KEY, f ? '0' : '1');
+        } catch {
+          // Storage blocked: the fold lasts for this page.
+        }
       }
       return !f;
     });

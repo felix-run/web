@@ -280,6 +280,56 @@ describe('the harness address', () => {
     );
   });
 
+  /**
+   * On `/harness` the destinations are the page's own navigation, so they lead the
+   * sidebar's lower region and the workspace follows, folded — without touching
+   * the thread side's stored fold. Debug off on a thread, the few harness rows sit
+   * first too, in the same frame, so arriving inserts rows below Activity.
+   */
+  it('leads the lower region with the harness on /harness, workspace folded after', async () => {
+    mount('/harness/agent');
+    const lower = await waitFor(() => {
+      const el = document.querySelector('[data-slot="sidebar-lower"]');
+      expect(el?.querySelector('nav[aria-label="Harness"]')).toBeTruthy();
+      return el as HTMLElement;
+    });
+    const nav = lower.querySelector('nav[aria-label="Harness"]') as HTMLElement;
+    const workspace = lower.querySelector('[data-slot="workspace-section"]') as HTMLElement;
+    expect(nav.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Show workspace' })).toBeTruthy();
+    expect(localStorage.getItem('felix.sidebar.workspaceFolded')).toBeNull();
+  });
+
+  it('folds the workspace on arrival from a thread, where it was open', async () => {
+    // Debug off: there the thread side draws the section at the same index as
+    // `/harness` does, which is what kept its open state across the move.
+    localStorage.removeItem('felix.debug');
+    mount('/t/keep-me');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Hide workspace' })).toBeTruthy(),
+    );
+    await act(async () => {
+      go('/harness/activity');
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Show workspace' })).toBeTruthy(),
+    );
+  });
+
+  it('draws debug off’s harness rows first, in the /harness frame', async () => {
+    localStorage.removeItem('felix.debug');
+    mount('/t/keep-me');
+    const daily = await waitFor(() => {
+      const el = document.querySelector('[data-slot="daily-harness"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const lower = document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement;
+    expect(lower.firstElementChild).toBe(daily);
+    expect(daily.querySelector('h2')?.textContent).toBe('Harness');
+    expect(daily.textContent).toContain('What happened');
+  });
+
   it('does not let a remembered fold hide the destinations on /harness', async () => {
     localStorage.setItem('felix.sidebar.harnessFolded', '1');
     mount('/harness/jobs');

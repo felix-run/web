@@ -355,3 +355,32 @@ describe('Skills tells loading from none, and names only a real thread', () => {
     );
   });
 });
+
+/**
+ * One failed read is usually the harness shedding a burst. A page that passes
+ * `failures` says the first one in neutral and the second in red — the attention
+ * line's rule — rather than a red alert on a page that has nothing else on it.
+ */
+describe('a single failed read', () => {
+  it('reads as rechecking first, and as a failure the second time in a row', async () => {
+    const { SectionBody } = await import('../src/components/inspector/primitives');
+    const err = Object.assign(new Error('audit: 429'), { status: 429 });
+    const body = (failures: number) => (
+      <SectionBody
+        loading={false}
+        error={err}
+        doing="load activity"
+        emptyText="Nothing"
+        failures={failures}
+        lastOkAt={null}
+      >
+        rows
+      </SectionBody>
+    );
+    const { rerender } = render(body(1));
+    expect(screen.getByRole('status').textContent).toMatch(/^Rechecking/);
+    expect(screen.queryByRole('alert')).toBeNull();
+    rerender(body(2));
+    expect(screen.getByRole('alert')).toBeTruthy();
+  });
+});

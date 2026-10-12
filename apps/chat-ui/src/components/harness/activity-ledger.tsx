@@ -23,7 +23,7 @@ import {
 } from '@/components/harness/activity';
 import { keepAgent } from '@/components/harness/harness-agent';
 import { PageEmpty, PageHeader, PanelBody, plural } from '@/components/harness/panel';
-import { relTime, SectionBody, tsToMs } from '@/components/inspector/primitives';
+import { relTime, SectionBody, tsToMs, withAge } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/usePoll';
 import { middleTruncate } from '@/lib/format';
 import {
@@ -147,7 +147,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   // Polling stops while a thread is open: a new event re-sorts the list and moves
   // the row being read out from under the reader, and what they opened has already
   // happened. `usePoll` refetches on the false→true edge, so closing it catches up.
-  const { data, error, loading, lastOkAt, refresh } = usePoll(
+  const { data, error, loading, lastOkAt, failures, refresh } = usePoll(
     async () => {
       const now = Date.now();
       const { since, fellBack } = resolveWindow(win, now, lastVisit);
@@ -206,7 +206,13 @@ export function ActivityLedger({ docs }: { docs?: string }) {
         title="Activity"
         docs={docs}
         valueLead={data && failing > 0 ? `${account} ·` : undefined}
-        value={data ? (failing > 0 ? `${failing} with failures` : account) : undefined}
+        // Kept through a failed read, with its age, rather than dropped: the
+        // figure is still the last thing the harness said.
+        value={
+          data
+            ? withAge(failing > 0 ? `${failing} with failures` : account, error ? lastOkAt : null)
+            : undefined
+        }
         valueTone={failing > 0 ? 'failed' : 'default'}
         controls={
           <Select value={win} onValueChange={(v) => setWin(v as LedgerWindow)}>
@@ -227,6 +233,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
         <SectionBody
           onRetry={refresh}
           lastOkAt={lastOkAt}
+          failures={failures}
           doing="load activity"
           loading={loading && !data}
           error={error}

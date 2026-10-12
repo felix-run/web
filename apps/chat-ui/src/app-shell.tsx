@@ -2795,7 +2795,8 @@ export function AppShell() {
         {/* The first Tab stop: past the sidebar's list, its workspace and the
             harness's nine pages to whatever the address shows. Every address puts
             its content in one `main`; focus moves there rather than to an anchor,
-            because the sheet scrolls itself and the page never does. */}
+            because the sheet scrolls itself and the page never does. Its padding
+            is stated under `focus:`, since `not-sr-only` resets padding to 0. */}
         <button
           type="button"
           onClick={() => {
@@ -2804,7 +2805,7 @@ export function AppShell() {
             main.tabIndex = -1;
             main.focus();
           }}
-          className="sr-only rounded-md bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sheet outline-none focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus-visible:ring-[3px] focus-visible:ring-ring"
+          className="sr-only rounded-md bg-background text-sm font-medium text-foreground shadow-sheet outline-none focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-1.5 focus-visible:ring-[3px] focus-visible:ring-ring"
         >
           Skip to content
         </button>
@@ -3223,7 +3224,7 @@ export function AppShell() {
                       <span className="flex flex-col">
                         Debug
                         <span className="text-xs text-muted-foreground">
-                          Run instrument, harness pages, ids
+                          Run instrument, every harness page, ids
                         </span>
                       </span>
                     </DropdownMenuCheckboxItem>

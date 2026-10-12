@@ -427,7 +427,9 @@ too.
 **The sidebar has two scroll regions, one above the other, and does not scroll as a whole**
 (2026-10-08). The thread list is `flex-1 min-h-0` and scrolls its own rows under a heading and
 search that do not scroll; the workspace and the harness's pages are one region below it
-(`data-slot="sidebar-lower"`), `max-h-[40svh]` with its own `overflow-y-auto`; and the expanded
+(`data-slot="sidebar-lower"`), `h-[40svh]` — fixed, not a cap, since its rows change with the
+address and a region sized to them grew upward on arrival — with its own `overflow-y-auto`, and its
+order follows the address (Harness first on `/harness` and in debug off's frame on a thread); and the expanded
 `SidebarContent` is `overflow-y-hidden`. Before the list scrolled at all, an opened Older pushed the
 workspace and the harness's pages fifty rows down. Then the list scrolled but the sidebar did too,
 and on production a mounted folder's file tree — itself a third scroller — put three scrollbars
