@@ -28,7 +28,7 @@
 
 import { Spinner } from '@felix/ui/spinner';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
-import { getAuthMethods, githubAuthorizeUrl, googleAuthorizeUrl } from '@/api';
+import { getAuthMethods, githubAuthorizeUrl } from '@/api';
 import {
   authHeaders,
   type CredentialKind,
@@ -44,7 +44,9 @@ import {
 import {
   completeRedirectSignIn,
   describeFailure,
+  redirectToGoogle,
   rememberRedirectProvider,
+  returnTo,
   useDeviceLogin,
 } from '@/lib/github-login';
 import { AccessKeyForm } from './auth/access-key-form';
@@ -160,7 +162,7 @@ function forgetIfRejected(result: Extract<Probe, { ok: false }>): void {
 
 function rejectedMessage(kind: CredentialKind): string {
   return kind === 'session'
-    ? 'Your GitHub sign-in has ended. Sign in again.'
+    ? 'Your sign-in has ended. Sign in again.'
     : 'That key was rejected. Try again.';
 }
 
@@ -180,11 +182,6 @@ function probeMessage(result: Extract<Probe, { ok: false }>, kind: CredentialKin
 }
 
 type Check = { open: true } | { open: false; error: string | null; options: Options };
-
-/** Where a redirect sign-in comes back to: this page, without the fragment the harness writes. */
-function returnTo(): string {
-  return `${window.location.origin}${window.location.pathname}${window.location.search}`;
-}
 
 /**
  * Verify what is stored; failing that, ask the deployment what it offers. An
@@ -342,10 +339,7 @@ export function Gate({ children }: { children: ReactNode }) {
     />
   );
 
-  const toGoogle = () => {
-    rememberRedirectProvider('google');
-    window.location.assign(googleAuthorizeUrl(returnTo()));
-  };
+  const toGoogle = redirectToGoogle;
   const keyLink = options.key ? switchLink('Use an access key instead', true) : undefined;
 
   let card: ReactNode;

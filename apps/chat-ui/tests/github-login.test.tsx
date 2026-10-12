@@ -259,7 +259,7 @@ describe('the gate, when the harness offers GitHub', () => {
       scopes: [],
     });
     renderGate();
-    await screen.findByText(/your github sign-in has ended/i);
+    await screen.findByText(/your sign-in has ended/i);
     expect(calls.some((c) => JSON.stringify(c.init?.headers ?? {}).includes('Bearer old'))).toBe(
       false,
     );
@@ -277,7 +277,7 @@ describe('the gate, when the harness offers GitHub', () => {
     renderGate();
     await screen.findByText('chat is open');
     act(() => handleUnauthorized());
-    await screen.findByText(/your github sign-in has ended/i);
+    await screen.findByText(/your sign-in has ended/i);
     expect(getSession()).toBeNull();
   });
 });
