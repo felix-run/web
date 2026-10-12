@@ -81,6 +81,19 @@ by default**, `0` keeps forever — text, owner record and row together. Uploads
 swept the same way but kept forever by default. Spills written before migration `0018` have no row
 and are not collected.
 
+File checkpoints follow a similar pattern for `/chat/rewind` with `restore_files`. Each change the
+model's file tools make in a thread's own workspace keeps the file's earlier content at
+`checkpoints/{tenant}/{sha256}`. That is once per tenant per distinct content, up to 512 KB a file and
+`FELIX_FILE_CHECKPOINT_MAX_BYTES_PER_TENANT` (256 MiB) in all. A `file_checkpoints` row records the
+change: its thread, the session event it is anchored to, the path, and the file's digest before and
+after.
+
+Content is deleted only once no row names it, and before the rows that named it, so drift is always a
+row naming an absent object. A rewind forgets the records of the branch it abandons. The nightly
+sweep forgets a file's whole history in a thread once its newest record is older than
+`FELIX_FILE_CHECKPOINT_RETENTION_DAYS` (7 by default, `0` keeps forever). It never sweeps part of a
+file's history, which would leave a rewind restoring an in-between state.
+
 Small VMs: `FELIX_OBJECT_STORE=fs` under `FELIX_DATA_DIR`. Helm: enable `persistence` so `/data`
 survives restarts.
 

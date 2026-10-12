@@ -1077,9 +1077,74 @@ metadata, and not the source thread itself. Otherwise the fork is refused with
 `409 {"detail": "thread_exists"}` and nothing is written. Mint a fresh id per fork (chat-ui and the
 TUI use a random UUID). Two forks racing to the same new id leave exactly one fork.
 
-`POST /chat/rewind` takes `{thread_id, event_id, summarize?, instructions?, manifest?}` and moves the
-active leaf back to `event_id`. Unless `summarize: false` (or `session.branch_summary: false`), the
-abandoned branch is summarized into a `branch_summary` event using the manifest's model.
+`POST /chat/rewind` takes `{thread_id, event_id, summarize?, instructions?, manifest?, restore_files?}`
+and moves the active leaf back to `event_id`. Unless `summarize: false` (or `session.branch_summary:
+false`), the abandoned branch is summarized into a `branch_summary` event using the manifest's model.
+
+### Restoring files on rewind
+
+With `restore_files: true`, the rewind also undoes what the agent's file tools did in the thread's
+own workspace on the branch it abandons. Every write, edit, delete, rename and multi-edit those tools
+make is recorded: the file as it was before, and as the tool left it. The rewind puts each changed
+file back to its state before the branch's first change. The answer gains `files`:
+
+```json
+{
+  "ok": true,
+  "leaf_id": "…",
+  "files": {
+    "restored": ["src/app.py"],
+    "removed": ["notes/draft.md"],
+    "conflicts": ["README.md"],
+    "skipped": [],
+    "truncated": false
+  }
+}
+```
+
+- `restored`: written back as it was. A file the branch deleted or renamed away is recreated.
+- `removed`: deleted, because it did not exist before the branch (a new file, or a rename's
+  destination).
+- `conflicts`: left alone, because it is no longer what the branch's last change left. Someone
+  edited it, or a shell command rewrote it.
+- `skipped`: left alone, because its earlier state was not kept. This covers files over 512 KB,
+  content past the tenant's ceiling, and content the store refused.
+- `truncated`: the branch changed files more than 2,000 times. Only the first 2,000 changes were
+  considered, and the rest can no longer be restored.
+
+If the restore itself fails (the database or object store is unavailable), the rewind still happens
+and `files` is `{"error": "unavailable"}`. The records are kept, so a later rewind can still restore.
+
+**Every rewind settles the branch it leaves.** With `restore_files` the branch's changes are put
+back; without it they are kept as they are. Either way the records of that branch are then
+forgotten. A later restore undoes only what changed after the last rewind, so rewinding twice to
+the same point never reaches back past the first rewind.
+
+**Each restore is audited.** It writes a `workspace_restore` audit row with the caller, thread, event
+and the four path lists, as file-pane writes and deletes do.
+
+A few limits apply:
+
+- **The thread's own workspace only.** A manifest whose `spec.workspace.scope` is `tenant` or
+  `deployment` shares its files across threads. Undoing one thread's branch there could remove a
+  file another thread relies on, so those changes are not recorded.
+- **Only the file tools are recorded.** A `shell_tools` command's writes are not, and neither are
+  the operator's file-pane edits. A file a command changed afterwards shows up as a conflict rather
+  than being silently overwritten.
+- **Rewinding onto another branch** undoes the abandoned branch's changes back to where the two
+  branches split. It does not replay the target branch's own changes.
+- **Recording never blocks a write.** If recording fails, the write goes ahead, the failure is
+  counted as `felix_file_checkpoint_failed`, and that change cannot be restored. If it was a file's
+  first change on the branch, a restore puts back the file's next recorded state.
+- **Storage.** Earlier contents are kept in the object store once per tenant, by digest, so a file
+  changed step after step is not stored again each time. A tenant keeps at most
+  `FELIX_FILE_CHECKPOINT_MAX_BYTES_PER_TENANT` (256 MiB); past that, changes are recorded but not
+  kept. A file's records in a thread are swept once
+  `FELIX_FILE_CHECKPOINT_RETENTION_DAYS` (7 days) have passed since its last change there, however
+  busy the thread stays. Deleting a thread does not delete them sooner, so a file the agent deleted
+  can stay in the object store until then. `FELIX_FILE_CHECKPOINTS=false` records nothing.
+
+The Python client takes the same flag: `await client.rewind(event_id, restore_files=True)`.
 
 The next message appends as a child of the new leaf, so a rewind followed by a send creates a
 branch. `GET /chat/sessions/{id}` still returns **every** event on the session, across all
