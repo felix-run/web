@@ -428,7 +428,7 @@ function stubHarness({
 const auditCalls = (spy: ReturnType<typeof stubHarness>) =>
   spy.mock.calls.filter((c) => String(c[0]).includes('/api/audit')).length;
 
-function mount() {
+function mount(at = '/harness/activity') {
   const shell = {
     threads: [
       {
@@ -442,7 +442,7 @@ function mount() {
     ],
   } as unknown as ShellValue;
   return render(
-    <MemoryRouter initialEntries={['/harness/activity']}>
+    <MemoryRouter initialEntries={[at]}>
       <ShellProvider value={shell}>
         <ActivityLedger />
       </ShellProvider>
@@ -493,6 +493,34 @@ describe('the ledger page', () => {
     // that said the same three facts again is gone.
     expect(await screen.findAllByText('1 with failures', { selector: 'span' })).toHaveLength(1);
     expect(screen.queryByText(/threads? ran/)).toBeNull();
+  });
+
+  // The Jobs page links a job's spend to its entry here.
+  it('opens the entry `?thread=` names on arrival', async () => {
+    stubHarness({
+      events: [
+        ...failingTurn,
+        ev({
+          id: 'b1',
+          ts: now - 2 * MIN,
+          payload: { tool: 'read', thread_id: 'default:thread-b' },
+        }),
+      ],
+      threads: [],
+    });
+    mount('/harness/activity?since=24h&thread=thread-a');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /Changelog cleanup/, expanded: true } as Parameters<
+          typeof screen.getByRole
+        >[1]),
+      ).toBeTruthy(),
+    );
+    expect(
+      screen.getByRole('button', { name: /Read the docs/, expanded: false } as Parameters<
+        typeof screen.getByRole
+      >[1]),
+    ).toBeTruthy();
   });
 
   it('is one Tab stop, moved with the arrow keys, opened and closed from the keyboard', async () => {

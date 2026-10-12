@@ -1022,7 +1022,8 @@ Flows worth knowing before editing the app:
   harness without the route answers 404, `listUsageByThread` returns `null`, and the page says no
   thread can show a cost rather than drawing every one as free. The window opens on **since this
   browser last left the page** (`felix.activity.lastVisit`), falling back to 24h; window and
-  filters are in the address. **A reload is not a visit**: the stamp is written on unmount and
+  filters are in the address, and `?thread=<suffix>` opens one entry on arrival (the Jobs page links
+  a job's spend there; the poll still runs until its first answer, since an open entry pauses it). **A reload is not a visit**: the stamp is written on unmount and
   `pagehide` only after the page has been on screen `VISIT_MIN_MS` (5s), and a tab measures from
   the value it first read, held in `sessionStorage` (`felix.activity.sessionSince`) — before both,
   any reload, remount or second tab turned the window into "since a minute ago". The sidebar's
