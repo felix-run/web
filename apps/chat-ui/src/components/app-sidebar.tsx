@@ -272,40 +272,41 @@ export function AppSidebar() {
 
                 One order, on every address and in both modes: Harness, then the
                 workspace. It followed the address in debug, and the row clicked to
-                arrive jumped 142px when the two swapped. On `/harness` all nine
-                destinations show and the workspace is folded; on a thread debug
-                shows all nine and debug off its few rows, in the same frame, so
-                arriving only adds rows below Activity. */}
+                arrive jumped 142px when the two swapped. Debug shows all nine
+                destinations; debug off shows its few rows — Activity, and Skill
+                drafts while drafts wait — on `/harness` as on a thread, so nothing
+                changes under the pointer on arrival. On `/harness` the workspace
+                starts folded. */}
             <div
               data-slot="sidebar-lower"
-              className="flex h-[clamp(40svh,30rem,60svh)] flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+              className={cn(
+                'flex flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]',
+                // Debug off the rows are two at most, the same on every address, so
+                // the region is sized for them and an open workspace (still fixed,
+                // so nothing moves on arrival); 30rem would leave a band of nothing
+                // under the workspace where thread rows could be.
+                debug ? 'h-[clamp(40svh,30rem,60svh)]' : 'h-[min(40svh,19rem)]',
+              )}
             >
-              {onHarness ? (
-                <>
-                  <HarnessGroup collapsed={false} onNavigate={done} />
-                  <SidebarSeparator />
-                  {/* Keyed: the thread side draws a section at the same index, and
-                      React would keep its state — open — rather than start folded. */}
-                  <WorkspaceSection key="on-harness" foldedByDefault />
-                </>
-              ) : debug ? (
-                <>
-                  <HarnessGroup collapsed={false} onNavigate={done} />
-                  <SidebarSeparator />
-                  <WorkspaceSection />
-                </>
+              {debug ? (
+                <HarnessGroup collapsed={false} onNavigate={done} />
               ) : (
-                <>
-                  <DailyHarnessRows collapsed={false} onNavigate={done} />
-                  <SidebarSeparator />
-                  <WorkspaceSection />
-                </>
+                <DailyHarnessRows collapsed={false} onNavigate={done} />
+              )}
+              <SidebarSeparator />
+              {/* Keyed by address: the thread side draws the section at the same
+                  index, and React would keep its state — open — rather than start
+                  folded on `/harness`. */}
+              {onHarness ? (
+                <WorkspaceSection key="on-harness" foldedByDefault />
+              ) : (
+                <WorkspaceSection key="on-thread" />
               )}
             </div>
           </>
         )}
         {collapsed &&
-          (debug || onHarness ? (
+          (debug ? (
             <HarnessGroup collapsed onNavigate={done} />
           ) : (
             <DailyHarnessRows collapsed onNavigate={done} />
@@ -448,8 +449,8 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
  * question as much as debug's, and it was reachable only through a mode the menu
  * describes as ids and instruments. **Skill drafts**, only while there is a
  * reason to go — drafts an agent wrote, waiting on a person's review. The other
- * seven stay debug's, and are listed here only while the operator is already on
- * `/harness` (see `AppSidebar`).
+ * seven are debug's, on `/harness` too: debug off, the harness is Activity
+ * (and a review queue when one waits), not a console.
  *
  * A failed check keeps a count it already had (with its age); a check that never
  * answered draws nothing on these rows, because "unchecked" is a fact about the
@@ -466,6 +467,8 @@ function DailyHarnessRows({
   const activity = useActivityGlance();
   const drafts = useDraftGlance();
   const quiet = (g: typeof activity) => (g && g.tone !== 'unknown' ? g : undefined);
+  const atActivity = !!useMatch('/harness/activity/*');
+  const atSkills = !!useMatch('/harness/skills/*');
   const runs = [
     {
       key: 'happened' as const,
@@ -475,11 +478,14 @@ function DailyHarnessRows({
           label: 'Activity',
           icon: ActivityIcon,
           to: { pathname: '/harness/activity', search: navSearch('activity', search, activity) },
+          active: atActivity,
           glance: quiet(activity),
         },
       ],
     },
-    ...(drafts?.tone === 'blocked'
+    // Kept while the reader is on the skills page: publishing the last draft
+    // would otherwise take the row they are on out of the sidebar.
+    ...(drafts?.tone === 'blocked' || atSkills
       ? [
           {
             key: 'knows' as const,
@@ -489,7 +495,8 @@ function DailyHarnessRows({
                 label: 'Skill drafts',
                 icon: PuzzleIcon,
                 to: { pathname: '/harness/skills', search: '' },
-                glance: drafts,
+                active: atSkills,
+                glance: drafts?.tone === 'blocked' ? drafts : undefined,
               },
             ],
           },
@@ -497,8 +504,8 @@ function DailyHarnessRows({
       : []),
   ];
   // Drawn in `HarnessGroup`'s frame, row for row — the heading, each run's
-  // label, the same menu rows — so that arriving on `/harness` inserts the other
-  // destinations below Activity and moves nothing above it.
+  // label, the same menu rows — so turning debug on adds the other destinations
+  // below Activity and moves nothing above it.
   return (
     <SidebarGroup data-slot="daily-harness" className="pt-1">
       {!collapsed && (
@@ -518,14 +525,15 @@ function DailyHarnessRows({
             </p>
           )}
           <SidebarMenu aria-labelledby={collapsed ? undefined : `sidebar-daily-${key}`}>
-            {rows.map(({ key: rowKey, label, icon: Icon, to, glance }) => (
+            {rows.map(({ key: rowKey, label, icon: Icon, to, active, glance }) => (
               <SidebarMenuItem key={rowKey} data-slot={rowKey}>
                 <SidebarMenuButton
                   asChild
+                  isActive={active}
                   tooltip={label}
                   className="relative text-muted-foreground"
                 >
-                  <Link to={to} onClick={onNavigate}>
+                  <Link to={to} onClick={onNavigate} aria-current={active ? 'page' : undefined}>
                     <Icon aria-hidden />
                     <span className="min-w-0 flex-1 truncate">{label}</span>
                     {collapsed ? (

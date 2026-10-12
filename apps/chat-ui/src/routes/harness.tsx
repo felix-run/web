@@ -414,13 +414,25 @@ export function NavGlance({ glance }: { glance: Glance | undefined }) {
 function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; className?: string }) {
   const { search } = useHarnessAgent();
   const glance = useNavGlances();
+  // Debug off, the same pages the sidebar lists: Activity, and Skills while a
+  // draft waits on a review (or while the reader is on it). No shell — a test
+  // mounting the layout — lists everything.
+  const debug = useOptionalShell()?.debug ?? true;
+  const atSkills = !!useMatch('/harness/skills/*');
+  const listed = (path: HarnessPath) =>
+    debug ||
+    path === 'activity' ||
+    (path === 'skills' && (glance.skills?.tone === 'blocked' || atSkills));
+  const groups = GROUPS.filter(({ key }) =>
+    HARNESS_DESTINATIONS.some((d) => d.group === key && listed(d.path)),
+  );
   return (
     // Every link a Tab stop, as links are; the arrow keys are an extra on top.
     // A single roving stop made seven pages undiscoverable to anyone tabbing,
     // with nothing to say the arrows existed — roving focus is a pattern for
     // composite widgets, and a list of links is not one.
     <nav aria-label="Harness" className={cn('p-2', className)} onKeyDown={walkNav}>
-      {GROUPS.map(({ key, label }, gi) => (
+      {groups.map(({ key, label }, gi) => (
         <Fragment key={key}>
           {/* Shown, not only announced. The labels were `aria-label`s and the rule
               between the runs was `border/60` — about 6% white in dark — so a
@@ -433,7 +445,7 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
             {label}
           </p>
           <ul aria-labelledby={`harness-nav-${key}`} className="flex flex-col gap-0.5">
-            {HARNESS_DESTINATIONS.filter((d) => d.group === key).map(
+            {HARNESS_DESTINATIONS.filter((d) => d.group === key && listed(d.path)).map(
               ({ path, label: name, icon: Icon }) => (
                 <li key={path}>
                   {/* The agent rides along: moving between pages keeps looking at

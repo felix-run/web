@@ -361,8 +361,9 @@ or the header badge. Off, the shell renders **no instrument** — `useRails({ en
 closed and refuses to open it, keeping the stored preference for when debug returns, and the
 `Mod+'` handler checks `debugRef` — **one harness page** in the sidebar, *Activity* with its
 failure glance (`useActivityGlance`), since it answers "what happened while I was away" (2026-10-12),
-plus a *Skill drafts* row from `useDraftGlance` while drafts wait; on any `/harness` page the
-sidebar lists all nine, since they are that page's navigation — no agent id or canary in the header, no context
+plus a *Skill drafts* row from `useDraftGlance` while drafts wait — the same rows on `/harness`
+(2026-10-12: listing all nine there read as the mechanism leaking into the daily surface), and
+the 768–1024 rail and the phone index list the same — no agent id or canary in the header, no context
 meter below 90% full, and no tokens under turns. Approvals, questions, the attention line, the
 run-state chip and failed/denied tool cards are never debug's. On, the instrument's fourth tab is
 **Debug** (`components/inspector/debug-section.tsx`): `ShellValue.inspectClient()` reads the
@@ -411,8 +412,8 @@ and the nine harness destinations with their glances, grouped by the question ea
 popover off the workspace header, which had been the *only* way to switch threads; the workspace
 zone; and `/harness`'s resident nav rail, which is drawn now only between 768 and 1024, where the
 sidebar is a drawer, in the sidebar's row style on the ground. Inline, the sidebar lists the
-destinations on every `/harness` page in either mode, and its Harness group does not fold there,
-so a remembered fold cannot strand a page. On `/harness` the tab's thread is drawn *held* in the
+destinations in debug (its Harness group does not fold on `/harness`, so a remembered fold cannot
+strand a page) and Activity and Skill drafts with debug off, on every address. On `/harness` the tab's thread is drawn *held* in the
 list (`heldId`: a hairline outline, never the current row's fill, *This tab*, no `aria-current`) and
 the header's title slot is `ThreadReturn`, a link back to it drawn as a place (a chat glyph, no
 arrow, beside pages that carry their own back arrow); below `sm` the narrow index leads with
@@ -429,7 +430,7 @@ too.
 **The sidebar has two scroll regions, one above the other, and does not scroll as a whole**
 (2026-10-08). The thread list is `flex-1 min-h-0` and scrolls its own rows under a heading and
 search that do not scroll; the workspace and the harness's pages are one region below it
-(`data-slot="sidebar-lower"`), `h-[clamp(40svh,30rem,60svh)]` — fixed, not a cap, since its rows
+(`data-slot="sidebar-lower"`), `h-[clamp(40svh,30rem,60svh)]` in debug and `h-[min(40svh,19rem)]` off — fixed, not a cap, since its rows
 change with the address and a region sized to them grew upward on arrival; 30rem fits the nine
 destinations — with its own `overflow-y-auto`, and one order everywhere: Harness, then the
 workspace (folded on `/harness`, its mount controls inside the fold); and the expanded
