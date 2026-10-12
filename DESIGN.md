@@ -814,11 +814,16 @@ does not know is a muted word with **no dot**. The list is one Tab stop that rov
 heading, the total as a mono Figure, the unpriced warning, then the by-agent-and-model table on its
 own stone tray with no rule per row.
 
-The sidebar's workspace section has the sidebar's section header: a small muted **Workspace**
-label, then the mount as its value: the folder's name in mono, or *in-tab*. Its actions (*Mount a
-folder*, *Change folder* / *Disconnect*, *Reconnect <name>*) are an outline row beneath, never in
-the value slot. The section folds from a chevron at the row's right edge and remembers that it
-was folded. Under the header: the thread's repository on the harness, then **Files**.
+The sidebar's workspace is one menu row: a folder icon, **Workspace**, and the mount as its
+right-aligned value — the folder's name in mono, *in-tab*, or *on the harness*. A folder waiting on
+permission puts a small outline *Reconnect* beside the row in place of the value. Collapsed, the
+row is the icon alone, with a neutral dot while a reconnect waits. The row opens **Files**, the
+side pane's first tab: an item header (*Workspace*, or the mounted folder in mono, with its scope
+line) whose actions are the mount's — *Mount a folder*, *Change folder* / *Disconnect*,
+*Reconnect <name>* / *Other folder* — then, under a hairline, the thread's repository on the
+harness and the trees. A lone root is drawn open with no fold; beside another, each root is a
+folding row (*On the harness*, *This browser*) with its count. The tab carries a `state-done` dot
+while a write has landed since it was last in front.
 
 ### Changes tab
 

@@ -406,7 +406,7 @@ down to a `sm:min-w-52` floor, so the line keeps its sentence. Below `sm` the wo
 **The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
 New chat; the threads, grouped as Waiting on you, Running, Pinned, Today, Yesterday, Previous 7 days
 and Older (Older starts folded, showing its count, is cut by month when open, and folded still draws
-the current thread if it is there — never the other fifty — in a group named for it); the workspace section (`src/components/workspace/workspace-section.tsx`);
+the current thread if it is there — never the other fifty — in a group named for it); the Workspace row (`WorkspaceRow` in `src/components/workspace/workspace-section.tsx`);
 and the nine harness destinations with their glances, grouped by the question each answers
 (*What happened*, *What it knows*, *How it's set up*, `GROUPS`). It replaced three earlier things: a threads
 popover off the workspace header, which had been the *only* way to switch threads; the workspace
@@ -439,9 +439,13 @@ workspace and the harness's pages fifty rows down. Then the list scrolled but th
 and on production a mounted folder's file tree — itself a third scroller — put three scrollbars
 side by side, left the list eight rows and pushed the harness's pages off the bottom. The file
 trees no longer scroll on their own for the same reason: they sit inside the lower region's scroll.
-**Files starts folded** (`felix.sidebar.filesOpen`, remembered): even inside the one region, a
-mounted repository's tree held ~880px above the harness's pages, which were then a scroll away on
-every load. The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
+**The workspace is one row, and its trees are the side pane's Files tab** (2026-10-12). Even
+folded, a mounted repository's tree held ~880px above the harness's pages when open, and the file
+it opened appeared on the far side of the screen. The row says what is mounted (or *on the
+harness*), carries Reconnect beside it — never inside it — and opens Files; it is not drawn for an
+agent whose `felix.workspace.tools` is `none` (`useWorkspaceTools`, `src/lib/workspace-tools.ts`;
+absent means a harness older than the key, and keeps the browser's folder). The mount itself is
+one store for both surfaces (`src/lib/mount-state.ts`). The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
 Shift+F10 or a right click for the menu, Delete with the toast's undo); Delete lives in the menu,
 not as a one-click icon beside it. **A thread with a run going or something waiting asks before it
 is deleted** — inline, *Stop and delete* / *Keep* — because the abort is immediate and Undo restores
@@ -463,8 +467,8 @@ every row the attention line was already offering — two Approve buttons and tw
 apart for one call — so the instrument is Changes, Plans and Tools, and decides nothing.
 **Changes is first and open by default** (2026-10-06): it is derived from the transcript, so opening
 the rail asks the harness for nothing until another tab is chosen. It moved there from the
-sidebar's workspace section, which keeps *where* tools work — the mount, the thread's repository,
-the files — while the instrument holds what this thread's calls did. The tabs no longer sit under a
+sidebar's workspace section, now the pane's Files tab, which keeps *where* tools work — the mount,
+the thread's repository, the files — while the instrument holds what this thread's calls did. The tabs no longer sit under a
 "Harness" heading, since Changes reads no harness route; each tab's first line says its scope.
 `tests/inspector-run.test.tsx` pins that it neither renders a decision nor asks `/approvals`.
 **The panel is headed "This thread"** (2026-10-10), as is its drawer's dialog name. It was "This

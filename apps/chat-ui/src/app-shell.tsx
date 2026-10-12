@@ -108,6 +108,7 @@ import { INSTRUMENT_INLINE, useRails, WORKSPACE_INLINE } from '@/hooks/use-rails
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { landedPaths } from '@/lib/changes';
 import { useHarnessReachable } from '@/lib/connection';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { forgetDurableRun, recallDurableRun, rememberDurableRun } from '@/lib/durable-runs';
@@ -122,6 +123,7 @@ import { lastResume, onResume } from '@/lib/resume';
 import { createLeaseKeeper, LEASE_RENEW_MS, releaseOnPageExit } from '@/lib/session-lease';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import {
+  addFilesTab,
   anyUnsaved,
   openInPane as openPaneItem,
   type PaneItemInput,
@@ -648,6 +650,31 @@ export function AppShell() {
   const revealInspector = useCallback(() => {
     if (!paneZone.current.holds) revealInstrument();
   }, [revealInstrument]);
+
+  // A run writing to a file opens Files, the tree it landed in — once a thread:
+  // closing Files keeps it closed for the session (`addFilesTab`). Only a write
+  // seen *live* counts, so loading a thread with past writes opens nothing, and
+  // only for an agent with file tools. It never takes the zone from an open
+  // instrument: Files waits behind it, in front when the instrument closes.
+  const writes = useMemo(() => landedPaths(turns).size, [turns]);
+  const writesSeen = useRef({ threadId, writes });
+  useEffect(() => {
+    const seen = writesSeen.current;
+    writesSeen.current = { threadId, writes };
+    if (seen.threadId !== threadId || !streaming || writes <= seen.writes) return;
+    const agent = threads.find((t) => t.id === threadId)?.manifest?.trim() || manifest;
+    if (manifestEntries.find((m) => m.id === agent)?.workspace?.tools === 'none') return;
+    addFilesTab(threadId, { show: !(instrumentInline && instrumentWanted) });
+  }, [
+    writes,
+    threadId,
+    streaming,
+    threads,
+    manifest,
+    manifestEntries,
+    instrumentInline,
+    instrumentWanted,
+  ]);
   // `idle` is the engine's resting value and this renders a chip, so the chip
   // asks for the same thing the old nullable state did: a phase worth showing.
   const sessionPhase = engine.state.phase === 'idle' ? null : engine.state.phase;

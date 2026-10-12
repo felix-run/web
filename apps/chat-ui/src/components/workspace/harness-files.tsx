@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { workspaceTree } from '@/api';
 import { requestFolderAction } from '@/components/workspace/folder-action';
 import { WorkspaceFileTree } from '@/components/workspace/workspace-section';
-import { requestFileAction, usePaneState } from '@/lib/side-pane';
+import { lastOpenedFile, requestFileAction, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 import { useShell } from '@/shell-context';
@@ -78,8 +78,7 @@ export function HarnessFilesSection({ changed }: { changed: ReadonlySet<string> 
     });
 
   const pane = usePaneState(threadId);
-  const selected =
-    pane.shown && pane.active?.startsWith('harness:') ? pane.active.slice('harness:'.length) : null;
+  const selected = lastOpenedFile(pane, 'harness');
   const paths = useMemo(
     () => (tree?.entries ?? []).map((e) => `${e.type === 'dir' ? 'd' : 'f'} ${e.path}`),
     [tree],

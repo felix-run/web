@@ -14,7 +14,6 @@ import {
 import {
   ActivityIcon,
   ChevronRightIcon,
-  FolderIcon,
   MessagesSquareIcon,
   PlusIcon,
   PuzzleIcon,
@@ -24,7 +23,7 @@ import { Link, useMatch, useNavigate } from 'react-router';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
 import { ThreadList } from '@/components/chat/thread-list';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
-import { WorkspaceSection } from '@/components/workspace/workspace-section';
+import { WorkspaceRow } from '@/components/workspace/workspace-section';
 import { ariaShortcut, isMacPlatform, shortcutLabel } from '@/lib/shortcuts';
 import { readPins, writePins } from '@/lib/threads';
 import { cn } from '@/lib/utils';
@@ -179,48 +178,40 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           {collapsed && (
-            <>
-              <SidebarMenuItem>
-                {/* One icon for the threads, landing in their search: a second,
+            <SidebarMenuItem>
+              {/* One icon for the threads, landing in their search: a second,
                     "Search threads", did exactly the same thing. Marked when
                     something is waiting on a thread, so the collapsed column still
                     says there is a reason to open it. */}
-                <SidebarMenuButton
-                  tooltip={`Threads (${shortcutLabel('open-threads', mac)})`}
-                  aria-keyshortcuts={ariaShortcut('open-threads', mac)}
-                  onClick={openSearch}
-                  className="relative"
-                >
-                  <MessagesSquareIcon aria-hidden />
-                  <span>Threads</span>
-                  {/* One dot, the most urgent state: something waiting on a person
+              <SidebarMenuButton
+                tooltip={`Threads (${shortcutLabel('open-threads', mac)})`}
+                aria-keyshortcuts={ariaShortcut('open-threads', mac)}
+                onClick={openSearch}
+                className="relative"
+              >
+                <MessagesSquareIcon aria-hidden />
+                <span>Threads</span>
+                {/* One dot, the most urgent state: something waiting on a person
                       before a run merely going. Said as well as drawn. */}
-                  {(blocked.size > 0 || runningThreads.size > 0) && (
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'absolute top-1.5 right-1.5 size-1.5 rounded-full',
-                        blocked.size > 0 ? 'bg-state-blocked' : 'bg-state-running',
-                      )}
-                    />
-                  )}
-                  {blocked.size > 0 ? (
-                    <span className="sr-only">, something is waiting on you on a thread</span>
-                  ) : runningThreads.size > 0 ? (
-                    <span className="sr-only">
-                      , {runningThreads.size === 1 ? 'a run is' : `${runningThreads.size} runs are`}{' '}
-                      going
-                    </span>
-                  ) : null}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Workspace" onClick={() => setOpen(true)}>
-                  <FolderIcon aria-hidden />
-                  <span>Workspace</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </>
+                {(blocked.size > 0 || runningThreads.size > 0) && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'absolute top-1.5 right-1.5 size-1.5 rounded-full',
+                      blocked.size > 0 ? 'bg-state-blocked' : 'bg-state-running',
+                    )}
+                  />
+                )}
+                {blocked.size > 0 ? (
+                  <span className="sr-only">, something is waiting on you on a thread</span>
+                ) : runningThreads.size > 0 ? (
+                  <span className="sr-only">
+                    , {runningThreads.size === 1 ? 'a run is' : `${runningThreads.size} runs are`}{' '}
+                    going
+                  </span>
+                ) : null}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           )}
         </SidebarMenu>
       </SidebarHeader>
@@ -264,8 +255,8 @@ export function AppSidebar() {
                 address and the mode (two harness rows on a thread, nine on
                 `/harness`), and a region sized to its content grew upward on
                 arrival, moving the row just clicked out from under the pointer.
-                30rem, because that is what the nine destinations take (the folded
-                workspace's header is a short scroll below them): at 40svh, 941px tall left Manifests, Eval
+                30rem, because that is what the nine destinations take (the
+                Workspace row is a short scroll below them): at 40svh, 941px tall left Manifests, Eval
                 and GitHub below the fold of `/harness`'s own navigation. Clamped so
                 a short window keeps a thread list and a tall one does not hand it
                 all to this region.
@@ -275,17 +266,17 @@ export function AppSidebar() {
                 arrive jumped 142px when the two swapped. Debug shows all nine
                 destinations; debug off shows its few rows — Activity, and Skill
                 drafts while drafts wait — on `/harness` as on a thread, so nothing
-                changes under the pointer on arrival. On `/harness` the workspace
-                starts folded. */}
+                changes under the pointer on arrival. The workspace is one row; its
+                trees are the side pane's Files tab. */}
             <div
               data-slot="sidebar-lower"
               className={cn(
                 'flex flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]',
-                // Debug off the rows are two at most, the same on every address, so
-                // the region is sized for them and an open workspace (still fixed,
-                // so nothing moves on arrival); 30rem would leave a band of nothing
-                // under the workspace where thread rows could be.
-                debug ? 'h-[clamp(40svh,30rem,60svh)]' : 'h-[min(40svh,19rem)]',
+                // Debug off the rows are three at most — Activity, Skill drafts
+                // while drafts wait, Workspace — so the region is sized for all
+                // three (still fixed, so nothing moves when drafts come and go);
+                // 30rem would leave a band of nothing where thread rows could be.
+                debug ? 'h-[clamp(40svh,30rem,60svh)]' : 'h-[min(40svh,13rem)]',
               )}
             >
               {debug ? (
@@ -293,24 +284,20 @@ export function AppSidebar() {
               ) : (
                 <DailyHarnessRows collapsed={false} onNavigate={done} />
               )}
-              <SidebarSeparator />
-              {/* Keyed by address: the thread side draws the section at the same
-                  index, and React would keep its state — open — rather than start
-                  folded on `/harness`. */}
-              {onHarness ? (
-                <WorkspaceSection key="on-harness" foldedByDefault />
-              ) : (
-                <WorkspaceSection key="on-thread" />
-              )}
+              <WorkspaceRow collapsed={false} onNavigate={done} />
             </div>
           </>
         )}
-        {collapsed &&
-          (debug ? (
-            <HarnessGroup collapsed onNavigate={done} />
-          ) : (
-            <DailyHarnessRows collapsed onNavigate={done} />
-          ))}
+        {collapsed && (
+          <>
+            {debug ? (
+              <HarnessGroup collapsed onNavigate={done} />
+            ) : (
+              <DailyHarnessRows collapsed onNavigate={done} />
+            )}
+            <WorkspaceRow collapsed onNavigate={done} />
+          </>
+        )}
       </SidebarContent>
     </Sidebar>
   );
