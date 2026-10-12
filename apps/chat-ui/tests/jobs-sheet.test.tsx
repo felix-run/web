@@ -162,21 +162,81 @@ describe('running a job now', () => {
       runJobNow: () => new Promise((r) => (finish = r)),
       runs: [run],
     });
-    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Run nightly-digest now$/ }));
     expect(runJobNow).toHaveBeenCalledWith('nightly-digest');
-    expect(await screen.findByText('Running…')).toBeTruthy();
+    // Named for its job, and counting while the turn runs.
+    expect(await screen.findByText(/Running ·/)).toBeTruthy();
 
     await act(async () => finish(run));
     expect(await screen.findByText('Three PRs merged today.')).toBeTruthy();
     expect(screen.getByText('run by hand')).toBeTruthy();
-    expect(screen.queryByText('Running…')).toBeNull();
+    expect(screen.queryByText(/Running ·/)).toBeNull();
+    expect(screen.getByRole('status').textContent).toMatch(/^nightly-digest ran/);
   });
 
   it('says why when the harness refuses it', async () => {
     await sheet([job()], {
       runJobNow: () => Promise.reject(new Error('jobs /nightly-digest/run: 403 missing scope')),
     });
-    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Run nightly-digest now$/ }));
     expect(await screen.findByText(/not allowed to/)).toBeTruthy();
+  });
+});
+
+/**
+ * The harness runs an empty schedule every 60 seconds. The page called it "manual" and said
+ * it never ran on its own, while a job so labelled fired about 1,440 times a day.
+ */
+describe('a schedule says what the harness will do', () => {
+  it('labels an empty schedule by what it does, never "manual"', async () => {
+    await sheet([job({ schedule: '' })]);
+    await waitFor(() => expect(screen.getByText('every 1m')).toBeTruthy());
+    expect(screen.queryByText('manual')).toBeNull();
+  });
+
+  it('says a job the scheduler has not claimed yet runs at the next sweep', async () => {
+    await sheet([job({ next_run_at: null })]);
+    await waitFor(() => expect(screen.getByText('first run at the next sweep')).toBeTruthy());
+  });
+
+  it('says a time already past is due, not "next just now"', async () => {
+    await sheet([job({ next_run_at: Date.now() - 5_000 })]);
+    await waitFor(() => expect(screen.getByText('due now')).toBeTruthy());
+  });
+
+  it('refuses a schedule the harness would refuse, before it is sent', async () => {
+    const { upsertJob } = await sheet([]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'daily' } });
+    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '0 9 * *' } });
+    expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByText(/Not a schedule/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '' } });
+    expect(screen.getByText(/First run at the next sweep.*then every 1m/)).toBeTruthy();
+    expect(upsertJob).not.toHaveBeenCalled();
+  });
+
+  it('puts the form away on Escape', async () => {
+    await sheet([]);
+    await openForm();
+    fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByLabelText('Name')).toBeNull());
+  });
+});
+
+describe('a job’s run history', () => {
+  it('says when it was cut, and how long each run took', async () => {
+    const runs = Array.from({ length: 20 }, (_, i) => ({
+      run_id: `r${i}`,
+      status: 'ok',
+      started_at: 1_000_000 + i,
+      finished_at: 1_000_000 + i + 4_200,
+    }));
+    await sheet([job()], { runs });
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    await waitFor(() => expect(screen.getByText('The latest 20 runs.')).toBeTruthy());
+    expect(screen.getAllByText('4.2s')).toHaveLength(20);
   });
 });

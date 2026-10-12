@@ -772,7 +772,7 @@ export async function listJobs(): Promise<JobRecord[]> {
   return body.items ?? body.jobs ?? [];
 }
 
-/** PUT /jobs/{name} → create or update a job. Empty `schedule` = never swept. */
+/** PUT /jobs/{name} → create or update a job. Empty `schedule` = every 60s (`lib/job-schedule.ts`). */
 export async function upsertJob(job: {
   name: string;
   schedule?: string;
