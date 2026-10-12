@@ -499,7 +499,10 @@ name and the `title`. While the run state is showing below `sm`, the modes step 
 Debug goes `hidden` (it is in the menu), and the canary goes `sr-only` and is still
 read; both return when the run settles. Past all that the cluster clips at its own edge rather
 than running under the right cluster: at 320px the chip is clipped, a known limit. There is **no
-door to `/harness`** in the header: the sidebar lists its eight pages. Before the controls sits
+door to `/harness`** in the header: the sidebar lists its eight pages in debug. On `/harness` the
+thread title's slot is the way back instead: an arrow and the tab's thread, muted, cut from the
+middle, from `sm` (narrower, the drawer's held row is the way back), a link and never a heading (the page's own `h2` names the destination, so the header does
+not repeat it), and the run state before it is that thread's. Before the controls sits
 the **attention line** (below). On the right: New chat, only where the sidebar is a drawer, and
 a plus alone below `sm`; the instrument toggle, in debug only; and one ellipsis menu named
 **Session**: *Session* (Continue run, Copy thread id), *View* (Debug, with a 12px muted second
@@ -549,8 +552,9 @@ Zones yield rather than squeeze, in a fixed order. Three zones want ~1200px of c
 reference material and the half of it that cannot wait already lives in the attention line and
 the banner above the composer. Below **1024px** the sidebar follows as a drawer (on the ground,
 like the inline sidebar), last because it holds every way to anywhere else. `/harness` needs no
-nav of its own while the sidebar is inline; between **768px** and **1024px** it draws its rail
-beside the panel, and below 768px the index *is* the list. The breakpoints are derived from what
+nav of its own while the sidebar is inline and in debug, since only then does the sidebar list its
+pages; otherwise, from **768px**, it draws its rail beside the panel, and below 768px the index
+*is* the list. The breakpoints are derived from what
 the content needs, not from device names.
 
 **The Yield Rule.** A rail never narrows the thing it describes; it leaves.
@@ -765,7 +769,7 @@ read that answered: a failed read shows a muted `unchecked`, and a count kept fr
 carries its age (`3 failed · 2m`). Every page header ends in a quiet `Docs ↗` link, checked
 against the docs source by `tests/docs-links.test.ts`. Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page. On `/harness` the header drops the
-conversation's own controls; the ellipsis menu stays in the same slot (named **Theme**) and the
+conversation's own controls; the ellipsis menu stays in the same slot (named **View**) and the
 instrument toggle's slot is held empty, so the attention line does not move between addresses.
 Two controls have one home on every page: a view switch and a create toggle (outline, the plus
 turning to a cross when open) both sit in the header, and the form a create toggle opens is the
@@ -872,9 +876,14 @@ Each row is a **tile** (`rounded-lg`, `px-2.5 py-1.5`): the thread's title over 
 in mono, then how long ago, then *local only* for a thread the harness has never seen). A thread
 with no title is listed by its id in muted mono, cut from the middle. **The current tile sits on
 the sheet's colour** (`sidebar-accent`) with `shadow-sheet` and `aria-current`; a hovered,
-focused or menu-open tile mixes 70% of that colour into the ground. The sidebar's own menu rows
+focused or menu-open tile mixes 70% of that colour into the ground. On `/harness` the tab's
+thread is **held**, not current: the same fill without the lift or `aria-current`, and *This tab*
+leading its second line, so the way back is on screen without claiming to be the page. The
+sidebar's own menu rows
 (the harness destinations) follow the same grammar: 36px (44px on a coarse pointer), `rounded-lg`,
-the active row lifted to `sidebar-accent` with `shadow-sheet` and semibold. A row's ⋯ menu lies
+the active row lifted to `sidebar-accent` with `shadow-sheet` and semibold, and scrolled into
+the lower region's view when the address changes, since at a laptop's height the Workbenches run
+sits below that region's fold. A row's ⋯ menu lies
 *over* the end of the row, revealed by that row's hover or focus on a gradient of the row's own
 colour; on touch it stays in the row, visible. The menu is Pin, Rename and Fork; then Compact
 context and Export JSONL; then any reason an item is unavailable; then Delete, in the destructive

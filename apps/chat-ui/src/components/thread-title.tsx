@@ -1,6 +1,8 @@
 import type { ThreadMeta } from '@felix/client';
 import { cn } from '@felix/ui/lib/utils';
+import { ArrowLeftIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { threadLabel } from '@/lib/threads';
 
 /** Characters kept whole at the end of a title cut from the middle. */
@@ -243,5 +245,58 @@ export function ThreadTitle({
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * On `/harness`, the header's way back to the tab's thread, named.
+ *
+ * The page's own `h2` already names the destination one band below, so the
+ * header does not repeat it; what it lacked was the conversation. The run state
+ * before this slot is the tab's thread's, and it read *running* beside nothing
+ * that said which thread; and the sidebar un-marks that thread here, so getting
+ * back meant remembering it. A link, not a heading: it is somewhere to go, and
+ * the page's heading is the page's. From `sm` only; see the class.
+ */
+export function ThreadReturn({
+  threadId,
+  thread,
+  empty = false,
+  className,
+}: {
+  threadId: string;
+  thread: ThreadMeta | undefined;
+  empty?: boolean;
+  className?: string;
+}) {
+  const label = useMemo(
+    () => (thread ? threadLabel(thread) : { text: threadId, isId: true }),
+    [thread, threadId],
+  );
+  const unnamedNew = empty && label.isId;
+  const name = unnamedNew ? 'New conversation' : label.text;
+  return (
+    <Link
+      data-slot="thread-return"
+      to={`/t/${threadId}`}
+      title={`Back to ${name}`}
+      className={cn(
+        'flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 -mx-1.5 text-sm text-muted-foreground',
+        'transition-colors hover:bg-accent hover:text-foreground',
+        'outline-none focus-visible:ring-[3px] focus-visible:ring-ring',
+        // Not below `sm`: the brand, the modes and the attention line leave it a
+        // sliver, and an arrow with three letters read as broken — above the
+        // page's own back chevron, which goes somewhere else. There the drawer's
+        // held row is the way back.
+        'max-sm:hidden',
+        className,
+      )}
+    >
+      <ArrowLeftIcon aria-hidden className="size-3.5 shrink-0" />
+      <span className="sr-only">Back to </span>
+      <span className={cn('flex min-w-0', label.isId && !unnamedNew && 'font-mono')}>
+        {unnamedNew ? <span className="truncate">{name}</span> : <MiddleCut text={name} />}
+      </span>
+    </Link>
   );
 }

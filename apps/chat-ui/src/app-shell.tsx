@@ -101,7 +101,7 @@ import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
 import type { SkillState } from '@/components/inspector/primitives';
 import { type Theme, useTheme } from '@/components/theme-provider';
-import { ThreadTitle } from '@/components/thread-title';
+import { ThreadReturn, ThreadTitle } from '@/components/thread-title';
 import { useMessageQueue } from '@/hooks/use-message-queue';
 import { usePendingApprovals } from '@/hooks/use-pending-approvals';
 import { INSTRUMENT_INLINE, useRails, WORKSPACE_INLINE } from '@/hooks/use-rails';
@@ -2907,7 +2907,17 @@ export function AppShell() {
                 ) : null}
                 {/* The thread this sheet holds: after the run state, which keeps
                     its first slot on both addresses, so the chip does not move
-                    between them. None on `/harness`: each page has its own title. */}
+                    between them. On `/harness` each page has its own title, so the
+                    slot is the way back to the tab's thread instead — which also
+                    says whose run the chip before it is. */}
+                {onHarness && (
+                  <ThreadReturn
+                    threadId={threadId}
+                    thread={currentThread}
+                    empty={turns.length === 0}
+                    className="shrink-[100]"
+                  />
+                )}
                 {!onHarness && (
                   <ThreadTitle
                     threadId={threadId}

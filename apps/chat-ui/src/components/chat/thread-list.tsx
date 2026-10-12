@@ -144,6 +144,7 @@ type Row = { thread: ThreadMeta; excerpt?: string };
 export function ThreadList({
   threads,
   currentId,
+  heldId,
   onSelect,
   onDelete,
   onRename,
@@ -160,6 +161,13 @@ export function ThreadList({
 }: {
   threads: ThreadMeta[];
   currentId: string;
+  /**
+   * The tab's thread while the address is not it (`/harness`). Drawn held — the
+   * current row's fill without its lift, and *This tab* on its second line — so
+   * the way back to the conversation is on screen, but it is not `aria-current`:
+   * the page a reader is on is the harness's, not this thread.
+   */
+  heldId?: string | undefined;
   /**
    * Threads with an approval pending, by suffix — from the shell's tenant-wide
    * `/approvals` poll, which names each row's originating thread. Only positive
@@ -336,10 +344,12 @@ export function ThreadList({
     () =>
       groups.map((g) => {
         const folded = g.key === 'older' && !olderOpen;
-        const rows = folded ? g.threads.filter((t) => t.id === currentId) : g.threads;
+        const rows = folded
+          ? g.threads.filter((t) => t.id === currentId || t.id === heldId)
+          : g.threads;
         return { group: g, folded, rows: rows.map((thread): Row => ({ thread })) };
       }),
-    [groups, olderOpen, currentId],
+    [groups, olderOpen, currentId, heldId],
   );
   const order = filtering
     ? [...results.map((r) => r.thread.id), ...elsewhere.map((r) => r.id)]
@@ -441,7 +451,11 @@ export function ThreadList({
         className={cn(
           'group/thread relative flex items-center gap-2 rounded-lg bg-(--row-bg) px-2.5 py-1.5 text-sm',
           'has-[[data-thread-row]:focus-visible]:ring-[3px] has-[[data-thread-row]:focus-visible]:ring-ring',
-          t.id === currentId ? 'shadow-sheet [--row-bg:var(--sidebar-accent)]' : ROW_LIT,
+          t.id === currentId
+            ? 'shadow-sheet [--row-bg:var(--sidebar-accent)]'
+            : t.id === heldId
+              ? '[--row-bg:var(--sidebar-accent)]'
+              : ROW_LIT,
         )}
       >
         {confirming === t.id ? (
@@ -572,6 +586,11 @@ export function ThreadList({
                 )}
                 {live && !waiting && inGroup !== 'running' && (
                   <StateMark className="text-state-running">Running</StateMark>
+                )}
+                {t.id === heldId && (
+                  <span data-slot="thread-held" className="shrink-0 font-medium">
+                    This tab ·
+                  </span>
                 )}
                 <span className="min-w-0 truncate">
                   {/* A thread from another browser has no local manifest

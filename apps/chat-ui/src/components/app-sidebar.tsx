@@ -18,7 +18,7 @@ import {
   PlusIcon,
   PuzzleIcon,
 } from 'lucide-react';
-import { Fragment, useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
 import { ThreadList } from '@/components/chat/thread-list';
@@ -32,6 +32,7 @@ import {
   HARNESS_DESTINATIONS,
   NavGlance,
   navSearch,
+  useActiveRowInView,
   useDraftGlance,
   useNavGlances,
   walkNav,
@@ -234,6 +235,7 @@ export function AppSidebar() {
             <ThreadList
               threads={threads}
               currentId={onHarness ? '' : threadId}
+              heldId={onHarness ? threadId : undefined}
               blocked={blocked}
               running={runningThreads}
               pinned={pinned}
@@ -307,6 +309,8 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
   // column narrows is an instrument that stops reading.
   const glance = useNavGlances(shown);
   const at = useMatch('/harness/:destination/*')?.params.destination;
+  const nav = useRef<HTMLElement>(null);
+  useActiveRowInView(nav, collapsed ? undefined : at);
 
   return (
     <SidebarGroup className="pt-1">
@@ -342,7 +346,7 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
         </SidebarGroupLabel>
       )}
       <SidebarGroupContent id="sidebar-harness" hidden={!shown}>
-        <nav aria-label="Harness" onKeyDown={walkNav}>
+        <nav ref={nav} aria-label="Harness" onKeyDown={walkNav}>
           {GROUPS.map(({ key, label }, gi) => (
             <Fragment key={key}>
               {gi > 0 && <SidebarSeparator className="my-1.5" />}

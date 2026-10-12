@@ -406,8 +406,11 @@ and Older (Older starts folded, showing its count, is cut by month when open, an
 the current thread if it is there — never the other fifty — in a group named for it); the workspace section (`src/components/workspace/workspace-section.tsx`);
 and the eight harness destinations with their glances. It replaced three earlier things: a threads
 popover off the workspace header, which had been the *only* way to switch threads; the workspace
-zone; and `/harness`'s resident nav rail, which is drawn now only between 768 and 1024, where the
-sidebar is a drawer. A break here is not a degraded rail — it is a thread list nobody can open — so
+zone; and `/harness`'s resident nav rail, which is drawn now only from 768 where the sidebar does
+not list the destinations — a drawer below 1024, or debug off at any width, since the sidebar lists
+them only in debug (a debug-off page had no way sideways until 2026-10-11). On `/harness` the
+tab's thread is drawn *held* in the list (`heldId`: the fill, *This tab*, no `aria-current`) and
+the header's title slot is `ThreadReturn`, a link back to it. A break here is not a degraded rail — it is a thread list nobody can open — so
 `tests/workbench-layout.test.tsx` pins every collapsed icon as well as the list. Pins live in
 `felix.pinnedThreads` and are local, because the harness records which threads exist, not which
 ones an operator keeps near. `removeThread` drops a deleted thread's pin. The primitive is
