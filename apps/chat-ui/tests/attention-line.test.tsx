@@ -700,6 +700,20 @@ describe('when the line cannot see', () => {
     expect(screen.getByText('no answer yet')).toBeTruthy();
   });
 
+  it('reads a 403 as nothing this account may see, and stops asking', async () => {
+    // A Google account pinned to one agent holds no `approvals:read`: refused, not unreachable.
+    vi.useFakeTimers();
+    switchable({ status: 403 });
+    mount();
+    await settle();
+    expect(status()).not.toMatch(/can't reach approvals/i);
+    expect(status()).toMatch(/no approvals or questions waiting/i);
+    const asked = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    await tick();
+    await tick();
+    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(asked);
+  });
+
   it("says it can't reach approvals when the failure is not a rate limit", async () => {
     vi.useFakeTimers();
     switchable({ status: 503 });
