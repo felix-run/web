@@ -125,10 +125,12 @@ export function ActivityLedger({ docs }: { docs?: string }) {
     };
   }, []);
 
-  const [openThread, setOpenThread] = useState<string | null>(null);
+  // `?thread=` opens one entry on arrival — the Jobs page links a job's spend here — and
+  // shows every row, so the entry is drawn even when it is not among the first few.
+  const [openThread, setOpenThread] = useState<string | null>(params.get('thread'));
   const [failuresOnly, setFailuresOnly] = useState(params.get('failed') === '1');
   const [layer, setLayer] = useState<string>(params.get('layer') ?? 'any');
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(() => params.get('thread') !== null);
 
   // The filters are in the address too, so "what failed this week" is a link.
   const setFilters = (next: { failuresOnly?: boolean; layer?: string }) => {
@@ -147,6 +149,8 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   // Polling stops while a thread is open: a new event re-sorts the list and moves
   // the row being read out from under the reader, and what they opened has already
   // happened. `usePoll` refetches on the false→true edge, so closing it catches up.
+  // Not before the first answer, though: arriving with `?thread=` open would never load.
+  const [answered, setAnswered] = useState(false);
   const { data, error, loading, lastOkAt, failures, refresh } = usePoll(
     async () => {
       const now = Date.now();
@@ -159,8 +163,11 @@ export function ActivityLedger({ docs }: { docs?: string }) {
       ]);
       return { since, fellBack, audit, spend, summary, recent: recent.items };
     },
-    { enabled: openThread === null, intervalMs: 10_000 },
+    { enabled: openThread === null || !answered, intervalMs: 10_000 },
   );
+  useEffect(() => {
+    if (data !== undefined) setAnswered(true);
+  }, [data]);
   // A changed window is a different question; ask it now rather than at the next
   // tick. Not on mount, where `usePoll` is already asking.
   const askedFor = useRef(win);

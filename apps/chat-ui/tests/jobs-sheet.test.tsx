@@ -1,5 +1,6 @@
 /** @vitest-environment happy-dom */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -32,7 +33,7 @@ const job = (over: Record<string, unknown> = {}) => ({
 
 async function sheet(
   jobs: unknown[] = [],
-  opts: { runJobNow?: () => Promise<unknown>; runs?: unknown[] } = {},
+  opts: { runJobNow?: () => Promise<unknown>; runs?: unknown[]; spend?: unknown } = {},
 ) {
   const upsertJob = vi.fn().mockResolvedValue(job());
   const runJobNow = vi.fn(opts.runJobNow ?? (() => Promise.resolve({})));
@@ -42,9 +43,15 @@ async function sheet(
     upsertJob,
     runJobNow,
     deleteJob: vi.fn(),
+    // `null` is a harness without `/usage/threads`: the rows say nothing about spend.
+    listUsageByThread: vi.fn().mockResolvedValue(opts.spend ?? null),
   }));
   const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
-  render(<JobsSheet manifest="quick" manifestOptions={['quick']} />);
+  render(
+    <MemoryRouter>
+      <JobsSheet manifest="quick" manifestOptions={['quick']} />
+    </MemoryRouter>,
+  );
   return { upsertJob, runJobNow };
 }
 
@@ -85,6 +92,8 @@ describe('creating a job', () => {
       schedule: '0 9 * * *',
       manifest_id: 'quick',
       payload: { prompt: 'Take the next ticket.', fresh_thread: true },
+      // A new job is enabled unless the form says to start it paused.
+      enabled: true,
     });
   });
 
@@ -131,9 +140,14 @@ describe('a failed read after a good one', () => {
       listJobRuns: vi.fn().mockResolvedValue([]),
       upsertJob: vi.fn(),
       deleteJob: vi.fn(),
+      listUsageByThread: vi.fn().mockResolvedValue(null),
     }));
     const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
-    render(<JobsSheet manifest="quick" manifestOptions={['quick']} />);
+    render(
+      <MemoryRouter>
+        <JobsSheet manifest="quick" manifestOptions={['quick']} />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(screen.getByText('digest')).toBeTruthy());
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4100);
@@ -238,5 +252,121 @@ describe('a job’s run history', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
     await waitFor(() => expect(screen.getByText('The latest 20 runs.')).toBeTruthy());
     expect(screen.getAllByText('4.2s')).toHaveLength(20);
+  });
+});
+
+/**
+ * `PUT /jobs/{name}` is an upsert. Create on an existing name replaced its schedule, agent and
+ * prompt and turned a paused job back on, with nothing on screen to say so.
+ */
+describe('a name that already exists', () => {
+  it('says what it replaces, relabels the button, and keeps the job paused', async () => {
+    const { upsertJob } = await sheet([job({ name: 'digest', enabled: false })]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'digest' } });
+    expect(
+      screen.getByText(/exists\. Replace changes its schedule, agent and prompt/),
+    ).toBeTruthy();
+    expect(screen.getByText(/and it stays paused/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0].enabled).toBe(false);
+  });
+});
+
+describe('pausing', () => {
+  it('pauses and resumes a job by sending the same record with enabled flipped', async () => {
+    const { upsertJob } = await sheet([job({ payload: { prompt: 'Digest.' } })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause nightly-digest' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0]).toEqual({
+      name: 'nightly-digest',
+      schedule: '0 9 * * *',
+      manifest_id: 'quick',
+      payload: { prompt: 'Digest.' },
+      enabled: false,
+    });
+  });
+
+  it('says a paused job is paused on its name line, and offers Resume', async () => {
+    await sheet([job({ enabled: false })]);
+    await waitFor(() => expect(screen.getByText('paused')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Resume nightly-digest' })).toBeTruthy();
+  });
+
+  it('can create a job paused, so it does not run at the next sweep', async () => {
+    const { upsertJob } = await sheet([]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'staged' } });
+    fireEvent.click(screen.getByLabelText('Start paused'));
+    expect(screen.getByText(/^Starts paused/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0].enabled).toBe(false);
+  });
+});
+
+describe('what a job costs', () => {
+  it('sums the job’s threads over a day and links to its Activity entry', async () => {
+    await sheet([job()], {
+      spend: {
+        since_ms: 0,
+        until_ms: 1,
+        truncated: false,
+        totals: {},
+        items: [
+          { thread_id: 'default:job:nightly-digest', calls: 3, cost_usd: 0.12 },
+          { thread_id: 'default:job:nightly-digest-2', calls: 9, cost_usd: 9 },
+        ],
+      },
+    });
+    const link = await screen.findByRole('link', { name: /\$0\.120 · 3 calls · 24h/ });
+    expect(link.getAttribute('href')).toBe('/harness/activity?since=24h&thread=nightly-digest');
+  });
+
+  it('says nothing about cost on a harness without per-thread spend', async () => {
+    await sheet([job()]);
+    await waitFor(() => expect(screen.getByText('nightly-digest')).toBeTruthy());
+    expect(screen.queryByText(/· 24h/)).toBeNull();
+  });
+});
+
+describe('schedules the operator should notice', () => {
+  it('marks a stored schedule the scheduler refuses, and gives it no next time', async () => {
+    await sheet([job({ schedule: '0 9 * *', next_run_at: Date.now() - 60_000 })]);
+    await waitFor(() => expect(screen.getByText('invalid schedule')).toBeTruthy());
+    expect(screen.queryByText('due now')).toBeNull();
+  });
+
+  it('says what an every-minute schedule costs in turns, before it is created', async () => {
+    await sheet([]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '' } });
+    expect(screen.getByText(/every 1m — about 1,440 agent turns a day/)).toBeTruthy();
+  });
+
+  it('hands focus back to New job when the form is put away', async () => {
+    await sheet([]);
+    await openForm();
+    fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Escape' });
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-controls')).toBe('job-create'),
+    );
+  });
+});
+
+describe('a job waiting on a person', () => {
+  it('says so when an approval row names the job’s thread, as the client spells it', async () => {
+    vi.doMock('../src/shell-context', () => ({
+      useOptionalShell: () => ({
+        tenantApprovals: {
+          pending: [{ id: 'a1', tool: 'write_file', thread_id: 'nightly-digest' }],
+        },
+      }),
+    }));
+    await sheet([job()]);
+    await waitFor(() =>
+      expect(screen.getByText(/Waiting on an approval — see the attention line/)).toBeTruthy(),
+    );
   });
 });
