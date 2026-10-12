@@ -7,6 +7,9 @@
  *
  * - **GitHub**, when the harness says it serves the device flow
  *   (`GET /auth/methods`). A person, a tenant, a session that lapses.
+ * - **Google**, when the harness serves Google sign-in by redirect — only for
+ *   the accounts its operator listed. A second button under GitHub's when the
+ *   harness offers both.
  * - **The shared access key**, when the Worker gates on one — known from its
  *   own 401, which carries `gate: 'chat_key'`. A refusal from the harness does
  *   not, and no key would answer it.
@@ -25,7 +28,7 @@
 
 import { Spinner } from '@felix/ui/spinner';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
-import { getAuthMethods, githubAuthorizeUrl } from '@/api';
+import { getAuthMethods, githubAuthorizeUrl, googleAuthorizeUrl } from '@/api';
 import {
   authHeaders,
   type CredentialKind,
@@ -38,10 +41,16 @@ import {
   setRelockHandler,
   setSession,
 } from '@/lib/auth';
-import { completeRedirectSignIn, describeFailure, useDeviceLogin } from '@/lib/github-login';
+import {
+  completeRedirectSignIn,
+  describeFailure,
+  rememberRedirectProvider,
+  useDeviceLogin,
+} from '@/lib/github-login';
 import { AccessKeyForm } from './auth/access-key-form';
 import { AuthLayout } from './auth/auth-layout';
 import { GitHubSignIn } from './auth/github-sign-in';
+import { GoogleButton, GoogleSignIn } from './auth/google-sign-in';
 
 /**
  * `checking` is a stored credential being verified, or the deployment being
@@ -58,6 +67,8 @@ interface Options {
   github: boolean;
   /** GitHub sign-in by redirect, which leads when the harness offers it. */
   redirect: boolean;
+  /** Google sign-in by redirect, for the accounts the harness's operator listed. */
+  google: boolean;
   key: boolean;
   /** A redirect sign-in came back `tenant_ambiguous`: the tenants to choose between. */
   tenants?: string[];
@@ -223,6 +234,7 @@ async function check(): Promise<Check> {
     options: {
       github: methods?.github_device === true || methods?.github_redirect === true,
       redirect: methods?.github_redirect === true,
+      google: methods?.google_redirect === true,
       key: keyGate ?? true,
       tenants,
       signup: methods?.github_signup ?? 'off',
@@ -232,7 +244,12 @@ async function check(): Promise<Check> {
 
 export function Gate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>('checking');
-  const [options, setOptions] = useState<Options>({ github: false, redirect: false, key: true });
+  const [options, setOptions] = useState<Options>({
+    github: false,
+    redirect: false,
+    google: false,
+    key: true,
+  });
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -325,6 +342,12 @@ export function Gate({ children }: { children: ReactNode }) {
     />
   );
 
+  const toGoogle = () => {
+    rememberRedirectProvider('google');
+    window.location.assign(googleAuthorizeUrl(returnTo()));
+  };
+  const keyLink = options.key ? switchLink('Use an access key instead', true) : undefined;
+
   let card: ReactNode;
   if (options.github && (!options.key || !usingKey)) {
     card = (
@@ -333,16 +356,31 @@ export function Gate({ children }: { children: ReactNode }) {
         error={error}
         redirect={
           options.redirect
-            ? (tenant?: string) => window.location.assign(githubAuthorizeUrl(returnTo(), tenant))
+            ? (tenant?: string) => {
+                rememberRedirectProvider('github');
+                window.location.assign(githubAuthorizeUrl(returnTo(), tenant));
+              }
             : undefined
         }
         tenants={options.tenants}
         signup={options.signup}
-        alternative={options.key ? switchLink('Use an access key instead', true) : undefined}
+        alternative={
+          options.google ? (
+            <div className="space-y-3">
+              <GoogleButton redirect={toGoogle} variant="outline" />
+              {keyLink}
+            </div>
+          ) : (
+            keyLink
+          )
+        }
       />
     );
+  } else if (options.google && (!options.key || !usingKey)) {
+    card = <GoogleSignIn error={error} redirect={toGoogle} alternative={keyLink} />;
   } else if (options.key) {
-    card = keyForm(options.github ? switchLink('Sign in with GitHub instead', false) : undefined);
+    const back = options.github ? 'Sign in with GitHub instead' : 'Sign in with Google instead';
+    card = keyForm(options.github || options.google ? switchLink(back, false) : undefined);
   } else {
     card = <NoWayIn error={error} />;
   }

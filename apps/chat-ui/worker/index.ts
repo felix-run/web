@@ -54,6 +54,10 @@ const LOGIN_ROUTES = new Set([
   'GET /auth/github/authorize',
   'GET /auth/github/callback',
   'POST /auth/github/exchange',
+  // Google sign-in by redirect, the same shape.
+  'GET /auth/google/authorize',
+  'GET /auth/google/callback',
+  'POST /auth/google/exchange',
 ]);
 
 /**

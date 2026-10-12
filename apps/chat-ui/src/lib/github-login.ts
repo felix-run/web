@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   exchangeGitHubLogin,
+  exchangeGoogleLogin,
   type GitHubDeviceStart,
   type GitHubLoginToken,
   type LoginResult,
@@ -29,6 +30,10 @@ import {
 import type { GitHubSession } from './auth';
 
 const TENANT_STORAGE = 'felix.githubTenant';
+/** Which provider a redirect sign-in went to, so its return collects from the right one. */
+const PROVIDER_STORAGE = 'felix.signInProvider';
+
+export type SignInProvider = 'github' | 'google';
 
 /** Taken off the token's lifetime, so a request never leaves with one about to lapse. */
 const EXPIRY_MARGIN_MS = 60_000;
@@ -49,6 +54,10 @@ export type LoginFailure =
   | 'disabled'
   | 'offline'
   | 'stale'
+  | 'not-allowed'
+  | 'google-refused'
+  | 'google-unavailable'
+  | 'google-misconfigured'
   | 'unknown';
 
 export type LoginState =
@@ -126,6 +135,25 @@ export function describeFailure(
         message: 'Could not reach the server. Check your connection and try again.',
         retry: 'Try again',
       };
+    case 'not-allowed':
+      return {
+        message:
+          'That Google account isn’t on this deployment’s list. Ask whoever runs it to add it, or choose another account.',
+        retry: 'Try another account',
+      };
+    case 'google-refused':
+      return {
+        message: 'Google’s answer could not be verified. Sign in again.',
+        retry: 'Sign in again',
+      };
+    case 'google-unavailable':
+      return { message: 'Google could not be reached. Try again in a moment.', retry: 'Try again' };
+    case 'google-misconfigured':
+      return {
+        message:
+          'Google sign-in is misconfigured on the harness. Whoever runs it will find the cause in its log.',
+        retry: null,
+      };
     default:
       return { message: `Sign-in failed${status ? ` (${status})` : ''}.`, retry: 'Try again' };
   }
@@ -156,6 +184,14 @@ export function failureFromCode(code: string | undefined, status?: number): Logi
       return 'unavailable';
     case 'github_config_error':
       return 'misconfigured';
+    case 'not_allowed':
+      return 'not-allowed';
+    case 'invalid_id_token':
+      return 'google-refused';
+    case 'google_unavailable':
+      return 'google-unavailable';
+    case 'google_config_error':
+      return 'google-misconfigured';
   }
   if (status === 404) return 'disabled';
   if (status === 429) return 'rate-limited';
@@ -193,6 +229,27 @@ export function sessionFrom(token: GitHubLoginToken, now = Date.now()): GitHubSe
   };
 }
 
+/** Called just before the browser leaves for a provider's sign-in page. */
+export function rememberRedirectProvider(provider: SignInProvider): void {
+  try {
+    sessionStorage.setItem(PROVIDER_STORAGE, provider);
+  } catch {
+    // Not remembered: the return collects from GitHub, which is where every redirect went
+    // before Google sign-in existed.
+  }
+}
+
+/** The provider this return is from, read once; GitHub when nothing was remembered. */
+function takeRedirectProvider(): SignInProvider {
+  try {
+    const provider = sessionStorage.getItem(PROVIDER_STORAGE);
+    sessionStorage.removeItem(PROVIDER_STORAGE);
+    return provider === 'google' ? 'google' : 'github';
+  } catch {
+    return 'github';
+  }
+}
+
 export type RedirectOutcome =
   | { kind: 'none' }
   | { kind: 'signed-in'; session: GitHubSession }
@@ -203,7 +260,8 @@ export type RedirectOutcome =
  *
  * The harness comes back with a fragment — `#felix_login=ok`, or `#felix_login_error=<code>`
  * (plus `tenants=` for an ambiguous membership, and `login=` once GitHub said who it was) — and, on success, the token waiting in an
- * HttpOnly cookie that `exchangeGitHubLogin` collects once. The fragment is cleared from the
+ * HttpOnly cookie that `exchangeGitHubLogin` (or `exchangeGoogleLogin`, for a Google sign-in this
+ * tab started) collects once. The fragment is cleared from the
  * address at once, whatever it said, so a reload, a bookmark or a Back never replays it.
  */
 export async function completeRedirectSignIn(): Promise<RedirectOutcome> {
@@ -218,6 +276,7 @@ export async function completeRedirectSignIn(): Promise<RedirectOutcome> {
     '',
     `${window.location.pathname}${window.location.search}`,
   );
+  const provider = takeRedirectProvider();
   if (error !== null) {
     const tenants = params.get('tenants');
     return {
@@ -229,7 +288,7 @@ export async function completeRedirectSignIn(): Promise<RedirectOutcome> {
   }
   let result: LoginResult<GitHubLoginToken>;
   try {
-    result = await exchangeGitHubLogin();
+    result = provider === 'google' ? await exchangeGoogleLogin() : await exchangeGitHubLogin();
   } catch {
     return { kind: 'failed', failure: 'offline' };
   }

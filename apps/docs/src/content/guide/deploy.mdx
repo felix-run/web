@@ -611,6 +611,11 @@ harness's token, so it lasts `FELIX_GITHUB_LOGIN_TTL_SECONDS` and signing out of
 revoke it. The CLI,
 `felix-client`, curl and other services are not browsers, so none of this applies to them.
 
+With [Google sign-in](/internals/auth/#google-sign-in) on, the gate offers **Continue with Google**:
+as the card when it is the only way in, or under GitHub's button when both are. Only the accounts on
+`FELIX_GOOGLE_ACCOUNTS` get through. The Worker passes `/auth/google/*` through as it does GitHub's
+routes, and the redirect URI to register in Google Cloud is `https://<chat-ui>/api/auth/google/callback`.
+
 ## Where to next
 
 - [Getting started](/guide/getting-started/) — local smoke

@@ -32,7 +32,8 @@ Unauthenticated in every mode: the probes `/health`, `/live`, `/ready`, and ever
   `redoc_url=None`); `/docs` is a Scalar page the harness mounts itself, under one CSP.
 
 Missing credentials in `api_key` / `jwt` → **401** (fail closed). Mint self-issued tokens with `felix mint-jwt`,
-or let people get their own with [GitHub login](#github-login).
+or let people get their own with [GitHub login](#github-login) or
+[Google sign-in](#google-sign-in).
 
 ## GitHub login
 
@@ -256,6 +257,76 @@ also writes `::add-mask::` on stderr, but mask the captured value yourself as we
 For machines outside GitHub Actions (cron, another CI), mint a token for them with
 `felix mint-jwt`.
 
+## Google sign-in
+
+For a deployment that should let a few named people in, without opening sign-in to the public. Only
+the Google accounts the operator lists get a token, and no one can sign themselves up. The
+motivating case is a family install where a child's account reaches one supervised agent and
+nothing else.
+
+A browser signs in by redirect, the same shape as [GitHub's](#signing-in-from-a-browser):
+`GET /auth/google/authorize?return_to=…` → Google → `/auth/google/callback` → back to the app, which
+collects its token once with `POST /auth/google/exchange`. Redirect is the only way in; there is no
+device flow and no CLI login.
+
+```bash
+FELIX_AUTH_MODE=jwt
+FELIX_JWT_VERIFIERS=self:felix-self
+FELIX_JWKS_PRIVATE=...                       # RSA PEM; FELIX_JWKS_PUBLIC is its public half
+FELIX_ALLOWED_TENANTS=family,kids
+FELIX_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com
+FELIX_GOOGLE_CLIENT_SECRET=...
+FELIX_GOOGLE_COOKIE_KEY=...                  # openssl rand -base64 32
+FELIX_GOOGLE_REDIRECT_ORIGINS=https://chat.example.com
+FELIX_GOOGLE_ACCOUNTS='{
+  "parent@gmail.com": {"tenant": "family", "scopes": ["sessions:read"]},
+  "kid@gmail.com":    {"tenant": "kids", "scopes": [], "manifests": ["kids"], "sub": "1084…"}
+}'
+```
+
+Sign-in is on while the client id, the secret, the cookie key and at least one redirect origin are
+all set, and `GET /auth/methods` then reports `google_redirect: true`.
+
+**In Google Cloud**, create an OAuth client of type *Web application* and register
+`<origin><FELIX_GOOGLE_CALLBACK_PATH>` as its redirect URI. Behind chat-ui's proxy that is
+`/api/auth/google/callback`. Leave the consent screen in **Testing** and add each listed account as
+a test user. Google then refuses everyone else before Felix is ever asked, so you get a second
+allowlist for free. A supervised (Family Link) account may need a parent to allow third-party
+"Sign in with Google" in Family Link.
+
+**Who gets in:**
+
+- **An entry is keyed by the Google-verified email.** Matching ignores case, and Google must report
+  `email_verified: true`. Any other account is sent back as `#felix_login_error=not_allowed`, and the
+  harness log names its email and Google account id.
+- **`sub` pins the entry to one Google account.** An address can be recycled or moved to another
+  account; the id cannot. Sign in once, copy the id from the log line, and add it.
+- **What is checked on Google's answer:** the ID token comes from Google's token endpoint, never
+  from the browser. Felix verifies:
+  - its RS256 signature against Google's published keys;
+  - `iss` and `aud` (your client id), `exp` and `iat`;
+  - a `nonce` that only the browser which started this sign-in holds.
+
+  `state`, the nonce and the PKCE verifier live in a sealed HttpOnly cookie.
+- **The token** is self-issued like GitHub's: `sub` is `google:<id>`, with `idp: google` and the
+  email. It lasts `FELIX_GOOGLE_LOGIN_TTL_SECONDS` (8 hours by default), and nothing revokes one
+  early. Each sign-in is audited as `google_login` in its tenant.
+
+**`manifests` pins the account to agents.** The token carries a `felix_manifests` claim, and every
+other manifest refuses it ([manifest gates](#manifest-gates)). Boot refuses a configuration that
+would let a pinned account reach around its pin:
+
+- **Write scopes.** A pinned account may carry only `<area>:read` scopes. A write scope would let
+  it edit the pinned manifest, schedule a job or run an eval.
+- **A shared tenant.** A pinned account may not share a tenant with an unpinned one. Threads,
+  history and search are shared within a tenant, so a child in a parent's tenant could read the
+  parent's conversations.
+
+The bundled `kids` manifest is what such an account is meant for. It has no tools and stores no
+long-term memory facts. Personal information is blocked in both directions, and a
+`child_appropriate` judge scores every reply before any of it is released. If the judge's model
+call fails, it falls back to a keyword heuristic, so watch the judge's route.
+
 ## Per-person repositories
 
 A person opens one of **their own** repositories in a thread, and the agent works on a checkout
@@ -302,6 +373,15 @@ Routes call `enforce_inbound_auth` (via `prepare_tenant_invoke`):
 
 - `inbound.allow_anonymous: false` → reject anonymous
 - `inbound.required_scopes` → all must be present on the principal → else 403
+- a credential carrying a `felix_manifests` claim (a list of names) → the manifest must be in it →
+  else 403. A claim that is not a list of strings is refused, not ignored.
+
+The same check guards every surface that runs an agent: chat, `/v1`, A2A, MCP, side questions,
+`/chat/compact`, a rewind's summary, and each child `delegation` compiles. A durable run stores the
+pin and is held to it on resume. A pinned manifest's own `spec.sub_agents` are the operator's choice
+and are not checked again, as with `auth.inbound`. [Google sign-in](#google-sign-in) mints the claim
+for an account with `manifests`. An api-key entry or another IdP's token that carries it is held to
+it as well.
 
 Management routes call `require_mgmt_scopes` with the scopes in `felix.auth.mgmt` — `audit:read`,
 `manifests:write`, `approvals:write`, and the rest of the pairs listed in the
