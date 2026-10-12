@@ -387,6 +387,64 @@ says. A manifest that limits `auth.inbound.schemes` must name `trigger`. Add
 | `FELIX_TRIGGERS` | empty | The registry above, as JSON. |
 | `FELIX_IDEMPOTENCY_TTL_SECONDS` | `86400` | How long a delivery is remembered, so a replay starts nothing. Per process without `FELIX_REDIS_URL`. GitHub signs no timestamp, so a captured GitHub delivery replayed after this starts a new run. |
 
+## Slack
+
+With the optional `felix-channels` plugin installed, people can talk to an agent from Slack: a
+mention in a channel, or a DM to the app. Each message starts a [durable run](#durable-runs) as
+its sender, a Slack thread is one Felix conversation, and the worker posts the answer back in the
+thread when the run ends.
+
+**Install the plugin** in both the API and the worker image: `FELIX_EXTRAS=channels` when building
+(`docker build --build-arg FELIX_EXTRAS="channels" .`), or `uv sync --extra channels` from a
+checkout. Without it, `FELIX_CHANNELS` is inert. The worker must run with `felix-scheduler`, as
+for every durable run.
+
+**Create the Slack app** (api.slack.com/apps):
+1. Bot token scopes: `app_mentions:read`, `chat:write`, `im:history`. Install it to the workspace
+   and keep the bot token (`xoxb-…`) and, from *Basic Information*, the signing secret.
+2. *Event Subscriptions*: request URL `https://<your-felix>/channels/slack/<id>/events`, where
+   `<id>` is the key below. Slack sends a signed challenge, which Felix answers once the entry
+   exists. Subscribe to the bot events `app_mention` and `message.im`.
+3. *App Home*: allow users to send messages from the messages tab, for DMs.
+
+```bash
+FELIX_CHANNELS='{
+  "acme-slack": {"platform": "slack", "tenant": "acme", "manifest": "assistant",
+                 "team_id": "T0123ABCD",
+                 "signing_secret": "secret:SLACK_SIGNING_SECRET", "bot_token": "secret:SLACK_BOT_TOKEN"}
+}'
+```
+
+| Key | Required | Notes |
+|---|---|---|
+| `platform` | yes | `slack`. |
+| `tenant`, `manifest` | yes | Where the conversation runs. A manifest that limits `auth.inbound.schemes` must name `slack`. |
+| `team_id` | yes | The workspace (`T…`). A request from any other workspace is ignored. |
+| `signing_secret`, `bot_token` | yes | `secret:NAME`; a literal only with `FELIX_ENVIRONMENT=development` and `FELIX_AUTH_MODE=none`. A signing secret that does not resolve, or resolves under 16 bytes, answers `503`. |
+| `scopes` | no | Granted to every sender, `slack:<team>:<user>`, for `auth.inbound.required_scopes` and `spec.policies`. None by default; there is no per-user account linking yet, so everyone in the workspace has the same scopes. |
+| `channels`, `users` | no | Slack ids that may talk to the agent; anyone in the workspace when unset. |
+| `rate_limit` | no | Attempts per minute for the whole channel, `1`–`10000`, default `60`. |
+| `user_rate_limit` | no | Attempts per minute for one sender, at most `rate_limit`, default `10`, so one person cannot spend everyone's budget. |
+
+A malformed registry fails the boot. Requests are verified with the signing secret (a 5-minute
+window); Slack's retries are recognised by their event id and start nothing (across replicas only
+with `FELIX_REDIS_URL`). Edits, deletions and bots' messages, the app's own replies among them,
+are ignored, and so are people from other organisations in a Slack Connect channel (or another
+workspace of the same Enterprise Grid org). While a conversation's run is
+still going, a message there is told to wait, at most once a minute. If the manifest's inbound
+auth refuses the channel (its `scopes`, or `auth.inbound.schemes` without `slack`), every sender is
+refused alike: the conversation is told the agent isn't available, at most once a minute, and the
+log says `channel_misconfigured`. Replies are escaped (no `@channel` pings or disguised links from the
+model) and posted with link previews off; a failed or expired run is answered with a short note,
+never its error. Replies are sent once: if Slack is down when the run ends, that reply is lost.
+Not yet: approvals and `ask_user` as Slack buttons (a run waiting on an approval waits for the
+web client or the API), Telegram, and per-user linking.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_CHANNELS` | empty | The registry above, as JSON. Read by the `felix-channels` plugin. |
+| `FELIX_SECRET_NAMES` | empty | Add the channel's secret names (`SLACK_SIGNING_SECRET,SLACK_BOT_TOKEN`), so the worker, where channel runs execute, masks them from boot rather than from its first reply. |
+
 ## Skill library
 
 Agent Skills come from the image's bundled `skills/`, from `FELIX_SKILLS_DIR`, from `SKILL.md` keys
