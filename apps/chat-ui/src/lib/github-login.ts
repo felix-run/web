@@ -23,17 +23,18 @@ import {
   exchangeGoogleLogin,
   type GitHubDeviceStart,
   type GitHubLoginToken,
+  googleAuthorizeUrl,
   type LoginResult,
   redeemGitHubLogin,
   startGitHubLogin,
 } from '@/api';
-import type { GitHubSession } from './auth';
+import type { GitHubSession, SignInProvider } from './auth';
+
+export type { SignInProvider } from './auth';
 
 const TENANT_STORAGE = 'felix.githubTenant';
 /** Which provider a redirect sign-in went to, so its return collects from the right one. */
 const PROVIDER_STORAGE = 'felix.signInProvider';
-
-export type SignInProvider = 'github' | 'google';
 
 /** Taken off the token's lifetime, so a request never leaves with one about to lapse. */
 const EXPIRY_MARGIN_MS = 60_000;
@@ -219,13 +220,18 @@ function rememberTenant(tenant: string | null): void {
   }
 }
 
-export function sessionFrom(token: GitHubLoginToken, now = Date.now()): GitHubSession {
+export function sessionFrom(
+  token: GitHubLoginToken,
+  now = Date.now(),
+  provider: SignInProvider = 'github',
+): GitHubSession {
   return {
     token: token.access_token,
     expiresAt: now + Math.max(0, token.expires_in * 1000 - EXPIRY_MARGIN_MS),
     login: token.github_login ?? '',
     tenant: token.tenant,
     scopes: token.scopes ?? [],
+    provider,
   };
 }
 
@@ -237,6 +243,21 @@ export function rememberRedirectProvider(provider: SignInProvider): void {
     // Not remembered: the return collects from GitHub, which is where every redirect went
     // before Google sign-in existed.
   }
+}
+
+/** This page as a sign-in's return target: without the fragment the harness writes back. */
+export function returnTo(): string {
+  return `${window.location.origin}${window.location.pathname}${window.location.search}`;
+}
+
+/**
+ * Leave for Google's sign-in, coming back to this page. A Google session is renewed this way too:
+ * there is no code to enter in place, so renewing leaves the page — a durable run carries on at
+ * the harness and is rejoined on the way back.
+ */
+export function redirectToGoogle(): void {
+  rememberRedirectProvider('google');
+  window.location.assign(googleAuthorizeUrl(returnTo()));
 }
 
 /** The provider this return is from, read once; GitHub when nothing was remembered. */
@@ -294,7 +315,7 @@ export async function completeRedirectSignIn(): Promise<RedirectOutcome> {
   }
   if (!result.ok)
     return { kind: 'failed', failure: failureFromCode(result.refusal?.error, result.status) };
-  return { kind: 'signed-in', session: sessionFrom(result.value) };
+  return { kind: 'signed-in', session: sessionFrom(result.value, Date.now(), provider) };
 }
 
 export function useDeviceLogin(onSignedIn: (session: GitHubSession) => void) {

@@ -3,8 +3,8 @@
  *
  * - **An access key**: the proxy Worker's shared `CHAT_UI_KEY`, sent as
  *   `x-chat-key`. Every holder is the same principal.
- * - **A GitHub session**: a bearer the harness minted after a GitHub device-flow
- *   login (`lib/github-login.ts`), sent as `Authorization: Bearer`. It names a
+ * - **A session**: a bearer the harness minted after a GitHub or Google sign-in
+ *   (`lib/github-login.ts`), sent as `Authorization: Bearer`. It names a
  *   person and the tenant their org maps to, and it lapses on its own — the
  *   harness keeps no revocation list, so signing out here forgets the token
  *   without cancelling it.
@@ -19,6 +19,9 @@
 const KEY_STORAGE = 'felix.apiKey';
 const SESSION_STORAGE = 'felix.session';
 
+/** Who minted a session's identity: how it is renewed, and whether a GitHub connection can exist. */
+export type SignInProvider = 'github' | 'google';
+
 export interface GitHubSession {
   token: string;
   /** Epoch ms. Taken a little early, so a request never leaves with a token about to lapse. */
@@ -27,6 +30,8 @@ export interface GitHubSession {
   login: string;
   tenant: string;
   scopes: string[];
+  /** Absent means GitHub: every session stored before Google sign-in existed was one. */
+  provider?: SignInProvider;
 }
 
 /** Which credential a 401 was answering — the gate says something different for each. */
@@ -100,6 +105,7 @@ function parseSession(raw: string | null): GitHubSession | null {
         login: typeof s.login === 'string' ? s.login : '',
         tenant: s.tenant,
         scopes: Array.isArray(s.scopes) ? s.scopes.filter((x) => typeof x === 'string') : [],
+        provider: s.provider === 'google' ? 'google' : 'github',
       };
     }
   } catch {
@@ -181,7 +187,7 @@ export function handleUnauthorized(): void {
   onRelock?.({ cause: 'unauthorized', kind: lapsed });
 }
 
-/** Forget the GitHub session and return to the gate. The token stays valid until it expires. */
+/** Forget the session and return to the gate. The token stays valid until it expires. */
 export function signOut(): void {
   clearSession();
   onRelock?.({ cause: 'signed-out' });

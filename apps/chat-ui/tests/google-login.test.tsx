@@ -1,8 +1,9 @@
 /** @vitest-environment happy-dom */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AccountChip } from '../src/components/account-chip';
 import { Gate } from '../src/components/gate';
-import { getSession, setRelockHandler } from '../src/lib/auth';
+import { getSession, setRelockHandler, setSession } from '../src/lib/auth';
 
 /**
  * Google sign-in, at the wire: the harness offers it on `/auth/methods` as `google_redirect`, the
@@ -24,12 +25,14 @@ const TOKEN = {
 type Handler = (init: RequestInit | undefined) => Response | Promise<Response>;
 let routes: Record<string, Handler>;
 let calls: string[];
+let methods: Array<string | undefined>;
 let assigned: string[];
 
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   calls = [];
+  methods = [];
   assigned = [];
   routes = {
     '/api/v1/models': (init) =>
@@ -50,6 +53,7 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push(url.split('?')[0] as string);
+      methods.push(init?.method);
       const handler = routes[url.split('?')[0] as string];
       return handler ? handler(init) : json({ error: 'not_found' }, 404);
     }),
@@ -94,7 +98,7 @@ describe('Google sign-in', () => {
     window.history.replaceState(null, '', '/t/abc#felix_login=ok');
     renderGate();
     await screen.findByText('chat is open');
-    expect(getSession()).toMatchObject({ token: 'felix-jwt', tenant: 'kids' });
+    expect(getSession()).toMatchObject({ token: 'felix-jwt', tenant: 'kids', provider: 'google' });
     expect(window.location.hash).toBe('');
     expect(calls.filter((c) => c === '/api/auth/google/exchange')).toHaveLength(1);
     expect(calls).not.toContain('/api/auth/github/exchange');
@@ -151,6 +155,58 @@ describe('Google sign-in', () => {
     routes['/api/auth/methods'] = () => json({ github_device: true, bearer_required: true });
     renderGate();
     await screen.findByRole('button', { name: /continue with github/i });
+    expect(screen.queryByRole('button', { name: /continue with google/i })).toBeNull();
+  });
+});
+
+describe('the account chip, for a Google session', () => {
+  const googleSession = (msLeft: number) => ({
+    token: 'felix-jwt',
+    expiresAt: Date.now() + msLeft,
+    login: '',
+    tenant: 'kids',
+    scopes: [],
+    provider: 'google' as const,
+  });
+
+  it('renews by going to Google and back, not with a GitHub code', async () => {
+    window.history.replaceState(null, '', '/t/abc');
+    setSession(googleSession(5 * 60_000));
+    render(<AccountChip />);
+    fireEvent.click(screen.getByRole('button', { name: /signed in as kids/i }));
+    expect(await screen.findByText(/goes to Google and brings you back/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^sign in again$/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/i }));
+
+    const target = new URL(assigned[0] as string, window.location.origin);
+    expect(target.pathname).toBe('/api/auth/google/authorize');
+    expect(target.searchParams.get('return_to')).toBe(`${window.location.origin}/t/abc`);
+    expect(calls).not.toContain('/api/auth/github/device');
+    // The return collects from Google's exchange: the renewal said where it went.
+    expect(sessionStorage.getItem('felix.signInProvider')).toBe('google');
+  });
+
+  it('asks about no GitHub connection, and signs out without forgetting one', async () => {
+    setSession(googleSession(3_600_000));
+    const relock = vi.fn();
+    setRelockHandler(relock);
+    render(<AccountChip />);
+    fireEvent.click(screen.getByRole('button', { name: /signed in as kids/i }));
+    expect(await screen.findByText(/is still honoured until/i)).toBeTruthy();
+    expect(screen.queryByText(/the GitHub connection Felix holds/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => expect(relock).toHaveBeenCalledWith({ cause: 'signed-out' }));
+    expect(getSession()).toBeNull();
+    expect(calls).not.toContain('/api/github/connection');
+    expect(methods).not.toContain('DELETE');
+  });
+
+  it('keeps a session stored before Google sign-in on GitHub renewal', async () => {
+    const { provider: _, ...older } = googleSession(5 * 60_000);
+    setSession({ ...older, login: 'octo', tenant: 'acme' });
+    render(<AccountChip />);
+    fireEvent.click(screen.getByRole('button', { name: /signed in as @octo/i }));
+    expect(await screen.findByRole('button', { name: /^sign in again$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /continue with google/i })).toBeNull();
   });
 });

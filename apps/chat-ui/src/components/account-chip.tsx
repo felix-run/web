@@ -1,5 +1,5 @@
 /**
- * Who this browser is signed in as, when it signed in with GitHub. Nothing at
+ * Who this browser is signed in as, when it signed in with GitHub or Google. Nothing at
  * all under the shared access key, which names no one.
  *
  * Quiet by design: a face and a login at the end of the header, so the person
@@ -7,7 +7,9 @@
  * It earns the state colour in one case only — the session is about to end —
  * because the harness keeps no refresh and no revocation, so an ended session
  * is a 401 on the next request and a gate in front of whatever run was live.
- * Renewing happens here, in the popover, with the shell still mounted.
+ * Renewing happens here: a GitHub session in the popover, with the shell still
+ * mounted; a Google session by redirect, since Google has no code to enter in
+ * place, coming back to the same page.
  *
  * Signing out forgets the token in this browser and nothing more. The harness
  * cannot be told to stop honouring it, so the popover says until when it still
@@ -28,8 +30,9 @@ import {
   signOut,
   subscribeCredentials,
 } from '@/lib/auth';
-import { useDeviceLogin } from '@/lib/github-login';
+import { redirectToGoogle, useDeviceLogin } from '@/lib/github-login';
 import { DeviceLoginBody } from './auth/github-sign-in';
+import { GoogleButton } from './auth/google-sign-in';
 import { ConfirmButton } from './confirm-button';
 
 /** From here to the end, the chip says the session is ending and offers to renew it. */
@@ -96,6 +99,7 @@ export function AccountChip() {
   const left = session.expiresAt - now;
   const ending = left < RENEW_WINDOW_MS;
   const who = session.login ? `@${session.login}` : session.tenant;
+  const google = session.provider === 'google';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -139,27 +143,32 @@ export function AccountChip() {
             : ending
               ? `Your session ends in ${minutesLeft(left)} min, at ${timeOfDay(session.expiresAt)}. Sign in again now so a run is not cut off when it does.`
               : `Signed in until ${timeOfDay(session.expiresAt)}.`}
+          {google && left > 0 && ' Signing in again goes to Google and brings you back here.'}
         </p>
 
-        <DeviceLoginBody
-          login={login}
-          idle={
-            <Button
-              type="button"
-              variant={ending ? 'default' : 'outline'}
-              className="w-full"
-              disabled={state.phase === 'starting'}
-              onClick={() => void login.start()}
-            >
-              <RefreshCwIcon
-                className={cn('size-4', state.phase === 'starting' && 'animate-spin')}
-              />
-              {state.phase === 'starting' ? 'Asking GitHub for a code…' : 'Sign in again'}
-            </Button>
-          }
-        />
+        {google ? (
+          <GoogleButton redirect={redirectToGoogle} variant={ending ? 'default' : 'outline'} />
+        ) : (
+          <DeviceLoginBody
+            login={login}
+            idle={
+              <Button
+                type="button"
+                variant={ending ? 'default' : 'outline'}
+                className="w-full"
+                disabled={state.phase === 'starting'}
+                onClick={() => void login.start()}
+              >
+                <RefreshCwIcon
+                  className={cn('size-4', state.phase === 'starting' && 'animate-spin')}
+                />
+                {state.phase === 'starting' ? 'Asking GitHub for a code…' : 'Sign in again'}
+              </Button>
+            }
+          />
+        )}
 
-        <GitHubConnectionRow open={open} />
+        {!google && <GitHubConnectionRow open={open} />}
 
         <div className="space-y-1.5 border-t border-border/60 pt-3">
           <Button
@@ -172,16 +181,20 @@ export function AccountChip() {
               setOpen(false);
               // Forget the stored GitHub connection while this session can still ask, then leave.
               // Best effort: leaving must not wait on, or fail with, a harness that is not there.
-              void removeGitHubConnection()
-                .catch(() => undefined)
-                .finally(signOut);
+              // A Google session has no GitHub connection to forget.
+              if (google) signOut();
+              else
+                void removeGitHubConnection()
+                  .catch(() => undefined)
+                  .finally(signOut);
             }}
           >
             Sign out
           </Button>
           <p className="text-xs text-muted-foreground">
-            Signing out forgets the token in this browser and the GitHub connection Felix holds.
-            Your Felix sign-in itself is still honoured until {timeOfDay(session.expiresAt)}.
+            Signing out forgets the token in this browser
+            {google ? '' : ' and the GitHub connection Felix holds'}. Your Felix sign-in itself is
+            still honoured until {timeOfDay(session.expiresAt)}.
           </p>
         </div>
       </PopoverContent>
