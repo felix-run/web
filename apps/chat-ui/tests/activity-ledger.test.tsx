@@ -583,7 +583,9 @@ describe('the ledger page', () => {
     sessionStorage.clear();
     stubHarness({ events: failingTurn });
     mount();
-    expect(await screen.findByText(/no earlier visit from this browser/)).toBeTruthy();
+    expect(
+      await screen.findByText(/none recorded in this browser yet, so the last 24 hours/),
+    ).toBeTruthy();
   });
 
   it('stamps the visit on the way out, once the page was on screen long enough', async () => {

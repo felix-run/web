@@ -346,13 +346,17 @@ function Account({
           minute: '2-digit',
         })})`
       : win === 'last'
-        ? 'Last 24 hours — no earlier visit from this browser to measure from'
+        ? // Under a control reading "Since last visit", so it starts there and says
+          // why the window is a day: "no earlier visit" alone read as a contradiction.
+          'Since last visit — none recorded in this browser yet, so the last 24 hours'
         : WINDOW_LABEL[win];
   return (
     // The measure is set on the sentence, in its own size: on the wrapper, `ch`
-    // was a 16px character, and the 14px line under it ran ~106 to a line.
+    // was a 16px character, and the 14px line under it ran ~106 to a line. And
+    // `ch` is the width of "0", wider than Geist's average letter: 70ch measured
+    // ~93 to a line. 56ch holds it near 75.
     <div className="mb-3">
-      <p className="max-w-[70ch] text-sm text-muted-foreground">
+      <p className="max-w-[56ch] text-sm text-muted-foreground">
         {when}.
         {denying > 0 && (
           <>

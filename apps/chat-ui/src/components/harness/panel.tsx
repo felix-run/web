@@ -185,7 +185,7 @@ export function PageHeader({
   return (
     <header className="shrink-0 border-b border-border/60 px-4 py-3">
       {/* `min-h-8`: the height of the tallest control a header carries, so the
-          rule under it sits on one line across all eight pages. It moved by a few
+          rule under it sits on one line across every page. It moved by a few
           pixels whenever a page had controls, which the eye reads as the page
           jumping on navigation. */}
       {/* Centred on the sheet, like the transcript: held to the left, a page left half the

@@ -359,8 +359,10 @@ lives in a rail. The sidebar goes last because it holds every way to anywhere el
 the menu's View group on both addresses, `/debug` (`/verbose` is an alias in `slash-commands.tsx`)
 or the header badge. Off, the shell renders **no instrument** — `useRails({ enabled })` reads it
 closed and refuses to open it, keeping the stored preference for when debug returns, and the
-`Mod+'` handler checks `debugRef` — **no harness pages** in the sidebar (a *Skill drafts* row from
-`useDraftGlance` stands in while drafts wait), no agent id or canary in the header, no context
+`Mod+'` handler checks `debugRef` — **one harness page** in the sidebar, *Activity* with its
+failure glance (`useActivityGlance`), since it answers "what happened while I was away" (2026-10-12),
+plus a *Skill drafts* row from `useDraftGlance` while drafts wait; on any `/harness` page the
+sidebar lists all nine, since they are that page's navigation — no agent id or canary in the header, no context
 meter below 90% full, and no tokens under turns. Approvals, questions, the attention line, the
 run-state chip and failed/denied tool cards are never debug's. On, the instrument's fourth tab is
 **Debug** (`components/inspector/debug-section.tsx`): `ShellValue.inspectClient()` reads the
@@ -404,12 +406,14 @@ down to a `sm:min-w-52` floor, so the line keeps its sentence. Below `sm` the wo
 New chat; the threads, grouped as Waiting on you, Running, Pinned, Today, Yesterday, Previous 7 days
 and Older (Older starts folded, showing its count, is cut by month when open, and folded still draws
 the current thread if it is there — never the other fifty — in a group named for it); the workspace section (`src/components/workspace/workspace-section.tsx`);
-and the eight harness destinations with their glances. It replaced three earlier things: a threads
+and the nine harness destinations with their glances, grouped by the question each answers
+(*What happened*, *What it knows*, *How it's set up*, `GROUPS`). It replaced three earlier things: a threads
 popover off the workspace header, which had been the *only* way to switch threads; the workspace
-zone; and `/harness`'s resident nav rail, which is drawn now only from 768 where the sidebar does
-not list the destinations — a drawer below 1024, or debug off at any width, since the sidebar lists
-them only in debug (a debug-off page had no way sideways until 2026-10-11). On `/harness` the
-tab's thread is drawn *held* in the list (`heldId`: the fill, *This tab*, no `aria-current`) and
+zone; and `/harness`'s resident nav rail, which is drawn now only between 768 and 1024, where the
+sidebar is a drawer, in the sidebar's row style on the ground. Inline, the sidebar lists the
+destinations on every `/harness` page in either mode, and its Harness group does not fold there,
+so a remembered fold cannot strand a page. On `/harness` the tab's thread is drawn *held* in the
+list (`heldId`: a hairline outline, never the current row's fill, *This tab*, no `aria-current`) and
 the header's title slot is `ThreadReturn`, a link back to it. A break here is not a degraded rail — it is a thread list nobody can open — so
 `tests/workbench-layout.test.tsx` pins every collapsed icon as well as the list. Pins live in
 `felix.pinnedThreads` and are local, because the harness records which threads exist, not which
@@ -509,11 +513,11 @@ hard to find; they had no home, which is what an ellipsis menu means. `Section` 
 **without being edited**, and the shared pieces both surfaces draw from live in
 `src/components/inspector/primitives.tsx`.
 
-Eight destinations, declared once as `HARNESS_DESTINATIONS` — the nav and the route table are built
+Nine destinations, declared once as `HARNESS_DESTINATIONS` — the nav and the route table are built
 from that one list, because a nav entry with no route is a dead link and a route with no nav entry is
 a page nobody can reach, and both fail silently. **The list is light and the pages are not**:
 `routes/harness.tsx` holds the destinations, the nav, its glances and the layout, because the app
-sidebar imports them on every load; the eight pages are `routes/harness-pages.tsx`, loaded on the
+sidebar imports them on every load; the nine pages are `routes/harness-pages.tsx`, loaded on the
 first visit through one `lazy()` behind a `Suspense` around the layout's `<Outlet/>`. The glances'
 shared constants (`JOBS_POLL_KEY`, `failing`, `AUDIT_POLL_KEY`, `recentFailures`, …) live in
 `lib/harness-glances.ts` for the same reason — importing `failing` from `jobs-sheet.tsx` was enough

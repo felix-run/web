@@ -2792,6 +2792,22 @@ export function AppShell() {
         take a live run down with it.
       */}
       <ShellProvider value={shell}>
+        {/* The first Tab stop: past the sidebar's list, its workspace and the
+            harness's nine pages to whatever the address shows. Every address puts
+            its content in one `main`; focus moves there rather than to an anchor,
+            because the sheet scrolls itself and the page never does. */}
+        <button
+          type="button"
+          onClick={() => {
+            const main = document.querySelector('main');
+            if (!main) return;
+            main.tabIndex = -1;
+            main.focus();
+          }}
+          className="sr-only rounded-md bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sheet outline-none focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus-visible:ring-[3px] focus-visible:ring-ring"
+        >
+          Skip to content
+        </button>
         <SidebarProvider
           open={historyOpen}
           onOpenChange={setHistoryOpen}

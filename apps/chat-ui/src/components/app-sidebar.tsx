@@ -12,6 +12,7 @@ import {
   useSidebar,
 } from '@felix/ui/sidebar';
 import {
+  ActivityIcon,
   ChevronRightIcon,
   FolderIcon,
   MessagesSquareIcon,
@@ -33,6 +34,7 @@ import {
   NavGlance,
   navSearch,
   useActiveRowInView,
+  useActivityGlance,
   useDraftGlance,
   useNavGlances,
   walkNav,
@@ -263,22 +265,25 @@ export function AppSidebar() {
               className="flex max-h-[40svh] flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
             >
               <WorkspaceSection />
-              {debug ? (
+              {/* Debug lists every destination; so does any `/harness` page, where
+                  the destinations are the page's own navigation — and the layout
+                  draws no rail of its own beside an inline sidebar. */}
+              {debug || onHarness ? (
                 <>
                   <SidebarSeparator />
                   <HarnessGroup collapsed={false} onNavigate={done} />
                 </>
               ) : (
-                <SkillDraftsRow collapsed={false} onNavigate={done} />
+                <DailyHarnessRows collapsed={false} onNavigate={done} />
               )}
             </div>
           </>
         )}
         {collapsed &&
-          (debug ? (
+          (debug || onHarness ? (
             <HarnessGroup collapsed onNavigate={done} />
           ) : (
-            <SkillDraftsRow collapsed onNavigate={done} />
+            <DailyHarnessRows collapsed onNavigate={done} />
           ))}
       </SidebarContent>
     </Sidebar>
@@ -296,15 +301,21 @@ function readFolded(): boolean {
 }
 
 /**
- * The harness's eight pages, in the two runs `/harness` has always sorted them
- * into. Its glances — failing jobs, recent Activity failures — poll only while the
- * rows are on screen, so a folded section costs nothing.
+ * The harness's nine pages, in the runs `GROUPS` sorts them into. Its glances —
+ * failing jobs, recent Activity failures — poll only while the rows are on
+ * screen, so a folded section costs nothing.
+ *
+ * The heading is an `h2`, like Threads and Workspace beside it, so moving by
+ * headings does not skip it. On `/harness` it does not fold: there the rows are
+ * the page's own navigation, and a fold remembered from the conversation side
+ * would arrive with no way to any other page.
  */
 function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigate: () => void }) {
   const [folded, setFolded] = useState(readFolded);
   const { search } = useHarnessAgent();
+  const onHarness = !!useMatch('/harness/*');
   // Collapsed to icons, the rows are all there is to the sidebar, so they never fold.
-  const shown = collapsed || !folded;
+  const shown = collapsed || onHarness || !folded;
   // Collapsed too: the icons are on screen, and a failure that vanishes when the
   // column narrows is an instrument that stops reading.
   const glance = useNavGlances(shown);
@@ -316,34 +327,41 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
     <SidebarGroup className="pt-1">
       {/* Not rendered while collapsed: the label is faded out there, and a fold
           button nobody can see was still a Tab stop. The rows can't fold then anyway. */}
-      {!collapsed && (
+      {!collapsed && onHarness && (
         <SidebarGroupLabel asChild>
-          <button
-            type="button"
-            aria-expanded={shown}
-            aria-controls="sidebar-harness"
-            onClick={() =>
-              setFolded((f) => {
-                try {
-                  localStorage.setItem(HARNESS_FOLD_KEY, f ? '0' : '1');
-                } catch {
-                  // Storage blocked: the fold lasts for this page.
-                }
-                return !f;
-              })
-            }
-            className="w-full hover:text-foreground"
-          >
-            Harness
-            <ChevronRightIcon
-              aria-hidden
-              className={cn(
-                'ml-auto transition-transform duration-200 ease-out motion-reduce:transition-none',
-                shown && 'rotate-90',
-              )}
-            />
-          </button>
+          <h2>Harness</h2>
         </SidebarGroupLabel>
+      )}
+      {!collapsed && !onHarness && (
+        <h2>
+          <SidebarGroupLabel asChild>
+            <button
+              type="button"
+              aria-expanded={shown}
+              aria-controls="sidebar-harness"
+              onClick={() =>
+                setFolded((f) => {
+                  try {
+                    localStorage.setItem(HARNESS_FOLD_KEY, f ? '0' : '1');
+                  } catch {
+                    // Storage blocked: the fold lasts for this page.
+                  }
+                  return !f;
+                })
+              }
+              className="w-full hover:text-foreground"
+            >
+              Harness
+              <ChevronRightIcon
+                aria-hidden
+                className={cn(
+                  'ml-auto transition-transform duration-200 ease-out motion-reduce:transition-none',
+                  shown && 'rotate-90',
+                )}
+              />
+            </button>
+          </SidebarGroupLabel>
+        </h2>
       )}
       <SidebarGroupContent id="sidebar-harness" hidden={!shown}>
         <nav ref={nav} aria-label="Harness" onKeyDown={walkNav}>
@@ -400,42 +418,74 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
 }
 
 /**
- * Debug off, the one harness page the sidebar still points at — and only while
- * there is a reason to go: skill drafts an agent wrote, waiting on a person's
- * review. Nothing else asks for one, and a row that is always there is a door
- * to the mechanism the daily surface leaves out. A failed check keeps a count it
- * already had (with its age); a check that never answered draws nothing here,
- * because "unchecked" is a fact about the harness, which is debug's to say.
+ * Debug off, the harness pages the sidebar still points at. **Activity**, always:
+ * it answers "what happened while I was away", which is the daily surface's
+ * question as much as debug's, and it was reachable only through a mode the menu
+ * describes as ids and instruments. **Skill drafts**, only while there is a
+ * reason to go — drafts an agent wrote, waiting on a person's review. The other
+ * seven stay debug's, and are listed here only while the operator is already on
+ * `/harness` (see `AppSidebar`).
+ *
+ * A failed check keeps a count it already had (with its age); a check that never
+ * answered draws nothing on these rows, because "unchecked" is a fact about the
+ * harness, which is debug's to say.
  */
-function SkillDraftsRow({ collapsed, onNavigate }: { collapsed: boolean; onNavigate: () => void }) {
-  const glance = useDraftGlance();
-  const at = useMatch('/harness/skills/*');
-  if (!glance || glance.tone !== 'blocked') return null;
+function DailyHarnessRows({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onNavigate: () => void;
+}) {
+  const { search } = useHarnessAgent();
+  const activity = useActivityGlance();
+  const drafts = useDraftGlance();
+  const atActivity = !!useMatch('/harness/activity/*');
+  const atSkills = !!useMatch('/harness/skills/*');
+  const quiet = (g: typeof activity) => (g && g.tone !== 'unknown' ? g : undefined);
+  const rows = [
+    {
+      key: 'activity',
+      label: 'Activity',
+      icon: ActivityIcon,
+      to: { pathname: '/harness/activity', search: navSearch('activity', search, activity) },
+      active: atActivity,
+      glance: quiet(activity),
+    },
+    ...(drafts?.tone === 'blocked'
+      ? [
+          {
+            key: 'skill-drafts',
+            label: 'Skill drafts',
+            icon: PuzzleIcon,
+            to: { pathname: '/harness/skills' },
+            active: atSkills,
+            glance: drafts,
+          },
+        ]
+      : []),
+  ];
   return (
     <>
-      {/* Its own rule, since it comes and goes: one outside it would be left
-          dangling under the workspace whenever nothing waits. */}
       {!collapsed && <SidebarSeparator />}
-      <SidebarGroup data-slot="skill-drafts" className="pt-1">
+      <SidebarGroup data-slot="daily-harness" className="pt-1">
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              isActive={!!at}
-              tooltip="Skill drafts"
-              className="relative text-muted-foreground"
-            >
-              <Link
-                to="/harness/skills"
-                onClick={onNavigate}
-                aria-current={at ? 'page' : undefined}
+          {rows.map(({ key, label, icon: Icon, to, active, glance }) => (
+            <SidebarMenuItem key={key} data-slot={key}>
+              <SidebarMenuButton
+                asChild
+                isActive={active}
+                tooltip={label}
+                className="relative text-muted-foreground"
               >
-                <PuzzleIcon aria-hidden />
-                <span className="min-w-0 flex-1 truncate">Skill drafts</span>
-                {collapsed ? <CollapsedGlance glance={glance} /> : <NavGlance glance={glance} />}
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+                <Link to={to} onClick={onNavigate} aria-current={active ? 'page' : undefined}>
+                  <Icon aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {collapsed ? <CollapsedGlance glance={glance} /> : <NavGlance glance={glance} />}
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
         </SidebarMenu>
       </SidebarGroup>
     </>

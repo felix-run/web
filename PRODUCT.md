@@ -81,7 +81,7 @@ Four failure modes, all of which this codebase is currently within reach of:
 1. **Outcomes by default, the mechanism one toggle away.** (Amended 2026-10-10.) The daily
    surface shows what the agent did and what waits on a person: the conversation, its tool calls,
    approvals, questions, failures and denials, and the run's state. Everything else — the run
-   instrument, the harness's pages, ids, token counts, the agent id and canary in the header — is
+   instrument, the harness's pages but Activity (the daily surface's one door to them), ids, token counts, the agent id and canary in the header — is
    **debug mode**, and debug never shows a tidier version of what the harness reported. Hiding is
    allowed; softening is not: nothing that needs a person, and no failed or denied call, ever
    leaves the daily surface. When a choice is between showing what the harness actually reported
