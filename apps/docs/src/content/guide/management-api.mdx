@@ -1032,17 +1032,19 @@ curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
 
 | Field | Type | Default |
 |---|---|---|
-| `schedule` | string — see below | `""` (every 60 seconds) |
+| `schedule` | string — see below | `""` (manual only) |
 | `manifest_id` | string | `""` |
 | `payload` | object | `{}` |
 | `enabled` | bool | `true` |
 
 `schedule` is five-field cron in **UTC** (`minute hour day month weekday`), a macro (`@hourly`,
 `@daily`, `@weekly`, `@monthly`, `@yearly`), an interval (`every:30s`, `every:5m`, `@every 2h`), or
-integer seconds. **An empty schedule runs every 60 seconds** — it is not "manual"; to stop a job
-firing, set `enabled: false` (Run now still works on a disabled job). A schedule outside that
-grammar is refused with `422`. A new job, with no `next_run_at` yet, fires at the next sweep
-whatever its schedule says, and follows the schedule from then on.
+integer seconds. **An empty schedule is manual only**: the job never fires on its own and runs
+only through Run now. (Through Felix 0.13.1 it meant "every 60 seconds", so a job created to be tried
+by hand fired every minute on one thread; a row stored with an empty schedule simply stops firing.)
+To pause a scheduled job, set `enabled: false` — Run now still works on a disabled job. A schedule
+outside that grammar is refused with `422`. A new scheduled job, with no `next_run_at` yet, fires at
+the next sweep whatever its schedule says, and follows the schedule from then on.
 
 `payload.prompt` (or `payload.message`) is the user turn the manifest is invoked with; the rest
 of the payload is the job's to interpret. Every firing runs on one thread named after the job,
