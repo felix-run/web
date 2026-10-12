@@ -264,16 +264,21 @@ export function AppSidebar() {
                 address and the mode (two harness rows on a thread, nine on
                 `/harness`), and a region sized to its content grew upward on
                 arrival, moving the row just clicked out from under the pointer.
+                30rem, because that is what the nine destinations take (the folded
+                workspace's header is a short scroll below them): at 40svh, 941px tall left Manifests, Eval
+                and GitHub below the fold of `/harness`'s own navigation. Clamped so
+                a short window keeps a thread list and a tall one does not hand it
+                all to this region.
 
-                The order follows the address. On `/harness` the destinations are
-                the page's own navigation, so they lead and the workspace follows,
-                folded there; on a thread the workspace is where its tools run, so
-                it leads — except for debug off's few harness rows, which sit first
-                in the same frame `/harness` draws, so arriving only adds rows below
-                Activity. */}
+                One order, on every address and in both modes: Harness, then the
+                workspace. It followed the address in debug, and the row clicked to
+                arrive jumped 142px when the two swapped. On `/harness` all nine
+                destinations show and the workspace is folded; on a thread debug
+                shows all nine and debug off its few rows, in the same frame, so
+                arriving only adds rows below Activity. */}
             <div
               data-slot="sidebar-lower"
-              className="flex h-[40svh] flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+              className="flex h-[clamp(40svh,30rem,60svh)] flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
             >
               {onHarness ? (
                 <>
@@ -285,9 +290,9 @@ export function AppSidebar() {
                 </>
               ) : debug ? (
                 <>
-                  <WorkspaceSection />
-                  <SidebarSeparator />
                   <HarnessGroup collapsed={false} onNavigate={done} />
+                  <SidebarSeparator />
+                  <WorkspaceSection />
                 </>
               ) : (
                 <>

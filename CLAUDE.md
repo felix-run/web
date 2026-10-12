@@ -414,7 +414,9 @@ sidebar is a drawer, in the sidebar's row style on the ground. Inline, the sideb
 destinations on every `/harness` page in either mode, and its Harness group does not fold there,
 so a remembered fold cannot strand a page. On `/harness` the tab's thread is drawn *held* in the
 list (`heldId`: a hairline outline, never the current row's fill, *This tab*, no `aria-current`) and
-the header's title slot is `ThreadReturn`, a link back to it. A break here is not a degraded rail — it is a thread list nobody can open — so
+the header's title slot is `ThreadReturn`, a link back to it drawn as a place (a chat glyph, no
+arrow, beside pages that carry their own back arrow); below `sm` the narrow index leads with
+`ThreadBack`, an arrowed row. A break here is not a degraded rail — it is a thread list nobody can open — so
 `tests/workbench-layout.test.tsx` pins every collapsed icon as well as the list. Pins live in
 `felix.pinnedThreads` and are local, because the harness records which threads exist, not which
 ones an operator keeps near. `removeThread` drops a deleted thread's pin. The primitive is
@@ -427,9 +429,10 @@ too.
 **The sidebar has two scroll regions, one above the other, and does not scroll as a whole**
 (2026-10-08). The thread list is `flex-1 min-h-0` and scrolls its own rows under a heading and
 search that do not scroll; the workspace and the harness's pages are one region below it
-(`data-slot="sidebar-lower"`), `h-[40svh]` — fixed, not a cap, since its rows change with the
-address and a region sized to them grew upward on arrival — with its own `overflow-y-auto`, and its
-order follows the address (Harness first on `/harness` and in debug off's frame on a thread); and the expanded
+(`data-slot="sidebar-lower"`), `h-[clamp(40svh,30rem,60svh)]` — fixed, not a cap, since its rows
+change with the address and a region sized to them grew upward on arrival; 30rem fits the nine
+destinations — with its own `overflow-y-auto`, and one order everywhere: Harness, then the
+workspace (folded on `/harness`, its mount controls inside the fold); and the expanded
 `SidebarContent` is `overflow-y-hidden`. Before the list scrolled at all, an opened Older pushed the
 workspace and the harness's pages fifty rows down. Then the list scrolled but the sidebar did too,
 and on production a mounted folder's file tree — itself a third scroller — put three scrollbars

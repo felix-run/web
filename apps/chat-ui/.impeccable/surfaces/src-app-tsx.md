@@ -99,8 +99,8 @@ package — single-use, so not the catalog.
 ```
 /                    Workbench, fresh thread
 /t/:threadSuffix     Workbench, that thread
-/harness             -> /harness/memory
-/harness/{memory|corpus|skills|manifests|jobs|eval|agent|audit|usage}
+/harness             -> /harness/activity (wide; narrow, /harness is the list)
+/harness/{activity|jobs|memory|documents|skills|agent|manifests|eval|github}
 ```
 
 - **The engine lives in the root layout route, above the `<Outlet/>`** — with the header,
@@ -129,7 +129,8 @@ visible. A fifth sheet. Onboarding chrome.
   usage row are different shapes and reading them interleaved answers no question either one does.
   Segmented rather than stacked so **one panel polls at a time**, which is the same economy the
   terminal's tab strip already buys; two stacked panels would cost two polls for a surface where
-  only one is being read. That brings the nav to **eight** destinations, not nine.
+  only one is being read. That brought the nav to **eight** destinations; GitHub has since made
+  it nine, grouped *What happened* / *What it knows* / *How it's set up* (2026-10-12).
 
 ## Direction contract
 

@@ -3121,7 +3121,16 @@ export function AppShell() {
                     >
                       <PanelRightIcon className="size-4" />
                     </Button>
-                  ) : null
+                  ) : (
+                    // Held while there is nothing to toggle, as debug holds the
+                    // instrument's: the attention line moved 32px left whenever
+                    // something opened in the pane.
+                    <span
+                      aria-hidden
+                      data-slot="instrument-toggle-slot"
+                      className="size-8 shrink-0"
+                    />
+                  )
                 ) : onHarness && paneHasItems ? (
                   // No instrument on `/harness`: the slot is the pane's while it holds something.
                   <Button

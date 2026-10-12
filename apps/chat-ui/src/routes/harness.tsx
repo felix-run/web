@@ -2,6 +2,7 @@ import { isSkillLibraryError } from '@felix/client';
 import { Skeleton } from '@felix/ui/skeleton';
 import {
   ActivityIcon,
+  ArrowLeftIcon,
   BookOpenIcon,
   BotIcon,
   BrainIcon,
@@ -22,7 +23,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import { Navigate, NavLink, Outlet, useMatch } from 'react-router';
+import { Link, Navigate, NavLink, Outlet, useMatch } from 'react-router';
 import { listAudit, listJobs, listSkillReviewQueue } from '@/api';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { DOCS_ORIGIN, PageBack, PageDocs, useMeasure } from '@/components/harness/panel';
@@ -45,6 +46,7 @@ import {
 } from '@/lib/harness-glances';
 import { setPresencePlace } from '@/lib/presence';
 import { usePaneState } from '@/lib/side-pane';
+import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/shell-context';
 
@@ -526,6 +528,35 @@ export function useActiveRowInView(nav: RefObject<HTMLElement | null>, at: strin
 }
 
 /**
+ * On a phone, the way back to the tab's thread, at the top of the list. The
+ * header's link is not drawn below `sm`, and the drawer's held row is two taps
+ * away and often inside a folded *Older*; here it is a way *back*, so it keeps
+ * its arrow. None without a shell, or before the tab has a thread.
+ */
+function ThreadBack() {
+  const shell = useOptionalShell();
+  if (!shell?.threadId) return null;
+  const meta = shell.threads.find((t) => t.id === shell.threadId);
+  const label = meta ? threadLabel(meta) : null;
+  const name = !label || (label.isId && shell.turns.length === 0) ? 'New conversation' : label.text;
+  return (
+    <div className="border-b border-border/60 p-2">
+      <Link
+        data-slot="thread-back"
+        to={`/t/${shell.threadId}`}
+        className="flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none coarse:h-11"
+      >
+        <ArrowLeftIcon aria-hidden className="size-4 shrink-0" />
+        <span className="sr-only">Back to </span>
+        <span className={cn('truncate', label?.isId && name !== 'New conversation' && 'font-mono')}>
+          {name}
+        </span>
+      </Link>
+    </div>
+  );
+}
+
+/**
  * Layout route for `/harness`.
  *
  * From 1024 the app sidebar is inline and carries the destinations itself on
@@ -577,6 +608,7 @@ export function HarnessLayout() {
           <p className="text-xs text-muted-foreground">What this tenant owns, across every run.</p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
+          <ThreadBack />
           <HarnessNav />
         </div>
       </main>
@@ -595,6 +627,10 @@ export function HarnessLayout() {
         // On the ground, as the sidebar is: the rail stands in for it here, and
         // a hairline on the sheet made it a fourth zone of its own.
         <div className="w-56 shrink-0 overflow-y-auto bg-ground">
+          {/* Named as the sidebar's group is, for a reader moving by headings;
+              unseen, since the rail is the only thing here and the page says
+              where it is. */}
+          <h2 className="sr-only">Harness</h2>
           <HarnessNav />
         </div>
       )}
