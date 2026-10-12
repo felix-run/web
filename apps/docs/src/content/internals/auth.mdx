@@ -311,6 +311,13 @@ allowlist for free. A supervised (Family Link) account may need a parent to allo
 - **The token** is self-issued like GitHub's: `sub` is `google:<id>`, with `idp: google` and the
   email. It lasts `FELIX_GOOGLE_LOGIN_TTL_SECONDS` (8 hours by default), and nothing revokes one
   early. Each sign-in is audited as `google_login` in its tenant.
+- **The person, for the client to show.** Sign-in asks for `openid email profile`. `/exchange`
+  returns the verified `email` and the `name` and `picture` Google reports alongside the token, and
+  chat-ui draws them in its account chip. They are handed over once and never stored or minted
+  into the token. A picture is passed only if it is an `https` URL on `*.googleusercontent.com`.
+- **Secrets from a backend.** `FELIX_GOOGLE_CLIENT_SECRET` and `FELIX_GOOGLE_COOKIE_KEY` hydrate
+  from `FELIX_SECRETS_BACKEND` as `GOOGLE_CLIENT_SECRET` and `GOOGLE_COOKIE_KEY`, like GitHub's
+  pair, and are masked like any credential.
 
 **`manifests` pins the account to agents.** The token carries a `felix_manifests` claim, and every
 other manifest refuses it ([manifest gates](#manifest-gates)). Boot refuses a configuration that
@@ -381,7 +388,8 @@ The same check guards every surface that runs an agent: chat, `/v1`, A2A, MCP, s
 pin and is held to it on resume. A pinned manifest's own `spec.sub_agents` are the operator's choice
 and are not checked again, as with `auth.inbound`. [Google sign-in](#google-sign-in) mints the claim
 for an account with `manifests`. An api-key entry or another IdP's token that carries it is held to
-it as well.
+it as well. `GET /v1/models` lists only the pinned manifests to such a credential, so a client never
+offers it an agent it would be refused, or defaults to one.
 
 Management routes call `require_mgmt_scopes` with the scopes in `felix.auth.mgmt` — `audit:read`,
 `manifests:write`, `approvals:write`, and the rest of the pairs listed in the
