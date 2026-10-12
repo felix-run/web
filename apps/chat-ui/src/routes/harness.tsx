@@ -1,4 +1,5 @@
 import { isSkillLibraryError } from '@felix/client';
+import { Skeleton } from '@felix/ui/skeleton';
 import {
   ActivityIcon,
   BookOpenIcon,
@@ -24,7 +25,7 @@ import {
 import { Navigate, NavLink, Outlet, useMatch } from 'react-router';
 import { listAudit, listJobs, listSkillReviewQueue } from '@/api';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
-import { DOCS_ORIGIN, PageBack, PageDocs } from '@/components/harness/panel';
+import { DOCS_ORIGIN, PageBack, PageDocs, useMeasure } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
 import { PaneColumn, PaneOverlay, type PaneZoneProps } from '@/components/pane/pane-zone';
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
@@ -452,20 +453,73 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
   );
 }
 
+/**
+ * The page's own area while its chunk loads: the shape of a destination's header
+ * and first rows, on the same measure, so the page arrives in place rather than
+ * replacing a line of text. The pages themselves wait on skeletons; a bare
+ * "Loading…" here was the one fallback that did not.
+ */
 function PageLoading() {
+  const measure = useMeasure();
   return (
-    <p role="status" className="p-4 text-sm text-muted-foreground">
-      Loading…
-    </p>
+    <div role="status" className="flex flex-col">
+      <span className="sr-only">Loading…</span>
+      <div aria-hidden className="shrink-0 border-b border-border/60 px-4 py-3">
+        <div className={cn('flex min-h-8 items-center gap-2.5', measure, measure && 'mx-auto')}>
+          <Skeleton className="size-7 rounded-md" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+      </div>
+      <div
+        aria-hidden
+        className={cn('flex flex-col gap-2 px-4 py-4', measure, measure && 'mx-auto w-full')}
+      >
+        <Skeleton className="h-8 w-full rounded-md" />
+        <Skeleton className="h-8 w-full rounded-md" />
+        <Skeleton className="h-8 w-2/3 rounded-md" />
+      </div>
+    </div>
   );
+}
+
+/**
+ * Keep the current destination's row in view inside the scroller that holds it.
+ *
+ * The app sidebar's lower region is capped at 40% of the viewport and holds the
+ * workspace above the harness's pages, so at a laptop's height (1728×941) the
+ * Workbenches run sat below its fold — and on `/harness/jobs` the row saying where
+ * you were was not on screen. Scrolls only the nearest scrolling ancestor, and only
+ * by as much as it takes: `scrollIntoView` would also move every clipping ancestor
+ * up the tree, including the sidebar content that is deliberately not a scroller.
+ */
+export function useActiveRowInView(nav: RefObject<HTMLElement | null>, at: string | undefined) {
+  useEffect(() => {
+    if (!at) return;
+    const row = nav.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!row) return;
+    let box: HTMLElement | null = row.parentElement;
+    while (
+      box &&
+      !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))
+    )
+      box = box.parentElement;
+    if (!box) return;
+    const r = row.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    // A row's height of margin, so the row does not land flush against the edge.
+    const pad = r.height / 2;
+    if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + pad;
+    else if (r.top < b.top) box.scrollTop -= b.top - r.top + pad;
+  }, [nav, at]);
 }
 
 /**
  * Layout route for `/harness`.
  *
- * From 1024 the app sidebar is inline and carries the destinations itself, so
- * this layout is the page alone. Between 768 and 1024 the sidebar is a drawer,
- * and the nav is a resident rail here instead — the destinations must be one
+ * From 1024, in debug, the app sidebar is inline and carries the destinations
+ * itself, so this layout is the page alone. Debug off the sidebar does not list
+ * them, and between 768 and 1024 it is a drawer; either way the nav is a resident
+ * rail here instead — the destinations must be one
  * click away at every width, not one drawer away. Narrow, there is no room for
  * both, so `/harness` *is* the list and a destination is a page with a way back —
  * which is also why the index only redirects on a wide viewport. Redirecting on a
@@ -474,6 +528,13 @@ function PageLoading() {
 export function HarnessLayout() {
   const wide = useMediaQuery('(min-width: 768px)');
   const sidebarInline = useMediaQuery(WORKSPACE_INLINE);
+  // The sidebar lists the destinations only in debug. Debug off — a *Skill drafts*
+  // row, a pushed or pasted link, a cold load on `/harness` — a page used to land
+  // with no neighbours and no way sideways, so the rail stands in wherever the
+  // sidebar does not carry them. No shell (a test mounting the layout) has no
+  // sidebar at all. Read before the `&&`, which would make it a conditional hook.
+  const debug = useOptionalShell()?.debug ?? false;
+  const sidebarHasNav = sidebarInline && debug;
   const atIndex = !!useMatch('/harness');
   const at = useMatch('/harness/:destination')?.params.destination;
   const destination = HARNESS_DESTINATIONS.find((d) => d.path === at);
@@ -522,7 +583,7 @@ export function HarnessLayout() {
   // `<Outlet/>` sits at the same depth either way.
   return (
     <div ref={pane.row} className="flex min-h-0 flex-1">
-      {wide && !sidebarInline && (
+      {wide && !sidebarHasNav && (
         <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60">
           <HarnessNav />
         </div>

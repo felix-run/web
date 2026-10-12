@@ -549,3 +549,26 @@ describe('search, past its first page', () => {
     expect(row.textContent).toMatch(/· just now/);
   });
 });
+
+/**
+ * On `/harness` the address is not a thread, so nothing is `aria-current` — but
+ * the tab's thread is still the way back, and an un-marked list made the operator
+ * remember which one it was.
+ */
+describe('a held thread', () => {
+  it('is drawn as this tab’s without claiming to be the page', () => {
+    const old = Date.now() - 400 * 24 * 60 * 60 * 1000;
+    setup({
+      threads: [thread(), thread({ id: 't2', title: 'Ancient', updatedAt: old })],
+      currentId: '',
+      heldId: 't2',
+    });
+    const held = screen.getByRole('button', { name: /^Ancient/ });
+    expect(held.getAttribute('aria-current')).toBeNull();
+    expect(held.textContent).toContain('This tab');
+    // Drawn even while Older is folded, as the current thread is.
+    expect(screen.queryByRole('button', { name: /^Local title/ })?.textContent).not.toContain(
+      'This tab',
+    );
+  });
+});

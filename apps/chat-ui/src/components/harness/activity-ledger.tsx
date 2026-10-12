@@ -349,8 +349,10 @@ function Account({
         ? 'Last 24 hours — no earlier visit from this browser to measure from'
         : WINDOW_LABEL[win];
   return (
-    <div className="mb-3 max-w-[70ch]">
-      <p className="text-sm text-muted-foreground">
+    // The measure is set on the sentence, in its own size: on the wrapper, `ch`
+    // was a 16px character, and the 14px line under it ran ~106 to a line.
+    <div className="mb-3">
+      <p className="max-w-[70ch] text-sm text-muted-foreground">
         {when}.
         {denying > 0 && (
           <>

@@ -343,6 +343,50 @@ describe('the harness address', () => {
     await waitFor(() => expect(address).toBe('/harness/activity'));
   });
 
+  /**
+   * The sidebar lists the destinations only in debug. Debug off, a page reached
+   * from *Skill drafts* or a link had no way sideways, so the layout draws its own
+   * rail wherever the sidebar does not carry them — and only there, or debug on
+   * would show two navs for one list.
+   */
+  it.each([
+    'off',
+    'on',
+  ] as const)('offers exactly one harness nav at a desktop width with debug %s', async (mode) => {
+    if (mode === 'off') localStorage.removeItem('felix.debug');
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('min-width: 768px') || query.includes('min-width: 1024px'),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    mount('/harness/activity');
+    await waitFor(() =>
+      expect(document.querySelectorAll('nav[aria-label="Harness"]')).toHaveLength(1),
+    );
+    const nav = document.querySelector('nav[aria-label="Harness"]') as HTMLElement;
+    const hrefs = [...nav.querySelectorAll('a')].map((a) => a.getAttribute('href')?.split('?')[0]);
+    for (const { path } of HARNESS_DESTINATIONS) {
+      expect(hrefs.some((h) => h?.endsWith(`harness/${path}`) || h === path)).toBe(true);
+    }
+  });
+
+  it('names the way back to the tab’s thread in the header', async () => {
+    mount('/t/keep-me');
+    await waitFor(() => expect(address).toBe('/t/keep-me'));
+    await act(async () => {
+      go('/harness/activity');
+    });
+    const back = await waitFor(() => {
+      const link = document.querySelector('[data-slot="thread-return"]');
+      expect(link).not.toBeNull();
+      return link as HTMLAnchorElement;
+    });
+    expect(back.getAttribute('href')).toBe('/t/keep-me');
+    expect(back.textContent).toMatch(/^Back to /);
+    // A link, not a second heading for the page.
+    expect(back.closest('h2')).toBeNull();
+  });
+
   it("reads Memory's view and turn from the address, so a turn can be linked", async () => {
     mount('/harness/memory?view=asof&turn=12');
     await waitFor(() =>

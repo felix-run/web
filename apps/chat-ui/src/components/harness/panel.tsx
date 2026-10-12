@@ -309,7 +309,7 @@ export function ViewSwitch<T extends string>({
           aria-pressed={value === id}
           onClick={() => onChange(id)}
           className={cn(
-            'h-full rounded-full px-3 text-xs font-semibold whitespace-nowrap transition-colors',
+            'h-full rounded-full px-3 text-xs font-semibold whitespace-nowrap transition-colors max-sm:px-2.5',
             'focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
             value === id ? 'bg-background text-foreground shadow-sheet' : 'hover:text-foreground',
           )}
