@@ -6,7 +6,7 @@ import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
 import { ClockIcon, HistoryIcon, LoaderIcon, PlayIcon, Trash2Icon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { deleteJob, listJobRuns, listJobs, runJobNow, upsertJob } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
@@ -23,17 +23,52 @@ import {
 import { StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { failing, JOBS_POLL_KEY } from '@/lib/harness-glances';
+import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '@/lib/job-schedule';
+import { useOptionalShell } from '@/shell-context';
 import type { JobRun } from '@/types';
 
 /**
  * Scheduled-jobs workbench — the `/jobs` registry as a `/harness` page. A job is a
- * persistent, tenant-scoped record the worker's `run_scheduled_jobs` cron
- * invokes on its `schedule`; an empty schedule means it is never swept.
+ * persistent, tenant-scoped record the scheduler fires on its `schedule`, in the grammar
+ * `lib/job-schedule.ts` mirrors from the harness. **An empty schedule runs every 60
+ * seconds**: this page called it "manual" and said it never ran on its own, while a job so
+ * labelled fired about 1,440 times a day. A job with no `next_run_at` yet — a new one — fires
+ * at the next sweep, whatever its schedule says, and then follows it.
  *
- * The sweep only fires when felix-scheduler runs alongside felix-worker. There
- * is no run-now route on the harness, so runs are observed rather than
- * triggered — expand a job to see its recent runs.
+ * The sweep only fires when felix-scheduler runs alongside felix-worker. Run now
+ * (`POST /jobs/{name}/run`) fires a job by hand and answers when the run has finished.
  */
+
+/** As many runs as the history asks for; a list this long says it was cut. */
+const RUNS_SHOWN = 20;
+
+/** `1.4s`, `2m 05s`: how long a run took, from its own timestamps. */
+function duration(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  const m = Math.floor(ms / 60_000);
+  const sec = Math.round((ms % 60_000) / 1000);
+  return `${m}m ${String(sec).padStart(2, '0')}s`;
+}
+
+/** `0:42`: a running clock, for a Run now that takes a whole agent turn. */
+function clock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** A time to the minute, local, with its UTC beside it: a schedule is written in UTC. */
+function localAndUtc(ms: number): string {
+  const d = new Date(ms);
+  const local = d.toLocaleString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const utc = d.toISOString().slice(11, 16);
+  return `${local} (${utc} UTC)`;
+}
 
 // Re-exported from where the rail's glance can import them without this page.
 export { failing, JOBS_POLL_KEY };
@@ -87,10 +122,38 @@ export function JobsSheet({
   const [runsError, setRunsError] = useState<unknown>(null);
   // The job a Run now is waiting on. The route answers when the run has finished, which is
   // a whole agent turn, so the row says it is going rather than looking idle.
-  const [running, setRunning] = useState<string | null>(null);
+  // Per job, with when it started: a Run now locks its own row, not every row, and says how
+  // long it has been going — the route answers only when the whole agent turn is over.
+  const [running, setRunning] = useState<Record<string, number>>({});
+  const [now, setNow] = useState(() => Date.now());
+  const anyRunning = Object.keys(running).length > 0;
+  useEffect(() => {
+    if (!anyRunning) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [anyRunning]);
+  // What the last Run now came to, for a screen reader: the spinner turning back into a
+  // button announced nothing.
+  const [announce, setAnnounce] = useState('');
+  // A run blocked on an approval waits on a person, and the row only said "Running…". The
+  // tenant-wide `/approvals` poll names each row's thread; a job runs on `job:<name>` (or
+  // `job:<name>:<id>` with a fresh thread each run).
+  const approvals = useOptionalShell()?.tenantApprovals.pending ?? [];
+  const waitingOn = (jobName: string) =>
+    approvals.some(
+      (a) => a.thread_id === `job:${jobName}` || a.thread_id?.startsWith(`job:${jobName}:`),
+    );
+  // The form's reading of its schedule, as the harness will read it.
+  const parsedSchedule = useMemo(() => {
+    try {
+      return { schedule: parseSchedule(schedule), error: null };
+    } catch (err) {
+      return { schedule: null, error: err instanceof ScheduleError ? err.message : String(err) };
+    }
+  }, [schedule]);
 
   async function create() {
-    if (!name.trim()) return;
+    if (!name.trim() || parsedSchedule.error) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -126,12 +189,37 @@ export function JobsSheet({
     setRuns(null);
     setRunsError(null);
     try {
-      setRuns(await listJobRuns(jobName));
+      setRuns(await listJobRuns(jobName, RUNS_SHOWN));
     } catch (err) {
       setRunsError(err);
       setRuns([]);
     }
   }
+
+  // An open history follows the job. It was read once, so a row reading `last running` sat
+  // over a list whose newest run said OK, and a job firing every minute showed the same
+  // twenty runs for as long as the list was open. Re-read when the job's own last run moves,
+  // which the page's poll already reports — not on every tick.
+  const openJob = jobs.find((j) => j.name === expanded);
+  const openMark = openJob ? `${openJob.last_run_at ?? ''}|${openJob.last_status ?? ''}` : '';
+  useEffect(() => {
+    if (!expanded || !openMark) return;
+    let live = true;
+    listJobRuns(expanded, RUNS_SHOWN).then(
+      (next) => {
+        if (live) {
+          setRuns(next);
+          setRunsError(null);
+        }
+      },
+      () => {
+        // Keep what is on screen; the next movement tries again.
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [expanded, openMark]);
 
   async function remove(jobName: string) {
     setBusy(true);
@@ -152,18 +240,26 @@ export function JobsSheet({
    * opens with that run on top; the list refreshes for the row's `last` and `ran`.
    */
   async function runNow(jobName: string) {
-    setRunning(jobName);
+    setRunning((r) => ({ ...r, [jobName]: Date.now() }));
+    setNow(Date.now());
     setActionError(null);
+    setAnnounce('');
     try {
       const run = await runJobNow(jobName);
+      setAnnounce(
+        run.status === 'error' || run.error
+          ? `${jobName} ran and failed.`
+          : `${jobName} ran: ${run.status ?? 'done'}.`,
+      );
       setExpanded(jobName);
       setRunsError(null);
-      setRuns(await listJobRuns(jobName).catch(() => [run]));
+      setRuns(await listJobRuns(jobName, RUNS_SHOWN).catch(() => [run]));
       refresh();
     } catch (err) {
+      setAnnounce(`${jobName} could not be run.`);
       setActionError(err);
     } finally {
-      setRunning(null);
+      setRunning(({ [jobName]: _, ...rest }) => rest);
     }
   }
 
@@ -200,6 +296,9 @@ export function JobsSheet({
       />
 
       <PanelBody className="space-y-4">
+        <p role="status" className="sr-only">
+          {announce}
+        </p>
         {/* A failed read after a good one keeps the rows under one line, as every
             polled page does; the box is only for a failure with nothing earlier
             to show. Jobs polls every few seconds, so it meets a 429 first. */}
@@ -226,7 +325,16 @@ export function JobsSheet({
         {creating && (
           // A section with a heading, not a dashed box: the form is a part of
           // the page while it is open, and a heading is what names a part.
-          <div id="job-create" className={CREATE_FORM}>
+          <div
+            id="job-create"
+            role="group"
+            aria-label="New job"
+            className={CREATE_FORM}
+            onKeyDown={(e) => {
+              // As every other dismissable surface here: Escape puts it away.
+              if (e.key === 'Escape' && !e.defaultPrevented) setCreating(false);
+            }}
+          >
             <PageSection title="Job to schedule">
               {/* Visible labels, with the format under the field it describes. The
                   labels were `sr-only` and the cron grammar lived in a placeholder,
@@ -273,13 +381,39 @@ export function JobsSheet({
                     id="job-schedule"
                     value={schedule}
                     onChange={(e) => setSchedule(e.target.value)}
-                    aria-describedby="job-schedule-help"
+                    aria-describedby="job-schedule-help job-schedule-next"
+                    aria-invalid={parsedSchedule.error ? true : undefined}
                     className="mt-1 h-8 max-w-xs font-mono text-sm"
                     onKeyDown={(e) => e.key === 'Enter' && create()}
                   />
-                  <p id="job-schedule-help" className="mt-1 text-xs text-muted-foreground">
-                    Five-field cron in UTC: minute hour day month weekday. Empty never runs on its
-                    own.
+                  <p
+                    id="job-schedule-help"
+                    className="mt-1 max-w-[56ch] text-xs text-muted-foreground"
+                  >
+                    Five-field cron in UTC (minute hour day month weekday), <code>@daily</code>,{' '}
+                    <code>every:5m</code> or seconds.{' '}
+                    <strong className="font-medium">Empty runs every minute.</strong>
+                  </p>
+                  {/* What the harness will do with it, said before it is created: a new job
+                      fires at the next sweep whatever its schedule, then follows it. */}
+                  <p
+                    id="job-schedule-next"
+                    aria-live="polite"
+                    className={
+                      parsedSchedule.error
+                        ? 'mt-0.5 max-w-[56ch] text-xs text-state-failed'
+                        : 'mt-0.5 max-w-[56ch] text-xs text-muted-foreground'
+                    }
+                  >
+                    {parsedSchedule.error
+                      ? parsedSchedule.error
+                      : parsedSchedule.schedule
+                        ? `First run at the next sweep, about a minute after creating it; then ${
+                            parsedSchedule.schedule.kind === 'interval'
+                              ? scheduleLabel(schedule)
+                              : `next ${localAndUtc(nextAfter(parsedSchedule.schedule, now))}`
+                          }.`
+                        : null}
                   </p>
                 </div>
                 <div>
@@ -318,7 +452,7 @@ export function JobsSheet({
                   </label>
                   <p
                     id="job-fresh-thread-help"
-                    className="mt-1 ml-5.5 text-xs text-muted-foreground"
+                    className="mt-1 ml-5.5 max-w-[56ch] text-xs text-muted-foreground"
                   >
                     Off, every run shares one thread named after the job, so a digest remembers last
                     week. On, each run starts clean — for a job that works something different each
@@ -329,7 +463,7 @@ export function JobsSheet({
                   <Button
                     size="sm"
                     className="gap-1"
-                    disabled={busy || !name.trim()}
+                    disabled={busy || !name.trim() || parsedSchedule.error !== null}
                     onClick={create}
                   >
                     Create
@@ -351,8 +485,8 @@ export function JobsSheet({
                 header lost its subline, and a page with jobs on it explains itself. */}
           {data && jobs.length === 0 && (
             <PageEmpty>
-              No jobs yet. A job is an agent run the worker starts on a cron schedule; once one
-              exists, its recent runs are a click away on its row.
+              No jobs yet. A job is an agent run the scheduler starts on its schedule — every minute
+              when it has none; once one exists, its recent runs are a click away on its row.
             </PageEmpty>
           )}
           {jobs.map((j) => (
@@ -363,30 +497,49 @@ export function JobsSheet({
               {/* wraps so an armed delete confirmation gets its own line rather
                       than crushing the job name out of the row */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono font-medium">{j.name}</span>
-                <Badge variant="secondary" className="py-0 font-mono text-xs">
-                  {j.schedule || 'manual'}
+                {/* A heading, so a screen reader can move job to job. */}
+                <h3 className="font-mono text-sm font-medium">{j.name}</h3>
+                <Badge
+                  variant="secondary"
+                  className="py-0 font-mono text-xs"
+                  // The badge is what the harness will do; the stored text is in the title
+                  // when the two differ (an empty schedule).
+                  title={j.schedule ? `Schedule: ${j.schedule}` : 'No schedule: runs every minute'}
+                >
+                  {scheduleLabel(j.schedule ?? '')}
                 </Badge>
                 {/* Mono: the harness named it (the Provenance Rule). */}
-                <span className="font-mono text-xs text-muted-foreground">
-                  {j.manifest_id || '—'}
-                </span>
+                {j.manifest_id ? (
+                  <span className="font-mono text-xs text-muted-foreground">{j.manifest_id}</span>
+                ) : (
+                  // The harness skips a run with no agent (`no_manifest`); said in words.
+                  <span className="text-xs text-muted-foreground">no agent — runs are skipped</span>
+                )}
+                {running[j.name] !== undefined && waitingOn(j.name) && (
+                  <span className="text-xs font-medium text-state-blocked">
+                    Waiting on an approval — it is in the bar above
+                  </span>
+                )}
                 <Button
                   size="xs"
                   variant="ghost"
-                  className="ml-auto"
-                  disabled={running !== null}
+                  className="ml-auto coarse:h-9 coarse:px-3"
+                  disabled={running[j.name] !== undefined}
+                  aria-label={running[j.name] !== undefined ? undefined : `Run ${j.name} now`}
                   title={
                     j.enabled === false
                       ? 'Run once now. The job stays disabled for its schedule.'
-                      : 'Run once now, without waiting for the schedule'
+                      : 'Run once now, without waiting for the schedule. A whole agent turn.'
                   }
                   onClick={() => runNow(j.name)}
                 >
-                  {running === j.name ? (
+                  {running[j.name] !== undefined ? (
                     <>
                       <LoaderIcon className="size-3 motion-safe:animate-spin" />
-                      <span className="shimmer shimmer-color-foreground">Running…</span>
+                      <span className="shimmer shimmer-color-foreground">
+                        Running ·{' '}
+                        <span className="tabular-nums">{clock(now - running[j.name])}</span>
+                      </span>
                     </>
                   ) : (
                     <>
@@ -397,8 +550,10 @@ export function JobsSheet({
                 <Button
                   size="xs"
                   variant="ghost"
+                  className="coarse:h-9 coarse:px-3"
                   aria-expanded={expanded === j.name}
                   aria-controls={`job-runs-${j.name}`}
+                  aria-label={`Runs of ${j.name}`}
                   onClick={() => toggleRuns(j.name)}
                 >
                   <HistoryIcon className="size-3" /> Runs
@@ -406,7 +561,7 @@ export function JobsSheet({
                 <ConfirmButton
                   size="xs"
                   variant="ghost"
-                  className="text-muted-foreground hover:text-state-failed"
+                  className="text-muted-foreground hover:text-state-failed coarse:h-9 coarse:px-3"
                   disabled={busy}
                   destructive
                   question={`Delete ${j.name}? Its run history goes with it.`}
@@ -433,13 +588,34 @@ export function JobsSheet({
                 )}
                 {/* The status as the Activity page draws one — word and dot — rather
                     than plain muted text that read the same whether it passed. */}
-                {j.last_status && (
+                {/* A run in progress is said as one: "last running" read as a finished run
+                    whose result was "running". */}
+                {j.last_status === 'running' ? (
+                  <span className="inline-flex items-center gap-1">
+                    <StatusDot status="running" />
+                  </span>
+                ) : j.last_status ? (
                   <span className="inline-flex items-center gap-1">
                     last <StatusDot status={j.last_status} />
                   </span>
+                ) : null}
+                {j.last_run_at && (
+                  <span title={new Date(j.last_run_at).toLocaleString()}>
+                    ran {relativeTime(j.last_run_at)}
+                  </span>
                 )}
-                {j.last_run_at && <span>ran {relativeTime(j.last_run_at)}</span>}
-                {j.next_run_at && <span>next {relativeTime(j.next_run_at)}</span>}
+                {/* Null is a job the scheduler has not claimed yet — it fires at the next
+                    sweep; a time already past is due, not "next just now". */}
+                {j.enabled !== false &&
+                  (j.next_run_at == null ? (
+                    <span>first run at the next sweep</span>
+                  ) : j.next_run_at <= now + 1000 ? (
+                    <span title={new Date(j.next_run_at).toLocaleString()}>due now</span>
+                  ) : (
+                    <span title={new Date(j.next_run_at).toLocaleString()}>
+                      next {relativeTime(j.next_run_at)}
+                    </span>
+                  ))}
                 {j.last_error && <span className="text-state-failed">{j.last_error}</span>}
               </div>
               {expanded === j.name && (
@@ -457,7 +633,16 @@ export function JobsSheet({
                         className="flex items-center gap-2 text-xs text-muted-foreground"
                       >
                         {r.status ? <StatusDot status={r.status} /> : <span>—</span>}
-                        {r.started_at && <span>{relativeTime(r.started_at)}</span>}
+                        {r.started_at && (
+                          <span title={new Date(r.started_at).toLocaleString()}>
+                            {relativeTime(r.started_at)}
+                          </span>
+                        )}
+                        {r.started_at && r.finished_at && r.finished_at >= r.started_at && (
+                          <span className="tabular-nums">
+                            {duration(r.finished_at - r.started_at)}
+                          </span>
+                        )}
                         {/* Said only when it was not the schedule: the default is cron. */}
                         {r.result?.trigger === 'manual' && <span>run by hand</span>}
                         {r.error ? (
@@ -475,6 +660,13 @@ export function JobsSheet({
                         ) : null}
                       </div>
                     ))
+                  )}
+                  {/* The route returns the newest few; a list that long was cut, and
+                      said nothing about it. */}
+                  {runs !== null && runs.length >= RUNS_SHOWN && (
+                    <p className="pt-1 text-xs text-muted-foreground">
+                      The latest {RUNS_SHOWN} runs.
+                    </p>
                   )}
                 </div>
               )}
