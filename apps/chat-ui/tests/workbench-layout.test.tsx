@@ -66,6 +66,7 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
       error: null,
       lastOkAt: Date.now(),
       failures: 0,
+      forbidden: false,
       refresh: () => {},
       markDecided: () => {},
     },

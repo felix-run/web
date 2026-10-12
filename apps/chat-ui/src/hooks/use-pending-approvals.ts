@@ -40,6 +40,12 @@ export interface PendingApprovals {
    * red on the first cried wolf every time. Two is a failure worth a colour.
    */
   failures: number;
+  /**
+   * The harness refused this credential the list (403): it holds no `approvals:read`, as a
+   * Google account pinned to one agent does not. That is an answer — there is nothing here
+   * this account may see — not an outage, so the poll stops and the line does not turn red.
+   */
+  forbidden: boolean;
   refresh: () => void;
   /**
    * Record that this tab just decided an approval, after the decision succeeded.
@@ -71,10 +77,13 @@ export function usePendingApprovals(): PendingApprovals {
   const [error, setError] = useState<unknown>(null);
   const [lastOkAt, setLastOkAt] = useState<number | null>(null);
   const [failures, setFailures] = useState(0);
+  const [forbidden, setForbidden] = useState(false);
+  const stopped = useRef(false);
   /** Approval id → when this tab decided it. See `markDecided`. */
   const decided = useRef(new Map<string, number>());
 
   const refresh = useCallback(() => {
+    if (stopped.current) return;
     void listApprovals('pending')
       .then((rows) => {
         const now = Date.now();
@@ -95,6 +104,16 @@ export function usePendingApprovals(): PendingApprovals {
       // louder channel for something they did not ask for. Not silent, though —
       // the failure is state, and the line says it in words.
       .catch((err: unknown) => {
+        if (/:\s*403\b/.test(String((err as Error)?.message ?? err))) {
+          // Asking again will not change the answer while this credential stands.
+          stopped.current = true;
+          setForbidden(true);
+          setPending([]);
+          setError(null);
+          setFailures(0);
+          setLastOkAt(Date.now());
+          return;
+        }
         setError(err ?? new Error('approvals poll failed'));
         setFailures((n) => n + 1);
       });
@@ -114,5 +133,5 @@ export function usePendingApprovals(): PendingApprovals {
     setPending((rows) => rows.filter((r) => r.id !== id));
   }, []);
 
-  return { pending, error, lastOkAt, failures, refresh, markDecided };
+  return { pending, error, lastOkAt, failures, forbidden, refresh, markDecided };
 }
