@@ -552,9 +552,9 @@ Zones yield rather than squeeze, in a fixed order. Three zones want ~1200px of c
 reference material and the half of it that cannot wait already lives in the attention line and
 the banner above the composer. Below **1024px** the sidebar follows as a drawer (on the ground,
 like the inline sidebar), last because it holds every way to anywhere else. `/harness` needs no
-nav of its own while the sidebar is inline and in debug, since only then does the sidebar list its
-pages; otherwise, from **768px**, it draws its rail beside the panel, and below 768px the index
-*is* the list. The breakpoints are derived from what
+nav of its own while the sidebar is inline, since the sidebar lists all nine on every `/harness`
+page in either mode; between **768px** and **1024px** it draws its rail beside the panel, and
+below 768px the index *is* the list. The breakpoints are derived from what
 the content needs, not from device names.
 
 The shell's first Tab stop is **Skip to content**, `sr-only` until focused, then a small pill at
@@ -855,16 +855,20 @@ diff folded under it.
 
 ### Sidebar
 
-On the ground, with no border: the sheet's edge is the divider. It has one order on both
-addresses: **New chat** (the ink pill), then **Threads**, then the workspace section, then
-**Harness**, with hairline separators between them. **Harness is debug's.** Off, the lower
-region ends at the workspace, and one row may follow it: **Skill drafts**, a destination row with
-the amber `N waiting` glance, drawn only while drafts wait on a review, because nothing else on
-the daily surface says so. Collapsed, it is the one icon below Workspace, with its amber dot.
+On the ground, with no border: the sheet's edge is the divider. **New chat** (the ink pill), then
+**Threads**, then the lower region, with hairline separators between sections. The lower region's
+order follows the address. On `/harness` it is **Harness** first — all nine destinations, the
+page's own navigation, never folded there — then the workspace, folded by default (that fold is
+not stored). On a thread in debug it is the workspace, then Harness. On a thread with debug off it
+is **Harness** first in the same frame — the heading, *What happened* and **Activity** with its
+failure glance, and under *What it knows* a **Skill drafts** row with the amber `N waiting`
+glance while drafts wait — then the workspace; arriving on `/harness` inserts rows below Activity
+and moves nothing above it. Collapsed, debug off shows those one or two icons below Workspace.
 
 Threads is a heading and a **pill search field** (36px, `sidebar-accent` face, `input` edge, 14px,
 a 3px focus ring) that stay put above a list that scrolls inside itself. Workspace and Harness are
-one region below it, at most 40% of the viewport, with one scroll of its own; the sidebar itself
+one region below it, **exactly** 40% of the viewport (a fixed height, so the region does not grow
+upward when its rows change between addresses), with one scroll of its own; the sidebar itself
 never scrolls when expanded. Workspace's *Files* is a disclosure with its entry count, folded
 until opened and remembered. The thread groups rank by state, then recency: *Waiting on you*
 (`state-blocked`, dot and words), *Running* (`state-running`), *Pinned* (labelled *this browser*),

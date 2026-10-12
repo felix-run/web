@@ -260,21 +260,41 @@ export function AppSidebar() {
               readOnlyId={watching ? threadId : undefined}
             />
             <SidebarSeparator />
+            {/* A fixed height, not a cap: the region's content changes with the
+                address and the mode (two harness rows on a thread, nine on
+                `/harness`), and a region sized to its content grew upward on
+                arrival, moving the row just clicked out from under the pointer.
+
+                The order follows the address. On `/harness` the destinations are
+                the page's own navigation, so they lead and the workspace follows,
+                folded there; on a thread the workspace is where its tools run, so
+                it leads — except for debug off's few harness rows, which sit first
+                in the same frame `/harness` draws, so arriving only adds rows below
+                Activity. */}
             <div
               data-slot="sidebar-lower"
-              className="flex max-h-[40svh] flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+              className="flex h-[40svh] flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
             >
-              <WorkspaceSection />
-              {/* Debug lists every destination; so does any `/harness` page, where
-                  the destinations are the page's own navigation — and the layout
-                  draws no rail of its own beside an inline sidebar. */}
-              {debug || onHarness ? (
+              {onHarness ? (
                 <>
+                  <HarnessGroup collapsed={false} onNavigate={done} />
+                  <SidebarSeparator />
+                  {/* Keyed: the thread side draws a section at the same index, and
+                      React would keep its state — open — rather than start folded. */}
+                  <WorkspaceSection key="on-harness" foldedByDefault />
+                </>
+              ) : debug ? (
+                <>
+                  <WorkspaceSection />
                   <SidebarSeparator />
                   <HarnessGroup collapsed={false} onNavigate={done} />
                 </>
               ) : (
-                <DailyHarnessRows collapsed={false} onNavigate={done} />
+                <>
+                  <DailyHarnessRows collapsed={false} onNavigate={done} />
+                  <SidebarSeparator />
+                  <WorkspaceSection />
+                </>
               )}
             </div>
           </>
@@ -440,55 +460,82 @@ function DailyHarnessRows({
   const { search } = useHarnessAgent();
   const activity = useActivityGlance();
   const drafts = useDraftGlance();
-  const atActivity = !!useMatch('/harness/activity/*');
-  const atSkills = !!useMatch('/harness/skills/*');
   const quiet = (g: typeof activity) => (g && g.tone !== 'unknown' ? g : undefined);
-  const rows = [
+  const runs = [
     {
-      key: 'activity',
-      label: 'Activity',
-      icon: ActivityIcon,
-      to: { pathname: '/harness/activity', search: navSearch('activity', search, activity) },
-      active: atActivity,
-      glance: quiet(activity),
+      key: 'happened' as const,
+      rows: [
+        {
+          key: 'activity',
+          label: 'Activity',
+          icon: ActivityIcon,
+          to: { pathname: '/harness/activity', search: navSearch('activity', search, activity) },
+          glance: quiet(activity),
+        },
+      ],
     },
     ...(drafts?.tone === 'blocked'
       ? [
           {
-            key: 'skill-drafts',
-            label: 'Skill drafts',
-            icon: PuzzleIcon,
-            to: { pathname: '/harness/skills' },
-            active: atSkills,
-            glance: drafts,
+            key: 'knows' as const,
+            rows: [
+              {
+                key: 'skill-drafts',
+                label: 'Skill drafts',
+                icon: PuzzleIcon,
+                to: { pathname: '/harness/skills', search: '' },
+                glance: drafts,
+              },
+            ],
           },
         ]
       : []),
   ];
+  // Drawn in `HarnessGroup`'s frame, row for row — the heading, each run's
+  // label, the same menu rows — so that arriving on `/harness` inserts the other
+  // destinations below Activity and moves nothing above it.
   return (
-    <>
-      {!collapsed && <SidebarSeparator />}
-      <SidebarGroup data-slot="daily-harness" className="pt-1">
-        <SidebarMenu>
-          {rows.map(({ key, label, icon: Icon, to, active, glance }) => (
-            <SidebarMenuItem key={key} data-slot={key}>
-              <SidebarMenuButton
-                asChild
-                isActive={active}
-                tooltip={label}
-                className="relative text-muted-foreground"
-              >
-                <Link to={to} onClick={onNavigate} aria-current={active ? 'page' : undefined}>
-                  <Icon aria-hidden />
-                  <span className="min-w-0 flex-1 truncate">{label}</span>
-                  {collapsed ? <CollapsedGlance glance={glance} /> : <NavGlance glance={glance} />}
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
-      </SidebarGroup>
-    </>
+    <SidebarGroup data-slot="daily-harness" className="pt-1">
+      {!collapsed && (
+        <SidebarGroupLabel asChild>
+          <h2>Harness</h2>
+        </SidebarGroupLabel>
+      )}
+      {runs.map(({ key, rows }, ri) => (
+        <Fragment key={key}>
+          {ri > 0 && <SidebarSeparator className="my-1.5" />}
+          {!collapsed && (
+            <p
+              id={`sidebar-daily-${key}`}
+              className="px-2.5 pt-1 pb-0.5 text-xs font-medium text-muted-foreground"
+            >
+              {GROUPS.find((g) => g.key === key)?.label}
+            </p>
+          )}
+          <SidebarMenu aria-labelledby={collapsed ? undefined : `sidebar-daily-${key}`}>
+            {rows.map(({ key: rowKey, label, icon: Icon, to, glance }) => (
+              <SidebarMenuItem key={rowKey} data-slot={rowKey}>
+                <SidebarMenuButton
+                  asChild
+                  tooltip={label}
+                  className="relative text-muted-foreground"
+                >
+                  <Link to={to} onClick={onNavigate}>
+                    <Icon aria-hidden />
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                    {collapsed ? (
+                      <CollapsedGlance glance={glance} />
+                    ) : (
+                      <NavGlance glance={glance} />
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </Fragment>
+      ))}
+    </SidebarGroup>
   );
 }
 

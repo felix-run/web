@@ -229,6 +229,7 @@ export function SectionBody({
   status,
   onRetry,
   lastOkAt,
+  failures,
   children,
 }: {
   loading: boolean;
@@ -246,9 +247,27 @@ export function SectionBody({
    * after an earlier one succeeded. The rows stay, under one line saying so.
    */
   lastOkAt?: number | null;
+  /**
+   * Failed reads in a row (`usePoll`'s `failures`). Passed, the first one reads as
+   * a neutral *Rechecking…* rather than a red alert: one 429 is the harness
+   * shedding a burst, and red on every one taught the operator to ignore red —
+   * the attention line's rule. The second in a row is said as it always was.
+   */
+  failures?: number;
   children: React.ReactNode;
 }) {
   const chrome = useContext(PanelMode);
+  if (error && failures === 1) {
+    return (
+      <>
+        <p role="status" className="mb-2 text-sm text-muted-foreground">
+          Rechecking — the last read did not answer.
+          {lastOkAt != null && ` Showing what it said ${relativeTime(lastOkAt)}.`}
+        </p>
+        {lastOkAt != null && !empty ? children : null}
+      </>
+    );
+  }
   // A failed read *after* a good one keeps the good one. Swapping the list for
   // an error box threw away the last thing the harness said — the thing an
   // operator coming back would most want — and made a transient 429 look like

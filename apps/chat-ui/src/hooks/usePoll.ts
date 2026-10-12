@@ -27,6 +27,12 @@ export function usePoll<T>(
    * it and say how old it is rather than trading it for an error box.
    */
   lastOkAt: number | null;
+  /**
+   * Reads that have failed in a row, 0 after any answer. One failure is usually the
+   * harness shedding a burst (a 429), and a page may say so in neutral before it
+   * says anything in red — the attention line's rule (`use-pending-approvals.ts`).
+   */
+  failures: number;
   refresh: () => void;
 } {
   const [data, setData] = useState<T>();
@@ -38,6 +44,7 @@ export function usePoll<T>(
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  const [failures, setFailures] = useState(0);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
@@ -47,8 +54,10 @@ export function usePoll<T>(
       setData(await fetcherRef.current());
       setError(null);
       setLastOkAt(Date.now());
+      setFailures(0);
     } catch (err) {
       setError(err);
+      setFailures((n) => n + 1);
     } finally {
       setLoading(false);
     }
@@ -75,5 +84,5 @@ export function usePoll<T>(
     };
   }, [enabled, intervalMs, run]);
 
-  return { data, error, loading, lastOkAt, refresh: run };
+  return { data, error, loading, lastOkAt, failures, refresh: run };
 }

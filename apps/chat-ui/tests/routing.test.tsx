@@ -255,7 +255,7 @@ describe('the header names the thread', () => {
       'Continue run',
       'Copy thread id self-pr-306',
       'View',
-      'DebugRun instrument, harness pages, ids',
+      'DebugRun instrument, every harness page, ids',
       'Theme',
       'Light',
       'Dark',
