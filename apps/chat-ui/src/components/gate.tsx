@@ -36,6 +36,7 @@ import {
   clearSession,
   credentialKind,
   getSession,
+  lastSignInProvider,
   type Relock,
   setApiKey,
   setRelockHandler,
@@ -342,6 +343,9 @@ export function Gate({ children }: { children: ReactNode }) {
   const toGoogle = redirectToGoogle;
   const keyLink = options.key ? switchLink('Use an access key instead', true) : undefined;
 
+  // Only worth marking where there is a choice to make.
+  const last = options.github && options.google ? lastSignInProvider() : null;
+
   let card: ReactNode;
   if (options.github && (!options.key || !usingKey)) {
     card = (
@@ -358,16 +362,18 @@ export function Gate({ children }: { children: ReactNode }) {
         }
         tenants={options.tenants}
         signup={options.signup}
-        alternative={
+        google={
           options.google ? (
-            <div className="space-y-3">
-              <GoogleButton redirect={toGoogle} variant="outline" />
-              {keyLink}
-            </div>
-          ) : (
-            keyLink
-          )
+            <GoogleButton
+              redirect={toGoogle}
+              variant={last === 'google' ? 'default' : 'outline'}
+              lastUsed={last === 'google'}
+            />
+          ) : undefined
         }
+        lastUsed={last === 'github'}
+        secondary={last === 'google'}
+        alternative={keyLink}
       />
     );
   } else if (options.google && (!options.key || !usingKey)) {

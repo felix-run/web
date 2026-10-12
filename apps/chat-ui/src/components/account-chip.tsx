@@ -55,17 +55,26 @@ function minutesLeft(ms: number): number {
   return Math.max(0, Math.ceil(ms / 60_000));
 }
 
+/** Who a session is, in words: a Google name or email, a GitHub @login, else the tenant. */
+function displayName(session: GitHubSession): string {
+  if (session.provider === 'google') return session.name || session.email || session.tenant;
+  return session.login ? `@${session.login}` : session.tenant;
+}
+
+/** The face: Google's picture, a GitHub avatar, or the first letter of the name. */
+function avatarSrc(session: GitHubSession): string | undefined {
+  if (session.provider === 'google') return session.picture;
+  return session.login
+    ? `https://github.com/${encodeURIComponent(session.login)}.png?size=64`
+    : undefined;
+}
+
 function Face({ session, className }: { session: GitHubSession; className?: string }) {
-  const name = session.login || session.tenant;
+  const name = displayName(session).replace(/^@/, '');
+  const src = avatarSrc(session);
   return (
     <Avatar className={className}>
-      {session.login && (
-        <AvatarImage
-          src={`https://github.com/${encodeURIComponent(session.login)}.png?size=64`}
-          alt=""
-          referrerPolicy="no-referrer"
-        />
-      )}
+      {src && <AvatarImage src={src} alt="" referrerPolicy="no-referrer" />}
       <AvatarFallback className="text-xs font-semibold uppercase">
         {name.slice(0, 1)}
       </AvatarFallback>
@@ -98,7 +107,9 @@ export function AccountChip() {
 
   const left = session.expiresAt - now;
   const ending = left < RENEW_WINDOW_MS;
-  const who = session.login ? `@${session.login}` : session.tenant;
+  const who = displayName(session);
+  // The chip's own label: short, so a first name rather than a whole one.
+  const label = session.provider === 'google' ? session.name?.split(/\s+/)[0] : session.login;
   const google = session.provider === 'google';
 
   return (
@@ -113,10 +124,8 @@ export function AccountChip() {
           title={ending ? `Session ends in ${minutesLeft(left)} min` : `Signed in as ${who}`}
         >
           <Face session={session} className="size-5" />
-          {session.login && (
-            <span className="max-w-32 truncate text-xs font-normal max-sm:hidden">
-              {session.login}
-            </span>
+          {label && (
+            <span className="max-w-32 truncate text-xs font-normal max-sm:hidden">{label}</span>
           )}
           {ending && (
             <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums text-state-blocked">
@@ -131,6 +140,9 @@ export function AccountChip() {
           <Face session={session} className="size-8" />
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{who}</p>
+            {google && session.email && session.email !== who && (
+              <p className="truncate text-xs text-muted-foreground">{session.email}</p>
+            )}
             <p className="truncate text-xs text-muted-foreground">
               Tenant <span className="font-mono text-foreground">{session.tenant}</span>
             </p>

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountChip } from '../src/components/account-chip';
 import { Gate } from '../src/components/gate';
-import { getSession, setRelockHandler, setSession } from '../src/lib/auth';
+import { getSession, setRelockHandler, setSession, signOut } from '../src/lib/auth';
 
 /**
  * Google sign-in, at the wire: the harness offers it on `/auth/methods` as `google_redirect`, the
@@ -208,5 +208,158 @@ describe('the account chip, for a Google session', () => {
     fireEvent.click(screen.getByRole('button', { name: /signed in as @octo/i }));
     expect(await screen.findByRole('button', { name: /^sign in again$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /continue with google/i })).toBeNull();
+  });
+});
+
+describe('the "Last used" badge', () => {
+  const BOTH = () =>
+    json({
+      github_device: true,
+      github_redirect: true,
+      google_redirect: true,
+      bearer_required: true,
+    });
+  const button = (name: RegExp) => screen.getByRole('button', { name });
+
+  it('marks nothing on a browser that has never signed in', async () => {
+    routes['/api/auth/methods'] = BOTH;
+    renderGate();
+    await screen.findByRole('button', { name: /continue with github/i });
+    expect(screen.getByText(/sign in with github or google/i)).toBeTruthy();
+    expect(screen.queryByText('Last used')).toBeNull();
+  });
+
+  it('marks Google, and leads with it, after a Google sign-in this browser signed out of', async () => {
+    routes['/api/auth/methods'] = BOTH;
+    setSession({
+      token: 'old',
+      expiresAt: Date.now() + 1000,
+      login: '',
+      tenant: 'kids',
+      scopes: [],
+      provider: 'google',
+    });
+    signOut();
+    renderGate();
+    await screen.findByRole('button', { name: /continue with github/i });
+    expect(button(/continue with google/i).textContent).toContain('Last used');
+    expect(button(/continue with github/i).textContent).not.toContain('Last used');
+    expect(button(/continue with google/i).getAttribute('data-variant')).toBe('default');
+    expect(button(/continue with github/i).getAttribute('data-variant')).toBe('outline');
+  });
+
+  it('marks GitHub after a GitHub sign-in, including one stored before providers were recorded', async () => {
+    routes['/api/auth/methods'] = BOTH;
+    setSession({
+      token: 'old',
+      expiresAt: Date.now() + 1000,
+      login: 'octo',
+      tenant: 'acme',
+      scopes: [],
+    });
+    signOut();
+    renderGate();
+    await screen.findByRole('button', { name: /continue with github/i });
+    expect(button(/continue with github/i).textContent).toContain('Last used');
+    expect(button(/continue with google/i).textContent).not.toContain('Last used');
+  });
+
+  it('is not drawn where there is only one way in', async () => {
+    setSession({
+      token: 'old',
+      expiresAt: Date.now() + 1000,
+      login: '',
+      tenant: 'kids',
+      scopes: [],
+      provider: 'google',
+    });
+    signOut();
+    renderGate();
+    await screen.findByRole('button', { name: /continue with google/i });
+    expect(screen.queryByText('Last used')).toBeNull();
+  });
+
+  it('is recorded by the sign-in itself, on the way back from Google', async () => {
+    routes['/api/auth/methods'] = BOTH;
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with google/i }));
+    cleanup();
+    window.history.replaceState(null, '', '/#felix_login=ok');
+    renderGate();
+    await screen.findByText('chat is open');
+    expect(localStorage.getItem('felix.lastSignInProvider')).toBe('google');
+  });
+});
+
+describe("a Google session's profile", () => {
+  const PIC = 'https://lh3.googleusercontent.com/a/ACg8oc=s96-c';
+
+  it('is kept from the sign-in, for the chip to show', async () => {
+    routes['/api/auth/google/exchange'] = () =>
+      json({ ...TOKEN, email: 'jade@example.com', name: 'Jade Bauman', picture: PIC });
+    sessionStorage.setItem('felix.signInProvider', 'google');
+    window.history.replaceState(null, '', '/#felix_login=ok');
+    renderGate();
+    await screen.findByText('chat is open');
+    expect(getSession()).toMatchObject({
+      email: 'jade@example.com',
+      name: 'Jade Bauman',
+      picture: PIC,
+    });
+  });
+
+  it('names the person, by first name on the chip and in full with their email inside', async () => {
+    setSession({
+      token: 'felix-jwt',
+      expiresAt: Date.now() + 3_600_000,
+      login: '',
+      tenant: 'kids',
+      scopes: [],
+      provider: 'google',
+      email: 'jade@example.com',
+      name: 'Jade Bauman',
+      picture: PIC,
+    });
+    render(<AccountChip />);
+    const chip = screen.getByRole('button', { name: 'Signed in as Jade Bauman' });
+    expect(chip.textContent).toContain('Jade');
+    expect(chip.textContent).not.toContain('Bauman');
+    fireEvent.click(chip);
+    expect(await screen.findByText('jade@example.com')).toBeTruthy();
+  });
+
+  it('falls back to the email, then the tenant, when Google withheld the name', () => {
+    setSession({
+      token: 't',
+      expiresAt: Date.now() + 3_600_000,
+      login: '',
+      tenant: 'kids',
+      scopes: [],
+      provider: 'google',
+      email: 'jade@example.com',
+    });
+    render(<AccountChip />);
+    expect(screen.getByRole('button', { name: 'Signed in as jade@example.com' })).toBeTruthy();
+  });
+
+  it('drops a stored picture that is not on Google’s image host', () => {
+    for (const bad of [
+      'http://lh3.googleusercontent.com/a',
+      'https://evil.example.com/a.googleusercontent.com',
+      'https://lh3.googleusercontent.com@evil.example.com/a',
+      'javascript:alert(1)',
+    ]) {
+      localStorage.setItem(
+        'felix.session',
+        JSON.stringify({
+          token: 't',
+          expiresAt: Date.now() + 60_000,
+          tenant: 'kids',
+          provider: 'google',
+          picture: bad,
+        }),
+      );
+      expect(getSession()?.picture).toBeUndefined();
+    }
   });
 });

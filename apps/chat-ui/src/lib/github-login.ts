@@ -28,7 +28,7 @@ import {
   redeemGitHubLogin,
   startGitHubLogin,
 } from '@/api';
-import type { GitHubSession, SignInProvider } from './auth';
+import { type GitHubSession, type SignInProvider, safePicture } from './auth';
 
 export type { SignInProvider } from './auth';
 
@@ -232,6 +232,9 @@ export function sessionFrom(
     tenant: token.tenant,
     scopes: token.scopes ?? [],
     provider,
+    email: token.email || undefined,
+    name: token.name || undefined,
+    picture: safePicture(token.picture),
   };
 }
 

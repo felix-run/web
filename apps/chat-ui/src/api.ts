@@ -253,6 +253,10 @@ export interface GitHubLoginToken {
   scopes: string[];
   /** Absent from a harness older than the field. */
   github_login?: string;
+  /** Google sign-in only: who signed in, for the account chip. Empty when Google withheld it. */
+  email?: string;
+  name?: string;
+  picture?: string;
 }
 
 /** Every refusal from the login routes. `interval` rides a 428/429, `tenants` a 409. */

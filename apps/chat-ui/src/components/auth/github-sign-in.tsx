@@ -15,6 +15,7 @@ import { Spinner } from '@felix/ui/spinner';
 import { CheckIcon, CopyIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { type DeviceLogin, describeFailure } from '@/lib/github-login';
+import { LastUsedBadge } from './last-used-badge';
 
 /** GitHub's mark, from its own octicon. Used only on the control that signs in with it. */
 export function GitHubMark({ className }: { className?: string }) {
@@ -204,6 +205,9 @@ export function GitHubSignIn({
   redirect,
   tenants,
   signup = 'off',
+  google,
+  lastUsed = false,
+  secondary = false,
   alternative,
 }: {
   login: DeviceLogin;
@@ -214,6 +218,15 @@ export function GitHubSignIn({
   tenants?: string[];
   /** Whether an account in no admitted organization may sign in, by invitation. */
   signup?: 'off' | 'invite';
+  /**
+   * The other way in, drawn under GitHub's button as its equal: a deployment offering both
+   * lets each person use the account they have. `lastUsed` marks whichever was used last.
+   */
+  google?: ReactNode;
+  /** This browser signed in with GitHub last. */
+  lastUsed?: boolean;
+  /** Draw GitHub's button as the second choice: Google was used last. */
+  secondary?: boolean;
   alternative?: ReactNode;
 }) {
   // A redirect leaves the page, but not at once: hold the button until it does.
@@ -238,9 +251,11 @@ export function GitHubSignIn({
           <span className="uppercase tracking-wider">Felix</span> chat
         </h1>
         <p className="text-sm text-muted-foreground">
-          {signup === 'invite'
-            ? 'Sign in with GitHub. Felix is invite-only for now.'
-            : 'Sign in with the GitHub account your organization uses.'}
+          {google
+            ? 'Sign in with GitHub or Google.'
+            : signup === 'invite'
+              ? 'Sign in with GitHub. Felix is invite-only for now.'
+              : 'Sign in with the GitHub account your organization uses.'}
         </p>
       </div>
 
@@ -279,7 +294,8 @@ export function GitHubSignIn({
             )}
             <Button
               type="button"
-              className="h-10 w-full"
+              variant={secondary ? 'outline' : 'default'}
+              className="relative h-10 w-full"
               disabled={busy}
               aria-busy={starting || redirecting === ''}
               onClick={() => (redirect ? go() : void login.start())}
@@ -294,12 +310,15 @@ export function GitHubSignIn({
                 : redirecting === ''
                   ? 'Opening GitHub…'
                   : 'Continue with GitHub'}
+              {lastUsed && !busy && <LastUsedBadge />}
             </Button>
+            {google}
             <p className="text-xs text-muted-foreground">
               {signup === 'invite'
                 ? 'A member of an organization Felix admits signs in to that organization’s tenant; an invited account gets a tenant of its own.'
                 : 'Felix checks which of your GitHub organizations it admits and signs you in to that organization’s tenant.'}{' '}
               Anything it keeps from GitHub, you can revoke from the account menu.
+              {google && ' A Google account signs in only if this deployment has listed it.'}
             </p>
           </div>
         }
