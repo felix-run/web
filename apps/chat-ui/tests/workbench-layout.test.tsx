@@ -326,7 +326,7 @@ describe('the sidebar', () => {
     mountSidebar();
     const lower = document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement;
     expect(lower.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(['h-[40svh]', 'overflow-y-auto']),
+      expect.arrayContaining(['h-[clamp(40svh,30rem,60svh)]', 'overflow-y-auto']),
     );
     expect(lower.querySelector('[data-slot="workspace-section"]')).toBeTruthy();
     expect(lower.querySelector('nav[aria-label="Harness"]')).toBeTruthy();

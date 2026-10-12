@@ -1,3 +1,4 @@
+import { Skeleton } from '@felix/ui/skeleton';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { getResolvedManifest } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
@@ -87,11 +88,15 @@ const SkillLibraryPage = lazy(() =>
   import('@/components/skills/skill-library').then((m) => ({ default: m.SkillLibraryPageEntry })),
 );
 
+/** The library's section while its chunk loads: rows on the page's measure, as `PageLoading` draws. */
 function LibraryLoading() {
   return (
-    <p role="status" className="p-4 text-sm text-muted-foreground">
-      Loading the skill library…
-    </p>
+    <div role="status" className="flex flex-col gap-2 py-4">
+      <span className="sr-only">Loading the skill library…</span>
+      <Skeleton aria-hidden className="h-4 w-32" />
+      <Skeleton aria-hidden className="h-8 w-full rounded-md" />
+      <Skeleton aria-hidden className="h-8 w-full rounded-md" />
+    </div>
   );
 }
 

@@ -256,7 +256,7 @@ export function WorkspaceSection({
         <button
           type="button"
           aria-expanded={!folded}
-          aria-controls="workspace-body"
+          aria-controls="workspace-mount-row workspace-body"
           aria-label={folded ? 'Show workspace' : 'Hide workspace'}
           onClick={toggleFolded}
           className="-mr-[5px] ml-auto grid size-6 shrink-0 coarse:size-9 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
@@ -270,7 +270,10 @@ export function WorkspaceSection({
           />
         </button>
       </div>
-      <div className="px-2.5">
+      {/* Inside the fold with the rest: folded, it left its sentence and a
+          full-width Mount a folder on screen — and a Tab stop beside a toggle
+          announcing "collapsed". The mount stays named in the header's value. */}
+      <div id="workspace-mount-row" hidden={folded} className="px-2.5">
         <p className="truncate text-xs text-muted-foreground">
           {mountLabel ? 'Client tools run against this folder' : 'Client tools run in this tab'}
         </p>

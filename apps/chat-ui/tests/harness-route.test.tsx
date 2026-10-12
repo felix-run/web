@@ -300,6 +300,46 @@ describe('the harness address', () => {
     expect(localStorage.getItem('felix.sidebar.workspaceFolded')).toBeNull();
   });
 
+  it('keeps one lower-region order on a thread in debug: harness, then workspace', async () => {
+    mount('/t/keep-me');
+    const lower = await waitFor(() => {
+      const el = document.querySelector('[data-slot="sidebar-lower"]');
+      expect(el?.querySelector('nav[aria-label="Harness"]')).toBeTruthy();
+      return el as HTMLElement;
+    });
+    const nav = lower.querySelector('nav[aria-label="Harness"]') as HTMLElement;
+    const workspace = lower.querySelector('[data-slot="workspace-section"]') as HTMLElement;
+    expect(nav.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('hides the mount controls with the rest of a folded workspace', async () => {
+    mount('/harness/agent');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Show workspace' })).toBeTruthy(),
+    );
+    expect(document.getElementById('workspace-mount-row')?.hidden).toBe(true);
+  });
+
+  it('leads the narrow index with the way back to the tab’s thread', async () => {
+    vi.stubGlobal('matchMedia', () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    mount('/t/keep-me');
+    await waitFor(() => expect(address).toBe('/t/keep-me'));
+    await act(async () => {
+      go('/harness');
+    });
+    const back = await waitFor(() => {
+      const el = document.querySelector('[data-slot="thread-back"]');
+      expect(el).not.toBeNull();
+      return el as HTMLAnchorElement;
+    });
+    expect(back.getAttribute('href')).toBe('/t/keep-me');
+    expect(back.textContent).toMatch(/^Back to /);
+  });
+
   it('folds the workspace on arrival from a thread, where it was open', async () => {
     // Debug off: there the thread side draws the section at the same index as
     // `/harness` does, which is what kept its open state across the move.

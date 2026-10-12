@@ -1,6 +1,6 @@
 import type { ThreadMeta } from '@felix/client';
 import { cn } from '@felix/ui/lib/utils';
-import { ArrowLeftIcon } from 'lucide-react';
+import { MessageSquareIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { threadLabel } from '@/lib/threads';
@@ -292,7 +292,10 @@ export function ThreadReturn({
         className,
       )}
     >
-      <ArrowLeftIcon aria-hidden className="size-3.5 shrink-0" />
+      {/* A place, not a direction: the page's own header carries a back
+          arrow to somewhere else, and two arrows side by side sent a habit to
+          the wrong one. The name still says where it goes. */}
+      <MessageSquareIcon aria-hidden className="size-3.5 shrink-0" />
       <span className="sr-only">Back to </span>
       <span className={cn('flex min-w-0', label.isId && !unnamedNew && 'font-mono')}>
         {unnamedNew ? <span className="truncate">{name}</span> : <MiddleCut text={name} />}
