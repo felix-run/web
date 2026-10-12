@@ -1105,6 +1105,47 @@ at most `max_background` (default 3, at most 16) in flight at once — the next 
 one ends, which is what bounds a thread's total exposure across turns. `task_result` reads only
 tasks its own thread started.
 
+**Children in a repository.** In a thread with a [repository of its own](#specworkspace), a child
+can work in a git worktree of it: its own working tree, on its own branch
+(`felix/task/<id>`), sharing the repository's history. What it commits is in the thread's
+repository at once (`git log felix/task/<id>`, `git merge`), and the parent's working tree is
+untouched while it works.
+
+- **A background child always does.** On a thread of its own, it would otherwise have no copy of
+  the repository at all. The start message names its branch.
+- **A foreground child does under `worktree: true`.** Without it, a foreground child edits the
+  thread's checkout directly, which suits a helper whose edits the parent should see at once. Set it
+  for children that change code side by side, so two of them never write the same files. The child
+  keeps the parent's run: its budgets, its approvals, its stream. When it finishes, the parent is
+  told the branch, how many commits it made, and whether it left changes it never committed (which
+  only its worktree holds). A worktree it left nothing in is removed with its branch. In
+  [plan mode](#specpermissions) a foreground child is read-only and gets no worktree.
+- **Refused rather than misplaced.** A thread whose repository is still cloning, failed or expired
+  starts no child; neither does a repository whose git configuration names a filter driver
+  (checked from inside the new worktree, includes resolved), since the checkout would run it. A
+  thread holds at most eight task worktrees holding work; past that, a `task` call that needs one
+  is refused until one expires. A thread with no repository delegates exactly as before.
+- **Local checkouts only.** Under the hosted workspace backend each thread's repository is in its
+  own sandbox, and a worktree cannot span two. There a background child is told it has no copy of
+  the repository, and a foreground child shares the thread's.
+- **Lifetime.** When a child's run ends, foreground or background, a worktree it left nothing in
+  is removed with its branch. Any other is removed with its thread's checkout, or after
+  `FELIX_REPO_CHECKOUT_TTL_DAYS` unused, and using it keeps the parent's checkout from expiring.
+  Its branch and commits stay in the repository. Removing the parent thread's checkout marks its
+  children's worktrees failed. A child's own children branch from the child's worktree.
+- **Publishing is the parent's.** `publish_commits` from a child's worktree is refused: its
+  commits are already in the parent's repository, and the parent publishes them.
+
+```yaml
+spec:
+  delegation:
+    worktree: true      # foreground children get worktrees too
+    background: true
+    agents:
+      - name: coder
+        description: Implements one change on its own branch.
+```
+
 Several `task` calls in one turn run side by side when
 [`spec.execution.tools`](#specexecution) is `parallel`. `delegation` and `sub_agents` on the same
 manifest are refused: the composite pattern would never offer the tool to a model. For an agent
