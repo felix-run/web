@@ -257,10 +257,11 @@ describe('the harness address', () => {
 
   /**
    * Debug off, the daily surface keeps one door to the harness: Activity, which
-   * answers "what happened while I was away". The other pages stay debug's until
-   * the operator is on `/harness`, where they are that page's navigation.
+   * answers "what happened while I was away". The other pages are debug's — on
+   * `/harness` too, where the sidebar lists the same rows it did on the thread
+   * and marks the one the reader is on.
    */
-  it('keeps Activity in the sidebar with debug off, and the rest for /harness', async () => {
+  it('keeps the sidebar to Activity with debug off, on /harness too', async () => {
     localStorage.removeItem('felix.debug');
     mount('/t/keep-me');
     await waitFor(() => expect(address).toBe('/t/keep-me'));
@@ -276,8 +277,12 @@ describe('the harness address', () => {
       go('/harness/activity');
     });
     await waitFor(() =>
-      expect(document.querySelector('a[href^="/harness/manifests"]')).not.toBeNull(),
+      expect(document.querySelector('[data-slot="activity"] a')?.getAttribute('aria-current')).toBe(
+        'page',
+      ),
     );
+    expect(document.querySelector('a[href^="/harness/manifests"]')).toBeNull();
+    expect(document.querySelector('nav[aria-label="Harness"]')).toBeNull();
   });
 
   /**
@@ -476,16 +481,10 @@ describe('the harness address', () => {
   });
 
   /**
-   * The sidebar lists the destinations only in debug. Debug off, a page reached
-   * from *Skill drafts* or a link had no way sideways, so the layout draws its own
-   * rail wherever the sidebar does not carry them — and only there, or debug on
-   * would show two navs for one list.
+   * Debug on, the sidebar is the destinations' one list at a desktop width; the
+   * layout draws no rail beside it, or there would be two navs for one list.
    */
-  it.each([
-    'off',
-    'on',
-  ] as const)('offers exactly one harness nav at a desktop width with debug %s', async (mode) => {
-    if (mode === 'off') localStorage.removeItem('felix.debug');
+  it('offers exactly one harness nav at a desktop width in debug', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query.includes('min-width: 768px') || query.includes('min-width: 1024px'),
       addEventListener: () => {},
@@ -500,6 +499,24 @@ describe('the harness address', () => {
     for (const { path } of HARNESS_DESTINATIONS) {
       expect(hrefs.some((h) => h?.endsWith(`harness/${path}`) || h === path)).toBe(true);
     }
+  });
+
+  it('lists only Activity on the 768–1024 rail with debug off, as the sidebar does', async () => {
+    localStorage.removeItem('felix.debug');
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('min-width: 768px'),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    mount('/harness/activity');
+    const nav = await waitFor(() => {
+      const el = document.querySelector('nav[aria-label="Harness"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const hrefs = [...nav.querySelectorAll('a')].map((a) => a.getAttribute('href')?.split('?')[0]);
+    expect(hrefs).toHaveLength(1);
+    expect(hrefs[0]).toMatch(/activity$/);
   });
 
   it('names the way back to the tab’s thread in the header', async () => {

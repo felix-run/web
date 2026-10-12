@@ -499,7 +499,7 @@ name and the `title`. While the run state is showing below `sm`, the modes step 
 Debug goes `hidden` (it is in the menu), and the canary goes `sr-only` and is still
 read; both return when the run settles. Past all that the cluster clips at its own edge rather
 than running under the right cluster: at 320px the chip is clipped, a known limit. There is **no
-door to `/harness`** in the header: the sidebar lists its nine pages in debug and on `/harness`, and Activity alone otherwise. On `/harness` the
+door to `/harness`** in the header: the sidebar lists its nine pages in debug, and Activity alone otherwise — on `/harness` too. On `/harness` the
 thread title's slot is the way back instead: a small chat glyph and the tab's thread — a place,
 not a direction, since the page's own header carries a back arrow to somewhere else — muted, cut
 from the middle, from `sm` (narrower, the `/harness` index leads with a *← thread* row, where it
@@ -554,8 +554,8 @@ Zones yield rather than squeeze, in a fixed order. Three zones want ~1200px of c
 reference material and the half of it that cannot wait already lives in the attention line and
 the banner above the composer. Below **1024px** the sidebar follows as a drawer (on the ground,
 like the inline sidebar), last because it holds every way to anywhere else. `/harness` needs no
-nav of its own while the sidebar is inline, since the sidebar lists all nine on every `/harness`
-page in either mode; between **768px** and **1024px** it draws its rail beside the panel, and
+nav of its own while the sidebar is inline, since the sidebar lists what this mode shows (all nine in debug,
+Activity and Skill drafts off); the rail lists the same; between **768px** and **1024px** it draws its rail beside the panel, and
 below 768px the index *is* the list. The breakpoints are derived from what
 the content needs, not from device names.
 
@@ -859,17 +859,18 @@ diff folded under it.
 
 On the ground, with no border: the sheet's edge is the divider. **New chat** (the ink pill), then
 **Threads**, then the lower region, with hairline separators between sections. The lower region has
-**one order** on every address and in both modes: **Harness**, then the workspace. On `/harness`
-Harness is all nine destinations, the page's own navigation, never folded there, and the workspace
-is folded by default — header only, its mount controls inside the fold (that fold is not stored).
-On a thread in debug it is all nine, foldable. On a thread with debug off it is the same frame — the heading, *What happened* and **Activity** with its
+**one order** on every address and in both modes: **Harness**, then the workspace. In debug
+Harness is all nine destinations (never folded on `/harness`, where they are the page's own
+navigation). Debug off it is the same frame on every address, `/harness` included — the heading, *What happened* and **Activity** with its
 failure glance, and under *What it knows* a **Skill drafts** row with the amber `N waiting`
-glance while drafts wait — then the workspace; arriving on `/harness` inserts rows below Activity
-and moves nothing above it. Collapsed, debug off shows those one or two icons below Workspace.
+glance while drafts wait (or while the reader is on Skills), the current one marked — then the
+workspace. On `/harness` the workspace is folded by default, header only, its mount controls
+inside the fold (that fold is not stored). Arriving moves nothing: the rows do not change. Collapsed, debug off shows those one or two icons below Workspace.
 
 Threads is a heading and a **pill search field** (36px, `sidebar-accent` face, `input` edge, 14px,
 a 3px focus ring) that stay put above a list that scrolls inside itself. Workspace and Harness are
-one region below it at a **fixed** height, `clamp(40svh, 30rem, 60svh)` — 30rem is what the nine
+one region below it at a **fixed** height — `min(40svh, 19rem)` with debug off, for its two rows
+and an open workspace; in debug `clamp(40svh, 30rem, 60svh)` — 30rem is what the nine
 destinations take (the folded workspace's header is a short scroll below), and a fixed height means the region does not
 grow upward when its rows change between addresses (on a thread with debug off it leaves room
 under the workspace, the accepted cost), with one scroll of its own; the sidebar itself
@@ -910,7 +911,7 @@ The list is one Tab stop. Arrows, Home and End move between rows, → reaches a 
 returns, Shift+F10 or a right click opens it, Delete deletes. A search drops the groups; a row
 whose messages matched shows the words around the match, the match in the foreground.
 
-Collapsed to icons, the column is New chat, Threads, Workspace, then the nine destinations (debug, or on `/harness`; otherwise Activity and Skill drafts), each
+Collapsed to icons, the column is New chat, Threads, Workspace, then the nine destinations (debug; otherwise Activity and Skill drafts), each
 a 36px rounded square. Threads expands the sidebar and puts the caret in the search field. It
 carries one 6px dot for the most urgent state and says it as well. Jobs and Activity carry a
 `state-failed` dot when their glance reports a failure, Skills a `state-blocked` dot while a draft
