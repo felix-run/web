@@ -210,6 +210,9 @@
     "/jobs/{name}/runs": {
       "get": {}
     },
+    "/triggers/{trigger_id}": {
+      "post": {}
+    },
     "/manifests/": {
       "get": {}
     },
@@ -454,6 +457,15 @@
     },
     "/auth/methods": {
       "get": {}
+    },
+    "/auth/google/authorize": {
+      "get": {}
+    },
+    "/auth/google/callback": {
+      "get": {}
+    },
+    "/auth/google/exchange": {
+      "post": {}
     },
     "/github/connection": {
       "get": {},

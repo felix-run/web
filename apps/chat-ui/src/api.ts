@@ -222,6 +222,11 @@ export interface AuthMethods {
   github_device: boolean;
   /** Browser sign-in by redirect (`GET /auth/github/authorize`), through a GitHub App. */
   github_redirect: boolean;
+  /**
+   * Google sign-in by redirect (`GET /auth/google/authorize`), for the accounts the operator
+   * listed and nobody else. `false` from a harness older than the field.
+   */
+  google_redirect: boolean;
   /** Whether the harness verifies a bearer. The Worker honours one only when it does. */
   bearer_required: boolean;
   /**
@@ -286,6 +291,7 @@ export async function getAuthMethods(): Promise<AuthMethods | null> {
     return {
       github_device: body.github_device === true,
       github_redirect: body.github_redirect === true,
+      google_redirect: body.google_redirect === true,
       bearer_required: body.bearer_required === true,
       github_signup: body.github_signup === 'invite' ? 'invite' : 'off',
     };
@@ -338,6 +344,22 @@ export function githubAuthorizeUrl(returnTo: string, tenant?: string): string {
 export async function exchangeGitHubLogin(): Promise<LoginResult<GitHubLoginToken>> {
   return loginCall<GitHubLoginToken>(
     await fetch('/api/auth/github/exchange', { method: 'POST', credentials: 'same-origin' }),
+  );
+}
+
+/**
+ * Where "Continue with Google" sends the browser: the harness's redirect to Google, coming back
+ * to `returnTo`. The same shape as `githubAuthorizeUrl`, without tenants: an account's tenant is
+ * fixed by the operator's list.
+ */
+export function googleAuthorizeUrl(returnTo: string): string {
+  return `/api/auth/google/authorize?${new URLSearchParams({ return_to: returnTo }).toString()}`;
+}
+
+/** POST /auth/google/exchange → the token a Google sign-in left waiting, once. */
+export async function exchangeGoogleLogin(): Promise<LoginResult<GitHubLoginToken>> {
+  return loginCall<GitHubLoginToken>(
+    await fetch('/api/auth/google/exchange', { method: 'POST', credentials: 'same-origin' }),
   );
 }
 
