@@ -8,11 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { Message } from '../src/components/chat/message';
 import { resetEditNotice } from '../src/components/pane/edit-notice';
+import { FilesView } from '../src/components/pane/files-view';
 import { PaneDivider } from '../src/components/pane/pane-divider';
 import { invalidPath, suggestedName } from '../src/components/pane/save-to-workspace';
 import { SidePane } from '../src/components/pane/side-pane';
 import { ThemeProvider } from '../src/components/theme-provider';
-import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import {
   isMarkdown,
   languageFor,
@@ -100,7 +100,7 @@ function mount({
   const tree = (s: boolean) => (
     <TooltipProvider>
       <ShellProvider value={{ ...value, streaming: s }}>
-        <WorkspaceSection />
+        <FilesView />
         <SidePane threadId={THREAD} changedPaths={new Set()} runPaths={runPaths} streaming={s} />
       </ShellProvider>
     </TooltipProvider>
@@ -138,8 +138,6 @@ beforeEach(() => {
   sessionStorage.clear();
   resetPanes();
   resetEditNotice();
-  // Files starts folded; these are about what opens from the tree.
-  localStorage.setItem('felix.sidebar.filesOpen', '1');
 });
 afterEach(() => {
   cleanup();

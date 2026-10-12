@@ -5,6 +5,7 @@ import {
   BracesIcon,
   ChevronLeftIcon,
   FileTextIcon,
+  FolderTreeIcon,
   ImageIcon,
   ImageOffIcon,
   PackageOpenIcon,
@@ -24,6 +25,7 @@ import {
 import { getArtifact } from '@/api';
 import { CodeBlock } from '@/components/ai-elements/code-block';
 import { FileView } from '@/components/pane/file-view';
+import { FilesView } from '@/components/pane/files-view';
 import {
   CopyAction,
   DownloadAction,
@@ -42,6 +44,7 @@ import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import {
   closeAllPaneItems,
   closePaneItem,
+  FILES_KEY,
   isDirty,
   type PaneItem,
   setPaneActive,
@@ -86,6 +89,7 @@ export function SidePane({
   className?: string;
 }) {
   const { items, active } = usePaneState(threadId);
+  const unseenWrites = useUnseenWrites(threadId, changedPaths, active === FILES_KEY);
   /** A close that would drop an edit, waiting on a yes: one item, or all of them. */
   const [discarding, setDiscarding] = useState<string | 'all' | null>(null);
   useEffect(() => {
@@ -189,7 +193,12 @@ export function SidePane({
             )}
           >
             {items.map((item) => (
-              <PaneTab key={item.key} item={item} onClose={() => requestClose(item.key)} />
+              <PaneTab
+                key={item.key}
+                item={item}
+                fresh={item.kind === 'files' && unseenWrites}
+                onClose={() => requestClose(item.key)}
+              />
             ))}
           </TabsList>
           <Button
@@ -244,7 +253,9 @@ export function SidePane({
 
         {items.map((item) => (
           <TabsContent key={item.key} value={item.key} className="flex min-h-0 flex-col">
-            {item.kind === 'file' ? (
+            {item.kind === 'files' ? (
+              <FilesView />
+            ) : item.kind === 'file' ? (
               <FileView
                 threadId={threadId}
                 item={item}
@@ -288,7 +299,24 @@ function labelOf(item: PaneItem): string {
       return toolOfImage(item.title);
     case 'skill':
       return item.name;
+    case 'files':
+      return 'Files';
   }
+}
+
+/**
+ * How many files a write had landed on when Files was last in front, per thread
+ * — so its tab can say a write landed since. Seeded on first sight, not at zero:
+ * a reload must not mark every past write as new.
+ */
+const filesSeen = new Map<string, number>();
+
+function useUnseenWrites(threadId: string, changed: ReadonlySet<string>, inFront: boolean) {
+  if (!filesSeen.has(threadId)) filesSeen.set(threadId, changed.size);
+  useEffect(() => {
+    if (inFront) filesSeen.set(threadId, changed.size);
+  }, [threadId, changed, inFront]);
+  return !inFront && changed.size > (filesSeen.get(threadId) ?? 0);
 }
 
 /** `Image 2 from browser_screenshot` is the tool card's alt text; the tab wants the tool. */
@@ -298,7 +326,7 @@ function toolOfImage(title: string): string {
 
 /** An identifier — a file or a tool — is set in mono; a code block's "bash · 4 lines" is not. */
 function isIdentifier(item: PaneItem): boolean {
-  return item.kind !== 'code';
+  return item.kind !== 'code' && item.kind !== 'files';
 }
 
 const ICONS = {
@@ -307,6 +335,7 @@ const ICONS = {
   code: BracesIcon,
   image: ImageIcon,
   skill: PuzzleIcon,
+  files: FolderTreeIcon,
 } as const;
 
 /**
@@ -314,10 +343,26 @@ const ICONS = {
  * a tab is two controls announced as one. The close is out of the Tab order;
  * Delete on a focused tab closes it, and so does a middle click.
  */
-function PaneTab({ item, onClose }: { item: PaneItem; onClose: () => void }) {
+function PaneTab({
+  item,
+  fresh = false,
+  onClose,
+}: {
+  item: PaneItem;
+  /** Files only: a write landed since it was last in front. */
+  fresh?: boolean;
+  onClose: () => void;
+}) {
   const Icon = ICONS[item.kind];
   const label = labelOf(item);
-  const full = item.kind === 'file' ? item.path : item.kind === 'skill' ? item.name : item.title;
+  const full =
+    item.kind === 'file'
+      ? item.path
+      : item.kind === 'skill'
+        ? item.name
+        : item.kind === 'files'
+          ? 'The workspace'
+          : item.title;
   const dirty = isDirty(item);
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -347,6 +392,12 @@ function PaneTab({ item, onClose }: { item: PaneItem; onClose: () => void }) {
           <>
             <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground" />
             <span className="sr-only">, unsaved</span>
+          </>
+        )}
+        {fresh && (
+          <>
+            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-state-done" />
+            <span className="sr-only">, a file was written since you looked</span>
           </>
         )}
       </TabsTrigger>

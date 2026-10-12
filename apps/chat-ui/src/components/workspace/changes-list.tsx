@@ -3,6 +3,7 @@ import { useId, useMemo, useState } from 'react';
 import { CodePane } from '@/components/approval/approval-decision';
 import {
   type ChangeEvidence,
+  changeSource,
   collectChanges,
   durableRunInFlight,
   type PathChange,
@@ -117,11 +118,9 @@ function ChangeRow({ change }: { change: PathChange }) {
           openInPane({
             kind: 'file',
             path: treePath(change.path),
-            // A write from the browser's own tools (`local_*`) is in the browser's
-            // workspace; one from the harness's tools is on the harness.
-            ...(change.calls.some((c) => c.tool.name.startsWith('local_'))
-              ? {}
-              : { source: 'harness' as const }),
+            // A write from the browser's own tools is in the browser's workspace;
+            // one from the harness's tools is on the harness.
+            ...(changeSource(change) === 'browser' ? {} : { source: 'harness' as const }),
           })
         }
         className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent/40 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/change:opacity-100"

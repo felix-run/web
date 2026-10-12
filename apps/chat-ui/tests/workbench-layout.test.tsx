@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { AppSidebar } from '../src/components/app-sidebar';
 import { Inspector } from '../src/components/inspector/inspector';
+import { FilesView } from '../src/components/pane/files-view';
 import { ThemeProvider } from '../src/components/theme-provider';
-import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import { Workbench } from '../src/routes/workbench';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
@@ -78,6 +78,7 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     onUiRespond: () => {},
     onUiCancel: () => {},
     threadId: 'now',
+    openInPane: () => {},
     labels: {},
     labelTurn: () => {},
     send: () => {},
@@ -151,7 +152,7 @@ function mountZone(over: Partial<ShellValue> = {}) {
   return render(
     <TooltipProvider>
       <ShellProvider value={shell(over)}>
-        <WorkspaceSection />
+        <FilesView />
       </ShellProvider>
     </TooltipProvider>,
   );
@@ -287,6 +288,19 @@ describe('the sidebar', () => {
     expect(screen.queryByRole('button', { name: /^Search threads/ })).toBeNull();
   });
 
+  // An agent with no file tools has no workspace to open, expanded or collapsed.
+  it('draws no Workspace row for an agent with no file tools', () => {
+    const none = {
+      // The thread's own agent decides, so the one it ran under says none.
+      manifestEntries: [{ id: 'cowork', workspace: { tools: 'none', scope: 'thread' } }],
+    } as unknown as Partial<ShellValue>;
+    const { unmount } = mountSidebar(none);
+    expect(document.querySelector('[data-slot="workspace-row"]')).toBeNull();
+    unmount();
+    mountSidebar(none, { open: false });
+    expect(screen.queryByRole('button', { name: /^Workspace/ })).toBeNull();
+  });
+
   // Collapsed, the column is all there is of the rail, so a run going in the
   // background — not only something waiting — has to show on the Threads icon,
   // and be said, since a dot is not.
@@ -328,7 +342,7 @@ describe('the sidebar', () => {
     expect(lower.className.split(/\s+/)).toEqual(
       expect.arrayContaining(['h-[clamp(40svh,30rem,60svh)]', 'overflow-y-auto']),
     );
-    expect(lower.querySelector('[data-slot="workspace-section"]')).toBeTruthy();
+    expect(lower.querySelector('[data-slot="workspace-row"]')).toBeTruthy();
     expect(lower.querySelector('nav[aria-label="Harness"]')).toBeTruthy();
     const content = lower.closest('[data-sidebar="content"]') as HTMLElement;
     expect(content.className).toContain('overflow-y-hidden');
@@ -383,7 +397,7 @@ describe('the workspace section', () => {
 
   it('says nothing about changes when no tool has run', async () => {
     mountZone();
-    await waitFor(() => expect(screen.getByText('Files')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Nothing here yet/)).toBeTruthy());
     expect(screen.queryByText('Changes on this thread')).toBeNull();
   });
 });

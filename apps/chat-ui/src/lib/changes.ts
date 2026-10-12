@@ -397,6 +397,16 @@ export function treePath(path: string): string {
  * thread, or from `from` (a turn index) on, which is how the side pane asks
  * whether the run in flight has written the file it is about to save.
  */
+/**
+ * Which workspace a change happened in: the browser's (the mount or the in-tab
+ * store), where the client's `local_*` tools work, or the harness's, where every
+ * other file tool does. One path names two files when both stores hold it, so
+ * anything that marks or opens a change asks this rather than the path alone.
+ */
+export function changeSource(change: PathChange): 'browser' | 'harness' {
+  return change.calls.some((c) => c.tool.name.startsWith('local_')) ? 'browser' : 'harness';
+}
+
 export function landedPaths(turns: readonly Turn[], from = 0): Set<string> {
   return new Set(
     collectChanges(from > 0 ? turns.slice(from) : turns)

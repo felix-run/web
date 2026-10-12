@@ -1,7 +1,6 @@
-import { Button } from '@felix/ui/button';
-import { ChevronRightIcon, FileIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
+import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@felix/ui/sidebar';
+import { FileIcon, FolderIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FileTree,
   FileTreeFile,
@@ -10,424 +9,108 @@ import {
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
 import { type FileRowAction, useFileRowMenu } from '@/components/workspace/file-row-menu';
-import {
-  FolderActionDialog,
-  requestFolderAction,
-  useFolderRequest,
-} from '@/components/workspace/folder-action';
-import { HarnessFilesSection } from '@/components/workspace/harness-files';
-import { ThreadRepoSection } from '@/components/workspace/thread-repo';
-import { collectChanges, treePath } from '@/lib/changes';
-import {
-  clearMount,
-  getMountLabel,
-  hasMount,
-  mountTree,
-  pickDirectory,
-  reconnectMount,
-  restoreMount,
-  supportsDirectoryPicker,
-  vfs,
-} from '@/lib/cowork';
 import { ancestorsOf, buildTree, type TreeNode } from '@/lib/file-tree';
-import { requestFileAction, usePaneState } from '@/lib/side-pane';
+import { reconnectFolder, useMount } from '@/lib/mount-state';
+import { FILES_KEY, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
-import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
+import { hasWorkspace, inBrowser, useWorkspaceTools } from '@/lib/workspace-tools';
 import { useShell } from '@/shell-context';
 
 /**
- * The workspace: the folder the agent works on, as a section of the sidebar.
+ * The workspace, as one sidebar row: what the agent works on, and the door to
+ * the pane's Files tab, where its trees are.
  *
- * It was the whole left zone, with threads hung off its header in a popover —
- * which made that popover the only door to another conversation at any width.
- * The sidebar gave threads back a list of their own, so this is one section of
- * it: what is mounted, the thread's repository on the harness, and the files —
- * *where* tools work. What this thread's calls *did* there is the run
- * instrument's Changes tab (`ThreadChanges`), which changes with every thread
- * and is the instrument's question rather than this one's. It folds, and remembers that it did, because on a thread with no workspace work
- * it is a tall block between the thread list and the harness.
+ * It was the whole section — mount controls, the thread's repository, the
+ * harness's tree and the browser's — folded by default, because a mounted
+ * repository's tree was taller than the region it shared with the harness's
+ * pages, and the file it opened appeared on the far side of the screen. The
+ * trees moved beside the files they open (`FilesView`); the row keeps the one
+ * fact worth seeing from anywhere, which folder is mounted, and the one action
+ * that cannot wait for a click through, Reconnect.
  *
- * Its first state on many mornings is not a tree. `restoreMount()` can only
- * return `needs-permission`, because the readwrite grant belongs to the document
- * and boot is not allowed to ask for it — so "reconnect <name>" is a normal
- * resting state here, not an error.
+ * Nothing for an agent with no file tools (`felix.workspace.tools: none`): a
+ * workspace it cannot touch is a door to nothing.
  */
-
-/**
- * How many entries the Files tree reads. It used to be 200, which a mounted repository
- * spent before reaching most of its own top level; one more is asked for so the tree can
- * say it stopped rather than pass a cut list off as the folder.
- */
-const TREE_VISIBLE = 5_000;
-
-const FOLD_KEY = 'felix.sidebar.workspaceFolded';
-
-function readFolded(): boolean {
-  try {
-    return localStorage.getItem(FOLD_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-const FILES_OPEN_KEY = 'felix.sidebar.filesOpen';
-
-/**
- * Files starts folded, and stays however it was last left. Open, a mounted
- * repository's tree was taller than the sidebar region it shares with the
- * harness's pages, so those were a scroll away on every load — and the tree is
- * there to look something up in, not to watch.
- */
-function readFilesOpen(): boolean {
-  try {
-    return localStorage.getItem(FILES_OPEN_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-export function WorkspaceSection({
-  className,
-  foldedByDefault = false,
+export function WorkspaceRow({
+  collapsed,
+  onNavigate,
 }: {
-  className?: string;
-  /**
-   * Start folded and do not remember the fold — on `/harness`, where the section
-   * follows the page's own navigation and opening it is a one-off. The stored
-   * fold is the thread side's, and left as it was.
-   */
-  foldedByDefault?: boolean;
+  collapsed: boolean;
+  /** A drawer closes once the operator has picked somewhere to go. */
+  onNavigate: () => void;
 }) {
-  const { turns, streaming, threadId, openInPane } = useShell();
-  const folderRequest = useFolderRequest();
-  const [folded, setFolded] = useState(() => foldedByDefault || readFolded());
-  const toggleFolded = () =>
-    setFolded((f) => {
-      if (!foldedByDefault) {
-        try {
-          localStorage.setItem(FOLD_KEY, f ? '0' : '1');
-        } catch {
-          // Storage blocked: the fold lasts for this page.
-        }
-      }
-      return !f;
-    });
-
-  const [filesOpen, setFilesOpen] = useState(readFilesOpen);
-  const toggleFiles = () =>
-    setFilesOpen((o) => {
-      try {
-        localStorage.setItem(FILES_OPEN_KEY, o ? '0' : '1');
-      } catch {
-        // Storage blocked: the fold lasts for this page.
-      }
-      return !o;
-    });
-
-  const [mountLabel, setMountLabel] = useState<string | null>(getMountLabel());
-  const [reconnectName, setReconnectName] = useState<string | null>(null);
-  const [files, setFiles] = useState<string[]>([]);
-  // The file in front in the side pane, so the tree can mark the one being read.
+  const { threadId, openInPane } = useShell();
+  const tools = useWorkspaceTools();
+  const mount = useMount();
   const pane = usePaneState(threadId);
-  const previewing =
-    pane.shown && pane.active?.startsWith('file:') ? pane.active.slice('file:'.length) : null;
-  const openFile = useCallback(
-    (path: string) => openInPane?.({ kind: 'file', path }),
-    [openInPane],
-  );
-  const canMount = supportsDirectoryPicker();
+  if (!hasWorkspace(tools) || !openInPane) return null;
 
-  const refresh = useCallback(async () => {
-    setFiles(hasMount() ? await mountTree(TREE_VISIBLE + 1) : vfs.tree(TREE_VISIBLE + 1));
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh, mountLabel]);
-  useEffect(() => {
-    const onWritten = () => void refresh();
-    window.addEventListener(WORKSPACE_WRITTEN, onWritten);
-    return () => window.removeEventListener(WORKSPACE_WRITTEN, onWritten);
-  }, [refresh]);
-
-  // A folder mounted last session may still be usable; whether it is depends on a
-  // grant boot cannot ask for. See `restoreMount`.
-  useEffect(() => {
-    let cancelled = false;
-    void restoreMount().then((result) => {
-      if (cancelled) return;
-      if (result.status === 'restored') setMountLabel(result.name);
-      else if (result.status === 'needs-permission') setReconnectName(result.name);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Re-read the tree when a run stops, because that is when the agent's writes
-  // have landed. Polling it would be a filesystem read every few seconds for a
-  // panel that only changes when a tool runs.
-  useEffect(() => {
-    if (!streaming) void refresh();
-  }, [streaming, refresh]);
-
-  /**
-   * Which files this thread's calls changed, so the tree can open onto them and
-   * draw them in the foreground. The list itself is the instrument's Changes tab;
-   * see `collectChanges` for what counts as a change.
-   */
-  const changes = useMemo(() => collectChanges(turns), [turns]);
-  /** Paths a write or edit landed on, normalised to the tree's spelling. */
-  const changedPaths = useMemo(
-    () => new Set(changes.filter((c) => c.changed).map((c) => treePath(c.path))),
-    [changes],
-  );
-
-  /**
-   * Must stay inside the click handler: the permission prompt is only allowed to
-   * open while the user's gesture is still being processed.
-   */
-  const onReconnect = useCallback(async () => {
-    const name = await reconnectMount();
-    if (!name) {
-      // Not an error: the operator was asked for a folder and said no. Reporting
-      // a decision back as a failure is how a surface teaches people to stop
-      // reading its red.
-      toast.message('No folder attached. The chat is using the in-tab workspace.');
-      return;
-    }
-    setReconnectName(null);
-    setMountLabel(name);
-    await refresh();
-  }, [refresh]);
-
-  const onMount = useCallback(async () => {
-    try {
-      const name = await pickDirectory();
-      setReconnectName(null);
-      setMountLabel(name);
-      await refresh();
-    } catch {
-      // picker cancelled
-    }
-  }, [refresh]);
+  const browser = inBrowser(tools);
+  const reconnect = browser && !mount.label ? mount.reconnect : null;
+  const value = !browser ? 'on the harness' : (mount.label ?? (reconnect ? null : 'in-tab'));
+  const active = pane.shown && pane.active === FILES_KEY;
+  const open = () => {
+    openInPane({ kind: 'files' });
+    onNavigate();
+  };
 
   return (
-    <section
-      aria-labelledby="workspace-heading workspace-mount"
-      data-slot="workspace-section"
-      className={cn('px-2 py-2', className)}
-    >
-      {/*
-        The sidebar's section header, the same row the Harness section draws: a
-        small muted label, its one value, and the fold at the right edge — so the
-        three sections read as one list with three headings rather than three
-        components. It used to be an icon and a bold title, louder than both of
-        its neighbours for a section that is often folded. The value is what is
-        mounted, the question this header exists to answer.
-      */}
-      <div className="flex h-7 min-w-0 items-center px-2.5">
-        {/* The label and its value as one group with no control in it: the value
-            is a fact. The fold is the row's, beside the group. */}
-        <div className="flex min-w-0 items-center gap-1.5">
-          <h2
-            id="workspace-heading"
-            className="shrink-0 text-xs font-semibold text-muted-foreground"
+    <SidebarGroup data-slot="workspace-row" className="py-1">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={active}
+            tooltip={reconnect ? `Workspace · reconnect ${reconnect}` : 'Workspace'}
+            onClick={open}
+            aria-describedby={collapsed ? undefined : 'workspace-value'}
+            className={cn('relative text-muted-foreground', reconnect && !collapsed && 'pr-24')}
           >
-            Workspace
-          </h2>
-          {/* Mono for a folder name, because it is the filesystem's word; the
-            in-tab state is ours. A folder waiting on a reconnect is not mounted
-            yet, so until it is, the honest value is where tools run now. */}
-          <span
-            id="workspace-mount"
-            className={cn(
-              'min-w-0 truncate text-xs',
-              mountLabel ? 'font-mono text-foreground' : 'text-muted-foreground',
-            )}
-            title={mountLabel ?? undefined}
-          >
-            {mountLabel ?? 'in-tab'}
-          </span>
-        </div>
-        {/* `-mr-[5px]` sets the chevron's glyph, not its box, on the Harness
-            fold's line: that one is a bare 14px icon at the row's padding, this
-            one is centred in a 24px target. */}
-        <button
-          type="button"
-          aria-expanded={!folded}
-          aria-controls="workspace-mount-row workspace-body"
-          aria-label={folded ? 'Show workspace' : 'Hide workspace'}
-          onClick={toggleFolded}
-          className="-mr-[5px] ml-auto grid size-6 shrink-0 coarse:size-9 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-        >
-          <ChevronRightIcon
-            aria-hidden
-            className={cn(
-              'size-3.5 transition-transform duration-200 ease-out motion-reduce:transition-none',
-              !folded && 'rotate-90',
-            )}
-          />
-        </button>
-      </div>
-      {/* Inside the fold with the rest: folded, it left its sentence and a
-          full-width Mount a folder on screen — and a Tab stop beside a toggle
-          announcing "collapsed". The mount stays named in the header's value. */}
-      <div id="workspace-mount-row" hidden={folded} className="px-2.5">
-        <p className="truncate text-xs text-muted-foreground">
-          {mountLabel ? 'Client tools run against this folder' : 'Client tools run in this tab'}
-        </p>
-
-        {canMount ? (
-          <div className="mt-2 flex gap-2">
-            {mountLabel ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 min-w-0 flex-1 text-xs"
-                  onClick={() => void onMount()}
-                >
-                  Change folder
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 min-w-0 flex-1 text-xs"
-                  onClick={() => {
-                    clearMount();
-                    setMountLabel(null);
-                    setReconnectName(null);
-                    void refresh();
-                  }}
-                >
-                  Disconnect
-                </Button>
-              </>
-            ) : reconnectName ? (
-              <>
-                {/* A folder mounted last session, waiting on a grant only a click
-                    can ask for. The name is the one thing that says which. */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 min-w-0 flex-1 text-xs"
-                  onClick={() => void onReconnect()}
-                >
-                  <span className="truncate">
-                    Reconnect <span className="font-mono">{reconnectName}</span>
-                  </span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 shrink-0 text-xs"
-                  onClick={() => void onMount()}
-                >
-                  Other folder
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 w-full text-xs"
-                onClick={() => void onMount()}
+            <FolderIcon aria-hidden />
+            {/* Collapsed to an icon the name is the tooltip's and the reader's: a
+                label that will not shrink showed its first letter past the icon. */}
+            <span className={collapsed ? 'sr-only' : 'shrink-0'}>Workspace</span>
+            {/* Mono for a folder name, because it is the filesystem's word; the
+                in-tab and harness states are ours. */}
+            {!collapsed && (
+              <span
+                id="workspace-value"
+                className={cn(
+                  'min-w-0 flex-1 truncate text-right text-xs',
+                  browser && mount.label ? 'font-mono text-foreground' : 'text-muted-foreground',
+                )}
+                title={mount.label ?? undefined}
               >
-                Mount a folder
-              </Button>
+                {value}
+              </span>
             )}
-          </div>
-        ) : !mountLabel && reconnectName ? (
-          // Unreachable in practice — a stored mount implies the API — but the
-          // reconnect path must never depend on a second feature check.
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2 h-7 w-full text-xs"
-            onClick={() => void onReconnect()}
-          >
-            Reconnect {reconnectName}
-          </Button>
-        ) : (
-          // Without the directory picker (Safari, Firefox, every iPhone and iPad)
-          // the mount buttons do not exist, and their silent absence read as a
-          // missing feature rather than a browser that cannot offer it.
-          <p className="mt-1 text-xs text-muted-foreground">
-            Mounting a folder needs Chrome or Edge on a computer; files here stay in this tab.
-          </p>
-        )}
-      </div>
-
-      <div id="workspace-body" hidden={folded} className="mt-3 space-y-4 px-2.5">
-        <ThreadRepoSection threadId={threadId} streaming={streaming} />
-        <HarnessFilesSection changed={changedPaths} />
-
-        <section aria-labelledby="workspace-files-heading">
-          <h3 id="workspace-files-heading" className="mb-1.5">
+            {collapsed && reconnect && (
+              <>
+                <span
+                  aria-hidden
+                  className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-muted-foreground"
+                />
+                <span className="sr-only">, {reconnect} needs reconnecting</span>
+              </>
+            )}
+          </SidebarMenuButton>
+          {/* A folder mounted last session waits on a grant only a click can ask
+              for, and the click has to be this one: the permission prompt opens
+              only inside the gesture. Beside the row, never inside it — a button
+              in a button is two controls announced as one. */}
+          {reconnect && !collapsed && (
             <button
               type="button"
-              aria-expanded={filesOpen}
-              aria-controls="workspace-files"
-              onClick={toggleFiles}
-              className="flex w-full items-center gap-1 rounded-md text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              onClick={() => void reconnectFolder()}
+              title={`Reconnect ${reconnect}`}
+              className="absolute top-1/2 right-1 flex h-6 max-w-22 -translate-y-1/2 items-center rounded-md border border-border bg-background px-2 text-xs text-foreground hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
             >
-              <ChevronRightIcon
-                aria-hidden
-                className={cn(
-                  'size-3 transition-transform duration-200 ease-out motion-reduce:transition-none',
-                  filesOpen && 'rotate-90',
-                )}
-              />
-              Files
-              {files.length > 0 && (
-                <span className="ml-auto font-normal tabular-nums">
-                  {files.length > TREE_VISIBLE
-                    ? `${TREE_VISIBLE.toLocaleString()}+`
-                    : files.length.toLocaleString()}
-                </span>
-              )}
+              <span className="truncate">Reconnect</span>
+              <span className="sr-only"> {reconnect}</span>
             </button>
-          </h3>
-          <div id="workspace-files" hidden={!filesOpen}>
-            {files.length ? (
-              <WorkspaceFileTree
-                paths={files.slice(0, TREE_VISIBLE)}
-                changed={changedPaths}
-                selected={previewing}
-                onOpenFile={openFile}
-                onFileAction={(path, action) => {
-                  openFile(path);
-                  if (action !== 'open')
-                    requestFileAction(threadId, { kind: 'file', path }, action);
-                }}
-                onFolderAction={(path, action) =>
-                  requestFolderAction({ path, action, source: 'browser' })
-                }
-              />
-            ) : (
-              // Files is this tab's own store; the instrument's Changes is every
-              // workspace call on the thread, including the harness's own tools,
-              // which never touch it. "Nothing written yet" beside "+5 written" read
-              // as a contradiction, so an empty store says which store it is.
-              <p className="text-xs text-muted-foreground">
-                {mountLabel
-                  ? 'This folder is empty.'
-                  : changes.some((c) => c.changed)
-                    ? "Nothing in this tab. This thread's writes ran on the harness."
-                    : 'Nothing written in this tab yet.'}
-              </p>
-            )}
-            {files.length > TREE_VISIBLE && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Showing the first {TREE_VISIBLE.toLocaleString()} entries; the folder holds more.
-              </p>
-            )}
-          </div>
-        </section>
-      </div>
-      <FolderActionDialog request={folderRequest} onClose={() => requestFolderAction(null)} />
-    </section>
+          )}
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarGroup>
   );
 }
 
@@ -473,6 +156,15 @@ export function WorkspaceFileTree({
   // Seeded once, from the changes on screen when the tree first draws: after that
   // the folds are the operator's.
   const [expanded, setExpanded] = useState(() => ancestorsOf(changed));
+  // …and opened onto each path written after that, once: a write is why the
+  // operator is looking, and a fold they closed since stays closed.
+  const seen = useRef(changed);
+  useEffect(() => {
+    const fresh = [...changed].filter((p) => !seen.current.has(p));
+    seen.current = changed;
+    if (!fresh.length) return;
+    setExpanded((prev) => new Set([...prev, ...ancestorsOf(new Set(fresh))]));
+  }, [changed]);
   const { rowProps, host } = useFileRowMenu((path, action, kind) => {
     if (kind === 'folder') {
       if (action !== 'open') onFolderAction?.(path, action);

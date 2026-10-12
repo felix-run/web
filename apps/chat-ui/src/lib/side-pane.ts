@@ -47,6 +47,12 @@ export type PaneItem =
     }
   | { kind: 'code'; key: string; code: string; language: string; title: string }
   | { kind: 'image'; key: string; url: string; title: string }
+  /**
+   * The workspace's file trees — the browser's and the harness's, whichever the
+   * thread's agent works in. One per thread, always the first tab, and never
+   * dropped to make room: it is where the other file tabs come from.
+   */
+  | { kind: 'files'; key: string }
   | {
       kind: 'skill';
       key: string;
@@ -88,10 +94,21 @@ export interface PaneState {
    * Not persisted: a reload does not re-ask.
    */
   request?: { key: string; action: 'rename' | 'delete' };
+  /**
+   * The operator closed Files on this thread, so a write must not open it again
+   * (`addFilesTab`). Kept for the session, with the rest of the pane.
+   */
+  filesDismissed?: boolean;
 }
 
-/** How many items stay open. The oldest clean one goes when a seventh arrives. */
+/**
+ * How many items stay open besides Files. The oldest clean one goes when a
+ * seventh arrives; Files neither counts nor goes.
+ */
 export const PANE_LIMIT = 6;
+
+/** Files' key: one per thread, so it is its own identity. */
+export const FILES_KEY = 'files';
 
 /** Past this, an item's content is not written to session storage (it stays open in memory). */
 const PERSIST_LIMIT = 200_000;
@@ -114,6 +131,8 @@ export function paneKey(item: PaneItemInput): string {
       return `image:${hash(item.url)}`;
     case 'skill':
       return `skill:${item.library ?? ''}/${item.name}`;
+    case 'files':
+      return FILES_KEY;
   }
 }
 
@@ -137,6 +156,21 @@ export function cleanFile(
     path: item.path,
     ...(item.source ? { source: item.source } : {}),
   };
+}
+
+/**
+ * The file a tree marks as selected: the one in front, or — while Files itself is
+ * in front — the one opened most recently from `source`'s workspace, so the tree
+ * still shows where the operator was.
+ */
+export function lastOpenedFile(state: PaneState, source?: 'harness'): string | null {
+  if (!state.shown) return null;
+  const files = state.items.filter(
+    (i): i is Extract<PaneItem, { kind: 'file' }> => i.kind === 'file' && i.source === source,
+  );
+  const front = files.find((i) => i.key === state.active);
+  if (front) return front.path;
+  return state.active === FILES_KEY ? (files.at(-1)?.path ?? null) : null;
 }
 
 export function isDirty(item: PaneItem): boolean {
@@ -163,13 +197,14 @@ function restore(threadId: string): PaneState {
     const raw = sessionStorage.getItem(KEY_PREFIX + threadId);
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw) as Partial<PaneState>;
+    const dismissed = parsed.filesDismissed === true ? { filesDismissed: true } : {};
     const items = Array.isArray(parsed.items) ? parsed.items.filter(isItem) : [];
-    if (!items.length) return EMPTY;
+    if (!items.length) return { ...EMPTY, ...dismissed };
     const active =
       typeof parsed.active === 'string' && items.some((i) => i.key === parsed.active)
         ? parsed.active
         : (items.at(-1)?.key ?? null);
-    return { items, active, shown: parsed.shown !== false };
+    return { items, active, shown: parsed.shown !== false, ...dismissed };
   } catch {
     return EMPTY;
   }
@@ -190,6 +225,8 @@ function isItem(v: unknown): v is PaneItem {
       return typeof o.url === 'string';
     case 'skill':
       return typeof o.name === 'string';
+    case 'files':
+      return o.key === FILES_KEY;
     default:
       return false;
   }
@@ -198,7 +235,7 @@ function isItem(v: unknown): v is PaneItem {
 function persist(threadId: string, s: PaneState) {
   try {
     const key = KEY_PREFIX + threadId;
-    if (!s.items.length) {
+    if (!s.items.length && !s.filesDismissed) {
       sessionStorage.removeItem(key);
       return;
     }
@@ -224,13 +261,39 @@ export function openInPane(threadId: string, input: PaneItemInput) {
   const key = paneKey(input);
   update(threadId, (s) => {
     if (s.items.some((i) => i.key === key)) return { ...s, active: key, shown: true };
-    let items = [...s.items, { ...input, key } as PaneItem];
-    while (items.length > PANE_LIMIT) {
-      const drop = items.find((i) => !isDirty(i) && i.key !== key);
-      if (!drop) break;
-      items = items.filter((i) => i !== drop);
-    }
-    return { items, active: key, shown: true };
+    return {
+      ...s,
+      items: withItem(s.items, { ...input, key } as PaneItem),
+      active: key,
+      shown: true,
+    };
+  });
+}
+
+/** `items` with `item` added: Files at the front, anything else at the end, then trimmed. */
+function withItem(items: readonly PaneItem[], item: PaneItem): PaneItem[] {
+  if (item.kind === 'files') return [item, ...items];
+  let next = [...items, item];
+  const counted = () => next.filter((i) => i.kind !== 'files').length;
+  while (counted() > PANE_LIMIT) {
+    const drop = next.find((i) => i.kind !== 'files' && !isDirty(i) && i.key !== item.key);
+    if (!drop) break;
+    next = next.filter((i) => i !== drop);
+  }
+  return next;
+}
+
+/**
+ * Put Files in the pane without being asked — a run's first write to a file.
+ * Nothing when it is already there or the operator closed it on this thread.
+ * `show: false` adds it behind the instrument rather than taking the zone from
+ * it; the pane comes forward with Files in front when the instrument closes.
+ */
+export function addFilesTab(threadId: string, { show }: { show: boolean }) {
+  update(threadId, (s) => {
+    if (s.filesDismissed || s.items.some((i) => i.kind === 'files')) return s;
+    const items = withItem(s.items, { kind: 'files', key: FILES_KEY });
+    return { ...s, items, active: FILES_KEY, shown: show || s.shown };
   });
 }
 
@@ -261,12 +324,22 @@ export function closePaneItem(threadId: string, key: string) {
     // The neighbour that slid into its place, or the one before it at the end.
     const active =
       s.active === key ? (items[Math.min(at, items.length - 1)]?.key ?? null) : s.active;
-    return { items, active, shown: items.length > 0 && s.shown };
+    const filesDismissed = s.filesDismissed || key === FILES_KEY;
+    return {
+      items,
+      active,
+      shown: items.length > 0 && s.shown,
+      ...(filesDismissed ? { filesDismissed } : {}),
+    };
   });
 }
 
 export function closeAllPaneItems(threadId: string) {
-  update(threadId, (s) => (s.items.length ? EMPTY : s));
+  update(threadId, (s) => {
+    if (!s.items.length) return s;
+    const filesDismissed = s.filesDismissed || s.items.some((i) => i.kind === 'files');
+    return filesDismissed ? { ...EMPTY, filesDismissed } : EMPTY;
+  });
 }
 
 export function setPaneActive(threadId: string, key: string) {

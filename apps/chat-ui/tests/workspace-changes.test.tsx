@@ -4,9 +4,9 @@ import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FilesView } from '../src/components/pane/files-view';
 import { ThreadChanges } from '../src/components/workspace/changes-list';
-import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import { collectChanges, countLines, durableRunInFlight } from '../src/lib/changes';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
@@ -236,7 +236,7 @@ function mount(
     streaming?: boolean;
     pending?: ApprovalRequest[];
   },
-  node: ReactNode = <WorkspaceSection />,
+  node: ReactNode = <FilesView />,
 ) {
   const value = {
     turns,
@@ -415,23 +415,14 @@ describe('the Changes tab', () => {
 });
 
 describe('the workspace file tree', () => {
-  // Files starts folded; these are about the tree once it is open.
-  beforeEach(() => localStorage.setItem('felix.sidebar.filesOpen', '1'));
-  afterEach(() => localStorage.removeItem('felix.sidebar.filesOpen'));
-
-  // Folded by default: a mounted repository's tree was taller than the region
-  // it shares with the harness's pages, which then sat a scroll away on every
-  // load. The choice is remembered.
-  it('starts folded, and remembers being opened', async () => {
-    localStorage.removeItem('felix.sidebar.filesOpen');
+  // In the pane the tree has room, so a lone root draws open with no fold: the
+  // fold was the sidebar's, where a repository's tree pushed the harness's pages
+  // a scroll away.
+  it('draws a lone browser root open, with no fold to find', async () => {
     tab.files = ['notes/one.md', 'README.md'];
     mount({ turns: [] });
-    const toggle = await screen.findByRole('button', { name: /^Files/ });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(screen.queryByRole('tree', { name: 'Files' })).toBeNull();
-    await userEvent.click(toggle);
     expect(await screen.findByRole('tree', { name: 'Files' })).toBeTruthy();
-    expect(localStorage.getItem('felix.sidebar.filesOpen')).toBe('1');
+    expect(screen.queryByRole('button', { name: /^This browser/ })).toBeNull();
   });
 
   /**
@@ -441,7 +432,7 @@ describe('the workspace file tree', () => {
    */
   it('opens onto what this thread changed and leaves the rest folded', async () => {
     tab.files = ['notes/one.md', 'notes/two.md', 'src/app.ts', 'README.md'];
-    mount({ turns: [assistant([call('write_file', { path: 'notes/one.md' })])] });
+    mount({ turns: [assistant([call('local_write', { path: 'notes/one.md' })])] });
     const tree = await screen.findByRole('tree', { name: 'Files' });
     const one = await within(tree).findByText('one.md');
     expect(one.textContent).toContain('changed on this thread');
@@ -449,6 +440,17 @@ describe('the workspace file tree', () => {
     expect(within(tree).getByText('two.md').className).toContain('text-muted-foreground');
     // `src` holds nothing this thread touched, so it starts folded.
     expect(within(tree).queryByText('app.ts')).toBeNull();
+    tab.files = [];
+  });
+
+  // A path names a file in each store. A write the harness's tools made is not
+  // a change to the browser's copy, so it neither unfolds nor marks it there.
+  it("leaves the browser's tree alone for a write that landed on the harness", async () => {
+    tab.files = ['notes/one.md', 'README.md'];
+    mount({ turns: [assistant([call('write_file', { path: 'notes/one.md' })])] });
+    const tree = await screen.findByRole('tree', { name: 'Files' });
+    await within(tree).findByText('README.md');
+    expect(within(tree).queryByText('one.md')).toBeNull();
     tab.files = [];
   });
 

@@ -32,6 +32,30 @@ function mount(over: Partial<ShellValue> = {}, manifest = 'cowork', blocked = fa
   return shell;
 }
 
+describe('the readout of where files are', () => {
+  const agent = (tools: string) =>
+    ({
+      manifestEntries: [{ id: 'cowork', workspace: { tools, scope: 'thread' } }],
+    }) as unknown as Partial<ShellValue>;
+
+  it('names no folder for an agent with no file tools', () => {
+    mount(agent('none'));
+    expect(screen.queryByText('Folder')).toBeNull();
+    expect(screen.queryByText('none mounted')).toBeNull();
+  });
+
+  it('says the files are on the harness for an agent whose tools are there', () => {
+    mount(agent('server'));
+    expect(screen.queryByText('Folder')).toBeNull();
+    expect(screen.getByText('on the harness')).toBeTruthy();
+  });
+
+  it('names the folder for an agent that works in the browser', () => {
+    mount(agent('both'));
+    expect(screen.getByText('none mounted')).toBeTruthy();
+  });
+});
+
 describe('the empty thread', () => {
   it('welcomes, and still reads out what the first message will be sent to', () => {
     mount();

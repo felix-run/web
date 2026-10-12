@@ -286,12 +286,11 @@ describe('the harness address', () => {
   });
 
   /**
-   * On `/harness` the destinations are the page's own navigation, so they lead the
-   * sidebar's lower region and the workspace follows, folded — without touching
-   * the thread side's stored fold. Debug off on a thread, the few harness rows sit
-   * first too, in the same frame, so arriving inserts rows below Activity.
+   * On `/harness` the harness's pages lead the sidebar's lower region and the
+   * Workspace row follows — one order on every address, so nothing moves under
+   * the pointer on arrival.
    */
-  it('leads the lower region with the harness on /harness, workspace folded after', async () => {
+  it('leads the lower region with the harness on /harness, the Workspace row after', async () => {
     mount('/harness/agent');
     const lower = await waitFor(() => {
       const el = document.querySelector('[data-slot="sidebar-lower"]');
@@ -299,10 +298,8 @@ describe('the harness address', () => {
       return el as HTMLElement;
     });
     const nav = lower.querySelector('nav[aria-label="Harness"]') as HTMLElement;
-    const workspace = lower.querySelector('[data-slot="workspace-section"]') as HTMLElement;
+    const workspace = lower.querySelector('[data-slot="workspace-row"]') as HTMLElement;
     expect(nav.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Show workspace' })).toBeTruthy();
-    expect(localStorage.getItem('felix.sidebar.workspaceFolded')).toBeNull();
   });
 
   it('keeps one lower-region order on a thread in debug: harness, then workspace', async () => {
@@ -313,16 +310,8 @@ describe('the harness address', () => {
       return el as HTMLElement;
     });
     const nav = lower.querySelector('nav[aria-label="Harness"]') as HTMLElement;
-    const workspace = lower.querySelector('[data-slot="workspace-section"]') as HTMLElement;
+    const workspace = lower.querySelector('[data-slot="workspace-row"]') as HTMLElement;
     expect(nav.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it('hides the mount controls with the rest of a folded workspace', async () => {
-    mount('/harness/agent');
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Show workspace' })).toBeTruthy(),
-    );
-    expect(document.getElementById('workspace-mount-row')?.hidden).toBe(true);
   });
 
   it('leads the narrow index with the way back to the tab’s thread', async () => {
@@ -343,22 +332,6 @@ describe('the harness address', () => {
     });
     expect(back.getAttribute('href')).toBe('/t/keep-me');
     expect(back.textContent).toMatch(/^Back to /);
-  });
-
-  it('folds the workspace on arrival from a thread, where it was open', async () => {
-    // Debug off: there the thread side draws the section at the same index as
-    // `/harness` does, which is what kept its open state across the move.
-    localStorage.removeItem('felix.debug');
-    mount('/t/keep-me');
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Hide workspace' })).toBeTruthy(),
-    );
-    await act(async () => {
-      go('/harness/activity');
-    });
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Show workspace' })).toBeTruthy(),
-    );
   });
 
   it('draws debug off’s harness rows first, in the /harness frame', async () => {

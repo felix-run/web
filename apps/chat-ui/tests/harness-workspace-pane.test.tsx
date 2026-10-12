@@ -4,8 +4,8 @@ import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FilesView } from '../src/components/pane/files-view';
 import { SidePane } from '../src/components/pane/side-pane';
-import { WorkspaceSection } from '../src/components/workspace/workspace-section';
 import { openInPane, paneState, resetPanes } from '../src/lib/side-pane';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
@@ -87,7 +87,7 @@ function mount(value: ShellValue = shell()) {
   return render(
     <TooltipProvider>
       <ShellProvider value={value}>
-        <WorkspaceSection />
+        <FilesView />
         <SidePane threadId={T} changedPaths={new Set()} runPaths={new Set()} streaming={false} />
       </ShellProvider>
     </TooltipProvider>,
