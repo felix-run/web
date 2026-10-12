@@ -162,8 +162,8 @@ export function ThreadList({
   threads: ThreadMeta[];
   currentId: string;
   /**
-   * The tab's thread while the address is not it (`/harness`). Drawn held — the
-   * current row's fill without its lift, and *This tab* on its second line — so
+   * The tab's thread while the address is not it (`/harness`). Drawn held — a
+   * hairline outline on the ground, and *This tab* on its second line — so
    * the way back to the conversation is on screen, but it is not `aria-current`:
    * the page a reader is on is the harness's, not this thread.
    */
@@ -454,7 +454,10 @@ export function ThreadList({
           t.id === currentId
             ? 'shadow-sheet [--row-bg:var(--sidebar-accent)]'
             : t.id === heldId
-              ? '[--row-bg:var(--sidebar-accent)]'
+              ? // An outline on the ground, never the current row's fill: on
+                // `/harness` the active destination wears that fill, and two lit
+                // tiles left "where am I" with two answers.
+                cn(ROW_LIT, 'shadow-[inset_0_0_0_1px_var(--border)]')
               : ROW_LIT,
         )}
       >

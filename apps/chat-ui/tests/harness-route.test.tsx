@@ -235,23 +235,65 @@ describe('the harness address', () => {
     expect(document.querySelector(`.${READING_MEASURE}`)).toBeNull();
   });
 
-  it('groups the nav into records and workbenches', async () => {
+  it('groups the nav by the question each page answers, four or fewer to a run', async () => {
     mount('/harness/memory');
     await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
-    const groups = [...document.querySelectorAll('nav[aria-label="Harness"] ul')];
+    const nav = document.querySelector('nav[aria-label="Harness"]') as HTMLElement;
+    const groups = [...nav.querySelectorAll('[aria-labelledby]')];
     // Shown, not only announced: each list is named by a visible label.
     const named = groups.map(
       (g) => document.getElementById(g.getAttribute('aria-labelledby') ?? '')?.textContent,
     );
-    expect(named).toEqual(['Records', 'Workbenches']);
+    expect(named).toEqual(['What happened', 'What it knows', 'How it’s set up']);
     const inGroup = (i: number) =>
-      // The label is the link's first span; a glance value may follow it.
+      // The label is the link's first text span; a glance value may follow it.
       [...(groups[i]?.querySelectorAll('a') ?? [])].map(
-        (a) => a.querySelector('span')?.textContent,
+        (a) => [...a.querySelectorAll('span')].find((x) => x.textContent)?.textContent,
       );
-    // Agent is a record: it reads the resolved spec and changes nothing.
-    expect(inGroup(0)).toEqual(['Memory', 'Documents', 'Skills', 'Activity', 'Agent', 'GitHub']);
-    expect(inGroup(1)).toEqual(['Manifests', 'Jobs', 'Eval']);
+    expect(inGroup(0)).toEqual(['Activity', 'Jobs']);
+    expect(inGroup(1)).toEqual(['Memory', 'Documents', 'Skills']);
+    expect(inGroup(2)).toEqual(['Agent', 'Manifests', 'Eval', 'GitHub']);
+  });
+
+  /**
+   * Debug off, the daily surface keeps one door to the harness: Activity, which
+   * answers "what happened while I was away". The other pages stay debug's until
+   * the operator is on `/harness`, where they are that page's navigation.
+   */
+  it('keeps Activity in the sidebar with debug off, and the rest for /harness', async () => {
+    localStorage.removeItem('felix.debug');
+    mount('/t/keep-me');
+    await waitFor(() => expect(address).toBe('/t/keep-me'));
+    const activity = await waitFor(() => {
+      const link = document.querySelector('[data-slot="activity"] a');
+      expect(link).not.toBeNull();
+      return link as HTMLAnchorElement;
+    });
+    expect(activity.getAttribute('href')).toMatch(/^\/harness\/activity/);
+    expect(document.querySelector('a[href^="/harness/manifests"]')).toBeNull();
+
+    await act(async () => {
+      go('/harness/activity');
+    });
+    await waitFor(() =>
+      expect(document.querySelector('a[href^="/harness/manifests"]')).not.toBeNull(),
+    );
+  });
+
+  it('does not let a remembered fold hide the destinations on /harness', async () => {
+    localStorage.setItem('felix.sidebar.harnessFolded', '1');
+    mount('/harness/jobs');
+    await waitFor(() => expect(document.querySelector('a[href^="/harness/eval"]')).not.toBeNull());
+    // And the group's name is a heading, beside Threads and Workspace.
+    expect([...document.querySelectorAll('h2')].map((h) => h.textContent)).toContain('Harness');
+  });
+
+  it('offers a skip link as the first stop, landing on the page', async () => {
+    mount('/harness/activity');
+    const skip = await screen.findByText('Skip to content');
+    await waitFor(() => expect(document.querySelector('main')).not.toBeNull());
+    fireEvent.click(skip);
+    expect(document.activeElement?.tagName).toBe('MAIN');
   });
 
   it('names the page in the tab title, and gives it back on the way out', async () => {

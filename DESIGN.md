@@ -499,7 +499,7 @@ name and the `title`. While the run state is showing below `sm`, the modes step 
 Debug goes `hidden` (it is in the menu), and the canary goes `sr-only` and is still
 read; both return when the run settles. Past all that the cluster clips at its own edge rather
 than running under the right cluster: at 320px the chip is clipped, a known limit. There is **no
-door to `/harness`** in the header: the sidebar lists its eight pages in debug. On `/harness` the
+door to `/harness`** in the header: the sidebar lists its nine pages in debug and on `/harness`, and Activity alone otherwise. On `/harness` the
 thread title's slot is the way back instead: an arrow and the tab's thread, muted, cut from the
 middle, from `sm` (narrower, the drawer's held row is the way back), a link and never a heading (the page's own `h2` names the destination, so the header does
 not repeat it), and the run state before it is that thread's. Before the controls sits
@@ -556,6 +556,10 @@ nav of its own while the sidebar is inline and in debug, since only then does th
 pages; otherwise, from **768px**, it draws its rail beside the panel, and below 768px the index
 *is* the list. The breakpoints are derived from what
 the content needs, not from device names.
+
+The shell's first Tab stop is **Skip to content**, `sr-only` until focused, then a small pill at
+the top-left of the ground; it moves focus to the address's one `main`, past the sidebar's list,
+workspace and harness pages.
 
 **The Yield Rule.** A rail never narrows the thing it describes; it leaves.
 
@@ -762,7 +766,10 @@ it. Below the header a page is divided into `PageSection`s (an `h3` at 16px semi
 bordered box) and label/value pairs are a `Facts` grid. An empty page is a stone panel
 (`rounded-2xl bg-ground`) with one muted sentence. `/harness` looks at its own agent (`?agent=`),
 and the **picker lives only in the headers of the pages it scopes** (Skills, Eval, Agent). The nav
-is two runs under visible 12px labels, Records and Workbenches. The rail carries exactly three
+is three runs of at most four under visible 12px labels, named for the question each answers:
+*What happened* (Activity, Jobs), *What it knows* (Memory, Documents, Skills) and *How it's set up*
+(Agent, Manifests, Eval, GitHub). The 768–1024 rail draws its rows in the sidebar's grammar, on the
+ground with no rule beside it, since there it stands in for the sidebar. The rail carries exactly three
 glances, each only when non-zero: `Jobs · N failing` and `Activity · N failed` in `state-failed`,
 and `Skills · N waiting` in `state-blocked`. Absence is the all-clear, so it is drawn only for a
 read that answered: a failed read shows a muted `unchecked`, and a count kept from an earlier read
@@ -867,7 +874,7 @@ list while their rows scroll under them. Empty groups are not drawn.
 
 **Two label weights, one edge.** The sidebar's three *section* headings (Threads, Workspace,
 Harness) are 12px semibold; every *subgroup* label inside them (the date groups, Older, Files,
-Records, Workbenches) is 12px medium. All of them start on the rows' text edge, 18px in, and
+What happened, What it knows, How it's set up) is 12px medium. All of them start on the rows' text edge, 18px in, and
 both scrolling regions reserve their scrollbar's gutter, so the counts down the right edge
 (Older's, Files') end on one line whether or not a region is scrolling.
 
@@ -877,12 +884,13 @@ in mono, then how long ago, then *local only* for a thread the harness has never
 with no title is listed by its id in muted mono, cut from the middle. **The current tile sits on
 the sheet's colour** (`sidebar-accent`) with `shadow-sheet` and `aria-current`; a hovered,
 focused or menu-open tile mixes 70% of that colour into the ground. On `/harness` the tab's
-thread is **held**, not current: the same fill without the lift or `aria-current`, and *This tab*
+thread is **held**, not current: a 1px `border` outline on the ground — never the current row's
+fill, which the active destination wears there — no `aria-current`, and *This tab*
 leading its second line, so the way back is on screen without claiming to be the page. The
 sidebar's own menu rows
 (the harness destinations) follow the same grammar: 36px (44px on a coarse pointer), `rounded-lg`,
 the active row lifted to `sidebar-accent` with `shadow-sheet` and semibold, and scrolled into
-the lower region's view when the address changes, since at a laptop's height the Workbenches run
+the lower region's view when the address changes, since at a laptop's height the last run
 sits below that region's fold. A row's ⋯ menu lies
 *over* the end of the row, revealed by that row's hover or focus on a gradient of the row's own
 colour; on touch it stays in the row, visible. The menu is Pin, Rename and Fork; then Compact
@@ -894,7 +902,7 @@ The list is one Tab stop. Arrows, Home and End move between rows, → reaches a 
 returns, Shift+F10 or a right click opens it, Delete deletes. A search drops the groups; a row
 whose messages matched shows the words around the match, the match in the foreground.
 
-Collapsed to icons, the column is New chat, Threads, Workspace, then the eight destinations, each
+Collapsed to icons, the column is New chat, Threads, Workspace, then the nine destinations (debug, or on `/harness`; otherwise Activity and Skill drafts), each
 a 36px rounded square. Threads expands the sidebar and puts the caret in the search field. It
 carries one 6px dot for the most urgent state and says it as well. Jobs and Activity carry a
 `state-failed` dot when their glance reports a failure, Skills a `state-blocked` dot while a draft

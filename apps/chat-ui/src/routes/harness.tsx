@@ -49,7 +49,7 @@ import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/shell-context';
 
 /**
- * `/harness`: the route table's half that the sidebar also reads — the eight
+ * `/harness`: the route table's half that the sidebar also reads — the nine
  * destinations, their nav and its glances, and the layout route. The pages
  * themselves are `harness-pages.tsx`, loaded on first visit; see there.
  */
@@ -67,17 +67,19 @@ export type HarnessPath =
   | 'eval';
 
 /**
- * The eight destinations, declared once.
+ * The nine destinations, declared once.
  *
  * The nav and the route table are built from this same list, because a nav entry
  * with no route is a dead link and a route with no nav entry is a page nobody can
  * reach — and both of those are silent.
  *
- * `group` is the split this file's own header describes and the nav used to
- * hide: *records*, read far more often than changed — including Agent, which
- * reads the resolved spec and changes nothing — and *workbenches*, where the
- * operator changes what the next run does. Eight equal rows made the reader sort
- * them on every visit; two labelled runs have already been sorted.
+ * `group` is the question a page answers, in the order an operator coming back
+ * asks them: what happened (Activity, Jobs), what the agent knows (Memory,
+ * Documents, Skills), and how it is set up (Agent, Manifests, Eval, GitHub). It
+ * was *records* and *workbenches* — read versus changed — which was how the code
+ * was sorted, not a question anyone arrives with, and the first run had grown to
+ * six. Runs of four or fewer are read at a glance; Activity leads because
+ * `/harness` lands there.
  */
 const MANAGEMENT_API = `${DOCS_ORIGIN}/guide/management-api/`;
 const MANIFEST_REFERENCE = `${DOCS_ORIGIN}/guide/manifest-reference/`;
@@ -89,35 +91,11 @@ export const HARNESS_DESTINATIONS: {
   path: HarnessPath;
   label: string;
   icon: LucideIcon;
-  group: 'records' | 'workbenches';
+  group: (typeof GROUPS)[number]['key'];
   /** The reference for what this page shows; `tests/docs-links.test.ts` checks it exists. */
   docs: string;
   element: React.ReactNode;
 }[] = [
-  {
-    path: 'memory',
-    docs: `${MANAGEMENT_API}#memory`,
-    label: 'Memory',
-    icon: BrainIcon,
-    group: 'records',
-    element: <HarnessPage path="memory" />,
-  },
-  {
-    path: 'documents',
-    docs: `${MANAGEMENT_API}#documents`,
-    label: 'Documents',
-    icon: BookOpenIcon,
-    group: 'records',
-    element: <HarnessPage path="documents" />,
-  },
-  {
-    path: 'skills',
-    docs: `${MANAGEMENT_API}#skills`,
-    label: 'Skills',
-    icon: PuzzleIcon,
-    group: 'records',
-    element: <HarnessPage path="skills" />,
-  },
   {
     path: 'activity',
     // The ledger reads both records; audit is where its events, and the page's
@@ -125,57 +103,79 @@ export const HARNESS_DESTINATIONS: {
     docs: `${MANAGEMENT_API}#audit`,
     label: 'Activity',
     icon: ActivityIcon,
-    group: 'records',
+    group: 'happened',
     element: <HarnessPage path="activity" />,
-  },
-  // A record, not a workbench: it reads the resolved spec and changes nothing.
-  {
-    path: 'agent',
-    docs: `${MANIFEST_REFERENCE}`,
-    label: 'Agent',
-    icon: BotIcon,
-    group: 'records',
-    element: <HarnessPage path="agent" />,
-  },
-  // A record: your GitHub connection and what it reaches. Opening a repository is a thread's
-  // act and happens in the workspace section, not here.
-  {
-    path: 'github',
-    docs: GITHUB_DOCS,
-    label: 'GitHub',
-    icon: GithubIcon,
-    group: 'records',
-    element: <HarnessPage path="github" />,
-  },
-  {
-    path: 'manifests',
-    docs: `${MANAGEMENT_API}#manifests`,
-    label: 'Manifests',
-    icon: GitBranchIcon,
-    group: 'workbenches',
-    element: <HarnessPage path="manifests" />,
   },
   {
     path: 'jobs',
     docs: `${MANAGEMENT_API}#jobs`,
     label: 'Jobs',
     icon: ClockIcon,
-    group: 'workbenches',
+    group: 'happened',
     element: <HarnessPage path="jobs" />,
+  },
+  {
+    path: 'memory',
+    docs: `${MANAGEMENT_API}#memory`,
+    label: 'Memory',
+    icon: BrainIcon,
+    group: 'knows',
+    element: <HarnessPage path="memory" />,
+  },
+  {
+    path: 'documents',
+    docs: `${MANAGEMENT_API}#documents`,
+    label: 'Documents',
+    icon: BookOpenIcon,
+    group: 'knows',
+    element: <HarnessPage path="documents" />,
+  },
+  {
+    path: 'skills',
+    docs: `${MANAGEMENT_API}#skills`,
+    label: 'Skills',
+    icon: PuzzleIcon,
+    group: 'knows',
+    element: <HarnessPage path="skills" />,
+  },
+  {
+    path: 'agent',
+    docs: `${MANIFEST_REFERENCE}`,
+    label: 'Agent',
+    icon: BotIcon,
+    group: 'setup',
+    element: <HarnessPage path="agent" />,
+  },
+  {
+    path: 'manifests',
+    docs: `${MANAGEMENT_API}#manifests`,
+    label: 'Manifests',
+    icon: GitBranchIcon,
+    group: 'setup',
+    element: <HarnessPage path="manifests" />,
   },
   {
     path: 'eval',
     docs: `${MANAGEMENT_API}#eval`,
     label: 'Eval',
     icon: FlaskConicalIcon,
-    group: 'workbenches',
+    group: 'setup',
     element: <HarnessPage path="eval" />,
+  },
+  {
+    path: 'github',
+    docs: GITHUB_DOCS,
+    label: 'GitHub',
+    icon: GithubIcon,
+    group: 'setup',
+    element: <HarnessPage path="github" />,
   },
 ];
 
 export const GROUPS = [
-  { key: 'records', label: 'Records' },
-  { key: 'workbenches', label: 'Workbenches' },
+  { key: 'happened', label: 'What happened' },
+  { key: 'knows', label: 'What it knows' },
+  { key: 'setup', label: 'How it’s set up' },
 ] as const;
 
 /**
@@ -304,20 +304,30 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
   // Shared reads: on the Jobs page or the Activity page these ride the page's own
   // faster poll rather than sending the same request a second time.
   const jobs = useSharedPoll(JOBS_POLL_KEY, listJobs, { enabled, intervalMs: 30_000 });
+  const activity = useActivityGlance(enabled);
+  const drafts = useDraftGlance(enabled);
+  const failingJobs = (jobs.data ?? []).filter(failing).length;
+  return {
+    jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
+    activity,
+    skills: drafts,
+  };
+}
+
+/**
+ * Activity's failures in the last day, on their own. Debug off this is the one
+ * harness glance the sidebar always keeps: Activity is the page that answers
+ * "what happened while I was away", which is the daily surface's question too.
+ */
+export function useActivityGlance(enabled = true): Glance | undefined {
   const audit = useSharedPoll(AUDIT_POLL_KEY, () => listAudit({ limit: ACTIVITY_FETCH }), {
     enabled,
     intervalMs: 30_000,
   });
-  const drafts = useDraftGlance(enabled);
-  const failingJobs = (jobs.data ?? []).filter(failing).length;
   // Measured against the clock at render, which the 30s poll re-runs, so a
   // failure ages out within a tick of turning 24 hours old.
   const failedEvents = recentFailures(audit.data ?? [], Date.now());
-  return {
-    jobs: glanceOf(jobs, failingJobs, 'failing', 'jobs'),
-    activity: glanceOf(audit, failedEvents, 'failed', 'activity', ACTIVITY_GLANCE_SPAN),
-    skills: drafts,
-  };
+  return glanceOf(audit, failedEvents, 'failed', 'activity', ACTIVITY_GLANCE_SPAN);
 }
 
 /**
@@ -429,13 +439,15 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                   <NavLink
                     to={{ pathname: path, search: navSearch(path, search, glance[path]) }}
                     onClick={onNavigate}
+                    // The sidebar's row grammar (`SidebarMenuButton`): the same list
+                    // drawn two ways read as two lists.
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
+                        'flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm transition-[background-color,color,box-shadow] coarse:h-11',
                         'focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
                         isActive
-                          ? 'bg-accent font-medium text-accent-foreground'
-                          : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                          ? 'bg-sidebar-accent font-semibold text-foreground shadow-sheet'
+                          : 'text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground',
                       )
                     }
                   >
@@ -516,10 +528,9 @@ export function useActiveRowInView(nav: RefObject<HTMLElement | null>, at: strin
 /**
  * Layout route for `/harness`.
  *
- * From 1024, in debug, the app sidebar is inline and carries the destinations
- * itself, so this layout is the page alone. Debug off the sidebar does not list
- * them, and between 768 and 1024 it is a drawer; either way the nav is a resident
- * rail here instead — the destinations must be one
+ * From 1024 the app sidebar is inline and carries the destinations itself on
+ * every `/harness` page, debug or not, so this layout is the page alone. Between
+ * 768 and 1024 the sidebar is a drawer, and the nav is a resident rail here instead — the destinations must be one
  * click away at every width, not one drawer away. Narrow, there is no room for
  * both, so `/harness` *is* the list and a destination is a page with a way back —
  * which is also why the index only redirects on a wide viewport. Redirecting on a
@@ -528,13 +539,10 @@ export function useActiveRowInView(nav: RefObject<HTMLElement | null>, at: strin
 export function HarnessLayout() {
   const wide = useMediaQuery('(min-width: 768px)');
   const sidebarInline = useMediaQuery(WORKSPACE_INLINE);
-  // The sidebar lists the destinations only in debug. Debug off — a *Skill drafts*
-  // row, a pushed or pasted link, a cold load on `/harness` — a page used to land
-  // with no neighbours and no way sideways, so the rail stands in wherever the
-  // sidebar does not carry them. No shell (a test mounting the layout) has no
-  // sidebar at all. Read before the `&&`, which would make it a conditional hook.
-  const debug = useOptionalShell()?.debug ?? false;
-  const sidebarHasNav = sidebarInline && debug;
+  // Inline, the sidebar lists the destinations on every `/harness` page — debug
+  // or not — so this layout draws its own rail only while the sidebar is a
+  // drawer. Debug off it used to draw one at every width, beside the sidebar, in
+  // a second style: four columns and two lists for one set of pages.
   const atIndex = !!useMatch('/harness');
   const at = useMatch('/harness/:destination')?.params.destination;
   const destination = HARNESS_DESTINATIONS.find((d) => d.path === at);
@@ -542,7 +550,7 @@ export function HarnessLayout() {
   const { search } = useHarnessAgent();
   const pane = useHarnessPane();
 
-  // The tab strip names the page: eight open destinations all read "Felix chat".
+  // The tab strip names the page: nine open destinations all read "Felix chat".
   // Cleared on the way out, so the conversation's tab goes back to naming only
   // the run.
   useEffect(() => {
@@ -583,8 +591,10 @@ export function HarnessLayout() {
   // `<Outlet/>` sits at the same depth either way.
   return (
     <div ref={pane.row} className="flex min-h-0 flex-1">
-      {wide && !sidebarHasNav && (
-        <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60">
+      {wide && !sidebarInline && (
+        // On the ground, as the sidebar is: the rail stands in for it here, and
+        // a hairline on the sheet made it a fourth zone of its own.
+        <div className="w-56 shrink-0 overflow-y-auto bg-ground">
           <HarnessNav />
         </div>
       )}

@@ -91,7 +91,7 @@ describe('debug off, the daily surface', () => {
     expect(row.textContent).toContain('Skill drafts');
     expect(row.textContent).toContain('1 waiting');
     expect(row.querySelector('a')?.getAttribute('href')).toBe('/harness/skills');
-    // Still not the eight pages.
+    // Still not the other pages: those are debug's, or `/harness`'s.
     expect(harnessNav()).toBeNull();
   });
 
