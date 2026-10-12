@@ -346,6 +346,47 @@ label is new with them; a query that ignores it now counts both, so filter `{kin
 alone. A receiver shared by both dispatches on the body's `type`. See
 [Skill import → Update notifications](/guide/skill-import/#update-notifications).
 
+
+## Inbound triggers
+
+An event from elsewhere (a pushed commit, a failed payment, an alert) can start a durable run.
+The operator registers each trigger; senders POST to `/triggers/{id}`
+([the endpoint](/guide/rest-api/#post-triggersid)):
+
+```bash
+FELIX_TRIGGERS='{
+  "gh-push": {"tenant": "acme", "manifest": "ci-triage", "scheme": "github",
+              "secret": "secret:GH_HOOK", "events": ["push", "pull_request"],
+              "prompt": "A {event} event arrived from GitHub ({delivery}). Triage it."},
+  "alerts":  {"tenant": "acme", "manifest": "oncall", "scheme": "standard",
+              "secret": ["whsec_old...", "whsec_new..."], "scopes": ["oncall:run"], "rate_limit": 20,
+              "prompt": "An alert fired. Investigate and summarise."}
+}'
+```
+
+| Key | Required | Notes |
+|---|---|---|
+| `tenant` | yes | The tenant the run belongs to. |
+| `manifest` | yes | The agent that runs. It must list the `trigger_event` tool, or every delivery is refused with `503`. |
+| `scheme` | yes | `standard` ([Standard Webhooks](https://www.standardwebhooks.com/): `webhook-id`, `webhook-timestamp`, `webhook-signature`, a 5-minute window) or `github` (`X-Hub-Signature-256`). |
+| `secret` | yes | `secret:NAME`, or a list of them: any one verifies, so rotate by adding the new secret, switching the sender, then dropping the old. A literal is accepted only with `FELIX_ENVIRONMENT=development` and `FELIX_AUTH_MODE=none`. A key under 16 bytes, as written or as resolved, is refused: an unset variable behind `secret:NAME` answers every delivery `503` rather than verifying against an empty key. `whsec_…` values are base64-decoded (whitespace ignored), as Standard Webhooks libraries generate them. |
+| `prompt` | yes | The run's instruction. `{trigger}` is the id; `{event}` is the event type only when `events` lists it (else `unknown`), because GitHub does not sign that header; `{delivery}` is the delivery id when it is a short token. Nothing from the body is filled in. |
+| `events` | no | `github` only. Event types that start a run (GitHub's `X-GitHub-Event`). Others are answered `200 {"status":"ignored"}`. GitHub's `ping` is ignored unless listed, so creating a hook starts no run. |
+| `scopes` | no | Granted to the run's principal, `trigger:<id>`, for the manifest's `auth.inbound.required_scopes` and `spec.policies`. None by default. |
+| `rate_limit` | no | Runs started per minute, `1`–`10000`, default `60`. Counted only for new deliveries that would start a run: not for a bad signature, a replay or an ignored event. |
+
+A malformed registry fails the boot. The path takes no bearer, and only while `FELIX_TRIGGERS` is
+set; the signature is the credential. The payload never becomes the run's instruction: the model
+reads it by calling `trigger_event`, whose output content screening treats like an MCP server's, and
+a payload carrying a prompt-injection marker is withheld from it whatever the manifest's screening
+says. A manifest that limits `auth.inbound.schemes` must name `trigger`. Add
+`spec.execution.webhooks` to the manifest to send the run's result on: event in, result out.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_TRIGGERS` | empty | The registry above, as JSON. |
+| `FELIX_IDEMPOTENCY_TTL_SECONDS` | `86400` | How long a delivery is remembered, so a replay starts nothing. Per process without `FELIX_REDIS_URL`. GitHub signs no timestamp, so a captured GitHub delivery replayed after this starts a new run. |
+
 ## Skill library
 
 Agent Skills come from the image's bundled `skills/`, from `FELIX_SKILLS_DIR`, from `SKILL.md` keys
