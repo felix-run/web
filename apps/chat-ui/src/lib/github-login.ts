@@ -371,8 +371,11 @@ export function useDeviceLogin(onSignedIn: (session: GitHubSession) => void) {
     // A timer is all that is needed for a phone that leaves for GitHub: a
     // backgrounded page's timers freeze, and the overdue one fires the moment
     // it is foregrounded, which is the poll that finds the approval.
+    // Never past the code's expiry, though: an offline backoff of up to half a minute would
+    // otherwise leave "Waiting for you to approve" under a clock reading 0:00.
     const schedule = (seconds: number) => {
-      timer = window.setTimeout(poll, seconds * 1000);
+      const untilExpiry = Math.max(0, expiresAt - Date.now());
+      timer = window.setTimeout(poll, Math.min(seconds * 1000, untilExpiry));
     };
 
     async function poll() {

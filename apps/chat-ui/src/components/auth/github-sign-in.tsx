@@ -52,6 +52,19 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * Select the code on screen, for when the clipboard refuses — an `http://` deployment, or a
+ * browser that withholds it. The person's own copy shortcut then does what the button could not.
+ */
+function selectContents(el: HTMLElement | null): void {
+  const selection = el ? window.getSelection() : null;
+  if (!el || !selection) return;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 /** The verification page without its scheme, which is what a person reads and types. */
 function bareUrl(uri: string): string {
   return uri.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -80,10 +93,13 @@ function TenantChoices({
             className="h-10 w-full justify-start font-mono"
             disabled={disabled}
             aria-busy={pending === tenant || undefined}
+            // A tenant id has no length limit, and the button does not wrap: the full id rides
+            // the tooltip when the button has to cut it short.
+            title={tenant}
             onClick={() => onChoose(tenant)}
           >
             {pending === tenant && <Loader2Icon className="size-4 animate-spin" />}
-            {tenant}
+            <span className="min-w-0 truncate">{tenant}</span>
           </Button>
         </li>
       ))}
@@ -120,12 +136,14 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
   const { state, start, cancel } = login;
   const waiting = state.phase === 'waiting' ? state : null;
   const now = useNow(1000, waiting !== null);
-  const [copied, setCopied] = useState(false);
+  // `failed` is the clipboard refusing: the code is selected instead, and the button says so.
+  const [copied, setCopied] = useState<'no' | 'yes' | 'failed'>('no');
+  const codeRef = useRef<HTMLOutputElement>(null);
 
   // Each new code starts uncopied.
   const userCode = waiting?.code.user_code;
   useEffect(() => {
-    if (userCode) setCopied(false);
+    if (userCode) setCopied('no');
   }, [userCode]);
 
   if (state.phase === 'idle' || state.phase === 'starting') return <>{idle}</>;
@@ -141,7 +159,17 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
 
   if (state.phase === 'waiting') {
     const { code, expiresAt } = state;
-    const copyCode = async () => setCopied(await copy(code.user_code));
+    const copyCode = async () => {
+      const ok = await copy(code.user_code);
+      if (!ok) selectContents(codeRef.current);
+      setCopied(ok ? 'yes' : 'failed');
+    };
+    const copyLabel =
+      copied === 'yes'
+        ? 'Code copied'
+        : copied === 'failed'
+          ? 'Could not copy. The code is selected; copy it with your keyboard.'
+          : 'Copy code';
     return (
       <div className="space-y-5">
         <div className="space-y-2">
@@ -152,6 +180,7 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
           <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-4 py-3">
             {/* Where focus lands when the code arrives, so a screen reader reads it first. */}
             <output
+              ref={codeRef}
               data-autofocus
               tabIndex={-1}
               aria-label={`Code ${code.user_code.split('').join(' ')}`}
@@ -165,10 +194,14 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
               size="icon-sm"
               className="coarse:size-10"
               onClick={copyCode}
-              aria-label={copied ? 'Code copied' : 'Copy code'}
-              title={copied ? 'Copied' : 'Copy code'}
+              aria-label={copyLabel}
+              title={copyLabel}
             >
-              {copied ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
+              {copied === 'yes' ? (
+                <CheckIcon className="size-4" />
+              ) : (
+                <CopyIcon className="size-4" />
+              )}
             </Button>
           </div>
         </div>
@@ -240,6 +273,11 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
           {retry}
         </Button>
       )}
+      {/* Back to the first step, which is where every other way in lives — Google's button,
+          a tenant list. Without it a refusal with no retry was a card with nothing to press. */}
+      <QuietAction className="text-xs" onClick={cancel}>
+        Back
+      </QuietAction>
     </div>
   );
 }

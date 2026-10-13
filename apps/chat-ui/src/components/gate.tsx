@@ -28,7 +28,7 @@
 
 import { Spinner } from '@felix/ui/spinner';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
-import { getAuthMethods, githubAuthorizeUrl } from '@/api';
+import { AUTH_TIMEOUT_MS, getAuthMethods, githubAuthorizeUrl } from '@/api';
 import {
   authHeaders,
   type CredentialKind,
@@ -116,7 +116,7 @@ type Probe =
   | { ok: true }
   | {
       ok: false;
-      reason: 'rejected' | 'offline' | 'unconfigured' | 'error';
+      reason: 'rejected' | 'offline' | 'timeout' | 'unconfigured' | 'error';
       status?: number;
       /** On a rejection: whether it was the Worker's key gate that said no. */
       keyGate?: boolean;
@@ -128,9 +128,15 @@ async function probe(): Promise<Probe> {
   try {
     // The API client's own header builder, so the gate checks exactly what
     // every later request will send.
-    res = await fetch('/api/v1/models', { headers: authHeaders() });
-  } catch {
-    return { ok: false, reason: 'offline' };
+    res = await fetch('/api/v1/models', {
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
+    });
+  } catch (e) {
+    // A deadline that lapsed is not a dropped network: the server took the request and sat on
+    // it, and "check your connection" would send the person to the wrong place.
+    const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
+    return { ok: false, reason: timedOut ? 'timeout' : 'offline' };
   }
   if (res.ok) return { ok: true };
   if (res.status === 401) {
@@ -174,6 +180,8 @@ function probeMessage(result: Extract<Probe, { ok: false }>, kind: CredentialKin
       return rejectedMessage(kind);
     case 'offline':
       return 'Could not reach the server. Check your connection and try again.';
+    case 'timeout':
+      return 'The server did not answer in time. Try again in a moment.';
     case 'unconfigured':
       return 'The proxy is not configured — FELIX_ORIGIN is unset.';
     default:
@@ -279,21 +287,54 @@ export function Gate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (phase !== 'checking') return;
     let alive = true;
-    check().then((result) => {
-      if (!alive) return;
-      if (result.open) {
-        setPhase('open');
-        return;
-      }
-      // A relock's own message outranks the check's silence about it.
-      if (result.error) setError(result.error);
-      setOptions(result.options);
-      setPhase('locked');
-    });
+    check()
+      .then((result) => {
+        if (!alive) return;
+        if (result.open) {
+          setPhase('open');
+          return;
+        }
+        // A relock's own message outranks the check's silence about it.
+        if (result.error) setError(result.error);
+        setOptions(result.options);
+        setPhase('locked');
+      })
+      .catch(() => {
+        // Nothing in `check` is meant to throw; if something does, the holding surface would
+        // spin for good. Fall to the prompt with the options as they stand, and say so.
+        if (!alive) return;
+        setError('Could not check how to sign in. Reload the page to try again.');
+        setPhase('locked');
+      });
     return () => {
       alive = false;
     };
   }, [phase]);
+
+  // A locked gate is a picture of one moment, and two things outdate it without the person
+  // doing anything here: the network coming back, after a check that could not reach the
+  // server, and another tab signing in, which writes the credential this one is asking for.
+  // Either way, check again. Not mid-flow — a code on screen or a key being checked is the
+  // person's, and re-drawing the card would take it from them.
+  const idle = login.state.phase === 'idle' || login.state.phase === 'failed';
+  useEffect(() => {
+    if (phase !== 'locked' || !idle || submitting) return;
+    const recheck = () => {
+      setError(null);
+      setPhase('checking');
+    };
+    // `storage` fires only for another tab's writes, never this one's, so the key this tab
+    // stores before probing it cannot set this off.
+    const onStorage = () => {
+      if (credentialKind() !== 'none') recheck();
+    };
+    window.addEventListener('online', recheck);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('online', recheck);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [phase, idle, submitting]);
 
   const submit = useCallback(
     async (e: FormEvent) => {
@@ -393,7 +434,15 @@ export function Gate({ children }: { children: ReactNode }) {
     const back = options.github ? 'Sign in with GitHub instead' : 'Sign in with Google instead';
     card = keyForm(options.github || options.google ? switchLink(back, false) : undefined);
   } else {
-    card = <NoWayIn error={error} />;
+    card = (
+      <NoWayIn
+        error={error}
+        onRetry={() => {
+          setError(null);
+          setPhase('checking');
+        }}
+      />
+    );
   }
 
   return <AuthLayout>{card}</AuthLayout>;
@@ -404,9 +453,11 @@ export function Gate({ children }: { children: ReactNode }) {
  * anonymous caller and serves no GitHub login. Nothing a visitor types fixes
  * that, so the card says who can.
  */
-function NoWayIn({ error }: { error: string | null }) {
+function NoWayIn({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  // Fixing it is a deploy, not a reload of this page; the button saves the person from
+  // wondering whether the page would notice.
   return (
-    <AuthCard>
+    <AuthCard footer={<QuietAction onClick={onRetry}>Check again</QuietAction>}>
       {error && (
         <p role="alert" className="text-sm text-state-failed">
           {error}

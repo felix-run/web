@@ -273,6 +273,17 @@ export type LoginResult<T> =
   | { ok: true; value: T }
   | { ok: false; status: number; refusal: GitHubLoginRefusal | null };
 
+/**
+ * How long a sign-in call may hang before it counts as unreachable. Every caller already reads
+ * a throw as offline; without a deadline, a proxy that took the connection and never answered
+ * left the gate on its spinner, or on "Asking GitHub for a code…", for good.
+ */
+export const AUTH_TIMEOUT_MS = 15_000;
+
+function authDeadline(): AbortSignal {
+  return AbortSignal.timeout(AUTH_TIMEOUT_MS);
+}
+
 async function loginCall<T>(res: Response): Promise<LoginResult<T>> {
   const body = (await res.json().catch(() => null)) as unknown;
   if (res.ok && body && typeof body === 'object') return { ok: true, value: body as T };
@@ -289,7 +300,7 @@ async function loginCall<T>(res: Response): Promise<LoginResult<T>> {
  */
 export async function getAuthMethods(): Promise<AuthMethods | null> {
   try {
-    const res = await fetch('/api/auth/methods');
+    const res = await fetch('/api/auth/methods', { signal: authDeadline() });
     if (!res.ok) return null;
     const body = (await res.json()) as Partial<AuthMethods>;
     return {
@@ -306,7 +317,9 @@ export async function getAuthMethods(): Promise<AuthMethods | null> {
 
 /** POST /auth/github/device → a code for the person to enter at GitHub. Throws only offline. */
 export async function startGitHubLogin(): Promise<LoginResult<GitHubDeviceStart>> {
-  return loginCall<GitHubDeviceStart>(await fetch('/api/auth/github/device', { method: 'POST' }));
+  return loginCall<GitHubDeviceStart>(
+    await fetch('/api/auth/github/device', { method: 'POST', signal: authDeadline() }),
+  );
 }
 
 /**
@@ -321,6 +334,7 @@ export async function redeemGitHubLogin(
   return loginCall<GitHubLoginToken>(
     await fetch('/api/auth/github/token', {
       method: 'POST',
+      signal: authDeadline(),
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(
         tenant ? { device_code: deviceCode, tenant } : { device_code: deviceCode },
@@ -347,7 +361,11 @@ export function githubAuthorizeUrl(returnTo: string, tenant?: string): string {
  */
 export async function exchangeGitHubLogin(): Promise<LoginResult<GitHubLoginToken>> {
   return loginCall<GitHubLoginToken>(
-    await fetch('/api/auth/github/exchange', { method: 'POST', credentials: 'same-origin' }),
+    await fetch('/api/auth/github/exchange', {
+      method: 'POST',
+      credentials: 'same-origin',
+      signal: authDeadline(),
+    }),
   );
 }
 
@@ -363,7 +381,11 @@ export function googleAuthorizeUrl(returnTo: string): string {
 /** POST /auth/google/exchange → the token a Google sign-in left waiting, once. */
 export async function exchangeGoogleLogin(): Promise<LoginResult<GitHubLoginToken>> {
   return loginCall<GitHubLoginToken>(
-    await fetch('/api/auth/google/exchange', { method: 'POST', credentials: 'same-origin' }),
+    await fetch('/api/auth/google/exchange', {
+      method: 'POST',
+      credentials: 'same-origin',
+      signal: authDeadline(),
+    }),
   );
 }
 
