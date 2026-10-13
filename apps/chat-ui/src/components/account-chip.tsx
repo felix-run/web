@@ -119,7 +119,7 @@ export function AccountChip() {
           variant="ghost"
           size="sm"
           data-slot="account-chip"
-          className="shrink-0 gap-1.5 px-1.5"
+          className="shrink-0 gap-1.5 px-1.5 coarse:h-10"
           aria-label={`Signed in as ${who}${ending ? `, session ends in ${minutesLeft(left)} min` : ''}`}
           title={ending ? `Session ends in ${minutesLeft(left)} min` : `Signed in as ${who}`}
         >
@@ -167,7 +167,7 @@ export function AccountChip() {
               <Button
                 type="button"
                 variant={ending ? 'default' : 'outline'}
-                className="w-full"
+                className="w-full coarse:h-10"
                 disabled={state.phase === 'starting'}
                 onClick={() => void login.start()}
               >
@@ -187,7 +187,7 @@ export function AccountChip() {
             type="button"
             variant="ghost"
             size="sm"
-            className="-ml-3"
+            className="-ml-3 coarse:h-10"
             onClick={() => {
               cancel();
               setOpen(false);

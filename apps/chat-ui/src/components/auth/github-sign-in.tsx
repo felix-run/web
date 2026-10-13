@@ -13,8 +13,9 @@
 import { Button } from '@felix/ui/button';
 import { Spinner } from '@felix/ui/spinner';
 import { CheckIcon, CopyIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { type DeviceLogin, describeFailure } from '@/lib/github-login';
+import { AuthCard, focusFirst, QuietAction } from './auth-card';
 import { LastUsedBadge } from './last-used-badge';
 
 /** GitHub's mark, from its own octicon. Used only on the control that signs in with it. */
@@ -56,11 +57,66 @@ function bareUrl(uri: string): string {
   return uri.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
+/** One button per tenant, monospaced: a tenant is a harness id, not a display name. */
+function TenantChoices({
+  tenants,
+  onChoose,
+  disabled,
+  pending,
+}: {
+  tenants: string[];
+  onChoose: (tenant: string) => void;
+  disabled?: boolean;
+  /** The tenant whose sign-in is under way, which alone spins. */
+  pending?: string | null;
+}) {
+  return (
+    <ul className="space-y-2">
+      {tenants.map((tenant) => (
+        <li key={tenant}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full justify-start font-mono"
+            disabled={disabled}
+            aria-busy={pending === tenant || undefined}
+            onClick={() => onChoose(tenant)}
+          >
+            {pending === tenant && <Loader2Icon className="size-4 animate-spin" />}
+            {tenant}
+          </Button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * The flow from the first click to the last refusal. `idle` is the caller's to
  * draw — the gate shows its button, the chip its own — so it renders `idle`.
  */
 export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: ReactNode }) {
+  const root = useRef<HTMLDivElement>(null);
+  // Every step replaces the control the person was on — the button they pressed, a Cancel —
+  // so each one says where focus goes next, or it falls to the page and a keyboard user starts
+  // again from the top. Not on mount: the step drawn first is the one the gate opened on. Not
+  // on `starting` either, whose one control is disabled; the step after it takes focus instead,
+  // so a start that falls back to the button lands there again.
+  const { phase } = login.state;
+  const seen = useRef(phase);
+  useEffect(() => {
+    if (seen.current === phase) return;
+    seen.current = phase;
+    if (phase !== 'starting') focusFirst(root.current);
+  }, [phase]);
+  return (
+    <div ref={root}>
+      <DeviceLoginStep login={login} idle={idle} />
+    </div>
+  );
+}
+
+function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode }) {
   const { state, start, cancel } = login;
   const waiting = state.phase === 'waiting' ? state : null;
   const now = useNow(1000, waiting !== null);
@@ -94,9 +150,12 @@ export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: Rea
             <span className="text-foreground">{bareUrl(code.verification_uri)}</span>
           </p>
           <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-4 py-3">
+            {/* Where focus lands when the code arrives, so a screen reader reads it first. */}
             <output
+              data-autofocus
+              tabIndex={-1}
               aria-label={`Code ${code.user_code.split('').join(' ')}`}
-              className="select-all font-mono text-2xl font-semibold tabular-nums tracking-[0.18em]"
+              className="select-all rounded-sm font-mono text-2xl font-semibold tabular-nums tracking-[0.18em] outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
             >
               {code.user_code}
             </output>
@@ -104,6 +163,7 @@ export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: Rea
               type="button"
               variant="ghost"
               size="icon-sm"
+              className="coarse:size-10"
               onClick={copyCode}
               aria-label={copied ? 'Code copied' : 'Copy code'}
               title={copied ? 'Copied' : 'Copy code'}
@@ -135,13 +195,9 @@ export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: Rea
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={cancel}
-          className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
+        <QuietAction className="text-xs" onClick={cancel}>
           Cancel
-        </button>
+        </QuietAction>
       </div>
     );
   }
@@ -153,27 +209,10 @@ export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: Rea
           Your organizations open more than one tenant. Choose one, and GitHub will ask you to
           approve once more.
         </p>
-        <ul className="space-y-2">
-          {state.tenants.map((tenant) => (
-            <li key={tenant}>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 w-full justify-start font-mono"
-                onClick={() => void start(tenant)}
-              >
-                {tenant}
-              </Button>
-            </li>
-          ))}
-        </ul>
-        <button
-          type="button"
-          onClick={cancel}
-          className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
+        <TenantChoices tenants={state.tenants} onChoose={(tenant) => void start(tenant)} />
+        <QuietAction className="text-xs" onClick={cancel}>
           Cancel
-        </button>
+        </QuietAction>
       </div>
     );
   }
@@ -181,7 +220,13 @@ export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: Rea
   const { message, retry } = describeFailure(state.failure, state.status, state.login);
   return (
     <div className="space-y-4">
-      <p role="alert" className="text-sm text-state-failed">
+      {/* With no retry to offer, focus lands on the reason itself. */}
+      <p
+        role="alert"
+        tabIndex={retry ? undefined : -1}
+        data-autofocus={retry ? undefined : true}
+        className="text-sm text-state-failed outline-none"
+      >
         {message}
       </p>
       {retry && (
@@ -189,6 +234,7 @@ export function DeviceLoginBody({ login, idle }: { login: DeviceLogin; idle: Rea
           type="button"
           variant="outline"
           className="h-10 w-full"
+          data-autofocus
           onClick={() => void start()}
         >
           {retry}
@@ -209,6 +255,7 @@ export function GitHubSignIn({
   lastUsed = false,
   secondary = false,
   alternative,
+  focusOnMount,
 }: {
   login: DeviceLogin;
   error: string | null;
@@ -228,6 +275,8 @@ export function GitHubSignIn({
   /** Draw GitHub's button as the second choice: Google was used last. */
   secondary?: boolean;
   alternative?: ReactNode;
+  /** Take focus on mount: the person switched here from the access-key card. */
+  focusOnMount?: boolean;
 }) {
   // A redirect leaves the page, but not at once: hold the button until it does.
   // Which tenant was asked for, or '' for none, so only that button spins.
@@ -245,20 +294,17 @@ export function GitHubSignIn({
   const starting = login.state.phase === 'starting';
   const busy = starting || redirecting !== null;
   return (
-    <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6">
-      <div className="space-y-1.5">
-        <h1 className="text-base font-semibold">
-          <span className="uppercase tracking-wider">Felix</span> chat
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {google
-            ? 'Sign in with GitHub or Google.'
-            : signup === 'invite'
-              ? 'Sign in with GitHub. Felix is invite-only for now.'
-              : 'Sign in with the GitHub account your organization uses.'}
-        </p>
-      </div>
-
+    <AuthCard
+      description={
+        google
+          ? 'Sign in with GitHub or Google.'
+          : signup === 'invite'
+            ? 'Sign in with GitHub. Felix is invite-only for now.'
+            : 'Sign in with the GitHub account your organization uses.'
+      }
+      footer={alternative}
+      focusOnMount={focusOnMount}
+    >
       <DeviceLoginBody
         login={login}
         idle={
@@ -273,23 +319,12 @@ export function GitHubSignIn({
                 <p className="text-sm text-muted-foreground">
                   Your organizations open more than one tenant. Choose the one to sign in to.
                 </p>
-                <ul className="space-y-2">
-                  {tenants.map((tenant) => (
-                    <li key={tenant}>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-10 w-full justify-start font-mono"
-                        disabled={busy}
-                        aria-busy={redirecting === tenant}
-                        onClick={() => go(tenant)}
-                      >
-                        {redirecting === tenant && <Loader2Icon className="size-4 animate-spin" />}
-                        {tenant}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
+                <TenantChoices
+                  tenants={tenants}
+                  onChoose={go}
+                  disabled={busy}
+                  pending={redirecting}
+                />
               </div>
             )}
             <Button
@@ -323,8 +358,6 @@ export function GitHubSignIn({
           </div>
         }
       />
-
-      {alternative && <div className="border-t border-border/60 pt-4">{alternative}</div>}
-    </div>
+    </AuthCard>
   );
 }

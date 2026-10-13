@@ -79,6 +79,18 @@ const renderGate = () =>
   );
 
 describe('Google sign-in', () => {
+  it('takes focus when a person switches back to it from the key', async () => {
+    routes['/api/v1/models'] = () => json({ error: 'unauthorized', gate: 'chat_key' }, 401);
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /use an access key instead/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /sign in with google instead/i }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: /continue with google/i }),
+      ),
+    );
+  });
+
   it('is the card when Google is the only way in, and sends the browser to the harness', async () => {
     window.history.replaceState(null, '', '/t/abc');
     renderGate();

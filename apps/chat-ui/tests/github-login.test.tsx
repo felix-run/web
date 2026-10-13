@@ -89,6 +89,46 @@ const tick = async (ms: number) => {
 };
 
 describe('the gate, when the harness offers GitHub', () => {
+  // Each step of the flow unmounts the control the person was on. Without a destination, focus
+  // falls to <body> and a keyboard or screen-reader user starts again from the top.
+  it('moves focus to the card a person switches to', async () => {
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /use an access key instead/i }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Access key')));
+    fireEvent.click(screen.getByRole('button', { name: /sign in with github instead/i }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: /continue with github/i }),
+      ),
+    );
+  });
+
+  it('puts focus on the code when it arrives, and back on the button after Cancel', async () => {
+    routes['/api/auth/github/token'] = () =>
+      json({ error: 'authorization_pending', message: 'pending', interval: 5 }, 428);
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
+    const code = await screen.findByText('WDJB-MJHT');
+    await waitFor(() => expect(document.activeElement).toBe(code));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: /continue with github/i }),
+      ),
+    );
+  });
+
+  it('puts focus on the retry when the code expires', async () => {
+    routes['/api/auth/github/token'] = () => json({ error: 'expired_token', message: 'gone' }, 400);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
+    await screen.findByText('WDJB-MJHT');
+    await tick(5_000);
+    const retry = await screen.findByRole('button', { name: /get a new code/i });
+    await waitFor(() => expect(document.activeElement).toBe(retry));
+  });
+
   it('leads with GitHub and keeps the key one step behind it', async () => {
     renderGate();
     await screen.findByRole('button', { name: /continue with github/i });
@@ -190,6 +230,10 @@ describe('the gate, when the harness offers GitHub', () => {
     fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
     await screen.findByText('WDJB-MJHT');
     await tick(5_000);
+    // The step's only controls are the tenants, so the first of them takes focus.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'acme' })),
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'globex' }));
     await screen.findByText('WDJB-MJHT');
     await tick(5_000);
@@ -248,6 +292,8 @@ describe('the gate, when the harness offers GitHub', () => {
     fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
     await screen.findByText(/misconfigured on the harness/i);
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+    // Nothing to retry, so focus lands on the reason itself.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('alert')));
   });
 
   it('does not send an expired session, and says it ended', async () => {
@@ -343,7 +389,9 @@ describe('the account chip', () => {
     render(<AccountChip />);
     fireEvent.click(screen.getByRole('button', { name: /signed in as/i }));
     fireEvent.click(await screen.findByRole('button', { name: /sign in again/i }));
-    await screen.findByText('WDJB-MJHT');
+    // Inside the popover too, which manages focus of its own.
+    const code = await screen.findByText('WDJB-MJHT');
+    await waitFor(() => expect(document.activeElement).toBe(code));
     await tick(5_000);
     await waitFor(() => expect(getSession()?.token).toBe('fresh'));
     expect(relock).not.toHaveBeenCalled();

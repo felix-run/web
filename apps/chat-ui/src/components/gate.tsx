@@ -51,6 +51,7 @@ import {
   useDeviceLogin,
 } from '@/lib/github-login';
 import { AccessKeyForm } from './auth/access-key-form';
+import { AuthCard, QuietAction } from './auth/auth-card';
 import { AuthLayout } from './auth/auth-layout';
 import { GitHubSignIn } from './auth/github-sign-in';
 import { GoogleButton, GoogleSignIn } from './auth/google-sign-in';
@@ -253,6 +254,9 @@ export function Gate({ children }: { children: ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
   // Only meaningful when both ways are on offer: which one is in front.
   const [usingKey, setUsingKey] = useState(false);
+  // Set once the person has switched cards: the control they were on went with the old one,
+  // so the new card takes focus. Never on the first card the gate draws.
+  const [switched, setSwitched] = useState(false);
 
   const login = useDeviceLogin(
     useCallback((session) => {
@@ -316,17 +320,16 @@ export function Gate({ children }: { children: ReactNode }) {
   if (phase === 'checking') return <Holding />;
 
   const switchLink = (label: string, toKey: boolean) => (
-    <button
-      type="button"
+    <QuietAction
       onClick={() => {
         setError(null);
         if (!toKey) setValue('');
+        setSwitched(true);
         setUsingKey(toKey);
       }}
-      className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
       {label}
-    </button>
+    </QuietAction>
   );
 
   const keyForm = (footer?: ReactNode) => (
@@ -374,10 +377,18 @@ export function Gate({ children }: { children: ReactNode }) {
         lastUsed={last === 'github'}
         secondary={last === 'google'}
         alternative={keyLink}
+        focusOnMount={switched}
       />
     );
   } else if (options.google && (!options.key || !usingKey)) {
-    card = <GoogleSignIn error={error} redirect={toGoogle} alternative={keyLink} />;
+    card = (
+      <GoogleSignIn
+        error={error}
+        redirect={toGoogle}
+        alternative={keyLink}
+        focusOnMount={switched}
+      />
+    );
   } else if (options.key) {
     const back = options.github ? 'Sign in with GitHub instead' : 'Sign in with Google instead';
     card = keyForm(options.github || options.google ? switchLink(back, false) : undefined);
@@ -395,10 +406,7 @@ export function Gate({ children }: { children: ReactNode }) {
  */
 function NoWayIn({ error }: { error: string | null }) {
   return (
-    <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-6">
-      <h1 className="text-base font-semibold">
-        <span className="uppercase tracking-wider">Felix</span> chat
-      </h1>
+    <AuthCard>
       {error && (
         <p role="alert" className="text-sm text-state-failed">
           {error}
@@ -409,6 +417,6 @@ function NoWayIn({ error }: { error: string | null }) {
         <code>CHAT_UI_KEY</code> on the Worker, turn on GitHub login on the harness, or check that
         the Worker’s <code>FELIX_API_KEY</code> is one the harness accepts.
       </p>
-    </div>
+    </AuthCard>
   );
 }

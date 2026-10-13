@@ -1,23 +1,12 @@
 /**
- * The access-key card — the right rail of <AuthLayout />. Presentational: it
- * owns the field and the focus, never the fetch.
- *
- * The card treatment is a deliberate divergence from the client this was
- * ported from, where the form sits directly on the page background because
- * the hero photo's edge supplies the boundary. With no photo — and below
- * `lg` no panel at all — the hairline is what gives the form an edge at every
- * width.
- *
- * Flat, with the notice radius (`lg`). It used to borrow the composer's shadow
- * and its 16px radius, which made it a second floating surface in an app whose
- * system reserves lift for the composer alone — the one control that is always
- * the primary action. A border does the job the shadow was doing here.
+ * The access-key card. Presentational: it owns the field and the focus, never the fetch.
  */
 
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Loader2Icon } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useRef } from 'react';
+import { AuthCard } from './auth-card';
 
 export function AccessKeyForm({
   busy,
@@ -37,40 +26,43 @@ export function AccessKeyForm({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // The form only mounts once the gate has decided to ask — a missing key, a
-  // stored key that failed its check, or a 401 mid-session — so mount is the
-  // one moment the user has to type into it, and the field takes focus then.
-  // An effect rather than `autoFocus`, which Biome flags and which browsers
-  // honour inconsistently for an element inserted after load.
+  // A refusal arrives after a check the person may have started from the button, which was
+  // disabled while it ran and so dropped focus. Back to the field, selected, to retype.
   useEffect(() => {
+    if (!error) return;
     inputRef.current?.focus();
-  }, []);
+    inputRef.current?.select();
+  }, [error]);
 
   return (
-    <form
+    // The form only mounts once the gate has decided to ask — a missing key, a stored key that
+    // failed its check, or a 401 mid-session — so mount is the one moment the person has to type
+    // into it, and the card hands the field focus then. Always, not only after a switch.
+    <AuthCard
+      focusOnMount
       onSubmit={onSubmit}
-      className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6"
+      description="Enter your access key to open the chat."
+      footer={footer}
     >
-      <div className="space-y-1.5">
-        {/* A headline — 16px, the top of the ramp. Only the wordmark is set in
-            caps, and via CSS — the heading's text content stays "Felix chat" for
-            the accessible name. */}
-        <h1 className="text-base font-semibold">
-          <span className="uppercase tracking-wider">Felix</span> chat
-        </h1>
-        <p className="text-sm text-muted-foreground">Enter your access key to open the chat.</p>
-      </div>
-
       <div className="space-y-2">
+        {/* The placeholder disappears on the first keystroke, so the field has a label too. */}
+        <label htmlFor="gate-key" className="sr-only">
+          Access key
+        </label>
         <Input
           ref={inputRef}
+          id="gate-key"
           type="password"
+          autoComplete="current-password"
           value={value}
           onChange={(e) => onValueChange(e.target.value)}
           placeholder="Access key"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? 'gate-error' : undefined}
-          disabled={busy}
+          // Read-only rather than disabled while the key is checked: a disabled field drops
+          // focus, and a rejected key would leave the person tabbing back from the top.
+          readOnly={busy}
+          aria-busy={busy || undefined}
           className="h-10"
         />
         {error && (
@@ -96,7 +88,6 @@ export function AccessKeyForm({
           this browser.
         </p>
       </div>
-      {footer && <div className="border-t border-border/60 pt-4">{footer}</div>}
-    </form>
+    </AuthCard>
   );
 }
