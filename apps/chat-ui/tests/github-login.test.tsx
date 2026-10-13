@@ -397,3 +397,62 @@ describe('the account chip', () => {
     expect(relock).not.toHaveBeenCalled();
   });
 });
+
+describe('the device flow, off the happy path', () => {
+  // A refusal with no retry used to be a card with nothing to press, and the Google button and
+  // tenant list live on the first step, which it had no way back to.
+  it('offers a way back from a refusal that no retry can fix', async () => {
+    routes['/api/auth/github/device'] = () =>
+      json({ error: 'github_config_error', message: 'bad config' }, 503);
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
+    await screen.findByText(/misconfigured/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByRole('button', { name: /continue with github/i })).toBeTruthy();
+  });
+
+  // Offline, the poll backs off up to half a minute. It must still end at the code's expiry,
+  // not leave "Waiting for you to approve" under a clock reading 0:00.
+  it('reports the code expired on time even while the poll is backing off', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    routes['/api/auth/github/device'] = () => json({ ...DEVICE, expires_in: 12 });
+    routes['/api/auth/github/token'] = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
+    await screen.findByText('WDJB-MJHT');
+    await tick(5_000); // first poll fails; the backoff alone would wait until 15s
+    await tick(7_100);
+    expect(screen.getByText(/code expired before it was approved/i)).toBeTruthy();
+  });
+
+  it('selects the code for the keyboard when the clipboard refuses', async () => {
+    routes['/api/auth/github/token'] = () =>
+      json({ error: 'authorization_pending', message: 'pending', interval: 5 }, 428);
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: { writeText: () => Promise.reject(new Error('denied')) },
+    });
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
+    await screen.findByText('WDJB-MJHT');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
+    expect(await screen.findByRole('button', { name: /could not copy/i })).toBeTruthy();
+    expect(window.getSelection()?.toString()).toBe('WDJB-MJHT');
+  });
+
+  it('keeps a long tenant id on one line, whole in its tooltip', async () => {
+    const tenant = `tenant-${'x'.repeat(120)}`;
+    routes['/api/auth/github/token'] = () =>
+      json({ error: 'tenant_ambiguous', message: 'pick', tenants: [tenant, 'acme'] }, 409);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderGate();
+    fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
+    await screen.findByText('WDJB-MJHT');
+    await tick(5_000);
+    const button = await screen.findByRole('button', { name: tenant });
+    expect(button.getAttribute('title')).toBe(tenant);
+    expect(button.querySelector('span.truncate')?.textContent).toBe(tenant);
+  });
+});

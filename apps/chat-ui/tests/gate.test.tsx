@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Gate } from '../src/components/gate';
 import { clearApiKey, getApiKey, handleUnauthorized, setApiKey } from '../src/lib/auth';
@@ -290,5 +290,49 @@ describe('Gate', () => {
     });
     await waitFor(() => expect(screen.getByText(/rejected/i)).toBeTruthy());
     await waitFor(() => expect(document.activeElement).toBe(input));
+  });
+});
+
+describe('Gate, when the world changes under a locked prompt', () => {
+  // A server that took the request and never answered is not a dropped network, and saying
+  // "check your connection" sends the person to the wrong place.
+  it('says the server sat on the check, and gives the check a deadline', async () => {
+    setApiKey('stored-key');
+    fetchMock.mockRejectedValue(new DOMException('timed out', 'TimeoutError'));
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/did not answer in time/i)).toBeTruthy());
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('checks again when the network comes back', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/could not reach the server/i)).toBeTruthy());
+    fetchMock.mockImplementation(async () => unlocked());
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
+  });
+
+  // Signing in in one tab writes the credential every other tab's gate is asking for.
+  it('opens when another tab stores a credential', async () => {
+    fetchMock.mockImplementation(keyed('k'));
+    renderGate();
+    await waitFor(() => expect(screen.getByPlaceholderText('Access key')).toBeTruthy());
+    localStorage.setItem('felix.apiKey', 'k');
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'felix.apiKey', newValue: 'k' }));
+    });
+    await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
+  });
+
+  it('lets the no-way-in card check again once the deployment is fixed', async () => {
+    fetchMock.mockResolvedValue(new Response('{"error":"unauthorized"}', { status: 401 }));
+    renderGate();
+    await waitFor(() => expect(screen.getByText(/offers no way to sign in/i)).toBeTruthy());
+    fetchMock.mockImplementation(async () => unlocked());
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
   });
 });
