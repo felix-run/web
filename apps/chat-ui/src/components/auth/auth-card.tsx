@@ -56,10 +56,12 @@ export function AuthCard({
 
   const Box = onSubmit ? 'form' : 'div';
   return (
+    // `text-pretty` on every paragraph the card holds: at a 384px measure nearly each one —
+    // descriptions, refusals, footnotes — otherwise ended on a single orphaned word.
     <Box
       ref={ref}
       onSubmit={onSubmit}
-      className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6"
+      className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6 [&_p]:text-pretty"
     >
       <div className="space-y-1.5">
         {/* A headline — 16px, the top of the ramp. Only the wordmark is set in caps, and via
