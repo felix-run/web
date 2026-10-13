@@ -223,9 +223,8 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
             <Loader2Icon aria-hidden className="size-3.5 animate-spin" />
             Waiting for you to approve on GitHub
           </p>
-          <span className="tabular-nums" title="This code stops working after this">
-            {clock(expiresAt - now)}
-          </span>
+          {/* Labelled: a bare "15:00" beside a status line reads as a time of day. */}
+          <span className="shrink-0 tabular-nums">Expires in {clock(expiresAt - now)}</span>
         </div>
 
         <QuietAction className="text-xs" onClick={cancel}>

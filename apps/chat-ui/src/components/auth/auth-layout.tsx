@@ -59,7 +59,9 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex items-center justify-center p-6">{children}</div>
+      {/* 16px at phone width, the app's side gutter: with the card's own 24px inside a 24px
+          gutter, a 320px screen left the form 224px to work in. */}
+      <div className="flex items-center justify-center p-4 sm:p-6">{children}</div>
     </div>
   );
 }
