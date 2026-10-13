@@ -261,4 +261,34 @@ describe('Gate', () => {
       expect(document.activeElement).toBe(screen.getByPlaceholderText('Access key')),
     );
   });
+  // A screen reader names the field from its label, not its placeholder, which is gone after
+  // the first keystroke; and a password manager offers to fill it only when it says what it is.
+  it('labels the key field as a password a manager can fill', async () => {
+    fetchMock.mockResolvedValue(rejected());
+    renderGate();
+    const input = await screen.findByLabelText('Access key');
+    expect(input.getAttribute('type')).toBe('password');
+    expect(input.getAttribute('autocomplete')).toBe('current-password');
+  });
+
+  // The field used to be disabled while a key was checked, which blurs it: a rejected key then
+  // left focus on the page, and retyping meant tabbing back from the top.
+  it('hands focus back to the field when a typed key is rejected', async () => {
+    fetchMock.mockResolvedValue(rejected());
+    renderGate();
+    const input = (await screen.findByPlaceholderText('Access key')) as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
+        input,
+        'wrong-key',
+      );
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    input.blur();
+    await act(async () => {
+      input.form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    await waitFor(() => expect(screen.getByText(/rejected/i)).toBeTruthy());
+    await waitFor(() => expect(document.activeElement).toBe(input));
+  });
 });

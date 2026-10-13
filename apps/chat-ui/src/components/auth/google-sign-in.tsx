@@ -9,6 +9,7 @@
 import { Button } from '@felix/ui/button';
 import { Loader2Icon } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
+import { AuthCard } from './auth-card';
 import { LastUsedBadge } from './last-used-badge';
 
 /** Google's "G", in its own colours. Used only on the control that signs in with it. */
@@ -81,21 +82,19 @@ export function GoogleSignIn({
   error,
   redirect,
   alternative,
+  focusOnMount,
 }: {
   error: string | null;
   redirect: () => void;
   alternative?: ReactNode;
+  focusOnMount?: boolean;
 }) {
   return (
-    <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6">
-      <div className="space-y-1.5">
-        <h1 className="text-base font-semibold">
-          <span className="uppercase tracking-wider">Felix</span> chat
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Sign in with the Google account you were invited with.
-        </p>
-      </div>
+    <AuthCard
+      description="Sign in with the Google account you were invited with."
+      footer={alternative}
+      focusOnMount={focusOnMount}
+    >
       <div className="space-y-3">
         {error && (
           <p role="alert" className="text-sm text-state-failed">
@@ -108,7 +107,6 @@ export function GoogleSignIn({
           address; your name and picture are shown in this browser and kept nowhere else.
         </p>
       </div>
-      {alternative && <div className="border-t border-border/60 pt-4">{alternative}</div>}
-    </div>
+    </AuthCard>
   );
 }
