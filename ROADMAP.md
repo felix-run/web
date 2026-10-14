@@ -74,6 +74,18 @@ writes them, and `eventsToTurns` used to fold them in by role — a `user` entry
 the person sent, even one the model never saw, and a `system` entry vanished, even one steering the
 model. They are `note` turns now, named by role and by whether the model read them.
 
+### A workflow step's thread can be neither opened nor told apart
+
+Seen 2026-10-13 against a harness running a workflow (`spend-check`, a calculator tool step). The
+harness puts each agent and tool step on `{tenant}:workflow:{run}:{step}`
+(`felix/thread_ids.py:workflow_thread_id`), and every client keeps a thread by `threadSuffix`, the
+part after the *last* colon (`packages/felix-client/src/session-log.ts`). So the step's thread
+arrived in the sidebar as a thread named `compute` — the step id, the same for every run of that
+workflow — and `/t/` cannot address the real one, since a client thread id may not contain `:`.
+The Workflows page therefore shows a step's thread id in mono and does not link it. The fix is on
+the harness: a workflow child thread id with no `:` after the tenant (`workflow-{run}-{step}`), then
+the run inspector's *Open transcript* link and a sidebar that can keep them out of *Today*.
+
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 
 `pnpm check-payload-shapes` reports it as a field the harness sends that nothing models. That is

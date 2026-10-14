@@ -250,7 +250,7 @@ describe('the harness address', () => {
       [...(groups[i]?.querySelectorAll('a') ?? [])].map(
         (a) => [...a.querySelectorAll('span')].find((x) => x.textContent)?.textContent,
       );
-    expect(inGroup(0)).toEqual(['Activity', 'Jobs']);
+    expect(inGroup(0)).toEqual(['Activity', 'Jobs', 'Workflows']);
     expect(inGroup(1)).toEqual(['Memory', 'Documents', 'Skills']);
     expect(inGroup(2)).toEqual(['Agent', 'Manifests', 'Eval', 'GitHub']);
   });

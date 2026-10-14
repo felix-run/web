@@ -18,6 +18,7 @@ import { PanelModeProvider } from '@/components/inspector/primitives';
 import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useSkillsAddress } from '@/components/skills/skills-address';
+import { WorkflowsPage } from '@/components/workflows/workflows-page';
 import { threadLabel } from '@/lib/threads';
 import { useShell } from '@/shell-context';
 import { GITHUB_DOCS, type HarnessPath } from './harness';
@@ -248,6 +249,7 @@ const PAGES: Record<HarnessPath, () => React.ReactNode> = {
   github: GitHubPanel,
   manifests: ManifestsPanel,
   jobs: JobsPanel,
+  workflows: WorkflowsPage,
   eval: EvalPanel,
 };
 

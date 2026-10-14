@@ -1,13 +1,15 @@
 {
   "$comment": "The key set of every row the harness serialises, recorded from a checkout by scripts/sync-harness-contract.mjs. check-payload-shapes fails when a client type requires a field that is not in one of these sets — the `payload` vs `payload_json` bug, which typechecks, lints, drifts past check-api-drift (it reads paths, not shapes) and renders `undefined` forever. Do not hand-edit: re-run the sync.",
-  "harnessCommit": "3194bad4",
-  "harnessVersion": "0.13.1",
+  "harnessCommit": "1f0b09c6",
+  "harnessVersion": "0.14.1",
   "unreadable": [
     "felix/a2a/tasks.py:_task_dict",
     "felix/observability/genai.py:_message_dict",
     "felix/skills/format.py:_as_dict",
     "felix/tools/checkpoint_ledger.py:_row_dict",
-    "felix/usage/store.py:_summary_totals_dict"
+    "felix/usage/store.py:_summary_totals_dict",
+    "felix/workflows/runs.py:_run_dict",
+    "felix/workflows/tool_step.py:_dict"
   ],
   "payloads": {
     "felix/approvals/store.py:_approval_dict": [
@@ -119,13 +121,17 @@
       "name",
       "schedule",
       "manifest_id",
+      "workflow_id",
+      "workflow_revision",
       "last_run_at",
       "next_run_at",
       "last_status",
       "last_error",
       "created_at",
       "payload",
-      "enabled"
+      "enabled",
+      "created_by",
+      "created_auth"
     ],
     "felix/jobs/store.py:_run_dict": [
       "tenant_id",
@@ -250,6 +256,16 @@
       "cost_usd",
       "first_ts",
       "last_ts"
+    ],
+    "felix/workflows/store.py:_workflow_dict": [
+      "definition",
+      "tenant_id",
+      "id",
+      "version",
+      "revision",
+      "updated_by",
+      "created_at",
+      "updated_at"
     ]
   }
 }

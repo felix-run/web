@@ -1034,6 +1034,8 @@ curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
 |---|---|---|
 | `schedule` | string — see below | `""` (manual only) |
 | `manifest_id` | string | `""` |
+| `workflow_id` | string — a workflow to run instead of a manifest | `""` |
+| `workflow_revision` | string — the revision you reviewed (`412` if it moved) | current |
 | `payload` | object | `{}` |
 | `enabled` | bool | `true` |
 
@@ -1081,12 +1083,94 @@ curl -s -X POST "$BASE_URL/jobs/nightly-digest/run" -H "authorization: Bearer $F
   "result": { "status": "ok", "answer": "…", "trigger": "manual", "requested_by": "ops" } }
 ```
 
-It runs exactly as a scheduled firing does: as the principal `cron` with no scopes — not as the
-caller — on the job's own thread, with its prompt screened like any user turn. Only the run record
+It runs exactly as a scheduled firing does: as the principal `cron` **on behalf of the job's last
+writer**, with the scopes recorded when they wrote it (an API-key writer's cut to what the key holds
+now) — not as the caller — on the job's own thread, with its prompt screened like any user turn. Only the run record
 differs: `trigger` is `manual` (a scheduled run says `schedule`) and `requested_by` is the caller's
 subject. The schedule is not moved, and a **disabled job runs** when asked, since the call is
 explicit. It needs `jobs:write`, because whoever may rewrite a job's prompt may already make it
 run. An unknown job is `404`. The call is synchronous and lasts as long as the job's turn does.
+
+### A job that runs a workflow
+
+A job may name a `workflow_id` instead of a `manifest_id` (never both: `422
+manifest_and_workflow`). Each firing starts a run of that workflow with `payload.inputs` as its
+inputs, as the job's writer, and the run's `trigger` reads `job:<name>`; the job's run record carries
+`result.workflow_run_id`. Writing one needs `workflows:write` beside `jobs:write`, an existing
+workflow (`422 unknown_workflow`) and inputs it takes (`422 bad_inputs`). The job keeps the
+workflow's revision — `workflow_revision` if you send the one you reviewed, else the current one —
+and **runs only that revision**: once anyone saves the workflow again, each firing is refused
+until the job is re-saved, so a later edit never runs on its writer's scopes unseen.
+
+## Workflows
+
+An authored workflow is a graph of typed steps wired output port to input port, run durably. The web
+UI's **Workflows** page draws it on a canvas and shows each run on the same graph.
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/workflows` | `workflows:read` |
+| `GET` | `/workflows/{id}` | `workflows:read` |
+| `PUT` | `/workflows/{id}` | `workflows:write` |
+| `DELETE` | `/workflows/{id}` | `workflows:write` |
+| `GET` | `/workflows/-/kinds` | `workflows:read` |
+| `POST` | `/workflows/-/check` | `workflows:read` |
+| `GET` | `/workflows/-/tools?manifest=` | `workflows:read` |
+| `GET` | `/workflows/{id}/runs` | `workflows:read` |
+| `GET` | `/workflows/{id}/runs/{run_id}` | `workflows:read` |
+| `POST` | `/workflows/{id}/runs` | `workflows:write` |
+| `POST` | `/workflows/{id}/runs/{run_id}/cancel` | `workflows:write` |
+
+```bash
+curl -s -X PUT "$BASE_URL/workflows/triage" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' -H 'if-none-match: *' \
+  -d '{"name":"Triage issue","inputs":{"issue":{"type":"string"}},
+       "steps":[{"id":"classify","kind":"agent_turn",
+                 "config":{"manifest":"quick","prompt":"Label this issue: {{ issue }}",
+                           "output_schema":{"type":"object","properties":{"label":{"type":"string","enum":["bug","feature"]}},"required":["label"]}}},
+                {"id":"route","kind":"branch","config":{"cases":["bug","feature"]}}],
+       "edges":[{"source":{"step":"trigger","port":"issue"},"target":{"step":"classify","port":"issue"}},
+                {"source":{"step":"classify","port":"label"},"target":{"step":"route","port":"value"}}]}'
+```
+
+**Steps.** Kinds are a registry (`GET /workflows/-/kinds` lists them with each config's JSON
+Schema); four are built in:
+
+- `agent_turn` runs one manifest on a prompt as a child durable run on its own thread. Each
+  `{{ name }}` in the prompt is a required input; with an `output_schema` each top-level field is an
+  output, else the output is `text`.
+- `tool_call` calls one tool from its `manifest`'s governed tool set with no model, every
+  governance wrapper and tool hook applying. Its inputs are the properties of the tool's input
+  schema that `args` does not fix; `GET /workflows/-/tools?manifest=` lists what a step can name,
+  compiled as you, with each tool's schema and ports.
+- `approval` waits on an ordinary `/approvals` row; `approved` and `denied` are control outputs.
+- `branch` routes a boolean to `true`/`false`, or a string to one of its `cases` (else `default`).
+
+The workflow's inputs are the outputs of the node `trigger`. Every step has the control input
+`when`. A step runs once everything it reads from has finished, and is skipped when a source was
+skipped or none of its `when` ports fired. A failed step fails the run.
+
+**Saves are conditional.** Every response carries the revision as its `ETag`. `If-Match:
+"<revision>"` saves only over that revision and `If-None-Match: *` only where none exists; a miss
+is `412` with the workflow as it stands. A definition with problems saves — each response lists the
+node `ports` and the `problems` (`code`, `message`, `step`, `port`) that stop it running — and only a
+run refuses it.
+
+**Runs.** `POST /workflows/{id}/runs` with `{"inputs": {…}, "revision": "…"}` answers `202` with the
+run; poll `GET /workflows/{id}/runs/{run_id}` for each step's `status`, `inputs`, `outputs`,
+`fired` ports, `error`, an agent step's `thread_id` and an approval step's `approval_id`. A run keeps
+the definition it started on. It runs as the person who started it, with their scopes, each manifest
+a step names checked and pinned at the start (`403 not_permitted` otherwise). Refusals: `422
+not_runnable` (with `problems`), `422 bad_inputs` (`missing`, `unknown`), `412 workflow_changed`,
+`409 too_many_runs`. A tenant may have 50 runs going and a run 8 agent and tool steps in flight; a
+step hands on at most 128 KiB and a run's record holds at most 4 MiB. Finished runs are swept after
+`FELIX_WORKFLOW_RUN_RETENTION_DAYS` (30).
+
+A run starts three ways: by hand (`trigger: manual`), from a job naming the workflow (`job:<name>`,
+above), or from a signed trigger (`trigger:<id>`, see [Inbound
+triggers](/guide/deploy/#inbound-triggers)) whose payload fields are mapped to typed inputs; a run a
+trigger started lists the sender's values as `untrusted_inputs`, and its agent steps read every
+value they are given inside a fence.
 
 ## Manifests
 

@@ -387,6 +387,27 @@ says. A manifest that limits `auth.inbound.schemes` must name `trigger`. Add
 | `FELIX_TRIGGERS` | empty | The registry above, as JSON. |
 | `FELIX_IDEMPOTENCY_TTL_SECONDS` | `86400` | How long a delivery is remembered, so a replay starts nothing. Per process without `FELIX_REDIS_URL`. GitHub signs no timestamp, so a captured GitHub delivery replayed after this starts a new run. |
 
+### A trigger that runs a workflow
+
+A trigger may name a `workflow` instead of a `manifest` and `prompt`, and map payload fields to the
+workflow's inputs by [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901):
+
+```bash
+FELIX_TRIGGERS='{
+  "gh-issue": {"tenant": "acme", "workflow": "triage", "scheme": "github",
+               "secret": "secret:GH_HOOK", "events": ["issues"],
+               "inputs": {"number": "/issue/number", "title": "/issue/title", "kind": "$event"}}
+}'
+```
+
+Each value must be what the workflow declares for that input, or the delivery is `422
+invalid_payload` and starts nothing (checked before the rate limit). `$event` is a type `events`
+lists; `$delivery` is the delivery id as a short token. The sender's strings, objects and arrays are
+recorded on the run as `untrusted_inputs`, and every agent step of a trigger-started run reads what
+it is given inside a fence made new for each prompt — a convention the model is told to honour, so
+keep inbound screening on the manifests the workflow reaches. Anyone with `workflows:write` can
+change what the trigger's `scopes` reach; pin the workflow with `"revision"` when it grants scopes.
+
 ## Slack
 
 With the optional `felix-channels` plugin installed, people can talk to an agent from Slack: a

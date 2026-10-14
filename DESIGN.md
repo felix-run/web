@@ -499,7 +499,7 @@ name and the `title`. While the run state is showing below `sm`, the modes step 
 Debug goes `hidden` (it is in the menu), and the canary goes `sr-only` and is still
 read; both return when the run settles. Past all that the cluster clips at its own edge rather
 than running under the right cluster: at 320px the chip is clipped, a known limit. There is **no
-door to `/harness`** in the header: the sidebar lists its nine pages in debug, and Activity alone otherwise — on `/harness` too. On `/harness` the
+door to `/harness`** in the header: the sidebar lists its ten pages in debug, and Activity alone otherwise — on `/harness` too. On `/harness` the
 thread title's slot is the way back instead: a small chat glyph and the tab's thread — a place,
 not a direction, since the page's own header carries a back arrow to somewhere else — muted, cut
 from the middle, from `sm` (narrower, the `/harness` index leads with a *← thread* row, where it
@@ -554,7 +554,7 @@ Zones yield rather than squeeze, in a fixed order. Three zones want ~1200px of c
 reference material and the half of it that cannot wait already lives in the attention line and
 the banner above the composer. Below **1024px** the sidebar follows as a drawer (on the ground,
 like the inline sidebar), last because it holds every way to anywhere else. `/harness` needs no
-nav of its own while the sidebar is inline, since the sidebar lists what this mode shows (all nine in debug,
+nav of its own while the sidebar is inline, since the sidebar lists what this mode shows (all ten in debug,
 Activity and Skill drafts off); the rail lists the same; between **768px** and **1024px** it draws its rail beside the panel, and
 below 768px the index *is* the list. The breakpoints are derived from what
 the content needs, not from device names.
@@ -763,13 +763,13 @@ uses at 20px, then the value **with its unit** (`0 memories`, `$1.41 · 2 thread
 failures`, `3 jobs`) beside the title, and controls pushed right, wrapping to a second row when
 the pane is narrow. A page whose value would need a request of its own shows none; a list that
 came back at its fetch cap reads `50+`. Every page's body **and** its header row are held to
-`READING_MEASURE` (`max-w-3xl`) and centred; `<Panel fullBleed>` is the opt-out, and no page takes
-it. Below the header a page is divided into `PageSection`s (an `h3` at 16px semibold, never a
+`READING_MEASURE` (`max-w-3xl`) and centred; `<Panel fullBleed>` is the opt-out, and only
+the Workflows canvas takes it (a graph is not read at a measure). Below the header a page is divided into `PageSection`s (an `h3` at 16px semibold, never a
 bordered box) and label/value pairs are a `Facts` grid. An empty page is a stone panel
 (`rounded-2xl bg-ground`) with one muted sentence. `/harness` looks at its own agent (`?agent=`),
 and the **picker lives only in the headers of the pages it scopes** (Skills, Eval, Agent). The nav
 is three runs of at most four under visible 12px labels, named for the question each answers:
-*What happened* (Activity, Jobs), *What it knows* (Memory, Documents, Skills) and *How it's set up*
+*What happened* (Activity, Jobs, Workflows), *What it knows* (Memory, Documents, Skills) and *How it's set up*
 (Agent, Manifests, Eval, GitHub). The 768–1024 rail draws its rows in the sidebar's grammar, on the
 ground with no rule beside it, since there it stands in for the sidebar. The rail carries exactly three
 glances, each only when non-zero: `Jobs · N failing` and `Activity · N failed` in `state-failed`,
@@ -860,12 +860,50 @@ sentence that says the agent is not told, Revert, and the primary Save. An agent
 edit is the one amber thing in the pane (`state-blocked` at `/10`, it waits on a person), with the
 diff folded under it.
 
+### Workflow canvas
+
+The Workflows page (`/harness/workflows`) is the one `/harness` page that takes the sheet's whole
+width (`<Panel fullBleed>`): a graph does not read at the reading measure. One canvas serves both
+views, switched by the header's `ViewSwitch` (*Definition* / *Runs*), with the run picker and an
+outline **Run now** beside it; the inspector is the right zone (`clamp(24rem, 32vw, 34rem)`, a
+`border/60` left hairline), stacked under the canvas below 1024.
+
+- **The canvas is a tray, the steps are objects.** The canvas is the stone `ground`; each step is
+  a white `rounded-xl` card with a `border/60` hairline and `shadow-sheet` (the tool card's grammar),
+  288px wide. Its header is the kind's icon (an icon and a word name a kind, never a colour), the
+  step's name at 14px semibold, and under it in 12px mono what the harness calls the thing — the
+  manifest, the manifest and tool. Ports are one row each under a hairline, 24px, the name in mono
+  and its type beside it in muted mono: inputs against the left edge with their handle on it,
+  outputs against the right. A required input carries `*`; a control port's handle is a small
+  diamond and its type reads `control`. `when` is drawn only when something is wired to it.
+- **State goes on the node, not around it.** In a run, a node's header carries the state chip
+  (Queued, Running with the dot's pulse, Waiting on you in amber, Done, Failed with the reason
+  under a hairline in `state-failed`, Skipped, Cancelled); a waiting node's border turns
+  `state-blocked/50` at 2px over an amber-tinted header, and a skipped or cancelled one goes
+  dashed with its name muted — quiet by tone, never by opacity, which took its words under AA.
+  Nothing else is coloured. A focused node draws an offset `ring` outline apart from the selected
+  ring, and selecting one by keyboard (Enter) opens it in the inspector as a click does.
+- **The path a run took is drawn, not animated.** A wire the run carried a value down is in ink;
+  one it passed by (an unfired case, out of a skipped or failed step) is a hairline, dashed where it
+  leads into a step that was skipped; one the run has not reached stays plain, as before a run. No
+  marching ants: live state is the nodes'.
+- **Nothing moves under the operator.** A saved position wins; the layered layout only places
+  what was never placed, each column stacked by its nodes' real heights. The view is fitted once
+  per workflow and never below 0.8 zoom, where a port's 12px name would drop under the floor; a
+  graph wider than that starts from its left edge and pans. Polls change states, never positions.
+- **The inspector.** Definition: the selected step's config (Facts, then the prompt, fixed
+  arguments and schemas on code panes), else the workflow's facts and its **Problems**, each a row
+  that selects its step. Runs: *This run* as the run readout's stone tile (the state word at 18px),
+  then every waiting gate as the approval card itself (pinned whatever is selected), then the selected
+  step's state, the control port it took, who decided, its thread in mono, and *Received* /
+  *Produced* on code panes. A run on another revision says so in one muted line.
+
 ### Sidebar
 
 On the ground, with no border: the sheet's edge is the divider. **New chat** (the ink pill), then
 **Threads**, then the lower region, with hairline separators between sections. The lower region has
 **one order** on every address and in both modes: **Harness**, then the workspace. In debug
-Harness is all nine destinations (never folded on `/harness`, where they are the page's own
+Harness is all ten destinations (never folded on `/harness`, where they are the page's own
 navigation). Debug off it is the same frame on every address, `/harness` included — the heading, *What happened* and **Activity** with its
 failure glance, and under *What it knows* a **Skill drafts** row with the amber `N waiting`
 glance while drafts wait (or while the reader is on Skills), the current one marked — then the
@@ -875,7 +913,7 @@ inside the fold (that fold is not stored). Arriving moves nothing: the rows do n
 Threads is a heading and a **pill search field** (36px, `sidebar-accent` face, `input` edge, 14px,
 a 3px focus ring) that stay put above a list that scrolls inside itself. Workspace and Harness are
 one region below it at a **fixed** height — `min(40svh, 19rem)` with debug off, for its two rows
-and an open workspace; in debug `clamp(40svh, 30rem, 60svh)` — 30rem is what the nine
+and an open workspace; in debug `clamp(40svh, 32.5rem, 60svh)` — 32.5rem is what the ten
 destinations take (the folded workspace's header is a short scroll below), and a fixed height means the region does not
 grow upward when its rows change between addresses (on a thread with debug off it leaves room
 under the workspace, the accepted cost), with one scroll of its own; the sidebar itself
@@ -916,7 +954,7 @@ The list is one Tab stop. Arrows, Home and End move between rows, → reaches a 
 returns, Shift+F10 or a right click opens it, Delete deletes. A search drops the groups; a row
 whose messages matched shows the words around the match, the match in the foreground.
 
-Collapsed to icons, the column is New chat, Threads, Workspace, then the nine destinations (debug; otherwise Activity and Skill drafts), each
+Collapsed to icons, the column is New chat, Threads, Workspace, then the ten destinations (debug; otherwise Activity and Skill drafts), each
 a 36px rounded square. Threads expands the sidebar and puts the caret in the search field. It
 carries one 6px dot for the most urgent state and says it as well. Jobs and Activity carry a
 `state-failed` dot when their glance reports a failure, Skills a `state-blocked` dot while a draft
