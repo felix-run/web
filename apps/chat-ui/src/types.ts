@@ -350,6 +350,146 @@ export interface JobRun {
   };
 }
 
+// --- Authored workflows (/workflows) ---
+// A workflow is a DAG of typed steps wired output port to input port (`felix/workflows/`). Every
+// response that carries a definition carries what the canvas draws from it: each node's resolved
+// ports and the problems that stop it running. A run keeps the definition it started on.
+
+/** One port as the harness resolved it: `type` is the label the editor shows (`array<object>`). */
+export interface WorkflowPort {
+  name: string;
+  type: string;
+  schema: Record<string, unknown>;
+  control: boolean;
+  required: boolean;
+}
+
+export interface WorkflowNodePorts {
+  inputs: WorkflowPort[];
+  outputs: WorkflowPort[];
+}
+
+export interface WorkflowProblem {
+  code: string;
+  message: string;
+  step?: string | null;
+  port?: string | null;
+}
+
+export interface WorkflowPortRef {
+  step: string;
+  port: string;
+}
+
+export interface WorkflowStepDef {
+  id: string;
+  kind: string;
+  name?: string;
+  config?: Record<string, unknown>;
+  position?: { x: number; y: number } | null;
+}
+
+export interface WorkflowDefinition {
+  name: string;
+  description?: string;
+  inputs?: Record<string, Record<string, unknown>>;
+  steps?: WorkflowStepDef[];
+  edges?: { source: WorkflowPortRef; target: WorkflowPortRef }[];
+  trigger_position?: { x: number; y: number } | null;
+}
+
+export interface WorkflowRecord {
+  id: string;
+  version: number;
+  revision: string;
+  definition: WorkflowDefinition;
+  created_at: number;
+  updated_at: number;
+  updated_by: string;
+  /** Every node, `trigger` included; `null` where a step's ports cannot be known. */
+  ports: Record<string, WorkflowNodePorts | null>;
+  problems: WorkflowProblem[];
+}
+
+/** One row of GET /workflows. */
+export interface WorkflowSummary {
+  id: string;
+  name: string;
+  description: string;
+  version: number;
+  revision: string;
+  step_count: number;
+  updated_at: number;
+  updated_by: string;
+}
+
+export type WorkflowRunStatus =
+  | 'pending'
+  | 'running'
+  | 'waiting'
+  | 'cancelling'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'expired';
+export type WorkflowStepStatus =
+  | 'pending'
+  | 'running'
+  | 'waiting'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'cancelled';
+
+export interface WorkflowStepRun {
+  status: WorkflowStepStatus;
+  inputs?: Record<string, unknown> | null;
+  outputs?: Record<string, unknown> | null;
+  /** The control ports this step fired: a branch's case, an approval's `approved`/`denied`. */
+  fired?: string[] | null;
+  error?: string | null;
+  thread_id?: string | null;
+  fiber_id?: string | null;
+  approval_id?: string | null;
+  decided_by?: string | null;
+  started_at?: number | null;
+  finished_at?: number | null;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  revision: string;
+  status: WorkflowRunStatus;
+  /** `manual`, `job:<name>` or `trigger:<id>`. */
+  trigger: string;
+  started_by: string;
+  fiber_id: string;
+  error: string;
+  expires_at: number;
+  version: number;
+  created_at: number;
+  updated_at: number;
+  finished_at: number | null;
+  inputs: Record<string, unknown>;
+  /** Inputs a third party supplied; while any are, agent steps read their values as fenced data. */
+  untrusted_inputs: string[];
+  steps: Record<string, WorkflowStepRun>;
+}
+
+/** One row of GET /workflows/{id}/runs. */
+export interface WorkflowRunSummary {
+  id: string;
+  revision: string;
+  status: WorkflowRunStatus;
+  trigger: string;
+  started_by: string;
+  error: string;
+  created_at: number;
+  finished_at: number | null;
+  step_statuses: Record<string, WorkflowStepStatus>;
+}
+
 // --- A2A discovery card (/.well-known/agent-card.json) ---
 // Built for the harness's *default* manifest by `build_agent_card` — the
 // peer-facing discovery document.

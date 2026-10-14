@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.13.1"
+    "version": "0.14.1"
   },
   "paths": {
     "/health": {
@@ -209,6 +209,33 @@
     },
     "/jobs/{name}/runs": {
       "get": {}
+    },
+    "/workflows/-/kinds": {
+      "get": {}
+    },
+    "/workflows/-/tools": {
+      "get": {}
+    },
+    "/workflows/-/check": {
+      "post": {}
+    },
+    "/workflows": {
+      "get": {}
+    },
+    "/workflows/{workflow_id}": {
+      "get": {},
+      "put": {},
+      "delete": {}
+    },
+    "/workflows/{workflow_id}/runs": {
+      "post": {},
+      "get": {}
+    },
+    "/workflows/{workflow_id}/runs/{run_id}": {
+      "get": {}
+    },
+    "/workflows/{workflow_id}/runs/{run_id}/cancel": {
+      "post": {}
     },
     "/triggers/{trigger_id}": {
       "post": {}

@@ -68,6 +68,7 @@ const HELPERS = {
   manifestFetch: '/manifests',
   evalFetch: '/eval',
   jobsFetch: '/jobs',
+  workflowsFetch: '/workflows',
 };
 
 /** Helpers whose argument is a full `/api/...` path rather than a suffix. */
@@ -200,7 +201,7 @@ export function extractCalls(src, file = '<src>') {
       if (!literal) continue;
       let path = literal.raw;
       // The helper *definitions* forward `${path}` — not a call site.
-      if (/^\/api\/(manifests|eval|jobs)?\$\{path\}$/.test(path)) continue;
+      if (/^\/api\/(manifests|eval|jobs|workflows)?\$\{path\}$/.test(path)) continue;
       if (API_PREFIXED.has(fn)) {
         // A bare `fetch` to anything else (an absolute URL, a static asset) is
         // not part of this contract.

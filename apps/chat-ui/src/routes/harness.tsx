@@ -12,6 +12,7 @@ import {
   GithubIcon,
   type LucideIcon,
   PuzzleIcon,
+  WorkflowIcon,
 } from 'lucide-react';
 import {
   Fragment,
@@ -51,7 +52,7 @@ import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/shell-context';
 
 /**
- * `/harness`: the route table's half that the sidebar also reads — the nine
+ * `/harness`: the route table's half that the sidebar also reads — the ten
  * destinations, their nav and its glances, and the layout route. The pages
  * themselves are `harness-pages.tsx`, loaded on first visit; see there.
  */
@@ -66,17 +67,18 @@ export type HarnessPath =
   | 'github'
   | 'manifests'
   | 'jobs'
+  | 'workflows'
   | 'eval';
 
 /**
- * The nine destinations, declared once.
+ * The ten destinations, declared once.
  *
  * The nav and the route table are built from this same list, because a nav entry
  * with no route is a dead link and a route with no nav entry is a page nobody can
  * reach — and both of those are silent.
  *
  * `group` is the question a page answers, in the order an operator coming back
- * asks them: what happened (Activity, Jobs), what the agent knows (Memory,
+ * asks them: what happened (Activity, Jobs, Workflows), what the agent knows (Memory,
  * Documents, Skills), and how it is set up (Agent, Manifests, Eval, GitHub). It
  * was *records* and *workbenches* — read versus changed — which was how the code
  * was sorted, not a question anyone arrives with, and the first run had grown to
@@ -115,6 +117,14 @@ export const HARNESS_DESTINATIONS: {
     icon: ClockIcon,
     group: 'happened',
     element: <HarnessPage path="jobs" />,
+  },
+  {
+    path: 'workflows',
+    docs: `${MANAGEMENT_API}#workflows`,
+    label: 'Workflows',
+    icon: WorkflowIcon,
+    group: 'happened',
+    element: <HarnessPage path="workflows" />,
   },
   {
     path: 'memory',
@@ -593,7 +603,7 @@ export function HarnessLayout() {
   const { search } = useHarnessAgent();
   const pane = useHarnessPane();
 
-  // The tab strip names the page: nine open destinations all read "Felix chat".
+  // The tab strip names the page: ten open destinations all read "Felix chat".
   // Cleared on the way out, so the conversation's tab goes back to naming only
   // the run.
   useEffect(() => {

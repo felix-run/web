@@ -55,6 +55,11 @@ export interface ApprovalRequest {
   /** Epoch ms a one-shot grant was spent, or `null`. */
   consumed_at: number | null;
   /**
+   * What the gate says about the call, as the row stored it: a rule's reason, or a workflow
+   * approval step's prompt. Optional: a harness older than the column sends none.
+   */
+  reason?: string;
+  /**
    * The thread this call is blocking — the only attribution a durable run's
    * approval has, since no frame can reach its stream.
    *

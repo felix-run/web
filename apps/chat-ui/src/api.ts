@@ -41,6 +41,10 @@ import type {
   ManifestVersionRow,
   ResolvedManifest,
   Rubric,
+  WorkflowRecord,
+  WorkflowRun,
+  WorkflowRunSummary,
+  WorkflowSummary,
 } from './types';
 
 /**
@@ -856,6 +860,97 @@ export async function runJobNow(name: string): Promise<JobRun> {
 /** DELETE /jobs/{name} → remove a job from the registry. */
 export async function deleteJob(name: string): Promise<void> {
   await jobsFetch<{ status: string }>(`/${encodeURIComponent(name)}`, { method: 'DELETE' });
+}
+
+// --- Authored workflows (/workflows) ---
+
+/** A refused workflow request, with the harness's own error code (`not_runnable`, `bad_inputs`,
+ * `workflow_changed`, `too_many_runs`, `not_permitted`) when it sent one. */
+export class WorkflowRouteError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    readonly detail: unknown,
+  ) {
+    super(`workflows: ${status} ${code}`);
+    this.name = 'WorkflowRouteError';
+  }
+}
+
+async function workflowsFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ body: T; res: Response }> {
+  const res = await apiFetch(`/api/workflows${path}`, init);
+  if (!res.ok) {
+    const parsed = await res.json().catch(() => null);
+    const detail =
+      parsed && typeof parsed === 'object' ? (parsed as { detail?: unknown }).detail : undefined;
+    const code =
+      typeof detail === 'string'
+        ? detail
+        : detail &&
+            typeof detail === 'object' &&
+            typeof (detail as { error?: unknown }).error === 'string'
+          ? (detail as { error: string }).error
+          : `http_${res.status}`;
+    throw new WorkflowRouteError(res.status, code, detail);
+  }
+  return { body: (await res.json()) as T, res };
+}
+
+/** GET /workflows → the tenant's workflows, without their definitions. */
+export async function listWorkflows(): Promise<WorkflowSummary[]> {
+  const { body } = await workflowsFetch<{ items?: WorkflowSummary[] }>('');
+  return body.items ?? [];
+}
+
+/** GET /workflows/{id} → the definition, its ports and problems. */
+export async function getWorkflow(id: string): Promise<WorkflowRecord> {
+  const { body } = await workflowsFetch<WorkflowRecord>(`/${encodeURIComponent(id)}`);
+  return body;
+}
+
+/** GET /workflows/{id}/runs → newest first, each with its steps' statuses. */
+export async function listWorkflowRuns(id: string, limit = 50): Promise<WorkflowRunSummary[]> {
+  const { body } = await workflowsFetch<{ items?: WorkflowRunSummary[] }>(
+    `/${encodeURIComponent(id)}/runs?limit=${limit}`,
+  );
+  return body.items ?? [];
+}
+
+/** GET /workflows/{id}/runs/{run_id} → every step's state. Polled while the run is live. */
+export async function getWorkflowRun(id: string, runId: string): Promise<WorkflowRun> {
+  const { body } = await workflowsFetch<WorkflowRun>(
+    `/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}`,
+  );
+  return body;
+}
+
+/**
+ * POST /workflows/{id}/runs → start a run on `revision` (the one the caller is looking at: a
+ * co-author's save since is a 412 `workflow_changed`, not a run of something unseen).
+ */
+export async function startWorkflowRun(
+  id: string,
+  inputs: Record<string, unknown>,
+  revision: string,
+): Promise<WorkflowRun> {
+  const { body } = await workflowsFetch<WorkflowRun>(`/${encodeURIComponent(id)}/runs`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ inputs, revision }),
+  });
+  return body;
+}
+
+/** POST /workflows/{id}/runs/{run_id}/cancel → `cancelling` until what is in flight stops. */
+export async function cancelWorkflowRun(id: string, runId: string): Promise<WorkflowRun> {
+  const { body } = await workflowsFetch<WorkflowRun>(
+    `/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}/cancel`,
+    { method: 'POST' },
+  );
+  return body;
 }
 
 // --- A2A discovery card (/.well-known/agent-card.json) ---

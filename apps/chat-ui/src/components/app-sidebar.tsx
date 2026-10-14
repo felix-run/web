@@ -252,10 +252,10 @@ export function AppSidebar() {
             />
             <SidebarSeparator />
             {/* A fixed height, not a cap: the region's content changes with the
-                address and the mode (two harness rows on a thread, nine on
+                address and the mode (two harness rows on a thread, ten on
                 `/harness`), and a region sized to its content grew upward on
                 arrival, moving the row just clicked out from under the pointer.
-                30rem, because that is what the nine destinations take (the
+                32.5rem, because that is what the ten destinations take (the
                 Workspace row is a short scroll below them): at 40svh, 941px tall left Manifests, Eval
                 and GitHub below the fold of `/harness`'s own navigation. Clamped so
                 a short window keeps a thread list and a tall one does not hand it
@@ -263,7 +263,7 @@ export function AppSidebar() {
 
                 One order, on every address and in both modes: Harness, then the
                 workspace. It followed the address in debug, and the row clicked to
-                arrive jumped 142px when the two swapped. Debug shows all nine
+                arrive jumped 142px when the two swapped. Debug shows all ten
                 destinations; debug off shows its few rows — Activity, and Skill
                 drafts while drafts wait — on `/harness` as on a thread, so nothing
                 changes under the pointer on arrival. The workspace is one row; its
@@ -275,8 +275,8 @@ export function AppSidebar() {
                 // Debug off the rows are three at most — Activity, Skill drafts
                 // while drafts wait, Workspace — so the region is sized for all
                 // three (still fixed, so nothing moves when drafts come and go);
-                // 30rem would leave a band of nothing where thread rows could be.
-                debug ? 'h-[clamp(40svh,30rem,60svh)]' : 'h-[min(40svh,13rem)]',
+                // 32.5rem would leave a band of nothing where thread rows could be.
+                debug ? 'h-[clamp(40svh,32.5rem,60svh)]' : 'h-[min(40svh,13rem)]',
               )}
             >
               {debug ? (
@@ -314,7 +314,7 @@ function readFolded(): boolean {
 }
 
 /**
- * The harness's nine pages, in the runs `GROUPS` sorts them into. Its glances —
+ * The harness's ten pages, in the runs `GROUPS` sorts them into. Its glances —
  * failing jobs, recent Activity failures — poll only while the rows are on
  * screen, so a folded section costs nothing.
  *
