@@ -74,17 +74,22 @@ writes them, and `eventsToTurns` used to fold them in by role — a `user` entry
 the person sent, even one the model never saw, and a `system` entry vanished, even one steering the
 model. They are `note` turns now, named by role and by whether the model read them.
 
-### A workflow step's thread can be neither opened nor told apart
+### A harness-namespaced thread reaches the sidebar under its last segment
 
-Seen 2026-10-13 against a harness running a workflow (`spend-check`, a calculator tool step). The
-harness puts each agent and tool step on `{tenant}:workflow:{run}:{step}`
-(`felix/thread_ids.py:workflow_thread_id`), and every client keeps a thread by `threadSuffix`, the
-part after the *last* colon (`packages/felix-client/src/session-log.ts`). So the step's thread
-arrived in the sidebar as a thread named `compute` — the step id, the same for every run of that
-workflow — and `/t/` cannot address the real one, since a client thread id may not contain `:`.
-The Workflows page therefore shows a step's thread id in mono and does not link it. The fix is on
-the harness: a workflow child thread id with no `:` after the tenant (`workflow-{run}-{step}`), then
-the run inspector's *Open transcript* link and a sidebar that can keep them out of *Today*.
+The harness mints thread ids of its own with more than one segment after the tenant —
+`{tenant}:job:{name}`, `{tenant}:a2a:{task}`, `{tenant}:eval:{run}:{item}`,
+`{tenant}:channel:{…}:{thread}`, `{tenant}:fiber:{id}` — and every client keeps a thread by
+`threadSuffix`, the part after the *last* colon. So a job's thread arrives in the sidebar named for
+the job, and opening it opens `{tenant}:{name}`, a different and usually empty thread; no `/t/` can
+reach the real one, since a client suffix may not contain `:`.
+
+Workflow step threads were the first case seen (2026-10-13). They are now left out of
+`listSessions` (`isWorkflowStepThread`) and read under their run instead
+(`GET /workflows/{id}/runs/{run}/steps/{step}/thread`, felix#645). Renaming them into the client
+namespace was tried and refused: a suffix a client can read is one it can write, and a steer or a
+custom entry would have become history the step's agent read under its starter's authority. The
+other namespaces need the same decision one by one — leave out, or read through a route of their
+own — rather than one rule that hides them all, since an operator may be looking for a job's run.
 
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 

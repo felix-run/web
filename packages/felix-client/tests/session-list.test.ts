@@ -57,4 +57,10 @@ describe('listSessions', () => {
     expect((await felix.listSessions()).map((s) => s.id)).toEqual(['a', 'b']);
     expect(urls).toHaveLength(2);
   });
+
+  it("leaves out a workflow step's thread, which no client can open by its suffix", async () => {
+    const { felix } = client({ '': { ids: ['a', 'workflow:0123abcd:compute', 'b'] } });
+
+    expect((await felix.listSessions()).map((s) => s.id)).toEqual(['a', 'b']);
+  });
 });

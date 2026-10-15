@@ -41,6 +41,7 @@ import type {
   ManifestVersionRow,
   ResolvedManifest,
   Rubric,
+  SessionSnapshot,
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunSummary,
@@ -923,6 +924,22 @@ export async function listWorkflowRuns(id: string, limit = 50): Promise<Workflow
 export async function getWorkflowRun(id: string, runId: string): Promise<WorkflowRun> {
   const { body } = await workflowsFetch<WorkflowRun>(
     `/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}`,
+  );
+  return body;
+}
+
+/**
+ * GET /workflows/{id}/runs/{run_id}/steps/{step_id}/thread → the snapshot of the step's child
+ * run, as `GET /chat/sessions/{id}` answers one. Read here because no chat route can address a
+ * step's thread; a 404 is a step with no thread yet.
+ */
+export async function getWorkflowStepThread(
+  id: string,
+  runId: string,
+  stepId: string,
+): Promise<SessionSnapshot> {
+  const { body } = await workflowsFetch<SessionSnapshot>(
+    `/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/thread`,
   );
   return body;
 }
