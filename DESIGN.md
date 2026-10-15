@@ -866,7 +866,11 @@ The Workflows page (`/harness/workflows`) is the one `/harness` page that takes 
 width (`<Panel fullBleed>`): a graph does not read at the reading measure. One canvas serves both
 views, switched by the header's `ViewSwitch` (*Definition* / *Runs*), with the run picker and an
 outline **Run now** beside it; the inspector is the right zone (`clamp(24rem, 32vw, 34rem)`, a
-`border/60` left hairline), stacked under the canvas below 1024.
+`border/60` left hairline). Below 1024 the canvas has the sheet to itself, and an outline pill
+pair in its bottom-right corner — **Add step** (editing) and **Inspector** — opens the palette as
+a left sheet and the inspector as a right one (448px, full width on a phone), in the side pane's
+drawer motion. Selecting a step, Run now, or a save that lost opens the inspector by itself;
+choosing a kind in the palette closes it and opens the new step there.
 
 - **The canvas is a tray, the steps are objects.** The canvas is the stone `ground`; each step is
   a white `rounded-xl` card with a `border/60` hairline and `shadow-sheet` (the tool card's grammar),
