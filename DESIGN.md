@@ -875,7 +875,8 @@ outline **Run now** beside it; the inspector is the right zone (`clamp(24rem, 32
   manifest, the manifest and tool. Ports are one row each under a hairline, 24px, the name in mono
   and its type beside it in muted mono: inputs against the left edge with their handle on it,
   outputs against the right. A required input carries `*`; a control port's handle is a small
-  diamond and its type reads `control`. `when` is drawn only when something is wired to it.
+  diamond and its type reads `control`. `when` is drawn only when something is wired to it, and
+  always while editing, where it is a port to wire.
 - **State goes on the node, not around it.** In a run, a node's header carries the state chip
   (Queued, Running with the dot's pulse, Waiting on you in amber, Done, Failed with the reason
   under a hairline in `state-failed`, Skipped, Cancelled); a waiting node's border turns
@@ -891,12 +892,30 @@ outline **Run now** beside it; the inspector is the right zone (`clamp(24rem, 32
   what was never placed, each column stacked by its nodes' real heights. The view is fitted once
   per workflow and never below 0.8 zoom, where a port's 12px name would drop under the floor; a
   graph wider than that starts from its left edge and pans. Polls change states, never positions.
-- **The inspector.** Definition: the selected step's config (Facts, then the prompt, fixed
-  arguments and schemas on code panes), else the workflow's facts and its **Problems**, each a row
-  that selects its step. Runs: *This run* as the run readout's stone tile (the state word at 18px),
-  then every waiting gate as the approval card itself (pinned whatever is selected), then the selected
-  step's state, the control port it took, who decided, its thread in mono, and *Received* /
-  *Produced* on code panes. A run on another revision says so in one muted line.
+- **The inspector.** Definition: the editor (below); on a phone, the selected step's config as
+  Facts and code panes, with one line saying editing wants a wider window. Runs: *This run* as the
+  run readout's stone tile (the state word at 18px), then every waiting gate as the approval card
+  itself (pinned whatever is selected), then the selected step's state, the control port it took,
+  who decided, *Received* / *Produced* on code panes, and its transcript in the chat's own turns.
+  A run on another revision says so in one muted line.
+- **Editing is the definition view, not a mode.** From 640px up the definition view edits in
+  place. A **step palette** sits left of the canvas (a 176px column from 1024, a wrapping row of
+  ghost pills above the canvas below it): one pill per kind the harness lists, its icon and word,
+  pressing one adds the step beside the selected node and selects it. Nodes drag; a wire is drawn
+  from an output handle to an input handle, which ring when a drop would land, and the canvas
+  refuses into itself, a loop, or control into data before drawing it. A type mismatch is the
+  harness's call: the drop is checked at once and, refused, says so in a card along the canvas's
+  foot (`state-failed` text, dismissable), wiring nothing. Delete removes the selected step or
+  wire. The inspector edits the selected step — name, id, the kind's fields (a JSON field for a
+  kind this console has no form for), and **Inputs**, each port with what feeds it and a *Connect
+  from…* select, the keyboard's way to wire — else the workflow: its name, description, inputs
+  (name, type, remove) and Problems. Every draft is checked by the harness a beat after it
+  settles, so ports and problems on the canvas are always the harness's.
+- **Saving is explicit.** The header carries an amber dot and *Unsaved*, **Tidy**, **Discard** and
+  **Save** (ink when there is something to save; ⌘S anywhere on the page); Run now waits, since a
+  run starts the saved revision. A save names the revision it started from. Losing to one made
+  since puts an amber-edged alert at the inspector's head: who saved and when, then a line per
+  thing the two disagree on (positions aside), then **Keep mine** and **Take theirs**.
 
 ### Sidebar
 

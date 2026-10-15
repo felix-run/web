@@ -91,6 +91,23 @@ custom entry would have become history the step's agent read under its starter's
 other namespaces need the same decision one by one — leave out, or read through a route of their
 own — rather than one rule that hides them all, since an operator may be looking for a job's run.
 
+### The workflow editor's brief is not all built
+
+The editor (`components/workflows/workflow-editor.tsx`, `lib/workflow-draft.ts`) covers the palette,
+dragging, wiring by handle and by *Connect from…*, the kinds' forms, the harness's check on every
+draft, conditional saves with *Keep mine* / *Take theirs*, Tidy and ⌘S. The shape brief asked for
+more, and these are open:
+
+- **Arrow keys along wires.** A node is focusable and Enter opens it, but nothing moves focus from
+  a node to its neighbours; the keyboard reaches a node off screen only through a Problems row or
+  a *Connect from…* list.
+- **Dimming what a dragged wire cannot reach.** A drop that would land rings its handle; the rest
+  are not dimmed, and a type mismatch is only known once the harness checks the drop.
+- **Undo.** Discard drops the whole draft; there is no step back.
+- **F for full screen**, and the palette and inspector as sheets below 1024 (they stack instead).
+- **Runs over SSE** (polled now, every 2s while live) and the instrument's compact graph for a
+  thread a run produced — both need harness work first.
+
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 
 `pnpm check-payload-shapes` reports it as a field the harness sends that nothing models. That is

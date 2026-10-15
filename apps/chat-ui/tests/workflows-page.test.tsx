@@ -94,6 +94,13 @@ const RUN = {
   },
 };
 
+const KINDS = [
+  { name: 'agent_turn', label: 'Agent turn', config_schema: {} },
+  { name: 'tool_call', label: 'Tool call', config_schema: {} },
+  { name: 'approval', label: 'Approval gate', config_schema: {} },
+  { name: 'branch', label: 'Branch', config_schema: {} },
+];
+
 /** The classify step's child run, as `GET …/steps/classify/thread` answers it. */
 const TRANSCRIPT = {
   transcript: [
@@ -138,6 +145,9 @@ async function page(
     startWorkflowRun?: (...a: unknown[]) => Promise<unknown>;
     getWorkflowRun?: (...a: unknown[]) => Promise<unknown>;
     getWorkflowStepThread?: (...a: unknown[]) => Promise<unknown>;
+    checkWorkflow?: (...a: unknown[]) => Promise<unknown>;
+    saveWorkflow?: (...a: unknown[]) => Promise<unknown>;
+    listWorkflowTools?: (...a: unknown[]) => Promise<unknown>;
     runs?: unknown[];
   } = {},
 ) {
@@ -169,6 +179,14 @@ async function page(
     getWorkflowStepThread: vi.fn(opts.getWorkflowStepThread ?? (() => Promise.resolve(TRANSCRIPT))),
     cancelWorkflowRun: vi.fn().mockResolvedValue({ ...RUN, status: 'cancelling' }),
     decideApproval,
+    listWorkflowKinds: vi.fn().mockResolvedValue(KINDS),
+    listWorkflowTools: vi.fn(opts.listWorkflowTools ?? (() => Promise.resolve([]))),
+    checkWorkflow: vi.fn(
+      opts.checkWorkflow ??
+        (() => Promise.resolve({ ports: WORKFLOW.ports, problems: WORKFLOW.problems })),
+    ),
+    saveWorkflow: vi.fn(opts.saveWorkflow ?? (() => Promise.resolve(WORKFLOW))),
+    deleteWorkflow: vi.fn().mockResolvedValue(undefined),
   }));
   const shell = await import('../src/shell-context');
   const markDecided = vi.fn();
@@ -186,7 +204,16 @@ async function page(
     </TooltipProvider>,
   );
   const getThread = (await import('../src/api')).getWorkflowStepThread as ReturnType<typeof vi.fn>;
-  return { decideApproval, startWorkflowRun, markDecided, getRun, getThread };
+  const mocked = await import('../src/api');
+  return {
+    decideApproval,
+    startWorkflowRun,
+    markDecided,
+    getRun,
+    getThread,
+    saveWorkflow: mocked.saveWorkflow as ReturnType<typeof vi.fn>,
+    checkWorkflow: mocked.checkWorkflow as ReturnType<typeof vi.fn>,
+  };
 }
 
 describe('the list', () => {
@@ -368,5 +395,231 @@ describe('Run now and a choice', () => {
     fireEvent.click(screen.getByRole('button', { name: /Start run/ }));
     expect(await screen.findByText('Expected one of bug, feature.')).toBeTruthy();
     expect(startWorkflowRun).not.toHaveBeenCalled();
+  });
+});
+
+/** Open a Radix select from the keyboard and pick an option by its text. */
+async function choose(trigger: HTMLElement, option: RegExp) {
+  fireEvent.keyDown(trigger, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('option', { name: option }));
+}
+
+describe('the editor', () => {
+  it('adds a step from the palette, selects it, and saves over the revision it started from', async () => {
+    const { saveWorkflow, checkWorkflow } = await page('/harness/workflows?workflow=triage');
+    fireEvent.click(await screen.findByRole('button', { name: 'Approval gate' }));
+    // The new step is open in the inspector, and the draft goes to the harness to be checked.
+    expect(await screen.findByDisplayValue('approve_2')).toBeTruthy();
+    await waitFor(() => expect(checkWorkflow).toHaveBeenCalled());
+    expect(screen.getByText('Unsaved')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(saveWorkflow).toHaveBeenCalled());
+    const [id, def, precondition] = saveWorkflow.mock.calls[0];
+    expect(id).toBe('triage');
+    expect(precondition).toEqual({ revision: 'g1.3' });
+    expect(def.steps.map((s: { id: string }) => s.id)).toEqual([
+      'classify',
+      'approve',
+      'approve_2',
+    ]);
+    // Every node is saved where it was drawn, so the next load draws the same graph.
+    expect(def.trigger_position).toBeTruthy();
+    expect(def.steps.every((s: { position?: unknown }) => s.position)).toBe(true);
+  });
+
+  it('saves on ⌘S', async () => {
+    const { saveWorkflow } = await page('/harness/workflows?workflow=triage');
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Triage, faster' } });
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+    await waitFor(() => expect(saveWorkflow).toHaveBeenCalled());
+    expect(saveWorkflow.mock.calls[0][1].name).toBe('Triage, faster');
+  });
+
+  it('wires a port from the keyboard, and refuses one whose types the harness says cannot meet', async () => {
+    const mismatch = {
+      code: 'type_mismatch',
+      message: 'integer cannot feed string',
+      step: 'classify',
+      port: 'issue',
+    };
+    const { checkWorkflow } = await page('/harness/workflows?workflow=triage', {
+      checkWorkflow: (def) =>
+        Promise.resolve({
+          ports: WORKFLOW.ports,
+          problems: (def as { edges: { source: { port: string } }[] }).edges.some(
+            (e) => e.source.port === 'priority',
+          )
+            ? [mismatch]
+            : [],
+        }),
+    });
+    await waitFor(async () => expect(await node('classify')).toBeTruthy());
+    fireEvent.click(await node('classify'));
+    await choose(await screen.findByRole('combobox', { name: 'Connect issue from' }), /priority/);
+    expect(await screen.findByRole('status')).toHaveProperty(
+      'textContent',
+      expect.stringContaining('integer cannot feed string'),
+    );
+    // Refused, so nothing changed: there is nothing to save.
+    expect(screen.queryByText('Unsaved')).toBeNull();
+    expect(checkWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes a deleted step with the wires into and out of it', async () => {
+    const { saveWorkflow } = await page('/harness/workflows?workflow=triage');
+    fireEvent.click(await node('classify'));
+    fireEvent.click(await screen.findByRole('button', { name: /Delete step/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(saveWorkflow).toHaveBeenCalled());
+    const def = saveWorkflow.mock.calls[0][1];
+    expect(def.steps.map((s: { id: string }) => s.id)).toEqual(['approve']);
+    expect(def.edges).toEqual([]);
+  });
+
+  it('shows what a save that lost would throw away, and keeps mine over the winner', async () => {
+    const api = await vi.importActual<typeof import('../src/api')>('../src/api');
+    const theirs = {
+      ...WORKFLOW,
+      revision: 'g1.4',
+      updated_by: 'bea',
+      definition: { ...WORKFLOW.definition, name: 'Triage v2' },
+    };
+    let calls = 0;
+    const { saveWorkflow } = await page('/harness/workflows?workflow=triage', {
+      saveWorkflow: () =>
+        calls++ === 0
+          ? Promise.reject(
+              new api.WorkflowRouteError(412, 'workflow_changed', {
+                error: 'workflow_changed',
+                current: theirs,
+              }),
+            )
+          : Promise.resolve({ ...theirs, revision: 'g1.5' }),
+    });
+    fireEvent.change(await screen.findByLabelText('Description'), {
+      target: { value: 'Mine' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    const notice = await screen.findByRole('alert');
+    expect(notice.textContent).toContain('Saved elsewhere since you started');
+    expect(notice.textContent).toContain('bea');
+    expect(notice.textContent).toContain('Name: yours “Triage issue”, theirs “Triage v2”.');
+    fireEvent.click(within(notice).getByRole('button', { name: 'Keep mine' }));
+    await waitFor(() => expect(saveWorkflow).toHaveBeenCalledTimes(2));
+    expect(saveWorkflow.mock.calls[1][2]).toEqual({ revision: 'g1.4' });
+    expect(saveWorkflow.mock.calls[1][1].description).toBe('Mine');
+  });
+
+  it('takes theirs: the draft goes, and the winner is what is drawn', async () => {
+    const api = await vi.importActual<typeof import('../src/api')>('../src/api');
+    const theirs = {
+      ...WORKFLOW,
+      revision: 'g1.4',
+      updated_at: Date.now(),
+      definition: { ...WORKFLOW.definition, name: 'Triage v2' },
+    };
+    await page('/harness/workflows?workflow=triage', {
+      saveWorkflow: () =>
+        Promise.reject(
+          new api.WorkflowRouteError(412, 'workflow_changed', {
+            error: 'workflow_changed',
+            current: theirs,
+          }),
+        ),
+    });
+    fireEvent.change(await screen.findByLabelText('Description'), { target: { value: 'Mine' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Take theirs' }));
+    expect(await screen.findByDisplayValue('Triage v2')).toBeTruthy();
+    expect(screen.queryByText('Unsaved')).toBeNull();
+  });
+});
+
+describe('the editor, typing', () => {
+  it('keeps edits made while a save is in flight, as a draft over what was saved', async () => {
+    let finish: (v: unknown) => void = () => {};
+    const { saveWorkflow } = await page('/harness/workflows?workflow=triage', {
+      saveWorkflow: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    fireEvent.change(await screen.findByLabelText('Description'), { target: { value: 'One' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(saveWorkflow).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'One, then two' } });
+    finish({ ...WORKFLOW, revision: 'g1.4', updated_at: Date.now() });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Save/ })).toHaveProperty('disabled', false),
+    );
+    expect(screen.getByText('Unsaved')).toBeTruthy();
+    expect(screen.getByLabelText('Description')).toHaveProperty('value', 'One, then two');
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(saveWorkflow).toHaveBeenCalledTimes(2));
+    // Over the revision the first save made, not the one the page loaded.
+    expect(saveWorkflow.mock.calls[1][2]).toEqual({ revision: 'g1.4' });
+  });
+
+  it('keeps what is typed into a list of cases, trailing comma and all', async () => {
+    await page('/harness/workflows?workflow=triage');
+    fireEvent.click(await screen.findByRole('button', { name: 'Branch' }));
+    const cases = await screen.findByLabelText('Cases');
+    cases.focus();
+    fireEvent.change(cases, { target: { value: 'bug,' } });
+    expect(cases).toHaveProperty('value', 'bug,');
+  });
+
+  it('starts no draft for a JSON field passed through unchanged', async () => {
+    await page('/harness/workflows?workflow=triage');
+    fireEvent.click(await node('classify'));
+    const schema = await screen.findByLabelText('Output schema');
+    fireEvent.focus(schema);
+    fireEvent.blur(schema);
+    expect(screen.queryByText('Unsaved')).toBeNull();
+  });
+
+  it('says a draft the harness could not check is unchecked, not that it has no problems', async () => {
+    const api = await vi.importActual<typeof import('../src/api')>('../src/api');
+    await page('/harness/workflows?workflow=triage', {
+      checkWorkflow: () => Promise.reject(new api.WorkflowRouteError(422, 'http_422', [])),
+    });
+    fireEvent.change(await screen.findByLabelText('Description'), { target: { value: 'x' } });
+    expect(await screen.findByText('Not checked')).toBeTruthy();
+  });
+
+  it('does not send a nameless workflow to be checked, and says why', async () => {
+    const { checkWorkflow } = await page('/harness/workflows?workflow=triage');
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: '' } });
+    expect(await screen.findByText('A workflow needs a name.')).toBeTruthy();
+    expect(screen.queryByText('Unsaved')).toBeNull();
+    expect(checkWorkflow).not.toHaveBeenCalled();
+  });
+});
+
+describe('a new workflow', () => {
+  it('is created only where no workflow has its id, with the id taken from its name', async () => {
+    const { saveWorkflow } = await page('/harness/workflows');
+    fireEvent.click(await screen.findByRole('button', { name: /New workflow/ }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Nightly digest' } });
+    expect(screen.getByLabelText('Id')).toHaveProperty('value', 'nightly-digest');
+    fireEvent.click(screen.getByRole('button', { name: /Create/ }));
+    await waitFor(() => expect(saveWorkflow).toHaveBeenCalled());
+    expect(saveWorkflow.mock.calls[0]).toEqual([
+      'nightly-digest',
+      { name: 'Nightly digest', inputs: {}, steps: [], edges: [] },
+      { create: true },
+    ]);
+  });
+
+  it('says an id is taken in words', async () => {
+    const api = await vi.importActual<typeof import('../src/api')>('../src/api');
+    await page('/harness/workflows', {
+      saveWorkflow: () =>
+        Promise.reject(new api.WorkflowRouteError(412, 'workflow_changed', { current: WORKFLOW })),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /New workflow/ }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Triage' } });
+    fireEvent.click(screen.getByRole('button', { name: /Create/ }));
+    expect(await screen.findByText('A workflow with this id exists.')).toBeTruthy();
   });
 });

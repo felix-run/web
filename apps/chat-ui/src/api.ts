@@ -42,10 +42,14 @@ import type {
   ResolvedManifest,
   Rubric,
   SessionSnapshot,
+  WorkflowCheck,
+  WorkflowDefinition,
+  WorkflowKind,
   WorkflowRecord,
   WorkflowRun,
   WorkflowRunSummary,
   WorkflowSummary,
+  WorkflowTool,
 } from './types';
 
 /**
@@ -910,6 +914,65 @@ export async function listWorkflows(): Promise<WorkflowSummary[]> {
 export async function getWorkflow(id: string): Promise<WorkflowRecord> {
   const { body } = await workflowsFetch<WorkflowRecord>(`/${encodeURIComponent(id)}`);
   return body;
+}
+
+/**
+ * PUT /workflows/{id} → save a definition whole. `revision` saves only over that revision
+ * (`If-Match`); `create` only where no workflow is (`If-None-Match: *`). A miss is a
+ * `WorkflowRouteError` coded `workflow_changed` whose `detail.current` is the workflow as it now
+ * stands, or null when it was deleted.
+ */
+export async function saveWorkflow(
+  id: string,
+  definition: WorkflowDefinition,
+  precondition: { revision: string } | { create: true },
+): Promise<WorkflowRecord> {
+  const condition: Record<string, string> =
+    'create' in precondition
+      ? { 'if-none-match': '*' }
+      : { 'if-match': `"${precondition.revision}"` };
+  const { body } = await workflowsFetch<WorkflowRecord>(`/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', ...condition },
+    body: JSON.stringify(definition),
+  });
+  return body;
+}
+
+/** DELETE /workflows/{id}, only at `revision`: a co-author's save since is a 412. */
+export async function deleteWorkflow(id: string, revision: string): Promise<void> {
+  await workflowsFetch<unknown>(`/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { 'if-match': `"${revision}"` },
+  });
+}
+
+/** POST /workflows/-/check → a draft's ports and problems, without saving it. */
+export async function checkWorkflow(
+  definition: WorkflowDefinition,
+  signal?: AbortSignal,
+): Promise<WorkflowCheck> {
+  const { body } = await workflowsFetch<WorkflowCheck>('/-/check', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(definition),
+    ...(signal ? { signal } : {}),
+  });
+  return body;
+}
+
+/** GET /workflows/-/kinds → the step kinds this harness can run: the palette. */
+export async function listWorkflowKinds(): Promise<WorkflowKind[]> {
+  const { body } = await workflowsFetch<{ items?: WorkflowKind[] }>('/-/kinds');
+  return body.items ?? [];
+}
+
+/** GET /workflows/-/tools?manifest= → what a tool step naming `manifest` can call. */
+export async function listWorkflowTools(manifest: string): Promise<WorkflowTool[]> {
+  const { body } = await workflowsFetch<{ items?: WorkflowTool[] }>(
+    `/-/tools?${new URLSearchParams({ manifest })}`,
+  );
+  return body.items ?? [];
 }
 
 /** GET /workflows/{id}/runs → newest first, each with its steps' statuses. */

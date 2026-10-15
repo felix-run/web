@@ -133,7 +133,7 @@ function ConfigFacts({ step }: { step: WorkflowStepDef }) {
   );
 }
 
-function Problems({
+export function Problems({
   problems,
   onSelect,
 }: {

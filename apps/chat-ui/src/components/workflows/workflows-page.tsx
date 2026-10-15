@@ -1,13 +1,27 @@
 import { Button } from '@felix/ui/button';
+import { Input } from '@felix/ui/input';
+import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
-import { ArrowLeftIcon, PlayIcon, WorkflowIcon, XIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
 import {
+  ArrowLeftIcon,
+  LoaderIcon,
+  PlayIcon,
+  PlusIcon,
+  SaveIcon,
+  WandSparklesIcon,
+  WorkflowIcon,
+  XIcon,
+} from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import {
+  deleteWorkflow,
   getWorkflow,
   getWorkflowRun,
+  listWorkflowKinds,
   listWorkflowRuns,
   listWorkflows,
+  saveWorkflow,
   WorkflowRouteError,
 } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
@@ -23,17 +37,36 @@ import {
 } from '@/components/harness/panel';
 import { ReadFailure, relTime, withAge } from '@/components/inspector/primitives';
 import { RunNowForm } from '@/components/workflows/run-now-form';
-import { WorkflowCanvas } from '@/components/workflows/workflow-canvas';
+import { useWorkflowDraft } from '@/components/workflows/use-workflow-draft';
+import { heightsOf, WorkflowCanvas } from '@/components/workflows/workflow-canvas';
+import {
+  ConflictNotice,
+  StepEditor,
+  StepPalette,
+  WorkflowSettings,
+} from '@/components/workflows/workflow-editor';
 import {
   DefinitionInspector,
   RUN_LIVE,
   RunInspector,
   runWord,
 } from '@/components/workflows/workflow-inspector';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { usePoll } from '@/hooks/usePoll';
 import { cn } from '@/lib/utils';
+import {
+  addStep,
+  disconnect,
+  moveNode,
+  newStepId,
+  placeFor,
+  removeStep,
+  tidy,
+  WORKFLOW_ID_PATTERN,
+} from '@/lib/workflow-draft';
 import { STEP_STATE_WORD, stepsOf } from '@/lib/workflow-layout';
-import type { WorkflowRecord, WorkflowRun, WorkflowRunSummary } from '@/types';
+import { useOptionalShell } from '@/shell-context';
+import type { WorkflowKind, WorkflowRecord, WorkflowRun, WorkflowRunSummary } from '@/types';
 
 /**
  * Authored workflows as a `/harness` page (`felix/workflows/`): the list, then one workflow's graph
@@ -50,9 +83,128 @@ const WORKFLOW_POLL_MS = 30_000;
 const RUNS_POLL_MS = 5_000;
 const RUN_POLL_MS = 2_000;
 
+/** Why a create was refused, in the harness's terms, or null for an error to show as one. */
+function createRefusal(err: unknown): string | null {
+  if (!(err instanceof WorkflowRouteError)) return null;
+  if (err.code === 'workflow_changed') return 'A workflow with this id exists.';
+  if (err.code === 'workflow_limit') {
+    const limit = (err.detail as { limit?: number } | undefined)?.limit;
+    return `This tenant already keeps ${limit ?? 'its most'} workflows.`;
+  }
+  return null;
+}
+
+/** New workflow: an id and a name, saved at once (only where no workflow has the id), then opened. */
+function NewWorkflowForm({ onCancel }: { onCancel: () => void }) {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const formId = useId();
+  const [id, setId] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const idTouched = useRef(false);
+  const idProblem =
+    id && !WORKFLOW_ID_PATTERN.test(id)
+      ? 'Lowercase letters, digits, - and _; starts with a letter or digit; at most 64.'
+      : null;
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!id || idProblem || !name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await saveWorkflow(
+        id,
+        { name: name.trim(), inputs: {}, steps: [], edges: [] },
+        { create: true },
+      );
+      navigate(`?${keepAgent(params, { workflow: id })}`);
+    } catch (err) {
+      setError(err);
+      setBusy(false);
+    }
+  }
+  const refused = error ? createRefusal(error) : null;
+  return (
+    <form
+      onSubmit={submit}
+      className="mb-4 space-y-3 rounded-2xl bg-ground p-3.5"
+      aria-label="New workflow"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={`${formId}-name`}>Name</Label>
+          <Input
+            id={`${formId}-name`}
+            value={name}
+            maxLength={200}
+            autoFocus
+            onChange={(e) => {
+              setName(e.target.value);
+              // The id follows the name until it is typed itself.
+              if (!idTouched.current) {
+                setId(
+                  e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_-]+/g, '-')
+                    .replace(/^[^a-z0-9]+/, '')
+                    .replace(/-+$/, '')
+                    .slice(0, 64),
+                );
+              }
+            }}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${formId}-id`}>Id</Label>
+          <Input
+            id={`${formId}-id`}
+            value={id}
+            className="font-mono"
+            onChange={(e) => {
+              idTouched.current = true;
+              setId(e.target.value);
+            }}
+            aria-invalid={Boolean(idProblem)}
+            aria-describedby={`${formId}-id-note`}
+          />
+          <p
+            id={`${formId}-id-note`}
+            className={idProblem ? 'text-xs text-state-failed' : 'text-xs text-muted-foreground'}
+          >
+            {idProblem ?? 'In its address and in every job and trigger that starts it.'}
+          </p>
+        </div>
+      </div>
+      {error ? (
+        refused ? (
+          <p className="text-sm text-state-failed">{refused}</p>
+        ) : (
+          <ErrorNotice error={error} doing="create the workflow" />
+        )
+      ) : null}
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={busy || !id || Boolean(idProblem) || !name.trim()}
+        >
+          {busy ? <LoaderIcon className="animate-spin" /> : <PlusIcon />}
+          Create
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function WorkflowList() {
   const [params] = useSearchParams();
   const { data, error, lastOkAt, refresh } = usePoll(listWorkflows, { intervalMs: LIST_POLL_MS });
+  const [creating, setCreating] = useState(false);
   const items = data ?? [];
   return (
     <Panel>
@@ -63,19 +215,25 @@ function WorkflowList() {
           data ? plural(items.length, 'workflow') : undefined,
           error ? lastOkAt : undefined,
         )}
+        controls={
+          creating ? null : (
+            <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+              <PlusIcon />
+              New workflow
+            </Button>
+          )
+        }
       />
       <PanelBody>
+        {creating ? <NewWorkflowForm onCancel={() => setCreating(false)} /> : null}
         {error ? (
           <ReadFailure error={error} doing="list workflows" lastOkAt={lastOkAt} onRetry={refresh} />
         ) : null}
         {!data && !error ? (
           <p className="text-sm text-muted-foreground">Loading workflows…</p>
         ) : null}
-        {data && items.length === 0 ? (
-          <PageEmpty>
-            No workflows yet. A workflow is saved with{' '}
-            <span className="font-mono">PUT /workflows/&lt;id&gt;</span>.
-          </PageEmpty>
+        {data && items.length === 0 && !creating ? (
+          <PageEmpty>No workflows yet. New workflow starts one.</PageEmpty>
         ) : null}
         <ul>
           {items.map((w) => (
@@ -151,6 +309,25 @@ function WorkflowDetail({ id }: { id: string }) {
 
   const fetchWorkflow = useCallback(() => getWorkflow(id), [id]);
   const workflow = usePoll(fetchWorkflow, { intervalMs: WORKFLOW_POLL_MS });
+  const draft = useWorkflowDraft(id, workflow.data);
+  // A phone reads the graph and its runs; editing one wants a pointer and room.
+  const phone = useMediaQuery('(max-width: 639px)');
+  const editing = view === 'definition' && !phone;
+  const manifestOptions = useOptionalShell()?.manifestOptions ?? [];
+  const [kinds, setKinds] = useState<WorkflowKind[] | undefined>();
+  const [kindsError, setKindsError] = useState<unknown>(null);
+  useEffect(() => {
+    if (!editing || kinds) return;
+    let live = true;
+    listWorkflowKinds().then(
+      (items) => live && setKinds(items),
+      (err: unknown) => live && setKindsError(err),
+    );
+    return () => {
+      live = false;
+    };
+  }, [editing, kinds]);
+  const [deleteError, setDeleteError] = useState<unknown>(null);
   const fetchRuns = useCallback(() => listWorkflowRuns(id), [id]);
   const runs = usePoll(fetchRuns, { enabled: view === 'run', intervalMs: RUNS_POLL_MS });
   // With no run in the address, the newest one — pinned once seen, so a run a job or a trigger starts
@@ -204,7 +381,32 @@ function WorkflowDetail({ id }: { id: string }) {
     [params, setParams],
   );
 
-  const wf: WorkflowRecord | undefined = workflow.data;
+  // The saved workflow is what runs; the draft, while there is one, is what the definition view edits.
+  const wf: WorkflowRecord | undefined = draft.saved;
+  const shown: WorkflowRecord | undefined = view === 'definition' ? draft.record : wf;
+  const { dirty, save } = draft;
+
+  // ⌘S / Ctrl+S saves the draft, wherever focus is on the page.
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        // A field that writes on leaving it (an id, JSON) writes first, then the save reads it.
+        (document.activeElement as HTMLElement | null)?.blur();
+        setTimeout(save, 0);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editing, save]);
+  // Closing the tab on unsaved edits asks first; moving within the app keeps the draft.
+  useEffect(() => {
+    if (!dirty) return;
+    const onLeave = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onLeave);
+    return () => window.removeEventListener('beforeunload', onLeave);
+  }, [dirty]);
   // The run on screen is always in the picker, even one older than the newest page of runs.
   const runOptions = useMemo((): WorkflowRunSummary[] => {
     const listed = runs.data ?? [];
@@ -212,7 +414,7 @@ function WorkflowDetail({ id }: { id: string }) {
     const steps = Object.fromEntries(Object.entries(current.steps).map(([k, v]) => [k, v.status]));
     return [{ ...current, step_statuses: steps }, ...listed];
   }, [runs.data, current]);
-  if (!wf) {
+  if (!wf || !shown) {
     return (
       <Panel>
         <PageHeader icon={<WorkflowIcon />} title="Workflows" />
@@ -226,8 +428,22 @@ function WorkflowDetail({ id }: { id: string }) {
       </Panel>
     );
   }
-  const problems = wf.problems.length;
+  const problems = shown.problems.length;
+  // A draft the harness could not check (it refused to parse it) has problems nobody counted: the
+  // last check's count would claim otherwise.
+  const unchecked = view === 'definition' && draft.dirty && Boolean(draft.checkError);
+  // A run starts the saved revision: its problems, and unsaved edits, are what stop one here.
+  const runBlocked = wf.problems.length > 0 || dirty;
   const blockedId = `run-blocked-${id}`;
+  const selectedStep = selected
+    ? stepsOf(shown.definition).find((s) => s.id === selected)
+    : undefined;
+
+  const addKind = (kind: string) => {
+    const stepId = newStepId(shown.definition, kind);
+    draft.edit((d) => addStep(d, kind, placeFor(d, selected)).def);
+    setSelected(stepId);
+  };
   return (
     <Panel fullBleed>
       <PageHeader
@@ -235,16 +451,18 @@ function WorkflowDetail({ id }: { id: string }) {
         title="Workflows"
         // The name and size stay neutral; only the problems, in words, take the failed chip.
         valueLead={
-          problems
-            ? `${wf.definition.name} · ${plural(stepsOf(wf.definition).length, 'step')}`
+          problems || unchecked
+            ? `${shown.definition.name} · ${plural(stepsOf(shown.definition).length, 'step')}`
             : undefined
         }
         value={
-          problems
-            ? plural(problems, 'problem')
-            : `${wf.definition.name} · ${plural(stepsOf(wf.definition).length, 'step')}`
+          unchecked
+            ? 'Not checked'
+            : problems
+              ? plural(problems, 'problem')
+              : `${shown.definition.name} · ${plural(stepsOf(shown.definition).length, 'step')}`
         }
-        valueTone={problems ? 'failed' : 'default'}
+        valueTone={problems || unchecked ? 'failed' : 'default'}
         controls={
           <div className="flex flex-wrap items-center gap-2">
             <Button asChild variant="ghost" size="sm">
@@ -276,19 +494,54 @@ function WorkflowDetail({ id }: { id: string }) {
                 </SelectContent>
               </Select>
             ) : null}
+            {editing ? (
+              <>
+                {dirty ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span aria-hidden className="size-1.5 rounded-full bg-state-blocked" />
+                    Unsaved
+                  </span>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => draft.edit((d) => tidy(d, heightsOf(shown, true)))}
+                >
+                  <WandSparklesIcon />
+                  Tidy
+                </Button>
+                {dirty ? (
+                  <Button variant="ghost" size="sm" onClick={draft.discard}>
+                    Discard
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant={dirty ? 'default' : 'outline'}
+                  disabled={!dirty || draft.saving}
+                  aria-keyshortcuts="Meta+S Control+S"
+                  onClick={draft.save}
+                >
+                  {draft.saving ? <LoaderIcon className="animate-spin" /> : <SaveIcon />}
+                  Save
+                </Button>
+              </>
+            ) : null}
             <Button
               variant="outline"
               size="sm"
               aria-expanded={runningNow}
               // Not `disabled`: a disabled button cannot be reached, and its reason with it. Pressed
-              // while blocked, it shows the problems instead of a form that would be refused.
-              aria-disabled={problems > 0 && !runningNow}
-              aria-describedby={problems ? blockedId : undefined}
-              className={cn(problems > 0 && !runningNow && 'opacity-50')}
+              // while blocked by problems, it shows them instead of a form that would be refused.
+              aria-disabled={runBlocked && !runningNow}
+              aria-describedby={runBlocked ? blockedId : undefined}
+              className={cn(runBlocked && !runningNow && 'opacity-50')}
               onClick={() => {
-                if (problems > 0 && !runningNow) {
-                  setSelected(null);
-                  set({ view: null });
+                if (runBlocked && !runningNow) {
+                  if (!dirty) {
+                    setSelected(null);
+                    set({ view: null });
+                  }
                   return;
                 }
                 setRunningNow((v) => !v);
@@ -297,9 +550,11 @@ function WorkflowDetail({ id }: { id: string }) {
               {runningNow ? <XIcon /> : <PlayIcon />}
               Run now
             </Button>
-            {problems ? (
+            {runBlocked ? (
               <span id={blockedId} className="sr-only">
-                Fix {plural(problems, 'problem')} first; they are listed under Problems.
+                {dirty
+                  ? 'Save first: a run starts the saved revision.'
+                  : `Fix ${plural(wf.problems.length, 'problem')} first; they are listed under Problems.`}
               </span>
             ) : null}
           </div>
@@ -319,13 +574,52 @@ function WorkflowDetail({ id }: { id: string }) {
         {said}
       </span>
       <div className="flex min-h-0 flex-1 max-lg:flex-col">
+        {editing ? (
+          <StepPalette
+            kinds={kinds}
+            error={kindsError}
+            onAdd={addKind}
+            className="border-border/60 p-3 lg:w-44 lg:shrink-0 lg:border-r max-lg:border-b"
+          />
+        ) : null}
         <div className="relative min-h-[24rem] flex-1 max-lg:h-[60svh] max-lg:flex-none">
           <WorkflowCanvas
-            workflow={wf}
+            workflow={shown}
             run={view === 'run' ? current : null}
             selected={selected}
             onSelect={setSelected}
+            editing={
+              editing
+                ? {
+                    onMove: (moves) =>
+                      draft.edit((d) =>
+                        moves.reduce((acc, m) => moveNode(acc, m.id, m.position), d),
+                      ),
+                    onConnect: (edge) => void draft.wire(edge),
+                    onDelete: ({ steps, edges }) => {
+                      draft.edit((d) => disconnect(steps.reduce(removeStep, d), edges));
+                      if (selected && steps.includes(selected)) setSelected(null);
+                    },
+                  }
+                : undefined
+            }
           />
+          {editing && draft.refusal ? (
+            <div
+              role="status"
+              className="absolute inset-x-4 bottom-4 flex items-start gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm shadow-sheet"
+            >
+              <p className="flex-1 text-state-failed">{draft.refusal}</p>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Dismiss"
+                onClick={draft.clearRefusal}
+              >
+                <XIcon />
+              </Button>
+            </div>
+          ) : null}
           {view === 'run' && runs.error ? (
             <div className="absolute inset-x-4 top-4">
               <ReadFailure
@@ -374,8 +668,68 @@ function WorkflowDetail({ id }: { id: string }) {
             <ErrorNotice error={run.error} doing="load the run" />
           ) : view === 'run' && runId ? (
             <p className="text-sm text-muted-foreground">Loading the run…</p>
-          ) : view === 'definition' ? (
-            <DefinitionInspector workflow={wf} selected={selected} onSelect={setSelected} />
+          ) : view === 'definition' && editing && !runningNow ? (
+            <>
+              {draft.conflict ? (
+                <ConflictNotice
+                  mine={shown.definition}
+                  conflict={draft.conflict}
+                  onKeepMine={draft.keepMine}
+                  onTakeTheirs={draft.takeTheirs}
+                  onLeave={() => set({ workflow: null, view: null, run: null })}
+                />
+              ) : null}
+              {draft.saveError ? (
+                <div className="mb-4">
+                  <ErrorNotice error={draft.saveError} doing="save the workflow" />
+                </div>
+              ) : null}
+              {draft.checkError ? (
+                <div className="mb-4">
+                  <ErrorNotice error={draft.checkError} doing="check the draft" />
+                </div>
+              ) : null}
+              {deleteError ? (
+                <div className="mb-4">
+                  <ErrorNotice error={deleteError} doing="delete the workflow" />
+                </div>
+              ) : null}
+              {selectedStep ? (
+                <StepEditor
+                  key={selectedStep.id}
+                  record={shown}
+                  step={selectedStep}
+                  edit={draft.edit}
+                  wire={(edge) => void draft.wire(edge)}
+                  manifestOptions={manifestOptions}
+                  onSelect={setSelected}
+                />
+              ) : (
+                <WorkflowSettings
+                  record={shown}
+                  edit={draft.edit}
+                  onSelect={setSelected}
+                  onDelete={async () => {
+                    setDeleteError(null);
+                    try {
+                      await deleteWorkflow(id, wf.revision);
+                      set({ workflow: null, view: null, run: null });
+                    } catch (err) {
+                      setDeleteError(err);
+                    }
+                  }}
+                />
+              )}
+            </>
+          ) : view === 'definition' && !runningNow ? (
+            <>
+              {phone ? (
+                <p className="mb-4 text-sm text-muted-foreground">
+                  Editing a workflow needs a wider window; its graph and runs read here.
+                </p>
+              ) : null}
+              <DefinitionInspector workflow={wf} selected={selected} onSelect={setSelected} />
+            </>
           ) : null}
           {view === 'run' && current && !selected ? (
             <p className="mt-4 text-xs text-muted-foreground">
