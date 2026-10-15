@@ -124,6 +124,19 @@ export function threadSuffix(full: string): string {
   return i >= 0 ? full.slice(i + 1) : full;
 }
 
+/**
+ * Whether a full thread id is a workflow step's: `{tenant}:workflow:{run}:{step}`.
+ *
+ * The harness keeps those in a namespace of its own so no chat route can write into a step's
+ * history, which also means no client can open one by its suffix — `threadSuffix` would turn it
+ * into the step id, the same on every run. A step's transcript is read under its run instead
+ * (`GET /workflows/{id}/runs/{run}/steps/{step}/thread`).
+ */
+export function isWorkflowStepThread(full: string): boolean {
+  const i = full.indexOf(':');
+  return i >= 0 && full.startsWith('workflow:', i + 1);
+}
+
 /** A short conversation title from arbitrary text (e.g. the first user turn). */
 export function titleFromText(text: string): string {
   const t = text.trim().replace(/\s+/g, ' ');

@@ -1,4 +1,6 @@
 /** @vitest-environment happy-dom */
+
+import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -92,6 +94,14 @@ const RUN = {
   },
 };
 
+/** The classify step's child run, as `GET …/steps/classify/thread` answers it. */
+const TRANSCRIPT = {
+  transcript: [
+    { id: 'e1', seq: 1, kind: 'message', role: 'user', content: 'Label crash' },
+    { id: 'e2', seq: 2, kind: 'message', role: 'assistant', content: 'Looks like a bug.' },
+  ],
+};
+
 const APPROVAL = {
   id: 'appr-1',
   tenant_id: 'default',
@@ -127,6 +137,7 @@ async function page(
     workflow?: unknown;
     startWorkflowRun?: (...a: unknown[]) => Promise<unknown>;
     getWorkflowRun?: (...a: unknown[]) => Promise<unknown>;
+    getWorkflowStepThread?: (...a: unknown[]) => Promise<unknown>;
     runs?: unknown[];
   } = {},
 ) {
@@ -155,6 +166,7 @@ async function page(
       ),
     getWorkflowRun: vi.fn(opts.getWorkflowRun ?? (() => Promise.resolve(RUN))),
     startWorkflowRun,
+    getWorkflowStepThread: vi.fn(opts.getWorkflowStepThread ?? (() => Promise.resolve(TRANSCRIPT))),
     cancelWorkflowRun: vi.fn().mockResolvedValue({ ...RUN, status: 'cancelling' }),
     decideApproval,
   }));
@@ -166,11 +178,15 @@ async function page(
   const { WorkflowsPage } = await import('../src/components/workflows/workflows-page');
   const getRun = (await import('../src/api')).getWorkflowRun as ReturnType<typeof vi.fn>;
   render(
-    <MemoryRouter initialEntries={[address]}>
-      <WorkflowsPage />
-    </MemoryRouter>,
+    // The app's root provides tooltips; a transcript's turns use them.
+    <TooltipProvider>
+      <MemoryRouter initialEntries={[address]}>
+        <WorkflowsPage />
+      </MemoryRouter>
+    </TooltipProvider>,
   );
-  return { decideApproval, startWorkflowRun, markDecided, getRun };
+  const getThread = (await import('../src/api')).getWorkflowStepThread as ReturnType<typeof vi.fn>;
+  return { decideApproval, startWorkflowRun, markDecided, getRun, getThread };
 }
 
 describe('the list', () => {
@@ -231,15 +247,31 @@ describe('a run', () => {
     expect(markDecided).toHaveBeenCalledWith('appr-1');
   });
 
-  it('shows what a selected step received and produced, and names its thread', async () => {
-    await page('/harness/workflows?workflow=triage&view=run');
+  it('shows what a selected step received and produced, and its transcript', async () => {
+    const { getThread } = await page('/harness/workflows?workflow=triage&view=run');
     await waitFor(async () =>
       expect((await node('classify')).getAttribute('aria-label')).toContain('status'),
     );
     fireEvent.click(await node('classify'));
     expect(await screen.findByText('Received')).toBeTruthy();
     expect(screen.getByText('Produced')).toBeTruthy();
-    expect(screen.getByText('Thread')).toBeTruthy();
+    // Read under the run, by step: no chat route can open a step's thread.
+    expect(await screen.findByText('Looks like a bug.')).toBeTruthy();
+    expect(screen.getByText('Label crash')).toBeTruthy();
+    expect(getThread).toHaveBeenCalledWith('triage', RUN.id, 'classify');
+  });
+
+  it('says a step has nothing to read yet rather than failing', async () => {
+    const api = await vi.importActual<typeof import('../src/api')>('../src/api');
+    await page('/harness/workflows?workflow=triage&view=run', {
+      getWorkflowStepThread: () =>
+        Promise.reject(new api.WorkflowRouteError(404, 'not_found', 'not_found')),
+    });
+    await waitFor(async () =>
+      expect((await node('classify')).getAttribute('aria-label')).toContain('status'),
+    );
+    fireEvent.click(await node('classify'));
+    expect(await screen.findByText('Nothing in it yet.')).toBeTruthy();
   });
 });
 

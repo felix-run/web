@@ -1118,6 +1118,7 @@ UI's **Workflows** page draws it on a canvas and shows each run on the same grap
 | `GET` | `/workflows/-/tools?manifest=` | `workflows:read` |
 | `GET` | `/workflows/{id}/runs` | `workflows:read` |
 | `GET` | `/workflows/{id}/runs/{run_id}` | `workflows:read` |
+| `GET` | `/workflows/{id}/runs/{run_id}/steps/{step_id}/thread` | `workflows:read` |
 | `POST` | `/workflows/{id}/runs` | `workflows:write` |
 | `POST` | `/workflows/{id}/runs/{run_id}/cancel` | `workflows:write` |
 
@@ -1158,7 +1159,10 @@ run refuses it.
 
 **Runs.** `POST /workflows/{id}/runs` with `{"inputs": {…}, "revision": "…"}` answers `202` with the
 run; poll `GET /workflows/{id}/runs/{run_id}` for each step's `status`, `inputs`, `outputs`,
-`fired` ports, `error`, an agent step's `thread_id` and an approval step's `approval_id`. A run keeps
+`fired` ports, `error`, an agent or tool step's `thread_id` and an approval step's `approval_id`.
+`GET /workflows/{id}/runs/{run_id}/steps/{step_id}/thread` reads that step's transcript (the
+snapshot `GET /chat/sessions/{id}` would answer), or `404` for a step with no thread yet. No chat route
+can address a step's thread, so nothing outside the run can write into a step's history. A run keeps
 the definition it started on. It runs as the person who started it, with their scopes, each manifest
 a step names checked and pinned at the start (`403 not_permitted` otherwise). Refusals: `422
 not_runnable` (with `problems`), `422 bad_inputs` (`missing`, `unknown`), `412 workflow_changed`,

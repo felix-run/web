@@ -37,7 +37,7 @@ import {
 import { createHttp, type FelixClientOptions } from './http';
 import { createManagementClient } from './management';
 import type { SessionSummary } from './session-log';
-import { threadSuffix } from './session-log';
+import { isWorkflowStepThread, threadSuffix } from './session-log';
 
 /** The `detail` prefix of the harness's refusal to start a second run on a thread. */
 const RUN_IN_PROGRESS = 'run_in_progress:';
@@ -1298,15 +1298,18 @@ export function createFelixClient(opts: FelixClientOptions) {
         if (!body.next_cursor || body.next_cursor === cursor) break;
         cursor = body.next_cursor;
       }
-      return rows.map((row) => ({
-        id: threadSuffix(String(row.id ?? '')),
-        name: row.sessionName ?? null,
-        createdAt: row.createdAt ?? undefined,
-        updatedAt: row.updatedAt ?? undefined,
-        parentSessionId: row.parentSessionId ? threadSuffix(row.parentSessionId) : null,
-        preview: row.preview?.trim() || null,
-        manifest: row.manifest?.trim() || null,
-      }));
+      // A workflow step's thread is read under its run, not opened as a thread of the sidebar.
+      return rows
+        .filter((row) => !isWorkflowStepThread(String(row.id ?? '')))
+        .map((row) => ({
+          id: threadSuffix(String(row.id ?? '')),
+          name: row.sessionName ?? null,
+          createdAt: row.createdAt ?? undefined,
+          updatedAt: row.updatedAt ?? undefined,
+          parentSessionId: row.parentSessionId ? threadSuffix(row.parentSessionId) : null,
+          preview: row.preview?.trim() || null,
+          manifest: row.manifest?.trim() || null,
+        }));
     },
 
     /**

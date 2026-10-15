@@ -6,6 +6,7 @@ import { ErrorNotice } from '@/components/error-notice';
 import { Fact, Facts, PageSection } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
 import { kindWord, StepStateChip } from '@/components/workflows/step-node';
+import { StepTranscript } from '@/components/workflows/step-transcript';
 import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/shell-context';
 import type {
@@ -373,20 +374,20 @@ export function RunInspector({
                   </Fact>
                 ) : null}
               </Facts>
-              {state.thread_id ? (
-                // The child run's own thread. Not linked: its id has the shape a chat thread
-                // cannot (`{tenant}:workflow:{run}:{step}`), so `/t/` cannot open it yet.
-                <Facts>
-                  <Fact label="Thread" mono>
-                    <CutId id={state.thread_id} max={28} />
-                  </Fact>
-                </Facts>
-              ) : null}
               {state.inputs && Object.keys(state.inputs).length ? (
                 <CodePane label="Received">{json(state.inputs)}</CodePane>
               ) : null}
               {state.outputs && Object.keys(state.outputs).length ? (
                 <CodePane label="Produced">{json(state.outputs)}</CodePane>
+              ) : null}
+              {state.thread_id ? (
+                // The child run's own thread, read under the run: no chat route can open it.
+                <StepTranscript
+                  workflowId={workflow.id}
+                  runId={run.id}
+                  stepId={step.id}
+                  version={run.version}
+                />
               ) : null}
             </div>
           )}
