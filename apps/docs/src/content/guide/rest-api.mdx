@@ -1214,6 +1214,12 @@ stored and screened as an untrusted tool's are.
 | `POST` | `/mcp` | JSON-RPC: `initialize`, `tools/list`, `tools/call`. `params.manifest` selects the agent. |
 | `GET` | `/mcp` | Human-readable info |
 
+A `tools/call` runs the manifest's tool the way the agent's own loop does: through the governance
+stack, and around it the plugin `before_tool` / `after_tool` hooks and the manifest's
+`pre_tool_use` / `post_tool_use` hooks, with a `tool_call` (or `policy_deny`) audit row. A hook
+that refuses the call answers it with `isError: true` and the hook's message; a tool that raises
+is named by its error code, never by its exception's text.
+
 Tool `inputSchema` is generated from each tool's argument schema. A remote MCP tool that already
 supplies JSON Schema is forwarded verbatim through `raw_input_schema`, preserving its descriptions
 and enums.
