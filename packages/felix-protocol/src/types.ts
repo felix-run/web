@@ -259,6 +259,12 @@ export type StreamEvent =
    */
   | { event: 'snapshot'; data: SessionSnapshot }
   | { event: 'session_event'; data: SessionEvent }
+  /**
+   * A workflow run's record, sent by `GET /workflows/{id}/runs/{run_id}/stream` each time it
+   * changes: the body `GET /workflows/{id}/runs/{run_id}` answers, its `id:` the record's version.
+   * Never on a chat stream. Typed loosely here; the Workflows page owns the run's shape.
+   */
+  | { event: 'workflow_run'; data: Record<string, unknown> }
   | { event: string; data: Record<string, unknown> };
 
 /** First frame of a durable run: what to come back to if the connection drops. */

@@ -105,8 +105,8 @@ more, and these are open:
   are not dimmed, and a type mismatch is only known once the harness checks the drop.
 - **Undo.** Discard drops the whole draft; there is no step back.
 - **F for full screen**, and the palette and inspector as sheets below 1024 (they stack instead).
-- **Runs over SSE** (polled now, every 2s while live) and the instrument's compact graph for a
-  thread a run produced — both need harness work first.
+- **The instrument's compact graph** for a thread a run produced: it needs the harness to say,
+  from a thread, which run and step it belongs to.
 
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 

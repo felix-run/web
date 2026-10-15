@@ -17,7 +17,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import {
   deleteWorkflow,
   getWorkflow,
-  getWorkflowRun,
   listWorkflowKinds,
   listWorkflowRuns,
   listWorkflows,
@@ -38,6 +37,7 @@ import {
 import { ReadFailure, relTime, withAge } from '@/components/inspector/primitives';
 import { RunNowForm } from '@/components/workflows/run-now-form';
 import { useWorkflowDraft } from '@/components/workflows/use-workflow-draft';
+import { useWorkflowRun } from '@/components/workflows/use-workflow-run';
 import { heightsOf, WorkflowCanvas } from '@/components/workflows/workflow-canvas';
 import {
   ConflictNotice,
@@ -47,7 +47,6 @@ import {
 } from '@/components/workflows/workflow-editor';
 import {
   DefinitionInspector,
-  RUN_LIVE,
   RunInspector,
   runWord,
 } from '@/components/workflows/workflow-inspector';
@@ -81,7 +80,6 @@ type View = 'definition' | 'run';
 const LIST_POLL_MS = 15_000;
 const WORKFLOW_POLL_MS = 30_000;
 const RUNS_POLL_MS = 5_000;
-const RUN_POLL_MS = 2_000;
 
 /** Why a create was refused, in the harness's terms, or null for an error to show as one. */
 function createRefusal(err: unknown): string | null {
@@ -337,30 +335,10 @@ function WorkflowDetail({ id }: { id: string }) {
     if (!pinned && runs.data?.[0]) setPinned(runs.data[0].id);
   }, [pinned, runs.data]);
   const runId = runParam ?? pinned ?? null;
-  const fetchRun = useCallback(
-    () => (runId ? getWorkflowRun(id, runId) : Promise.resolve(null)),
-    [id, runId],
-  );
-  const [runDone, setRunDone] = useState(false);
-  const [runGone, setRunGone] = useState(false);
-  const run = usePoll(fetchRun, {
-    enabled: view === 'run' && Boolean(runId) && !runDone && !runGone,
-    intervalMs: RUN_POLL_MS,
-  });
-  // A run that is not there (swept, mistyped in a link) will not appear by asking again.
-  useEffect(() => {
-    setRunGone(run.error instanceof WorkflowRouteError && run.error.status === 404);
-  }, [run.error]);
-  // The poll keeps its last answer across a change of run; drop it so one run's states never sit on another's.
+  // Watched over the run's stream while the run view shows it: a step moving lands as it is saved.
+  const run = useWorkflowRun(id, runId, view === 'run');
+  // The hook keeps its last answer across a change of run; drop it so one run's states never sit on another's.
   const current = run.data && run.data.id === runId ? run.data : null;
-  useEffect(() => {
-    setRunDone(Boolean(current && !RUN_LIVE.has(current.status)));
-  }, [current]);
-  useEffect(() => {
-    setRunDone(false);
-    setRunGone(false);
-    run.refresh();
-  }, [runId, run.refresh]);
   const nameOf = useCallback(
     (stepId: string) =>
       stepsOf(workflow.data?.definition ?? { name: '' }).find((s) => s.id === stepId)?.name ||
@@ -664,6 +642,11 @@ function WorkflowDetail({ id }: { id: string }) {
           ) : null}
           {view === 'run' && current ? (
             <RunInspector workflow={wf} run={current} selected={selected} onChanged={run.refresh} />
+          ) : view === 'run' && run.gone ? (
+            <p className="text-sm text-muted-foreground">
+              This run is not there: finished runs are swept after their retention, and a link may
+              name one that never existed.
+            </p>
           ) : view === 'run' && run.error ? (
             <ErrorNotice error={run.error} doing="load the run" />
           ) : view === 'run' && runId ? (
