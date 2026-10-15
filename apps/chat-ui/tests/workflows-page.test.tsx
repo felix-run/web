@@ -794,3 +794,42 @@ describe('the canvas, full screen and mid-drag', () => {
     expect(wireFits(wf, text, { node: 'trigger', port: 'issue' })).toBe(false);
   });
 });
+
+describe('below 1024', () => {
+  const real = window.matchMedia;
+  beforeEach(() => {
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(max-width: 1023px)',
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia;
+  });
+  afterEach(() => {
+    window.matchMedia = real;
+  });
+
+  it('gives the canvas the sheet, and opens the inspector over it when a step is selected', async () => {
+    await page('/harness/workflows?workflow=triage');
+    await node('classify');
+    expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(await node('classify'));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByDisplayValue('classify')).toBeTruthy();
+  });
+
+  it('adds a step from a palette sheet, then shows it in the inspector', async () => {
+    await page('/harness/workflows?workflow=triage');
+    fireEvent.click(await screen.findByRole('button', { name: /Add step/ }));
+    const palette = await screen.findByRole('dialog');
+    fireEvent.click(within(palette).getByRole('button', { name: 'Branch' }));
+    await waitFor(() =>
+      expect(within(screen.getByRole('dialog')).getByDisplayValue('branch')).toBeTruthy(),
+    );
+    // Closed, not just covered: a modal sheet over it would hide it from a default query.
+    await waitFor(() =>
+      expect(screen.queryByRole('navigation', { name: 'Add a step', hidden: true })).toBeNull(),
+    );
+  });
+});

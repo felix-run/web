@@ -91,23 +91,22 @@ custom entry would have become history the step's agent read under its starter's
 other namespaces need the same decision one by one — leave out, or read through a route of their
 own — rather than one rule that hides them all, since an operator may be looking for a job's run.
 
-### The workflow editor's brief is not all built
+### What the workflow editor leaves out
 
-The editor (`components/workflows/workflow-editor.tsx`, `lib/workflow-draft.ts`) covers the palette,
-dragging, wiring by handle and by *Connect from…*, the kinds' forms, the harness's check on every
-draft, conditional saves with *Keep mine* / *Take theirs*, Tidy, ⌘S, undo and redo, arrow keys
-along wires, inputs a dragged wire cannot reach drawn quiet, and F for full screen. The shape brief
-asked for one more thing, and it is open:
+The shape brief's editor is built (`components/workflows/workflow-editor.tsx`,
+`lib/workflow-draft.ts`): the palette, dragging, wiring by handle and by *Connect from…*, the kinds'
+forms, the harness's check on every draft, conditional saves with *Keep mine* / *Take theirs*,
+Tidy, ⌘S, undo and redo, arrow keys along wires, quiet inputs while a wire is dragged, F for full
+screen, and below 1024 the palette and inspector as sheets over the canvas.
 
-- **The palette and inspector as sheets below 1024.** They stack under the canvas instead. A
-  dragged wire's quiet ports also leave out a type mismatch, which only the harness judges, on the
-  drop.
+Two things are known and left:
 
-One item is dropped rather than open: a **compact read-only graph in the instrument** for a thread
-a workflow step produced. It assumed a step's thread opens as a chat thread, and it does not, on
-purpose — no chat route can address one, so no chat client can write into a step's history
-(felix#645). A step's transcript is read in the run inspector, beside the whole graph, so there is
-no thread view for the compact one to sit in.
+- A dragged wire's quiet ports leave out a **type mismatch**: only the harness judges one, on the
+  drop, so a wire can still be refused after it lands on a port that looked open.
+- The **compact read-only graph in the instrument**, for a thread a workflow step produced, is
+  dropped. It assumed a step's thread opens as a chat thread, and it does not, on purpose — no chat
+  route can address one, so no chat client can write into a step's history (felix#645). A step's
+  transcript is read in the run inspector, beside the whole graph.
 
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 

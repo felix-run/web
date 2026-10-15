@@ -2,11 +2,13 @@ import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@felix/ui/sheet';
 import {
   ArrowLeftIcon,
   LoaderIcon,
   Maximize2Icon,
   Minimize2Icon,
+  PanelRightIcon,
   PlayIcon,
   PlusIcon,
   Redo2Icon,
@@ -39,6 +41,7 @@ import {
   ViewSwitch,
 } from '@/components/harness/panel';
 import { ReadFailure, relTime, withAge } from '@/components/inspector/primitives';
+import { DRAWER_MOTION } from '@/components/pane/pane-zone';
 import { RunNowForm } from '@/components/workflows/run-now-form';
 import { useWorkflowDraft } from '@/components/workflows/use-workflow-draft';
 import { useWorkflowRun } from '@/components/workflows/use-workflow-run';
@@ -395,6 +398,15 @@ function WorkflowDetail({ id }: { id: string }) {
   // F: the canvas alone, filling the window, for a graph wider than the sheet; F or Escape again
   // brings the palette and inspector back. A key typed into a field is the field's.
   const [expanded, setExpanded] = useState(false);
+  // Below 1024 the palette and the inspector are sheets over the canvas, opened from its corner.
+  // A step selected, Run now, or a save that lost opens the inspector: each is something to read.
+  const wide = !useMediaQuery('(max-width: 1023px)');
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const lostSave = Boolean(draft.conflict);
+  useEffect(() => {
+    if (selected || runningNow || lostSave) setInspectorOpen(true);
+  }, [selected, runningNow, lostSave]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -455,6 +467,112 @@ function WorkflowDetail({ id }: { id: string }) {
     draft.edit((d) => addStep(d, kind, placeFor(d, selected)).def);
     setSelected(stepId);
   };
+  // The inspector's content, beside the canvas from 1024 and a sheet over it below.
+  const inspector = (
+    <>
+      {runningNow ? (
+        <PageSection title="Run now">
+          <RunNowForm
+            workflow={wf}
+            onStarted={(started) => {
+              setRunningNow(false);
+              set({ view: 'run', run: started.id });
+              runs.refresh();
+            }}
+          />
+        </PageSection>
+      ) : null}
+      {view === 'run' && current && run.error ? (
+        <div className="mb-4">
+          <ReadFailure
+            error={run.error}
+            doing="refresh the run"
+            lastOkAt={run.lastOkAt}
+            onRetry={run.refresh}
+          />
+        </div>
+      ) : null}
+      {view === 'run' && current ? (
+        <RunInspector workflow={wf} run={current} selected={selected} onChanged={run.refresh} />
+      ) : view === 'run' && run.gone ? (
+        <p className="text-sm text-muted-foreground">
+          This run is not there: finished runs are swept after their retention, and a link may name
+          one that never existed.
+        </p>
+      ) : view === 'run' && run.error ? (
+        <ErrorNotice error={run.error} doing="load the run" />
+      ) : view === 'run' && runId ? (
+        <p className="text-sm text-muted-foreground">Loading the run…</p>
+      ) : view === 'definition' && editing && !runningNow ? (
+        <>
+          {draft.conflict ? (
+            <ConflictNotice
+              mine={shown.definition}
+              conflict={draft.conflict}
+              onKeepMine={draft.keepMine}
+              onTakeTheirs={draft.takeTheirs}
+              onLeave={() => set({ workflow: null, view: null, run: null })}
+            />
+          ) : null}
+          {draft.saveError ? (
+            <div className="mb-4">
+              <ErrorNotice error={draft.saveError} doing="save the workflow" />
+            </div>
+          ) : null}
+          {draft.checkError ? (
+            <div className="mb-4">
+              <ErrorNotice error={draft.checkError} doing="check the draft" />
+            </div>
+          ) : null}
+          {deleteError ? (
+            <div className="mb-4">
+              <ErrorNotice error={deleteError} doing="delete the workflow" />
+            </div>
+          ) : null}
+          {selectedStep ? (
+            <StepEditor
+              key={selectedStep.id}
+              record={shown}
+              step={selectedStep}
+              edit={draft.edit}
+              wire={(edge) => void draft.wire(edge)}
+              manifestOptions={manifestOptions}
+              onSelect={setSelected}
+            />
+          ) : (
+            <WorkflowSettings
+              record={shown}
+              edit={draft.edit}
+              onSelect={setSelected}
+              onDelete={async () => {
+                setDeleteError(null);
+                try {
+                  await deleteWorkflow(id, wf.revision);
+                  set({ workflow: null, view: null, run: null });
+                } catch (err) {
+                  setDeleteError(err);
+                }
+              }}
+            />
+          )}
+        </>
+      ) : view === 'definition' && !runningNow ? (
+        <>
+          {phone ? (
+            <p className="mb-4 text-sm text-muted-foreground">
+              Editing a workflow needs a wider window; its graph and runs read here.
+            </p>
+          ) : null}
+          <DefinitionInspector workflow={wf} selected={selected} onSelect={setSelected} />
+        </>
+      ) : null}
+      {view === 'run' && current && !selected ? (
+        <p className="mt-4 text-xs text-muted-foreground">
+          Select a step for what it received and produced.
+        </p>
+      ) : null}
+    </>
+  );
   return (
     <Panel fullBleed>
       <PageHeader
@@ -614,18 +732,37 @@ function WorkflowDetail({ id }: { id: string }) {
         {said}
       </span>
       <div className="flex min-h-0 flex-1 max-lg:flex-col">
-        {editing ? (
+        {editing && wide ? (
           <StepPalette
             kinds={kinds}
             error={kindsError}
             onAdd={addKind}
-            className="border-border/60 p-3 lg:w-44 lg:shrink-0 lg:border-r max-lg:border-b"
+            className="w-44 shrink-0 border-r border-border/60 p-3"
           />
+        ) : null}
+        {editing && !wide ? (
+          <Sheet open={paletteOpen} onOpenChange={setPaletteOpen}>
+            <SheetContent side="left" className={cn('w-64 gap-0', DRAWER_MOTION)}>
+              <SheetTitle className="sr-only">Add a step</SheetTitle>
+              <SheetDescription className="sr-only">
+                Each kind adds a step beside the selected one.
+              </SheetDescription>
+              <StepPalette
+                kinds={kinds}
+                error={kindsError}
+                className="p-4 pt-12"
+                onAdd={(kind) => {
+                  setPaletteOpen(false);
+                  addKind(kind);
+                }}
+              />
+            </SheetContent>
+          </Sheet>
         ) : null}
         <div
           data-expanded={expanded || undefined}
           className={cn(
-            'relative min-h-[24rem] flex-1 max-lg:h-[60svh] max-lg:flex-none',
+            'relative min-h-[24rem] flex-1 max-lg:min-h-[70svh]',
             expanded && 'fixed! inset-0 z-50 h-auto! bg-ground',
           )}
         >
@@ -662,10 +799,30 @@ function WorkflowDetail({ id }: { id: string }) {
                 : undefined
             }
           />
+          {!wide && !expanded ? (
+            // Below 1024 the canvas has the sheet to itself; these bring the palette and inspector.
+            <div className="absolute right-3 bottom-3 z-10 flex gap-2">
+              {editing ? (
+                <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)}>
+                  <PlusIcon />
+                  Add step
+                </Button>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                aria-expanded={inspectorOpen}
+                onClick={() => setInspectorOpen(true)}
+              >
+                <PanelRightIcon />
+                Inspector
+              </Button>
+            </div>
+          ) : null}
           {editing && draft.refusal ? (
             <div
               role="status"
-              className="absolute inset-x-4 bottom-4 flex items-start gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm shadow-sheet"
+              className="absolute inset-x-4 bottom-4 max-lg:bottom-16 flex items-start gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm shadow-sheet"
             >
               <p className="flex-1 text-state-failed">{draft.refusal}</p>
               <Button
@@ -694,112 +851,29 @@ function WorkflowDetail({ id }: { id: string }) {
             </p>
           ) : null}
         </div>
-        <aside
-          aria-label="Inspector"
-          className="min-h-0 overflow-y-auto border-border/60 p-4 lg:w-[clamp(24rem,32vw,34rem)] lg:border-l max-lg:border-t"
-        >
-          {runningNow ? (
-            <PageSection title="Run now">
-              <RunNowForm
-                workflow={wf}
-                onStarted={(started) => {
-                  setRunningNow(false);
-                  set({ view: 'run', run: started.id });
-                  runs.refresh();
-                }}
-              />
-            </PageSection>
-          ) : null}
-          {view === 'run' && current && run.error ? (
-            <div className="mb-4">
-              <ReadFailure
-                error={run.error}
-                doing="refresh the run"
-                lastOkAt={run.lastOkAt}
-                onRetry={run.refresh}
-              />
-            </div>
-          ) : null}
-          {view === 'run' && current ? (
-            <RunInspector workflow={wf} run={current} selected={selected} onChanged={run.refresh} />
-          ) : view === 'run' && run.gone ? (
-            <p className="text-sm text-muted-foreground">
-              This run is not there: finished runs are swept after their retention, and a link may
-              name one that never existed.
-            </p>
-          ) : view === 'run' && run.error ? (
-            <ErrorNotice error={run.error} doing="load the run" />
-          ) : view === 'run' && runId ? (
-            <p className="text-sm text-muted-foreground">Loading the run…</p>
-          ) : view === 'definition' && editing && !runningNow ? (
-            <>
-              {draft.conflict ? (
-                <ConflictNotice
-                  mine={shown.definition}
-                  conflict={draft.conflict}
-                  onKeepMine={draft.keepMine}
-                  onTakeTheirs={draft.takeTheirs}
-                  onLeave={() => set({ workflow: null, view: null, run: null })}
-                />
-              ) : null}
-              {draft.saveError ? (
-                <div className="mb-4">
-                  <ErrorNotice error={draft.saveError} doing="save the workflow" />
-                </div>
-              ) : null}
-              {draft.checkError ? (
-                <div className="mb-4">
-                  <ErrorNotice error={draft.checkError} doing="check the draft" />
-                </div>
-              ) : null}
-              {deleteError ? (
-                <div className="mb-4">
-                  <ErrorNotice error={deleteError} doing="delete the workflow" />
-                </div>
-              ) : null}
-              {selectedStep ? (
-                <StepEditor
-                  key={selectedStep.id}
-                  record={shown}
-                  step={selectedStep}
-                  edit={draft.edit}
-                  wire={(edge) => void draft.wire(edge)}
-                  manifestOptions={manifestOptions}
-                  onSelect={setSelected}
-                />
-              ) : (
-                <WorkflowSettings
-                  record={shown}
-                  edit={draft.edit}
-                  onSelect={setSelected}
-                  onDelete={async () => {
-                    setDeleteError(null);
-                    try {
-                      await deleteWorkflow(id, wf.revision);
-                      set({ workflow: null, view: null, run: null });
-                    } catch (err) {
-                      setDeleteError(err);
-                    }
-                  }}
-                />
-              )}
-            </>
-          ) : view === 'definition' && !runningNow ? (
-            <>
-              {phone ? (
-                <p className="mb-4 text-sm text-muted-foreground">
-                  Editing a workflow needs a wider window; its graph and runs read here.
-                </p>
-              ) : null}
-              <DefinitionInspector workflow={wf} selected={selected} onSelect={setSelected} />
-            </>
-          ) : null}
-          {view === 'run' && current && !selected ? (
-            <p className="mt-4 text-xs text-muted-foreground">
-              Select a step for what it received and produced.
-            </p>
-          ) : null}
-        </aside>
+        {wide ? (
+          <aside
+            aria-label="Inspector"
+            className="min-h-0 w-[clamp(24rem,32vw,34rem)] overflow-y-auto border-l border-border/60 p-4"
+          >
+            {inspector}
+          </aside>
+        ) : (
+          <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
+            <SheetContent
+              side="right"
+              className={cn('w-full gap-0 overflow-y-auto sm:max-w-md', DRAWER_MOTION)}
+            >
+              <SheetTitle className="sr-only">Inspector</SheetTitle>
+              <SheetDescription className="sr-only">
+                The selected step, the run, or the workflow.
+              </SheetDescription>
+              {/* Padded inside: the sheet's own safe-area padding wins over a class on it, and the
+                  top clears the close button. */}
+              <div className="p-4 pt-12">{inspector}</div>
+            </SheetContent>
+          </Sheet>
+        )}
       </div>
     </Panel>
   );
