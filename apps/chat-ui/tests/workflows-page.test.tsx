@@ -751,3 +751,46 @@ describe('the keyboard', () => {
     expect(description).toHaveProperty('value', 'typed');
   });
 });
+
+describe('the canvas, full screen and mid-drag', () => {
+  it('fills the window on F and gives the sheet back on Escape, but not from a field', async () => {
+    await page('/harness/workflows?workflow=triage');
+    const description = await screen.findByLabelText('Description');
+    const canvas = () => document.querySelector('[data-expanded]');
+    fireEvent.keyDown(description, { key: 'f' });
+    expect(canvas()).toBeNull();
+    fireEvent.keyDown(document.body, { key: 'f' });
+    expect(canvas()).not.toBeNull();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(canvas()).toBeNull();
+  });
+
+  it('lets a wire be drawn only where the harness could take it', async () => {
+    // What a dragged wire's quiet ports are drawn from, and what a drop is refused by.
+    const { wireFits } = await import('../src/components/workflows/workflow-canvas');
+    const wf = WORKFLOW as unknown as Parameters<typeof wireFits>[0];
+    const text = { node: 'classify', port: 'text' };
+    expect(wireFits(wf, text, { node: 'approve', port: 'payload' })).toBe(true);
+    // A data output into `when`, a control port.
+    const gated = {
+      ...wf,
+      ports: {
+        ...wf.ports,
+        approve: {
+          inputs: [
+            ...(wf.ports.approve?.inputs ?? []),
+            { ...wf.ports.approve?.inputs[0], name: 'when', control: true },
+          ],
+          outputs: wf.ports.approve?.outputs ?? [],
+        },
+      },
+    } as typeof wf;
+    expect(wireFits(gated, text, { node: 'approve', port: 'when' })).toBe(false);
+    // Back into its own step, and so a loop; and into the workflow's inputs.
+    expect(wireFits(wf, text, { node: 'classify', port: 'issue' })).toBe(false);
+    expect(
+      wireFits(wf, { node: 'approve', port: 'approved' }, { node: 'classify', port: 'issue' }),
+    ).toBe(false);
+    expect(wireFits(wf, text, { node: 'trigger', port: 'issue' })).toBe(false);
+  });
+});

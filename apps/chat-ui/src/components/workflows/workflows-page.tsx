@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   ArrowLeftIcon,
   LoaderIcon,
+  Maximize2Icon,
+  Minimize2Icon,
   PlayIcon,
   PlusIcon,
   Redo2Icon,
@@ -390,6 +392,25 @@ function WorkflowDetail({ id }: { id: string }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [editing, save, undo, redo]);
+  // F: the canvas alone, filling the window, for a graph wider than the sheet; F or Escape again
+  // brings the palette and inspector back. A key typed into a field is the field's.
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"]'))
+        return;
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        setExpanded((v) => !v);
+      } else if (e.key === 'Escape') {
+        setExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // Closing the tab on unsaved edits asks first; moving within the app keeps the draft.
   useEffect(() => {
     if (!dirty) return;
@@ -538,6 +559,15 @@ function WorkflowDetail({ id }: { id: string }) {
               </>
             ) : null}
             <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Full screen"
+              aria-keyshortcuts="F"
+              onClick={() => setExpanded(true)}
+            >
+              <Maximize2Icon />
+            </Button>
+            <Button
               variant="outline"
               size="sm"
               aria-expanded={runningNow}
@@ -592,7 +622,25 @@ function WorkflowDetail({ id }: { id: string }) {
             className="border-border/60 p-3 lg:w-44 lg:shrink-0 lg:border-r max-lg:border-b"
           />
         ) : null}
-        <div className="relative min-h-[24rem] flex-1 max-lg:h-[60svh] max-lg:flex-none">
+        <div
+          data-expanded={expanded || undefined}
+          className={cn(
+            'relative min-h-[24rem] flex-1 max-lg:h-[60svh] max-lg:flex-none',
+            expanded && 'fixed! inset-0 z-50 h-auto! bg-ground',
+          )}
+        >
+          {expanded ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="absolute top-4 right-4 z-10"
+              aria-keyshortcuts="F Escape"
+              onClick={() => setExpanded(false)}
+            >
+              <Minimize2Icon />
+              Exit full screen
+            </Button>
+          ) : null}
           <WorkflowCanvas
             workflow={shown}
             run={view === 'run' ? current : null}

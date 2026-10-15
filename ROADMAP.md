@@ -95,12 +95,13 @@ own — rather than one rule that hides them all, since an operator may be looki
 
 The editor (`components/workflows/workflow-editor.tsx`, `lib/workflow-draft.ts`) covers the palette,
 dragging, wiring by handle and by *Connect from…*, the kinds' forms, the harness's check on every
-draft, conditional saves with *Keep mine* / *Take theirs*, Tidy, ⌘S, undo and redo, and arrow keys
-along wires. The shape brief asked for more, and these are open:
+draft, conditional saves with *Keep mine* / *Take theirs*, Tidy, ⌘S, undo and redo, arrow keys
+along wires, inputs a dragged wire cannot reach drawn quiet, and F for full screen. The shape brief
+asked for one more thing, and it is open:
 
-- **Dimming what a dragged wire cannot reach.** A drop that would land rings its handle; the rest
-  are not dimmed, and a type mismatch is only known once the harness checks the drop.
-- **F for full screen**, and the palette and inspector as sheets below 1024 (they stack instead).
+- **The palette and inspector as sheets below 1024.** They stack under the canvas instead. A
+  dragged wire's quiet ports also leave out a type mismatch, which only the harness judges, on the
+  drop.
 
 One item is dropped rather than open: a **compact read-only graph in the instrument** for a thread
 a workflow step produced. It assumed a step's thread opens as a chat thread, and it does not, on

@@ -33,6 +33,8 @@ export type StepNodeData = {
   problems?: number;
   /** The editor's canvas: ports take a wire dragged from them. */
   editable?: boolean;
+  /** While a wire is being dragged: the inputs it may not land on, drawn quiet. */
+  unreachable?: ReadonlySet<string>;
 };
 
 export type StepNodeType = Node<StepNodeData, 'step'>;
@@ -118,10 +120,12 @@ function PortRow({
   port,
   side,
   editable,
+  unreachable = false,
 }: {
   port: WorkflowPort;
   side: 'in' | 'out';
   editable: boolean;
+  unreachable?: boolean;
 }) {
   return (
     <div
@@ -135,8 +139,11 @@ function PortRow({
         position={side === 'in' ? Position.Left : Position.Right}
         id={port.name}
         isConnectable={editable}
+        data-unreachable={unreachable || undefined}
         className={cn(
           '!size-2.5 !border-2 !border-background',
+          // Quiet by tone, as a skipped step is: the handle hollow, the name muted.
+          unreachable && '!bg-transparent !border-muted-foreground/40',
           // Big enough to grab while editing, and ringed when a wire being dragged would land.
           editable && '!size-3 [&.valid]:!ring-[3px] [&.valid]:!ring-ring',
           port.control
@@ -144,7 +151,12 @@ function PortRow({
             : '!rounded-full !bg-foreground/70',
         )}
       />
-      <span className="min-w-0 truncate font-mono text-foreground">
+      <span
+        className={cn(
+          'min-w-0 truncate font-mono',
+          unreachable ? 'text-muted-foreground' : 'text-foreground',
+        )}
+      >
         {port.name}
         {port.required && side === 'in' ? (
           <span className="text-muted-foreground" title="required">
@@ -163,17 +175,25 @@ function PortList({
   ports,
   side,
   editable,
+  unreachable,
 }: {
   ports: WorkflowPort[];
   side: 'in' | 'out';
   editable: boolean;
+  unreachable?: ReadonlySet<string>;
 }) {
   const shown = ports.slice(0, MAX_PORTS);
   const folded = ports.slice(MAX_PORTS);
   return (
     <div>
       {shown.map((p) => (
-        <PortRow key={p.name} port={p} side={side} editable={editable} />
+        <PortRow
+          key={p.name}
+          port={p}
+          side={side}
+          editable={editable}
+          unreachable={unreachable?.has(p.name) ?? false}
+        />
       ))}
       {folded.length ? (
         <div
@@ -263,7 +283,12 @@ function StepNodeView({ data, selected }: NodeProps<StepNodeType>) {
         </p>
       ) : inputs.length || data.outputs.length ? (
         <div className="border-t border-border/60 py-1.5">
-          <PortList ports={inputs} side="in" editable={Boolean(data.editable)} />
+          <PortList
+            ports={inputs}
+            side="in"
+            editable={Boolean(data.editable)}
+            unreachable={data.unreachable}
+          />
           <PortList ports={data.outputs} side="out" editable={Boolean(data.editable)} />
         </div>
       ) : null}
