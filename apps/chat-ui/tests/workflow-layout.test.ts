@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COL_WIDTH,
   levelsOf,
+  neighbourOf,
   nodeIdsOf,
   ORIGIN,
   orderLevels,
@@ -174,5 +175,27 @@ describe('what a run did with a wire', () => {
     expect(wireState(wires['classify.label->route'], failed, false)).toBe('passed');
     const skipped = run({ route: { status: 'running' }, note: { status: 'skipped' } });
     expect(wireState(wires['route.feature->note'], skipped, true)).toBe('passed');
+  });
+});
+
+describe('arrow keys', () => {
+  const at = positionsOf(TRIAGE);
+  const wires = wiresOf(TRIAGE);
+
+  it('follows a wire right and left, choosing the neighbour level with it', () => {
+    expect(neighbourOf(at, wires, TRIGGER, 'right')).toBe('classify');
+    // classify feeds route, fix and note; route sits level with it, so right goes there.
+    expect(neighbourOf(at, wires, 'classify', 'right')).toBe('route');
+    expect(neighbourOf(at, wires, 'route', 'left')).toBe('classify');
+    expect(neighbourOf(at, wires, TRIGGER, 'left')).toBeNull();
+  });
+
+  it('moves up and down within a column, and nowhere past its ends', () => {
+    const fix = at.get('fix') as { y: number };
+    const note = at.get('note') as { y: number };
+    const [upper, lower] = fix.y < note.y ? ['fix', 'note'] : ['note', 'fix'];
+    expect(neighbourOf(at, wires, upper, 'down')).toBe(lower);
+    expect(neighbourOf(at, wires, lower, 'up')).toBe(upper);
+    expect(neighbourOf(at, wires, lower, 'down')).toBeNull();
   });
 });

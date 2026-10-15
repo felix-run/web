@@ -911,8 +911,12 @@ outline **Run now** beside it; the inspector is the right zone (`clamp(24rem, 32
   from…* select, the keyboard's way to wire — else the workflow: its name, description, inputs
   (name, type, remove) and Problems. Every draft is checked by the harness a beat after it
   settles, so ports and problems on the canvas are always the harness's.
-- **Saving is explicit.** The header carries an amber dot and *Unsaved*, **Tidy**, **Discard** and
-  **Save** (ink when there is something to save; ⌘S anywhere on the page); Run now waits, since a
+- **The keyboard walks the graph.** On a focused node, → and ← follow a wire out and in (to the
+  neighbour level with it), ↑ and ↓ move within the column; each step reached opens in the
+  inspector, as a click would. While editing, they never nudge a node — dragging is the pointer's.
+- **Saving is explicit.** The header carries an amber dot and *Unsaved*, **Undo** and **Redo**
+  (icon buttons; ⌘Z and ⇧⌘Z outside a text field, edits within 600ms undo as one), **Tidy**,
+  **Discard** and **Save** (ink when there is something to save; ⌘S anywhere on the page); Run now waits, since a
   run starts the saved revision. A save names the revision it started from. Losing to one made
   since puts an amber-edged alert at the inspector's head: who saved and when, then a line per
   thing the two disagree on (positions aside), then **Keep mine** and **Take theirs**.

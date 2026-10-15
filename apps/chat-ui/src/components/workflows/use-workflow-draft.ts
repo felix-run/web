@@ -6,6 +6,10 @@ import type { WorkflowCheck, WorkflowDefinition, WorkflowPortRef, WorkflowRecord
 
 /** How long the editor waits after an edit before asking the harness what the draft means. */
 const CHECK_DELAY_MS = 250;
+/** Edits closer together than this undo as one. */
+const COALESCE_MS = 600;
+/** How many steps back undo keeps. */
+const MAX_UNDO = 100;
 
 /** A save that lost to one made since: the workflow as it now stands, or null when it is gone. */
 export interface SaveConflict {
@@ -67,14 +71,54 @@ export function useWorkflowDraft(id: string, polled: WorkflowRecord | undefined)
   // check) is dropped rather than applied to whatever the draft has become since.
   const generation = useRef(0);
 
+  // Undo and redo: the drafts before (and, once undone, after) the one on screen. `null` is the
+  // saved workflow itself, so undoing the first edit leaves nothing unsaved. Edits that land
+  // within `COALESCE_MS` of the one before are one step — a word typed, not each letter.
+  const past = useRef<(WorkflowDefinition | null)[]>([]);
+  const future = useRef<(WorkflowDefinition | null)[]>([]);
+  const lastEditAt = useRef(0);
+  const [, setHistoryTick] = useState(0);
+  const forget = useCallback(() => {
+    past.current = [];
+    future.current = [];
+    lastEditAt.current = 0;
+    setHistoryTick((n) => n + 1);
+  }, []);
+
   const edit = useCallback((change: (def: WorkflowDefinition) => WorkflowDefinition) => {
     const from = savedRef.current;
     if (!from) return;
+    const now = Date.now();
+    if (now - lastEditAt.current > COALESCE_MS || !past.current.length) {
+      past.current = [...past.current.slice(1 - MAX_UNDO), draftRef.current];
+    }
+    lastEditAt.current = now;
+    future.current = [];
+    setHistoryTick((n) => n + 1);
     generation.current += 1;
     setRefusal(null);
     setBase((b) => b ?? from);
     setDraft((d) => change(d ?? withPositions(from.definition, heightsOf(from, true))));
   }, []);
+
+  /** Step back (or, with `redo`, forward) one edit. Back past the first is the saved workflow. */
+  const travel = useCallback((redo: boolean) => {
+    const from = redo ? future : past;
+    const to = redo ? past : future;
+    if (!from.current.length) return;
+    const target = from.current[from.current.length - 1];
+    from.current = from.current.slice(0, -1);
+    to.current = [...to.current, draftRef.current];
+    lastEditAt.current = 0;
+    setHistoryTick((n) => n + 1);
+    generation.current += 1;
+    setRefusal(null);
+    if (target === null) setBase(null);
+    else setBase((b) => b ?? savedRef.current ?? null);
+    setDraft(target);
+  }, []);
+  const undo = useCallback(() => travel(false), [travel]);
+  const redo = useCallback(() => travel(true), [travel]);
 
   useEffect(() => {
     if (!draft) {
@@ -149,16 +193,20 @@ export function useWorkflowDraft(id: string, polled: WorkflowRecord | undefined)
   recreateRef.current = recreate;
   const savingRef = useRef(false);
 
-  const settle = useCallback((record: WorkflowRecord) => {
-    generation.current += 1;
-    setKnown(record);
-    setDraft(null);
-    setBase(null);
-    setRecreate(false);
-    setConflict(null);
-    setSaveError(null);
-    setRefusal(null);
-  }, []);
+  const settle = useCallback(
+    (record: WorkflowRecord) => {
+      forget();
+      generation.current += 1;
+      setKnown(record);
+      setDraft(null);
+      setBase(null);
+      setRecreate(false);
+      setConflict(null);
+      setSaveError(null);
+      setRefusal(null);
+    },
+    [forget],
+  );
 
   const put = useCallback(
     async (definition: WorkflowDefinition, over: WorkflowRecord | null) => {
@@ -217,6 +265,7 @@ export function useWorkflowDraft(id: string, polled: WorkflowRecord | undefined)
   }, [conflict, settle]);
 
   const discard = useCallback(() => {
+    forget();
     generation.current += 1;
     setDraft(null);
     setBase(null);
@@ -224,7 +273,7 @@ export function useWorkflowDraft(id: string, polled: WorkflowRecord | undefined)
     setConflict(null);
     setSaveError(null);
     setRefusal(null);
-  }, []);
+  }, [forget]);
 
   /** What the canvas and the inspector draw: the draft, with its last check, or the saved workflow. */
   const record = useMemo((): WorkflowRecord | undefined => {
@@ -256,6 +305,10 @@ export function useWorkflowDraft(id: string, polled: WorkflowRecord | undefined)
     discard,
     refusal,
     clearRefusal: useCallback(() => setRefusal(null), []),
+    undo,
+    redo,
+    canUndo: past.current.length > 0,
+    canRedo: future.current.length > 0,
   };
 }
 

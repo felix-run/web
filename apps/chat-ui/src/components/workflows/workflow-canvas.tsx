@@ -19,6 +19,8 @@ import {
 } from '@/components/workflows/step-node';
 import { WHEN, wouldCycle } from '@/lib/workflow-draft';
 import {
+  type Direction,
+  neighbourOf,
   ORIGIN,
   positionsOf,
   stepsOf,
@@ -30,6 +32,12 @@ import {
 import type { WorkflowPortRef, WorkflowRecord, WorkflowRun } from '@/types';
 
 const NODE_TYPES = { step: StepNode };
+const ARROWS: Record<string, Direction | undefined> = {
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+};
 /** The least zoom a fit may choose: below it a port's 12px name renders under the type floor. */
 const MIN_FIT_ZOOM = 0.8;
 
@@ -297,6 +305,27 @@ function Canvas({
           source: { step: c.source, port: c.sourceHandle as string },
           target: { step: c.target, port: c.targetHandle as string },
         });
+      }}
+      // Arrow keys on a focused node move along the graph (`neighbourOf`) — and, caught here before
+      // React Flow's own handler, never nudge a draggable node a few pixels instead.
+      onKeyDownCapture={(e) => {
+        const direction = ARROWS[e.key];
+        const from = direction
+          ? (e.target as HTMLElement).closest('.react-flow__node')?.getAttribute('data-id')
+          : null;
+        if (!direction || !from || e.altKey || e.metaKey || e.ctrlKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const positions = new Map(nodes.map((n) => [n.id, n.position]));
+        const next = neighbourOf(positions, wiresOf(workflow.definition), from, direction);
+        if (!next) return;
+        if (next !== TRIGGER) {
+          onSelect(next);
+          return;
+        }
+        // The inputs are not a step to select, so they take focus alone.
+        onSelect(null);
+        document.querySelector<HTMLElement>(`.react-flow__node[data-id="${TRIGGER}"]`)?.focus();
       }}
       onNodeDragStop={(_event, _node, dragged) =>
         editing?.onMove(dragged.map((n) => ({ id: n.id, position: n.position })))

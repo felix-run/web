@@ -705,3 +705,49 @@ describe('a run, watched', () => {
     }
   });
 });
+
+describe('the keyboard', () => {
+  it('moves along a wire with the arrow keys, opening each step it reaches', async () => {
+    await page('/harness/workflows?workflow=triage');
+    const classify = await node('classify');
+    classify.focus();
+    fireEvent.keyDown(classify, { key: 'ArrowRight' });
+    expect(await screen.findByDisplayValue('approve')).toBeTruthy();
+    fireEvent.keyDown(await node('approve'), { key: 'ArrowLeft' });
+    expect(await screen.findByDisplayValue('classify')).toBeTruthy();
+  });
+
+  it('undoes and redoes an edit, back to nothing unsaved', async () => {
+    await page('/harness/workflows?workflow=triage');
+    fireEvent.click(await screen.findByRole('button', { name: 'Branch' }));
+    expect(await screen.findByText('Unsaved')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(screen.queryByText('Unsaved')).toBeNull());
+    expect(screen.queryByTestId('rf__node-branch')).toBeNull();
+    // ⇧⌘Z, from outside any text field.
+    fireEvent.keyDown(document.body, { key: 'z', metaKey: true, shiftKey: true });
+    expect(await screen.findByTestId('rf__node-branch')).toBeTruthy();
+    expect(screen.getByText('Unsaved')).toBeTruthy();
+  });
+
+  it('undoes a word typed as one step, not letter by letter', async () => {
+    await page('/harness/workflows?workflow=triage');
+    const description = await screen.findByLabelText('Description');
+    for (const value of ['t', 'ty', 'typ', 'typed']) {
+      fireEvent.change(description, { target: { value } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(screen.queryByText('Unsaved')).toBeNull());
+    expect(screen.getByLabelText('Description')).toHaveProperty('value', '');
+  });
+
+  it('leaves ⌘Z to a text field being typed in', async () => {
+    await page('/harness/workflows?workflow=triage');
+    const description = await screen.findByLabelText('Description');
+    fireEvent.change(description, { target: { value: 'typed' } });
+    expect(await screen.findByText('Unsaved')).toBeTruthy();
+    fireEvent.keyDown(description, { key: 'z', metaKey: true });
+    expect(screen.getByText('Unsaved')).toBeTruthy();
+    expect(description).toHaveProperty('value', 'typed');
+  });
+});
