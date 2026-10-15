@@ -411,6 +411,33 @@ export interface WorkflowRecord {
   problems: WorkflowProblem[];
 }
 
+/** POST /workflows/-/check: what a draft's nodes draw and what stops it running. */
+export interface WorkflowCheck {
+  ports: Record<string, WorkflowNodePorts | null>;
+  problems: WorkflowProblem[];
+}
+
+/** One step kind the harness can run (GET /workflows/-/kinds), built in or a plugin's. */
+export interface WorkflowKind {
+  name: string;
+  label: string;
+  /** The JSON Schema of the kind's `config`. */
+  config_schema: Record<string, unknown>;
+}
+
+/** A tool a `tool_call` step naming a manifest can call (GET /workflows/-/tools). */
+export interface WorkflowTool {
+  name: string;
+  description: string;
+  /** What the step stores as its `input_schema` when it is wired to this tool. */
+  input_schema: Record<string, unknown>;
+  /** The step's input ports; null when the tool cannot be wired as a step (`problem` says why). */
+  inputs: WorkflowPort[] | null;
+  problem?: string | null;
+  read_only: boolean;
+  replay_safe: boolean;
+}
+
 /** One row of GET /workflows. */
 export interface WorkflowSummary {
   id: string;

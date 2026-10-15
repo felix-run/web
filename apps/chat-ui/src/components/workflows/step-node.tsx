@@ -22,7 +22,7 @@ export type StepNodeData = {
   detail?: string;
   inputs: WorkflowPort[];
   outputs: WorkflowPort[];
-  /** Input ports with a wire into them: `when` is drawn only then. */
+  /** Input ports with a wire into them: outside the editor, `when` is drawn only then. */
   wiredInputs: ReadonlySet<string>;
   /** Set in run mode only. */
   status?: WorkflowStepStatus;
@@ -31,6 +31,8 @@ export type StepNodeData = {
   unknown?: boolean;
   /** A problem names this step: drawn in the definition view. */
   problems?: number;
+  /** The editor's canvas: ports take a wire dragged from them. */
+  editable?: boolean;
 };
 
 export type StepNodeType = Node<StepNodeData, 'step'>;
@@ -107,7 +109,20 @@ export function kindWord(kind: string): string {
   return KIND[kind]?.word ?? kind;
 }
 
-function PortRow({ port, side }: { port: WorkflowPort; side: 'in' | 'out' }) {
+/** A kind's icon; a kind this console does not know (a plugin's) takes the workflow mark. */
+export function kindIcon(kind: string): LucideIcon {
+  return KIND[kind]?.icon ?? WorkflowIcon;
+}
+
+function PortRow({
+  port,
+  side,
+  editable,
+}: {
+  port: WorkflowPort;
+  side: 'in' | 'out';
+  editable: boolean;
+}) {
   return (
     <div
       className={cn(
@@ -119,9 +134,11 @@ function PortRow({ port, side }: { port: WorkflowPort; side: 'in' | 'out' }) {
         type={side === 'in' ? 'target' : 'source'}
         position={side === 'in' ? Position.Left : Position.Right}
         id={port.name}
-        isConnectable={false}
+        isConnectable={editable}
         className={cn(
           '!size-2.5 !border-2 !border-background',
+          // Big enough to grab while editing, and ringed when a wire being dragged would land.
+          editable && '!size-3 [&.valid]:!ring-[3px] [&.valid]:!ring-ring',
           port.control
             ? '!rotate-45 !rounded-[2px] !bg-muted-foreground'
             : '!rounded-full !bg-foreground/70',
@@ -142,13 +159,21 @@ function PortRow({ port, side }: { port: WorkflowPort; side: 'in' | 'out' }) {
   );
 }
 
-function PortList({ ports, side }: { ports: WorkflowPort[]; side: 'in' | 'out' }) {
+function PortList({
+  ports,
+  side,
+  editable,
+}: {
+  ports: WorkflowPort[];
+  side: 'in' | 'out';
+  editable: boolean;
+}) {
   const shown = ports.slice(0, MAX_PORTS);
   const folded = ports.slice(MAX_PORTS);
   return (
     <div>
       {shown.map((p) => (
-        <PortRow key={p.name} port={p} side={side} />
+        <PortRow key={p.name} port={p} side={side} editable={editable} />
       ))}
       {folded.length ? (
         <div
@@ -178,7 +203,10 @@ function PortList({ ports, side }: { ports: WorkflowPort[]; side: 'in' | 'out' }
 function StepNodeView({ data, selected }: NodeProps<StepNodeType>) {
   const kind = KIND[data.kind];
   const Icon = kind?.icon ?? WorkflowIcon;
-  const inputs = data.inputs.filter((p) => p.name !== 'when' || data.wiredInputs.has('when'));
+  // `when` is drawn once wired, and always while editing, where it is a port to wire.
+  const inputs = data.inputs.filter(
+    (p) => p.name !== 'when' || data.editable || data.wiredInputs.has('when'),
+  );
   const quiet = data.status === 'skipped' || data.status === 'cancelled';
   return (
     <div
@@ -235,8 +263,8 @@ function StepNodeView({ data, selected }: NodeProps<StepNodeType>) {
         </p>
       ) : inputs.length || data.outputs.length ? (
         <div className="border-t border-border/60 py-1.5">
-          <PortList ports={inputs} side="in" />
-          <PortList ports={data.outputs} side="out" />
+          <PortList ports={inputs} side="in" editable={Boolean(data.editable)} />
+          <PortList ports={data.outputs} side="out" editable={Boolean(data.editable)} />
         </div>
       ) : null}
       {data.status === 'failed' && data.error ? (
