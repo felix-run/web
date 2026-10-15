@@ -25,6 +25,7 @@
  */
 
 import { createFelixClient, type LeaseRefusal } from '@felix/client';
+import { readSseStream } from '@felix/protocol';
 import { reportReachability } from '@/lib/connection';
 import { authHeaders, handleUnauthorized } from './lib/auth';
 import type {
@@ -882,24 +883,29 @@ export class WorkflowRouteError extends Error {
   }
 }
 
+/** A refused workflow response as the error it is, with the harness's own code. */
+async function workflowRefusal(res: Response): Promise<WorkflowRouteError> {
+  const parsed = await res.json().catch(() => null);
+  const detail =
+    parsed && typeof parsed === 'object' ? (parsed as { detail?: unknown }).detail : undefined;
+  const code =
+    typeof detail === 'string'
+      ? detail
+      : detail &&
+          typeof detail === 'object' &&
+          typeof (detail as { error?: unknown }).error === 'string'
+        ? (detail as { error: string }).error
+        : `http_${res.status}`;
+  return new WorkflowRouteError(res.status, code, detail);
+}
+
 async function workflowsFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<{ body: T; res: Response }> {
   const res = await apiFetch(`/api/workflows${path}`, init);
   if (!res.ok) {
-    const parsed = await res.json().catch(() => null);
-    const detail =
-      parsed && typeof parsed === 'object' ? (parsed as { detail?: unknown }).detail : undefined;
-    const code =
-      typeof detail === 'string'
-        ? detail
-        : detail &&
-            typeof detail === 'object' &&
-            typeof (detail as { error?: unknown }).error === 'string'
-          ? (detail as { error: string }).error
-          : `http_${res.status}`;
-    throw new WorkflowRouteError(res.status, code, detail);
+    throw await workflowRefusal(res);
   }
   return { body: (await res.json()) as T, res };
 }
@@ -1005,6 +1011,37 @@ export async function getWorkflowStepThread(
     `/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/thread`,
   );
   return body;
+}
+
+/**
+ * GET /workflows/{id}/runs/{run_id}/stream → each new version of the run's record, handed to
+ * `onRun` as it lands. `after` is the version already held: the stream starts past it.
+ *
+ * Resolves `true` once the run is over (the stream's `[DONE]`), `false` if the connection ended
+ * first, so the caller reconnects from the last version it saw. A refusal throws the
+ * `WorkflowRouteError` a read would; an error the harness reports mid-stream throws its message.
+ */
+export async function watchWorkflowRun(
+  id: string,
+  runId: string,
+  {
+    after,
+    signal,
+    onRun,
+  }: { after?: number | null; signal: AbortSignal; onRun: (run: WorkflowRun) => void },
+): Promise<boolean> {
+  const res = await apiFetch(
+    `/api/workflows/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}/stream`,
+    { signal, headers: after == null ? {} : { 'last-event-id': String(after) } },
+  );
+  if (!res.ok) throw await workflowRefusal(res);
+  let failed: string | null = null;
+  const finished = await readSseStream(res, (ev) => {
+    if (ev.event === 'workflow_run') onRun(ev.data as unknown as WorkflowRun);
+    else if (ev.event === 'on_error') failed = String(ev.data.message ?? 'the run stream failed');
+  });
+  if (failed) throw new Error(failed);
+  return finished;
 }
 
 /**

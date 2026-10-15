@@ -891,7 +891,7 @@ outline **Run now** beside it; the inspector is the right zone (`clamp(24rem, 32
 - **Nothing moves under the operator.** A saved position wins; the layered layout only places
   what was never placed, each column stacked by its nodes' real heights. The view is fitted once
   per workflow and never below 0.8 zoom, where a port's 12px name would drop under the floor; a
-  graph wider than that starts from its left edge and pans. Polls change states, never positions.
+  graph wider than that starts from its left edge and pans. Updates — the run's stream, or a poll on a harness without one — change states, never positions.
 - **The inspector.** Definition: the editor (below); on a phone, the selected step's config as
   Facts and code panes, with one line saying editing wants a wider window. Runs: *This run* as the
   run readout's stone tile (the state word at 18px), then every waiting gate as the approval card

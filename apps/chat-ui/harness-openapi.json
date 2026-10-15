@@ -237,6 +237,9 @@
     "/workflows/{workflow_id}/runs/{run_id}/steps/{step_id}/thread": {
       "get": {}
     },
+    "/workflows/{workflow_id}/runs/{run_id}/stream": {
+      "get": {}
+    },
     "/workflows/{workflow_id}/runs/{run_id}/cancel": {
       "post": {}
     },

@@ -145,6 +145,7 @@ async function page(
     startWorkflowRun?: (...a: unknown[]) => Promise<unknown>;
     getWorkflowRun?: (...a: unknown[]) => Promise<unknown>;
     getWorkflowStepThread?: (...a: unknown[]) => Promise<unknown>;
+    watchWorkflowRun?: (...a: unknown[]) => Promise<unknown>;
     checkWorkflow?: (...a: unknown[]) => Promise<unknown>;
     saveWorkflow?: (...a: unknown[]) => Promise<unknown>;
     listWorkflowTools?: (...a: unknown[]) => Promise<unknown>;
@@ -175,6 +176,15 @@ async function page(
         opts.runs ?? [{ ...RUN, step_statuses: { classify: 'completed', approve: 'waiting' } }],
       ),
     getWorkflowRun: vi.fn(opts.getWorkflowRun ?? (() => Promise.resolve(RUN))),
+    // A live stream by default: the run as it stands, then open until the page lets it go.
+    watchWorkflowRun: vi.fn(
+      opts.watchWorkflowRun ??
+        ((_id: unknown, _run: unknown, o: unknown) => {
+          const { signal, onRun } = o as { signal: AbortSignal; onRun: (r: unknown) => void };
+          onRun(RUN);
+          return new Promise((resolve) => signal.addEventListener('abort', () => resolve(false)));
+        }),
+    ),
     startWorkflowRun,
     getWorkflowStepThread: vi.fn(opts.getWorkflowStepThread ?? (() => Promise.resolve(TRANSCRIPT))),
     cancelWorkflowRun: vi.fn().mockResolvedValue({ ...RUN, status: 'cancelling' }),
@@ -212,6 +222,7 @@ async function page(
     getRun,
     getThread,
     saveWorkflow: mocked.saveWorkflow as ReturnType<typeof vi.fn>,
+    watch: mocked.watchWorkflowRun as ReturnType<typeof vi.fn>,
     checkWorkflow: mocked.checkWorkflow as ReturnType<typeof vi.fn>,
   };
 }
@@ -375,6 +386,7 @@ describe('a run that is not there', () => {
       const asked = getRun.mock.calls.length;
       await vi.advanceTimersByTimeAsync(10_000);
       expect(getRun.mock.calls.length).toBe(asked);
+      expect(screen.getByText(/This run is not there/)).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
@@ -621,5 +633,75 @@ describe('a new workflow', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Triage' } });
     fireEvent.click(screen.getByRole('button', { name: /Create/ }));
     expect(await screen.findByText('A workflow with this id exists.')).toBeTruthy();
+  });
+});
+
+describe('a run, watched', () => {
+  const DONE_RUN = {
+    ...RUN,
+    status: 'completed',
+    version: 6,
+    steps: { ...RUN.steps, approve: { status: 'completed', fired: ['approved'] } },
+  };
+
+  it('moves its nodes as the stream sends each version, with no poll', async () => {
+    let send: (run: unknown) => void = () => {};
+    const { getRun } = await page('/harness/workflows?workflow=triage&view=run', {
+      watchWorkflowRun: (_id, _run, o) => {
+        const { signal, onRun } = o as { signal: AbortSignal; onRun: (r: unknown) => void };
+        send = onRun;
+        return new Promise((resolve) => signal.addEventListener('abort', () => resolve(false)));
+      },
+    });
+    await waitFor(async () =>
+      expect((await node('approve')).getAttribute('aria-label')).toContain('status waiting'),
+    );
+    const reads = getRun.mock.calls.length;
+    send(DONE_RUN);
+    await waitFor(async () =>
+      expect((await node('approve')).getAttribute('aria-label')).toContain('status completed'),
+    );
+    expect(getRun.mock.calls.length).toBe(reads);
+  });
+
+  it('reconnects a dropped stream from the last version it held', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let calls = 0;
+      const { watch } = await page('/harness/workflows?workflow=triage&view=run', {
+        watchWorkflowRun: (_id, _run, o) => {
+          const { signal, onRun } = o as { signal: AbortSignal; onRun: (r: unknown) => void };
+          calls += 1;
+          if (calls === 1) {
+            onRun({ ...RUN, version: 5 });
+            return Promise.resolve(false); // the connection dropped
+          }
+          return new Promise((resolve) => signal.addEventListener('abort', () => resolve(false)));
+        },
+      });
+      await waitFor(() => expect(watch).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(1_500);
+      await waitFor(() => expect(watch).toHaveBeenCalledTimes(2));
+      expect((watch.mock.calls[1][2] as { after: number }).after).toBe(5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks instead, on a harness that has no stream route', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const api = await vi.importActual<typeof import('../src/api')>('../src/api');
+      const { getRun } = await page('/harness/workflows?workflow=triage&view=run', {
+        watchWorkflowRun: () =>
+          Promise.reject(new api.WorkflowRouteError(404, 'Not Found', 'Not Found')),
+      });
+      await waitFor(() => expect(getRun).toHaveBeenCalled());
+      const asked = getRun.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(4_500);
+      expect(getRun.mock.calls.length).toBeGreaterThan(asked);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

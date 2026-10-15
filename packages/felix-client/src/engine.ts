@@ -857,6 +857,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       // on a stream that is not a reattach.
       case 'snapshot':
         break;
+      // A workflow run's stream sends this, and only the Workflows page reads that stream. Listed so
+      // the frame is not silently unhandled if it ever reaches a chat stream.
+      case 'workflow_run':
+        break;
       // Normalised by `readSseStream` from the harness's `event: error` frame —
       // the one SSE-typed frame, and the only way a stream reports a failure that
       // happened after its 200 was already sent.
