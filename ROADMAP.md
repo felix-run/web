@@ -95,18 +95,18 @@ own — rather than one rule that hides them all, since an operator may be looki
 
 The editor (`components/workflows/workflow-editor.tsx`, `lib/workflow-draft.ts`) covers the palette,
 dragging, wiring by handle and by *Connect from…*, the kinds' forms, the harness's check on every
-draft, conditional saves with *Keep mine* / *Take theirs*, Tidy and ⌘S. The shape brief asked for
-more, and these are open:
+draft, conditional saves with *Keep mine* / *Take theirs*, Tidy, ⌘S, undo and redo, and arrow keys
+along wires. The shape brief asked for more, and these are open:
 
-- **Arrow keys along wires.** A node is focusable and Enter opens it, but nothing moves focus from
-  a node to its neighbours; the keyboard reaches a node off screen only through a Problems row or
-  a *Connect from…* list.
 - **Dimming what a dragged wire cannot reach.** A drop that would land rings its handle; the rest
   are not dimmed, and a type mismatch is only known once the harness checks the drop.
-- **Undo.** Discard drops the whole draft; there is no step back.
 - **F for full screen**, and the palette and inspector as sheets below 1024 (they stack instead).
-- **The instrument's compact graph** for a thread a run produced: it needs the harness to say,
-  from a thread, which run and step it belongs to.
+
+One item is dropped rather than open: a **compact read-only graph in the instrument** for a thread
+a workflow step produced. It assumed a step's thread opens as a chat thread, and it does not, on
+purpose — no chat route can address one, so no chat client can write into a step's history
+(felix#645). A step's transcript is read in the run inspector, beside the whole graph, so there is
+no thread view for the compact one to sit in.
 
 ### `MemoryRecord.embedding_json` stays unmodelled, on purpose
 

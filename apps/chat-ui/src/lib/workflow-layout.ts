@@ -202,3 +202,47 @@ export function stepTone(status: WorkflowStepStatus): StateTone {
       return 'idle';
   }
 }
+
+export type Direction = 'left' | 'right' | 'up' | 'down';
+
+/**
+ * Where an arrow key goes from node `from`: right along a wire out of it, left along one into it,
+ * up and down to the nearest node in the same column. Of several wired neighbours, the one level
+ * with `from` (the nearest in y) — so right, right, right follows a path the way the eye does.
+ * `null` when there is nowhere to go, so the key does nothing rather than jump.
+ */
+export function neighbourOf(
+  positions: ReadonlyMap<string, { x: number; y: number }>,
+  wires: Wire[],
+  from: string,
+  direction: Direction,
+): string | null {
+  const at = positions.get(from);
+  if (!at) return null;
+  const nearest = (ids: Iterable<string>, score: (p: { x: number; y: number }) => number) => {
+    let best: string | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const id of ids) {
+      const p = positions.get(id);
+      if (!p || id === from) continue;
+      const v = score(p);
+      if (v < bestScore || (v === bestScore && best !== null && id < best)) {
+        best = id;
+        bestScore = v;
+      }
+    }
+    return best;
+  };
+  if (direction === 'right' || direction === 'left') {
+    const linked = wires
+      .filter((w) => (direction === 'right' ? w.source === from : w.target === from))
+      .map((w) => (direction === 'right' ? w.target : w.source));
+    return nearest(new Set(linked), (p) => Math.abs(p.y - at.y));
+  }
+  const below = direction === 'down';
+  const column = [...positions.keys()].filter((id) => {
+    const p = positions.get(id) as { x: number; y: number };
+    return Math.abs(p.x - at.x) < COL_WIDTH / 2 && (below ? p.y > at.y : p.y < at.y);
+  });
+  return nearest(column, (p) => Math.abs(p.y - at.y));
+}

@@ -7,7 +7,9 @@ import {
   LoaderIcon,
   PlayIcon,
   PlusIcon,
+  Redo2Icon,
   SaveIcon,
+  Undo2Icon,
   WandSparklesIcon,
   WorkflowIcon,
   XIcon,
@@ -362,22 +364,32 @@ function WorkflowDetail({ id }: { id: string }) {
   // The saved workflow is what runs; the draft, while there is one, is what the definition view edits.
   const wf: WorkflowRecord | undefined = draft.saved;
   const shown: WorkflowRecord | undefined = view === 'definition' ? draft.record : wf;
-  const { dirty, save } = draft;
+  const { dirty, save, undo, redo } = draft;
 
-  // ⌘S / Ctrl+S saves the draft, wherever focus is on the page.
+  // ⌘S / Ctrl+S saves the draft, wherever focus is on the page. ⌘Z / ⇧⌘Z (Ctrl+Z / Ctrl+Y)
+  // step the draft back and forward — except in a text field, where they are the field's own.
   useEffect(() => {
     if (!editing) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 's') {
         e.preventDefault();
         // A field that writes on leaving it (an id, JSON) writes first, then the save reads it.
         (document.activeElement as HTMLElement | null)?.blur();
         setTimeout(save, 0);
+        return;
       }
+      if (key !== 'z' && key !== 'y') return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) redo();
+      else undo();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing, save]);
+  }, [editing, save, undo, redo]);
   // Closing the tab on unsaved edits asks first; moving within the app keeps the draft.
   useEffect(() => {
     if (!dirty) return;
@@ -480,6 +492,26 @@ function WorkflowDetail({ id }: { id: string }) {
                     Unsaved
                   </span>
                 ) : null}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Undo"
+                  aria-keyshortcuts="Meta+Z Control+Z"
+                  disabled={!draft.canUndo}
+                  onClick={undo}
+                >
+                  <Undo2Icon />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Redo"
+                  aria-keyshortcuts="Meta+Shift+Z Control+Y"
+                  disabled={!draft.canRedo}
+                  onClick={redo}
+                >
+                  <Redo2Icon />
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
