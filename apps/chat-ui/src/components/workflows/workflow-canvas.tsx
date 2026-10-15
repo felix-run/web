@@ -165,6 +165,22 @@ export function buildEdges(
   });
 }
 
+/**
+ * Whether a wire from `out` into `into` is one the canvas lets be drawn. A drop the harness would
+ * refuse anyway is refused before it is drawn: into itself, a loop, the workflow's inputs, or a
+ * control port wired to a data port. A type mismatch is the harness's check to judge.
+ */
+export function wireFits(
+  workflow: WorkflowRecord,
+  out: { node: string; port: string },
+  into: { node: string; port: string },
+): boolean {
+  if (into.node === TRIGGER || wouldCycle(workflow.definition, out.node, into.node)) return false;
+  const from = workflow.ports[out.node]?.outputs.find((p) => p.name === out.port);
+  const to = workflow.ports[into.node]?.inputs.find((p) => p.name === into.port);
+  return !from || !to || from.control === to.control;
+}
+
 /** What the editor does with the canvas: every change goes back through the page's draft. */
 export interface CanvasEditing {
   /** Nodes the author dragged, where they were dropped. */
@@ -188,9 +204,30 @@ function Canvas({
   editing?: CanvasEditing | undefined;
 }) {
   const editable = Boolean(editing);
+  // The output a wire is being dragged from, while one is: every input it may not land on is drawn
+  // quiet, so the ones it may stand out before the drop rather than after it.
+  const [dragging, setDragging] = useState<{ node: string; port: string } | null>(null);
   const built = useMemo(
-    () => buildNodes(workflow, run, editable).map((n) => ({ ...n, selected: n.id === selected })),
-    [workflow, run, selected, editable],
+    () =>
+      buildNodes(workflow, run, editable).map((n) => ({
+        ...n,
+        selected: n.id === selected,
+        ...(dragging
+          ? {
+              data: {
+                ...n.data,
+                unreachable: new Set(
+                  n.data.inputs
+                    .filter(
+                      (into) => !wireFits(workflow, dragging, { node: n.id, port: into.name }),
+                    )
+                    .map((into) => into.name),
+                ),
+              },
+            }
+          : {}),
+      })),
+    [workflow, run, selected, editable, dragging],
   );
   // Held in the flow's own state, not passed fresh: every poll rebuilds the nodes, and a node handed
   // over without the size React Flow measured is hidden until measured again — which, its DOM size
@@ -212,20 +249,14 @@ function Canvas({
     });
   }, [builtEdges, setEdges]);
 
-  // A drop the harness would refuse anyway is refused here, before it is drawn: into itself, a
-  // loop, or a control port wired to a data port. A type mismatch is the check's to judge.
   const isValidConnection = useCallback(
-    (c: Connection | Edge) => {
-      const source = c.source;
-      const target = c.target;
-      const sourcePort = c.sourceHandle;
-      const targetPort = c.targetHandle;
-      if (!source || !target || !sourcePort || !targetPort) return false;
-      if (target === TRIGGER || wouldCycle(workflow.definition, source, target)) return false;
-      const out = workflow.ports[source]?.outputs.find((p) => p.name === sourcePort);
-      const into = workflow.ports[target]?.inputs.find((p) => p.name === targetPort);
-      return !out || !into || out.control === into.control;
-    },
+    (c: Connection | Edge) =>
+      Boolean(c.source && c.target && c.sourceHandle && c.targetHandle) &&
+      wireFits(
+        workflow,
+        { node: c.source, port: c.sourceHandle as string },
+        { node: c.target, port: c.targetHandle as string },
+      ),
     [workflow],
   );
   const { fitView, getViewport, setViewport } = useReactFlow();
@@ -299,6 +330,12 @@ function Canvas({
       nodesDraggable={editable}
       nodesConnectable={editable}
       isValidConnection={isValidConnection}
+      onConnectStart={(_e, { nodeId, handleId, handleType }) => {
+        if (editable && nodeId && handleId && handleType === 'source') {
+          setDragging({ node: nodeId, port: handleId });
+        }
+      }}
+      onConnectEnd={() => setDragging(null)}
       onConnect={(c) => {
         if (!editing || !isValidConnection(c)) return;
         editing.onConnect({

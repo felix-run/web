@@ -902,8 +902,10 @@ outline **Run now** beside it; the inspector is the right zone (`clamp(24rem, 32
   place. A **step palette** sits left of the canvas (a 176px column from 1024, a wrapping row of
   ghost pills above the canvas below it): one pill per kind the harness lists, its icon and word,
   pressing one adds the step beside the selected node and selects it. Nodes drag; a wire is drawn
-  from an output handle to an input handle, which ring when a drop would land, and the canvas
-  refuses into itself, a loop, or control into data before drawing it. A type mismatch is the
+  from an output handle to an input handle. While one is dragged, every input it may not land on —
+  its own step's, one that would close a loop, control for data or data for control — goes quiet
+  (a hollow handle, the name muted), and a handle that would take the drop rings; the canvas
+  refuses the rest before drawing them. A type mismatch is the
   harness's call: the drop is checked at once and, refused, says so in a card along the canvas's
   foot (`state-failed` text, dismissable), wiring nothing. Delete removes the selected step or
   wire. The inspector edits the selected step — name, id, the kind's fields (a JSON field for a
@@ -914,6 +916,10 @@ outline **Run now** beside it; the inspector is the right zone (`clamp(24rem, 32
 - **The keyboard walks the graph.** On a focused node, → and ← follow a wire out and in (to the
   neighbour level with it), ↑ and ↓ move within the column; each step reached opens in the
   inspector, as a click would. While editing, they never nudge a node — dragging is the pointer's.
+- **F gives the canvas the window.** The canvas alone, `fixed` over everything on `ground`, with an
+  outline **Exit full screen** pill in its top-right corner; F or Escape again brings the sheet,
+  palette and inspector back. The header's maximise icon button does the same. Typed into a field,
+  F is the field's.
 - **Saving is explicit.** The header carries an amber dot and *Unsaved*, **Undo** and **Redo**
   (icon buttons; ⌘Z and ⇧⌘Z outside a text field, edits within 600ms undo as one), **Tidy**,
   **Discard** and **Save** (ink when there is something to save; ⌘S anywhere on the page); Run now waits, since a
