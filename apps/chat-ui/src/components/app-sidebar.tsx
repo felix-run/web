@@ -45,7 +45,7 @@ import { useShell } from '@/shell-context';
  *
  * Top to bottom by how often each is the reason to open it — New chat, then the
  * threads (pinned, then by last activity), then the folder the agent works on,
- * then the harness's own pages — those last in debug mode only. Debug off, the
+ * then the harness's own pages — those last in harness view only. Everyday, the
  * sidebar is the daily one: New chat, threads, workspace, and a Skill drafts row
  * that appears only while drafts wait on a review. It replaced three separate ways in: a threads
  * popover hung off the workspace header (the only door to another conversation,
@@ -71,7 +71,7 @@ export function AppSidebar() {
     tenantApprovals,
     runningThreads,
     blockedThreads,
-    debug,
+    harnessView,
   } = useShell();
   const { state, open, isMobile, setOpen, setOpenMobile, toggleSidebar } = useSidebar();
   const collapsed = state === 'collapsed' && !isMobile;
@@ -262,9 +262,9 @@ export function AppSidebar() {
                 all to this region.
 
                 One order, on every address and in both modes: Harness, then the
-                workspace. It followed the address in debug, and the row clicked to
-                arrive jumped 142px when the two swapped. Debug shows all ten
-                destinations; debug off shows its few rows — Activity, and Skill
+                workspace. It followed the address once, and the row clicked to
+                arrive jumped 142px when the two swapped. Harness view shows all
+                ten destinations; everyday shows its few rows — Activity, and Skill
                 drafts while drafts wait — on `/harness` as on a thread, so nothing
                 changes under the pointer on arrival. The workspace is one row; its
                 trees are the side pane's Files tab. */}
@@ -272,14 +272,14 @@ export function AppSidebar() {
               data-slot="sidebar-lower"
               className={cn(
                 'flex flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]',
-                // Debug off the rows are three at most — Activity, Skill drafts
+                // Everyday the rows are three at most — Activity, Skill drafts
                 // while drafts wait, Workspace — so the region is sized for all
                 // three (still fixed, so nothing moves when drafts come and go);
                 // 32.5rem would leave a band of nothing where thread rows could be.
-                debug ? 'h-[clamp(40svh,32.5rem,60svh)]' : 'h-[min(40svh,13rem)]',
+                harnessView ? 'h-[clamp(40svh,32.5rem,60svh)]' : 'h-[min(40svh,13rem)]',
               )}
             >
-              {debug ? (
+              {harnessView ? (
                 <HarnessGroup collapsed={false} onNavigate={done} />
               ) : (
                 <DailyHarnessRows collapsed={false} onNavigate={done} />
@@ -290,7 +290,7 @@ export function AppSidebar() {
         )}
         {collapsed && (
           <>
-            {debug ? (
+            {harnessView ? (
               <HarnessGroup collapsed onNavigate={done} />
             ) : (
               <DailyHarnessRows collapsed onNavigate={done} />
@@ -431,17 +431,16 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
 }
 
 /**
- * Debug off, the harness pages the sidebar still points at. **Activity**, always:
+ * Everyday, the harness pages the sidebar still points at. **Activity**, always:
  * it answers "what happened while I was away", which is the daily surface's
- * question as much as debug's, and it was reachable only through a mode the menu
- * describes as ids and instruments. **Skill drafts**, only while there is a
+ * question as much as harness view's. **Skill drafts**, only while there is a
  * reason to go — drafts an agent wrote, waiting on a person's review. The other
- * seven are debug's, on `/harness` too: debug off, the harness is Activity
+ * seven are harness view's, on `/harness` too: everyday, the harness is Activity
  * (and a review queue when one waits), not a console.
  *
  * A failed check keeps a count it already had (with its age); a check that never
  * answered draws nothing on these rows, because "unchecked" is a fact about the
- * harness, which is debug's to say.
+ * harness, which is harness view's to say.
  */
 function DailyHarnessRows({
   collapsed,
@@ -491,7 +490,7 @@ function DailyHarnessRows({
       : []),
   ];
   // Drawn in `HarnessGroup`'s frame, row for row — the heading, each run's
-  // label, the same menu rows — so turning debug on adds the other destinations
+  // label, the same menu rows — so harness view adds the other destinations
   // below Activity and moves nothing above it.
   return (
     <SidebarGroup data-slot="daily-harness" className="pt-1">

@@ -6,8 +6,8 @@ import type { Turn } from '@/types';
 const nf = new Intl.NumberFormat();
 
 /**
- * A turn's plumbing, under it, in debug mode: its server event ids and what the
- * client holds of its spend. One quiet mono line, never a card — it annotates
+ * A turn's plumbing, under it: what the client holds of its spend (harness view)
+ * and, in debug, its server event ids. One quiet mono line, never a card — it annotates
  * the turn, it is not a second thing to read.
  *
  * Only what the turn carries. `usage` is the final model call's block, which the
@@ -17,12 +17,14 @@ const nf = new Intl.NumberFormat();
  * `in` is the whole prompt, and the cache's share of it is shown, not hidden in
  * a title — in debug the split is the point.
  */
-export function TurnDebugLine({ turn }: { turn: Turn }) {
+export function TurnDebugLine({ turn, ids = true }: { turn: Turn; ids?: boolean }) {
   const parts: React.ReactNode[] = [];
-  if (turn.eventId) parts.push(<DebugId key="event" label="event" value={turn.eventId} />);
-  else parts.push(<span key="event">event not yet assigned</span>);
-  if (turn.parentEventId) {
-    parts.push(<DebugId key="parent" label="parent" value={turn.parentEventId} />);
+  if (ids) {
+    if (turn.eventId) parts.push(<DebugId key="event" label="event" value={turn.eventId} />);
+    else parts.push(<span key="event">event not yet assigned</span>);
+    if (turn.parentEventId) {
+      parts.push(<DebugId key="parent" label="parent" value={turn.parentEventId} />);
+    }
   }
   if (turn.role === 'assistant') {
     const u = turn.usage;
@@ -40,7 +42,11 @@ export function TurnDebugLine({ turn }: { turn: Turn }) {
         </span>,
       );
     } else if (turn.tools?.length) {
-      parts.push(<span key="tokens">per-call tokens in the Debug tab</span>);
+      parts.push(
+        <span key="tokens">
+          {ids ? 'per-call tokens in the Debug tab' : 'per-call tokens in Activity'}
+        </span>,
+      );
     } else if (turn.content) {
       parts.push(<span key="tokens">no usage sent</span>);
     }
@@ -48,6 +54,7 @@ export function TurnDebugLine({ turn }: { turn: Turn }) {
       parts.push(<span key="ctx">{nf.format(turn.contextTokens)} in context</span>);
     }
   }
+  if (!parts.length) return null;
   return (
     <div
       data-slot="turn-debug"

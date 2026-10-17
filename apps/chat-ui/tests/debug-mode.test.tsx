@@ -14,10 +14,11 @@ import { resetPresence } from '../src/lib/presence';
 import type { ClientDiagnostics } from '../src/shell-context';
 
 /**
- * Debug off is the daily surface; debug on brings the mechanism back. What is
- * pinned here is the line between them: the instrument, the harness's pages and
- * the header's mechanics leave with debug, and what waits on a person — here, a
- * skill draft — does not.
+ * The View setting is a ladder. Everyday is the daily surface; harness view
+ * brings the operator's surfaces back; debug adds the plumbing. What is pinned
+ * here is the line between each: the instrument, the harness's pages and the
+ * header's mechanics are harness view's, the badge and the Debug tab are debug's,
+ * and what waits on a person — here, a skill draft — is everyone's.
  */
 
 let drafts: unknown[] = [];
@@ -70,13 +71,20 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('debug off, the daily surface', () => {
+const debugBadge = () => document.querySelector('header [data-slot="debug-mode"]');
+
+async function choose(user: ReturnType<typeof userEvent.setup>, level: RegExp) {
+  await user.click(await screen.findByRole('button', { name: 'Session' }));
+  await user.click(await screen.findByRole('menuitemradio', { name: level }));
+}
+
+describe('everyday, the daily surface', () => {
   it('has no instrument, no harness pages and no mode badge', async () => {
     mount('/t/daily');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Session' })).toBeTruthy());
     expect(instrumentToggle()).toBeNull();
     expect(harnessNav()).toBeNull();
-    expect(document.querySelector('header [data-slot="debug-mode"]')).toBeNull();
+    expect(debugBadge()).toBeNull();
     expect(document.querySelector('[data-slot="skill-drafts"]')).toBeNull();
   });
 
@@ -91,39 +99,70 @@ describe('debug off, the daily surface', () => {
     expect(row.textContent).toContain('Skill drafts');
     expect(row.textContent).toContain('1 waiting');
     expect(row.querySelector('a')?.getAttribute('href')).toBe('/harness/skills');
-    // Still not the other pages: those are debug's, or `/harness`'s.
+    // Still not the other pages: those are harness view's, or `/harness`'s.
     expect(harnessNav()).toBeNull();
   });
+});
 
-  it('comes on from the Session menu, and is remembered under its own key', async () => {
-    localStorage.setItem('felix.verbose', '0');
+describe('harness view', () => {
+  it('brings the instrument and the harness pages, and no Debug badge', async () => {
     mount('/t/daily');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Session' }));
-    await user.click(await screen.findByRole('menuitemcheckbox', { name: /Debug/ }));
+    await choose(user, /^Harness view/);
     await waitFor(() => expect(harnessNav()).not.toBeNull());
     expect(instrumentToggle()).not.toBeNull();
-    expect(document.querySelector('header [data-slot="debug-mode"]')).not.toBeNull();
-    expect(localStorage.getItem('felix.debug')).toBe('1');
-    expect(localStorage.getItem('felix.verbose')).toBeNull();
+    expect(debugBadge()).toBeNull();
+    expect(localStorage.getItem('felix.view')).toBe('harness');
+  });
 
-    // The badge is the way back out.
+  it('is a level below debug, which adds the badge', async () => {
+    localStorage.setItem('felix.view', 'harness');
+    mount('/t/daily');
+    const user = userEvent.setup();
+    await choose(user, /^Harness \+ debug/);
+    await waitFor(() => expect(debugBadge()).not.toBeNull());
+
+    // The badge goes back to the level debug came from: harness view, here.
+    await user.click(screen.getByRole('button', { name: 'Debug on, turn off' }));
+    await waitFor(() => expect(debugBadge()).toBeNull());
+    expect(harnessNav()).not.toBeNull();
+    expect(localStorage.getItem('felix.view')).toBe('harness');
+  });
+
+  it('turning debug off from everyday goes back to everyday', async () => {
+    mount('/t/daily');
+    const user = userEvent.setup();
+    await choose(user, /^Harness \+ debug/);
+    await waitFor(() => expect(debugBadge()).not.toBeNull());
     await user.click(screen.getByRole('button', { name: 'Debug on, turn off' }));
     await waitFor(() => expect(harnessNav()).toBeNull());
     expect(instrumentToggle()).toBeNull();
+    expect(localStorage.getItem('felix.view')).toBe('everyday');
+  });
+
+  it('starts a browser that had Debug or Verbose on at debug, and drops the old keys', async () => {
+    localStorage.setItem('felix.debug', '1');
+    localStorage.setItem('felix.verbose', '1');
+    mount('/t/daily');
+    await waitFor(() => expect(debugBadge()).not.toBeNull());
+    expect(localStorage.getItem('felix.view')).toBe('debug');
+    expect(localStorage.getItem('felix.debug')).toBeNull();
+    expect(localStorage.getItem('felix.verbose')).toBeNull();
   });
 
   it('is offered on /harness too, which it governs', async () => {
     mount('/harness/memory');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'View' }));
-    expect(await screen.findByRole('menuitemcheckbox', { name: /Debug/ })).toBeTruthy();
+    expect(await screen.findByRole('menuitemradio', { name: /^Harness view/ })).toBeTruthy();
+    expect(screen.getByRole('menuitemradio', { name: /^Everyday/ })).toBeTruthy();
     await user.keyboard('{Escape}');
   });
 });
 
-describe('/debug', () => {
-  it('answers to the name Verbose had', () => {
+describe('/view and /debug', () => {
+  it('has /view for the ladder, and /debug under the name Verbose had', () => {
+    expect(findSlashCommand('view')?.action).toBe('view');
     expect(findSlashCommand('debug')?.action).toBe('debug');
     expect(findSlashCommand('verbose')?.action).toBe('debug');
     expect(matchSlashCommands('verb').map((c) => c.name)).toEqual(['debug']);

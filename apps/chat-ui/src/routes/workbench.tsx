@@ -116,6 +116,7 @@ export function Workbench() {
     sideQuestion,
     askAboutThread,
     dismissSideQuestion,
+    harnessView,
     debug,
     harnessReachable,
     inspectorOpen,
@@ -163,9 +164,9 @@ export function Workbench() {
     () => manifestEntries.find((m) => m.id === manifest)?.commands,
     [manifestEntries, manifest],
   );
-  // The meter is debug's — except a window nearly full, which is about to change
-  // what the agent can see, and so is the daily user's to know too.
-  const context = debug || (fill && fill.share >= NEARLY_FULL) ? fill : null;
+  // The meter is harness view's — except a window nearly full, which is about to
+  // change what the agent can see, and so is the everyday user's to know too.
+  const context = harnessView || (fill && fill.share >= NEARLY_FULL) ? fill : null;
   // The selected agent's styles. A stored name it does not declare reads as its default,
   // which is what the harness runs, so the picker says Default rather than a stale name.
   const agentEntry = manifestEntries.find((m) => m.id === manifest);
@@ -186,7 +187,7 @@ export function Workbench() {
   // The side pane. Where the instrument is a column it takes the instrument's
   // place (the shell hands the zone over: `app-shell.tsx`); below that it sits
   // beside the transcript wherever both fit their floors, and over the sheet
-  // where they do not (`usePaneLayout`). It is the daily surface's, not debug's:
+  // where they do not (`usePaneLayout`). It is the everyday surface's, not harness view's:
   // reading what the agent wrote is the outcome, not the mechanism.
   const row = useRef<HTMLDivElement>(null);
   const layout = usePaneLayout(row);
@@ -240,6 +241,7 @@ export function Workbench() {
                       ? { onSwitchBranch: switchBranch }
                       : {})}
                     verbose={debug}
+                    usage={harnessView}
                     debug={debug}
                     onRegenerate={
                       drives && isLast && t.role === 'assistant' ? regenerate : undefined

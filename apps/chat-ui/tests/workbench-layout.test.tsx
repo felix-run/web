@@ -102,8 +102,10 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     manifestOptions: ['cowork'],
     manifestEntries: [],
     refreshCanary: () => {},
+    view: 'debug',
+    setView: () => {},
+    harnessView: true,
     debug: true,
-    setDebug: () => {},
     inspectClient: () => ({
       at: 0,
       threadId: 't1',
@@ -172,7 +174,7 @@ function mountInstrument(over: Partial<ShellValue> = {}) {
 beforeEach(() => {
   localStorage.clear();
   // These pin debug-mode surfaces (the instrument, the harness pages).
-  localStorage.setItem('felix.debug', '1');
+  localStorage.setItem('felix.view', 'debug');
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response(JSON.stringify({ requests: [], items: [] }), { status: 200 })),
@@ -433,6 +435,13 @@ describe('the dropped-connection notice', () => {
 });
 
 describe('the run instrument', () => {
+  // The Debug tab is the debug level's; harness view has the other three.
+  it('draws the Debug tab only at the debug level', async () => {
+    mountInstrument({ view: 'harness', debug: false });
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools']);
+  });
+
   /**
    * The tab strip is a real tab widget, not roles painted on buttons.
    *

@@ -57,6 +57,7 @@ export function Message({
   feedback,
   onRate,
   verbose = false,
+  usage = false,
   debug = false,
 }: {
   turn: Turn;
@@ -81,7 +82,9 @@ export function Message({
   onRate?: (rating: 'up' | 'down' | null, opts?: { note?: string; evalDataset?: string }) => void;
   /** Expand tool I/O and surface tool counts when set. */
   verbose?: boolean;
-  /** Debug mode: the turn's ids and the spend the client holds, under it. */
+  /** Harness view: the spend the client holds for a reply, under it. */
+  usage?: boolean;
+  /** Debug: the turn's ids under it too, and the harness's wording on a note. */
   debug?: boolean;
 }) {
   if (turn.role === 'note' && turn.note?.workspaceEdit) {
@@ -225,9 +228,9 @@ export function Message({
         </Marker>
       )}
 
-      {/* Debug's, with the rest of the mechanism: the daily surface says what
-          the agent did, and the Debug tab and this line say what it cost. */}
-      {debug && !streaming && <TurnDebugLine turn={turn} />}
+      {/* Harness view's: the everyday surface says what the agent did, and this
+          line says what it cost — with the turn's ids beside it in debug. */}
+      {(usage || debug) && !streaming && <TurnDebugLine turn={turn} ids={debug} />}
 
       {/* A turn carrying reasoning already says "Thinking" in its own block. */}
       {empty && streaming && !turn.reasoning?.length && <AwaitingStatus />}

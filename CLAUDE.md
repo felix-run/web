@@ -354,24 +354,32 @@ becomes one too. The instrument goes first because it is reference material, and
 cannot wait is already in the attention line and the banner above the composer — neither of which
 lives in a rail. The sidebar goes last because it holds every way to anywhere else.
 
-**Debug off is the daily surface, and most of the above is debug's** (2026-10-10). One mode,
-`ShellValue.debug` (`felix.debug`; `felix.verbose`, Verbose's old key, migrates on), toggled from
-the menu's View group on both addresses, `/debug` (`/verbose` is an alias in `slash-commands.tsx`)
-or the header badge. Off, the shell renders **no instrument** — `useRails({ enabled })` reads it
-closed and refuses to open it, keeping the stored preference for when debug returns, and the
-`Mod+'` handler checks `debugRef` — **one harness page** in the sidebar, *Activity* with its
-failure glance (`useActivityGlance`), since it answers "what happened while I was away" (2026-10-12),
-plus a *Skill drafts* row from `useDraftGlance` while drafts wait — the same rows on `/harness`
-(2026-10-12: listing all nine there read as the mechanism leaking into the daily surface), and
-the 768–1024 rail and the phone index list the same — no agent id or canary in the header, no context
-meter below 90% full, and no tokens under turns. Approvals, questions, the attention line, the
-run-state chip and failed/denied tool cards are never debug's. On, the instrument's fourth tab is
+**Everyday is the daily surface, and most of the above is harness view's** (2026-10-16). The View
+setting is a three-step ladder, `ShellValue.view` (`felix.view`: `everyday` | `harness` | `debug`),
+with `harnessView` (either level above everyday) and `debug` (the top one) derived from it. It was
+one Debug switch until then, which hid half the product behind a word promising only diagnostics;
+`felix.debug` and Verbose's `felix.verbose` migrate on to `debug`, so nobody loses what they had.
+It is a ladder rather than two switches because debug's main piece is a tab inside the instrument.
+Set from the menu's View radios on both addresses, `/view` (cycles), `/debug` (`/verbose` is an
+alias in `slash-commands.tsx`) or the header badge; `/debug` and the badge go back to the level
+debug was entered from. Everyday, the shell renders **no instrument** — `useRails({ enabled })`
+reads it closed and refuses to open it, keeping the stored preference for when harness view
+returns, and the `Mod+'` handler checks `harnessViewRef` — **one harness page** in the sidebar,
+*Activity* with its failure glance (`useActivityGlance`), since it answers "what happened while I
+was away" (2026-10-12), plus a *Skill drafts* row from `useDraftGlance` while drafts wait — the same
+rows on `/harness` (2026-10-12: listing all nine there read as the mechanism leaking into the daily
+surface), and the 768–1024 rail and the phone index list the same — no agent id or canary in the
+header, no context meter below 90% full, and no tokens under turns. Approvals, questions, the
+attention line, the run-state chip and failed/denied tool cards are never harness view's. **Debug
+adds only the plumbing**: the header's *Debug* badge, the event ids under turns (`TurnDebugLine`'s
+`ids`) and tool cards, tool I/O open with every plan call unfolded (`verbose`), the harness's
+wording on a workspace note, and the instrument's fourth tab,
 **Debug** (`components/inspector/debug-section.tsx`): `ShellValue.inspectClient()` reads the
 pool (`EnginePool.entries()`), each engine's `inspect()` — a read-only copy of the resume token,
 durable status, cursor and liveness proof the engine already keeps, never a new piece of state —
 and the lease keeper, once a second while the tab is open; `/usage?thread_id=` is its one
-request. **Tests that pin the instrument or the harness nav seed `felix.debug` = `'1'`** after
-`localStorage.clear()`; `tests/debug-mode.test.tsx` pins the daily surface.
+request. **Tests that pin the instrument or the harness nav seed `felix.view` = `'debug'`** after
+`localStorage.clear()`; `tests/debug-mode.test.tsx` pins each level and the migration.
 
 **The sidebar runs full height, and its top row is the brand.** The header and the attention line
 live in the `SidebarInset` beside it, so the sidebar's first row sits on the header's line — same

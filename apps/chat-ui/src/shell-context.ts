@@ -34,6 +34,13 @@ type EngineState = ChatEngine['state'];
  * the seam is "all of the shell's state, read-only to whoever is below it".
  */
 /** A side question and how it stands: waiting, answered, or failed with a sentence. */
+/**
+ * The View setting, a ladder rather than independent switches: debug's main
+ * piece is a tab inside the instrument, so debug without harness view would be
+ * ids with no Debug tab.
+ */
+export type ViewLevel = 'everyday' | 'harness' | 'debug';
+
 export interface SideQuestion {
   question: string;
   pending: boolean;
@@ -199,13 +206,23 @@ export interface ShellValue {
   askAboutThread(question: string): Promise<void>;
   dismissSideQuestion(): void;
   /**
-   * Debug mode. Off, the tab is the daily surface: the conversation, its threads
-   * and workspace, and whatever waits on a person. On, the mechanism comes back —
-   * the run instrument, the harness's pages, the header's agent, canary and
-   * context meter, tool I/O open, and the ids and numbers under each turn.
+   * How much of the harness this tab shows (`ViewLevel`). `everyday` is the daily
+   * surface: the conversation, its threads and workspace, and whatever waits on a
+   * person. `harness` adds the operator's surfaces; `debug` adds the plumbing.
+   */
+  view: ViewLevel;
+  setView: (next: ViewLevel) => void;
+  /**
+   * Harness view, at either level above everyday: the run instrument, every
+   * harness page, the header's agent and canary, the context meter and each
+   * reply's spend. These are features, not diagnostics.
+   */
+  harnessView: boolean;
+  /**
+   * Debug, the top level: the instrument's Debug tab, the ids under turns and
+   * tool cards, tool I/O open with every plan call, and the harness's own wording.
    */
   debug: boolean;
-  setDebug: (next: boolean) => void;
   /** What this tab believes, read once, for the Debug tab and its report. */
   inspectClient: () => ClientDiagnostics;
   harnessReachable: boolean;
