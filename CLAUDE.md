@@ -1512,11 +1512,19 @@ on a cold `/` — which mints a thread and moves — neither adopted it. `tests/
 
 **It never says the all-clear on a list it could not refresh.** The hook keeps the last list on a
 failed tick and reports `error` and `lastOkAt`; the line says *Checking approvals…* before the first
-answer and *Can't reach approvals* plus the answer's age after a failed one, keeping the last known
-count. A **single** failure straight after an answer reads *Rechecking approvals…* in neutral rather
-than red — one 429 is the harness shedding a burst, and red on every one taught the operator to
-ignore red — so the hook counts `failures` in a row and the line turns red on the second. Its failures used to be swallowed, and it read "Nothing waiting on you." with a green dot for
-as long as the harness answered the route with 429. The resting dot is neutral, not `state-done`.
+answer and keeps the last known count after a failed one. **Why it failed is the pill's to say only
+when waiting will not cure it** (2026-10-16). A transient failure (429, 503/408, no answer) is a
+source for the shell's harness-health line (below), which names the cause once for every read;
+the pill drops its own cause words and says only that its list is not current, neutral and with
+the age outside the live region: *2 calls were waiting on you across the harness* · *as of 3m
+ago*, or *Approvals not refreshed* · *as of 3m ago* with none known, and *Checking approvals…* ·
+*no answer yet* before any answer. It used to say *Approvals rate-limited* in red beside a second
+line saying the same about the whole harness. A failure that is **not** transient (a 500) keeps
+the old treatment: a **single** one straight after an answer reads *Rechecking approvals…* in
+neutral, the hook counts `failures` in a row, and the second turns the pill red with *Can't reach
+approvals* and *last answered …*. Its failures used to be swallowed, and it read "Nothing waiting
+on you." with a green dot for as long as the harness answered the route with 429. The resting dot
+is neutral, not `state-done`.
 
 **A passing harness failure is one line in the shell, not a box per panel** (2026-10-16). Under a
 live 429, `/harness/skills` drew six red boxes — each with its own raw `skill-library/review: 429`
@@ -1524,7 +1532,7 @@ and Try again — while the sidebar silently showed one thread of fifty. `src/li
 is the store: `transientKind` names a **429** (`rate_limited`), a **503 or 408** (`unavailable`) and
 `fetch`'s own network rejection (`unreachable` — not every `TypeError`, which is also what a client
 bug throws); each reader reports under its own source id and withdraws it on an answer or an
-unmount — `usePoll`, `useSharedPoll`, the skill library's Query cache (`reportQueryHealth` in
+unmount — `usePoll`, `useSharedPoll`, the always-on `/approvals` poll, the skill library's Query cache (`reportQueryHealth` in
 `query-root.tsx`, reads only, observed queries only), the thread index, and `TransientRead` in
 `inspector/primitives.tsx`, which `SectionBody`, `StaleNotice` and `ReadFailure` render for a
 transient error in place of their red. `components/harness-health-line.tsx` draws it once, under
@@ -1535,8 +1543,9 @@ last rows and say nothing louder than *Not loaded yet* when they have none. Red 
 for what waiting will not cure — any other 4xx, any other 5xx, a parse failure — and for a
 *write*, which is the operator's own act and is answered where it was made. **A panel quieted
 without reporting is the bug this exists to prevent**: render `TransientRead` (or one of the three
-above), never a bare `null`, for a transient read error. The `/approvals` poll is not a source; the
-attention line already says its own staleness. `tests/harness-health.test.tsx` pins it.
+above), never a bare `null`, for a transient read error. The attention line is one indicator with
+it, not a second: under a transient failure it says only that its count is not current (above).
+`tests/harness-health.test.tsx` and `tests/attention-line.test.tsx` pin it.
 
 It also counts **an agent's question** (`ask_user` → `ui_request`), which blocks the run as an
 approval does but never appears in `/approvals`: the line said "Working. Nothing waiting on you."
