@@ -3037,9 +3037,11 @@ export function AppShell() {
                   is cut from the middle down to a floor (`sm:min-w-52`) before the
                   line loses a word of its sentence. The line is the signal; the title
                   is whole in its `title`, the sidebar and the Session menu's id.
-                  Below `sm` the line is two words that do not shrink, so the floor
-                  goes and the title takes the whole squeeze, down to nothing at
-                  320px, before the brand mark or the run state yield anything. */}
+                  Below `sm` the line does not shrink, so the floor goes and the
+                  title takes the squeeze, down to nothing at 320px, before the brand
+                  mark or the run state yield anything. What keeps it from getting
+                  there at 390px is the line giving way first: at rest it is its dot
+                  alone below `sm`, and only "N waiting" or "Unreachable" keep words. */}
               <div
                 data-slot="header-state"
                 className={cn(
@@ -3225,7 +3227,8 @@ export function AppShell() {
                 `ml-auto` puts it beside the controls. From `sm` a shrink weight far
                 above the controls' makes it give way — its sentence truncates — but
                 only once the thread's title in the cluster before it has reached its
-                floor: on `/t` that cluster's weight is higher still. Below `sm` it is two words that cannot truncate,
+                floor: on `/t` that cluster's weight is higher still. Below `sm` it is its dot, or
+                two words that cannot truncate when something is waiting or failing,
                 so it does not shrink at all: it shrank below them and drew "1
                 waiting" over New chat and the sidebar toggle at 390px and 320px.
                 There the run cluster gives instead, clipping at its own edge.

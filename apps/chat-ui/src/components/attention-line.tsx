@@ -278,8 +278,10 @@ export function AttentionLine({
         : questionsWaiting;
   /**
    * The sentence in two words, for a phone's header. The full sentence stays the
-   * live region and the `title`; this is what is drawn below `sm`, because the
-   * dot alone would say the state in colour only.
+   * live region and the `title`; this is what is drawn below `sm` while someone
+   * is being asked or the list cannot be vouched for, because the dot alone would
+   * say those in colour only. At rest a phone draws the dot alone (see below):
+   * "Working" is already the run chip's word beside it.
    */
   const short =
     waiting || anyAsking
@@ -416,10 +418,17 @@ export function AttentionLine({
         >
           {summary}
         </p>
+        {/* Below `sm`, only a state that asks something of the operator keeps its
+            two words — "1 waiting", "Unreachable". The resting ones ("No approvals",
+            "Working", "Checking") go to the dot: at 390px they took the room the
+            thread's title needed and left it "Create a …", for a line that said
+            nothing was wrong. The sentence is still the live region, the section's
+            `title` and the section's name for a reader. */}
         <span
           aria-hidden
           className={cn(
             'shrink-0 sm:hidden',
+            !blocked && !failing && 'hidden',
             blocked
               ? 'font-medium text-state-blocked'
               : failing
