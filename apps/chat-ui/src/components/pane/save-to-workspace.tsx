@@ -146,7 +146,7 @@ export function SaveToWorkspaceForm({
           autoCorrect="off"
           aria-invalid={error ? true : undefined}
           aria-describedby={`${id}-note`}
-          className="min-w-48 flex-1 bg-background dark:bg-background font-mono"
+          className="min-w-48 flex-1 bg-background font-mono"
         />
         <div className="flex gap-1.5">
           <Button type="button" size="sm" variant="ghost" onClick={onDone}>

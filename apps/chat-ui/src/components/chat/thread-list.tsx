@@ -536,7 +536,7 @@ export function ThreadList({
                 requestAnimationFrame(() => focusRow(t.id));
               }
             }}
-            className="min-w-0 flex-1 bg-sidebar-accent dark:bg-sidebar-accent"
+            className="min-w-0 flex-1 bg-sidebar-accent"
           />
         ) : (
           <button

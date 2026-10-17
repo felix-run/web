@@ -1148,7 +1148,7 @@ function InlinePicker({
       <SelectTrigger
         size="sm"
         className={cn(
-          'max-w-[10rem] gap-1.5 border-border/40 bg-muted/40 font-mono text-foreground/80 hover:bg-muted dark:bg-muted/40 dark:hover:bg-muted hover:text-foreground',
+          'max-w-[10rem] gap-1.5 border-border/40 bg-muted/40 font-mono text-foreground/80 hover:bg-muted dark:hover:bg-muted hover:text-foreground',
           className,
         )}
         aria-label={ariaLabel}

@@ -15,4 +15,4 @@ export const fieldSize = {
 export type FieldSize = keyof typeof fieldSize;
 
 export const fieldChrome =
-  'h-8 coarse:h-9 rounded-full border border-input bg-transparent dark:bg-input/30 transition-[color,background-color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive dark:aria-invalid:border-destructive/50';
+  'h-8 coarse:h-9 rounded-full border border-input bg-input/30 transition-[color,background-color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive dark:aria-invalid:border-destructive/50';

@@ -157,7 +157,7 @@ components:
     rounded: "{rounded.full}"
     height: "36px"
   field:
-    backgroundColor: "transparent"
+    backgroundColor: "{colors.input}"
     textColor: "{colors.foreground}"
     typography: "{typography.body}"
     rounded: "{rounded.full}"
@@ -679,8 +679,9 @@ Borders are hairlines at `--border`, often at `/60`, or `--input` on a field and
 button. Scrollbars are themed thin with the thumb inset by a transparent 3px border.
 
 **The One-Field Rule.** `Input` and `SelectTrigger` draw from one chrome (`fieldChrome` in
-`packages/ui/src/lib/field.ts`): a 32px pill (36px on a coarse pointer), an `--input` edge, no
-fill in light and `input/30` in dark, no shadow, the 3px `ring` on focus. `size="default"` is a
+`packages/ui/src/lib/field.ts`): a 32px pill (36px on a coarse pointer), an `--input` edge on an
+`input/30` wash in both themes, no shadow, the 3px `ring` on focus. The wash is what makes a
+field findable in light: the edge alone is 1.41:1 on the sheet, a hairline on near-white. `size="default"` is a
 form field at 14px; `size="sm"` is the same pill at 12px for a control in a dense row or toolbar
 (Activity's filters, the plan editor, a skill's version). Height never changes with size, so a row
 mixing fields and buttons stays on one line. A call site sets width and spacing, never height,
