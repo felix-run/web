@@ -28,7 +28,7 @@ import {
 import { Section, SectionBody } from '@/components/inspector/primitives';
 import { WhyDisabled } from '@/components/why-disabled';
 import { usePoll } from '@/hooks/usePoll';
-import { middleTruncate } from '@/lib/format';
+import { endTruncate, middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 import type { MemoryHit, MemoryRecord } from '@/types';
@@ -102,9 +102,9 @@ function quote(text: string, max = 80): string {
 }
 
 /**
- * The retriever names, in the words this page uses everywhere. Recent says a row
- * is "lexical only"; Search said the same channel was `fts` — one channel, two
- * names, a page apart.
+ * The retriever names, in the words this page uses. Search hits alone carry
+ * them: a channel is how a *retrieval* found a row, and a Recent or As-of row
+ * was not retrieved by anything.
  */
 const CHANNEL: Record<string, string> = { fts: 'lexical', vector: 'vector', topic: 'topic' };
 
@@ -578,8 +578,9 @@ function Provenance({
     const title = titleOf(suffix)?.trim() || undefined;
     // "from" and quotes, because a bare title under a fact read as the fact's next
     // sentence — and titles are usually the first thing the user typed, so they
-    // look exactly like memories. Cut from the middle, where two titles that share
-    // an opening ("Create notes/…") still differ.
+    // look exactly like memories. Cut at the end: a middle cut left two fragments
+    // of a sentence ("Use the write_f…al_write) to cr…"); the full title is the
+    // link's tooltip and accessible name.
     parts.push(
       // A flex row, so the link inside is a block and its padding reaches 24px; inline,
       // the same padding measured 21.
@@ -592,7 +593,7 @@ function Provenance({
           aria-label={`Conversation ${title ? `“${title}”` : suffix}`}
         >
           {title ? (
-            `“${middleTruncate(title, 32)}”`
+            `“${endTruncate(title, 32)}”`
           ) : (
             <span className="font-mono">{shortId(suffix)}</span>
           )}
@@ -703,17 +704,12 @@ function Details({
   /*
     How the row was embedded — the pair that answers "why did recall miss this".
     Shown only in the record views, where the question is about the row rather
-    than about a ranking that already found it. `null` dim means no embedder ran,
-    so the row is lexical-only; a dim that disagrees with the rest of the store
-    means it was written under a different embedder and has quietly stopped
-    matching.
+    than about a ranking that already found it; a dim that disagrees with the
+    rest of the store means it was written under a different embedder and has
+    quietly stopped matching. A row no embedder ran for says nothing here: it
+    used to read "lexical only", a retriever's name on a row nothing retrieved,
+    on every row of a store without an embedder.
   */
-  if (record && record.embedding_dim == null)
-    parts.push(
-      <span key="lex" title="No embedder ran for this row; it is reachable by full text only.">
-        lexical only
-      </span>,
-    );
   if (record?.embedding_model)
     parts.push(
       <span key="emb">

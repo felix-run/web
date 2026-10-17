@@ -204,8 +204,10 @@ describe('the review queue', () => {
         expected_live_version: '0.1.0',
       }),
     );
-    expect(await screen.findByText('Nothing is waiting for review.')).toBeTruthy();
+    // Emptied, the queue is no section at all — one quiet line in the library's heading.
+    expect(await screen.findByText(/^No drafts( or feedback)? waiting$/)).toBeTruthy();
     expect(screen.queryByRole('list', { name: 'Drafts waiting for review' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Waiting for review' })).toBeNull();
   });
 });
 

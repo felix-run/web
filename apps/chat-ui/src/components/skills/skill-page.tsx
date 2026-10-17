@@ -30,11 +30,14 @@ export function SkillPage({
   address,
   onAddress,
   backTo,
+  policyTo = backTo,
 }: {
   name: string;
   address: SkillAddress;
   onAddress: (next: Partial<SkillAddress>) => void;
   backTo: string;
+  /** The library page with its Manage disclosure open on the publish policy. */
+  policyTo?: string;
 }) {
   const skill = useLibrarySkill(name);
   // A personal library has no evaluations or feedback; an address naming either opens Versions.
@@ -175,7 +178,7 @@ export function SkillPage({
                       parentVersion={
                         detail.versions.find((v) => v.version === version)?.parent_version ?? null
                       }
-                      policyTo={backTo}
+                      policyTo={policyTo}
                     />
                   </>
                 )}

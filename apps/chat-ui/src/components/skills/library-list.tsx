@@ -1,11 +1,11 @@
 import type { SkillSummary } from '@felix/client';
 import { isSkillLibraryError } from '@felix/client';
 import { Button } from '@felix/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Skeleton } from '@felix/ui/skeleton';
 import { TriangleAlertIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef } from 'react';
 import { Link } from 'react-router';
-import { ViewSwitch } from '@/components/harness/panel';
 import { ReadFailure } from '@/components/inspector/primitives';
 import { type LibraryFilter, useLibraryPages, usePublishPolicy } from './queries';
 import { RefusalNotice } from './refusal';
@@ -99,7 +99,7 @@ export function LibraryList({
 
   /**
    * Known to hold nothing at all — no filter applied, nothing on this page and
-   * none after it. Eight filter buttons over an empty library filter nothing, so
+   * none after it. Two filters over an empty library filter nothing, so
    * they wait until there is something to narrow. A filtered empty list keeps
    * them, or the reader could not take the filter off again.
    */
@@ -109,14 +109,16 @@ export function LibraryList({
   return (
     <div className="space-y-3">
       {!libraryEmpty && (
-        <div className="flex flex-wrap items-center gap-2">
-          <ViewSwitch
+        // Two selects, not two pill strips: eleven pills wrapped to three rows on a phone and were
+        // the loudest thing above a list they only narrow.
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <FilterSelect
             label="Status"
             value={filter.status ?? 'in-use'}
             options={STATUS_OPTIONS}
             onChange={(v) => onFilter({ ...filter, status: v === 'in-use' ? undefined : v })}
           />
-          <ViewSwitch
+          <FilterSelect
             label="Written by"
             value={filter.source ?? 'any'}
             options={SOURCE_OPTIONS}
@@ -196,6 +198,47 @@ export function LibraryList({
           {isFetchingNextPage ? 'Loading…' : 'Load more'}
         </Button>
       )}
+    </div>
+  );
+}
+
+/** One filter: a visible label beside an `sm` select, the label naming the trigger. */
+function FilterSelect<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: ReadonlyArray<readonly [T, string]>;
+  onChange: (next: T) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="flex items-center gap-2">
+      <label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </label>
+      <Select
+        value={value}
+        onValueChange={(v) => {
+          // Radix reports "" when the value leaves the list; that is no choice.
+          const next = options.find(([o]) => o === v);
+          if (next) onChange(next[0]);
+        }}
+      >
+        <SelectTrigger id={id} size="sm" className="w-auto gap-1">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent size="sm">
+          {options.map(([o, text]) => (
+            <SelectItem key={o} value={o}>
+              {text}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
