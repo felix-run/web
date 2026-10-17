@@ -333,10 +333,13 @@ its page, *Edit to fix* on a draft the gate refused, and **New skill** all open 
 unsaved edit survives switching tabs or moving between pages. A `create_skill` or `update_skill` result renders in the
 chat as a proposal card with Publish, Reject and Edit. The routes underneath are in the [Management API](/guide/management-api/#skill-library).
 
-chat-ui lists its harness pages — Skills, Activity, Memory and the rest — in the sidebar in
-**debug mode** (the menu's *View → Debug*, or `/debug`), along with the run instrument and the
-ids and token counts under each turn. With debug off, the sidebar shows a *Skill drafts* row only
-while a draft is waiting for review, which links straight to this page.
+chat-ui's **View** setting (in the header menu, or `/view`) has three levels. **Everyday** is the
+conversation and what waits on you. **Harness view** adds the harness pages — Skills, Activity,
+Memory and the rest — to the sidebar, along with the run instrument, the context meter and each
+reply's token counts. **Harness + debug** (or `/debug`) adds the instrument's Debug tab, the event
+ids under each turn and tool card, and tool input and output left open. In Everyday, the sidebar
+shows a *Skill drafts* row only while a draft is waiting for review, which links straight to this
+page.
 
 ## Tool
 

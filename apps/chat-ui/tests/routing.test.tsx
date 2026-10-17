@@ -74,7 +74,7 @@ const seed = (threadId: string, turns: Turn[]) =>
 beforeEach(() => {
   localStorage.clear();
   // These pin debug-mode surfaces (the instrument, the harness pages).
-  localStorage.setItem('felix.debug', '1');
+  localStorage.setItem('felix.view', 'debug');
   sessionStorage.clear();
   stubFetch();
 });
@@ -236,7 +236,7 @@ describe('the header names the thread', () => {
 
   /**
    * A menu named Session opened on a View group. Session's verbs come first now,
-   * then View, then Theme under a label of its own — the Debug checkbox and the
+   * then View, then Theme under a label of its own — the View radios and the
    * theme radios had run together as one unlabelled list.
    */
   it('opens on Session, then View, then a labelled Theme group', async () => {
@@ -255,7 +255,9 @@ describe('the header names the thread', () => {
       'Continue run',
       'Copy thread id self-pr-306',
       'View',
-      'DebugRun instrument, every harness page, ids',
+      'EverydayThe conversation and what waits on you',
+      'Harness viewRun instrument, every harness page, spend',
+      'Harness + debugAdds the Debug tab, ids and tool I/O',
       'Theme',
       'Light',
       'Dark',

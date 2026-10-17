@@ -424,13 +424,13 @@ export function NavGlance({ glance }: { glance: Glance | undefined }) {
 function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; className?: string }) {
   const { search } = useHarnessAgent();
   const glance = useNavGlances();
-  // Debug off, the same pages the sidebar lists: Activity, and Skills while a
+  // Everyday, the same pages the sidebar lists: Activity, and Skills while a
   // draft waits on a review (or while the reader is on it). No shell — a test
   // mounting the layout — lists everything.
-  const debug = useOptionalShell()?.debug ?? true;
+  const harnessView = useOptionalShell()?.harnessView ?? true;
   const atSkills = !!useMatch('/harness/skills/*');
   const listed = (path: HarnessPath) =>
-    debug ||
+    harnessView ||
     path === 'activity' ||
     (path === 'skills' && (glance.skills?.tone === 'blocked' || atSkills));
   const groups = GROUPS.filter(({ key }) =>

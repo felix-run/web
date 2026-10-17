@@ -478,10 +478,11 @@ harness's id; a thread with no turns yet reads *New conversation*, muted, with t
 ten characters stay, since two titles that share a prefix differ at the end; its `title` holds
 the whole name and the thread id. Clicking it renames it in place (*Thread name*; Enter saves,
 Escape cancels), unless the tab is only watching the thread. `/harness` names no thread: each
-page has its own title. After that, in **debug mode** only, the tab's modes: **Debug**, a
-`secondary` badge that is also the button turning it off (named *Debug on, turn off*), on both
-addresses because debug governs both, and the **canary** rollout as an outline badge in mono.
-The agent beside the title is debug's too; off, the header is the brand, the run state, the
+page has its own title. After that, the tab's modes: at the debug level only, **Debug**, a
+`secondary` badge that is also the button turning it off (named *Debug on, turn off*; it returns
+to the level debug was entered from), on both addresses because the view governs both; and in
+harness view, the **canary** rollout as an outline badge in mono. The agent beside the title is
+harness view's too; everyday, the header is the brand, the run state, the
 title and the attention line. The canary's words also say whether this thread is on the rollout, in an
 `sr-only` clause.
 
@@ -506,9 +507,9 @@ from the middle, from `sm` (narrower, the `/harness` index leads with a *← thr
 is a way back), a link and never a heading (the page's own `h2` names the destination, so the header does
 not repeat it), and the run state before it is that thread's. Before the controls sits
 the **attention line** (below). On the right: New chat, only where the sidebar is a drawer, and
-a plus alone below `sm`; the instrument toggle, in debug only; and one ellipsis menu named
-**Session**: *Session* (Continue run, Copy thread id), *View* (Debug, with a 12px muted second
-line naming what it adds), then *Theme* as Light/Dark/System radio items. On `/harness` the menu
+a plus alone below `sm`; the instrument toggle, in harness view only; and one ellipsis menu named
+**Session**: *Session* (Continue run, Copy thread id), *View* (three radio items — Everyday,
+Harness view, Harness + debug — each with a 12px muted second line naming what it adds), then *Theme* as Light/Dark/System radio items. On `/harness` the menu
 is named **View** and holds View and Theme. Thinking is in the composer.
 
 The workbench is **three zones**: the app sidebar (17rem expanded, 3.25rem as icons: 8px either side of the 36px icon buttons, the gap the sheet keeps everywhere else) on the ground,

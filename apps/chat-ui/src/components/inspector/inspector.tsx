@@ -17,7 +17,7 @@ import { ThreadChanges } from '@/components/workspace/changes-list';
 import { usePoll } from '@/hooks/usePoll';
 import { callTarget } from '@/lib/call-target';
 import { cn } from '@/lib/utils';
-import { type ShellValue, useShell } from '@/shell-context';
+import { type ShellValue, useOptionalShell, useShell } from '@/shell-context';
 import type { Plan, Turn } from '@/types';
 import { DebugSection } from './debug-section';
 import { PlanEditor } from './plan-editor';
@@ -27,11 +27,12 @@ type SectionId = 'changes' | 'plans' | 'metrics' | 'debug';
 /**
  * Right-hand inspector: a readout of the thread's run, then four tabs — what this
  * thread's tool calls changed in the workspace, the harness's plans, its tool
- * metrics, and Debug: what this tab believes about the thread and its runs.
+ * metrics, and — in debug only — Debug: what this tab believes about the thread
+ * and its runs.
  *
- * The whole instrument is debug mode's. Off, the shell renders none of it and the
- * header has no toggle for it; the daily surface's run state is the header chip
- * and the attention line.
+ * The whole instrument is harness view's. Everyday, the shell renders none of it
+ * and the header has no toggle for it; the daily surface's run state is the
+ * header chip and the attention line.
  *
  * Each part says its own scope, because they differ. "This thread" heads the
  * panel: the readout is this thread's run and its tokens, derived from the
@@ -92,7 +93,12 @@ export function Inspector({
   /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
-  const [active, setActive] = useState<SectionId>('changes');
+  const [chosen, setActive] = useState<SectionId>('changes');
+  // The Debug tab is the debug level's; no shell (a test mounting the panel) shows it.
+  const debug = useOptionalShell()?.debug ?? true;
+  const sections = debug ? SECTIONS : SECTIONS.filter((s) => s.id !== 'debug');
+  // Leaving debug with its tab open lands on Changes, not on a strip with nothing chosen.
+  const active = chosen === 'debug' && !debug ? 'changes' : chosen;
 
   return (
     <aside
@@ -137,13 +143,13 @@ export function Inspector({
           className="min-h-0 flex-1 gap-0"
         >
           <TabsList className="mx-2 mt-1.5 w-auto shrink-0">
-            {SECTIONS.map(({ id, label }) => (
+            {sections.map(({ id, label }) => (
               <TabsTrigger key={id} value={id} className="text-xs">
                 {label}
               </TabsTrigger>
             ))}
           </TabsList>
-          {SECTIONS.map((section) => (
+          {sections.map((section) => (
             <TabsContent key={section.id} value={section.id} className="min-h-0">
               <ScrollArea className="h-full">
                 <div className="p-3">

@@ -586,7 +586,7 @@ describe('the pane and the instrument', () => {
       vi.fn(async () => new Response(JSON.stringify({ items: [], requests: [], sessions: [] }))),
     );
     resetPresence();
-    localStorage.setItem('felix.debug', '1');
+    localStorage.setItem('felix.view', 'debug');
     localStorage.setItem('felix.inspectorOpen', '1');
   });
   afterEach(() => {
@@ -598,8 +598,8 @@ describe('the pane and the instrument', () => {
     document.querySelector<HTMLElement>('header [aria-label="This thread"]') as HTMLElement;
   const instrument = () => document.querySelector('[data-rail="right"][data-state="open"]');
 
-  it("is the right zone's alone with debug off: a header toggle and Mod+' show and hide it", async () => {
-    localStorage.setItem('felix.debug', '0');
+  it("is the right zone's alone everyday: a header toggle and Mod+' show and hide it", async () => {
+    localStorage.setItem('felix.view', 'everyday');
     render(
       <MemoryRouter initialEntries={['/t/daily-pane']}>
         <ThemeProvider>

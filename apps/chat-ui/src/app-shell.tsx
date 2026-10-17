@@ -18,7 +18,6 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -152,6 +151,7 @@ import {
   ShellProvider,
   type ShellValue,
   type SideQuestion,
+  type ViewLevel,
 } from '@/shell-context';
 import type {
   ChatMessage,
@@ -168,12 +168,22 @@ const MANIFEST_KEY = 'felix.manifest';
 const DELETE_UNDO_MS = 7000;
 
 /**
- * Debug mode, per browser. `felix.verbose` was its name while it only opened tool
- * I/O; a browser that had it on starts in debug, so nobody loses what they had,
- * and the old key is dropped the first time the new one is written.
+ * The View level, per browser. It was one Debug switch (`felix.debug`), and
+ * before that Verbose (`felix.verbose`) while it only opened tool I/O; a browser
+ * that had either on starts at `debug`, so nobody loses what they had, and the
+ * old keys are dropped the first time the new one is written.
  */
-const DEBUG_KEY = 'felix.debug';
+const VIEW_KEY = 'felix.view';
+const LEGACY_DEBUG_KEY = 'felix.debug';
 const LEGACY_VERBOSE_KEY = 'felix.verbose';
+/** The View menu's levels, in the order the radio group lists them. */
+const VIEW_OPTIONS: ReadonlyArray<{ value: ViewLevel; label: string; hint: string }> = [
+  { value: 'everyday', label: 'Everyday', hint: 'The conversation and what waits on you' },
+  { value: 'harness', label: 'Harness view', hint: 'Run instrument, every harness page, spend' },
+  { value: 'debug', label: 'Harness + debug', hint: 'Adds the Debug tab, ids and tool I/O' },
+];
+const isViewLevel = (v: unknown): v is ViewLevel =>
+  v === 'everyday' || v === 'harness' || v === 'debug';
 const HOLDER_KEY = 'felix.holderId';
 const THINKING_LEVELS: ThinkingLevel[] = [
   'off',
@@ -272,13 +282,17 @@ function readBool(key: string, fallback: boolean): boolean {
   return raw === '1' || raw === 'true';
 }
 
-function readDebug(): boolean {
+function readView(): ViewLevel {
   try {
-    return localStorage.getItem(DEBUG_KEY) !== null
-      ? readBool(DEBUG_KEY, false)
-      : readBool(LEGACY_VERBOSE_KEY, false);
+    const stored = localStorage.getItem(VIEW_KEY);
+    if (isViewLevel(stored)) return stored;
+    const legacy =
+      localStorage.getItem(LEGACY_DEBUG_KEY) !== null
+        ? readBool(LEGACY_DEBUG_KEY, false)
+        : readBool(LEGACY_VERBOSE_KEY, false);
+    return legacy ? 'debug' : 'everyday';
   } catch {
-    return false;
+    return 'everyday';
   }
 }
 
@@ -410,7 +424,37 @@ export function AppShell() {
     thread: '',
     style: null,
   });
-  const [debug, setDebug] = useState(readDebug);
+  const [view, setView] = useState(readView);
+  const harnessView = view !== 'everyday';
+  const debug = view === 'debug';
+  /**
+   * The level debug was turned on from, so turning it off — the badge, `/debug` —
+   * goes back there: from everyday, a look at the ids is not a move to harness view.
+   */
+  const beforeDebugRef = useRef<ViewLevel>(view === 'debug' ? 'harness' : view);
+  const chooseView = useCallback((next: ViewLevel) => {
+    setView((v) => {
+      if (next === 'debug' && v !== 'debug') beforeDebugRef.current = v;
+      return next;
+    });
+  }, []);
+  // From the level as it stands, not as a render saw it: the composer can hold a
+  // command handler from an earlier render, and `/view` from that one stepped twice.
+  const stepView = useCallback(() => {
+    setView((v) => {
+      const at = VIEW_OPTIONS.findIndex((o) => o.value === v);
+      const next = VIEW_OPTIONS[(at + 1) % VIEW_OPTIONS.length]!.value;
+      if (next === 'debug') beforeDebugRef.current = v;
+      return next;
+    });
+  }, []);
+  const toggleDebug = useCallback(() => {
+    setView((v) => {
+      if (v === 'debug') return beforeDebugRef.current;
+      beforeDebugRef.current = v;
+      return 'debug';
+    });
+  }, []);
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { theme, resolved, setTheme } = useTheme();
   /** Where focus lands when the Debug badge turns debug off and unmounts. */
@@ -427,7 +471,7 @@ export function AppShell() {
   const hydrateFromServerRef = useRef<(id: string, opts?: { transcript?: boolean }) => void>(
     () => {},
   );
-  const debugRef = useRef(debug);
+  const harnessViewRef = useRef(harnessView);
   /**
    * Mirrored at render rather than from an effect. The engine pool reads this to
    * tell the thread on screen from a run kept going in the background, and
@@ -474,7 +518,7 @@ export function AppShell() {
             readForDiff: routedDiffReader(felix, readWorkspaceFile),
           },
           onToolStart: () => {
-            if (debugRef.current && threadIdRef.current === id) revealInspector();
+            if (harnessViewRef.current && threadIdRef.current === id) revealInspector();
           },
           onSkills: (s) => {
             if (threadIdRef.current === id) setSkills(s);
@@ -565,7 +609,7 @@ export function AppShell() {
     inspectorOpen: instrumentWanted,
     setInspectorOpen: setInstrumentWanted,
     revealInspector: revealInstrument,
-  } = useRails({ emptyThread: turns.length === 0, enabled: debug });
+  } = useRails({ emptyThread: turns.length === 0, enabled: harnessView });
 
   // The side pane takes the instrument's zone where the instrument is a column
   // (`routes/workbench.tsx`). The instrument's preference is left as it was, so
@@ -725,8 +769,8 @@ export function AppShell() {
   }, [threadId]);
   const queue = useMessageQueue(threadId);
   useEffect(() => {
-    debugRef.current = debug;
-  }, [debug]);
+    harnessViewRef.current = harnessView;
+  }, [harnessView]);
 
   useEffect(() => localStorage.setItem(MANIFEST_KEY, manifest), [manifest]);
   // Whether the harness answered the last request, for the composer's connection
@@ -735,12 +779,13 @@ export function AppShell() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(DEBUG_KEY, debug ? '1' : '0');
+      localStorage.setItem(VIEW_KEY, view);
+      localStorage.removeItem(LEGACY_DEBUG_KEY);
       localStorage.removeItem(LEGACY_VERBOSE_KEY);
     } catch {
-      // Storage blocked: the mode lasts for this page.
+      // Storage blocked: the level lasts for this page.
     }
-  }, [debug]);
+  }, [view]);
   useEffect(() => {
     // `turns` lags a thread change that came from outside this app's own
     // handlers — Back, or a pasted link — because the engine is not reset until
@@ -1641,17 +1686,16 @@ export function AppShell() {
   }, [navigate]);
   useShortcuts(onHarness ? 'harness' : 'workbench', {
     'toggle-workspace': () => setHistoryOpen((o) => !o),
-    // The instrument exists only in debug; off, the binding has nothing to open.
-    // The right zone's binding. In debug it is the instrument's — which hands the
-    // zone to and from the side pane where they share it — except over the
-    // pane's own overlay on a phone, which the binding closes. Off, there is no
-    // instrument, so it shows and hides the pane.
+    // The right zone's binding. In harness view it is the instrument's — which
+    // hands the zone to and from the side pane where they share it — except over
+    // the pane's own overlay on a phone, which the binding closes. Everyday, there
+    // is no instrument, so it shows and hides the pane.
     'toggle-instrument': () => {
       const id = threadIdRef.current;
       const { hasItems, inline } = paneZone.current;
       const paneShown = paneState(id).shown && hasItems;
-      // `/harness` has no instrument: there the binding is the pane's, in debug too.
-      if (debugRef.current && !onHarnessRef.current && !(paneShown && !inline)) {
+      // `/harness` has no instrument: there the binding is the pane's at every level.
+      if (harnessViewRef.current && !onHarnessRef.current && !(paneShown && !inline)) {
         setInspectorOpen((o) => !o);
       } else if (hasItems) setPaneShown(id, !paneShown);
     },
@@ -2661,11 +2705,24 @@ export function AppShell() {
           setTheme(resolved === 'dark' ? 'light' : 'dark');
           break;
         case 'debug':
-          setDebug((v) => !v);
+          toggleDebug();
+          break;
+        case 'view':
+          stepView();
           break;
       }
     },
-    [newThread, clearThread, continueRun, cycleThinking, togglePlanMode, setTheme, resolved],
+    [
+      newThread,
+      clearThread,
+      continueRun,
+      cycleThinking,
+      togglePlanMode,
+      setTheme,
+      resolved,
+      toggleDebug,
+      stepView,
+    ],
   );
 
   const options = manifests.length ? manifests : [manifest];
@@ -2792,8 +2849,10 @@ export function AppShell() {
     sideQuestion: side?.thread === threadId ? side : null,
     askAboutThread,
     dismissSideQuestion,
+    view,
+    setView: chooseView,
+    harnessView,
     debug,
-    setDebug,
     inspectClient,
     harnessReachable,
     historyOpen,
@@ -2969,7 +3028,7 @@ export function AppShell() {
                     readOnly={watching}
                     onRename={renameThread}
                     empty={turns.length === 0}
-                    showAgent={debug}
+                    showAgent={harnessView}
                     className="shrink-[100]"
                   />
                 )}
@@ -2990,22 +3049,24 @@ export function AppShell() {
                     focusable, goes `sr-only` and is still read. Both come back when
                     the run settles. Nothing else in the cluster shrinks, so this row
                     is `min-w-0` for the widths between, where it is the one to give. */}
-                {/* Debug governs both addresses now — the sidebar's harness pages
-                    come and go with it — so its badge is on both, where Verbose's
-                    was on `/t` only. The canary is mechanism, and shows in debug alone. */}
-                {debug && (
+                {/* The view governs both addresses — the sidebar's harness pages come
+                    and go with it — so these are on both. The canary is the
+                    harness's, and shows in harness view; the badge is debug's
+                    alone, so it says what it means. */}
+                {harnessView && (debug || canary) && (
                   <div
                     data-slot="header-modes"
                     // `contents` while the modes have stepped off a narrow screen, so
                     // the row leaves no empty box and no gap behind them.
                     className={cn('flex min-w-0 items-center gap-2', runShown && 'max-sm:contents')}
                   >
-                    <Badge
-                      variant="secondary"
-                      className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
-                      asChild
-                    >
-                      {/* A button, because a badge that reports a mode should also be
+                    {debug && (
+                      <Badge
+                        variant="secondary"
+                        className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
+                        asChild
+                      >
+                        {/* A button, because a badge that reports a mode should also be
                           the way out of it — otherwise the way out is two clicks into
                           a menu whose trigger says nothing about debug. Focus moves
                           to that menu's trigger, since the badge unmounts under the
@@ -3015,21 +3076,22 @@ export function AppShell() {
                           so it was permanently true — a toggle that could never read
                           unpressed. The name says the state and the action instead,
                           which is also what lets the word go below `sm`. */}
-                      <button
-                        type="button"
-                        data-slot="debug-mode"
-                        aria-label="Debug on, turn off"
-                        title="Debug is on. Click to turn it off."
-                        onClick={() => {
-                          setDebug(false);
-                          menuTriggerRef.current?.focus();
-                        }}
-                        className="cursor-pointer hover:bg-solid-secondary/80"
-                      >
-                        <BugIcon aria-hidden className="sm:hidden" />
-                        <span className="hidden sm:inline">Debug</span>
-                      </button>
-                    </Badge>
+                        <button
+                          type="button"
+                          data-slot="debug-mode"
+                          aria-label="Debug on, turn off"
+                          title="Debug is on. Click to turn it off."
+                          onClick={() => {
+                            toggleDebug();
+                            menuTriggerRef.current?.focus();
+                          }}
+                          className="cursor-pointer hover:bg-solid-secondary/80"
+                        >
+                          <BugIcon aria-hidden className="sm:hidden" />
+                          <span className="hidden sm:inline">Debug</span>
+                        </button>
+                      </Badge>
+                    )}
                     {canary && (
                       // Outline and mono, never a filled pill: the version is the
                       // harness's number quoted back, and a filled badge made it the
@@ -3130,9 +3192,9 @@ export function AppShell() {
                     <span className="sr-only sm:not-sr-only">New chat</span>
                   </Button>
                 )}
-                {/* The instrument is debug's: off, neither address has the toggle,
-                    so nothing moves between them. */}
-                {!debug ? (
+                {/* The instrument is harness view's: everyday, neither address has
+                    the toggle, so nothing moves between them. */}
+                {!harnessView ? (
                   // Off, the right zone is the side pane's alone: its toggle shows
                   // while anything is open in it, so a hidden pane is one press back —
                   // on `/harness` too, where the pane sits beside the page.
@@ -3254,16 +3316,24 @@ export function AppShell() {
                       </>
                     )}
                     <DropdownMenuLabel>View</DropdownMenuLabel>
-                    {/* What it adds is said on the row, because the word alone
-                        does not say the off state is the everyday one. */}
-                    <DropdownMenuCheckboxItem checked={debug} onCheckedChange={setDebug}>
-                      <span className="flex flex-col">
-                        Debug
-                        <span className="text-xs text-muted-foreground">
-                          Run instrument, every harness page, ids
-                        </span>
-                      </span>
-                    </DropdownMenuCheckboxItem>
+                    {/* A ladder, not two switches: each level is said on its row,
+                        because the names alone do not say what each one adds. */}
+                    <DropdownMenuRadioGroup
+                      aria-label="View"
+                      value={view}
+                      onValueChange={(v) => {
+                        if (isViewLevel(v)) chooseView(v);
+                      }}
+                    >
+                      {VIEW_OPTIONS.map(({ value, label, hint }) => (
+                        <DropdownMenuRadioItem key={value} value={value}>
+                          <span className="flex flex-col">
+                            {label}
+                            <span className="text-xs text-muted-foreground">{hint}</span>
+                          </span>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Theme</DropdownMenuLabel>
                     {/* Radio items, so the checked theme is announced rather than marked
