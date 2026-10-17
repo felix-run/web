@@ -40,7 +40,7 @@ import {
   plural,
   ViewSwitch,
 } from '@/components/harness/panel';
-import { ReadFailure, relTime, withAge } from '@/components/inspector/primitives';
+import { ReadFailure, relTime, TransientRead, withAge } from '@/components/inspector/primitives';
 import { DRAWER_MOTION } from '@/components/pane/pane-zone';
 import { RunNowForm } from '@/components/workflows/run-now-form';
 import { useWorkflowDraft } from '@/components/workflows/use-workflow-draft';
@@ -59,6 +59,7 @@ import {
 } from '@/components/workflows/workflow-inspector';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { usePoll } from '@/hooks/usePoll';
+import { isTransientFailure } from '@/lib/harness-health';
 import { cn } from '@/lib/utils';
 import {
   addStep,
@@ -442,7 +443,9 @@ function WorkflowDetail({ id }: { id: string }) {
       <Panel>
         <PageHeader icon={<WorkflowIcon />} title="Workflows" />
         <PanelBody>
-          {workflow.error ? (
+          {workflow.error && isTransientFailure(workflow.error) ? (
+            <TransientRead error={workflow.error} lastOkAt={null} onRetry={workflow.refresh} />
+          ) : workflow.error ? (
             <ErrorNotice error={workflow.error} doing={`load workflow ${id}`} />
           ) : (
             <p className="text-sm text-muted-foreground">Loading the workflow…</p>
@@ -499,6 +502,8 @@ function WorkflowDetail({ id }: { id: string }) {
           This run is not there: finished runs are swept after their retention, and a link may name
           one that never existed.
         </p>
+      ) : view === 'run' && run.error && isTransientFailure(run.error) ? (
+        <TransientRead error={run.error} lastOkAt={null} onRetry={run.refresh} />
       ) : view === 'run' && run.error ? (
         <ErrorNotice error={run.error} doing="load the run" />
       ) : view === 'run' && runId ? (

@@ -41,6 +41,15 @@ type EngineState = ChatEngine['state'];
  */
 export type ViewLevel = 'everyday' | 'harness' | 'debug';
 
+export interface ThreadIndexStatus {
+  error: unknown;
+  /** Failed reads in a row. */
+  failures: number;
+  rememberedAt: number | null;
+  /** Ask the harness for the index again now. */
+  retry(): void;
+}
+
 export interface SideQuestion {
   question: string;
   pending: boolean;
@@ -149,6 +158,14 @@ export interface ShellValue {
 
   /** The thread index behind the history rail. */
   threads: ThreadMeta[];
+  /**
+   * Whether the harness's half of `threads` is current. `error` is the latest
+   * failed `GET /chat/sessions`, null once one answers; `rememberedAt` is when
+   * the index this tab fell back to was read, or null when it has none and the
+   * list is this browser's alone. Optional, so a test's partial shell need not
+   * spell it out.
+   */
+  threadIndex?: ThreadIndexStatus;
   selectThread(id: string): void;
   newThread(): void;
   deleteThread(id: string): void;

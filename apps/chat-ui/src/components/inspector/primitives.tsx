@@ -3,11 +3,13 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Skeleton } from '@felix/ui/skeleton';
 import { ChevronRightIcon, CircleAlertIcon } from 'lucide-react';
-import { createContext, type ReactNode, useContext } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useId, useRef } from 'react';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { ErrorNotice } from '@/components/error-notice';
 import { PageEmpty, PageHeader, READING_MEASURE } from '@/components/harness/panel';
+import { forgetHarnessRead, isTransientFailure, reportHarnessRead } from '@/lib/harness-health';
 import { cn } from '@/lib/utils';
+import { useOptionalShell } from '@/shell-context';
 
 /**
  * The pieces every harness panel is built from.
@@ -257,6 +259,31 @@ export function SectionBody({
   children: React.ReactNode;
 }) {
   const chrome = useContext(PanelMode);
+  // A failure waiting cures is the shell's to say, once (`harness-health.ts`):
+  // the rows stay, and nothing here turns red over them.
+  const transient = isTransientFailure(error);
+  if (transient && lastOkAt == null) {
+    return <TransientRead error={error} lastOkAt={null} onRetry={onRetry} />;
+  }
+  if (transient) {
+    // What it last said, drawn as it was — rows, or the empty state if that was
+    // the answer — with nothing over it but the report to the shell.
+    return (
+      <>
+        <TransientRead error={error} lastOkAt={lastOkAt ?? null} onRetry={onRetry} />
+        <SectionBody
+          loading={false}
+          error={null}
+          doing={doing}
+          empty={empty}
+          emptyText={emptyText}
+          status={status}
+        >
+          {children}
+        </SectionBody>
+      </>
+    );
+  }
   if (error && failures === 1) {
     return (
       <>
@@ -351,6 +378,9 @@ export function StaleNotice({
   lastOkAt: number;
   onRetry?: () => void;
 }) {
+  if (isTransientFailure(error)) {
+    return <TransientRead error={error} lastOkAt={lastOkAt} onRetry={onRetry} />;
+  }
   const described = describeError(error, doing);
   return (
     <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-state-failed">
@@ -391,6 +421,9 @@ export function ReadFailure({
   lastOkAt: number | null;
   onRetry: () => void;
 }) {
+  if (isTransientFailure(error)) {
+    return <TransientRead error={error} lastOkAt={lastOkAt} onRetry={onRetry} />;
+  }
   if (lastOkAt != null) {
     return <StaleNotice error={error} doing={doing} lastOkAt={lastOkAt} onRetry={onRetry} />;
   }
@@ -405,6 +438,56 @@ export function ReadFailure({
         </Button>
       }
     />
+  );
+}
+
+/**
+ * A read that failed for a reason waiting cures — a 429, a 503, a harness that
+ * did not answer — drawn in place of the red box every panel used to draw.
+ *
+ * It says almost nothing, on purpose: the shell's one line
+ * (`components/harness-health-line.tsx`) names the cause, the age and the
+ * Retry, once for every panel on screen. This **reports** into that line, so a
+ * panel quieted here can never be quiet everywhere — the read is a source until
+ * it answers or this unmounts. Rows the panel kept stay on screen above or below
+ * it; with none, one muted sentence says nothing has loaded, so an empty panel
+ * does not read as an empty store. The raw status is Debug's.
+ */
+export function TransientRead({
+  error,
+  lastOkAt,
+  onRetry,
+}: {
+  error: unknown;
+  lastOkAt: number | null;
+  onRetry?: () => void;
+}) {
+  const debug = useOptionalShell()?.debug ?? false;
+  const source = `read:${useId()}`;
+  // The retry is read through the newest render, and a new closure every render
+  // must not re-report: the effect keys on the error and the age only.
+  const retryRef = useRef(onRetry);
+  retryRef.current = onRetry;
+  useEffect(() => {
+    reportHarnessRead(source, error, {
+      lastOkAt,
+      retry: retryRef.current ? () => retryRef.current?.() : undefined,
+    });
+  }, [source, error, lastOkAt]);
+  useEffect(() => () => forgetHarnessRead(source), [source]);
+  const detail = debug ? (
+    <span className="font-mono text-xs break-words">
+      {String((error as Error)?.message ?? error)}
+    </span>
+  ) : null;
+  if (lastOkAt != null) {
+    return detail ? <p className="mb-2 text-muted-foreground">{detail}</p> : null;
+  }
+  return (
+    <p className="mb-2 flex flex-col gap-0.5 text-sm text-muted-foreground">
+      <span>Not loaded yet — the harness has not answered.</span>
+      {detail}
+    </p>
   );
 }
 

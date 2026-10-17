@@ -33,8 +33,10 @@ import {
 } from 'react';
 import { searchSessions } from '@/api';
 import { CutId } from '@/components/cut-id';
+import { isTransientFailure } from '@/lib/harness-health';
 import { groupThreads, matchExcerpt, type ThreadGroupKey, threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
+import type { ThreadIndexStatus } from '@/shell-context';
 
 const NO_BLOCKED: ReadonlySet<string> = new Set();
 const NO_PINS: ReadonlySet<string> = new Set();
@@ -158,9 +160,17 @@ export function ThreadList({
   pinned = NO_PINS,
   onTogglePin,
   searchRef,
+  indexStatus,
   className,
 }: {
   threads: ThreadMeta[];
+  /**
+   * Whether the harness's half of the list is current (the shell's
+   * `threadIndex`). When its read failed the list is this tab's remembered copy
+   * or this browser's threads alone, and a row under the heading says which —
+   * the list used to fall back silently, and "Older 1" read as the whole truth.
+   */
+  indexStatus?: ThreadIndexStatus | undefined;
   currentId: string;
   /**
    * The tab's thread while the address is not it (`/harness`). Drawn held — a
@@ -744,6 +754,9 @@ export function ThreadList({
             Threads
           </h2>
         </div>
+        {indexStatus?.error != null && (
+          <IndexStatusRow status={indexStatus} count={threads.length} />
+        )}
         <div className="relative mt-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -800,7 +813,9 @@ export function ThreadList({
                   ? searching
                     ? 'Searching…'
                     : `No thread matches “${query.trim()}”.`
-                  : 'No threads yet'}
+                  : indexStatus?.error != null
+                    ? 'None in this browser'
+                    : 'No threads yet'}
               </p>
               {!filtering && (
                 <p className="mt-1 text-xs text-muted-foreground">Your first message starts one.</p>
@@ -969,5 +984,42 @@ function Marked({ text, query }: { text: string; query: string }) {
       </mark>
       {text.slice(at + q.length)}
     </>
+  );
+}
+
+/**
+ * The row under Threads when the harness's index could not be read. Neutral for
+ * a failure that passes (it is asked again on a backoff, and the shell's health
+ * line names the cause); red for one that will not, which only Retry answers.
+ */
+function IndexStatusRow({ status, count }: { status: ThreadIndexStatus; count: number }) {
+  const transient = isTransientFailure(status.error);
+  const showing =
+    status.rememberedAt != null
+      ? `showing its list from ${relativeTime(status.rememberedAt)}`
+      : `showing this browser's ${count}`;
+  return (
+    <p
+      data-slot="thread-index-status"
+      className={cn(
+        'flex flex-wrap items-center gap-x-1.5 px-2.5 pb-1 text-xs',
+        transient ? 'text-muted-foreground' : 'text-state-failed',
+      )}
+    >
+      <span role="status">
+        {status.rememberedAt != null
+          ? "Couldn't refresh the harness's threads"
+          : "Couldn't load the harness's threads"}
+      </span>
+      <span aria-hidden>·</span>
+      <span>{showing}</span>
+      <button
+        type="button"
+        onClick={status.retry}
+        className="rounded font-medium text-foreground underline underline-offset-2 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+      >
+        Retry
+      </button>
+    </p>
   );
 }

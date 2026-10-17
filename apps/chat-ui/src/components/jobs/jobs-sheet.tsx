@@ -29,10 +29,11 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
+import { StaleNotice, StatusDot, TransientRead, withAge } from '@/components/inspector/primitives';
 import { WhyDisabled } from '@/components/why-disabled';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { failing, JOBS_POLL_KEY } from '@/lib/harness-glances';
+import { isTransientFailure } from '@/lib/harness-health';
 import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '@/lib/job-schedule';
 import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/shell-context';
@@ -407,7 +408,10 @@ export function JobsSheet({
         {/* A failed read after a good one keeps the rows under one line, as every
             polled page does; the box is only for a failure with nothing earlier
             to show. Jobs polls every few seconds, so it meets a 429 first. */}
-        {listError && data && lastOkAt != null ? (
+        {listError && isTransientFailure(listError) ? (
+          // A passing failure is the shell's one line; the rows stay as they were.
+          <TransientRead error={listError} lastOkAt={data ? lastOkAt : null} onRetry={refresh} />
+        ) : listError && data && lastOkAt != null ? (
           <StaleNotice
             error={listError}
             doing="list scheduled jobs"
