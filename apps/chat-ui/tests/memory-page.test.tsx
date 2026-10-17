@@ -100,6 +100,9 @@ describe('a memory says where it came from', () => {
     // The harness's spelling, not its field names.
     expect(within(item).getByText('importance 0.6')).toBeTruthy();
     expect(within(item).queryByText(/imp 0\.60|seq 4/)).toBeNull();
+    // Nothing retrieved a Recent row, so it names no retriever — not even for a row
+    // no embedder ran on, which used to read "lexical only".
+    expect(within(item).queryByText(/lexical|via /)).toBeNull();
   });
 
   it('says an operator added a row no conversation wrote', async () => {
@@ -118,7 +121,7 @@ describe('a memory says where it came from', () => {
     expect(await screen.findByText('added by an operator')).toBeTruthy();
   });
 
-  it('ranks a hit and names its retriever in the words Recent uses', async () => {
+  it('ranks a hit and names the retriever that found it', async () => {
     const hit: MemoryHit = {
       id: 'h1',
       content: 'Ship on Fridays.',
@@ -239,7 +242,7 @@ describe('adding', () => {
 });
 
 describe('the composition the second critique asked for', () => {
-  it('cuts a long title from the middle, so two that share an opening still differ', async () => {
+  it('cuts a long title at its end, so it reads as the phrase it is', async () => {
     api({
       listMemories: vi.fn().mockResolvedValue([row({ id: 'm1', content: 'A fact.' })]),
     });
@@ -262,9 +265,18 @@ describe('the composition the second critique asked for', () => {
       </MemoryRouter>,
     );
     const link = await screen.findByRole('link', { name: `Conversation “${title}”` });
-    expect(link.textContent).toBe('“Create notes/to… tasks for today”');
+    expect(link.textContent).toBe('“Create notes/todo.md with three…”');
     expect(link.textContent?.length).toBeLessThanOrEqual(34);
     expect(link.getAttribute('title')).toBe(title);
+  });
+
+  it('end-cuts a title that already ends in an ellipsis, with no second one', async () => {
+    const { endTruncate } = await import('../src/lib/format');
+    expect(endTruncate('Use the write_file tool (not local_write) to create…', 32)).toBe(
+      'Use the write_file tool (not lo…',
+    );
+    expect(endTruncate('Short title…', 32)).toBe('Short title…');
+    expect(endTruncate('Short title', 32)).toBe('Short title');
   });
 
   it('does not repeat the conversation and turn As of is already about', async () => {

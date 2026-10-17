@@ -1029,9 +1029,11 @@ Flows worth knowing before editing the app:
   came from**: the conversation (a link), the turn (a link into As of), the agent, when it was
   written and whether it has been recalled since — the hunt ends at "which conversation taught it
   this", and `kind · imp · seq` could not answer it. The line has a grammar of its own: muted, `from` and
-  the quoted title cut from the middle at 32, links marked by an underline that is always there
+  the quoted title **end-cut** at 32 (`endTruncate`; a middle cut broke a sentence into two
+  fragments, and a title already ending in `…` gets no second one), links marked by an underline that is always there
   (colour alone told them from the text by nothing — a title is usually the user's first message,
-  so a bare one read as the fact's next sentence) and padded to 24px without a taller line. Three rules that are easy to break.
+  so a bare one read as the fact's next sentence) and padded to 24px without a taller line. Retriever channels (`via lexical`) appear on Search hits only: a Recent or As-of
+  row was retrieved by nothing, so the old "lexical only" on unembedded rows is gone. Three rules that are easy to break.
   **As of is per conversation**: `origin_seq` is an ordinal into one thread's log, so the view asks
   for the thread before the turn and sends `thread_id` (`felix-run/felix#548`); without it
   `as-of/4` collected every conversation's fourth turn. The client re-filters by thread, because an
@@ -1125,11 +1127,21 @@ Flows worth knowing before editing the app:
 - **Skill library** — `/harness/skills` holds the agent's active/declared skills and the tenant
   library — below them, or **above them while a draft is waiting**, since that queue is why an
   operator opens the page. The library is a review queue (oldest draft first, its gate verdict and
-  diff against live open on the first row, publish or reject with a note), a feedback inbox, a list
-  filtered by status and source (it opens on **In use** — anything live or with a draft waiting,
+  diff against live open on the first row, publish or reject with a note) and a feedback inbox —
+  each a section above the list **only while it holds something** (or its read failed); empty,
+  both are one quiet line in the Library heading (*No drafts or feedback waiting*), because two
+  headed "nothing" sections sat above the list an operator came for. (`useStickyFailure` keeps
+  a failed section mounted through its own retry-on-mount, which otherwise flipped it away and
+  back forever.) Then the list, filtered by status and source through two `sm` Selects with
+  visible labels (it opens on **In use** — anything live or with a draft waiting,
   sorted out on the client since the route takes one status; archived skills are under Archived
-  and All, and an In use view that hid everything says how many rather than "empty"), and the tenant's **publish policy** form, which lives here and not
-  on a skill's page: it re-decides every skill's drafts. `?skill=&tab=&v=&against=` is a skill's
+  and All, and an In use view that hid everything says how many rather than "empty"). Below it,
+  **Manage** — one disclosure, closed by default and remembered for the tab
+  (`felix.skills.manageOpen` in `sessionStorage`), mounting nothing while closed — holds Import
+  from GitHub, Personal libraries and the tenant's **publish policy** form, which lives here and not
+  on a skill's page: it re-decides every skill's drafts. `?manage=import|personal|policy` opens it
+  on that section; the Gate tab's policy link is `?manage=policy`. Import's Browse is never
+  disabled (a greyed primary read as chrome): pressed empty it names the missing source. `?skill=&tab=&v=&against=` is a skill's
   page (Versions, Gate, Evals, Feedback; an old `tab=edit` opens Versions), so any view is a link; the Gate tab is still
   `tab=review` in the address, and a stored version's files are a section of Versions, so an old
   `tab=files` link lands there. **No decision is asked before the evidence:** every publish and
@@ -1193,7 +1205,7 @@ Flows worth knowing before editing the app:
   that names its code (`no_personal_library`, `missing_scope:…`) is said in its words, not as
   the generic `skills:write` one.
   **An administrator reads other people's libraries** (`?lib=<32 hex>`, `listPersonalLibraries`
-  → `GET /-/personal`, which strips the `~`). The team page's *Personal libraries* section lists
+  → `GET /-/personal`, which strips the `~`). The team page's *Personal libraries* section (under Manage) lists
   them **only on Show** — the harness audits every listing as `personal_library_accessed`, so a
   mount or a poll would record looks nobody took. That library is read-only except Archive:
   `useLibraryReadOnly()` (a library that is neither the team's nor `me`) makes `VersionDecision`

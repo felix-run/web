@@ -110,6 +110,21 @@ describe('importing from GitHub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
     expect(await screen.findByText(/No such repository/)).toBeTruthy();
   });
+
+  // Browse is the row's primary action, so it is never drawn disabled: pressed with no source
+  // it names what is missing and moves focus there, and asks GitHub nothing.
+  it('keeps Browse enabled, and says what is missing when pressed empty', async () => {
+    const h = fakeHarness(() => undefined);
+    mountWithProviders(<ImportSection linkTo={linkTo} />);
+    const browse = screen.getByRole('button', { name: 'Browse' }) as HTMLButtonElement;
+    expect(browse.disabled).toBe(false);
+    fireEvent.click(browse);
+    expect(await screen.findByText(/Name a source to browse/)).toBeTruthy();
+    const source = screen.getByLabelText(/Source/);
+    expect(source.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(source);
+    expect(h.requests).toHaveLength(0);
+  });
 });
 
 describe('imported skills', () => {

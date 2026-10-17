@@ -340,13 +340,15 @@ describe('the publish policy', () => {
         };
       return undefined;
     });
-    const { unmount } = mountWithProviders(<SkillLibrary />, '/harness/skills');
+    // Behind Manage, which a link naming the policy opens.
+    const { unmount } = mountWithProviders(<SkillLibrary />, '/harness/skills?manage=policy');
     expect(await screen.findByRole('heading', { name: 'Publish policy' })).toBeTruthy();
     expect(await screen.findByRole('button', { name: 'Edit policy…' })).toBeTruthy();
     unmount();
     mountWithProviders(<SkillLibraryPage />, '/harness/skills?skill=roll-dice&tab=review');
     expect(await screen.findByText(/The gate would let 0\.1\.1 through/)).toBeTruthy();
-    expect(await screen.findByRole('link', { name: 'change it on the library page' })).toBeTruthy();
+    const policyLink = await screen.findByRole('link', { name: 'change it on the library page' });
+    expect(policyLink.getAttribute('href')).toBe('/harness/skills?manage=policy');
     expect(screen.queryByRole('button', { name: 'Edit policy…' })).toBeNull();
     expect(screen.getByRole('tab', { name: 'Gate' })).toBeTruthy();
   });

@@ -12,6 +12,7 @@ import { fakeHarness, mountWithProviders, versionRow } from './skill-fixtures';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  sessionStorage.clear();
 });
 
 const LIB = 'a'.repeat(32);
@@ -34,6 +35,11 @@ describe('Personal libraries, for an administrator', () => {
         : teamRoutes(req.path),
     );
     mountWithProviders(<SkillLibrary />, '/harness/skills');
+    // Behind Manage, closed by default; opening it still lists nothing until Show.
+    const manage = await screen.findByRole('button', { name: 'Manage' });
+    expect(manage.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Show' })).toBeNull();
+    fireEvent.click(manage);
     const show = await screen.findByRole('button', { name: 'Show' });
     expect(screen.getByText(/recorded in the audit log/)).toBeTruthy();
     expect(h.requests.some((r) => r.path === '/skill-library/-/personal')).toBe(false);
@@ -61,6 +67,7 @@ describe('Personal libraries, for an administrator', () => {
       return teamRoutes(req.path);
     });
     mountWithProviders(<SkillLibrary />, '/harness/skills');
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
     fireEvent.click(await screen.findByRole('link', { name: 'octocat' }));
     expect(await screen.findByText('octocat’s skills')).toBeTruthy();
@@ -75,6 +82,7 @@ describe('Personal libraries, for an administrator', () => {
         : teamRoutes(req.path),
     );
     mountWithProviders(<SkillLibrary />, '/harness/skills');
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
     expect(
       await screen.findByText('Only an administrator can list personal libraries.'),
@@ -84,6 +92,7 @@ describe('Personal libraries, for an administrator', () => {
   it('shows nothing on a harness without the route', async () => {
     fakeHarness((req) => teamRoutes(req.path));
     mountWithProviders(<SkillLibrary />, '/harness/skills');
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
     await waitFor(() => expect(screen.queryByText('Personal libraries')).toBeNull());
   });

@@ -435,8 +435,11 @@ export function PageSection({
   actions,
   children,
   className,
+  id: anchor,
 }: {
   title: string;
+  /** An anchor a link can scroll to. */
+  id?: string;
   /** A short at-a-glance value beside the heading, as `PageHeader` has. */
   meta?: ReactNode;
   /** Controls for this part, at the end of its heading row. */
@@ -447,6 +450,7 @@ export function PageSection({
   const id = useId();
   return (
     <section
+      id={anchor}
       aria-labelledby={id}
       className={cn(
         // `-of-type`, not `first:`: a page's sections share a parent with its
