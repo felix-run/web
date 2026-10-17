@@ -374,7 +374,7 @@ describe('how the last run went on its thread', () => {
     expect(outcome.textContent).toContain('Failed');
     expect(screen.queryByText('OK')).toBeNull();
     const link = document.querySelector('[data-slot="job-thread-failures"]') as HTMLAnchorElement;
-    expect(link.textContent).toBe('1 failed · 7d');
+    expect(link.textContent).toBe('1 thread failed · 7d');
     expect(link.getAttribute('href')).toBe(
       '/harness/activity?since=7d&failed=1&thread=nightly-digest',
     );
@@ -404,8 +404,44 @@ describe('how the last run went on its thread', () => {
     // alone hid that, which is the row the Activity page was leading with.
     const failures = [...document.querySelectorAll('[data-slot="job-thread-failures"]')];
     expect(failures.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      ['1 failed · 7d', '/harness/activity?since=7d&failed=1&thread=weekly'],
+      ['1 thread failed · 7d', '/harness/activity?since=7d&failed=1&thread=weekly'],
     ]);
+  });
+});
+
+/**
+ * "Failed" counts threads on every surface. A job that keeps one thread has one to
+ * fail; a job that starts a fresh thread per run has one per run, each named by a
+ * suffix of its own, so they are matched on the full thread id.
+ */
+describe('a job’s week of failures, in threads', () => {
+  const at = Date.now() - 60 * 60_000;
+  const call = (thread: string, id: string, status = 'error') => ({
+    id,
+    event_type: 'tool_call',
+    status,
+    ts: at / 1000,
+    payload: { thread_id: `default:${thread}`, tool: 'run' },
+  });
+
+  it('counts each failed run of a fresh-thread job as a thread, and links to the week', async () => {
+    await sheet([job({ last_status: 'ok', payload: { fresh_thread: true } })], {
+      audit: [
+        call('job:nightly-digest:aaa', 'a1'),
+        call('job:nightly-digest:aaa', 'a2'),
+        call('job:nightly-digest:bbb', 'b1'),
+        call('job:nightly-digest:ccc', 'c1', 'ok'),
+        // Another job's thread is not this one's.
+        call('job:nightly-digest-2:ddd', 'd1'),
+      ],
+    });
+    const link = await waitFor(() => {
+      const el = document.querySelector('[data-slot="job-thread-failures"]');
+      expect(el).not.toBeNull();
+      return el as HTMLAnchorElement;
+    });
+    expect(link.textContent).toBe('2 threads failed · 7d');
+    expect(link.getAttribute('href')).toBe('/harness/activity?since=7d&failed=1');
   });
 });
 

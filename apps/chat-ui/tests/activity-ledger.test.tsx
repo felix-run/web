@@ -282,7 +282,11 @@ describe('navSearch', () => {
   // A week since 2026-10-16: the glance counts over seven days, or over less when
   // its read reaches back less far, and the link carries the week, which holds both.
   it("carries the glance's window to Activity while the glance has something to say", () => {
-    const glance = { text: '3 failed', title: '3 failed in the last 7d', tone: 'failed' as const };
+    const glance = {
+      text: '3 threads failed',
+      title: '3 threads failed in the last 7d',
+      tone: 'failed' as const,
+    };
     expect(navSearch('activity', '?agent=x', glance)).toBe('?agent=x&since=7d');
     expect(navSearch('activity', '?agent=x', undefined)).toBe('?agent=x');
     expect(navSearch('memory', '', glance)).toBe('');
@@ -458,15 +462,20 @@ const wire = (e: AuditEvent) => {
 
 function stubHarness({
   events,
+  week = events,
   threads = [],
   threadsStatus = 200,
+  calls = 9,
 }: {
   events: AuditEvent[];
+  /** What the shared glance reads (`/audit` with no `since`) answer; the window's by default. */
+  week?: AuditEvent[];
   threads?: UsageThreadItem[];
   threadsStatus?: number;
+  calls?: number;
 }) {
   const totals = {
-    calls: 9,
+    calls,
     tokens_input: 30,
     tokens_output: 300,
     cache_creation: 0,
@@ -477,7 +486,8 @@ function stubHarness({
     const url = String(input);
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
     if (url.includes('/api/audit')) {
-      const rows = events.map(wire);
+      const windowed = new URL(url, 'http://x').searchParams.has('since');
+      const rows = (windowed ? events : week).map(wire);
       return json({ items: rows, events: rows, next_cursor: null });
     }
     if (url.includes('/api/usage/threads')) {
@@ -566,7 +576,7 @@ describe('the ledger page', () => {
     expect(rows[0]).toBe(b);
     // The header carries the failing count, once: the 24px sentence under it
     // that said the same three facts again is gone.
-    expect(await screen.findAllByText('1 with failures', { selector: 'span' })).toHaveLength(1);
+    expect(await screen.findAllByText('1 thread failed', { selector: 'span' })).toHaveLength(1);
     expect(screen.queryByText(/threads? ran/)).toBeNull();
   });
 
@@ -676,7 +686,9 @@ describe('the ledger page', () => {
     localStorage.setItem('felix.activity.lastVisit', String(now - 90 * MIN));
     mount();
     await rowFor(/Changelog cleanup/);
-    const audit = spy.mock.calls.map((c) => String(c[0])).find((u) => u.includes('/api/audit'));
+    const audit = spy.mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes('/api/audit') && u.includes('since='));
     expect(new URL(audit ?? '', 'http://x').searchParams.get('since')).toBe(String(now - 90 * MIN));
     expect(screen.getByText(/Since your last visit/)).toBeTruthy();
 
@@ -720,7 +732,9 @@ describe('the ledger page', () => {
     const spy = stubHarness({ events: failingTurn });
     mount();
     await rowFor(/Changelog cleanup/);
-    const audit = spy.mock.calls.map((c) => String(c[0])).find((u) => u.includes('/api/audit'));
+    const audit = spy.mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes('/api/audit') && u.includes('since='));
     expect(new URL(audit ?? '', 'http://x').searchParams.get('since')).toBe(String(now - 90 * MIN));
   });
 
@@ -731,6 +745,60 @@ describe('the ledger page', () => {
     mount();
     await user.click(await screen.findByRole('button', { name: 'Show the last 24 hours' }));
     expect(await screen.findByText('Last 24 hours')).toBeTruthy();
+  });
+
+  /**
+   * The sidebar counts the week; this page opens on "since your last visit". Reached
+   * any way but the glance's link it read "Nothing ran … $0.00 · 0 threads" beside a
+   * red `1 thread failed · 7d`. It points at the week now, with the glance's count.
+   */
+  it('points at the week’s failures when nothing ran since the last visit', async () => {
+    const user = userEvent.setup();
+    stubHarness({ events: [], week: failingTurn, calls: 0 });
+    localStorage.setItem('felix.activity.lastVisit', String(now - 2 * MIN));
+    mount();
+    const pointer = await waitFor(() => {
+      const el = document.querySelector('[data-slot="activity-week-pointer"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(pointer.textContent).toMatch(
+      /^Nothing new since your last visit, .+ ago · 1 thread failed in the last 7 days\. Show the last 7 days$/,
+    );
+    // Nothing ran, so no figure: `$0.00` read as "free".
+    expect(screen.queryByText(/\$0\.00/)).toBeNull();
+    expect(screen.getByText('0 threads', { selector: 'span' })).toBeTruthy();
+    await user.click(within(pointer).getByRole('button', { name: 'Show the last 7 days' }));
+    expect(await screen.findByText('Last 7 days')).toBeTruthy();
+  });
+
+  it('points at the week when the window ran cleanly and the week did not', async () => {
+    const clean = [
+      ev({
+        id: 'b1',
+        ts: now - 2 * MIN,
+        payload: { tool: 'read', thread_id: 'default:thread-b' },
+      }),
+    ];
+    stubHarness({ events: clean, week: [...failingTurn, ...clean] });
+    localStorage.setItem('felix.activity.lastVisit', String(now - 5 * MIN));
+    mount();
+    await rowFor(/Read the docs/);
+    const pointer = await waitFor(() => {
+      const el = document.querySelector('[data-slot="activity-week-pointer"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(pointer.textContent).toMatch(
+      /^No failures since your last visit · 1 thread failed in the last 7 days\./,
+    );
+  });
+
+  it('says nothing about the week when the window holds the failure itself', async () => {
+    stubHarness({ events: failingTurn });
+    mount();
+    await rowFor(/Changelog cleanup/);
+    expect(document.querySelector('[data-slot="activity-week-pointer"]')).toBeNull();
   });
 
   it('names a row briefly, and does not repeat the title as its summary', async () => {
@@ -934,8 +1002,8 @@ describe('a thread whose only miss was a denial', () => {
     expect(row.querySelector('[class*="state-failed"]')).toBeNull();
     // The title is the whole first message, cut by the tile rather than at 48.
     expect(row.textContent).toContain('Deploy checklist reviewed.');
-    // No "with failures" in the header, and the account says what happened.
-    expect(screen.queryByText(/with failures/, { selector: 'span' })).toBeNull();
+    // No "failed" in the header, and the account says what happened.
+    expect(screen.queryByText(/failed/, { selector: 'span' })).toBeNull();
     expect(screen.getByText(/1 thread had a call denied at an approval\./)).toBeTruthy();
 
     await user.click(row);

@@ -1072,7 +1072,9 @@ Flows worth knowing before editing the app:
   thread can show a cost rather than drawing every one as free. The window opens on **since this
   browser last left the page** (`felix.activity.lastVisit`), falling back to 24h; window and
   filters are in the address, and `?thread=<suffix>` opens one entry on arrival (the Jobs page links
-  a job's spend there, and its failures — `N failed · 7d` from the glance's two reads, because a
+  a job's spend there, and its failures — `1 thread failed · 7d` from the glance's two reads
+  narrowed to the job's threads by full id, so a fresh-thread job counts one per failed run and
+  links to the week without `?thread=`, because a
   job that failed four days ago and ran cleanly since read only `last ● OK` beside this page leading
   with it; its `last` reads `Failed` when the scheduler said OK but the turn that firing ran broke,
   `jobThreadOutcome`; the poll still runs until its first answer, since an open entry pauses it).
@@ -1085,7 +1087,7 @@ Flows worth knowing before editing the app:
   `pagehide` only after the page has been on screen `VISIT_MIN_MS` (5s), and a tab measures from
   the value it first read, held in `sessionStorage` (`felix.activity.sessionSince`) — before both,
   any reload, remount or second tab turned the window into "since a minute ago". The sidebar's
-  Activity glance counts failures over **a week** (2026-10-16; it was a day, and a job that failed
+  Activity glance counts **threads that failed** over **a week** (2026-10-16; it was a day, and a job that failed
   four days earlier left it blank while this page led with it) — or over less when its reads do
   not reach that far back, which its span says (`glanceWindow`: `· 3h`, not `· 7d`) — and links
   with `?since=7d` (`navSearch`), which holds either. **It merges two reads** (`useRecentAudit`,
@@ -1093,7 +1095,24 @@ Flows worth knowing before editing the app:
   Measured on the reference harness, a job firing every few minutes put 60 events at 106 hours and
   even 500 (262 KB) at 112, so the failure was in neither; the errors read reached 576 hours in
   16 KB. The first read stays for the turns around a failure and a control's refusals (`denied`,
-  not `error`). **Spend before
+  not `error`). **"Failed" is counted in threads on every surface** (2026-10-17): the glance
+  summed failure *events* (`3 failed · 7d`) beside this page's `1 with failures` and a job row's
+  calls-or-turns, three units for one broken thread. Now the glance (`recentFailures`), the page
+  header and a job's row all run `failureTally` over `buildLedger` — the page's own reading, in
+  turns — and say it with `failureLabel` (`1 thread failed`), and `useWeekFailures` is the one
+  hook behind the glance, the job rows and the page's pointer. It is the same rule over the same
+  window, not the same rows: the glance has its two reads, the page with `?since=7d` up to 2,000
+  events. The `""` bucket is never a thread: its failures are counted apart as events and said
+  (`N failed outside a thread`) only when no thread failed, so neither surface is blank over one
+  nor adds the two units. The *Failed* mark on a thread row (`threadOutcomes`) is a different
+  question — its **newest** turn — so a thread that broke and ran cleanly since counts in the
+  glance and carries no mark. **A window shorter than the week points at it**: on "since last
+  visit" or 24h, when the window holds no failure and the week does, the page says
+  `Nothing new since your last visit · 1 thread failed in the last 7 days` (or *No failures since
+  your last visit · …* above a clean list) with *Show the last 7 days*, because reaching the page
+  any way but the glance's link (the phone's `/harness` list, a bookmark, Back) read "Nothing ran"
+  under a red glance. A window with no model call shows no cost figure, not `$0.00`.
+  **Spend before
   per-thread metering lives in the `""` bucket**: `meteringStart` finds the first attributed call
   when unattributed spend came before it (`Infinity` when none is attributed at all), and
   `spendState` tells a thread's cell `cost`, `floor` (`≥`), `unrecorded` or `none` — so a thread

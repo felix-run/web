@@ -521,6 +521,54 @@ export function toolTally(events: AuditEvent[], shown = 4): string {
 }
 
 /**
+ * What failed in a ledger, in the one unit every surface counts it in: **threads**.
+ *
+ * "Failed" meant three things on three surfaces — the sidebar's Activity glance
+ * summed failure *events* (`3 failed · 7d`), this page counted threads
+ * (`1 with failures`), and a job's row counted calls and turns (`1 failed · 7d`)
+ * — so one broken thread read as three failures in the rail and one here. Every
+ * count of failures now comes from this function over `buildLedger`, which is the
+ * page's own reading: a thread failed when any event in it, read in its turn, is a
+ * broken call or a control's refusal (never an approval's denial, never the reply
+ * after one).
+ *
+ * The no-thread bucket (`NO_THREAD`) is not a thread, so it is never counted as
+ * one. Its failures — an MCP `tools/call` from outside a chat, a screening event —
+ * are counted apart, as `unattributed` *events*, and said in their own words
+ * (`failureLabel`) only when no thread failed, so a surface is never blank over a
+ * failure the ledger lists in its no-thread entry, and never adds the two units
+ * together.
+ */
+export interface FailureTally {
+  /** Suffixes of the threads with a failure, `NO_THREAD` excluded. */
+  ids: Set<string>;
+  /** Failure events with no thread. */
+  unattributed: number;
+}
+
+export function failureTally(threads: readonly LedgerThread[]): FailureTally {
+  const ids = new Set<string>();
+  let unattributed = 0;
+  for (const t of threads) {
+    if (t.id === NO_THREAD) unattributed += t.failures.length;
+    else if (t.failures.length > 0) ids.add(t.id);
+  }
+  return { ids, unattributed };
+}
+
+/**
+ * A tally as the words every surface uses: `1 thread failed`, `3 threads failed`,
+ * or — only when no thread did — `2 failed outside a thread`. `null` when nothing
+ * failed.
+ */
+export function failureLabel(t: FailureTally): string | null {
+  const n = t.ids.size;
+  if (n > 0) return `${n.toLocaleString()} ${n === 1 ? 'thread' : 'threads'} failed`;
+  if (t.unattributed > 0) return `${t.unattributed.toLocaleString()} failed outside a thread`;
+  return null;
+}
+
+/**
  * The window's failures in one sentence, ranked by what they cost.
  *
  * The Activity page's account line used to say only how many threads had a call

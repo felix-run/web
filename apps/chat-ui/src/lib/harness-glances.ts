@@ -1,6 +1,8 @@
 import { threadSuffix } from '@felix/client';
 import { isFailure, tsToMs } from '@/components/inspector/primitives';
 import { eventOutcome, isFailureOutcome, type OutcomeEvent } from '@/lib/audit-outcome';
+import { buildLedger, type FailureTally, failureTally } from '@/lib/ledger';
+import type { AuditEvent } from '@/types';
 
 /**
  * What the sidebar's glances read, apart from the pages that also read it.
@@ -110,39 +112,29 @@ export function mergeReads<E extends { id?: string }>(...reads: (readonly E[] | 
 }
 
 /**
- * Failures since `since`, by thread suffix (`''` for an event with no thread).
+ * What failed since `since` (by default the window `events` can vouch for,
+ * `glanceWindow`), counted in threads as the Activity page counts them.
  *
- * Read as the page reads them (`eventOutcome`): an approval's denial is not a
- * failure, and nor is the reply the harness marks `error` after one. Counting both
- * put `Activity · 2 failed` in red beside a thread where someone had declined one
- * write. A reply is read among its thread's events, the nearest the glance has to
- * its turn.
+ * Not a second reading of the record: the events in the window go through
+ * `buildLedger` and `failureTally`, the page's own grouping, so an approval's
+ * denial is not a failure, the reply the harness marks `error` after one is not
+ * either, and a reply is read in its turn. It used to sum failure *events*, which
+ * put `3 failed` in the rail beside a page reading `1 with failures` for the same
+ * broken thread.
+ *
+ * The same rule over the same window, not the same rows: the glance reads the
+ * newest `ACTIVITY_FETCH` failures plus the newest `ACTIVITY_FETCH` events, the
+ * page with `?since=7d` reads up to 2,000 events of the week. A turn whose
+ * `user_input` is in neither read is cut as the page cuts a turn that began
+ * before its window — kept, marked partial — so the thread still counts.
  */
-export function failuresByThread(
-  events: (OutcomeEvent & { ts: number })[],
-  since: number,
-): Map<string, number> {
-  const byThread = byThreadOf(events);
-  const out = new Map<string, number>();
-  for (const e of events) {
-    if (e.ts == null || tsToMs(e.ts) < since) continue;
-    const raw = e.payload?.thread_id ?? null;
-    if (!isFailureOutcome(eventOutcome(e, byThread.get(raw)))) continue;
-    const id = typeof raw === 'string' && raw ? threadSuffix(raw) : '';
-    out.set(id, (out.get(id) ?? 0) + 1);
-  }
-  return out;
-}
-
-/** Failures since `since` (by default the window `events` can vouch for, `glanceWindow`). */
 export function recentFailures(
-  events: (OutcomeEvent & { ts: number })[],
+  events: readonly AuditEvent[],
   now: number,
   since = glanceWindow(events, now).since,
-): number {
-  let n = 0;
-  for (const count of failuresByThread(events, since).values()) n += count;
-  return n;
+): FailureTally {
+  const inWindow = events.filter((e) => e.ts != null && tsToMs(e.ts) >= since);
+  return failureTally(buildLedger(inWindow, null));
 }
 
 /** How a thread's newest turn in the glance's read went. */
@@ -156,7 +148,13 @@ export interface ThreadOutcome {
 /**
  * Each thread's newest turn, by suffix, from the same read the glance counts —
  * so a thread row's *Failed* mark and the Jobs page's outcome cost no request of
- * their own, and cannot disagree with the glance about what failed.
+ * their own.
+ *
+ * They answer a different question from the glance, and can differ from it on
+ * purpose: the glance counts a thread with **any** failure in the window
+ * (`recentFailures`, the Activity page's rule), the mark only one whose newest
+ * turn failed. A thread that broke on Tuesday and ran cleanly since counts in
+ * `1 thread failed · 7d` and carries no *Failed* mark.
  *
  * Only the **newest** turn counts: a thread that failed and then ran cleanly is
  * not marked, because the mark answers "did its last run go wrong", not "has it
