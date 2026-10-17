@@ -161,6 +161,26 @@ describe('harness view', () => {
 });
 
 describe('/view and /debug', () => {
+  // The order of the rungs. In Chrome, `/view` once stepped from a stale level
+  // (the composer held an earlier render's handler) and went from harness view
+  // to everyday; happy-dom does not reproduce that, so this pins the order only.
+  it('steps from the level as it stands, one rung per command', async () => {
+    mount('/t/daily');
+    const user = userEvent.setup();
+    const box = await screen.findByRole('textbox', { name: /Message Felix/ });
+    const run = async (cmd: string) => {
+      await user.click(box);
+      await user.type(box, cmd);
+      await user.keyboard('{Enter}');
+    };
+    await run('/view');
+    await waitFor(() => expect(localStorage.getItem('felix.view')).toBe('harness'));
+    await run('/view');
+    await waitFor(() => expect(localStorage.getItem('felix.view')).toBe('debug'));
+    await run('/debug');
+    await waitFor(() => expect(localStorage.getItem('felix.view')).toBe('harness'));
+  });
+
   it('has /view for the ladder, and /debug under the name Verbose had', () => {
     expect(findSlashCommand('view')?.action).toBe('view');
     expect(findSlashCommand('debug')?.action).toBe('debug');

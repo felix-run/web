@@ -438,6 +438,16 @@ export function AppShell() {
       return next;
     });
   }, []);
+  // From the level as it stands, not as a render saw it: the composer can hold a
+  // command handler from an earlier render, and `/view` from that one stepped twice.
+  const stepView = useCallback(() => {
+    setView((v) => {
+      const at = VIEW_OPTIONS.findIndex((o) => o.value === v);
+      const next = VIEW_OPTIONS[(at + 1) % VIEW_OPTIONS.length]!.value;
+      if (next === 'debug') beforeDebugRef.current = v;
+      return next;
+    });
+  }, []);
   const toggleDebug = useCallback(() => {
     setView((v) => {
       if (v === 'debug') return beforeDebugRef.current;
@@ -2697,11 +2707,9 @@ export function AppShell() {
         case 'debug':
           toggleDebug();
           break;
-        case 'view': {
-          const at = VIEW_OPTIONS.findIndex((o) => o.value === view);
-          chooseView(VIEW_OPTIONS[(at + 1) % VIEW_OPTIONS.length]!.value);
+        case 'view':
+          stepView();
           break;
-        }
       }
     },
     [
@@ -2713,8 +2721,7 @@ export function AppShell() {
       setTheme,
       resolved,
       toggleDebug,
-      chooseView,
-      view,
+      stepView,
     ],
   );
 
