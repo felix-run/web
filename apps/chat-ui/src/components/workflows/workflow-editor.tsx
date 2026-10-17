@@ -129,6 +129,7 @@ function JsonField({
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <Textarea
+        size="sm"
         id={id}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -151,7 +152,7 @@ function JsonField({
           setBad(why ? `${why} Kept as it was.` : null);
           if (!why) onChange(parsed);
         }}
-        className="min-h-24 font-mono text-xs"
+        className="min-h-24 font-mono"
         aria-invalid={Boolean(bad)}
         aria-describedby={`${id}-note`}
       />

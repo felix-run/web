@@ -823,7 +823,7 @@ function VersionsPanel({
                 rows={16}
                 aria-invalid={editorError != null}
                 aria-describedby={editorError != null ? 'manifest-editor-error' : undefined}
-                className="mt-1 resize-y bg-transparent p-2 font-mono text-sm leading-snug shadow-none aria-invalid:border-state-failed"
+                className="mt-1 resize-y font-mono leading-snug"
               />
             </div>
             {editorError && (

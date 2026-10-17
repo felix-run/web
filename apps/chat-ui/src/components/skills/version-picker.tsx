@@ -46,13 +46,12 @@ export function VersionSelect({
       <SelectTrigger id={id} size="sm">
         <SelectValue>{current ? row(current) : value}</SelectValue>
       </SelectTrigger>
-      <SelectContent align="start">
+      <SelectContent align="start" size="sm">
         {versions.map((v) => (
           <SelectItem
             key={v.version}
             value={v.version}
             textValue={versionOptionLabel(v, liveVersion)}
-            className="text-xs"
           >
             {row(v)}
           </SelectItem>

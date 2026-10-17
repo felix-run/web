@@ -155,10 +155,11 @@ export function FrontmatterForm({
           <CharCount value={str('description')} max={LIMITS.description} />
         </div>
         <Textarea
+          size="sm"
           id="fm-description"
           value={str('description')}
           onChange={(e) => setField('description', e.target.value)}
-          className="min-h-20 text-xs"
+          className="min-h-20"
           placeholder="What the skill does and when to use it."
           aria-invalid={fieldErrors('description').length > 0}
         />
@@ -182,10 +183,11 @@ export function FrontmatterForm({
           <CharCount value={str('compatibility')} max={LIMITS.compatibility} />
         </div>
         <Textarea
+          size="sm"
           id="fm-compatibility"
           value={str('compatibility')}
           onChange={(e) => setField('compatibility', e.target.value)}
-          className="min-h-14 text-xs"
+          className="min-h-14"
           placeholder="Environment requirements — only if the skill needs them."
           aria-invalid={fieldErrors('compatibility').length > 0}
         />
@@ -298,7 +300,7 @@ export function FrontmatterForm({
           value={str('allowed-tools')}
           onChange={(e) => setField('allowed-tools', e.target.value)}
           className="font-mono"
-          placeholder="Bash(git:*) Read Write"
+          placeholder="e.g. Bash(git:*) Read Write"
         />
         <p className="text-xs text-muted-foreground">
           Space-separated tools pre-approved to run. Support varies by agent.

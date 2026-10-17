@@ -97,10 +97,10 @@ export function PlanEditor({
               <SelectTrigger size="sm" aria-label={`Step ${i + 1} status`} className="font-mono">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent align="end">
+              <SelectContent align="end" size="sm">
                 {/* An agent's own status word stays choosable, so opening the editor changes nothing. */}
                 {[...new Set([...STATUSES, s.status])].map((st) => (
-                  <SelectItem key={st} value={st} className="font-mono text-xs">
+                  <SelectItem key={st} value={st} className="font-mono">
                     {st}
                   </SelectItem>
                 ))}

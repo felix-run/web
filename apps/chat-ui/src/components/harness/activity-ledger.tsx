@@ -226,9 +226,9 @@ export function ActivityLedger({ docs }: { docs?: string }) {
             <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Window">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent size="sm">
               {(Object.keys(WINDOW_LABEL) as LedgerWindow[]).map((w) => (
-                <SelectItem key={w} value={w} className="text-xs">
+                <SelectItem key={w} value={w}>
                   {WINDOW_LABEL[w]}
                 </SelectItem>
               ))}
@@ -408,14 +408,12 @@ function Filters({
         <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Show threads">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent size="sm">
           {/* Named for what the list then shows. "Any denial or none" described the
               filter's logic, and no operator asks for threads that way. */}
-          <SelectItem value="any" className="text-xs">
-            All threads
-          </SelectItem>
+          <SelectItem value="any">All threads</SelectItem>
           {CONTROL_LAYERS.map((c) => (
-            <SelectItem key={c} value={c} className="text-xs">
+            <SelectItem key={c} value={c}>
               {c === 'approvals' ? 'Denied at an approval' : `Blocked by ${CONTROL_LABEL[c]}`}
             </SelectItem>
           ))}

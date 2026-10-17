@@ -678,19 +678,32 @@ The roles, as the code uses them, run from what you press to what you read:
 Borders are hairlines at `--border`, often at `/60`, or `--input` on a field and an outline
 button. Scrollbars are themed thin with the thumb inset by a transparent 3px border.
 
-**The One-Field Rule.** `Input` and `SelectTrigger` draw from one chrome (`fieldChrome` in
-`packages/ui/src/lib/field.ts`): a 32px pill (36px on a coarse pointer), an `--input` edge on an
-`input/30` wash in both themes, no shadow, the 3px `ring` on focus. The wash is what makes a
-field findable in light: the edge alone is 1.41:1 on the sheet, a hairline on near-white. `size="default"` is a
-form field at 14px; `size="sm"` is the same pill at 12px for a control in a dense row or toolbar
-(Activity's filters, the plan editor, a skill's version). Height never changes with size, so a row
-mixing fields and buttons stays on one line. A call site sets width and spacing, never height,
-radius, padding or text size, and there is no native `<select>` (its list is the OS's, light on a
-dark page); `tests/select-family.test.tsx` holds that. Every agent outside the composer is chosen
-with `AgentSelect` (`components/agent-select.tsx`): the name alone in the trigger in mono, our
-own words (a placeholder, *Every agent*) in sans, and each row the name over its provider model,
-the row the composer's pickers draw too (`OptionItem`). A placeholder names its noun with no
-ellipsis (*Choose a manifest*), since an ellipsis promises a dialog.
+**The One-Field Rule.** `Input`, `SelectTrigger` and `Textarea` share one surface
+(`fieldSurface` in `packages/ui/src/lib/field.ts`): an `--input` edge on an `input/30` wash in
+both themes, no shadow, a focus that turns the edge to full `--ring` under a 3px `ring/50` halo,
+and one invalid state, `destructive`. The wash is what makes a field findable in light: the edge
+alone is 1.41:1 on the sheet. The halo is half strength because the border carries the contrast;
+at full strength the two made a 4px dark band that read as an alert. The one-line fields are that
+surface as a pill (`fieldChrome`), in three sizes: `default`, 32px at 14px, for a form; `sm`,
+32px at 12px, for a dense row or toolbar (Activity's filters, the plan editor, a skill's
+version); `lg`, 36px at 14px, for the field that heads a region (the thread search, the access
+key). On a coarse pointer `default` and `sm` grow to 36px, as `Button size="sm"` does, and every
+field and select trigger reads at 16px (the unlayered rule in `index.css`), so a row of fields and
+`sm` buttons stays on one line at one size. `Textarea` keeps 12px corners (`default` 14px, `sm`
+12px), since a pill's ends would cut into text that wraps. A list opened from an `sm` trigger sets
+its rows at 12px (`SelectContent size`), never each item. A call site sets width and spacing,
+never height, radius, padding, text size or background; `tests/select-family.test.tsx` fails on
+one, with four named exceptions (the composer's chips, the sidebar's two fields on its accent, the
+pane's path fields on a tinted strip), and fails on a native `<select>`, whose list is the OS's.
+
+Every agent outside the composer is chosen with `AgentSelect` (`components/agent-select.tsx`):
+the name alone in the trigger in mono, our own words (a placeholder, *Every agent*) in sans, and
+each row the name over its provider model, the row the composer's pickers draw too
+(`OptionItem`); every agent list is at least 18rem wide and at most 26rem tall
+(`OPTION_LIST_BOUNDS`). A select's placeholder names its noun with no ellipsis (*Choose a
+manifest*), since an ellipsis promises a dialog; a field's example value starts with *e.g.*, or
+on the wash it reads as one already typed. A submit that is unavailable says why beside it
+(`WhyDisabled`), and the button names that line, since a disabled button fires no hover.
 
 **The Soft-Where-Touched Rule.** The larger a thing is as an object of attention, the larger its
 corner; a pill is for pressing. An object never takes a pill, and a control never takes a 22px
@@ -966,8 +979,8 @@ glance while drafts wait (or while the reader is on Skills), the current one mar
 workspace. On `/harness` the workspace is folded by default, header only, its mount controls
 inside the fold (that fold is not stored). Arriving moves nothing: the rows do not change. Collapsed, debug off shows those one or two icons below Workspace.
 
-Threads is a heading and a **pill search field** (36px, `sidebar-accent` face, `input` edge, 14px,
-a 3px focus ring) that stay put above a list that scrolls inside itself. Workspace and Harness are
+Threads is a heading and a **pill search field** (`Input size="lg"`: 36px, `sidebar-accent` face,
+`input` edge, 14px) that stay put above a list that scrolls inside itself. Workspace and Harness are
 one region below it at a **fixed** height — `min(40svh, 19rem)` with debug off, for its two rows
 and an open workspace; in debug `clamp(40svh, 32.5rem, 60svh)` — 32.5rem is what the ten
 destinations take (the folded workspace's header is a short scroll below), and a fixed height means the region does not

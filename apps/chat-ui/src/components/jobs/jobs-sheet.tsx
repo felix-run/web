@@ -30,6 +30,7 @@ import {
   plural,
 } from '@/components/harness/panel';
 import { StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
+import { WhyDisabled } from '@/components/why-disabled';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { failing, JOBS_POLL_KEY } from '@/lib/harness-glances';
 import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '@/lib/job-schedule';
@@ -205,6 +206,12 @@ export function JobsSheet({
       return { schedule: null, error: err instanceof ScheduleError ? err.message : String(err) };
     }
   }, [schedule]);
+  // The schedule's own error is said under its field; this only points at it.
+  const jobUnready = !name.trim()
+    ? 'Name the job.'
+    : parsedSchedule.error !== null
+      ? 'Fix the schedule above.'
+      : null;
   const costly =
     parsedSchedule.schedule?.kind === 'interval' && parsedSchedule.schedule.ms < COSTLY_INTERVAL_MS;
 
@@ -541,7 +548,7 @@ export function JobsSheet({
                     onChange={(e) => setPrompt(e.target.value)}
                     aria-describedby="job-prompt-help"
                     rows={3}
-                    className="mt-1 resize-y text-sm"
+                    className="mt-1 resize-y"
                   />
                   <p id="job-prompt-help" className="mt-1 text-xs text-muted-foreground">
                     Sent as the turn on each run. Empty sends “ping”.
@@ -599,6 +606,7 @@ export function JobsSheet({
                     size="sm"
                     className="gap-1"
                     disabled={busy || !name.trim() || parsedSchedule.error !== null}
+                    aria-describedby={jobUnready ? 'job-unready' : undefined}
                     onClick={create}
                   >
                     {existing ? 'Replace' : 'Create'}
@@ -606,6 +614,7 @@ export function JobsSheet({
                   <Button size="sm" variant="ghost" onClick={closeForm}>
                     Cancel
                   </Button>
+                  <WhyDisabled id="job-unready" reason={busy ? null : jobUnready} />
                 </div>
               </div>
             </PageSection>

@@ -189,7 +189,9 @@ export function ThreadTitle({
               finish(false);
             }
           }}
-          className="w-96 max-w-full"
+          // Its edge where the title button's hover fill was (-6px), so the field opens over the
+          // title rather than beside it. A full pull to the text (-14px) clipped the pill's end.
+          className="-ms-1.5 w-96 max-w-full"
         />
       ) : (
         <h2 className="flex min-w-0 text-sm">

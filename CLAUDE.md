@@ -1606,7 +1606,7 @@ modules don't resolve under the workspace options); those apps type-check via th
 
 
 **AI Elements are vendored, not wired** (`apps/chat-ui/src/components/ai-elements/`, 48
-components, 2026-10-03). They are presentational shadcn components and **do not need the AI
+components, 2026-10-03; `snippet` and `web-preview` were deleted unused on 2026-10-16). They are presentational shadcn components and **do not need the AI
 SDK at runtime**: twelve import from `ai`, and only *types* (`UIMessage`, `ToolUIPart`, …), so
 `ai` is a **dev** dependency pinned to `^6` — the version they are written against (v7 renamed
 `LanguageModelUsage` fields). `tests/ai-elements.test.tsx` mocks `ai` with a module that throws,

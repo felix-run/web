@@ -104,8 +104,8 @@ export function ImportSection({ linkTo }: { linkTo: (name: string, version?: str
             id={refId}
             value={ref}
             onChange={(e) => setRef(e.target.value)}
-            placeholder="default"
-            className="font-mono"
+            placeholder="the default branch"
+            className="font-mono placeholder:font-sans"
             autoComplete="off"
           />
         </div>

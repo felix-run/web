@@ -153,7 +153,7 @@ export function FileTree({
           if (event.key === 'Enter') commitInput();
           if (event.key === 'Escape') setPending(null);
         }}
-        className="h-7 font-mono"
+        className="font-mono"
         aria-label={pending?.kind === 'rename' ? 'New name' : 'New file name'}
         aria-invalid={inputError ? true : undefined}
       />

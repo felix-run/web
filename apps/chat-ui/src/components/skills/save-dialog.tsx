@@ -153,7 +153,7 @@ export function SaveDialog({
               maxLength={2000}
               onChange={(e) => setReason(e.target.value)}
               placeholder="What changed, and why"
-              className="min-h-16 text-sm"
+              className="min-h-16"
             />
           </div>
 

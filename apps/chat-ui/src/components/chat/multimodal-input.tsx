@@ -55,7 +55,7 @@ import {
   useState,
 } from 'react';
 import { toast } from 'sonner';
-import { OptionItem } from '@/components/agent-select';
+import { OPTION_LIST_BOUNDS, OptionItem } from '@/components/agent-select';
 import {
   enterAction,
   PromptInput,
@@ -1167,10 +1167,7 @@ function InlinePicker({
       </SelectTrigger>
       {/* Wider than the pill and capped in height: eighteen agents at two lines each in a column
           the trigger's width opened over the page heading and read as a wall. */}
-      <SelectContent
-        align="start"
-        className="w-72 max-h-[min(var(--radix-select-content-available-height),26rem)]"
-      >
+      <SelectContent align="start" className={OPTION_LIST_BOUNDS}>
         {listLabel ? (
           // A label has to sit in a group for the listbox to own it; that is
           // the primitive's rule, not a grouping this list otherwise needs.

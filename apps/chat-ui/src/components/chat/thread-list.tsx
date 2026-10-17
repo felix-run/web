@@ -514,6 +514,7 @@ export function ThreadList({
             // a dialog: the row already shows the name being changed.
             ref={renameInputRef}
             aria-label="Thread name"
+            placeholder="Name this thread"
             value={renaming.draft}
             onChange={(e) => setRenaming({ id: t.id, draft: e.target.value })}
             onBlur={() => {
@@ -743,9 +744,10 @@ export function ThreadList({
             Threads
           </h2>
         </div>
-        <label className="relative mt-1 block">
+        <div className="relative mt-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input
+            size="lg"
             ref={searchRef}
             type="search"
             aria-label="Search threads"
@@ -757,9 +759,11 @@ export function ThreadList({
             }}
             onKeyDown={onSearchKeyDown}
             placeholder="Search titles and messages…"
-            className="h-9 w-full rounded-full border border-input bg-sidebar-accent pr-3 pl-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring"
+            // The sidebar's two fields sit on its accent rather than the wash, which is
+            // too faint on the sidebar's ground; the inset clears the search glyph.
+            className="bg-sidebar-accent pl-8"
           />
-        </label>
+        </div>
         {status && (
           <p className="flex items-center gap-2 px-2 pt-1.5 text-xs text-muted-foreground">
             {status}

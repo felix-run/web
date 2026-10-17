@@ -29,6 +29,7 @@ import {
   plural,
 } from '@/components/harness/panel';
 import { ReadFailure, withAge } from '@/components/inspector/primitives';
+import { WhyDisabled } from '@/components/why-disabled';
 import { cn } from '@/lib/utils';
 import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } from '@/types';
 
@@ -200,10 +201,15 @@ export function EvalSheet({
                   size="sm"
                   className="gap-1"
                   disabled={creating || !newName.trim()}
+                  aria-describedby={newName.trim() ? undefined : 'eval-new-unready'}
                   onClick={create}
                 >
                   <PlusIcon className="size-3.5" /> Create
                 </Button>
+                <WhyDisabled
+                  id="eval-new-unready"
+                  reason={creating || newName.trim() ? null : 'Name the dataset.'}
+                />
               </div>
             </PageSection>
           </div>
@@ -537,7 +543,7 @@ function ComparePanel({
             id="eval-compare-candidates"
             value={candidates}
             onChange={(e) => setCandidates(e.target.value)}
-            placeholder="deep, quick-v2"
+            placeholder="e.g. deep, quick-v2"
             className="min-w-0 flex-1"
           />
         </label>
@@ -744,7 +750,7 @@ function AddItemForm({
           onChange={(e) => setInput(e.target.value)}
           placeholder="e.g. What is 7 × 6?"
           rows={2}
-          className="mt-0.5 min-h-0 resize-none bg-transparent px-2 py-1.5 shadow-none"
+          className="mt-0.5 min-h-0 resize-none"
         />
       </div>
 

@@ -194,7 +194,7 @@ function VersionDecisionControls({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             maxLength={2000}
-            className="min-h-16 text-sm"
+            className="min-h-16"
           />
           <div className="flex flex-wrap gap-2">
             <ConfirmButton

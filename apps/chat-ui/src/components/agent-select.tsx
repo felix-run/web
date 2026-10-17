@@ -39,6 +39,14 @@ export function OptionItem({
   );
 }
 
+/**
+ * How far an agent list may grow: at least 18rem, so a name and its model sit on their lines
+ * rather than wrapping in a column the trigger's width, and at most 26rem tall, so eighteen
+ * agents at two lines each scroll instead of covering the page. The composer's lists share it.
+ */
+export const OPTION_LIST_BOUNDS =
+  'min-w-72 max-h-[min(var(--radix-select-content-available-height),26rem)]';
+
 /** Provider model by agent name, from `/v1/models`. */
 export function modelsById(
   entries: ReadonlyArray<{ id: string; providerModel?: string }>,
@@ -114,7 +122,7 @@ export function AgentSelect({
           {value ? <span className="min-w-0 truncate">{sentinel?.label ?? value}</span> : null}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent align="start" size={size} className={OPTION_LIST_BOUNDS}>
         {leading?.map((l) => (
           <SelectItem key={l.value} value={l.value}>
             {l.label}

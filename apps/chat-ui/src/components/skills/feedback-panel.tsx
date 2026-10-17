@@ -181,16 +181,17 @@ function FeedbackForm({ detail, version }: { detail: SkillDetail; version: strin
         id={bodyId}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        className="min-h-16 text-sm"
+        className="min-h-16"
       />
       <label htmlFor={patchId} className="block text-xs font-medium text-muted-foreground">
         Suggested change (optional — text for the rewrite to start from)
       </label>
       <Textarea
+        size="sm"
         id={patchId}
         value={patch}
         onChange={(e) => setPatch(e.target.value)}
-        className="min-h-12 font-mono text-xs"
+        className="min-h-12 font-mono"
       />
       {submit.error ? <RefusalNotice error={submit.error} doing="file feedback" /> : null}
       <Button type="submit" size="sm" disabled={!body.trim() || submit.isPending}>
@@ -437,7 +438,7 @@ function FeedbackDecision({ feedback: f }: { feedback: SkillFeedback }) {
             id={noteId}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="min-h-12 text-sm"
+            className="min-h-12"
           />
           <div className="flex gap-2">
             <Button

@@ -445,7 +445,7 @@ function NewSkillForm({
           value={description}
           maxLength={1024}
           onChange={(e) => setDescription(e.target.value)}
-          className="min-h-16 text-sm"
+          className="min-h-16"
           aria-invalid={descIssue ? true : undefined}
           aria-describedby={descIssue ? `${descId}-issue` : undefined}
         />

@@ -26,6 +26,7 @@ import {
   ViewSwitch,
 } from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
+import { WhyDisabled } from '@/components/why-disabled';
 import { usePoll } from '@/hooks/usePoll';
 import { middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -926,6 +927,17 @@ function AddMemoryForm({
     weight >= 0 &&
     weight <= 1;
   const options = agents.includes(agent) || !agent ? agents : [agent, ...agents];
+  const unready = !value
+    ? 'Write what to remember.'
+    : value.length > MEMORY_CONTENT_MAX
+      ? `Over ${MEMORY_CONTENT_MAX} characters.`
+      : topicKey.length > MEMORY_TOPIC_MAX
+        ? `The topic is over ${MEMORY_TOPIC_MAX} characters.`
+        : agent === ''
+          ? 'Choose the agent that recalls it.'
+          : !(Number.isFinite(weight) && weight >= 0 && weight <= 1)
+            ? 'Importance is a number from 0 to 1.'
+            : null;
 
   const submit = async () => {
     setBusy(true);
@@ -966,7 +978,7 @@ function AddMemoryForm({
           rows={3}
           onChange={(e) => setContent(e.target.value)}
           aria-describedby="memory-content-count"
-          className="mt-1 resize-y text-sm"
+          className="mt-1 resize-y"
         />
         <p id="memory-content-count" className="mt-1 text-xs text-muted-foreground tabular-nums">
           {value.length}/{MEMORY_CONTENT_MAX}
@@ -1025,12 +1037,18 @@ function AddMemoryForm({
       {/* A Cancel beside it, as Jobs has: the header toggle was the only way out,
           and it is not where anyone looks when a form is in front of them. */}
       <div className="flex gap-2">
-        <Button size="sm" disabled={!ready || busy} onClick={() => void submit()}>
+        <Button
+          size="sm"
+          disabled={!ready || busy}
+          aria-describedby={unready ? 'memory-add-unready' : undefined}
+          onClick={() => void submit()}
+        >
           {busy ? 'Storing…' : 'Remember it'}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
+        <WhyDisabled id="memory-add-unready" reason={busy ? null : unready} />
       </div>
       {error ? (
         <p role="alert" className="text-sm text-state-failed">
