@@ -3,7 +3,6 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
 import {
   ClockIcon,
@@ -17,6 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { deleteJob, listJobRuns, listJobs, listUsageByThread, runJobNow, upsertJob } from '@/api';
+import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import {
@@ -449,7 +449,7 @@ export function JobsSheet({
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       aria-describedby={existing ? 'job-name-replaces' : undefined}
-                      className="mt-1 h-8 text-sm"
+                      className="mt-1"
                       onKeyDown={(e) => e.key === 'Enter' && create()}
                     />
                     {existing && (
@@ -466,24 +466,13 @@ export function JobsSheet({
                   </div>
                   <div>
                     <Label htmlFor="job-manifest">Agent</Label>
-                    {/* The shared primitive, not a bare `<select>`: a native one draws
-                        its option list with the OS, which ignores the app's theme. */}
-                    <Select value={manifestId} onValueChange={setManifestId}>
-                      <SelectTrigger
-                        id="job-manifest"
-                        size="sm"
-                        className="mt-1 h-8 w-full font-mono text-sm"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
-                          <SelectItem key={m} value={m} className="font-mono text-sm">
-                            {m}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <AgentSelect
+                      id="job-manifest"
+                      value={manifestId}
+                      options={manifestOptions.length ? manifestOptions : [manifest]}
+                      onValueChange={setManifestId}
+                      className="mt-1 w-full"
+                    />
                   </div>
                 </div>
                 <div>
@@ -494,7 +483,7 @@ export function JobsSheet({
                     onChange={(e) => setSchedule(e.target.value)}
                     aria-describedby="job-schedule-help job-schedule-next"
                     aria-invalid={parsedSchedule.error ? true : undefined}
-                    className="mt-1 h-8 max-w-xs font-mono text-sm"
+                    className="mt-1 max-w-xs font-mono"
                     onKeyDown={(e) => e.key === 'Enter' && create()}
                   />
                   <p

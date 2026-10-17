@@ -3,7 +3,7 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
+import { SelectItem } from '@felix/ui/select';
 import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
 import { GitBranchIcon, PencilIcon, TriangleAlertIcon } from 'lucide-react';
@@ -16,9 +16,9 @@ import {
   listTenantManifests,
   setManifestCanary,
 } from '@/api';
+import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
-import { ManifestItem } from '@/components/harness/harness-agent';
 import {
   CREATE_FORM,
   CreateToggle,
@@ -242,34 +242,21 @@ export function ManifestsSheet({
                 <div className="min-w-0 flex-1">
                   <Label htmlFor="manifest-import-name">Manifest</Label>
                   {candidates.length > 0 && !typing ? (
-                    <Select
-                      value={importName || undefined}
+                    <AgentSelect
+                      id="manifest-import-name"
+                      value={importName}
+                      options={candidates}
                       onValueChange={(v) => {
                         if (v === OTHER) {
                           setTyping(true);
                           setImportName('');
                         } else setImportName(v);
                       }}
-                    >
-                      <SelectTrigger
-                        id="manifest-import-name"
-                        size="sm"
-                        className="mt-1 h-8 w-full font-mono text-sm data-[placeholder]:font-sans"
-                      >
-                        {/* The name alone once chosen; the item carries the model too. */}
-                        <SelectValue placeholder="Choose a manifest">
-                          {importName || undefined}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {candidates.map((m) => (
-                          <ManifestItem key={m} id={m} providerModel={providerModels?.get(m)} />
-                        ))}
-                        <SelectItem value={OTHER} className="text-sm">
-                          Another name…
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                      placeholder="Choose a manifest"
+                      providerModels={providerModels}
+                      className="mt-1 w-full"
+                      trailing={<SelectItem value={OTHER}>Another name…</SelectItem>}
+                    />
                   ) : (
                     <Input
                       id="manifest-import-name"
@@ -277,7 +264,7 @@ export function ManifestsSheet({
                       onChange={(e) => setImportName(e.target.value)}
                       aria-describedby="manifest-import-help"
                       placeholder={`e.g. ${manifest}`}
-                      className="mt-1 h-8 font-mono text-sm placeholder:font-sans"
+                      className="mt-1 font-mono placeholder:font-sans"
                     />
                   )}
                 </div>
@@ -670,7 +657,7 @@ function VersionsPanel({
             onChange={(e) => setTargetVersion(e.target.value)}
             inputMode="numeric"
             aria-describedby={`manifest-activate-help-${name}`}
-            className="h-8 min-w-0 flex-1 font-mono text-sm"
+            className="min-w-0 flex-1 font-mono"
           />
           <ConfirmButton
             size="sm"
@@ -728,7 +715,7 @@ function VersionsPanel({
               value={canaryVersion}
               onChange={(e) => setCanaryVersion(e.target.value)}
               inputMode="numeric"
-              className="mt-1 h-8 w-24 font-mono text-sm"
+              className="mt-1 w-24 font-mono"
             />
           </div>
           {/* This slider decides what share of live traffic moves to the canary, and
@@ -821,7 +808,7 @@ function VersionsPanel({
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="what changed, e.g. raised max_tool_calls"
-                className="mt-1 h-8 text-sm"
+                className="mt-1"
               />
             </div>
             <div>

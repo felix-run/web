@@ -1,6 +1,7 @@
 import { describeError, type Plan, PlanChangedError, type PlanStep } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -77,33 +78,34 @@ export function PlanEditor({
       }}
     >
       <Input
+        size="sm"
         aria-label="Plan title"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        className="h-8 text-xs"
       />
       <ol className="space-y-1.5">
         {steps.map((s, i) => (
           <li key={s.id} className="flex items-center gap-1.5">
             <Input
+              size="sm"
               aria-label={`Step ${i + 1}`}
               value={s.title}
               onChange={(e) => setStep(i, { title: e.target.value })}
-              className="h-8 min-w-0 flex-1 text-xs"
+              className="min-w-0 flex-1"
             />
-            <select
-              aria-label={`Step ${i + 1} status`}
-              value={s.status}
-              onChange={(e) => setStep(i, { status: e.target.value })}
-              className="h-8 rounded-md border border-input bg-transparent px-1.5 font-mono text-xs"
-            >
-              {/* An agent's own status word stays choosable, so opening the editor changes nothing. */}
-              {[...new Set([...STATUSES, s.status])].map((st) => (
-                <option key={st} value={st}>
-                  {st}
-                </option>
-              ))}
-            </select>
+            <Select value={s.status} onValueChange={(v) => v && setStep(i, { status: v })}>
+              <SelectTrigger size="sm" aria-label={`Step ${i + 1} status`} className="font-mono">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {/* An agent's own status word stays choosable, so opening the editor changes nothing. */}
+                {[...new Set([...STATUSES, s.status])].map((st) => (
+                  <SelectItem key={st} value={st} className="font-mono text-xs">
+                    {st}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               type="button"
               size="icon"

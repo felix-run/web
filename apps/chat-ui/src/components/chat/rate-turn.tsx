@@ -1,4 +1,5 @@
 import { Button } from '@felix/ui/button';
+import { Input } from '@felix/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import { ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -86,12 +87,13 @@ export function RateTurn({
               onChange={(e) => setAsCase(e.target.checked)}
             />
             Also save as an eval case in
-            <input
+            <Input
               aria-label="Eval dataset"
               value={dataset}
               disabled={!note.trim() || !asCase}
               onChange={(e) => setDataset(e.target.value)}
-              className="h-6 w-36 rounded border border-border bg-background px-1.5 font-mono text-xs disabled:opacity-60"
+              size="sm"
+              className="w-36 font-mono"
             />
           </label>
           <div className="flex items-center gap-2">

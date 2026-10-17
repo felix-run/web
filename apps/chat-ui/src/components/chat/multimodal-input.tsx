@@ -21,7 +21,6 @@ import {
   Select,
   SelectContent,
   SelectGroup,
-  SelectItem,
   SelectLabel,
   SelectTrigger,
   SelectValue,
@@ -56,6 +55,7 @@ import {
   useState,
 } from 'react';
 import { toast } from 'sonner';
+import { OptionItem } from '@/components/agent-select';
 import {
   enterAction,
   PromptInput,
@@ -1127,23 +1127,7 @@ function InlinePicker({
 }) {
   const current = options.find((o) => o.id === value) ?? options[0];
   const items = options.map((o) => (
-    // `textValue` keeps typeahead on the name: the item text now carries the
-    // provider model too, and a match should not depend on it.
-    <SelectItem key={o.id} value={o.id} textValue={o.label} className="text-sm">
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="font-mono font-medium">{o.label}</span>
-        {o.description && (
-          // Mono: every description is a quotation of the harness — an agent's
-          // provider model id, or a thinking level's token budget.
-          <span
-            data-slot="option-description"
-            className="font-mono text-xs wrap-anywhere text-muted-foreground"
-          >
-            {o.description}
-          </span>
-        )}
-      </span>
-    </SelectItem>
+    <OptionItem key={o.id} value={o.id} label={o.label} description={o.description} />
   ));
   return (
     <Select
@@ -1164,7 +1148,7 @@ function InlinePicker({
       <SelectTrigger
         size="sm"
         className={cn(
-          'h-8 max-w-[10rem] gap-1.5 rounded-full border-border/40 bg-muted/40 px-2.5 font-mono text-xs text-foreground/80 shadow-none hover:bg-muted hover:text-foreground',
+          'max-w-[10rem] gap-1.5 border-border/40 bg-muted/40 font-mono text-foreground/80 hover:bg-muted dark:bg-muted/40 dark:hover:bg-muted hover:text-foreground',
           className,
         )}
         aria-label={ariaLabel}
@@ -1181,7 +1165,12 @@ function InlinePicker({
           <span className="min-w-0 truncate">{current?.label ?? ''}</span>
         </SelectValue>
       </SelectTrigger>
-      <SelectContent align="start">
+      {/* Wider than the pill and capped in height: eighteen agents at two lines each in a column
+          the trigger's width opened over the page heading and read as a wall. */}
+      <SelectContent
+        align="start"
+        className="w-72 max-h-[min(var(--radix-select-content-available-height),26rem)]"
+      >
         {listLabel ? (
           // A label has to sit in a group for the listbox to own it; that is
           // the primitive's rule, not a grouping this list otherwise needs.

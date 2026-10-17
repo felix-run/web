@@ -161,7 +161,7 @@ export function RunNowForm({
                     aria-invalid={Boolean(invalid[name])}
                     aria-describedby={invalid[name] ? `${id}-error` : undefined}
                   >
-                    <SelectValue placeholder="Choose…" />
+                    <SelectValue placeholder={`Choose ${name}`} />
                   </SelectTrigger>
                   <SelectContent>
                     {(field.kind === 'enum' ? field.values : ['true', 'false']).map((v) => (

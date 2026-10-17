@@ -1,4 +1,5 @@
 import type { ThreadMeta } from '@felix/client';
+import { Input } from '@felix/ui/input';
 import { cn } from '@felix/ui/lib/utils';
 import { MessageSquareIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -170,7 +171,7 @@ export function ThreadTitle({
       className={cn('flex min-w-0 items-center gap-2 max-[23rem]:sr-only', className)}
     >
       {editing ? (
-        <input
+        <Input
           ref={inputRef}
           aria-label="Thread name"
           value={draft ?? ''}
@@ -188,7 +189,7 @@ export function ThreadTitle({
               finish(false);
             }
           }}
-          className="h-7 w-96 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="w-96 max-w-full"
         />
       ) : (
         <h2 className="flex min-w-0 text-sm">

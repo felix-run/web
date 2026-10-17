@@ -43,7 +43,9 @@ describe('the plan editor', () => {
     });
     const onSaved = await editor();
     fireEvent.change(screen.getByLabelText('Step 1'), { target: { value: 'Write it again' } });
-    fireEvent.change(screen.getByLabelText('Step 1 status'), { target: { value: 'pending' } });
+    // The status is the shared select now, not a native one: its list is the app's, not the OS's.
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Step 1 status' }), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('option', { name: 'pending' }));
     fireEvent.click(screen.getByRole('button', { name: /Add step/ }));
     fireEvent.change(screen.getByLabelText('Step 2'), { target: { value: 'Test it' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));

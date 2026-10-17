@@ -611,7 +611,7 @@ function WorkflowDetail({ id }: { id: string }) {
             />
             {view === 'run' && runOptions.length ? (
               <Select value={runId ?? undefined} onValueChange={(v) => set({ run: v })}>
-                <SelectTrigger size="sm" className="w-64" aria-label="Run">
+                <SelectTrigger className="w-64" aria-label="Run">
                   <SelectValue placeholder="Choose a run" />
                 </SelectTrigger>
                 <SelectContent>

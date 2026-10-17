@@ -211,7 +211,7 @@ function PolicyForm({
             value={quality}
             onChange={(e) => setQuality(e.target.value)}
             aria-invalid={qBad || undefined}
-            className="h-8 w-24 font-mono text-sm"
+            className="w-24 font-mono"
           />
         </label>
         <label htmlFor={ids.u} className="space-y-1 text-xs">
@@ -224,7 +224,7 @@ function PolicyForm({
             value={uplift}
             onChange={(e) => setUplift(e.target.value)}
             aria-invalid={uBad || undefined}
-            className="h-8 w-24 font-mono text-sm"
+            className="w-24 font-mono"
           />
         </label>
       </div>

@@ -28,7 +28,7 @@ import {
   versionState,
 } from './skill-status';
 import { RollbackButton, VersionDecision } from './version-actions';
-import { versionOptionLabel } from './version-picker';
+import { VersionSelect } from './version-picker';
 
 /**
  * Every version of one skill, newest first, with what can be done to each:
@@ -67,33 +67,23 @@ export function VersionsPanel({
           <label htmlFor={leftId} className="text-muted-foreground">
             From
           </label>
-          <select
+          <VersionSelect
             id={leftId}
+            versions={detail.versions}
+            liveVersion={detail.live_version}
             value={against}
-            onChange={(e) => onCompare(selected, e.target.value)}
-            className="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
-          >
-            {detail.versions.map((v) => (
-              <option key={v.version} value={v.version}>
-                {versionOptionLabel(v, detail.live_version)}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => onCompare(selected, v)}
+          />
           <label htmlFor={rightId} className="text-muted-foreground">
             to
           </label>
-          <select
+          <VersionSelect
             id={rightId}
+            versions={detail.versions}
+            liveVersion={detail.live_version}
             value={selected}
-            onChange={(e) => onCompare(e.target.value, against)}
-            className="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs"
-          >
-            {detail.versions.map((v) => (
-              <option key={v.version} value={v.version}>
-                {versionOptionLabel(v, detail.live_version)}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => onCompare(v, against)}
+          />
         </div>
         {error ? (
           <RefusalNotice error={error} doing="read the versions to compare" />

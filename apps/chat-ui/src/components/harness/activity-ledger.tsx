@@ -223,7 +223,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
         valueTone={failing > 0 ? 'failed' : 'default'}
         controls={
           <Select value={win} onValueChange={(v) => setWin(v as LedgerWindow)}>
-            <SelectTrigger size="sm" className="h-8 w-auto gap-1 px-2 text-xs" aria-label="Window">
+            <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Window">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -405,11 +405,7 @@ function Filters({
   return (
     <div className="mb-1.5 flex flex-wrap items-center justify-end gap-1.5">
       <Select value={layer} onValueChange={(l) => onChange({ layer: l })}>
-        <SelectTrigger
-          size="sm"
-          className="h-8 w-auto gap-1 px-2 text-xs"
-          aria-label="Show threads"
-        >
+        <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Show threads">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -138,6 +138,7 @@ export function FileTree({
   const inputRow = (
     <div className="px-2 py-1">
       <Input
+        size="sm"
         // Focused after the menu's focus guard lets go: plain `autoFocus` fires
         // while the closing menu still holds focus, and is swallowed.
         ref={(el) => {
@@ -152,7 +153,7 @@ export function FileTree({
           if (event.key === 'Enter') commitInput();
           if (event.key === 'Escape') setPending(null);
         }}
-        className="h-7 font-mono text-xs"
+        className="h-7 font-mono"
         aria-label={pending?.kind === 'rename' ? 'New name' : 'New file name'}
         aria-invalid={inputError ? true : undefined}
       />

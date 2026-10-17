@@ -8,6 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
+import { Input } from '@felix/ui/input';
 import {
   ChevronRightIcon,
   DownloadIcon,
@@ -508,7 +509,7 @@ export function ThreadList({
             </div>
           </div>
         ) : renaming?.id === t.id ? (
-          <input
+          <Input
             // Renaming is a text edit, so it happens in place rather than in
             // a dialog: the row already shows the name being changed.
             ref={renameInputRef}
@@ -535,7 +536,7 @@ export function ThreadList({
                 requestAnimationFrame(() => focusRow(t.id));
               }
             }}
-            className="min-w-0 flex-1 rounded-md border border-input bg-sidebar-accent px-2 py-1 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="min-w-0 flex-1 bg-sidebar-accent dark:bg-sidebar-accent"
           />
         ) : (
           <button

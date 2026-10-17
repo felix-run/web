@@ -139,10 +139,11 @@ export function FrontmatterForm({
           <CharCount value={str('name')} max={LIMITS.name} />
         </div>
         <Input
+          size="sm"
           id="fm-name"
           value={str('name')}
           onChange={(e) => setField('name', e.target.value)}
-          className="font-mono text-xs"
+          className="font-mono"
           aria-invalid={nameErrors.length > 0}
         />
         <FieldErrors errors={nameErrors} />
@@ -167,10 +168,10 @@ export function FrontmatterForm({
       <div className="space-y-1.5">
         <Label htmlFor="fm-license">license</Label>
         <Input
+          size="sm"
           id="fm-license"
           value={str('license')}
           onChange={(e) => setField('license', e.target.value)}
-          className="text-xs"
           placeholder="MIT, Apache-2.0, or a bundled license file"
         />
       </div>
@@ -211,15 +212,17 @@ export function FrontmatterForm({
           // Keyed by position: keying by the key text would remount the row mid-rename and drop focus.
           <div key={`${index}-metadata-row`} className="flex items-center gap-1.5">
             <Input
+              size="sm"
               value={key}
               onChange={(e) => setMetadataEntry(index, e.target.value, value)}
-              className="w-2/5 font-mono text-xs"
+              className="w-2/5 font-mono"
               aria-label={`Metadata key ${index + 1}`}
             />
             <Input
+              size="sm"
               value={value}
               onChange={(e) => setMetadataEntry(index, key, e.target.value)}
-              className="flex-1 text-xs"
+              className="flex-1"
               aria-label={`Metadata value for ${key}`}
             />
             <Button
@@ -243,6 +246,7 @@ export function FrontmatterForm({
             }}
           >
             <Input
+              size="sm"
               autoFocus
               value={draftRow.key}
               onChange={(e) => setDraftRow({ key: e.target.value, value: draftRow.value })}
@@ -250,17 +254,18 @@ export function FrontmatterForm({
                 if (e.key === 'Enter') commitDraftRow();
               }}
               placeholder="key"
-              className="w-2/5 font-mono text-xs"
+              className="w-2/5 font-mono"
               aria-label="New metadata key"
             />
             <Input
+              size="sm"
               value={draftRow.value}
               onChange={(e) => setDraftRow({ key: draftRow.key, value: e.target.value })}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') commitDraftRow();
               }}
               placeholder="value"
-              className="flex-1 text-xs"
+              className="flex-1"
               aria-label="New metadata value"
             />
             <Button
@@ -288,10 +293,11 @@ export function FrontmatterForm({
           <Badge variant="outline">experimental</Badge>
         </div>
         <Input
+          size="sm"
           id="fm-allowed-tools"
           value={str('allowed-tools')}
           onChange={(e) => setField('allowed-tools', e.target.value)}
-          className="font-mono text-xs"
+          className="font-mono"
           placeholder="Bash(git:*) Read Write"
         />
         <p className="text-xs text-muted-foreground">

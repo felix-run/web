@@ -2,7 +2,6 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
 import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
@@ -16,6 +15,7 @@ import {
   putEvalDataset,
   runEvalDataset,
 } from '@/api';
+import { AgentSelect } from '@/components/agent-select';
 import { ErrorNotice } from '@/components/error-notice';
 import { compact, usd } from '@/components/harness/activity';
 import {
@@ -192,7 +192,7 @@ export function EvalSheet({
                     id="eval-new-dataset"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    className="mt-1 h-8 font-mono text-sm"
+                    className="mt-1 font-mono"
                     onKeyDown={(e) => e.key === 'Enter' && create()}
                   />
                 </div>
@@ -517,25 +517,15 @@ function ComparePanel({
           <Label htmlFor="eval-compare-baseline" className="text-xs text-muted-foreground">
             Baseline
           </Label>
-          <Select value={baseline} onValueChange={setBaseline}>
-            <SelectTrigger
-              id="eval-compare-baseline"
-              size="sm"
-              className="h-8 w-36 font-mono text-sm"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(manifestOptions.includes(manifest)
-                ? manifestOptions
-                : [manifest, ...manifestOptions]
-              ).map((m) => (
-                <SelectItem key={m} value={m} className="font-mono text-sm">
-                  {m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <AgentSelect
+            id="eval-compare-baseline"
+            value={baseline}
+            options={
+              manifestOptions.includes(manifest) ? manifestOptions : [manifest, ...manifestOptions]
+            }
+            onValueChange={setBaseline}
+            className="w-40"
+          />
         </div>
         <label
           htmlFor="eval-compare-candidates"
@@ -543,11 +533,12 @@ function ComparePanel({
         >
           Candidates
           <Input
+            size="sm"
             id="eval-compare-candidates"
             value={candidates}
             onChange={(e) => setCandidates(e.target.value)}
             placeholder="deep, quick-v2"
-            className="h-8 min-w-0 flex-1 px-2 text-xs"
+            className="min-w-0 flex-1"
           />
         </label>
         <Button size="sm" disabled={!ready || busy} onClick={compare}>
@@ -737,7 +728,7 @@ function AddItemForm({
         value={value}
         onChange={(e) => set(e.target.value)}
         placeholder={placeholder}
-        className="mt-0.5 h-8 text-sm"
+        className="mt-0.5"
         {...extra}
       />
     </div>

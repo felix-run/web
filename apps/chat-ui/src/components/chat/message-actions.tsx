@@ -1,4 +1,5 @@
 import { Button } from '@felix/ui/button';
+import { Input } from '@felix/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import { CheckIcon, CopyIcon, PencilIcon, RefreshCwIcon, TagIcon, Undo2Icon } from 'lucide-react';
 import { useState } from 'react';
@@ -57,7 +58,7 @@ export function MessageActions({
   if (editing) {
     return (
       <div className={cn('flex items-center gap-1', className)}>
-        <input
+        <Input
           // biome-ignore lint/a11y/noAutofocus: the control was just opened for this
           autoFocus
           aria-label="Label for this message"
@@ -69,9 +70,10 @@ export function MessageActions({
             if (e.key === 'Escape') setEditing(false);
           }}
           placeholder="Name this turn"
-          className="h-7 w-44 rounded-md border border-border/60 bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          size="sm"
+          className="w-44"
         />
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={commit}>
+        <Button variant="ghost" size="sm" className="text-xs" onClick={commit}>
           Save
         </Button>
       </div>

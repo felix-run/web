@@ -152,7 +152,7 @@ export function DocumentsSection({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="mt-1 h-8 max-w-md text-sm"
+            className="mt-1 max-w-md"
           />
         </div>
       )}
@@ -309,7 +309,7 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={DOCUMENT_LIMITS.title}
-            className="mt-1 h-8 text-sm"
+            className="mt-1"
           />
         </div>
         <div>
@@ -320,7 +320,7 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
             onChange={(e) => setSource(e.target.value)}
             placeholder="wiki/runbooks"
             maxLength={DOCUMENT_LIMITS.source}
-            className="mt-1 h-8 font-mono text-sm placeholder:font-sans"
+            className="mt-1 font-mono placeholder:font-sans"
           />
         </div>
       </div>

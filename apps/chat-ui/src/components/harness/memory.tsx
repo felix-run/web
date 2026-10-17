@@ -15,6 +15,7 @@ import {
   restoreMemory,
   searchMemories,
 } from '@/api';
+import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { keepAgent } from '@/components/harness/harness-agent';
 import {
@@ -362,7 +363,7 @@ export function MemorySection({
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="mt-1 h-8 max-w-md text-sm"
+                  className="mt-1 max-w-md"
                 />
               </div>
             )}
@@ -799,23 +800,17 @@ function AgentFilter({
   options: string[];
   onChange: (next: string) => void;
 }) {
-  const all = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <div>
       <Label htmlFor="memory-agent">Agent</Label>
-      <Select value={value || EVERY_AGENT} onValueChange={(v) => v && onChange(v)}>
-        <SelectTrigger id="memory-agent" size="sm" className="mt-1 h-8 w-40 text-sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={EVERY_AGENT}>Every agent</SelectItem>
-          {all.map((m) => (
-            <SelectItem key={m} value={m} className="font-mono">
-              {m}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <AgentSelect
+        id="memory-agent"
+        value={value || EVERY_AGENT}
+        options={options}
+        onValueChange={onChange}
+        leading={[{ value: EVERY_AGENT, label: 'Every agent' }]}
+        className="mt-1 w-40"
+      />
     </div>
   );
 }
@@ -848,7 +843,7 @@ function AsOfFields({
       <div className="w-72 min-w-0">
         <Label htmlFor="memory-as-of-thread">Conversation</Label>
         <Select value={thread || undefined} onValueChange={(v) => v && onThread(v)}>
-          <SelectTrigger id="memory-as-of-thread" size="sm" className="mt-1 h-8 w-full text-sm">
+          <SelectTrigger id="memory-as-of-thread" className="mt-1 w-full">
             <SelectValue placeholder="Choose a conversation" />
           </SelectTrigger>
           <SelectContent>
@@ -874,7 +869,7 @@ function AsOfFields({
           value={turn}
           onChange={(e) => onTurn(e.target.value)}
           aria-describedby="memory-as-of-help"
-          className="mt-1 h-8 w-20 font-mono text-sm"
+          className="mt-1 w-20 font-mono"
         />
       </div>
     </div>
@@ -980,23 +975,14 @@ function AddMemoryForm({
       <div className="grid gap-3 sm:grid-cols-[11rem_minmax(0,1fr)_10rem]">
         <div>
           <Label htmlFor="memory-recalled-by">Recalled by</Label>
-          <Select value={agent || undefined} onValueChange={(v) => v && setAgent(v)}>
-            <SelectTrigger
-              id="memory-recalled-by"
-              size="sm"
-              aria-describedby="memory-recalled-by-help"
-              className="mt-1 h-8 w-full font-mono text-sm"
-            >
-              <SelectValue placeholder="Choose an agent" />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((m) => (
-                <SelectItem key={m} value={m} className="font-mono">
-                  {m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <AgentSelect
+            id="memory-recalled-by"
+            value={agent}
+            options={options}
+            onValueChange={setAgent}
+            aria-describedby="memory-recalled-by-help"
+            className="mt-1 w-full"
+          />
           {/* Each field's help under the field, not in a list two rows below them. */}
           <p id="memory-recalled-by-help" className="mt-1 text-xs text-muted-foreground">
             {agent === chatAgent
@@ -1012,7 +998,7 @@ function AddMemoryForm({
             maxLength={MEMORY_TOPIC_MAX}
             onChange={(e) => setTopicKey(e.target.value)}
             aria-describedby="memory-topic-help"
-            className="mt-1 h-8 font-mono text-sm"
+            className="mt-1 font-mono"
           />
           <p id="memory-topic-help" className="mt-1 text-xs text-muted-foreground">
             Replaces whatever this agent has stored under the same topic.
@@ -1029,7 +1015,7 @@ function AddMemoryForm({
             value={importance}
             onChange={(e) => setImportance(e.target.value)}
             aria-describedby="memory-importance-help"
-            className="mt-1 h-8 font-mono text-sm"
+            className="mt-1 font-mono"
           />
           <p id="memory-importance-help" className="mt-1 text-xs text-muted-foreground">
             0 to 1. Higher is kept first when not everything fits.

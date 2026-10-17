@@ -416,7 +416,7 @@ function NewSkillForm({
           id={nameId}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="font-mono text-sm"
+          className="font-mono"
           aria-invalid={nameIssue ? true : undefined}
           aria-describedby={`${nameId}-issue`}
           autoComplete="off"
