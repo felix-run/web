@@ -200,10 +200,11 @@ export { flattenPlan } from '@felix/client';
  */
 async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
   let res: Response;
+  const sent = authHeaders();
   try {
     res = await fetch(input, {
       ...init,
-      headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders() },
+      headers: { ...(init.headers as Record<string, string> | undefined), ...sent },
     });
   } catch (err) {
     // `fetch` rejects only when the request never reached anything: DNS, TLS, a
@@ -217,7 +218,7 @@ async function apiFetch(input: string, init: RequestInit = {}): Promise<Response
   }
   // Any reply at all, a 500 included, means something is listening.
   reportReachability(true);
-  if (res.status === 401) handleUnauthorized();
+  if (res.status === 401) handleUnauthorized(sent);
   return res;
 }
 

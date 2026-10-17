@@ -16,6 +16,8 @@
  * Felix), so the Gate is skipped entirely — see components/gate.tsx.
  */
 
+import { forgetIdentityState, IDENTITY_MARKER, SWEEP_PENDING } from '@/lib/identity-state';
+
 const KEY_STORAGE = 'felix.apiKey';
 const SESSION_STORAGE = 'felix.session';
 /**
@@ -99,7 +101,73 @@ export function getApiKey(): string | null {
   return read(KEY_STORAGE);
 }
 
+/** A JWT's `sub`, read without verifying it: the harness verified it, this only tells people apart. */
+function subjectOf(token: string): string {
+  try {
+    const part = token.split('.')[1] ?? '';
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
+    const sub = (JSON.parse(json) as { sub?: unknown }).sub;
+    return typeof sub === 'string' ? sub : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Who a credential belongs to, as this browser can tell: an access key is one shared principal; a
+ * session is its subject (the token's `sub`, else the account the harness reported) in its tenant.
+ * Empty with nothing stored. Two sign-ins of one person by two providers are two identities here,
+ * as they are to the harness. `|`-separated, since an email carries `@`.
+ */
+function identityOf(session: GitHubSession | null, key: string | null): string {
+  if (session) {
+    const account = subjectOf(session.token) || session.login || session.email || '';
+    return ['session', session.provider ?? 'github', account, session.tenant].join('|');
+  }
+  return key ? 'key' : '';
+}
+
+/** The person an identity names, its tenant aside. */
+function personOf(identity: string): string {
+  return identity.split('|').slice(0, 3).join('|');
+}
+
+/** The identity of what is stored now; see `identityOf`. */
+export function identityKey(): string {
+  return identityOf(getSession(), getApiKey());
+}
+
+/**
+ * Record that `next` is who this browser now holds state for, first forgetting whatever the last
+ * identity left (`forgetIdentityState`) — the choice of a GitHub tenant too, when the person and
+ * not only the tenant changed. A browser that has never recorded one keeps what it has: it cannot
+ * tell whose that is (`settleIdentity` records it when the app opens).
+ */
+function takeIdentity(next: string): void {
+  const before = read(IDENTITY_MARKER);
+  if (before !== null && before !== next) {
+    forgetIdentityState({ everything: personOf(before) !== personOf(next) });
+    write(SWEEP_PENDING, '1');
+  }
+  write(IDENTITY_MARKER, next);
+}
+
+/**
+ * When the app opens, before anything reads its cache: finish a forget the last page could not
+ * (`SWEEP_PENDING`), and record whose state this is for a browser signed in before the record was
+ * kept, so the next person's sign-in forgets it.
+ */
+export function settleIdentity(): void {
+  if (read(SWEEP_PENDING) !== null) {
+    forgetIdentityState();
+    write(SWEEP_PENDING, null);
+  }
+  const now = identityKey();
+  if (now && read(IDENTITY_MARKER) === null) write(IDENTITY_MARKER, now);
+}
+
 export function setApiKey(key: string): void {
+  takeIdentity(identityOf(null, key));
   write(SESSION_STORAGE, null);
   write(KEY_STORAGE, key);
   notify();
@@ -160,6 +228,7 @@ export function activeSession(now = Date.now()): GitHubSession | null {
 }
 
 export function setSession(session: GitHubSession): void {
+  takeIdentity(identityOf(session, null));
   write(KEY_STORAGE, null);
   write(SESSION_STORAGE, JSON.stringify(session));
   write(LAST_PROVIDER_STORAGE, session.provider ?? 'github');
@@ -177,11 +246,16 @@ export function clearSession(): void {
   notify();
 }
 
+/** Whether a `storage` event (another tab's write) touched the credential. */
+export function isCredentialStorageEvent(e: StorageEvent): boolean {
+  return e.key === null || e.key === KEY_STORAGE || e.key === SESSION_STORAGE;
+}
+
 /** For `useSyncExternalStore`. Fires on this tab's own writes and on another tab's. */
 export function subscribeCredentials(fn: () => void): () => void {
   listeners.add(fn);
   const onStorage = (e: StorageEvent) => {
-    if (e.key === null || e.key === KEY_STORAGE || e.key === SESSION_STORAGE) fn();
+    if (isCredentialStorageEvent(e)) fn();
   };
   window.addEventListener('storage', onStorage);
   return () => {
@@ -213,8 +287,14 @@ export function setRelockHandler(fn: ((why: Relock) => void) | null): void {
  * Called by the API client when a request returns 401. Drops the credential
  * that was refused and notifies the Gate, so the person is asked again instead
  * of seeing a wall of failed requests.
+ *
+ * `sent` is the credential the refused request carried. When what is stored now differs — another
+ * tab signed in, or this one renewed, while the request was on the wire — the refusal was of a
+ * credential already gone, and dropping the new one would sign the person out of a session that
+ * was never refused.
  */
-export function handleUnauthorized(): void {
+export function handleUnauthorized(sent?: Record<string, string>): void {
+  if (sent && !sameCredential(sent, authHeaders())) return;
   const kind = credentialKind();
   // An expired session sends nothing, so `credentialKind` reads `none` for it;
   // the stored copy is what says a session is what lapsed.
@@ -225,8 +305,20 @@ export function handleUnauthorized(): void {
   onRelock?.({ cause: 'unauthorized', kind: lapsed });
 }
 
-/** Forget the session and return to the gate. The token stays valid until it expires. */
+function sameCredential(a: Record<string, string>, b: Record<string, string>): boolean {
+  return a.authorization === b.authorization && a['x-chat-key'] === b['x-chat-key'];
+}
+
+/**
+ * Forget the session, and everything this browser kept for it (`forgetIdentityState`), and return
+ * to the gate. The token stays valid until it expires: the harness keeps no revocation list.
+ * `lib/leave.ts` is what the account chip calls; it lets go of what the session holds on the
+ * harness first, while it can still ask.
+ */
 export function signOut(): void {
+  forgetIdentityState({ everything: true });
+  write(IDENTITY_MARKER, null);
+  write(SWEEP_PENDING, '1');
   clearSession();
   onRelock?.({ cause: 'signed-out' });
 }

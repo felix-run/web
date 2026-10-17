@@ -11,8 +11,8 @@
  * mounted; a Google session by redirect, since Google has no code to enter in
  * place, coming back to the same page.
  *
- * Signing out forgets the token in this browser and nothing more. The harness
- * cannot be told to stop honouring it, so the popover says until when it still
+ * Signing out forgets the token and everything this browser kept for it (`lib/leave.ts`). The
+ * harness cannot be told to stop honouring the token, so the popover says until when it still
  * would, rather than implying that leaving cancelled it.
  */
 
@@ -23,14 +23,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@felix/ui/popover';
 import { RefreshCwIcon } from 'lucide-react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { type GitHubConnectionState, getGitHubConnection, removeGitHubConnection } from '@/api';
-import {
-  type GitHubSession,
-  getSession,
-  setSession,
-  signOut,
-  subscribeCredentials,
-} from '@/lib/auth';
+import { type GitHubSession, getSession, setSession, subscribeCredentials } from '@/lib/auth';
 import { redirectToGoogle, useDeviceLogin } from '@/lib/github-login';
+import { leave } from '@/lib/leave';
 import { DeviceLoginBody } from './auth/github-sign-in';
 import { GoogleButton } from './auth/google-sign-in';
 import { ConfirmButton } from './confirm-button';
@@ -191,22 +186,17 @@ export function AccountChip() {
             onClick={() => {
               cancel();
               setOpen(false);
-              // Forget the stored GitHub connection while this session can still ask, then leave.
-              // Best effort: leaving must not wait on, or fail with, a harness that is not there.
-              // A Google session has no GitHub connection to forget.
-              if (google) signOut();
-              else
-                void removeGitHubConnection()
-                  .catch(() => undefined)
-                  .finally(signOut);
+              // Let go of what this session holds on the harness while it can still ask, forget
+              // it and everything kept for it here, and load the app afresh (`lib/leave.ts`).
+              void leave({ github: !google });
             }}
           >
             Sign out
           </Button>
           <p className="text-xs text-muted-foreground">
-            Signing out forgets the token in this browser
-            {google ? '' : ' and the GitHub connection Felix holds'}. Your Felix sign-in itself is
-            still honoured until {timeOfDay(session.expiresAt)}.
+            Signing out forgets the token, this browser’s copies of your threads, and its push
+            subscription{google ? '' : ', and the GitHub connection Felix holds'}. Your Felix
+            sign-in itself is still honoured until {timeOfDay(session.expiresAt)}.
           </p>
         </div>
       </PopoverContent>

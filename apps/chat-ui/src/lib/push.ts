@@ -15,6 +15,7 @@
  */
 
 import { getPushPublicKey, subscribePush, unsubscribePush } from '@/api';
+import { identityKey } from '@/lib/auth';
 import { isIOS, isStandalone } from '@/lib/platform';
 
 export type PushCapability = 'unsupported' | 'needs-install' | 'available';
@@ -73,6 +74,7 @@ export async function enablePush(publicKey: string): Promise<EnableResult> {
       applicationServerKey: base64UrlToBytes(publicKey),
     });
     await subscribePush(sub.toJSON());
+    rememberPushOwner(identityKey());
     return 'on';
   } catch {
     return 'failed';
@@ -85,6 +87,7 @@ export async function disablePush(): Promise<void> {
   if (!sub) return;
   const { endpoint } = sub;
   await sub.unsubscribe();
+  rememberPushOwner(null);
   // Best effort: a subscription the browser has dropped makes the push service answer 410 on
   // the next send, and the harness deletes the row then anyway.
   await unsubscribePush(endpoint).catch(() => {});
@@ -107,7 +110,38 @@ export async function resyncPush(): Promise<void> {
     await disablePush().catch(() => {});
     return;
   }
+  // A subscription another identity made — a session that lapsed, then someone else's sign-in —
+  // is not re-registered under this one: the device would take both tenants' approvals. It is
+  // dropped, and whoever is signed in now turns pushes on for themselves.
+  const owner = pushOwner();
+  const now = identityKey();
+  if (owner !== null && owner !== now) {
+    await disablePush().catch(() => {});
+    return;
+  }
+  // One made before owners were recorded is taken as this identity's, as the cache is.
+  if (owner === null) rememberPushOwner(now);
   await subscribePush(sub.toJSON()).catch(() => {});
+}
+
+/** Whose sign-in turned pushes on in this browser: `auth.ts`'s `identityKey()` then. */
+const PUSH_OWNER = 'felix.pushOwner';
+
+function pushOwner(): string | null {
+  try {
+    return localStorage.getItem(PUSH_OWNER);
+  } catch {
+    return null;
+  }
+}
+
+function rememberPushOwner(identity: string | null): void {
+  try {
+    if (identity === null) localStorage.removeItem(PUSH_OWNER);
+    else localStorage.setItem(PUSH_OWNER, identity);
+  } catch {
+    // Not remembered: the next load re-registers, as before owners were kept.
+  }
 }
 
 function sameKey(sub: PushSubscription, publicKey: string): boolean {

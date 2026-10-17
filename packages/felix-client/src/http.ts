@@ -30,8 +30,12 @@ export interface FelixClientOptions {
    * something is listening. Only a transport-level rejection is `false`.
    */
   onReachability?: (reachable: boolean) => void;
-  /** A 401: the key is missing, wrong, or rotated. */
-  onUnauthorized?: () => void;
+  /**
+   * A 401: the key is missing, wrong, or rotated. `sent` is the credential the refused request
+   * carried, so a caller can tell a refusal of what is stored now from one of a credential
+   * already replaced.
+   */
+  onUnauthorized?: (sent: Record<string, string>) => void;
   /** Injectable for tests and for a runtime whose fetch is not global. */
   fetch?: typeof globalThis.fetch;
   /**
@@ -76,10 +80,11 @@ export function createHttp(opts: FelixClientOptions): FelixHttp {
    */
   const chatFetch = async (path: string, init: RequestInit = {}): Promise<Response> => {
     let res: Response;
+    const sent = auth();
     try {
       res = await doFetch(base + path, {
         ...init,
-        headers: { ...(init.headers as Record<string, string> | undefined), ...auth() },
+        headers: { ...(init.headers as Record<string, string> | undefined), ...sent },
       });
     } catch (err) {
       // `fetch` rejects only when the request never reached anything: DNS, TLS, a
@@ -93,7 +98,7 @@ export function createHttp(opts: FelixClientOptions): FelixHttp {
     }
     // Any reply at all, a 500 included, means something is listening.
     opts.onReachability?.(true);
-    if (res.status === 401) opts.onUnauthorized?.();
+    if (res.status === 401) opts.onUnauthorized?.(sent);
     return res;
   };
 
