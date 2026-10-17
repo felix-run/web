@@ -2,6 +2,12 @@ import { useSearchParams } from 'react-router';
 import type { LibraryFilter } from './queries';
 import { isSkillTab, type SkillAddress } from './skill-tabs';
 
+export const MANAGE_SECTIONS = ['import', 'personal', 'policy'] as const;
+export type ManageSection = (typeof MANAGE_SECTIONS)[number];
+function isManageSection(v: string | null): v is ManageSection {
+  return (MANAGE_SECTIONS as readonly string[]).includes(v ?? '');
+}
+
 /**
  * Light on purpose: the eager harness route reads the address to decide which
  * lazy skills surface to load, so nothing here may import the library itself
@@ -30,6 +36,9 @@ export function useSkillsAddress() {
         ? source
         : undefined,
   };
+  const rawManage = params.get('manage');
+  /** A section behind the library's Manage disclosure, named by a link that opens it there. */
+  const manage = isManageSection(rawManage) ? rawManage : undefined;
   const tab = params.get('tab');
   const address: SkillAddress = {
     tab: isSkillTab(tab) ? tab : 'versions',
@@ -61,6 +70,23 @@ export function useSkillsAddress() {
       ),
     filter,
     address,
+    manage,
+    /** The team library with Manage open on one of its sections — the policy, from a Gate tab. */
+    manageTo: (section: ManageSection) =>
+      href(
+        withParams((n) => {
+          for (const k of ['skill', 'tab', 'v', 'against', 'lib']) n.delete(k);
+          n.set('manage', section);
+        }),
+      ),
+    /** Drop `?manage=` once the disclosure has been closed, so a reload does not reopen it. */
+    clearManage: () =>
+      setParams(
+        withParams((n) => {
+          n.delete('manage');
+        }),
+        { replace: true },
+      ),
     /** A skill's page, keeping the agent and the filter; a version opens Versions on it. */
     linkTo: (name: string, version?: string) =>
       href(

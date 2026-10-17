@@ -5,6 +5,7 @@ import { Input } from '@felix/ui/input';
 import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ChevronRightIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -17,7 +18,8 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { ReadFailure } from '@/components/inspector/primitives';
+import { ReadFailure, TransientRead } from '@/components/inspector/primitives';
+import { isTransientFailure } from '@/lib/harness-health';
 import { cn } from '@/lib/utils';
 import { FeedbackInbox } from './feedback-panel';
 import { LibraryList } from './library-list';
@@ -27,6 +29,7 @@ import {
   invalidateLibrary,
   ownerParts,
   SkillLibraryContext,
+  useFeedbackInbox,
   useKnownLibraryOwner,
   useLibraryId,
   usePersonalLibraries,
@@ -38,12 +41,8 @@ import { isForbidden, policySentence, RefusalNotice } from './refusal';
 import { ReviewQueue } from './review-queue';
 import { ImportSection, UpdatesSection } from './skill-import';
 import { SkillNotFound, SkillPage } from './skill-page';
-import { useSkillsAddress } from './skills-address';
+import { type ManageSection, useSkillsAddress } from './skills-address';
 
-/**
- * The library below the per-agent skills: what is waiting on a person first,
- * then everything, filterable by status and by who wrote it.
- */
 /** The library, in the shared Query client — the lazy entry point `/harness/skills` loads. */
 export function SkillLibraryEntry(props: { onPendingText?: (text: string | undefined) => void }) {
   return (
@@ -139,40 +138,185 @@ export function SkillLibrary({
     );
   }
   return (
+    <TeamLibrary
+      nav={nav}
+      pending={pending}
+      creating={creating}
+      onCreating={setCreating}
+      formId={formId}
+    />
+  );
+}
+
+/**
+ * The team library. What waits on a person leads — but only when something does: an empty
+ * queue and an empty inbox were two headed sections saying "nothing" above the list an operator
+ * came for, so empty they are one quiet line in the library's heading. Below the list, the
+ * page's occasional business sits behind one Manage disclosure.
+ */
+function TeamLibrary({
+  nav,
+  pending,
+  creating,
+  onCreating,
+  formId,
+}: {
+  nav: ReturnType<typeof useSkillsAddress>;
+  pending: ReturnType<typeof usePendingDraftCount>;
+  creating: boolean;
+  onCreating: (next: boolean | ((was: boolean) => boolean)) => void;
+  formId: string;
+}) {
+  const queue = useReviewQueue();
+  const inbox = useFeedbackInbox('pending');
+  const feedbackCount = (inbox.data?.pages ?? []).reduce((sum, p) => sum + p.items.length, 0);
+  // A section shows when it holds something or could not be read; "empty" is said only on an
+  // answer, never on a failed or pending read.
+  const queueTrouble = useStickyFailure(queue);
+  const inboxTrouble = useStickyFailure(inbox);
+  const showQueue = queueTrouble || (pending.count ?? 0) > 0;
+  const showInbox = inboxTrouble || feedbackCount > 0;
+  const queueEmpty = !queue.error && pending.count === 0;
+  const inboxEmpty = !inbox.error && !!inbox.data && feedbackCount === 0;
+  const quiet =
+    queueEmpty && inboxEmpty
+      ? 'No drafts or feedback waiting'
+      : queueEmpty
+        ? 'No drafts waiting'
+        : inboxEmpty
+          ? 'No feedback waiting'
+          : undefined;
+  return (
     <>
       <LibrarySwitch current={undefined} to={nav.libraryTo} />
-      <PageSection
-        title="Waiting for review"
-        // Only a count: an empty queue says so in its own line, and "none" above
-        // "Nothing is waiting for review." said it twice.
-        meta={pending.count ? pending.text : undefined}
-      >
-        <ReviewQueue linkTo={nav.linkTo} />
-      </PageSection>
-      <PageSection title="Feedback waiting for a decision">
-        <FeedbackInbox />
-      </PageSection>
+      {showQueue && (
+        <PageSection title="Waiting for review" meta={pending.count ? pending.text : undefined}>
+          <ReviewQueue linkTo={nav.linkTo} />
+        </PageSection>
+      )}
+      {showInbox && (
+        <PageSection
+          title="Feedback waiting for a decision"
+          meta={feedbackCount ? plural(feedbackCount, 'item', 'items') : undefined}
+        >
+          <FeedbackInbox />
+        </PageSection>
+      )}
       <PageSection
         title="Library"
+        meta={quiet ? <span role="status">{quiet}</span> : undefined}
         actions={
-          <CreateToggle open={creating} onToggle={() => setCreating((o) => !o)} controls={formId}>
+          <CreateToggle open={creating} onToggle={() => onCreating((o) => !o)} controls={formId}>
             New skill
           </CreateToggle>
         }
       >
         {creating && (
           <div id={formId} className={CREATE_FORM}>
-            <NewSkillForm onCancel={() => setCreating(false)} linkTo={nav.linkTo} />
+            <NewSkillForm onCancel={() => onCreating(false)} linkTo={nav.linkTo} />
           </div>
         )}
         <LibraryList filter={nav.filter} onFilter={nav.setFilter} linkTo={nav.linkTo} />
       </PageSection>
       <UpdatesSection linkTo={nav.linkTo} />
-      <ImportSection linkTo={nav.linkTo} />
-      <PersonalLibrariesSection libraryTo={nav.libraryTo} />
-      <PublishPolicySection />
+      <ManageDisclosure nav={nav} />
     </>
   );
+}
+
+/**
+ * Whether a read has failed and not since succeeded. Not `query.error` alone: the section a
+ * failure shows mounts its own observer, whose retry-on-mount puts the query back to pending
+ * with no error — which hid the section, which let the retry fail, which showed it, forever.
+ */
+function useStickyFailure(q: { error: unknown; isSuccess: boolean }): boolean {
+  const failed = useRef(false);
+  if (q.error) failed.current = true;
+  else if (q.isSuccess) failed.current = false;
+  return failed.current;
+}
+
+const MANAGE_OPEN_KEY = 'felix.skills.manageOpen';
+const manageAnchor = (section: ManageSection) => `skills-manage-${section}`;
+
+/**
+ * Importing, other people's libraries and the tenant's publish policy: each is done now and
+ * then, and none is why the page was opened, so they share one disclosure under the list,
+ * closed by default and remembered for the tab. A link naming one (`?manage=policy`, from a
+ * skill's Gate tab) opens it there. Closed, nothing inside is mounted — and the personal
+ * libraries are listed only on Show even open, because every listing is audited.
+ */
+function ManageDisclosure({ nav }: { nav: ReturnType<typeof useSkillsAddress> }) {
+  const [open, setOpen] = useState(() => !!nav.manage || readSession(MANAGE_OPEN_KEY) === '1');
+  const contentId = useId();
+  const headingId = useId();
+  const target = nav.manage;
+  useEffect(() => {
+    if (!target) return;
+    setOpen(true);
+    // After the content has mounted: the section is not in the DOM until the disclosure opens.
+    const frame = requestAnimationFrame(() =>
+      document.getElementById(manageAnchor(target))?.scrollIntoView?.({ block: 'start' }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    writeSession(MANAGE_OPEN_KEY, next ? '1' : '0');
+    if (!next && nav.manage) nav.clearManage();
+  };
+  return (
+    <section
+      aria-labelledby={headingId}
+      className="border-t border-border/60 pt-3 first-of-type:border-t-0 first-of-type:pt-0"
+    >
+      <h3 id={headingId} className="flex min-h-7 items-center">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={contentId}
+          onClick={toggle}
+          className="group -ml-1 inline-flex items-center gap-1 rounded-sm px-1 text-base font-semibold focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <ChevronRightIcon
+            aria-hidden
+            className={cn(
+              'size-4 text-muted-foreground transition-transform motion-reduce:transition-none',
+              open && 'rotate-90',
+            )}
+          />
+          Manage
+        </button>
+        <span className="ml-2 text-xs font-normal text-muted-foreground">
+          Import from GitHub · personal libraries · publish policy
+        </span>
+      </h3>
+      {open && (
+        <div id={contentId} className="mt-2 border-l border-border/60 pl-4">
+          <ImportSection linkTo={nav.linkTo} id={manageAnchor('import')} />
+          <PersonalLibrariesSection libraryTo={nav.libraryTo} id={manageAnchor('personal')} />
+          <PublishPolicySection id={manageAnchor('policy')} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function readSession(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Storage refused (private mode, quota): the disclosure just is not remembered.
+  }
 }
 
 /**
@@ -180,10 +324,10 @@ export function SkillLibrary({
  * one skill's gate: a change here re-decides every draft in the tenant, and it
  * is the one place on the page that says so.
  */
-function PublishPolicySection() {
+function PublishPolicySection({ id }: { id?: string }) {
   const policy = usePublishPolicy();
   return (
-    <PageSection title="Publish policy" meta="every skill in this tenant">
+    <PageSection title="Publish policy" meta="every skill in this tenant" id={id}>
       {policy.data ? (
         <>
           <p className="max-w-[48ch] text-sm text-muted-foreground">
@@ -211,13 +355,20 @@ function PublishPolicySection() {
  * A key that is not an administrator's is refused, and said so; a harness without the route
  * shows nothing.
  */
-function PersonalLibrariesSection({ libraryTo }: { libraryTo: (next: string) => string }) {
+function PersonalLibrariesSection({
+  libraryTo,
+  id,
+}: {
+  libraryTo: (next: string) => string;
+  id?: string;
+}) {
   const [asked, setAsked] = useState(false);
   const query = usePersonalLibraries(asked);
   if (isSkillLibraryError(query.error) && query.error.status === 404) return null;
   const items = query.data?.items ?? [];
   return (
     <PageSection
+      id={id}
       title="Personal libraries"
       meta={query.data ? `${items.length}${query.data.truncated ? '+' : ''}` : undefined}
       actions={
@@ -237,6 +388,12 @@ function PersonalLibrariesSection({ libraryTo }: { libraryTo: (next: string) => 
         <p className="max-w-[60ch] text-sm text-muted-foreground">
           Only an administrator can list personal libraries.
         </p>
+      ) : query.error && isTransientFailure(query.error) ? (
+        <TransientRead
+          error={query.error}
+          lastOkAt={query.dataUpdatedAt || null}
+          onRetry={() => void query.refetch()}
+        />
       ) : query.error ? (
         <RefusalNotice error={query.error} doing="list personal libraries" />
       ) : !query.data ? (
@@ -340,6 +497,7 @@ function SkillLibraryPageIn({ nav }: { nav: ReturnType<typeof useSkillsAddress> 
       address={nav.address}
       onAddress={nav.setAddress}
       backTo={nav.backTo}
+      policyTo={nav.manageTo('policy')}
     />
   );
 }
@@ -416,7 +574,7 @@ function NewSkillForm({
           id={nameId}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="font-mono text-sm"
+          className="font-mono"
           aria-invalid={nameIssue ? true : undefined}
           aria-describedby={`${nameId}-issue`}
           autoComplete="off"
@@ -445,7 +603,7 @@ function NewSkillForm({
           value={description}
           maxLength={1024}
           onChange={(e) => setDescription(e.target.value)}
-          className="min-h-16 text-sm"
+          className="min-h-16"
           aria-invalid={descIssue ? true : undefined}
           aria-describedby={descIssue ? `${descId}-issue` : undefined}
         />

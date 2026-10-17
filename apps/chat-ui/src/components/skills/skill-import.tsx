@@ -9,11 +9,12 @@ import {
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { DownloadIcon, RefreshCwIcon, ShieldCheckIcon } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { browseSkillSource } from '@/api';
 import { PageSection } from '@/components/harness/panel';
-import { tsToMs } from '@/components/inspector/primitives';
+import { TransientRead, tsToMs } from '@/components/inspector/primitives';
+import { isTransientFailure } from '@/lib/harness-health';
 import { cn } from '@/lib/utils';
 import { useImportActions, useOutdatedSkills, useSourceCheck } from './queries';
 import { RefusalNotice } from './refusal';
@@ -50,7 +51,14 @@ export function movedLine(moved: Record<string, string> | undefined): string {
  * An import is always a draft: the gate judges imported text as an import, and a person reads
  * it before anything is published.
  */
-export function ImportSection({ linkTo }: { linkTo: (name: string, version?: string) => string }) {
+export function ImportSection({
+  linkTo,
+  id,
+}: {
+  linkTo: (name: string, version?: string) => string;
+  /** An anchor, for a link that opens this section. */
+  id?: string;
+}) {
   const [source, setSource] = useState('');
   const [ref, setRef] = useState('');
   const [listing, setListing] = useState<SkillSourceListing | null>(null);
@@ -60,6 +68,8 @@ export function ImportSection({ linkTo }: { linkTo: (name: string, version?: str
   const [imported, setImported] = useState<Record<string, SkillImportResult>>({});
   const sourceId = useId();
   const refId = useId();
+  const sourceRef = useRef<HTMLInputElement>(null);
+  const [missing, setMissing] = useState(false);
 
   async function browse() {
     setBrowsing(true);
@@ -75,12 +85,19 @@ export function ImportSection({ linkTo }: { linkTo: (name: string, version?: str
   }
 
   return (
-    <PageSection title="Import from GitHub">
+    <PageSection title="Import from GitHub" id={id}>
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (source.trim()) void browse();
+          // Browse stays enabled with the field empty: a disabled primary read as greyed-out
+          // chrome rather than as the row's action, and could not say what it was waiting for.
+          if (!source.trim()) {
+            setMissing(true);
+            sourceRef.current?.focus();
+            return;
+          }
+          void browse();
         }}
       >
         <div className="min-w-[16rem] flex-1 space-y-1">
@@ -89,14 +106,22 @@ export function ImportSection({ linkTo }: { linkTo: (name: string, version?: str
             <span className="font-mono">/path</span>
           </label>
           <Input
+            ref={sourceRef}
             id={sourceId}
             value={source}
-            onChange={(e) => setSource(e.target.value)}
-            className="font-mono text-sm"
+            onChange={(e) => {
+              setSource(e.target.value);
+              setMissing(false);
+            }}
+            className="font-mono"
             autoComplete="off"
+            aria-invalid={missing ? true : undefined}
+            aria-describedby={missing ? `${sourceId}-issue` : undefined}
           />
         </div>
-        <div className="w-36 space-y-1">
+        {/* Wide enough for its placeholder at 16px (a coarse pointer's size): at w-36 the
+            placeholder was cut to "the default bra". */}
+        <div className="w-48 space-y-1">
           <label htmlFor={refId} className="block text-xs text-muted-foreground">
             Branch, tag or commit
           </label>
@@ -104,15 +129,20 @@ export function ImportSection({ linkTo }: { linkTo: (name: string, version?: str
             id={refId}
             value={ref}
             onChange={(e) => setRef(e.target.value)}
-            placeholder="default"
-            className="font-mono text-sm"
+            placeholder="default branch"
+            className="font-mono placeholder:font-sans"
             autoComplete="off"
           />
         </div>
-        <Button type="submit" size="sm" disabled={browsing || !source.trim()}>
+        <Button type="submit" size="sm" disabled={browsing}>
           {browsing ? 'Looking…' : 'Browse'}
         </Button>
       </form>
+      {missing && (
+        <p id={`${sourceId}-issue`} className="mt-1.5 text-xs text-state-failed">
+          Name a source to browse, e.g. <span className="font-mono">github:owner/repo</span>.
+        </p>
+      )}
       {browseError ? (
         <div className="mt-2">
           <RefusalNotice error={browseError} doing="read that source" />
@@ -236,7 +266,15 @@ export function UpdatesSection({ linkTo }: { linkTo: (name: string, version?: st
         </Button>
       }
     >
-      {query.error ? <RefusalNotice error={query.error} doing="check the sources" /> : null}
+      {query.error && isTransientFailure(query.error) ? (
+        <TransientRead
+          error={query.error}
+          lastOkAt={query.dataUpdatedAt || null}
+          onRetry={() => void query.refetch()}
+        />
+      ) : query.error ? (
+        <RefusalNotice error={query.error} doing="check the sources" />
+      ) : null}
       {query.data?.stopped && (
         <p className="mb-2 text-xs text-muted-foreground">
           {query.data.stopped === 'rate_limited'
@@ -441,12 +479,7 @@ export function AdoptButton({ version: v }: { version: SkillVersion }) {
         Why you vouch for these files — recorded with the adoption. It becomes a draft that no
         longer counts as an import; nothing is published.
       </label>
-      <Input
-        id={reasonId}
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        className="h-8 text-xs"
-      />
+      <Input size="sm" id={reasonId} value={reason} onChange={(e) => setReason(e.target.value)} />
       {adopt.error ? <RefusalNotice error={adopt.error} doing="adopt this version" /> : null}
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" disabled={adopt.isPending || !reason.trim()}>

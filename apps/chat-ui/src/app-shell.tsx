@@ -18,7 +18,6 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -99,6 +98,7 @@ import {
 } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
+import { HarnessHealthLine } from '@/components/harness-health-line';
 import type { SkillState } from '@/components/inspector/primitives';
 import { type Theme, useTheme } from '@/components/theme-provider';
 import { ThreadReturn, ThreadTitle } from '@/components/thread-title';
@@ -110,11 +110,13 @@ import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { landedPaths } from '@/lib/changes';
 import { useHarnessReachable } from '@/lib/connection';
+import { continueOffer } from '@/lib/continue-run';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { forgetDurableRun, recallDurableRun, rememberDurableRun } from '@/lib/durable-runs';
 import { createEnginePool, type EnginePool } from '@/lib/engine-pool';
 import { toastError, toastProblem } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
+import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
 import { ImageUploadError, uploadImages } from '@/lib/image-upload';
 import { onLeave } from '@/lib/leave';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
@@ -133,6 +135,12 @@ import {
   usePaneState,
 } from '@/lib/side-pane';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
+import {
+  forgetIndexedThread,
+  rememberThreadIndex,
+  threadIndexAge,
+  withRememberedIndex,
+} from '@/lib/thread-index';
 import {
   clearTurns,
   indexThread,
@@ -153,6 +161,7 @@ import {
   ShellProvider,
   type ShellValue,
   type SideQuestion,
+  type ViewLevel,
 } from '@/shell-context';
 import type {
   ChatMessage,
@@ -167,14 +176,30 @@ import { AccountChip } from './components/account-chip';
 const MANIFEST_KEY = 'felix.manifest';
 /** How long a deleted conversation can be restored, and how long the server delete waits. */
 const DELETE_UNDO_MS = 7000;
+/**
+ * When a thread-index read that failed for a passing reason is asked again: soon
+ * at first, since one 429 is usually one burst, then at most once a minute.
+ */
+const THREAD_INDEX_BACKOFF_MS = [2_000, 5_000, 15_000, 30_000];
+const THREAD_INDEX_BACKOFF_MAX_MS = 60_000;
 
 /**
- * Debug mode, per browser. `felix.verbose` was its name while it only opened tool
- * I/O; a browser that had it on starts in debug, so nobody loses what they had,
- * and the old key is dropped the first time the new one is written.
+ * The View level, per browser. It was one Debug switch (`felix.debug`), and
+ * before that Verbose (`felix.verbose`) while it only opened tool I/O; a browser
+ * that had either on starts at `debug`, so nobody loses what they had, and the
+ * old keys are dropped the first time the new one is written.
  */
-const DEBUG_KEY = 'felix.debug';
+const VIEW_KEY = 'felix.view';
+const LEGACY_DEBUG_KEY = 'felix.debug';
 const LEGACY_VERBOSE_KEY = 'felix.verbose';
+/** The View menu's levels, in the order the radio group lists them. */
+const VIEW_OPTIONS: ReadonlyArray<{ value: ViewLevel; label: string; hint: string }> = [
+  { value: 'everyday', label: 'Everyday', hint: 'The conversation and what waits on you' },
+  { value: 'harness', label: 'Harness view', hint: 'Run instrument, every harness page, spend' },
+  { value: 'debug', label: 'Harness + debug', hint: 'Adds the Debug tab, ids and tool I/O' },
+];
+const isViewLevel = (v: unknown): v is ViewLevel =>
+  v === 'everyday' || v === 'harness' || v === 'debug';
 const HOLDER_KEY = 'felix.holderId';
 const THINKING_LEVELS: ThinkingLevel[] = [
   'off',
@@ -275,13 +300,17 @@ function readBool(key: string, fallback: boolean): boolean {
   return raw === '1' || raw === 'true';
 }
 
-function readDebug(): boolean {
+function readView(): ViewLevel {
   try {
-    return localStorage.getItem(DEBUG_KEY) !== null
-      ? readBool(DEBUG_KEY, false)
-      : readBool(LEGACY_VERBOSE_KEY, false);
+    const stored = localStorage.getItem(VIEW_KEY);
+    if (isViewLevel(stored)) return stored;
+    const legacy =
+      localStorage.getItem(LEGACY_DEBUG_KEY) !== null
+        ? readBool(LEGACY_DEBUG_KEY, false)
+        : readBool(LEGACY_VERBOSE_KEY, false);
+    return legacy ? 'debug' : 'everyday';
   } catch {
-    return false;
+    return 'everyday';
   }
 }
 
@@ -413,7 +442,37 @@ export function AppShell() {
     thread: '',
     style: null,
   });
-  const [debug, setDebug] = useState(readDebug);
+  const [view, setView] = useState(readView);
+  const harnessView = view !== 'everyday';
+  const debug = view === 'debug';
+  /**
+   * The level debug was turned on from, so turning it off — the badge, `/debug` —
+   * goes back there: from everyday, a look at the ids is not a move to harness view.
+   */
+  const beforeDebugRef = useRef<ViewLevel>(view === 'debug' ? 'harness' : view);
+  const chooseView = useCallback((next: ViewLevel) => {
+    setView((v) => {
+      if (next === 'debug' && v !== 'debug') beforeDebugRef.current = v;
+      return next;
+    });
+  }, []);
+  // From the level as it stands, not as a render saw it: the composer can hold a
+  // command handler from an earlier render, and `/view` from that one stepped twice.
+  const stepView = useCallback(() => {
+    setView((v) => {
+      const at = VIEW_OPTIONS.findIndex((o) => o.value === v);
+      const next = VIEW_OPTIONS[(at + 1) % VIEW_OPTIONS.length]!.value;
+      if (next === 'debug') beforeDebugRef.current = v;
+      return next;
+    });
+  }, []);
+  const toggleDebug = useCallback(() => {
+    setView((v) => {
+      if (v === 'debug') return beforeDebugRef.current;
+      beforeDebugRef.current = v;
+      return 'debug';
+    });
+  }, []);
   const [skills, setSkills] = useState<SkillState | null>(null);
   const { theme, resolved, setTheme } = useTheme();
   /** Where focus lands when the Debug badge turns debug off and unmounts. */
@@ -430,7 +489,7 @@ export function AppShell() {
   const hydrateFromServerRef = useRef<(id: string, opts?: { transcript?: boolean }) => void>(
     () => {},
   );
-  const debugRef = useRef(debug);
+  const harnessViewRef = useRef(harnessView);
   /**
    * Mirrored at render rather than from an effect. The engine pool reads this to
    * tell the thread on screen from a run kept going in the background, and
@@ -477,7 +536,7 @@ export function AppShell() {
             readForDiff: routedDiffReader(felix, readWorkspaceFile),
           },
           onToolStart: () => {
-            if (debugRef.current && threadIdRef.current === id) revealInspector();
+            if (harnessViewRef.current && threadIdRef.current === id) revealInspector();
           },
           onSkills: (s) => {
             if (threadIdRef.current === id) setSkills(s);
@@ -568,7 +627,7 @@ export function AppShell() {
     inspectorOpen: instrumentWanted,
     setInspectorOpen: setInstrumentWanted,
     revealInspector: revealInstrument,
-  } = useRails({ emptyThread: turns.length === 0, enabled: debug });
+  } = useRails({ emptyThread: turns.length === 0, enabled: harnessView });
 
   // The side pane takes the instrument's zone where the instrument is a column
   // (`routes/workbench.tsx`). The instrument's preference is left as it was, so
@@ -728,8 +787,8 @@ export function AppShell() {
   }, [threadId]);
   const queue = useMessageQueue(threadId);
   useEffect(() => {
-    debugRef.current = debug;
-  }, [debug]);
+    harnessViewRef.current = harnessView;
+  }, [harnessView]);
 
   useEffect(() => localStorage.setItem(MANIFEST_KEY, manifest), [manifest]);
   // Whether the harness answered the last request, for the composer's connection
@@ -738,12 +797,13 @@ export function AppShell() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(DEBUG_KEY, debug ? '1' : '0');
+      localStorage.setItem(VIEW_KEY, view);
+      localStorage.removeItem(LEGACY_DEBUG_KEY);
       localStorage.removeItem(LEGACY_VERBOSE_KEY);
     } catch {
-      // Storage blocked: the mode lasts for this page.
+      // Storage blocked: the level lasts for this page.
     }
-  }, [debug]);
+  }, [view]);
   useEffect(() => {
     // `turns` lags a thread change that came from outside this app's own
     // handlers — Back, or a pasted link — because the engine is not reset until
@@ -831,18 +891,58 @@ export function AppShell() {
    *
    * Renders the local list first and upgrades it, so the rail is populated
    * immediately and a slow harness never shows an empty history. A failed fetch
-   * leaves the local list standing rather than emptying it — a sidebar that goes
+   * leaves the list standing rather than emptying it — a sidebar that goes
    * blank because one request failed reads as data loss.
+   *
+   * **And it says so.** This catch used to be empty, so a 429 on a cold load left
+   * the local subset ("Older 1") looking like the whole truth. Now the list falls
+   * back to the index this tab last read (`lib/thread-index.ts`), the failure is
+   * state the sidebar draws under Threads (`threadIndex`), a transient one is a
+   * source for the shell's harness-health line, and the read is asked again on a
+   * backoff until it answers.
    */
-  const refreshThreads = useCallback(async () => {
+  const [threadIndex, setThreadIndex] = useState<{ error: unknown; failures: number }>({
+    error: null,
+    failures: 0,
+  });
+  const indexRetry = useRef<number | null>(null);
+  const indexFailures = useRef(0);
+  const refreshThreads = useCallback(async (): Promise<void> => {
+    if (indexRetry.current != null) {
+      window.clearTimeout(indexRetry.current);
+      indexRetry.current = null;
+    }
     const local = listThreads();
-    setThreads(local);
+    setThreads(withRememberedIndex(local));
     try {
-      setThreads(mergeSessions(local, await listSessions()));
-    } catch {
-      // Local list is already rendered; nothing further to show.
+      const rows = await listSessions();
+      rememberThreadIndex(rows);
+      setThreads(mergeSessions(local, rows));
+      indexFailures.current = 0;
+      setThreadIndex({ error: null, failures: 0 });
+      forgetHarnessRead('threads');
+    } catch (err) {
+      const failures = ++indexFailures.current;
+      setThreadIndex({ error: err, failures });
+      const transient = reportHarnessRead('threads', err, {
+        lastOkAt: threadIndexAge(),
+        retry: () => void refreshThreads(),
+      });
+      // A passing failure is asked again by itself, backing off; one that waiting
+      // will not cure (a 403, a 500) waits for the operator's Retry.
+      if (transient) {
+        const delay = THREAD_INDEX_BACKOFF_MS[failures - 1] ?? THREAD_INDEX_BACKOFF_MAX_MS;
+        indexRetry.current = window.setTimeout(() => void refreshThreads(), delay);
+      }
     }
   }, []);
+  useEffect(
+    () => () => {
+      if (indexRetry.current != null) window.clearTimeout(indexRetry.current);
+      forgetHarnessRead('threads');
+    },
+    [],
+  );
 
   /**
    * Operator labels for this thread, keyed by event id — the snapshot's own map.
@@ -1256,7 +1356,8 @@ export function AppShell() {
       }
 
       removeThread(id);
-      const remaining = listThreads();
+      forgetIndexedThread(id);
+      const remaining = withRememberedIndex(listThreads());
       setThreads(remaining);
       if (id === threadId) {
         const back = [...visitedRef.current]
@@ -1644,17 +1745,16 @@ export function AppShell() {
   }, [navigate]);
   useShortcuts(onHarness ? 'harness' : 'workbench', {
     'toggle-workspace': () => setHistoryOpen((o) => !o),
-    // The instrument exists only in debug; off, the binding has nothing to open.
-    // The right zone's binding. In debug it is the instrument's — which hands the
-    // zone to and from the side pane where they share it — except over the
-    // pane's own overlay on a phone, which the binding closes. Off, there is no
-    // instrument, so it shows and hides the pane.
+    // The right zone's binding. In harness view it is the instrument's — which
+    // hands the zone to and from the side pane where they share it — except over
+    // the pane's own overlay on a phone, which the binding closes. Everyday, there
+    // is no instrument, so it shows and hides the pane.
     'toggle-instrument': () => {
       const id = threadIdRef.current;
       const { hasItems, inline } = paneZone.current;
       const paneShown = paneState(id).shown && hasItems;
-      // `/harness` has no instrument: there the binding is the pane's, in debug too.
-      if (debugRef.current && !onHarnessRef.current && !(paneShown && !inline)) {
+      // `/harness` has no instrument: there the binding is the pane's at every level.
+      if (harnessViewRef.current && !onHarnessRef.current && !(paneShown && !inline)) {
         setInspectorOpen((o) => !o);
       } else if (hasItems) setPaneShown(id, !paneShown);
     },
@@ -1831,6 +1931,13 @@ export function AppShell() {
 
   const continueRun = useCallback(() => {
     if (streaming) return;
+    // `/continue` reaches here too: say why there is nothing to pick up rather than
+    // spend a request on the harness's `already_complete`.
+    const offer = continueOffer(engine.state.turns, engine.state.phase, engine.state.error);
+    if (!offer.ok) {
+      toast.message(offer.reason);
+      return;
+    }
     void continueChat({ threadId, manifest })
       .then(() => {
         toast.message('Continued');
@@ -1839,7 +1946,22 @@ export function AppShell() {
       })
       // No retry: continuing twice starts a second run on the same thread.
       .catch((err) => toastError(err, 'continue this run'));
-  }, [streaming, threadId, manifest, hydrateFromServer]);
+  }, [streaming, threadId, manifest, hydrateFromServer, engine]);
+  const continueAvailable = continueOffer(turns, engine.state.phase, error);
+  // Unavailable, it still says what it is and why, at full contrast: a disabled
+  // item's half opacity on muted text put the reason under the contrast floor.
+  const continueItem = continueAvailable.ok ? (
+    <DropdownMenuItem disabled={streaming || watching} onSelect={() => continueRun()}>
+      Continue run
+    </DropdownMenuItem>
+  ) : (
+    <DropdownMenuItem disabled className="data-[disabled]:opacity-100">
+      <span className="flex flex-col text-muted-foreground">
+        Continue run
+        <span className="text-xs">{continueAvailable.reason}</span>
+      </span>
+    </DropdownMenuItem>
+  );
 
   /**
    * Kept, where `chooseThinking` drops its toast.
@@ -2664,11 +2786,24 @@ export function AppShell() {
           setTheme(resolved === 'dark' ? 'light' : 'dark');
           break;
         case 'debug':
-          setDebug((v) => !v);
+          toggleDebug();
+          break;
+        case 'view':
+          stepView();
           break;
       }
     },
-    [newThread, clearThread, continueRun, cycleThinking, togglePlanMode, setTheme, resolved],
+    [
+      newThread,
+      clearThread,
+      continueRun,
+      cycleThinking,
+      togglePlanMode,
+      setTheme,
+      resolved,
+      toggleDebug,
+      stepView,
+    ],
   );
 
   const options = manifests.length ? manifests : [manifest];
@@ -2773,6 +2908,12 @@ export function AppShell() {
     editTurn,
     onSlashCommand,
     threads,
+    threadIndex: {
+      error: threadIndex.error,
+      failures: threadIndex.failures,
+      rememberedAt: threadIndex.error != null ? threadIndexAge() : null,
+      retry: () => void refreshThreads(),
+    },
     selectThread,
     newThread,
     deleteThread,
@@ -2795,8 +2936,10 @@ export function AppShell() {
     sideQuestion: side?.thread === threadId ? side : null,
     askAboutThread,
     dismissSideQuestion,
+    view,
+    setView: chooseView,
+    harnessView,
     debug,
-    setDebug,
     inspectClient,
     harnessReachable,
     historyOpen,
@@ -2897,9 +3040,11 @@ export function AppShell() {
                   is cut from the middle down to a floor (`sm:min-w-52`) before the
                   line loses a word of its sentence. The line is the signal; the title
                   is whole in its `title`, the sidebar and the Session menu's id.
-                  Below `sm` the line is two words that do not shrink, so the floor
-                  goes and the title takes the whole squeeze, down to nothing at
-                  320px, before the brand mark or the run state yield anything. */}
+                  Below `sm` the line does not shrink, so the floor goes and the
+                  title takes the squeeze, down to nothing at 320px, before the brand
+                  mark or the run state yield anything. What keeps it from getting
+                  there at 390px is the line giving way first: at rest it is its dot
+                  alone below `sm`, and only "N waiting" or "Unreachable" keep words. */}
               <div
                 data-slot="header-state"
                 className={cn(
@@ -2972,7 +3117,7 @@ export function AppShell() {
                     readOnly={watching}
                     onRename={renameThread}
                     empty={turns.length === 0}
-                    showAgent={debug}
+                    showAgent={harnessView}
                     className="shrink-[100]"
                   />
                 )}
@@ -2993,22 +3138,24 @@ export function AppShell() {
                     focusable, goes `sr-only` and is still read. Both come back when
                     the run settles. Nothing else in the cluster shrinks, so this row
                     is `min-w-0` for the widths between, where it is the one to give. */}
-                {/* Debug governs both addresses now — the sidebar's harness pages
-                    come and go with it — so its badge is on both, where Verbose's
-                    was on `/t` only. The canary is mechanism, and shows in debug alone. */}
-                {debug && (
+                {/* The view governs both addresses — the sidebar's harness pages come
+                    and go with it — so these are on both. The canary is the
+                    harness's, and shows in harness view; the badge is debug's
+                    alone, so it says what it means. */}
+                {harnessView && (debug || canary) && (
                   <div
                     data-slot="header-modes"
                     // `contents` while the modes have stepped off a narrow screen, so
                     // the row leaves no empty box and no gap behind them.
                     className={cn('flex min-w-0 items-center gap-2', runShown && 'max-sm:contents')}
                   >
-                    <Badge
-                      variant="secondary"
-                      className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
-                      asChild
-                    >
-                      {/* A button, because a badge that reports a mode should also be
+                    {debug && (
+                      <Badge
+                        variant="secondary"
+                        className={cn('h-5.5 font-normal', runShown && 'max-sm:hidden')}
+                        asChild
+                      >
+                        {/* A button, because a badge that reports a mode should also be
                           the way out of it — otherwise the way out is two clicks into
                           a menu whose trigger says nothing about debug. Focus moves
                           to that menu's trigger, since the badge unmounts under the
@@ -3018,21 +3165,22 @@ export function AppShell() {
                           so it was permanently true — a toggle that could never read
                           unpressed. The name says the state and the action instead,
                           which is also what lets the word go below `sm`. */}
-                      <button
-                        type="button"
-                        data-slot="debug-mode"
-                        aria-label="Debug on, turn off"
-                        title="Debug is on. Click to turn it off."
-                        onClick={() => {
-                          setDebug(false);
-                          menuTriggerRef.current?.focus();
-                        }}
-                        className="cursor-pointer hover:bg-solid-secondary/80"
-                      >
-                        <BugIcon aria-hidden className="sm:hidden" />
-                        <span className="hidden sm:inline">Debug</span>
-                      </button>
-                    </Badge>
+                        <button
+                          type="button"
+                          data-slot="debug-mode"
+                          aria-label="Debug on, turn off"
+                          title="Debug is on. Click to turn it off."
+                          onClick={() => {
+                            toggleDebug();
+                            menuTriggerRef.current?.focus();
+                          }}
+                          className="cursor-pointer hover:bg-solid-secondary/80"
+                        >
+                          <BugIcon aria-hidden className="sm:hidden" />
+                          <span className="hidden sm:inline">Debug</span>
+                        </button>
+                      </Badge>
+                    )}
                     {canary && (
                       // Outline and mono, never a filled pill: the version is the
                       // harness's number quoted back, and a filled badge made it the
@@ -3082,7 +3230,8 @@ export function AppShell() {
                 `ml-auto` puts it beside the controls. From `sm` a shrink weight far
                 above the controls' makes it give way — its sentence truncates — but
                 only once the thread's title in the cluster before it has reached its
-                floor: on `/t` that cluster's weight is higher still. Below `sm` it is two words that cannot truncate,
+                floor: on `/t` that cluster's weight is higher still. Below `sm` it is its dot, or
+                two words that cannot truncate when something is waiting or failing,
                 so it does not shrink at all: it shrank below them and drew "1
                 waiting" over New chat and the sidebar toggle at 390px and 320px.
                 There the run cluster gives instead, clipping at its own edge.
@@ -3133,9 +3282,9 @@ export function AppShell() {
                     <span className="sr-only sm:not-sr-only">New chat</span>
                   </Button>
                 )}
-                {/* The instrument is debug's: off, neither address has the toggle,
-                    so nothing moves between them. */}
-                {!debug ? (
+                {/* The instrument is harness view's: everyday, neither address has
+                    the toggle, so nothing moves between them. */}
+                {!harnessView ? (
                   // Off, the right zone is the side pane's alone: its toggle shows
                   // while anything is open in it, so a hidden pane is one press back —
                   // on `/harness` too, where the pane sits beside the page.
@@ -3226,14 +3375,11 @@ export function AppShell() {
                     {!onHarness && (
                       <>
                         <DropdownMenuLabel>Session</DropdownMenuLabel>
-                        {/* Disabled on an empty thread: there is no run to continue, and
-                            the harness would start one from nothing. */}
-                        <DropdownMenuItem
-                          disabled={streaming || watching || turns.length === 0}
-                          onSelect={() => continueRun()}
-                        >
-                          Continue run
-                        </DropdownMenuItem>
+                        {/* First only when there is something to pick up — a run that
+                            stopped short. On a finished or empty thread the harness refuses
+                            it, so it sits after Copy thread id, disabled, saying why
+                            (`continueOffer`, 2026-10-16). */}
+                        {continueAvailable.ok && continueItem}
                         {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
                             `self-pr-` for every `self-pr-*` thread. The id is whole in
                             `title`, in the accessible name, and on the clipboard.
@@ -3253,20 +3399,29 @@ export function AppShell() {
                             {middleTruncate(threadId, 14)}
                           </span>
                         </DropdownMenuItem>
+                        {!continueAvailable.ok && continueItem}
                         <DropdownMenuSeparator />
                       </>
                     )}
                     <DropdownMenuLabel>View</DropdownMenuLabel>
-                    {/* What it adds is said on the row, because the word alone
-                        does not say the off state is the everyday one. */}
-                    <DropdownMenuCheckboxItem checked={debug} onCheckedChange={setDebug}>
-                      <span className="flex flex-col">
-                        Debug
-                        <span className="text-xs text-muted-foreground">
-                          Run instrument, every harness page, ids
-                        </span>
-                      </span>
-                    </DropdownMenuCheckboxItem>
+                    {/* A ladder, not two switches: each level is said on its row,
+                        because the names alone do not say what each one adds. */}
+                    <DropdownMenuRadioGroup
+                      aria-label="View"
+                      value={view}
+                      onValueChange={(v) => {
+                        if (isViewLevel(v)) chooseView(v);
+                      }}
+                    >
+                      {VIEW_OPTIONS.map(({ value, label, hint }) => (
+                        <DropdownMenuRadioItem key={value} value={value}>
+                          <span className="flex flex-col">
+                            {label}
+                            <span className="text-xs text-muted-foreground">{hint}</span>
+                          </span>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Theme</DropdownMenuLabel>
                     {/* Radio items, so the checked theme is announced rather than marked
@@ -3296,6 +3451,10 @@ export function AppShell() {
             {/* The attention line's queue opens here, under the bar the line sits
                 on, in the flow — it pushes the page down rather than covering it. */}
             <div ref={setAttentionHost} className="contents" />
+            {/* One line for every read the harness did not answer for a reason
+                that passes — a 429, a 503, no answer at all — in place of a red
+                box per panel (`lib/harness-health.ts`). */}
+            <HarnessHealthLine debug={debug} />
 
             <Outlet />
           </SidebarInset>

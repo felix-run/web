@@ -13,7 +13,16 @@ import { ShellProvider, type ShellValue } from '../src/shell-context';
  * card shows the prompt it sends, and the click sends exactly that.
  */
 
-afterEach(cleanup);
+const fs = vi.hoisted(() => ({ label: null as string | null }));
+vi.mock('../src/lib/cowork', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/cowork')>()),
+  getMountLabel: () => fs.label,
+}));
+
+afterEach(() => {
+  cleanup();
+  fs.label = null;
+});
 
 function mount(over: Partial<ShellValue> = {}, manifest = 'cowork', blocked = false) {
   const shell = {
@@ -119,7 +128,10 @@ describe('the empty thread', () => {
     expect(screen.queryByRole('button', { name: /^List the workspace/ })).toBeNull();
   });
 
+  // A folder is mounted here since 2026-10-16: a browser-tools agent's greeting is about its
+  // folder, and without one the client's own copy stands in (the case below).
   it("uses the manifest's own headline and subtitle", () => {
+    fs.label = 'notes';
     mount({
       manifestEntries: [
         {
@@ -133,7 +145,44 @@ describe('the empty thread', () => {
     expect(screen.queryByText(/You're chatting with/)).toBeNull();
   });
 
+  /**
+   * "What should we do in this folder?" over a readout saying "none mounted" contradicted
+   * itself. The manifest has no second greeting, so with no folder the client's headline and a
+   * sentence saying where the tools work stand in; the starters stay.
+   */
+  it('does not ask about a folder when none is mounted, and keeps the starters', () => {
+    mount({
+      manifestEntries: [
+        {
+          id: 'cowork',
+          greeting: { headline: 'What should we do in this folder?', subtitle: 'Reads freely.' },
+          workspace: { tools: 'client', scope: 'thread' },
+        },
+      ] as unknown as ShellValue['manifestEntries'],
+    });
+    expect(screen.queryByRole('heading', { name: /this folder/ })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'What do you want to work on?' })).toBeTruthy();
+    expect(screen.queryByText('Reads freely.')).toBeNull();
+    expect(screen.getByText(/No folder is mounted/)).toBeTruthy();
+    expect(screen.getByText('none mounted')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^List the workspace/ })).toBeTruthy();
+  });
+
+  it("keeps the manifest's greeting for an agent whose files are on the harness", () => {
+    mount({
+      manifestEntries: [
+        {
+          id: 'cowork',
+          greeting: { headline: 'Ready when you are' },
+          workspace: { tools: 'server', scope: 'thread' },
+        },
+      ] as unknown as ShellValue['manifestEntries'],
+    });
+    expect(screen.getByRole('heading', { name: 'Ready when you are' })).toBeTruthy();
+  });
+
   it('keeps the sentence naming the agent when the manifest sets only a headline', () => {
+    fs.label = 'notes';
     mount({ manifestEntries: [{ id: 'cowork', greeting: { headline: 'Hello' } }] });
     expect(screen.getByRole('heading', { name: 'Hello' })).toBeTruthy();
     expect(screen.getByText(/You're chatting with/)).toBeTruthy();

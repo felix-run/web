@@ -50,6 +50,7 @@ export function AccessKeyForm({
           Access key
         </label>
         <Input
+          size="lg"
           ref={inputRef}
           id="gate-key"
           type="password"
@@ -63,7 +64,6 @@ export function AccessKeyForm({
           // focus, and a rejected key would leave the person tabbing back from the top.
           readOnly={busy}
           aria-busy={busy || undefined}
-          className="h-10"
         />
         {error && (
           <p id="gate-error" role="alert" className="text-sm text-state-failed">

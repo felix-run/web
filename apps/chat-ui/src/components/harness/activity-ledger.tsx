@@ -2,7 +2,7 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { ActivityIcon, ChevronRightIcon } from 'lucide-react';
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { getUsageSummary, listAuditWindow, listUsage, listUsageByThread } from '@/api';
 import {
@@ -24,10 +24,15 @@ import {
 import { keepAgent } from '@/components/harness/harness-agent';
 import { PageEmpty, PageHeader, PanelBody, plural } from '@/components/harness/panel';
 import { relTime, SectionBody, tsToMs, withAge } from '@/components/inspector/primitives';
+import { useWeekFailures } from '@/hooks/use-recent-audit';
 import { usePoll } from '@/hooks/usePoll';
 import { middleTruncate } from '@/lib/format';
 import {
   buildLedger,
+  denialSentence,
+  failureLabel,
+  failureSentence,
+  failureTally,
   filterLedger,
   foldRoutine,
   groupFailures,
@@ -68,6 +73,15 @@ import type { AuditEvent, UsageEvent, UsageSummary } from '@/types';
  * question "what happened while I was away" asked literally; a fixed count of the
  * last 60 events was minutes on a busy tenant and weeks on a quiet one.
  */
+
+/** `7d` → `7 days`, `3h` → `3 hours`: a glance's short span, in a sentence. */
+function spanWords(span: string): string {
+  const m = /^(\d+)([mhd])$/.exec(span);
+  if (!m) return span;
+  const n = Number(m[1]);
+  const unit = m[2] === 'm' ? 'minute' : m[2] === 'h' ? 'hour' : 'day';
+  return `${n} ${n === 1 ? unit : `${unit}s`}`;
+}
 
 /** Threads drawn before the list says how many more there are. */
 const THREADS_VISIBLE = 30;
@@ -189,14 +203,20 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   const shown = filterLedger(ledger, { failuresOnly, layer });
   const rows = showAll ? shown : shown.slice(0, THREADS_VISIBLE);
   const conversations = ledger.filter((t) => t.id !== NO_THREAD);
-  const failing = conversations.filter((t) => t.failures.length > 0).length;
+  // Threads, the unit every surface counts a failure in (`failureTally`): the
+  // sidebar's `Activity · 1 thread failed · 7d` is this count over `?since=7d`.
+  const tally = failureTally(ledger);
+  const failedLabel = failureLabel(tally);
   // Counted apart from failures, and never in red: an approval saying no is the
   // gate working, and a thread whose only "failure" was one read *Failed*.
   const denying = conversations.filter((t) => t.denials.length > 0).length;
   // A summary with no `totals` is not one: say nothing about cost rather than
   // take the page down with it.
   const totals = data?.summary?.totals ? summarizeWindow(data.summary) : null;
-  const cost = totals ? `${totals.unpriced > 0 ? '≥ ' : ''}${money(totals.cost)}` : null;
+  // No figure for a window with no model call in it: `$0.00` beside "0 threads"
+  // read as "free", the one thing an unpriced cost must never read as.
+  const cost =
+    totals && totals.calls > 0 ? `${totals.unpriced > 0 ? '≥ ' : ''}${money(totals.cost)}` : null;
   const account = [cost, plural(conversations.length, 'thread')].filter(Boolean).join(' · ');
   const metered = data?.spend ? meteringStart(data.spend.items) : null;
   // The cost column is drawn only when a thread on screen has a figure for it. On
@@ -204,7 +224,33 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   // nearly always empty is texture, and the reason is said once below instead.
   const costColumn =
     data?.spend != null && rows.some((t) => t.id !== NO_THREAD && t.spend !== null);
-  const emptyLast = data !== undefined && ledger.length === 0 && win === 'last' && !data.fellBack;
+  // The sidebar's glance counts the week, and the window here defaults to "since
+  // your last visit" — so opening this page from anywhere but that glance's link
+  // (the phone's `/harness` list, a bookmark, Back) could read "Nothing ran" under
+  // a red `1 thread failed · 7d`. When a window shorter than the week holds no
+  // failure and the week does, the page says so and hands over the week, with the
+  // glance's own count (`useWeekFailures`).
+  const week = useWeekFailures();
+  const weekLabel = failureLabel(week.tally);
+  const pointWeek =
+    data !== undefined && (win === 'last' || win === '24h') && !failedLabel && weekLabel !== null;
+  const sinceVisit = win === 'last' && data !== undefined && !data.fellBack;
+  const emptyLast = data !== undefined && ledger.length === 0 && (sinceVisit || pointWeek);
+  const weekWords = weekLabel ? `${weekLabel} in the last ${spanWords(week.span)}` : '';
+  // Failures first, with what they cost; a denial after them. Ranked by what it
+  // means rather than by which half of the record it came from.
+  const findings = [
+    failureSentence(ledger, {
+      total: totals?.cost ?? null,
+      totalFloor: (totals?.unpriced ?? 0) > 0,
+      spendKnown: data?.spend != null,
+      metered,
+    }),
+    tally.unattributed > 0 && tally.ids.size > 0
+      ? `${plural(tally.unattributed, 'failure')} outside any thread.`
+      : null,
+    denialSentence(denying),
+  ].filter((s): s is string => s !== null);
 
   return (
     <>
@@ -212,23 +258,19 @@ export function ActivityLedger({ docs }: { docs?: string }) {
         icon={<ActivityIcon />}
         title="Activity"
         docs={docs}
-        valueLead={data && failing > 0 ? `${account} ·` : undefined}
+        valueLead={data && failedLabel ? `${account} ·` : undefined}
         // Kept through a failed read, with its age, rather than dropped: the
         // figure is still the last thing the harness said.
-        value={
-          data
-            ? withAge(failing > 0 ? `${failing} with failures` : account, error ? lastOkAt : null)
-            : undefined
-        }
-        valueTone={failing > 0 ? 'failed' : 'default'}
+        value={data ? withAge(failedLabel ?? account, error ? lastOkAt : null) : undefined}
+        valueTone={failedLabel ? 'failed' : 'default'}
         controls={
           <Select value={win} onValueChange={(v) => setWin(v as LedgerWindow)}>
-            <SelectTrigger size="sm" className="h-8 w-auto gap-1 px-2 text-xs" aria-label="Window">
+            <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Window">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent size="sm">
               {(Object.keys(WINDOW_LABEL) as LedgerWindow[]).map((w) => (
-                <SelectItem key={w} value={w} className="text-xs">
+                <SelectItem key={w} value={w}>
                   {WINDOW_LABEL[w]}
                 </SelectItem>
               ))}
@@ -248,7 +290,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
           emptyText="Nothing ran in this window. Turns, tool calls and their spend show up here, one entry per thread."
           status={
             data
-              ? `${plural(conversations.length, 'thread')}, ${failing} with failures${
+              ? `${plural(conversations.length, 'thread')}, ${failedLabel ?? 'none failed'}${
                   denying > 0 ? `, ${denying} with a call denied` : ''
                 }${cost ? `, ${cost} spent` : ''}.`
               : undefined
@@ -259,16 +301,34 @@ export function ActivityLedger({ docs }: { docs?: string }) {
             // someone who came here from a count of failures, so it hands over
             // the window that count was taken in.
             <PageEmpty>
-              <span className="max-w-[70ch]">
-                Nothing ran since your last visit, {relTime(data.since)} ago.{' '}
-                <button
-                  type="button"
-                  className={cn(TEXT_BUTTON, 'text-foreground')}
-                  onClick={() => setWin('24h')}
-                >
-                  Show the last 24 hours
-                </button>
-              </span>
+              {pointWeek ? (
+                // One line, in the glance's words and with its count, so the page
+                // and the sidebar beside it say the same thing about the week.
+                <span data-slot="activity-week-pointer" className="max-w-[70ch]">
+                  {sinceVisit
+                    ? `Nothing new since your last visit, ${relTime(data.since)} ago`
+                    : 'Nothing ran in the last 24 hours'}{' '}
+                  · {weekWords}.{' '}
+                  <button
+                    type="button"
+                    className={cn(TEXT_BUTTON, 'text-foreground')}
+                    onClick={() => setWin('7d')}
+                  >
+                    Show the last 7 days
+                  </button>
+                </span>
+              ) : (
+                <span className="max-w-[70ch]">
+                  Nothing ran since your last visit, {relTime(data.since)} ago.{' '}
+                  <button
+                    type="button"
+                    className={cn(TEXT_BUTTON, 'text-foreground')}
+                    onClick={() => setWin('24h')}
+                  >
+                    Show the last 24 hours
+                  </button>
+                </span>
+              )}
             </PageEmpty>
           )}
           {data && !emptyLast && (
@@ -277,12 +337,29 @@ export function ActivityLedger({ docs }: { docs?: string }) {
                 win={win}
                 since={data.since}
                 fellBack={data.fellBack}
-                denying={denying}
+                findings={findings}
                 paused={openThread !== null}
+                aside={
+                  pointWeek ? (
+                    <span data-slot="activity-week-pointer">
+                      {sinceVisit
+                        ? 'No failures since your last visit'
+                        : 'No failures in this window'}{' '}
+                      · {weekWords}.{' '}
+                      <button
+                        type="button"
+                        className={cn(TEXT_BUTTON, 'text-foreground')}
+                        onClick={() => setWin('7d')}
+                      >
+                        Show the last 7 days
+                      </button>
+                    </span>
+                  ) : null
+                }
               />
               <Filters failuresOnly={failuresOnly} layer={layer} onChange={setFilters} />
               {shown.length === 0 ? (
-                <p className="max-w-[70ch] py-2 text-sm text-muted-foreground">
+                <p className="max-w-[28rem] py-2 text-sm text-muted-foreground">
                   {layer === 'approvals'
                     ? 'No thread in this window had a call denied at an approval.'
                     : layer !== 'any'
@@ -335,22 +412,27 @@ export function ActivityLedger({ docs }: { docs?: string }) {
  * directly under a header reading `$2.57 · 4 threads · 3 with failures`: the
  * same three facts twice, eighty pixels apart. The header value is the page
  * grammar every `/harness` page shares, so it stays and the sentence went. What
- * is left is what the header does not hold: which window this is, and how many
- * threads had a call denied, which is not a failure and so has no place in a
- * header value drawn in the failure colour.
+ * is left is what the header does not hold: which window this is, what the
+ * failures cost (`failureSentence` — the header counts them, it cannot rank them
+ * against the spend), and how many threads had a call denied, which is not a
+ * failure and so has no place in a header value drawn in the failure colour.
  */
 function Account({
   win,
   since,
   fellBack,
-  denying,
+  findings,
   paused,
+  aside,
 }: {
   win: LedgerWindow;
   since: number;
   fellBack: boolean;
-  denying: number;
+  /** Sentences, most serious first: the failures and their cost, then denials. */
+  findings: string[];
   paused: boolean;
+  /** Said after the findings: the week's failures, when this window holds none. */
+  aside?: ReactNode;
 }) {
   const when =
     win === 'last' && !fellBack
@@ -370,16 +452,12 @@ function Account({
     // `ch` is the width of "0", wider than Geist's average letter: 70ch measured
     // ~93 to a line. 56ch holds it near 75.
     <div className="mb-3">
-      <p className="max-w-[56ch] text-sm text-muted-foreground">
+      <p data-slot="activity-account" className="max-w-[56ch] text-sm text-muted-foreground">
         {when}.
-        {denying > 0 && (
-          <>
-            {' '}
-            {denying === 1
-              ? '1 thread had a call denied at an approval.'
-              : `${denying} threads had a call denied at an approval.`}
-          </>
-        )}
+        {findings.map((s) => (
+          <Fragment key={s}> {s}</Fragment>
+        ))}
+        {aside && <> {aside}</>}
       </p>
       {/* Next to the window rather than under the list: the list is what stopped
           updating, and the reader is looking at the top of it. The line's height is
@@ -405,21 +483,15 @@ function Filters({
   return (
     <div className="mb-1.5 flex flex-wrap items-center justify-end gap-1.5">
       <Select value={layer} onValueChange={(l) => onChange({ layer: l })}>
-        <SelectTrigger
-          size="sm"
-          className="h-8 w-auto gap-1 px-2 text-xs"
-          aria-label="Show threads"
-        >
+        <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Show threads">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent size="sm">
           {/* Named for what the list then shows. "Any denial or none" described the
               filter's logic, and no operator asks for threads that way. */}
-          <SelectItem value="any" className="text-xs">
-            All threads
-          </SelectItem>
+          <SelectItem value="any">All threads</SelectItem>
           {CONTROL_LAYERS.map((c) => (
-            <SelectItem key={c} value={c} className="text-xs">
+            <SelectItem key={c} value={c}>
               {c === 'approvals' ? 'Denied at an approval' : `Blocked by ${CONTROL_LABEL[c]}`}
             </SelectItem>
           ))}
@@ -769,7 +841,7 @@ function ThreadDetail({
 
   return (
     <div className="mb-3 ml-5 border-l border-border/60 pl-3">
-      <p className="max-w-[70ch] text-sm text-muted-foreground">
+      <p className="max-w-[28rem] text-sm text-muted-foreground">
         {t.spend ? (
           <>
             <span className="font-mono tabular-nums text-foreground">
@@ -803,7 +875,7 @@ function ThreadDetail({
         </p>
       )}
       {t.turns.length === 0 && t.loose.length === 0 && (
-        <p className="mt-2 max-w-[70ch] text-sm text-muted-foreground">
+        <p className="mt-2 max-w-[28rem] text-sm text-muted-foreground">
           It spent in this window, but every audited event on it is older than the window.
         </p>
       )}
@@ -890,6 +962,7 @@ function TurnBlock({
         {/* The `user_input` is the heading; drawing it again as a row said it twice. */}
         <Segments
           events={turn.events.filter((e) => !(e.event_type === 'user_input' && turn.prompt))}
+          headedAt={clockTime(turn.startTs)}
           outcomes={turn.outcomes}
           openEvent={openEvent}
           onToggle={onToggle}
@@ -905,11 +978,14 @@ const OPEN_TURN_MS = 15 * 60_000;
 /** A list of events as drawn: routine runs folded, repeated failures counted. */
 function Segments({
   events,
+  headedAt,
   outcomes,
   openEvent,
   onToggle,
 }: {
   events: AuditEvent[];
+  /** The turn heading's clock time, which a row in the same minute does not repeat. */
+  headedAt?: string;
   /** Each event's outcome, read in its turn. */
   outcomes: Outcomes;
   openEvent: string | null;
@@ -925,6 +1001,7 @@ function Segments({
             outcome={outcomes.get(seg.event.id) ?? 'ok'}
             hideThread
             clock
+            headedAt={headedAt}
             open={openEvent === seg.event.id}
             onToggle={() => onToggle(seg.event.id)}
           />
@@ -933,6 +1010,7 @@ function Segments({
             key={seg.id}
             kind={seg.kind}
             events={seg.events}
+            headedAt={headedAt}
             outcomes={outcomes}
             openEvent={openEvent}
             onToggle={onToggle}
@@ -953,12 +1031,14 @@ function Segments({
 function FoldedRun({
   kind,
   events,
+  headedAt,
   outcomes,
   openEvent,
   onToggle,
 }: {
   kind: 'fold' | 'repeat';
   events: AuditEvent[];
+  headedAt?: string;
   outcomes: Outcomes;
   openEvent: string | null;
   onToggle: (id: string) => void;
@@ -980,6 +1060,7 @@ function FoldedRun({
               outcome={outcomes.get(e.id) ?? 'ok'}
               hideThread
               clock
+              headedAt={headedAt}
               open={openEvent === e.id}
               onToggle={() => onToggle(e.id)}
             />
@@ -1063,7 +1144,7 @@ function Caveats({
   ].filter(Boolean);
   if (lines.length === 0) return null;
   return (
-    <div className="mt-3 max-w-[70ch] space-y-1 text-sm text-muted-foreground">
+    <div className="mt-3 max-w-[28rem] space-y-1 text-sm text-muted-foreground">
       {lines.map((l) => (
         <p key={l}>{l}</p>
       ))}
@@ -1109,7 +1190,7 @@ function SpendByModel({ summary, recent }: { summary: UsageSummary; recent: Usag
         // Foreground, not red: an unpriced model is a gap in the pricing catalog,
         // not something that failed. Said in full because the consequence — a
         // spending cap that fails open — is one an operator acts on.
-        <p className="mt-2 max-w-[70ch] text-sm text-foreground">
+        <p className="mt-2 max-w-[28rem] text-sm text-foreground">
           {totals.unpriced} {totals.unpriced === 1 ? 'call is' : 'calls are'} metered but unpriced —
           the model has no entry in the pricing catalog, so its spend counts as zero and{' '}
           <code className="font-mono">limits.max_cost_usd</code> fails open for it.

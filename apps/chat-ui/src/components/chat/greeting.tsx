@@ -27,11 +27,17 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
   // falls back on its own, so a manifest can change the headline and keep the
   // sentence that names the agent.
   const entry = manifestEntries.find((m) => m.id === manifest);
-  const greeting = entry?.greeting;
   // Where this agent's file tools work. The folder is the browser's, so it is
   // named only for an agent that works there; an agent with none has no
   // workspace to read out, and "none mounted" beside it read as something to fix.
   const tools = entry?.workspace?.tools;
+  // An agent whose tools work in the browser writes its greeting for its folder
+  // ("What should we do in this folder?"), and with none mounted that headline sat
+  // over a readout saying "none mounted" (2026-10-16). The manifest has no second
+  // greeting for that case, so the client's own copy stands in until a folder is
+  // mounted, and says where the tools work meanwhile. The starters stay.
+  const unmounted = inBrowser(tools) && !folder;
+  const greeting = unmounted ? undefined : entry?.greeting;
 
   return (
     // `flex-1` + `justify-center`: the greeting is the only child of the transcript
@@ -66,14 +72,24 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
             >
               {greeting?.headline ?? 'What do you want to work on?'}
             </h2>
-            <p className="max-w-prose text-pretty text-base text-muted-foreground">
-              {greeting?.subtitle ?? (
-                <>
-                  You&apos;re chatting with{' '}
-                  <span className="font-medium text-foreground">{manifest}</span>. Pick a starter or
-                  type below; you can switch agents anytime from the composer.
-                </>
-              )}
+            {/* 32rem at 16px holds ~70 characters; `max-w-prose` (65ch) measured ~86 here,
+                past the 65–75 a paragraph reads comfortably at. */}
+            <p className="max-w-[32rem] text-pretty text-base text-muted-foreground">
+              {greeting?.subtitle ??
+                (unmounted && entry?.greeting ? (
+                  <>
+                    You&apos;re chatting with{' '}
+                    <span className="font-medium text-foreground">{manifest}</span>. No folder is
+                    mounted, so its file tools work in this tab&apos;s own storage; mount one from
+                    Workspace in the sidebar to work on yours.
+                  </>
+                ) : (
+                  <>
+                    You&apos;re chatting with{' '}
+                    <span className="font-medium text-foreground">{manifest}</span>. Pick a starter
+                    or type below; you can switch agents anytime from the composer.
+                  </>
+                ))}
             </p>
           </div>
 

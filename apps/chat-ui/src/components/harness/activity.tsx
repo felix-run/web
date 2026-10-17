@@ -253,6 +253,7 @@ export function ActivityRow({
   event: e,
   hideThread = false,
   clock = false,
+  headedAt,
   open,
   onToggle,
   outcome = eventOutcome(e),
@@ -271,9 +272,16 @@ export function ActivityRow({
    * were two time formats for one moment.
    */
   clock?: boolean;
+  /**
+   * The clock time the turn's heading already reads. A row at that same minute leaves
+   * its slot blank (the stamp stays in `title`): a message and its reply both printed
+   * `Mon 10:42 AM` under a heading saying it too (2026-10-16).
+   */
+  headedAt?: string;
   open: boolean;
   onToggle: () => void;
 }) {
+  const time = e.ts == null ? null : clock ? clockTime(tsToMs(e.ts)) : relTime(e.ts);
   const tone = EVENT_TONE[e.event_type];
   // An approval's no is labelled for what it was. "Blocked" and a red status
   // beside it read as a control stopping something that was wrong.
@@ -408,7 +416,7 @@ export function ActivityRow({
                       clock ? 'min-w-16 whitespace-nowrap' : 'w-8',
                     )}
                   >
-                    {clock ? clockTime(tsToMs(e.ts)) : relTime(e.ts)}
+                    {clock && time === headedAt ? null : time}
                   </span>
                 )}
               </span>
@@ -499,7 +507,9 @@ function ActivityDetail({ event: e, outcome }: { event: AuditEvent; outcome: Eve
       {/* What the event type means, on screen. It lived only in a `title`, which
           a keyboard or a touch screen never shows. */}
       {eventHelp(e, outcome) && (
-        <p className="mb-1.5 max-w-[70ch] text-sm text-muted-foreground">{eventHelp(e, outcome)}</p>
+        <p className="mb-1.5 max-w-[28rem] text-sm text-muted-foreground">
+          {eventHelp(e, outcome)}
+        </p>
       )}
       {thread && (
         <p className="mb-1.5 text-sm">

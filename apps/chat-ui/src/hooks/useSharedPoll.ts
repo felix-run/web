@@ -1,4 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
 
 /**
  * `usePoll`, but one request for everyone asking the same question.
@@ -33,6 +34,8 @@ export interface PollSnapshot<T> {
 }
 
 interface Entry {
+  /** This key's id in the shell's harness-health store. */
+  source: string;
   snapshot: PollSnapshot<unknown>;
   listeners: Set<() => void>;
   /** Subscriber → the interval it asked for. */
@@ -57,6 +60,7 @@ function entryFor(key: string, fetcher: () => Promise<unknown>): Entry {
   let entry = registry.get(key);
   if (!entry) {
     entry = {
+      source: `shared:${key}`,
       snapshot: EMPTY,
       listeners: new Set(),
       subscribers: new Map(),
@@ -85,8 +89,21 @@ function run(entry: Entry): Promise<void> {
   entry.inflight = entry
     .fetcher()
     .then(
-      (data) => publish(entry, { data, error: null, lastOkAt: Date.now(), loading: false }),
-      (error) => publish(entry, { error, loading: false }),
+      (data) => {
+        publish(entry, { data, error: null, lastOkAt: Date.now(), loading: false });
+        forgetHarnessRead(entry.source);
+      },
+      (error) => {
+        publish(entry, { error, loading: false });
+        // A transient failure is the shell's one line to say (`harness-health.ts`),
+        // and only while someone still subscribes — nothing would clear it after.
+        if (entry.subscribers.size > 0) {
+          reportHarnessRead(entry.source, error, {
+            lastOkAt: entry.snapshot.lastOkAt,
+            retry: () => void run(entry),
+          });
+        }
+      },
     )
     .finally(() => {
       entry.inflight = null;
@@ -116,6 +133,8 @@ function schedule(entry: Entry) {
     document.removeEventListener('visibilitychange', entry.onVisible);
     entry.onVisible = null;
   }
+  // Nobody is reading this key any more, so it cannot hold the shell's line up.
+  if (fastest === 0) forgetHarnessRead(entry.source);
 }
 
 export function useSharedPoll<T>(
@@ -160,6 +179,7 @@ export function resetSharedPolls(): void {
   for (const entry of registry.values()) {
     if (entry.timer) clearInterval(entry.timer);
     if (entry.onVisible) document.removeEventListener('visibilitychange', entry.onVisible);
+    forgetHarnessRead(entry.source);
   }
   registry.clear();
 }

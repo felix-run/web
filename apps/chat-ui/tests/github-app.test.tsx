@@ -474,14 +474,67 @@ describe('your GitHub connection', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('under the shared key, says a GitHub sign-in is needed rather than asking', () => {
+  // Until 2026-10-16 this asserted no request at all: the page said a sign-in was needed and
+  // offered no way to make one. It now asks `/auth/methods` — the one call a credential-less
+  // sign-in needs — and still asks no GitHub route the shared key could not answer.
+  it('under the shared key, says a GitHub sign-in is needed and offers one', async () => {
     setApiKey('shared');
     render(
       <MemoryRouter>
         <GitHubPage docs="https://docs.example/auth" />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/needs a GitHub sign-in|need a GitHub sign-in/)).toBeTruthy();
-    expect(calls).toHaveLength(0);
+    expect(screen.getByText(/need a GitHub sign-in/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with GitHub' }));
+    const target = new URL(assigned[0] as string, window.location.origin);
+    expect(target.pathname).toBe('/api/auth/github/authorize');
+    expect(calls.map((c) => c.url)).toEqual(['/api/auth/methods']);
+  });
+
+  it('runs the device code in place when the harness offers no redirect', async () => {
+    setApiKey('shared');
+    routes['/api/auth/methods'] = () =>
+      json({ github_device: true, github_redirect: false, bearer_required: true });
+    routes['/api/auth/github/device'] = () =>
+      json({
+        device_code: 'd',
+        user_code: 'WDJB-MJHT',
+        verification_uri: 'https://github.com/login/device',
+        expires_in: 900,
+        interval: 5,
+      });
+    render(
+      <MemoryRouter>
+        <GitHubPage docs="https://docs.example/auth" />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with GitHub' }));
+    await screen.findByText('WDJB-MJHT');
+    expect(assigned).toHaveLength(0);
+  });
+
+  it('says no sign-in is on offer when the harness verifies no bearer', async () => {
+    setApiKey('shared');
+    routes['/api/auth/methods'] = () =>
+      json({ github_device: true, github_redirect: true, bearer_required: false });
+    render(
+      <MemoryRouter>
+        <GitHubPage docs="https://docs.example/auth" />
+      </MemoryRouter>,
+    );
+    await screen.findByText(/offers no GitHub sign-in/);
+    expect(screen.queryByRole('button', { name: /GitHub/ })).toBeNull();
+  });
+
+  it('offers to reconnect when GitHub refused the stored token', async () => {
+    signedInAsOcto();
+    routes['/api/github/connection'] = () =>
+      json({ connected: false, connection: { ...CONNECTION, status: 'revoked' } });
+    render(
+      <MemoryRouter>
+        <GitHubPage docs="https://docs.example/auth" />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('button', { name: 'Reconnect GitHub' });
   });
 });

@@ -25,23 +25,21 @@ import {
   useRef,
 } from 'react';
 import { Link, Navigate, NavLink, Outlet, useMatch } from 'react-router';
-import { listAudit, listJobs, listSkillReviewQueue } from '@/api';
+import { listJobs, listSkillReviewQueue } from '@/api';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { DOCS_ORIGIN, PageBack, PageDocs, useMeasure } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
 import { PaneColumn, PaneOverlay, type PaneZoneProps } from '@/components/pane/pane-zone';
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { WORKSPACE_INLINE } from '@/hooks/use-rails';
+import { useWeekFailures } from '@/hooks/use-recent-audit';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { landedPaths } from '@/lib/changes';
 import {
-  ACTIVITY_FETCH,
   ACTIVITY_GLANCE_SPAN,
-  AUDIT_POLL_KEY,
   failing,
   JOBS_POLL_KEY,
-  recentFailures,
   SKILL_QUEUE_GLANCE_LIMIT,
   SKILL_QUEUE_POLL_KEY,
 } from '@/lib/harness-glances';
@@ -225,13 +223,12 @@ export function walkNav(event: KeyboardEvent<HTMLElement>) {
  * someone coming back sees where to go first without opening eight pages, which
  * is what "legible on return" asks.
  *
- * The Activity page's is bounded by time, where its page's header is bounded by count.
- * The page counts failures in its last `ACTIVITY_FETCH` events, which is right
- * for a page you are reading and wrong for a marker that means "go look": on a
- * quiet tenant sixty events can span weeks, so one failure from last month kept
- * the rail red indefinitely and the marker stopped meaning anything. Jobs need
- * no bound — "failing" is each job's current state, and it clears when a run
- * succeeds.
+ * The Activity glance is bounded by time — a week — and counts **threads**, the
+ * unit the Activity page counts in, and its link opens the page on that week. It
+ * was once counted over the page's last `ACTIVITY_FETCH` events, which on a quiet
+ * tenant spanned weeks, so one failure from last month kept the rail red
+ * indefinitely and the marker stopped meaning anything. Jobs need no bound —
+ * "failing" is each job's current state, and it clears when a run succeeds.
  */
 
 interface Glance {
@@ -243,7 +240,8 @@ interface Glance {
    */
   age?: string;
   /**
-   * The window a count covers, drawn beside it — `24h` — so the rail's number
+   * The window a count covers, drawn beside it — `7d`, or `3h` when the read
+   * reached back only that far — so the rail's number
    * does not read as a contradiction of the page's, which counts a longer one.
    */
   span?: string;
@@ -264,9 +262,10 @@ interface Glance {
  */
 /**
  * The address a nav row links to. Activity's glance counts failures in the last
- * 24 hours, and its link opened the page on "since your last visit" — often a
- * minute ago, so the click on "8 failed" landed on "Nothing ran". While the glance
- * says something, the link carries the window it was counted in.
+ * week (or as far back as its read reaches), and its link opened the page on
+ * "since your last visit" — often a minute ago, so the click on "8 failed" landed
+ * on "Nothing ran". While the glance says something, the link carries the week,
+ * which holds every window the glance can have counted in.
  */
 export function navSearch(path: HarnessPath, search: string, glance: Glance | undefined): string {
   if (path !== 'activity' || !glance) return search;
@@ -327,19 +326,23 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
 }
 
 /**
- * Activity's failures in the last day, on their own. Debug off this is the one
- * harness glance the sidebar always keeps: Activity is the page that answers
- * "what happened while I was away", which is the daily surface's question too.
+ * Activity's failed threads in the last week, on their own — or over the stretch
+ * the reads reached, which the glance's span says (`glanceWindow`). Everyday this
+ * is the one harness glance the sidebar always keeps: Activity is the page that
+ * answers "what happened while I was away", which is the daily surface's
+ * question too.
+ *
+ * Counted in **threads**, by the Activity page's own rule (`recentFailures` over
+ * `buildLedger`), so `1 thread failed · 7d` here is the `1 thread failed` the page
+ * reads over `?since=7d` — the window this row links to. A failure outside any
+ * thread is said as one only when no thread failed (`failureLabel`).
  */
 export function useActivityGlance(enabled = true): Glance | undefined {
-  const audit = useSharedPoll(AUDIT_POLL_KEY, () => listAudit({ limit: ACTIVITY_FETCH }), {
-    enabled,
-    intervalMs: 30_000,
-  });
-  // Measured against the clock at render, which the 30s poll re-runs, so a
-  // failure ages out within a tick of turning 24 hours old.
-  const failedEvents = recentFailures(audit.data ?? [], Date.now());
-  return glanceOf(audit, failedEvents, 'failed', 'activity', ACTIVITY_GLANCE_SPAN);
+  const { tally, span, poll } = useWeekFailures(enabled);
+  const threads = tally.ids.size;
+  return threads > 0 || tally.unattributed === 0
+    ? glanceOf(poll, threads, threads === 1 ? 'thread failed' : 'threads failed', 'activity', span)
+    : glanceOf(poll, tally.unattributed, 'failed outside a thread', 'activity', span);
 }
 
 /**
@@ -424,13 +427,13 @@ export function NavGlance({ glance }: { glance: Glance | undefined }) {
 function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; className?: string }) {
   const { search } = useHarnessAgent();
   const glance = useNavGlances();
-  // Debug off, the same pages the sidebar lists: Activity, and Skills while a
+  // Everyday, the same pages the sidebar lists: Activity, and Skills while a
   // draft waits on a review (or while the reader is on it). No shell — a test
   // mounting the layout — lists everything.
-  const debug = useOptionalShell()?.debug ?? true;
+  const harnessView = useOptionalShell()?.harnessView ?? true;
   const atSkills = !!useMatch('/harness/skills/*');
   const listed = (path: HarnessPath) =>
-    debug ||
+    harnessView ||
     path === 'activity' ||
     (path === 'skills' && (glance.skills?.tone === 'blocked' || atSkills));
   const groups = GROUPS.filter(({ key }) =>

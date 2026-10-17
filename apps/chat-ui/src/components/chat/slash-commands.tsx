@@ -4,6 +4,7 @@ import {
   Bug,
   ClipboardList,
   Eraser,
+  Eye,
   MessageCircleQuestion,
   Palette,
   PenSquare,
@@ -120,8 +121,14 @@ export const slashCommands: SlashCommand[] = [
     action: 'plan',
   },
   {
+    name: 'view',
+    description: 'Next view: everyday, harness view, harness + debug',
+    icon: <Eye className="size-3.5" />,
+    action: 'view',
+  },
+  {
     name: 'debug',
-    description: 'Toggle debug: instrument, harness pages, ids',
+    description: 'Debug on or off: the Debug tab, ids, tool I/O',
     icon: <Bug className="size-3.5" />,
     action: 'debug',
     aliases: ['verbose'],

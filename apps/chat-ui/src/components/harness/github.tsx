@@ -12,25 +12,35 @@
  *
  * A truncated listing is the harness saying it stopped walking, so filtering the rows it did send
  * cannot find the rest: past that point the filter asks the harness (`?q=`) instead.
+ *
+ * Every state that needs a GitHub sign-in offers one in place (`SignInWithGitHub`), the flow the
+ * gate and the account chip run, rather than telling the operator to go and find it: the page
+ * used to say a sign-in was needed and give no control to make one (2026-10-16).
  */
 
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Skeleton } from '@felix/ui/skeleton';
-import { ExternalLinkIcon, GithubIcon } from 'lucide-react';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { ExternalLinkIcon, GithubIcon, Loader2Icon } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
+  type AuthMethods,
   type GitHubConnectionState,
   type GitHubRepo,
   type GitHubRepos,
+  getAuthMethods,
   getGitHubConnection,
+  githubAuthorizeUrl,
   listMyRepos,
   removeGitHubConnection,
 } from '@/api';
+import { DeviceLoginBody, GitHubMark } from '@/components/auth/github-sign-in';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import { PageHeader, PageSection, Panel, PanelBody, plural } from '@/components/harness/panel';
-import { getSession, subscribeCredentials } from '@/lib/auth';
+import { type GitHubSession, getSession, setSession, subscribeCredentials } from '@/lib/auth';
+import { rememberRedirectProvider, returnTo, useDeviceLogin } from '@/lib/github-login';
+import { forgetTabThread } from '@/lib/tab-thread';
 
 /** How long typing pauses before a truncated listing's filter asks the harness. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -111,10 +121,15 @@ export function GitHubPage({ docs }: { docs: string }) {
           {reading ? 'Loading' : ''}
         </p>
         {!signedIn && (
-          <p className="max-w-prose text-sm text-muted-foreground">
-            This browser is signed in with the shared access key, which names no one. Your GitHub
-            connection and repositories need a GitHub sign-in.
-          </p>
+          <div className="space-y-3">
+            <p className="max-w-prose text-sm text-muted-foreground">
+              {session
+                ? 'This browser is signed in with Google, which carries no GitHub account.'
+                : 'This browser is signed in with the shared access key, which names no one.'}{' '}
+              Your GitHub connection and repositories need a GitHub sign-in.
+            </p>
+            <SignInWithGitHub label="Sign in with GitHub" />
+          </div>
         )}
         {loadError ? (
           <ErrorNotice
@@ -158,11 +173,14 @@ export function GitHubPage({ docs }: { docs: string }) {
                 ) : null}
               </div>
             ) : (
-              <p className="max-w-prose text-sm text-muted-foreground">
-                {revoked
-                  ? 'GitHub refused the token Felix kept. Sign out and sign in with GitHub again to reconnect.'
-                  : 'Felix holds no GitHub connection for you. Sign out and sign in with GitHub to make one.'}
-              </p>
+              <div className="space-y-3">
+                <p className="max-w-prose text-sm text-muted-foreground">
+                  {revoked
+                    ? 'GitHub refused the token Felix kept. Signing in with GitHub again reconnects it.'
+                    : 'Felix holds no GitHub connection for you. Signing in with GitHub again makes one.'}
+                </p>
+                <SignInWithGitHub label={revoked ? 'Reconnect GitHub' : 'Connect GitHub'} />
+              </div>
             )}
           </PageSection>
         )}
@@ -236,7 +254,7 @@ function Repositories({ repos }: { repos: GitHubRepos }) {
             }}
             placeholder={repos.truncated ? 'Search repositories by name' : 'Filter repositories'}
             aria-label={repos.truncated ? 'Search repositories by name' : 'Filter repositories'}
-            className="h-8 max-w-sm text-sm"
+            className="max-w-sm"
           />
         )}
         {searchError ? <ErrorNotice error={searchError} doing="search your repositories" /> : null}
@@ -271,6 +289,91 @@ function Repositories({ repos }: { repos: GitHubRepos }) {
         )}
       </div>
     </PageSection>
+  );
+}
+
+/**
+ * The way to the sign-in the page needs, drawn where it says one is needed. The gate's two flows,
+ * chosen as the gate chooses: by redirect when the harness offers it (coming back to this page),
+ * else the device code in place. Offered only while the harness verifies a bearer — otherwise the
+ * Worker would not honour the token, and a sign-in that changes nothing is worse than a sentence
+ * saying none is on offer.
+ *
+ * A sign-in from the shared key or from Google can land in another tenant, where the thread this
+ * tab remembers does not exist, so it forgets that thread and reloads this page — the account
+ * chip does the same on a tenant change. Signing in again as a GitHub account of the same tenant
+ * only stores the new session, and the page re-reads the connection it made.
+ */
+function SignInWithGitHub({ label }: { label: string }) {
+  const [methods, setMethods] = useState<AuthMethods | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    void getAuthMethods().then((m) => {
+      if (alive) setMethods(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const login = useDeviceLogin(
+    useCallback((next: GitHubSession) => {
+      const before = getSession();
+      setSession(next);
+      if (!before?.login || before.tenant !== next.tenant) {
+        forgetTabThread();
+        window.location.assign(window.location.pathname);
+      }
+    }, []),
+  );
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    // Back from GitHub restores this page from the back/forward cache, state and all.
+    const reset = (e: PageTransitionEvent) => e.persisted && setLeaving(false);
+    window.addEventListener('pageshow', reset);
+    return () => window.removeEventListener('pageshow', reset);
+  }, []);
+
+  if (methods === undefined) return null;
+  if (!methods?.bearer_required || !(methods.github_redirect || methods.github_device)) {
+    return (
+      <p className="max-w-prose text-sm text-muted-foreground">
+        This deployment offers no GitHub sign-in, so there is nothing to connect from here.
+      </p>
+    );
+  }
+
+  const byRedirect = methods.github_redirect;
+  const starting = login.state.phase === 'starting';
+  const redirect = () => {
+    setLeaving(true);
+    if (!getSession()?.login) forgetTabThread();
+    rememberRedirectProvider('github');
+    window.location.assign(githubAuthorizeUrl(returnTo()));
+  };
+  const busy = starting || leaving;
+  const button = (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={busy}
+      aria-busy={busy || undefined}
+      onClick={() => (byRedirect ? redirect() : void login.start())}
+    >
+      {busy ? (
+        <Loader2Icon aria-hidden className="size-4 animate-spin" />
+      ) : (
+        <GitHubMark className="size-4" />
+      )}
+      {starting ? 'Asking GitHub for a code…' : leaving ? 'Opening GitHub…' : label}
+    </Button>
+  );
+  if (byRedirect) return button;
+  return (
+    <div className="max-w-sm">
+      <DeviceLoginBody login={login} idle={button} />
+    </div>
   );
 }
 

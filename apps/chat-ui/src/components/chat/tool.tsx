@@ -18,7 +18,7 @@ import {
   LoaderIcon,
   PanelRightOpenIcon,
 } from 'lucide-react';
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
 import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block';
 import {
@@ -228,7 +228,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
             {tool.phase && !tool.done && <span>phase {tool.phase}</span>}
           </div>
         )}
-        <Field label="Input" value={tool.input} tool={tool.name} />
+        <Field label="Input" value={tool.input} tool={tool.name} fold={verbose} />
         {shell ? (
           <ShellOutput result={shell} />
         ) : denied && issue ? (
@@ -239,7 +239,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
           table ? (
             <ToolTable table={table} raw={render(tool.output)} />
           ) : (
-            <Field label="Output" value={tool.output} tool={tool.name} emphasis />
+            <Field label="Output" value={tool.output} tool={tool.name} emphasis fold={verbose} />
           )
         ) : (
           verbose && (
@@ -397,40 +397,97 @@ function ToolImage({ url, alt }: { url: string; alt: string }) {
   );
 }
 
+/**
+ * Lines a debug card shows of an input or output before folding the rest.
+ *
+ * Debug opens every card and draws every plan call, so a plan-heavy turn was
+ * screens of JSON: each block capped at 16rem still left two per card and a
+ * card per call. Folded to a few lines, a turn reads as the list of what was
+ * called; "Show all" opens one block at its whole height, on request.
+ */
+export const DEBUG_FOLD_LINES = 8;
+
+/**
+ * Folded only when that hides a few lines at least: a nine-line block cut to
+ * eight behind "Show all 9 lines" costs a click for one line.
+ */
+const FOLD_SLACK = 4;
+
 function Field({
   label,
   value,
   tool,
   emphasis,
+  fold = false,
 }: {
   label: string;
   value: unknown;
   tool: string;
   emphasis?: boolean;
+  /** Debug: fold a long block to `DEBUG_FOLD_LINES`, with a control to show it all. */
+  fold?: boolean;
 }) {
   const text = render(value);
   const spilled = parseArtifactMarker(text);
   const json = useMemo(() => prettyJson(value), [value]);
+  const [all, setAll] = useState(false);
+  const lines = useMemo(() => (json ?? text).split('\n').length, [json, text]);
+  // Lines, or length for one long wrapped line (a result with no newlines).
+  const long =
+    lines > DEBUG_FOLD_LINES + FOLD_SLACK || (json ?? text).length > DEBUG_FOLD_LINES * 120;
+  const folds = fold && !spilled && long;
+  const folded = folds && !all;
+  // The fold's cap: about `DEBUG_FOLD_LINES` lines of `text-xs leading-relaxed`
+  // plus the block's padding, clipped under a fade rather than scrolled — a
+  // scroller inside a scroller inside the transcript is three wheels to fight.
+  const height = folded
+    ? 'max-h-44 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]'
+    : folds
+      ? 'max-h-none overflow-visible'
+      : undefined;
+  const blockId = useId();
   return (
     <div>
-      <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
-      {spilled ? (
-        <SpilledOutput ref_={spilled} tool={tool} />
-      ) : json !== null ? (
-        <JsonBlock json={json} label={label} />
-      ) : (
-        // Wrapped, not scrolled sideways. Unwrapped, an expanded Output was one line
-        // of escaped JSON under a horizontal scrollbar — present, and unreadable
-        // without dragging it a screen at a time. The height cap still scrolls.
-        <pre
-          className={cn(
-            'max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-background p-2.5 text-xs leading-relaxed',
-            emphasis ? 'text-foreground' : 'text-muted-foreground',
-          )}
-        >
-          {text}
-        </pre>
-      )}
+      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
+        {folds && (
+          <button
+            type="button"
+            data-slot="tool-field-fold"
+            aria-expanded={all}
+            aria-controls={blockId}
+            onClick={() => setAll((a) => !a)}
+            className="ml-auto rounded px-1 font-normal underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {all
+              ? 'Show less'
+              : lines > DEBUG_FOLD_LINES + FOLD_SLACK
+                ? `Show all ${lines.toLocaleString()} lines`
+                : 'Show all'}
+            <span className="sr-only"> of the {label.toLowerCase()}</span>
+          </button>
+        )}
+      </div>
+      <div id={blockId} data-folded={folded ? '' : undefined}>
+        {spilled ? (
+          <SpilledOutput ref_={spilled} tool={tool} />
+        ) : json !== null ? (
+          <JsonBlock json={json} label={label} className={height} />
+        ) : (
+          // Wrapped, not scrolled sideways. Unwrapped, an expanded Output was one line
+          // of escaped JSON under a horizontal scrollbar — present, and unreadable
+          // without dragging it a screen at a time. The height cap still scrolls.
+          <pre
+            className={cn(
+              'max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-background p-2.5 text-xs leading-relaxed',
+              emphasis ? 'text-foreground' : 'text-muted-foreground',
+              height,
+            )}
+          >
+            {text}
+          </pre>
+        )}
+      </div>
     </div>
   );
 }
@@ -662,12 +719,23 @@ export function prettyJson(value: unknown): string | null {
  * Still wrapped rather than scrolled sideways — the reason `Field` wraps — and
  * capped at the same height, so a card is no taller than it was.
  */
-function JsonBlock({ json, label }: { json: string; label: string }) {
+function JsonBlock({
+  json,
+  label,
+  className,
+}: {
+  json: string;
+  label: string;
+  className?: string | undefined;
+}) {
   return (
     <CodeBlock
       code={json}
       language="json"
-      className="max-h-64 overflow-y-auto rounded-lg border-border/60 bg-background [&_code]:text-xs [&_pre]:!bg-transparent [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:p-2.5 [&_pre]:pr-9 [&_pre]:text-xs"
+      className={cn(
+        'max-h-64 overflow-y-auto rounded-lg border-border/60 bg-background [&_code]:text-xs [&_pre]:!bg-transparent [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:p-2.5 [&_pre]:pr-9 [&_pre]:text-xs',
+        className,
+      )}
     >
       <CodeBlockCopyButton
         aria-label={`Copy ${label.toLowerCase()}`}

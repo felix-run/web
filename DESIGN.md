@@ -156,6 +156,12 @@ components:
     typography: "{typography.body}"
     rounded: "{rounded.full}"
     height: "36px"
+  field:
+    backgroundColor: "{colors.input}"
+    textColor: "{colors.foreground}"
+    typography: "{typography.body}"
+    rounded: "{rounded.full}"
+    height: "32px"
   tab-list:
     backgroundColor: "{colors.ground}"
     textColor: "{colors.muted-foreground}"
@@ -297,7 +303,7 @@ under 0.01 at hue 55–75, so the warmth reads as stone rather than paper.
 
 - **Stone Ground** (`ground`; dark `oklch(0.17 0.006 60)`): the shell behind everything, and the
   sidebar. Also the tone of every surface that *holds* things on the sheet: a user turn, the run
-  readout, the Activity ledger's tray, a page's empty state, the tab and view-switch tracks, the
+  readout, the Activity ledger's tray, the tab and view-switch tracks, the
   page icon tile. Light `muted` is the same value.
 - **Sheet** (`background`; dark `oklch(0.212 0.007 60)`): the floating surface that holds the
   header, the transcript, the instrument and every `/harness` page. Foreground on it measures
@@ -364,6 +370,21 @@ stylesheet is the authored form; never edit the hex to match a change.
 deadline chip is the rule in one element: amber while a person can still answer, red the moment
 the harness has answered for them.
 
+**The One-Cause-One-Line Rule.** A read the harness did not answer for a reason that passes — a
+429, a 503, no answer at all — is not `failed`. It is said once, by the shell: a muted line under
+the header (`harness-health-line.tsx`), a neutral dot, *The harness is shedding load · showing
+what it said 2m ago · Retry*, the cause in the product's words and the status code only in Debug.
+Every panel on screen keeps the rows it last had and draws no box of its own; one with nothing
+yet says *Not loaded yet* in muted text. Red is kept for a failure waiting will not cure (a 403,
+a 500, a body that would not parse) and for a write that failed, and those stay in the panel,
+where what they mean is known. Six red boxes for one rate limit taught the operator that red is
+weather. The attention line obeys it too: under a passing failure it names no cause and wears no
+red, and says only that its list is not current — the last count in the past tense (*2 calls
+were waiting on you across the harness*) or *Approvals not refreshed*, with *as of 3m ago* beside
+it — because it may still never claim the all-clear on a list it could not refresh. The sidebar's Threads heading carries its own muted row when the harness's index could
+not be read, because there the consequence — a shorter list — is local and needs saying where
+it shows.
+
 ## Typography
 
 **UI and Prose Font:** Geist Variable (with `ui-sans-serif, system-ui, sans-serif`)
@@ -388,8 +409,8 @@ semibold with tight tracking.
 
 - **Display** (600, 24px rising to 28px at `md`, tight): the empty thread's welcome headline,
   and nothing else. It exists only while a thread is empty.
-- **Figure** (600, 24px, tight): the Activity page's account sentence (`2 threads ran, 1 with
-  failures. $1.41 spent.`) and its *Where the spend went* total. The one number a page is opened
+- **Figure** (600, 24px, tight): the Activity page's account sentence (`2 threads ran, 1
+  thread failed. $1.41 spent.`) and its *Where the spend went* total. The one number a page is opened
   to read, so it is Geist with tabular figures, never mono: it is our own formatted total, and at
   24px a monospace full stop takes a whole cell and opens a gap (`$2 . 57`).
 - **Page Title** (600, 20px, tight): a `/harness` page's `h2`.
@@ -478,10 +499,11 @@ harness's id; a thread with no turns yet reads *New conversation*, muted, with t
 ten characters stay, since two titles that share a prefix differ at the end; its `title` holds
 the whole name and the thread id. Clicking it renames it in place (*Thread name*; Enter saves,
 Escape cancels), unless the tab is only watching the thread. `/harness` names no thread: each
-page has its own title. After that, in **debug mode** only, the tab's modes: **Debug**, a
-`secondary` badge that is also the button turning it off (named *Debug on, turn off*), on both
-addresses because debug governs both, and the **canary** rollout as an outline badge in mono.
-The agent beside the title is debug's too; off, the header is the brand, the run state, the
+page has its own title. After that, the tab's modes: at the debug level only, **Debug**, a
+`secondary` badge that is also the button turning it off (named *Debug on, turn off*; it returns
+to the level debug was entered from), on both addresses because the view governs both; and in
+harness view, the **canary** rollout as an outline badge in mono. The agent beside the title is
+harness view's too; everyday, the header is the brand, the run state, the
 title and the attention line. The canary's words also say whether this thread is on the rollout, in an
 `sr-only` clause.
 
@@ -506,9 +528,10 @@ from the middle, from `sm` (narrower, the `/harness` index leads with a *← thr
 is a way back), a link and never a heading (the page's own `h2` names the destination, so the header does
 not repeat it), and the run state before it is that thread's. Before the controls sits
 the **attention line** (below). On the right: New chat, only where the sidebar is a drawer, and
-a plus alone below `sm`; the instrument toggle, in debug only; and one ellipsis menu named
-**Session**: *Session* (Continue run, Copy thread id), *View* (Debug, with a 12px muted second
-line naming what it adds), then *Theme* as Light/Dark/System radio items. On `/harness` the menu
+a plus alone below `sm`; the instrument toggle, in harness view only; and one ellipsis menu named
+**Session**: *Session* (Continue run, Copy thread id; on a thread with nothing to pick up,
+Continue run follows Copy thread id, disabled, with its reason on a 12px muted second line), *View* (three radio items — Everyday,
+Harness view, Harness + debug — each with a 12px muted second line naming what it adds), then *Theme* as Light/Dark/System radio items. On `/harness` the menu
 is named **View** and holds View and Theme. Thinking is in the composer.
 
 The workbench is **three zones**: the app sidebar (17rem expanded, 3.25rem as icons: 8px either side of the 36px icon buttons, the gap the sheet keeps everywhere else) on the ground,
@@ -521,8 +544,10 @@ cannot truncate (*1 waiting*, *No approvals*, *Unreachable*) with *Review* as it
 the full sentence kept as the live region and the `title`. It is tinted only when it has
 something to say (`state-blocked` at `/10` while a person is asked, `state-failed` while it
 cannot vouch for the list) and is muted text on no surface at rest. At rest its dot is the
-neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach approvals* with
-the age of its last answer, in `state-failed`, and never the all-clear. Expanded, its queue opens
+neutral idle dot; when its latest `/approvals` poll failed it never says the all-clear. A
+passing failure (429, 503, no answer) keeps the last count, neutral, with *as of 3m ago* and no
+cause, which is the shell's health line's to name; any other says *Can't reach approvals* with
+the age of its last answer, in `state-failed`. Expanded, its queue opens
 **under the header**, in the flow, held to the transcript's measure on the transcript's centre
 line, and is **one line per call** (tool and target in mono, the thread, and a countdown chip
 that says what it counts down to: *Auto-denies in 4:20*; the clock alone below `sm`), opening
@@ -623,9 +648,10 @@ row's own colour, not a decoration), and no texture.
 
 **Where the system and the code disagree.** The vendored primitives in `packages/ui/src` still
 carry shadcn defaults: `shadow-2xl` on select and hover-card, `shadow-lg` on dialog, sheet,
-popover and dropdown, `shadow-xs` on Input, Switch and ButtonGroup, `shadow-sm` on Textarea and
-Card. The redesign reconciled Button (the outline's `shadow-xs` is gone), Tabs and Sidebar only.
-Treat the rest as incumbent truth, not as a pattern to copy. `shadow-lift-focus` exists as a
+popover and dropdown, `shadow-xs` on Switch and ButtonGroup, `shadow-sm` on Card. The redesign reconciled Button (the
+outline's `shadow-xs` is gone), Tabs and Sidebar, and the fields: Input, the select trigger and
+Textarea are flat on the same wash (the One-Field Rule, below). Treat the rest as incumbent truth,
+not as a pattern to copy. `shadow-lift-focus` exists as a
 utility but nothing uses it; the composer and slash menu reach the variable directly.
 
 ### Named Rules
@@ -651,23 +677,52 @@ smallest objects: `kbd` keys and inline code.
 
 The roles, as the code uses them, run from what you press to what you read:
 
-- **Pill (`full`)**: everything pressed or toggled. Every button variant and size, badges,
-  state and deadline chips, the attention line, the thread search field, tab and view-switch
-  tracks and their active pills, state dots, the scrollbar thumb.
+- **Pill (`full`)**: everything pressed, toggled or typed on one line. Every button variant and
+  size, badges, state and deadline chips, the attention line, every one-line field (`Input`,
+  the thread search, the rename fields) and every select trigger, tab and view-switch tracks and
+  their active pills, state dots, the scrollbar thumb.
 - **22px (`2xl`)**: the soft objects a person reads or decides on. The floating sheet, the
   composer and its slash menu, a user turn, a waiting approval, the run readout, the Activity
-  ledger's tray and the spend table's tray, a page's empty state; and, as vendored, the select,
+  ledger's tray and the spend table's tray; and, as vendored, the select,
   command and hover-card popovers.
 - **18px (`xl`)**: an object *in* something. A tool card, a plan card, a starter card, a queued
   message, the watching banner, the `ui_request` banner, a ledger tile, the page icon tile, the
   user-turn edit field, and the **decision buttons**, which are `xl` rather than pills so a label
   that wraps to two lines never reads as a broken pill.
 - **14px (`lg`)**: rows on the ground: thread tiles and sidebar menu rows. Also the toast.
-- **12px / 10px (`md`, `sm`)**: fields (`Input`, `Textarea`, the rename field) and small
-  controls inside rows.
+- **12px / 10px (`md`, `sm`)**: a field that runs to more than one line (`Textarea`, the
+  approval's argument editor), where a pill's ends would cut into the text, and small controls
+  inside rows.
 
 Borders are hairlines at `--border`, often at `/60`, or `--input` on a field and an outline
 button. Scrollbars are themed thin with the thumb inset by a transparent 3px border.
+
+**The One-Field Rule.** `Input`, `SelectTrigger` and `Textarea` share one surface
+(`fieldSurface` in `packages/ui/src/lib/field.ts`): an `--input` edge on an `input/30` wash in
+both themes, no shadow, a focus that turns the edge to full `--ring` under a 3px `ring/50` halo,
+and one invalid state, `destructive`. The wash is what makes a field findable in light: the edge
+alone is 1.41:1 on the sheet. The halo is half strength because the border carries the contrast;
+at full strength the two made a 4px dark band that read as an alert. The one-line fields are that
+surface as a pill (`fieldChrome`), in three sizes: `default`, 32px at 14px, for a form; `sm`,
+32px at 12px, for a dense row or toolbar (Activity's filters, the plan editor, a skill's
+version); `lg`, 36px at 14px, for the field that heads a region (the thread search, the access
+key). On a coarse pointer `default` and `sm` grow to 36px, as `Button size="sm"` does, and every
+field and select trigger reads at 16px (the unlayered rule in `index.css`), so a row of fields and
+`sm` buttons stays on one line at one size. `Textarea` keeps 12px corners (`default` 14px, `sm`
+12px), since a pill's ends would cut into text that wraps. A list opened from an `sm` trigger sets
+its rows at 12px (`SelectContent size`), never each item. A call site sets width and spacing,
+never height, radius, padding, text size or background; `tests/select-family.test.tsx` fails on
+one, with four named exceptions (the composer's chips, the sidebar's two fields on its accent, the
+pane's path fields on a tinted strip), and fails on a native `<select>`, whose list is the OS's.
+
+Every agent outside the composer is chosen with `AgentSelect` (`components/agent-select.tsx`):
+the name alone in the trigger in mono, our own words (a placeholder, *Every agent*) in sans, and
+each row the name over its provider model, the row the composer's pickers draw too
+(`OptionItem`); every agent list is at least 18rem wide and at most 26rem tall
+(`OPTION_LIST_BOUNDS`). A select's placeholder names its noun with no ellipsis (*Choose a
+manifest*), since an ellipsis promises a dialog; a field's example value starts with *e.g.*, or
+on the wash it reads as one already typed. A submit that is unavailable says why beside it
+(`WhyDisabled`), and the button names that line, since a disabled button fires no hover.
 
 **The Soft-Where-Touched Rule.** The larger a thing is as an object of attention, the larger its
 corner; a pill is for pressing. An object never takes a pill, and a control never takes a 22px
@@ -743,7 +798,7 @@ the `>` are always neutral ink.
 `rounded-full`, 3px inset, 36px) and the active tab as a sheet-coloured pill with `shadow-sheet`,
 semibold. An inactive tab is `muted-foreground` in both themes (5.5:1 on the track in light, 7.7:1
 in dark, measured at 12px); it was `foreground/60`, 4.24:1, under AA at the size every caller
-uses. The instrument's tabs (Changes, Plans, Tools) use it at 12px, as do the skill page's and the
+uses. The instrument's tabs (Changes, Plans, Tools · all threads) use it at 12px, as do the skill page's and the
 skill editor's. `ViewSwitch` on
 `/harness` pages is the same shape at 32px; it is a `role="group"` of `aria-pressed` buttons, not
 tabs, because it switches the input above a list its modes share.
@@ -765,17 +820,23 @@ the pane is narrow. A page whose value would need a request of its own shows non
 came back at its fetch cap reads `50+`. Every page's body **and** its header row are held to
 `READING_MEASURE` (`max-w-3xl`) and centred; `<Panel fullBleed>` is the opt-out, and only
 the Workflows canvas takes it (a graph is not read at a measure). Below the header a page is divided into `PageSection`s (an `h3` at 16px semibold, never a
-bordered box) and label/value pairs are a `Facts` grid. An empty page is a stone panel
-(`rounded-2xl bg-ground`) with one muted sentence. `/harness` looks at its own agent (`?agent=`),
+bordered box) and label/value pairs are a `Facts` grid (a 13rem label column at a page's measure,
+so `Approval workspace-write` stays on one line; an id in a label never breaks). An empty page
+is one muted line, left-aligned where the first row would sit (`PageEmpty`, held to ~70
+characters): no tray, no frame, its copy and any action kept (2026-10-16; the 160px stone tray it
+replaced read as the biggest object on an empty page). `/harness` looks at its own agent (`?agent=`),
 and the **picker lives only in the headers of the pages it scopes** (Skills, Eval, Agent). The nav
 is three runs of at most four under visible 12px labels, named for the question each answers:
 *What happened* (Activity, Jobs, Workflows), *What it knows* (Memory, Documents, Skills) and *How it's set up*
 (Agent, Manifests, Eval, GitHub). The 768–1024 rail draws its rows in the sidebar's grammar, on the
 ground with no rule beside it, since there it stands in for the sidebar. The rail carries exactly three
-glances, each only when non-zero: `Jobs · N failing` and `Activity · N failed` in `state-failed`,
+glances, each only when non-zero: `Jobs · N failing` and `Activity · N threads failed · 7d` (or the shorter span its read covered) in `state-failed`,
 and `Skills · N waiting` in `state-blocked`. Absence is the all-clear, so it is drawn only for a
 read that answered: a failed read shows a muted `unchecked`, and a count kept from an earlier read
-carries its age (`3 failed · 2m`). Every page header ends in a quiet `Docs ↗` link, checked
+carries its age (`3 threads failed · 2m`). **A failure is counted in threads, and the unit is
+said, everywhere** — the glance, the Activity header and a job's row (`1 thread failed · 7d`) — by
+one function over the page's own ledger; a failure outside any thread is never added to them and
+is named as such (`1 failed outside a thread`) only when no thread failed. Every page header ends in a quiet `Docs ↗` link, checked
 against the docs source by `tests/docs-links.test.ts`. Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page. On `/harness` the header drops the
 conversation's own controls; the ellipsis menu stays in the same slot (named **View**) and the
@@ -783,7 +844,7 @@ instrument toggle's slot is held empty, so the attention line does not move betw
 Two controls have one home on every page: a view switch and a create toggle (outline, the plus
 turning to a cross when open) both sit in the header, and the form a create toggle opens is the
 page's first section. A view that can be linked is in the address. Fields are the shared
-`Input`/`Textarea` at 14px with a visible `Label`; help that must survive typing goes under the
+`Input`/`Select`/`Textarea` at 14px with a visible `Label`; help that must survive typing goes under the
 field. A header value that mixes a window with a state draws the window neutral and only the
 state in its chip. A routine `OK` status is a muted word and dot; colour is kept for what went
 wrong. A page whose latest read failed after a good one keeps the good rows under one line saying
@@ -802,8 +863,14 @@ at fixed cents (`< $0.01`), drawn only when a thread on screen has a figure. Out
 `Failed` > `Refused` (red dot and word) > `Denied` (outlined muted chip, **no dot**) > `OK`; a
 thread whose only miss was a denial reads `Denied`, and the reply the harness marks `error` after a
 denial reads *after a denial* and is not a second failure. The header value carries the account
-(`$1.41 · 2 threads · 1 with failures`); below it, one muted when-line says the window and, when
-any, how many threads had a call denied (not a failure, so not in the red header). There is no
+(`$1.41 · 2 threads · 1 thread failed`), with no cost figure for a window in which no model ran; below it, one muted when-line says the window, then
+**the failures and their share of the spend** (`1 thread failed after 943 turns — $27.17 of
+$27.60.`, `≥` where a figure is a floor), then, when any, how many threads had a call denied (not
+a failure, so last and never red). A window shorter than the week that holds no failure, while the
+sidebar's week does, says so in one line with the sidebar's count and a way to the week
+(`Nothing new since your last visit · 1 thread failed in the last 7 days. Show the last 7 days`),
+so the page never reads the all-clear beside a red glance. It carried the denials alone once, and two cents of declined
+writes read above the job that held nearly all the week's money. There is no
 Figure sentence repeating the header. Explanatory prose on the page is held to `70ch`. Opened, a
 thread shows its turns in the order they happened, each headed by what was asked (`h3`) and by
 clock time; inside a turn a run of three or more routine events folds to one line, and a run of
@@ -935,27 +1002,32 @@ choosing a kind in the palette closes it and opens the new step there.
 
 On the ground, with no border: the sheet's edge is the divider. **New chat** (the ink pill), then
 **Threads**, then the lower region, with hairline separators between sections. The lower region has
-**one order** on every address and in both modes: **Harness**, then the workspace. In debug
-Harness is all ten destinations (never folded on `/harness`, where they are the page's own
-navigation). Debug off it is the same frame on every address, `/harness` included — the heading, *What happened* and **Activity** with its
+**one order** on every address and in both modes: **Harness**, then the workspace. In harness
+view Harness is all ten destinations (never folded on `/harness`, where they are the page's own
+navigation), each run folding on its own under its label — *How it's set up* folded until opened,
+and the run holding the page on screen always open, its chevron hidden and its toggle off. Debug off it is the same frame on every address, `/harness` included — the heading, *What happened* and **Activity** with its
 failure glance, and under *What it knows* a **Skill drafts** row with the amber `N waiting`
 glance while drafts wait (or while the reader is on Skills), the current one marked — then the
 workspace. On `/harness` the workspace is folded by default, header only, its mount controls
 inside the fold (that fold is not stored). Arriving moves nothing: the rows do not change. Collapsed, debug off shows those one or two icons below Workspace.
 
-Threads is a heading and a **pill search field** (36px, `sidebar-accent` face, `input` edge, 14px,
-a 3px focus ring) that stay put above a list that scrolls inside itself. Workspace and Harness are
-one region below it at a **fixed** height — `min(40svh, 19rem)` with debug off, for its two rows
-and an open workspace; in debug `clamp(40svh, 32.5rem, 60svh)` — 32.5rem is what the ten
-destinations take (the folded workspace's header is a short scroll below), and a fixed height means the region does not
-grow upward when its rows change between addresses (on a thread with debug off it leaves room
-under the workspace, the accepted cost), with one scroll of its own; the sidebar itself
-never scrolls when expanded. Workspace's *Files* is a disclosure with its entry count, folded
+Threads is a heading and a **pill search field** (`Input size="lg"`: 36px, `sidebar-accent` face,
+`input` edge, 14px) that stay put above a list that scrolls inside itself. **The threads come
+first**: the list is what the sidebar is opened for. Workspace and Harness are one region below
+it with one scroll of its own — everyday at a fixed `min(40svh, 13rem)` for its three rows at
+most; in harness view **sized to its content and capped at 35svh**, holding at least the default
+layout's height (`min(35svh, 25.5rem)`) so a fold never drops the row under the pointer, and
+never changing its rows with the address (a run unfolded by arriving on its page stays unfolded).
+At 1456×997 that is 349px and eight full thread rows; it was 520px and four. The Workspace row
+sticks to the region's bottom edge on a hairline, so the harness's rows scroll under it rather
+than taking it out of view. The sidebar itself never scrolls when expanded. Workspace's *Files* is a disclosure with its entry count, folded
 until opened and remembered. The thread groups rank by state, then recency: *Waiting on you*
 (`state-blocked`, dot and words), *Running* (`state-running`), *Pinned* (labelled *this browser*),
 *Today*, *Yesterday*, *Previous 7 days*, and *Older*, which starts folded and, open, is cut by
 month. Group labels are 12px medium muted on the ground, 28px tall, and stick to the top of the
-list while their rows scroll under them. Empty groups are not drawn.
+list while their rows scroll under them. Empty groups are not drawn. A row's second line leads with
+its state, dot and word: *Waiting on you*, *Running*, or **Failed** (`state-failed`) when the
+thread's newest turn broke — the last only when neither of the others holds.
 
 **Two label weights, one edge.** The sidebar's three *section* headings (Threads, Workspace,
 Harness) are 12px semibold; every *subgroup* label inside them (the date groups, Older, Files,
@@ -1018,7 +1090,7 @@ tokens at all. A tool card's open body leads with its call id in debug.
 
 The top of the instrument, above its tabs, under the 18px "This thread" heading (no rule beneath
 it now). It was "This run", which the readout's tokens (summed over the thread) and the Tools tab
-(every thread, an hour) contradicted; a tab whose scope is wider says so on its own first line. It is a **stone tile** inset 8px from the instrument's sides (`rounded-2xl bg-ground`,
+(every thread, an hour) contradicted; a tab whose scope is wider says so in its name — *Tools · all threads*, the scope muted — as well as on its first line. It is a **stone tile** inset 8px from the instrument's sides (`rounded-2xl bg-ground`,
 `px-3.5 py-3`), because the run's state is the instrument's headline. An 8px dot and the **state
 word** as a Statement (18px semibold) in the ramp colour (*Waiting on you*, *Running*, *Rejoining
 thread*, *Failed*, *Idle*), then a stopwatch (`for 3:07` live, `last run 42s` at rest) in tabular
@@ -1035,6 +1107,8 @@ stopwatch is not.
   side, not coloured, and there is no avatar. Its edit field is a `rounded-xl` field on the sheet.
 - **Assistant turn:** a "Felix" label in 12px semibold foreground, then prose, reasoning and tool
   cards interleaved in the order they happened, then a mono usage line. No avatar, no surface.
+  **One reply, one label**: an assistant turn straight after another (the log keeps the message
+  that called the tools and the one after them as two) draws no second "Felix" (2026-10-16).
 - **Reasoning:** a collapsed row, never prose. While it streams, the 6px `state-running` dot
   pulses, *Thinking* sits in 12px medium `state-running`, then a stopwatch and a word count in
   tabular mono, with one muted 14px line of the **newest** reasoning beneath it on the reasoning's
@@ -1063,7 +1137,8 @@ stopwatch is not.
   (the code block's own palette, not the state ramp) with a copy control, capped at 16rem. A
   shell result's stdout and stderr each sit in a terminal panel on the code surface.
 - **A plan is a card in the turn.** `rounded-xl` with a `border/60` hairline, no fill. Title and
-  goal, `3 of 7 done` in mono as the header's value, then the steps: an icon in the state ramp
+  goal, `3 of 7 done` in mono as the header's value (on a card under 28rem the chips wrap under
+  the goal rather than squeezing it), then the steps: an icon in the state ramp
   beside the agent's own status word, never the colour alone.
 - **An edited message says it has versions.** `‹ 2 of 3 ›` in 12px mono beside *You*.
 - **A labelled turn is a restore point.** After it, a bookmark, the label and *Restore*, then a
@@ -1084,8 +1159,11 @@ stopwatch is not.
   Plain text wraps with `wrap-anywhere`; assistant prose uses `wrap-break-word`, so a table or a
   code block keeps its natural width and scrolls inside its own box.
 - **Empty thread:** a greeting, then the readout. Centred in the column at `max-w-3xl`: the
-  Display headline "What do you want to work on?", a 16px muted sentence naming the agent (either
-  replaced by the manifest's `felix.greeting`), then the agent's starter prompts as a two-column
+  Display headline "What do you want to work on?", a 16px muted sentence naming the agent held to
+  ~70 characters (`max-w-[32rem]`) (either replaced by the manifest's `felix.greeting` — except
+  for an agent whose tools work in the browser while no folder is mounted, whose greeting is about
+  a folder that is not there: the client's headline stands, and the sentence says the tools work
+  in the tab's own storage), then the agent's starter prompts as a two-column
   grid of `rounded-xl` outline cards (`border-border/60`, `bg-solid-card/40`, no shadow): title
   in 14px medium, the prompt beneath in 12px muted, clamped to two lines. They come from
   `felix.starters`, fall back to a built-in table, and are disabled while a run streams. Under the
@@ -1158,7 +1236,8 @@ beneath it at 12px that names the keys worth learning as small bordered `kbd` ke
 
 **The composer row rests at five:** an *Add to message* menu (attach images, voice input), the
 agent, Thinking, then Run in background and Send, and only Send is primary. The agent and Thinking
-pickers are pills (`h-8`, muted wash, value in 12px mono). The mic leaves the menu while it
+pickers are the field pill at `size="sm"` on the composer's muted wash, value in 12px mono, and
+their lists open 18rem wide, capped at 26rem tall, rather than at the pill's width. The mic leaves the menu while it
 records (red `recording`, a pulsing halo, one click to stop).
 
 **The agent picker lists manifests in the harness's order**, each name over the provider model it

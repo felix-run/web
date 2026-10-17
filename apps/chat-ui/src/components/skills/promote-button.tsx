@@ -51,12 +51,7 @@ export function PromoteButton({ name, version }: { name: string; version: string
         Why the team should have it — the reviewer reads this. It becomes a draft in the team
         library; nothing is published.
       </label>
-      <Input
-        id={reasonId}
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        className="h-8 text-xs"
-      />
+      <Input size="sm" id={reasonId} value={reason} onChange={(e) => setReason(e.target.value)} />
       {promote.error ? <RefusalNotice error={promote.error} doing="promote this version" /> : null}
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" disabled={promote.isPending}>

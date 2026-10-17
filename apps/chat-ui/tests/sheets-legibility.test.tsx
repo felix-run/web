@@ -262,7 +262,7 @@ describe('Skills when the spec cannot be read', () => {
             skills={null}
             agent="contributor"
             isChatAgent={false}
-            specError={new Error('manifests /contributor: 429 {"error":"rate_limited"}')}
+            specError={new Error('manifests /contributor: 500 {"error":"internal"}')}
             onRetrySpec={retry}
           />
         </PanelModeProvider>
@@ -279,7 +279,7 @@ describe('a failed poll keeps what it last knew', () => {
     render(
       <SectionBody
         loading={false}
-        error={new Error('memory: 429')}
+        error={new Error('memory: 500')}
         doing="read stored memory"
         empty={false}
         emptyText="none"
@@ -357,14 +357,15 @@ describe('Skills tells loading from none, and names only a real thread', () => {
 });
 
 /**
- * One failed read is usually the harness shedding a burst. A page that passes
- * `failures` says the first one in neutral and the second in red — the attention
- * line's rule — rather than a red alert on a page that has nothing else on it.
+ * A page that passes `failures` says a first failure in neutral and the second in
+ * red — the attention line's rule — rather than a red alert on a page that has
+ * nothing else on it. (A 429 or a 503 never reaches this: it is the shell's one
+ * line, `tests/harness-health.test.tsx`.)
  */
 describe('a single failed read', () => {
   it('reads as rechecking first, and as a failure the second time in a row', async () => {
     const { SectionBody } = await import('../src/components/inspector/primitives');
-    const err = Object.assign(new Error('audit: 429'), { status: 429 });
+    const err = Object.assign(new Error('audit: 500'), { status: 500 });
     const body = (failures: number) => (
       <SectionBody
         loading={false}

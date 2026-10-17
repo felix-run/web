@@ -68,7 +68,7 @@ function mount(at: string) {
 beforeEach(() => {
   localStorage.clear();
   // These pin debug-mode surfaces (the instrument, the harness pages).
-  localStorage.setItem('felix.debug', '1');
+  localStorage.setItem('felix.view', 'debug');
   // Presence is module state, and the title is the document's: both outlive a test.
   resetPresence();
   document.title = 'Felix';
@@ -262,7 +262,7 @@ describe('the harness address', () => {
    * and marks the one the reader is on.
    */
   it('keeps the sidebar to Activity with debug off, on /harness too', async () => {
-    localStorage.removeItem('felix.debug');
+    localStorage.removeItem('felix.view');
     mount('/t/keep-me');
     await waitFor(() => expect(address).toBe('/t/keep-me'));
     const activity = await waitFor(() => {
@@ -335,7 +335,7 @@ describe('the harness address', () => {
   });
 
   it('draws debug off’s harness rows first, in the /harness frame', async () => {
-    localStorage.removeItem('felix.debug');
+    localStorage.removeItem('felix.view');
     mount('/t/keep-me');
     const daily = await waitFor(() => {
       const el = document.querySelector('[data-slot="daily-harness"]');
@@ -354,6 +354,32 @@ describe('the harness address', () => {
     await waitFor(() => expect(document.querySelector('a[href^="/harness/eval"]')).not.toBeNull());
     // And the group's name is a heading, beside Threads and Workspace.
     expect([...document.querySelectorAll('h2')].map((h) => h.textContent)).toContain('Harness');
+  });
+
+  /**
+   * One level down, the same rule: *How it's set up* starts folded, but the run
+   * holding the page on screen is open, and its toggle is off while it is. And it
+   * stays open once left, because folding it back as the reader moved to another
+   * page would shrink the region and move the row they had just clicked.
+   */
+  it('opens the run holding the page on screen, and leaves it open after', async () => {
+    mount('/harness/agent');
+    const setup = await waitFor(() => {
+      const el = [...document.querySelectorAll('button[aria-controls^="sidebar-harness-"]')].find(
+        (b) => b.textContent === 'How it’s set up',
+      );
+      expect(el).toBeTruthy();
+      return el as HTMLButtonElement;
+    });
+    expect(setup.getAttribute('aria-expanded')).toBe('true');
+    expect(setup.disabled).toBe(true);
+    await act(async () => {
+      go('/harness/activity');
+    });
+    await waitFor(() => expect(setup.disabled).toBe(false));
+    expect(setup.getAttribute('aria-expanded')).toBe('true');
+    // Not written down: next load, the remembered default stands.
+    expect(localStorage.getItem('felix.sidebar.harnessGroups')).toBeNull();
   });
 
   it('offers a skip link as the first stop, landing on the page', async () => {
@@ -475,7 +501,7 @@ describe('the harness address', () => {
   });
 
   it('lists only Activity on the 768–1024 rail with debug off, as the sidebar does', async () => {
-    localStorage.removeItem('felix.debug');
+    localStorage.removeItem('felix.view');
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query.includes('min-width: 768px'),
       addEventListener: () => {},

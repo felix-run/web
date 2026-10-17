@@ -17,6 +17,7 @@ import {
   ViewSwitch,
 } from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
+import { WhyDisabled } from '@/components/why-disabled';
 import { usePoll } from '@/hooks/usePoll';
 import type { DocumentHit, DocumentRecord } from '@/types';
 import { DOCUMENT_LIMITS } from '@/types';
@@ -152,7 +153,7 @@ export function DocumentsSection({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="mt-1 h-8 max-w-md text-sm"
+            className="mt-1 max-w-md"
           />
         </div>
       )}
@@ -275,6 +276,17 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
     textValue.length > 0 &&
     textValue.length <= DOCUMENT_LIMITS.text &&
     source.trim().length <= DOCUMENT_LIMITS.source;
+  const unready = !titleValue
+    ? 'Give it a title.'
+    : titleValue.length > DOCUMENT_LIMITS.title
+      ? `The title is over ${DOCUMENT_LIMITS.title} characters.`
+      : source.trim().length > DOCUMENT_LIMITS.source
+        ? `The source is over ${DOCUMENT_LIMITS.source} characters.`
+        : !textValue
+          ? 'Paste the text to add.'
+          : textValue.length > DOCUMENT_LIMITS.text
+            ? `The text is over ${DOCUMENT_LIMITS.text.toLocaleString()} characters.`
+            : null;
 
   async function submit() {
     if (!ready || busy) return;
@@ -309,7 +321,7 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={DOCUMENT_LIMITS.title}
-            className="mt-1 h-8 text-sm"
+            className="mt-1"
           />
         </div>
         <div>
@@ -318,9 +330,9 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
             id="documents-source"
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            placeholder="wiki/runbooks"
+            placeholder="e.g. wiki/runbooks"
             maxLength={DOCUMENT_LIMITS.source}
-            className="mt-1 h-8 font-mono text-sm placeholder:font-sans"
+            className="mt-1 font-mono placeholder:font-sans"
           />
         </div>
       </div>
@@ -340,19 +352,25 @@ function AddDocumentForm({ onAdded, onCancel }: { onAdded: () => void; onCancel:
           onChange={(e) => setText(e.target.value)}
           rows={6}
           aria-describedby="documents-text-count"
-          className="mt-1 resize-y text-sm"
+          className="mt-1 resize-y"
         />
         <p id="documents-text-count" className="mt-1 font-mono text-xs text-muted-foreground">
           {textValue.length.toLocaleString()} / {DOCUMENT_LIMITS.text.toLocaleString()}
         </p>
       </div>
       <div className="flex gap-2">
-        <Button size="sm" disabled={!ready || busy} onClick={submit}>
+        <Button
+          size="sm"
+          disabled={!ready || busy}
+          aria-describedby={unready ? 'documents-add-unready' : undefined}
+          onClick={submit}
+        >
           {busy ? 'Adding…' : 'Add document'}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
+        <WhyDisabled id="documents-add-unready" reason={busy ? null : unready} />
       </div>
       {error && (
         <p role="alert" className="text-sm text-state-failed">

@@ -2,15 +2,12 @@ import { Skeleton } from '@felix/ui/skeleton';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { getResolvedManifest } from '@/api';
 import { AgentSheet } from '@/components/agent/agent-sheet';
+import { modelsById } from '@/components/agent-select';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { ActivityLedger } from '@/components/harness/activity-ledger';
 import { DocumentsSection } from '@/components/harness/documents';
 import { GitHubPage } from '@/components/harness/github';
-import {
-  HarnessAgentPicker,
-  modelsById,
-  useHarnessAgent,
-} from '@/components/harness/harness-agent';
+import { HarnessAgentPicker, useHarnessAgent } from '@/components/harness/harness-agent';
 import { MemorySection } from '@/components/harness/memory';
 import { Panel } from '@/components/harness/panel';
 import { SkillsSection } from '@/components/harness/skills';

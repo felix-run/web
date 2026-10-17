@@ -17,7 +17,7 @@ import { ThreadChanges } from '@/components/workspace/changes-list';
 import { usePoll } from '@/hooks/usePoll';
 import { callTarget } from '@/lib/call-target';
 import { cn } from '@/lib/utils';
-import { type ShellValue, useShell } from '@/shell-context';
+import { type ShellValue, useOptionalShell, useShell } from '@/shell-context';
 import type { Plan, Turn } from '@/types';
 import { DebugSection } from './debug-section';
 import { PlanEditor } from './plan-editor';
@@ -27,11 +27,12 @@ type SectionId = 'changes' | 'plans' | 'metrics' | 'debug';
 /**
  * Right-hand inspector: a readout of the thread's run, then four tabs — what this
  * thread's tool calls changed in the workspace, the harness's plans, its tool
- * metrics, and Debug: what this tab believes about the thread and its runs.
+ * metrics, and — in debug only — Debug: what this tab believes about the thread
+ * and its runs.
  *
- * The whole instrument is debug mode's. Off, the shell renders none of it and the
- * header has no toggle for it; the daily surface's run state is the header chip
- * and the attention line.
+ * The whole instrument is harness view's. Everyday, the shell renders none of it
+ * and the header has no toggle for it; the daily surface's run state is the
+ * header chip and the attention line.
  *
  * Each part says its own scope, because they differ. "This thread" heads the
  * panel: the readout is this thread's run and its tokens, derived from the
@@ -77,10 +78,14 @@ const SECTIONS = [
   // Plans draws its own line: whether it covers this thread or every thread is
   // only known once the harness has answered.
   { id: 'plans', label: 'Plans' },
-  { id: 'metrics', label: 'Tools', window: 'All threads · last 60 minutes' },
+  // The one tab whose rows are not this thread's: `/audit/metrics` takes no
+  // thread filter. Said in the tab's own name (2026-10-16), not only on its first
+  // line — under a panel headed "This thread", a tab called "Tools" promised this
+  // thread's tools, and the correction was one click away.
+  { id: 'metrics', label: 'Tools', scope: 'all threads', window: 'Every thread · last 60 minutes' },
   // Draws its own line beside Copy report, which is the tab's focal action.
   { id: 'debug', label: 'Debug' },
-] as const satisfies readonly { id: SectionId; label: string; window?: string }[];
+] as const satisfies readonly { id: SectionId; label: string; scope?: string; window?: string }[];
 
 export function Inspector({
   open,
@@ -92,7 +97,12 @@ export function Inspector({
   /** Set by the shell when this renders inside a drawer instead of as a column. */
   className?: string;
 }) {
-  const [active, setActive] = useState<SectionId>('changes');
+  const [chosen, setActive] = useState<SectionId>('changes');
+  // The Debug tab is the debug level's; no shell (a test mounting the panel) shows it.
+  const debug = useOptionalShell()?.debug ?? true;
+  const sections = debug ? SECTIONS : SECTIONS.filter((s) => s.id !== 'debug');
+  // Leaving debug with its tab open lands on Changes, not on a strip with nothing chosen.
+  const active = chosen === 'debug' && !debug ? 'changes' : chosen;
 
   return (
     <aside
@@ -137,13 +147,18 @@ export function Inspector({
           className="min-h-0 flex-1 gap-0"
         >
           <TabsList className="mx-2 mt-1.5 w-auto shrink-0">
-            {SECTIONS.map(({ id, label }) => (
-              <TabsTrigger key={id} value={id} className="text-xs">
-                {label}
+            {sections.map((section) => (
+              <TabsTrigger key={section.id} value={section.id} className="text-xs">
+                {section.label}
+                {/* Muted, so the strip still reads as four names; part of the
+                    tab's accessible name, so it is heard as well as seen. */}
+                {'scope' in section && (
+                  <span className="font-normal text-muted-foreground"> · {section.scope}</span>
+                )}
               </TabsTrigger>
             ))}
           </TabsList>
-          {SECTIONS.map((section) => (
+          {sections.map((section) => (
             <TabsContent key={section.id} value={section.id} className="min-h-0">
               <ScrollArea className="h-full">
                 <div className="p-3">

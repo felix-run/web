@@ -5,10 +5,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivityLedger, repricedRoutes } from '../src/components/harness/activity-ledger';
-import { middleTruncate } from '../src/lib/format';
+import { clockTime, middleTruncate } from '../src/lib/format';
 import {
   buildLedger,
   cutTurns,
+  denialSentence,
+  failureSentence,
   filterLedger,
   foldRoutine,
   groupFailures,
@@ -277,11 +279,88 @@ describe('meteringStart / spendState', () => {
 });
 
 describe('navSearch', () => {
+  // A week since 2026-10-16: the glance counts over seven days, or over less when
+  // its read reaches back less far, and the link carries the week, which holds both.
   it("carries the glance's window to Activity while the glance has something to say", () => {
-    const glance = { text: '3 failed', title: '3 failed in the last 24h', tone: 'failed' as const };
-    expect(navSearch('activity', '?agent=x', glance)).toBe('?agent=x&since=24h');
+    const glance = {
+      text: '3 threads failed',
+      title: '3 threads failed in the last 7d',
+      tone: 'failed' as const,
+    };
+    expect(navSearch('activity', '?agent=x', glance)).toBe('?agent=x&since=7d');
     expect(navSearch('activity', '?agent=x', undefined)).toBe('?agent=x');
     expect(navSearch('memory', '', glance)).toBe('');
+  });
+});
+
+/**
+ * The account line leads with what failed and what it cost. Over a week whose one
+ * failed thread was a job that ran 943 turns and spent $27.17 of $27.60, it read
+ * "1 thread had a call denied at an approval" — two cents, ranked above the money.
+ */
+describe('failureSentence', () => {
+  /** A job's thread: `turns` turns, every one ending on a broken call. */
+  const job = (turns: number) =>
+    Array.from({ length: turns }, (_, i) => [
+      ev({
+        id: `ju${i}`,
+        ts: now - (2 * turns - 2 * i) * MIN,
+        event_type: 'user_input',
+        payload: { user_input: 'digest', thread_id: 'default:job:nightly' },
+      }),
+      ev({
+        id: `jt${i}`,
+        ts: now - (2 * turns - 2 * i - 1) * MIN,
+        status: 'error',
+        payload: { tool: 'run', thread_id: 'default:job:nightly' },
+      }),
+    ]).flat();
+  const denied = ev({
+    id: 'deny',
+    event_type: 'policy_deny',
+    status: 'denied',
+    payload: { tool: 'write_file', control: 'approvals', thread_id: 'default:gated' },
+  });
+  const opts = { total: 27.6, totalFloor: false, spendKnown: true, metered: null };
+
+  it('leads with the failed thread, its turns and its share of the spend', () => {
+    const ledger = buildLedger(
+      [...job(943), denied],
+      [
+        spend({ thread_id: 'default:job:nightly', cost_usd: 27.17, first_ts: now - 2000 * MIN }),
+        spend({ thread_id: 'default:gated', cost_usd: 0.02 }),
+      ],
+    );
+    expect(failureSentence(ledger, opts)).toBe(
+      '1 thread failed after 943 turns — $27.17 of $27.60.',
+    );
+    expect(denialSentence(1)).toBe('1 thread had a call denied at an approval.');
+  });
+
+  it('counts several, and says a share that is only a floor as one', () => {
+    const ledger = buildLedger(
+      [...job(2), ...failingTurn],
+      [
+        spend({ thread_id: 'default:job:nightly', cost_usd: 3, first_ts: now - 10 * MIN }),
+        spend({ thread_id: 'default:thread-a', cost_usd: 1 }),
+        // Unattributed spend before the first attributed call: metering began mid-window,
+        // and the job's thread was already running then.
+        spend({ thread_id: '', first_ts: now - 600 * MIN }),
+      ],
+    );
+    const cutover = meteringStart(ledger.flatMap((t) => (t.spend ? [t.spend] : [])));
+    expect(failureSentence(ledger, { ...opts, total: 5, totalFloor: true, metered: cutover })).toBe(
+      '2 threads failed — ≥ $4.00 of ≥ $5.00.',
+    );
+  });
+
+  it('says nothing about money it does not have, and nothing at all when nothing failed', () => {
+    const ledger = buildLedger(failingTurn, null);
+    expect(failureSentence(ledger, { ...opts, spendKnown: false })).toBe(
+      '1 thread failed after 1 turn.',
+    );
+    expect(failureSentence(buildLedger([denied], null), opts)).toBeNull();
+    expect(denialSentence(0)).toBeNull();
   });
 });
 
@@ -383,15 +462,20 @@ const wire = (e: AuditEvent) => {
 
 function stubHarness({
   events,
+  week = events,
   threads = [],
   threadsStatus = 200,
+  calls = 9,
 }: {
   events: AuditEvent[];
+  /** What the shared glance reads (`/audit` with no `since`) answer; the window's by default. */
+  week?: AuditEvent[];
   threads?: UsageThreadItem[];
   threadsStatus?: number;
+  calls?: number;
 }) {
   const totals = {
-    calls: 9,
+    calls,
     tokens_input: 30,
     tokens_output: 300,
     cache_creation: 0,
@@ -402,7 +486,8 @@ function stubHarness({
     const url = String(input);
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
     if (url.includes('/api/audit')) {
-      const rows = events.map(wire);
+      const windowed = new URL(url, 'http://x').searchParams.has('since');
+      const rows = (windowed ? events : week).map(wire);
       return json({ items: rows, events: rows, next_cursor: null });
     }
     if (url.includes('/api/usage/threads')) {
@@ -491,7 +576,7 @@ describe('the ledger page', () => {
     expect(rows[0]).toBe(b);
     // The header carries the failing count, once: the 24px sentence under it
     // that said the same three facts again is gone.
-    expect(await screen.findAllByText('1 with failures', { selector: 'span' })).toHaveLength(1);
+    expect(await screen.findAllByText('1 thread failed', { selector: 'span' })).toHaveLength(1);
     expect(screen.queryByText(/threads? ran/)).toBeNull();
   });
 
@@ -601,7 +686,9 @@ describe('the ledger page', () => {
     localStorage.setItem('felix.activity.lastVisit', String(now - 90 * MIN));
     mount();
     await rowFor(/Changelog cleanup/);
-    const audit = spy.mock.calls.map((c) => String(c[0])).find((u) => u.includes('/api/audit'));
+    const audit = spy.mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes('/api/audit') && u.includes('since='));
     expect(new URL(audit ?? '', 'http://x').searchParams.get('since')).toBe(String(now - 90 * MIN));
     expect(screen.getByText(/Since your last visit/)).toBeTruthy();
 
@@ -645,7 +732,9 @@ describe('the ledger page', () => {
     const spy = stubHarness({ events: failingTurn });
     mount();
     await rowFor(/Changelog cleanup/);
-    const audit = spy.mock.calls.map((c) => String(c[0])).find((u) => u.includes('/api/audit'));
+    const audit = spy.mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes('/api/audit') && u.includes('since='));
     expect(new URL(audit ?? '', 'http://x').searchParams.get('since')).toBe(String(now - 90 * MIN));
   });
 
@@ -656,6 +745,60 @@ describe('the ledger page', () => {
     mount();
     await user.click(await screen.findByRole('button', { name: 'Show the last 24 hours' }));
     expect(await screen.findByText('Last 24 hours')).toBeTruthy();
+  });
+
+  /**
+   * The sidebar counts the week; this page opens on "since your last visit". Reached
+   * any way but the glance's link it read "Nothing ran … $0.00 · 0 threads" beside a
+   * red `1 thread failed · 7d`. It points at the week now, with the glance's count.
+   */
+  it('points at the week’s failures when nothing ran since the last visit', async () => {
+    const user = userEvent.setup();
+    stubHarness({ events: [], week: failingTurn, calls: 0 });
+    localStorage.setItem('felix.activity.lastVisit', String(now - 2 * MIN));
+    mount();
+    const pointer = await waitFor(() => {
+      const el = document.querySelector('[data-slot="activity-week-pointer"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(pointer.textContent).toMatch(
+      /^Nothing new since your last visit, .+ ago · 1 thread failed in the last 7 days\. Show the last 7 days$/,
+    );
+    // Nothing ran, so no figure: `$0.00` read as "free".
+    expect(screen.queryByText(/\$0\.00/)).toBeNull();
+    expect(screen.getByText('0 threads', { selector: 'span' })).toBeTruthy();
+    await user.click(within(pointer).getByRole('button', { name: 'Show the last 7 days' }));
+    expect(await screen.findByText('Last 7 days')).toBeTruthy();
+  });
+
+  it('points at the week when the window ran cleanly and the week did not', async () => {
+    const clean = [
+      ev({
+        id: 'b1',
+        ts: now - 2 * MIN,
+        payload: { tool: 'read', thread_id: 'default:thread-b' },
+      }),
+    ];
+    stubHarness({ events: clean, week: [...failingTurn, ...clean] });
+    localStorage.setItem('felix.activity.lastVisit', String(now - 5 * MIN));
+    mount();
+    await rowFor(/Read the docs/);
+    const pointer = await waitFor(() => {
+      const el = document.querySelector('[data-slot="activity-week-pointer"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(pointer.textContent).toMatch(
+      /^No failures since your last visit · 1 thread failed in the last 7 days\./,
+    );
+  });
+
+  it('says nothing about the week when the window holds the failure itself', async () => {
+    stubHarness({ events: failingTurn });
+    mount();
+    await rowFor(/Changelog cleanup/);
+    expect(document.querySelector('[data-slot="activity-week-pointer"]')).toBeNull();
   });
 
   it('names a row briefly, and does not repeat the title as its summary', async () => {
@@ -685,7 +828,13 @@ describe('the ledger page', () => {
     });
     mount();
     await user.click(await rowFor(/Changelog cleanup/));
-    expect(await screen.findByText(/predates per-thread metering/)).toBeTruthy();
+    // Said twice now, which is right: the entry, and the account line that leads
+    // with the failure (`failureSentence`), which has no figure to put on it.
+    const said = await screen.findAllByText(/predates per-thread metering/);
+    expect(said.length).toBe(2);
+    expect(document.querySelector('[data-slot="activity-account"]')?.textContent).toContain(
+      '1 thread failed after 1 turn — its spend predates per-thread metering.',
+    );
     expect(screen.queryByText(/No model spend recorded/)).toBeNull();
     expect(screen.getByText(/Spend recorded before per-thread metering/)).toBeTruthy();
   });
@@ -718,6 +867,45 @@ describe('the ledger page', () => {
     await user.click(within(turn).getByRole('button', { name: /edit_file/ }));
     const detail = await screen.findByText('Payload');
     expect(within(detail.parentElement as HTMLElement).getByText('error_code')).toBeTruthy();
+  });
+
+  /**
+   * A message and its reply in one minute printed the same `10:42 AM` twice, under a
+   * heading that already said it. The turn's time is said once; a row at a later minute
+   * still says its own, and every row keeps the exact stamp in its `title`.
+   */
+  it("says a turn's time once, and a row's only when it differs", async () => {
+    const user = userEvent.setup();
+    const at = new Date(now - 30 * MIN);
+    at.setSeconds(5, 0);
+    const start = at.getTime();
+    const thread = { thread_id: 'default:thread-a' };
+    stubHarness({
+      events: [
+        ev({
+          id: 'u',
+          ts: start,
+          event_type: 'user_input',
+          payload: { user_input: 'hi', ...thread },
+        }),
+        ev({ id: 'c', ts: start + 20_000, payload: { tool: 'read', ...thread } }),
+        ev({ id: 'f', ts: start + 3 * MIN, event_type: 'final_response', payload: thread }),
+      ],
+    });
+    mount();
+    await user.click(await rowFor(/Changelog cleanup/));
+    const turn = (await screen.findByRole('heading', { name: 'hi' })).closest(
+      'section',
+    ) as HTMLElement;
+    const stamps = [...turn.querySelectorAll('span[title]')].filter((s) =>
+      /^\d{4}-\d\d-\d\dT/.test(s.getAttribute('title') ?? ''),
+    );
+    // The heading's, the call's slot left blank, the reply's own later minute.
+    expect(stamps.map((s) => s.textContent)).toEqual([
+      clockTime(start),
+      '',
+      clockTime(start + 3 * MIN),
+    ]);
   });
 });
 
@@ -814,8 +1002,8 @@ describe('a thread whose only miss was a denial', () => {
     expect(row.querySelector('[class*="state-failed"]')).toBeNull();
     // The title is the whole first message, cut by the tile rather than at 48.
     expect(row.textContent).toContain('Deploy checklist reviewed.');
-    // No "with failures" in the header, and the account says what happened.
-    expect(screen.queryByText(/with failures/, { selector: 'span' })).toBeNull();
+    // No "failed" in the header, and the account says what happened.
+    expect(screen.queryByText(/failed/, { selector: 'span' })).toBeNull();
     expect(screen.getByText(/1 thread had a call denied at an approval\./)).toBeTruthy();
 
     await user.click(row);

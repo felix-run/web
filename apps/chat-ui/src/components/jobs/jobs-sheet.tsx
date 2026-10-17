@@ -3,7 +3,6 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
 import {
   ClockIcon,
@@ -17,6 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { deleteJob, listJobRuns, listJobs, listUsageByThread, runJobNow, upsertJob } from '@/api';
+import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import {
@@ -29,9 +29,24 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
+import {
+  isFailure,
+  StaleNotice,
+  StatusDot,
+  TransientRead,
+  withAge,
+} from '@/components/inspector/primitives';
+import { WhyDisabled } from '@/components/why-disabled';
+import { useRecentAudit, useWeekFailures } from '@/hooks/use-recent-audit';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
-import { failing, JOBS_POLL_KEY } from '@/lib/harness-glances';
+import {
+  failing,
+  JOBS_POLL_KEY,
+  jobThreadOutcome,
+  recentFailures,
+  threadOutcomes,
+} from '@/lib/harness-glances';
+import { isTransientFailure } from '@/lib/harness-health';
 import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '@/lib/job-schedule';
 import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/shell-context';
@@ -171,6 +186,25 @@ export function JobsSheet({
     () => listUsageByThread({ since_ms: Date.now() - SPEND_WINDOW_MS, limit: 200 }),
     { intervalMs: 60_000 },
   ).data;
+  // How each job's last run went on its thread, from the audit read the sidebar's
+  // Activity glance already polls — no request of its own (`jobThreadOutcome`).
+  const recentAudit = useRecentAudit().data;
+  const outcomes = useMemo(() => threadOutcomes(recentAudit ?? [], Date.now()), [recentAudit]);
+  // And the threads each job failed on over the glance's week, by the Activity
+  // page's rule and from the same two reads as the sidebar's `Activity · N threads
+  // failed` (`useWeekFailures`): a job's failures, narrowed to its threads and
+  // counted in the same unit. Matched on the full thread id, because a fresh-thread
+  // job's runs each have a suffix of their own that names no job.
+  const week = useWeekFailures();
+  const failedThreadsOf = (jobName: string) =>
+    recentFailures(
+      week.events.filter((e) => {
+        const raw = e.payload?.thread_id;
+        return typeof raw === 'string' && isJobThread(raw, jobName);
+      }),
+      Date.now(),
+      week.since,
+    ).ids.size;
   const spendOf = (jobName: string) => {
     if (!spend) return null;
     const rows = spend.items.filter((t) => isJobThread(t.thread_id, jobName));
@@ -205,6 +239,12 @@ export function JobsSheet({
       return { schedule: null, error: err instanceof ScheduleError ? err.message : String(err) };
     }
   }, [schedule]);
+  // The schedule's own error is said under its field; this only points at it.
+  const jobUnready = !name.trim()
+    ? 'Name the job.'
+    : parsedSchedule.error !== null
+      ? 'Fix the schedule above.'
+      : null;
   const costly =
     parsedSchedule.schedule?.kind === 'interval' && parsedSchedule.schedule.ms < COSTLY_INTERVAL_MS;
 
@@ -400,7 +440,10 @@ export function JobsSheet({
         {/* A failed read after a good one keeps the rows under one line, as every
             polled page does; the box is only for a failure with nothing earlier
             to show. Jobs polls every few seconds, so it meets a 429 first. */}
-        {listError && data && lastOkAt != null ? (
+        {listError && isTransientFailure(listError) ? (
+          // A passing failure is the shell's one line; the rows stay as they were.
+          <TransientRead error={listError} lastOkAt={data ? lastOkAt : null} onRetry={refresh} />
+        ) : listError && data && lastOkAt != null ? (
           <StaleNotice
             error={listError}
             doing="list scheduled jobs"
@@ -449,7 +492,7 @@ export function JobsSheet({
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       aria-describedby={existing ? 'job-name-replaces' : undefined}
-                      className="mt-1 h-8 text-sm"
+                      className="mt-1"
                       onKeyDown={(e) => e.key === 'Enter' && create()}
                     />
                     {existing && (
@@ -466,24 +509,13 @@ export function JobsSheet({
                   </div>
                   <div>
                     <Label htmlFor="job-manifest">Agent</Label>
-                    {/* The shared primitive, not a bare `<select>`: a native one draws
-                        its option list with the OS, which ignores the app's theme. */}
-                    <Select value={manifestId} onValueChange={setManifestId}>
-                      <SelectTrigger
-                        id="job-manifest"
-                        size="sm"
-                        className="mt-1 h-8 w-full font-mono text-sm"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
-                          <SelectItem key={m} value={m} className="font-mono text-sm">
-                            {m}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <AgentSelect
+                      id="job-manifest"
+                      value={manifestId}
+                      options={manifestOptions.length ? manifestOptions : [manifest]}
+                      onValueChange={setManifestId}
+                      className="mt-1 w-full"
+                    />
                   </div>
                 </div>
                 <div>
@@ -494,7 +526,7 @@ export function JobsSheet({
                     onChange={(e) => setSchedule(e.target.value)}
                     aria-describedby="job-schedule-help job-schedule-next"
                     aria-invalid={parsedSchedule.error ? true : undefined}
-                    className="mt-1 h-8 max-w-xs font-mono text-sm"
+                    className="mt-1 max-w-xs font-mono"
                     onKeyDown={(e) => e.key === 'Enter' && create()}
                   />
                   <p
@@ -552,7 +584,7 @@ export function JobsSheet({
                     onChange={(e) => setPrompt(e.target.value)}
                     aria-describedby="job-prompt-help"
                     rows={3}
-                    className="mt-1 resize-y text-sm"
+                    className="mt-1 resize-y"
                   />
                   <p id="job-prompt-help" className="mt-1 text-xs text-muted-foreground">
                     Sent as the turn on each run. Empty sends “ping”.
@@ -610,6 +642,7 @@ export function JobsSheet({
                     size="sm"
                     className="gap-1"
                     disabled={busy || !name.trim() || parsedSchedule.error !== null}
+                    aria-describedby={jobUnready ? 'job-unready' : undefined}
                     onClick={create}
                   >
                     {existing ? 'Replace' : 'Create'}
@@ -617,6 +650,7 @@ export function JobsSheet({
                   <Button size="sm" variant="ghost" onClick={closeForm}>
                     Cancel
                   </Button>
+                  <WhyDisabled id="job-unready" reason={busy ? null : jobUnready} />
                 </div>
               </div>
             </PageSection>
@@ -643,6 +677,16 @@ export function JobsSheet({
               invalid = true;
             }
             const jobSpend = spendOf(j.name);
+            // The thread's word only where it disagrees: a firing the scheduler
+            // calls OK whose turn failed. Agreeing, the scheduler's word stands.
+            const threadFailed =
+              j.last_status !== 'running' &&
+              !(j.last_status && isFailure(j.last_status)) &&
+              jobThreadOutcome(j, outcomes) === 'failed';
+            // Threads, as everywhere a failure is counted: one for a job that keeps
+            // its thread, one per failed run for a job that starts a fresh one.
+            const threadFailures = failedThreadsOf(j.name);
+            const freshThreads = j.payload?.fresh_thread === true;
             return (
               <div
                 key={j.name}
@@ -768,11 +812,46 @@ export function JobsSheet({
                     <span className="inline-flex items-center gap-1">
                       <StatusDot status="running" />
                     </span>
+                  ) : threadFailed ? (
+                    // The scheduler records that the firing returned; the turn it
+                    // ran is what failed.
+                    <span
+                      data-slot="job-thread-outcome"
+                      className="inline-flex items-center gap-1"
+                      title="The run returned, but the turn it ran on the job's thread failed"
+                    >
+                      last <StatusDot status="error" />
+                    </span>
                   ) : j.last_status ? (
                     <span className="inline-flex items-center gap-1">
                       last <StatusDot status={j.last_status} />
                     </span>
                   ) : null}
+                  {/* The week behind the last run, which `last` alone hides: a job
+                      that failed four days ago and has run cleanly since read
+                      `last ● OK` beside the Activity page leading with it. Links to
+                      the failures on its thread, as the spend links to its turns. */}
+                  {threadFailures > 0 && (
+                    <Link
+                      data-slot="job-thread-failures"
+                      to={{
+                        pathname: '/harness/activity',
+                        // A fresh-thread job's runs have no one thread to open.
+                        search: freshThreads
+                          ? '?since=7d&failed=1'
+                          : `?since=7d&failed=1&thread=${encodeURIComponent(threadSuffix(`job:${j.name}`))}`,
+                      }}
+                      className="text-state-failed underline decoration-state-failed/40 underline-offset-2"
+                      title={
+                        freshThreads
+                          ? `${threadFailures} of this job's runs failed in the last ${week.span}, each on a thread of its own — open them on the Activity page`
+                          : `This job's thread failed in the last ${week.span} — open it on the Activity page`
+                      }
+                    >
+                      {threadFailures} {threadFailures === 1 ? 'thread' : 'threads'} failed ·{' '}
+                      {week.span}
+                    </Link>
+                  )}
                   {j.last_run_at && (
                     <span title={new Date(j.last_run_at).toLocaleString()}>
                       ran {relativeTime(j.last_run_at)}

@@ -6,6 +6,7 @@ import { getAgentCard, getResolvedManifest } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
 import {
   Fact,
+  FactId,
   Facts,
   NameList,
   PageHeader,
@@ -14,7 +15,8 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { SectionBody } from '@/components/inspector/primitives';
+import { SectionBody, TransientRead } from '@/components/inspector/primitives';
+import { isTransientFailure } from '@/lib/harness-health';
 import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
 
 /**
@@ -211,7 +213,7 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
                           key={`appr-${i}`}
                           label={
                             <>
-                              Approval <span className="font-mono">{ap.id ?? i}</span>
+                              Approval <FactId>{ap.id ?? i}</FactId>
                             </>
                           }
                         >
@@ -229,7 +231,7 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
                           key={`judge-${i}`}
                           label={
                             <>
-                              Judge <span className="font-mono">{judge.name ?? i}</span>
+                              Judge <FactId>{judge.name ?? i}</FactId>
                             </>
                           }
                         >
@@ -378,7 +380,14 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
                 Not published: <span className="font-mono">{card.error}</span>
               </p>
             )}
-            {cardError != null && (
+            {cardError != null && isTransientFailure(cardError) && (
+              <TransientRead
+                error={cardError}
+                lastOkAt={null}
+                onRetry={() => setCardTry((n) => n + 1)}
+              />
+            )}
+            {cardError != null && !isTransientFailure(cardError) && (
               <ErrorNotice
                 error={cardError}
                 doing="load the discovery card"

@@ -161,7 +161,7 @@ export function RunNowForm({
                     aria-invalid={Boolean(invalid[name])}
                     aria-describedby={invalid[name] ? `${id}-error` : undefined}
                   >
-                    <SelectValue placeholder="Choose…" />
+                    <SelectValue placeholder={`Choose ${name}`} />
                   </SelectTrigger>
                   <SelectContent>
                     {(field.kind === 'enum' ? field.values : ['true', 'false']).map((v) => (
@@ -173,10 +173,11 @@ export function RunNowForm({
                 </Select>
               ) : field.kind === 'json' ? (
                 <Textarea
+                  size="sm"
                   id={id}
                   value={value}
                   onChange={(e) => set(e.target.value)}
-                  className="min-h-20 font-mono text-xs"
+                  className="min-h-20 font-mono"
                   aria-invalid={Boolean(invalid[name])}
                   aria-describedby={invalid[name] ? `${id}-error` : undefined}
                 />

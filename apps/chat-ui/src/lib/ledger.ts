@@ -519,3 +519,113 @@ export function toolTally(events: AuditEvent[], shown = 4): string {
   ].filter(Boolean);
   return parts.join(' · ');
 }
+
+/**
+ * What failed in a ledger, in the one unit every surface counts it in: **threads**.
+ *
+ * "Failed" meant three things on three surfaces — the sidebar's Activity glance
+ * summed failure *events* (`3 failed · 7d`), this page counted threads
+ * (`1 with failures`), and a job's row counted calls and turns (`1 failed · 7d`)
+ * — so one broken thread read as three failures in the rail and one here. Every
+ * count of failures now comes from this function over `buildLedger`, which is the
+ * page's own reading: a thread failed when any event in it, read in its turn, is a
+ * broken call or a control's refusal (never an approval's denial, never the reply
+ * after one).
+ *
+ * The no-thread bucket (`NO_THREAD`) is not a thread, so it is never counted as
+ * one. Its failures — an MCP `tools/call` from outside a chat, a screening event —
+ * are counted apart, as `unattributed` *events*, and said in their own words
+ * (`failureLabel`) only when no thread failed, so a surface is never blank over a
+ * failure the ledger lists in its no-thread entry, and never adds the two units
+ * together.
+ */
+export interface FailureTally {
+  /** Suffixes of the threads with a failure, `NO_THREAD` excluded. */
+  ids: Set<string>;
+  /** Failure events with no thread. */
+  unattributed: number;
+}
+
+export function failureTally(threads: readonly LedgerThread[]): FailureTally {
+  const ids = new Set<string>();
+  let unattributed = 0;
+  for (const t of threads) {
+    if (t.id === NO_THREAD) unattributed += t.failures.length;
+    else if (t.failures.length > 0) ids.add(t.id);
+  }
+  return { ids, unattributed };
+}
+
+/**
+ * A tally as the words every surface uses: `1 thread failed`, `3 threads failed`,
+ * or — only when no thread did — `2 failed outside a thread`. `null` when nothing
+ * failed.
+ */
+export function failureLabel(t: FailureTally): string | null {
+  const n = t.ids.size;
+  if (n > 0) return `${n.toLocaleString()} ${n === 1 ? 'thread' : 'threads'} failed`;
+  if (t.unattributed > 0) return `${t.unattributed.toLocaleString()} failed outside a thread`;
+  return null;
+}
+
+/**
+ * The window's failures in one sentence, ranked by what they cost.
+ *
+ * The Activity page's account line used to say only how many threads had a call
+ * denied, so a week whose one failed thread was a job that ran 943 turns and spent
+ * $27.17 of $27.60 read "1 thread had a call denied at an approval" — two cents of
+ * a person saying no, above the thing that went wrong and nearly all the money.
+ * Failures lead, with their share of the spend; denials follow (`denialSentence`).
+ *
+ * The cost is said only as honestly as `spendState` allows: a thread whose spend
+ * is a floor, or predates per-thread metering, makes the share a floor (`≥`), and
+ * a total with unpriced calls is one too. When none of the failed threads has a
+ * recorded figure the sentence says that rather than `$0.00`.
+ *
+ * `null` when nothing failed.
+ */
+export function failureSentence(
+  threads: LedgerThread[],
+  opts: {
+    /** The window's total from `/usage/summary`, or `null` when it is unknown. */
+    total: number | null;
+    /** The total holds unpriced calls, so it is a floor. */
+    totalFloor: boolean;
+    /** `false` on a harness without `/usage/threads`: no thread has a figure. */
+    spendKnown: boolean;
+    metered: number | null;
+  },
+): string | null {
+  const failed = threads
+    .filter((t) => t.id !== NO_THREAD && t.failures.length > 0)
+    .sort((a, b) => (b.spend?.cost_usd ?? 0) - (a.spend?.cost_usd ?? 0));
+  const [only] = failed;
+  if (!only) return null;
+  const count = (n: number, one: string) => `${n.toLocaleString()} ${n === 1 ? one : `${one}s`}`;
+  const lead =
+    failed.length === 1
+      ? only.turns.length > 0
+        ? `1 thread failed after ${count(only.turns.length, 'turn')}`
+        : '1 thread failed'
+      : `${count(failed.length, 'thread')} failed`;
+  if (!opts.spendKnown) return `${lead}.`;
+  const states = failed.map((t) => spendState(t, opts.metered));
+  const spent = failed.reduce((n, t) => n + (t.spend?.cost_usd ?? 0), 0);
+  const partial = states.some((s) => s === 'floor' || s === 'unrecorded');
+  if (spent === 0) {
+    if (!states.includes('unrecorded')) return `${lead}.`;
+    // Nothing to put a figure on: what they spent sits in the no-thread bucket.
+    return `${lead} — ${failed.length === 1 ? 'its' : 'their'} spend predates per-thread metering.`;
+  }
+  const share = `${partial || opts.totalFloor ? '≥ ' : ''}${money(spent)}`;
+  const of = opts.total != null ? ` of ${opts.totalFloor ? '≥ ' : ''}${money(opts.total)}` : '';
+  return `${lead} — ${share}${of}.`;
+}
+
+/** Threads with a call an approval gate declined: said after the failures, never in red. */
+export function denialSentence(denying: number): string | null {
+  if (denying === 0) return null;
+  return denying === 1
+    ? '1 thread had a call denied at an approval.'
+    : `${denying.toLocaleString()} threads had a call denied at an approval.`;
+}

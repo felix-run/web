@@ -15,6 +15,7 @@ import {
   restoreMemory,
   searchMemories,
 } from '@/api';
+import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { keepAgent } from '@/components/harness/harness-agent';
 import {
@@ -25,8 +26,9 @@ import {
   ViewSwitch,
 } from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
+import { WhyDisabled } from '@/components/why-disabled';
 import { usePoll } from '@/hooks/usePoll';
-import { middleTruncate } from '@/lib/format';
+import { endTruncate, middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 import type { MemoryHit, MemoryRecord } from '@/types';
@@ -100,9 +102,9 @@ function quote(text: string, max = 80): string {
 }
 
 /**
- * The retriever names, in the words this page uses everywhere. Recent says a row
- * is "lexical only"; Search said the same channel was `fts` — one channel, two
- * names, a page apart.
+ * The retriever names, in the words this page uses. Search hits alone carry
+ * them: a channel is how a *retrieval* found a row, and a Recent or As-of row
+ * was not retrieved by anything.
  */
 const CHANNEL: Record<string, string> = { fts: 'lexical', vector: 'vector', topic: 'topic' };
 
@@ -362,7 +364,7 @@ export function MemorySection({
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="mt-1 h-8 max-w-md text-sm"
+                  className="mt-1 max-w-md"
                 />
               </div>
             )}
@@ -576,8 +578,9 @@ function Provenance({
     const title = titleOf(suffix)?.trim() || undefined;
     // "from" and quotes, because a bare title under a fact read as the fact's next
     // sentence — and titles are usually the first thing the user typed, so they
-    // look exactly like memories. Cut from the middle, where two titles that share
-    // an opening ("Create notes/…") still differ.
+    // look exactly like memories. Cut at the end: a middle cut left two fragments
+    // of a sentence ("Use the write_f…al_write) to cr…"); the full title is the
+    // link's tooltip and accessible name.
     parts.push(
       // A flex row, so the link inside is a block and its padding reaches 24px; inline,
       // the same padding measured 21.
@@ -590,7 +593,7 @@ function Provenance({
           aria-label={`Conversation ${title ? `“${title}”` : suffix}`}
         >
           {title ? (
-            `“${middleTruncate(title, 32)}”`
+            `“${endTruncate(title, 32)}”`
           ) : (
             <span className="font-mono">{shortId(suffix)}</span>
           )}
@@ -701,17 +704,12 @@ function Details({
   /*
     How the row was embedded — the pair that answers "why did recall miss this".
     Shown only in the record views, where the question is about the row rather
-    than about a ranking that already found it. `null` dim means no embedder ran,
-    so the row is lexical-only; a dim that disagrees with the rest of the store
-    means it was written under a different embedder and has quietly stopped
-    matching.
+    than about a ranking that already found it; a dim that disagrees with the
+    rest of the store means it was written under a different embedder and has
+    quietly stopped matching. A row no embedder ran for says nothing here: it
+    used to read "lexical only", a retriever's name on a row nothing retrieved,
+    on every row of a store without an embedder.
   */
-  if (record && record.embedding_dim == null)
-    parts.push(
-      <span key="lex" title="No embedder ran for this row; it is reachable by full text only.">
-        lexical only
-      </span>,
-    );
   if (record?.embedding_model)
     parts.push(
       <span key="emb">
@@ -799,23 +797,17 @@ function AgentFilter({
   options: string[];
   onChange: (next: string) => void;
 }) {
-  const all = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <div>
       <Label htmlFor="memory-agent">Agent</Label>
-      <Select value={value || EVERY_AGENT} onValueChange={(v) => v && onChange(v)}>
-        <SelectTrigger id="memory-agent" size="sm" className="mt-1 h-8 w-40 text-sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={EVERY_AGENT}>Every agent</SelectItem>
-          {all.map((m) => (
-            <SelectItem key={m} value={m} className="font-mono">
-              {m}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <AgentSelect
+        id="memory-agent"
+        value={value || EVERY_AGENT}
+        options={options}
+        onValueChange={onChange}
+        leading={[{ value: EVERY_AGENT, label: 'Every agent' }]}
+        className="mt-1 w-40"
+      />
     </div>
   );
 }
@@ -848,7 +840,7 @@ function AsOfFields({
       <div className="w-72 min-w-0">
         <Label htmlFor="memory-as-of-thread">Conversation</Label>
         <Select value={thread || undefined} onValueChange={(v) => v && onThread(v)}>
-          <SelectTrigger id="memory-as-of-thread" size="sm" className="mt-1 h-8 w-full text-sm">
+          <SelectTrigger id="memory-as-of-thread" className="mt-1 w-full">
             <SelectValue placeholder="Choose a conversation" />
           </SelectTrigger>
           <SelectContent>
@@ -874,7 +866,7 @@ function AsOfFields({
           value={turn}
           onChange={(e) => onTurn(e.target.value)}
           aria-describedby="memory-as-of-help"
-          className="mt-1 h-8 w-20 font-mono text-sm"
+          className="mt-1 w-20 font-mono"
         />
       </div>
     </div>
@@ -931,6 +923,17 @@ function AddMemoryForm({
     weight >= 0 &&
     weight <= 1;
   const options = agents.includes(agent) || !agent ? agents : [agent, ...agents];
+  const unready = !value
+    ? 'Write what to remember.'
+    : value.length > MEMORY_CONTENT_MAX
+      ? `Over ${MEMORY_CONTENT_MAX} characters.`
+      : topicKey.length > MEMORY_TOPIC_MAX
+        ? `The topic is over ${MEMORY_TOPIC_MAX} characters.`
+        : agent === ''
+          ? 'Choose the agent that recalls it.'
+          : !(Number.isFinite(weight) && weight >= 0 && weight <= 1)
+            ? 'Importance is a number from 0 to 1.'
+            : null;
 
   const submit = async () => {
     setBusy(true);
@@ -971,7 +974,7 @@ function AddMemoryForm({
           rows={3}
           onChange={(e) => setContent(e.target.value)}
           aria-describedby="memory-content-count"
-          className="mt-1 resize-y text-sm"
+          className="mt-1 resize-y"
         />
         <p id="memory-content-count" className="mt-1 text-xs text-muted-foreground tabular-nums">
           {value.length}/{MEMORY_CONTENT_MAX}
@@ -980,23 +983,14 @@ function AddMemoryForm({
       <div className="grid gap-3 sm:grid-cols-[11rem_minmax(0,1fr)_10rem]">
         <div>
           <Label htmlFor="memory-recalled-by">Recalled by</Label>
-          <Select value={agent || undefined} onValueChange={(v) => v && setAgent(v)}>
-            <SelectTrigger
-              id="memory-recalled-by"
-              size="sm"
-              aria-describedby="memory-recalled-by-help"
-              className="mt-1 h-8 w-full font-mono text-sm"
-            >
-              <SelectValue placeholder="Choose an agent" />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((m) => (
-                <SelectItem key={m} value={m} className="font-mono">
-                  {m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <AgentSelect
+            id="memory-recalled-by"
+            value={agent}
+            options={options}
+            onValueChange={setAgent}
+            aria-describedby="memory-recalled-by-help"
+            className="mt-1 w-full"
+          />
           {/* Each field's help under the field, not in a list two rows below them. */}
           <p id="memory-recalled-by-help" className="mt-1 text-xs text-muted-foreground">
             {agent === chatAgent
@@ -1012,7 +1006,7 @@ function AddMemoryForm({
             maxLength={MEMORY_TOPIC_MAX}
             onChange={(e) => setTopicKey(e.target.value)}
             aria-describedby="memory-topic-help"
-            className="mt-1 h-8 font-mono text-sm"
+            className="mt-1 font-mono"
           />
           <p id="memory-topic-help" className="mt-1 text-xs text-muted-foreground">
             Replaces whatever this agent has stored under the same topic.
@@ -1029,7 +1023,7 @@ function AddMemoryForm({
             value={importance}
             onChange={(e) => setImportance(e.target.value)}
             aria-describedby="memory-importance-help"
-            className="mt-1 h-8 font-mono text-sm"
+            className="mt-1 font-mono"
           />
           <p id="memory-importance-help" className="mt-1 text-xs text-muted-foreground">
             0 to 1. Higher is kept first when not everything fits.
@@ -1039,12 +1033,18 @@ function AddMemoryForm({
       {/* A Cancel beside it, as Jobs has: the header toggle was the only way out,
           and it is not where anyone looks when a form is in front of them. */}
       <div className="flex gap-2">
-        <Button size="sm" disabled={!ready || busy} onClick={() => void submit()}>
+        <Button
+          size="sm"
+          disabled={!ready || busy}
+          aria-describedby={unready ? 'memory-add-unready' : undefined}
+          onClick={() => void submit()}
+        >
           {busy ? 'Storing…' : 'Remember it'}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
+        <WhyDisabled id="memory-add-unready" reason={busy ? null : unready} />
       </div>
       {error ? (
         <p role="alert" className="text-sm text-state-failed">

@@ -1,5 +1,5 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { useSearchParams } from 'react-router';
+import { AgentSelect } from '@/components/agent-select';
 import { useShell } from '@/shell-context';
 
 /**
@@ -57,40 +57,6 @@ export function keepAgent(
   return out;
 }
 
-/** Provider model by manifest name, from `/v1/models`. */
-export function modelsById(
-  entries: ReadonlyArray<{ id: string; providerModel?: string }>,
-): Map<string, string | undefined> {
-  return new Map(entries.map((e) => [e.id, e.providerModel]));
-}
-
-/**
- * One manifest in a pick list: its name, and under it the provider model it runs
- * on — the one thing the harness says about a manifest that its name does not.
- * `cowork` and `cowork-fast` read the same until one shows it runs on a
- * different model, which is what choosing *which agent to look at* or *which to
- * import* turns on. The same two lines the Chat picker draws, so a manifest
- * looks the same wherever it is picked.
- *
- * `textValue` keeps typeahead on the name, which should not depend on the model.
- * No model line when the harness reports none: `/v1/models` sends `null` when
- * the model *is* the name, and repeating the name would say nothing.
- */
-export function ManifestItem({ id, providerModel }: { id: string; providerModel?: string }) {
-  return (
-    <SelectItem value={id} textValue={id} className="text-sm">
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="font-mono font-medium">{id}</span>
-        {providerModel && (
-          <span className="font-mono text-xs wrap-anywhere text-muted-foreground">
-            {providerModel}
-          </span>
-        )}
-      </span>
-    </SelectItem>
-  );
-}
-
 /**
  * The picker, in the header of each page it scopes — Skills, Eval, Agent — and
  * nowhere else.
@@ -104,10 +70,8 @@ export function ManifestItem({ id, providerModel }: { id: string; providerModel?
  * "Agent" — a second visible "Agent" beside it would be the same word twice.
  */
 export function HarnessAgentPicker({ labelledBy }: { labelledBy?: string }) {
-  const { manifestOptions, manifestEntries } = useShell();
-  const providerModels = modelsById(manifestEntries);
+  const { manifestOptions } = useShell();
   const { agent, isChatAgent, setAgent } = useHarnessAgent();
-  const options = manifestOptions.includes(agent) ? manifestOptions : [agent, ...manifestOptions];
   return (
     <div className="flex items-center gap-2">
       {!labelledBy && (
@@ -115,23 +79,15 @@ export function HarnessAgentPicker({ labelledBy }: { labelledBy?: string }) {
           Agent
         </label>
       )}
-      <Select value={agent} onValueChange={setAgent}>
-        <SelectTrigger
-          id="harness-agent"
-          size="sm"
-          aria-labelledby={labelledBy}
-          aria-describedby="harness-agent-help"
-          className="h-8 w-40 font-mono text-sm"
-        >
-          {/* The name alone: the item's children now carry the model line too. */}
-          <SelectValue>{agent}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((m) => (
-            <ManifestItem key={m} id={m} providerModel={providerModels.get(m)} />
-          ))}
-        </SelectContent>
-      </Select>
+      <AgentSelect
+        id="harness-agent"
+        value={agent}
+        options={manifestOptions}
+        onValueChange={setAgent}
+        aria-labelledby={labelledBy}
+        aria-describedby="harness-agent-help"
+        className="w-40"
+      />
       {/* Said, because the two can differ and only one of them is the chat's.
           Visible only when they do; the sentence is always there for a reader. */}
       <span

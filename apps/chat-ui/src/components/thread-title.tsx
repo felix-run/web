@@ -1,4 +1,5 @@
 import type { ThreadMeta } from '@felix/client';
+import { Input } from '@felix/ui/input';
 import { cn } from '@felix/ui/lib/utils';
 import { MessageSquareIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -17,7 +18,8 @@ const TAIL_CHARS = 10;
  * the header as it narrows, so this splits the string in two: the head
  * truncates with an ellipsis and gives way, the last few characters stay.
  * When the whole title fits the two halves meet and it reads as one string; a
- * screen reader reads both spans in order, so it always hears all of it.
+ * screen reader reads both spans in order, so it always hears all of it. A title
+ * that already ends in an ellipsis is end-cut instead (see below).
  *
  * `whitespace-pre` rather than `truncate`'s `nowrap`, because a space at the
  * split would otherwise collapse at the end of the head and run two words
@@ -25,7 +27,11 @@ const TAIL_CHARS = 10;
  */
 function MiddleCut({ text }: { text: string }) {
   const chars = Array.from(text);
-  if (chars.length <= TAIL_CHARS * 2) {
+  // A title that is already cut — the harness's preview of a first message ends
+  // in its own "…" — has no meaningful end to keep: the tail was "for writi…", a
+  // fragment of a word the harness stopped at. Its start is what tells it apart,
+  // so it gets one end-cut like any short title.
+  if (chars.length <= TAIL_CHARS * 2 || /(…|\.\.\.)$/.test(text)) {
     return <span className="min-w-0 overflow-hidden text-ellipsis whitespace-pre">{text}</span>;
   }
   return (
@@ -170,7 +176,7 @@ export function ThreadTitle({
       className={cn('flex min-w-0 items-center gap-2 max-[23rem]:sr-only', className)}
     >
       {editing ? (
-        <input
+        <Input
           ref={inputRef}
           aria-label="Thread name"
           value={draft ?? ''}
@@ -188,7 +194,9 @@ export function ThreadTitle({
               finish(false);
             }
           }}
-          className="h-7 w-96 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          // Its edge where the title button's hover fill was (-6px), so the field opens over the
+          // title rather than beside it. A full pull to the text (-14px) clipped the pill's end.
+          className="-ms-1.5 w-96 max-w-full"
         />
       ) : (
         <h2 className="flex min-w-0 text-sm">

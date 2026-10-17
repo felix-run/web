@@ -74,8 +74,8 @@ describe('LibraryList', () => {
     );
     mountWithProviders(<LibraryList filter={{}} onFilter={() => {}} linkTo={(x) => x} />);
     expect((await screen.findByRole('status')).textContent).toMatch(/The library is empty/);
-    expect(screen.queryByRole('group', { name: 'Status' })).toBeNull();
-    expect(screen.queryByRole('group', { name: 'Written by' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Status' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Written by' })).toBeNull();
     cleanup();
 
     mountWithProviders(
@@ -83,7 +83,9 @@ describe('LibraryList', () => {
     );
     expect((await screen.findByRole('status')).textContent).toMatch(/matches this filter/);
     // Filtered to nothing, the way back out has to stay on screen.
-    expect(screen.getByRole('group', { name: 'Status' })).toBeTruthy();
+    // One select per filter, labelled on screen, showing the choice in force.
+    expect(screen.getByRole('combobox', { name: 'Status' }).textContent).toContain('Archived');
+    expect(screen.getByRole('combobox', { name: 'Written by' }).textContent).toContain('Anyone');
   });
 
   it('stops walking on its own after a bound, and says there is more rather than none', async () => {

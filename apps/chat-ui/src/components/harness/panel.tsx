@@ -61,27 +61,21 @@ export function Panel({
 export const READING_MEASURE = 'max-w-3xl';
 
 /**
- * What a `/harness` page draws where its rows would be, when there are none.
+ * What a `/harness` page draws where its rows would be, when there are none:
+ * one muted line, left-aligned, at the position the first row would take.
  *
- * It was one muted sentence at the top-left of the measure, which in a
- * disclosure row is right and on a page three times that wide is a line
- * floating in a void — the page read as unfinished rather than as empty. The
- * frame takes the measure's full width and a list's worth of height, so the
- * sentence sits in the space the rows will occupy and says that is what it is.
- * A tonal field, not a frame. It was a dashed border — a solid one is how this
- * app draws a thing that exists — but a frame of any kind was the one bordered
- * box on a page whose system separates with rules and tonal steps, and a
- * dashed outline is the stock empty-state drawing. One step of `muted` says
- * "this space is reserved" without claiming an object is in it.
+ * It was a 160px stone tray with the sentence centred in it (and before that a
+ * dashed frame), meant to say "this space is reserved". In use it read as an
+ * object — the largest thing on an empty page, drawn in the tone this app keeps
+ * for things that hold content — and a centred line on a left-aligned page
+ * broke the column every other row reads down (2026-10-16). The line keeps its
+ * copy and any action in it; the measure it sits in is the page's own.
  */
 export function PageEmpty({ children }: { children: ReactNode }) {
   return (
-    <div
-      data-page-empty
-      className="flex min-h-40 items-center justify-center rounded-2xl bg-ground px-6 py-10"
-    >
-      <p className="max-w-prose text-center text-sm text-muted-foreground">{children}</p>
-    </div>
+    <p data-page-empty className="max-w-[28rem] py-1.5 text-sm text-pretty text-muted-foreground">
+      {children}
+    </p>
   );
 }
 
@@ -441,8 +435,11 @@ export function PageSection({
   actions,
   children,
   className,
+  id: anchor,
 }: {
   title: string;
+  /** An anchor a link can scroll to. */
+  id?: string;
   /** A short at-a-glance value beside the heading, as `PageHeader` has. */
   meta?: ReactNode;
   /** Controls for this part, at the end of its heading row. */
@@ -453,6 +450,7 @@ export function PageSection({
   const id = useId();
   return (
     <section
+      id={anchor}
       aria-labelledby={id}
       className={cn(
         // `-of-type`, not `first:`: a page's sections share a parent with its
@@ -494,13 +492,23 @@ export function Facts({ children }: { children: ReactNode }) {
     // A container query, not a breakpoint: the pane is what is narrow, and a
     // label column of up to 11rem took half of a phone's width and stacked nine
     // tool chips one per line beside it. Under ~28rem each value goes under its
-    // label instead.
+    // label instead. From ~42rem — a page at its reading measure — the column is
+    // 13rem, because 11rem broke `Approval workspace-write` at its hyphen
+    // (2026-10-16); a label naming an id keeps the id whole (`FactId`).
     <div className="@container">
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-0.5 text-sm @md:grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)] @md:gap-y-1.5">
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-0.5 text-sm @md:grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)] @md:gap-y-1.5 @2xl:grid-cols-[13rem_minmax(0,1fr)]">
         {children}
       </dl>
     </div>
   );
+}
+
+/**
+ * An id inside a `Fact` label (`Approval <id>`), in mono and never broken inside: a
+ * label too long for its column wraps before the id, not at the id's own hyphen.
+ */
+export function FactId({ children }: { children: ReactNode }) {
+  return <span className="font-mono whitespace-nowrap">{children}</span>;
 }
 
 /**

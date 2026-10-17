@@ -7,7 +7,7 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from '@felix/ui/message-scroller';
-import { type ComponentProps, type ReactNode, useEffect, useRef } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
 
@@ -93,14 +93,29 @@ export function Conversation({
             {children}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        {/* Inert, not unmounted, while there is nothing further down: it fades and
+        <KeepPlaceAcrossViews />
+        {/* The jump to the latest reply has a strip of its own under the viewport,
+            never a place over it. Floating bottom-centre over the transcript it
+            sat on whatever was there whenever there was more below — a plan step
+            at 390px, a workspace note, the tokens line under a reply — which is
+            exactly when someone is reading. Padding the content would not have
+            helped: the button only shows away from the end, where the padding is
+            not on screen. The strip is absent on an empty thread, which has
+            nothing to jump to, so the greeting still sits on the composer.
+
+            Inert, not unmounted, while there is nothing further down: it fades and
             leaves the tab order rather than popping in and out of the layout. */}
-        <MessageScrollerButton
-          direction="end"
-          variant="outline"
-          className="z-10 rounded-full border-border/60 bg-card shadow-md"
-          aria-label="Scroll to latest"
-        />
+        <div
+          data-slot="conversation-jump"
+          className={cn('relative shrink-0', lastAnchorId ? 'h-10' : 'h-0')}
+        >
+          <MessageScrollerButton
+            direction="end"
+            variant="outline"
+            className="z-10 rounded-full border-border/60 bg-card shadow-md data-[direction=end]:bottom-1"
+            aria-label="Scroll to latest"
+          />
+        </div>
       </MessageScroller>
     </MessageScrollerProvider>
   );
@@ -152,6 +167,12 @@ export function ConversationItem({
  * scrollbar) or the content has been still for `SETTLE_MS`.
  */
 const SETTLE_MS = 1500;
+
+/**
+ * Dispatched on the viewport by anything else that has placed the reader, so the
+ * opening hold lets go rather than dragging the view back to the question.
+ */
+const HOLD_RELEASE = 'felix:hold-release';
 
 function OpenAtLastAnchor({ anchorId }: { anchorId: string | undefined }) {
   const { scrollToMessage } = useMessageScroller();
@@ -206,7 +227,7 @@ function OpenAtLastAnchor({ anchorId }: { anchorId: string | undefined }) {
       quiet = setTimeout(release, SETTLE_MS);
     });
     observer.observe(content);
-    const intents = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+    const intents = ['wheel', 'touchstart', 'keydown', 'pointerdown', HOLD_RELEASE] as const;
     for (const type of intents) viewport.addEventListener(type, release, { passive: true });
     function release() {
       observer.disconnect();
@@ -222,5 +243,117 @@ function OpenAtLastAnchor({ anchorId }: { anchorId: string | undefined }) {
       opened.current = false;
     };
   }, [anchorId, scrollToMessage]);
+  return <span ref={probe} hidden />;
+}
+
+function viewportOf(probe: HTMLElement | null): HTMLElement | null {
+  return (
+    probe
+      ?.closest('[data-slot="conversation"]')
+      ?.querySelector<HTMLElement>('[data-slot="message-scroller-viewport"]') ?? null
+  );
+}
+
+/** How long a restored place is held while late layout (highlighting, lazy cards) lands. */
+const VIEW_HOLD_MS = 600;
+
+type Place = { el: Element; top: number };
+
+/**
+ * What the reader is looking at: the elements on the reading column's centre line
+ * near the viewport's top, those starting nearest the top edge first, then the row
+ * they are in — each with its offset from the viewport's top. An element that
+ * starts far above the edge is a container (a whole turn, measured live: the hit
+ * 8px down was the operator turn above, starting at -186px), and its top does not
+ * move when the lines inside it change; one that starts at the edge does. Several,
+ * because the view change this serves can remove one (a debug-only line) and the
+ * next stands in.
+ */
+function capturePlace(viewport: HTMLElement): Place[] {
+  const box = viewport.getBoundingClientRect();
+  const at = (el: Element) => el.getBoundingClientRect().top - box.top;
+  const hits: Element[] = [];
+  if (typeof document.elementFromPoint === 'function') {
+    const x = box.left + box.width / 2;
+    for (const dy of [8, 32, 64, 120, 200]) {
+      const el = document.elementFromPoint(x, box.top + dy);
+      if (el && el !== viewport && viewport.contains(el) && !hits.includes(el)) hits.push(el);
+    }
+  }
+  const near = hits.filter((el) => at(el) >= -80).sort((a, b) => Math.abs(at(a)) - Math.abs(at(b)));
+  const picks = [...near];
+  for (const row of viewport.querySelectorAll('[data-message-id]')) {
+    if (row.getBoundingClientRect().bottom > box.top) {
+      if (!picks.includes(row)) picks.push(row);
+      break;
+    }
+  }
+  return picks.map((el) => ({ el, top: at(el) }));
+}
+
+/**
+ * Keeps the reader's place when the View changes (Everyday / Harness / Debug).
+ *
+ * Each level adds or removes lines inside turns — tool cards, a tokens line, ids
+ * — so the content above the reader changed height and, with the viewport's
+ * `overflow-anchor: none`, the view landed somewhere else entirely. The place is
+ * recorded on every scroll (one frame's worth of reads), and after the change
+ * commits the viewport is moved by however far that place drifted, then held for
+ * a moment while late layout lands, unless the reader takes over. It tells
+ * `OpenAtLastAnchor` to let go first: a switch made while a thread is still
+ * settling would otherwise be dragged back to the question.
+ */
+function KeepPlaceAcrossViews() {
+  const { view } = useShell();
+  const probe = useRef<HTMLSpanElement>(null);
+  const place = useRef<Place[] | null>(null);
+
+  useEffect(() => {
+    const viewport = viewportOf(probe.current);
+    if (!viewport) return;
+    let frame = 0;
+    const record = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        place.current = capturePlace(viewport);
+      });
+    };
+    record();
+    viewport.addEventListener('scroll', record, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener('scroll', record);
+    };
+  }, []);
+
+  const lastView = useRef(view);
+  useLayoutEffect(() => {
+    if (lastView.current === view) return;
+    lastView.current = view;
+    const viewport = viewportOf(probe.current);
+    const saved = place.current;
+    if (!viewport || !saved?.length) return;
+    viewport.dispatchEvent(new Event(HOLD_RELEASE));
+    const restore = () => {
+      const target = saved.find((p) => p.el.isConnected);
+      if (!target) return;
+      const now = target.el.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+      if (Math.abs(now - target.top) > 1) viewport.scrollTop += now - target.top;
+    };
+    restore();
+    const content = viewport.querySelector('[data-slot="message-scroller-content"]');
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(restore) : null;
+    if (content) observer?.observe(content);
+    const intents = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+    const stop = () => {
+      observer?.disconnect();
+      clearTimeout(timer);
+      for (const type of intents) viewport.removeEventListener(type, stop);
+    };
+    const timer = setTimeout(stop, VIEW_HOLD_MS);
+    for (const type of intents) viewport.addEventListener(type, stop, { passive: true });
+    return stop;
+  }, [view]);
+
   return <span ref={probe} hidden />;
 }

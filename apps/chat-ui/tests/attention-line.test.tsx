@@ -6,7 +6,10 @@ import { useState } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttentionLine } from '../src/components/attention-line';
+import { HarnessHealthLine } from '../src/components/harness-health-line';
 import { DECIDED_GRACE_MS, usePendingApprovals } from '../src/hooks/use-pending-approvals';
+import { usePoll } from '../src/hooks/usePoll';
+import { resetHarnessHealth } from '../src/lib/harness-health';
 
 /**
  * The line that has to be true without being looked at.
@@ -153,6 +156,7 @@ function mount(streaming = false, handled: string[] = [], bannerOnScreen = true)
 
 beforeEach(() => {
   localStorage.clear();
+  resetHarnessHealth();
   Object.defineProperty(document, 'visibilityState', {
     configurable: true,
     get: () => 'visible',
@@ -162,6 +166,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  resetHarnessHealth();
 });
 
 describe('the attention line', () => {
@@ -695,8 +700,10 @@ describe('when the line cannot see', () => {
     expect(status()).not.toMatch(/no approvals or questions waiting/i);
     await settle();
     expect(status()).not.toMatch(/no approvals or questions waiting/i);
-    // A 429 is the harness answering, so it is named as a rate limit, not an outage.
-    expect(status()).toMatch(/approvals rate-limited/i);
+    // The cause moved to the shell's harness-health line: a 429 is said once
+    // there, for every read, so the pill names none and stays neutral.
+    expect(status()).toBe('Checking approvals…');
+    expect(status()).not.toMatch(/rate-limited/i);
     expect(screen.getByText('no answer yet')).toBeTruthy();
   });
 
@@ -714,13 +721,15 @@ describe('when the line cannot see', () => {
     expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(asked);
   });
 
-  it("says it can't reach approvals when the failure is not a rate limit", async () => {
+  it("says it can't reach approvals, in red, when waiting will not cure the failure", async () => {
+    // A 500 is not a passing failure, so it is still the pill's to say. (A 503
+    // is: it reads like a 429 below, and the shell's line names it.)
     vi.useFakeTimers();
-    switchable({ status: 503 });
-    mount();
+    switchable({ status: 500 });
+    const { container } = mount();
     await settle();
     expect(status()).toMatch(/can't reach approvals/i);
-    expect(status()).not.toMatch(/rate-limited/i);
+    expect(container.querySelector('[data-attention-dot]')?.className).toMatch(/state-failed/);
   });
 
   it('says how old its answer is once a good poll is followed by a failed one', async () => {
@@ -734,8 +743,10 @@ describe('when the line cannot see', () => {
     await tick();
     expect(status()).not.toMatch(/no approvals or questions waiting/i);
     await tick();
-    expect(status()).toMatch(/approvals rate-limited/i);
-    expect(screen.getByText(/^last answered /)).toBeTruthy();
+    // No cause here — that moved to the shell's line — only that the list is
+    // not current, and how old it is.
+    expect(status()).toBe('Approvals not refreshed');
+    expect(screen.getByText(/^as of /)).toBeTruthy();
   });
 
   /**
@@ -744,12 +755,13 @@ describe('when the line cannot see', () => {
    * it is rechecking — never the all-clear — and turns red on a second failure.
    */
   it('rechecks, in neutral, on a single failure after an answer', async () => {
+    // A failure waiting will not cure (a passing one never turns the pill red).
     vi.useFakeTimers();
     const answer = switchable({ status: 200, rows: [] });
     const { container } = mount();
     await settle();
 
-    answer({ status: 429 });
+    answer({ status: 500 });
     await tick();
     expect(status()).toMatch(/rechecking approvals/i);
     expect(status()).not.toMatch(/no approvals or questions waiting/i);
@@ -762,7 +774,7 @@ describe('when the line cannot see', () => {
     expect(status()).toMatch(/no approvals or questions waiting/i);
 
     // The count resets on an answer: one more failure is a recheck again, not red.
-    answer({ status: 429 });
+    answer({ status: 500 });
     await tick();
     expect(status()).toMatch(/rechecking approvals/i);
     await tick();
@@ -776,7 +788,7 @@ describe('when the line cannot see', () => {
     await settle();
     expect(status()).toContain('2 calls are waiting on you across the harness');
 
-    answer({ status: 503 });
+    answer({ status: 500 });
     await tick();
     expect(status()).toContain('2 calls were waiting on you across the harness · rechecking');
     await tick();
@@ -789,12 +801,65 @@ describe('when the line cannot see', () => {
     const answer = switchable({ status: 429 });
     mount();
     await settle();
-    expect(status()).toMatch(/approvals rate-limited/i);
+    expect(status()).toBe('Checking approvals…');
 
     answer({ status: 200, rows: [] });
     await tick();
     expect(status()).toMatch(/no approvals or questions waiting/i);
-    expect(screen.queryByText(/last answered|no answer yet/)).toBeNull();
+    expect(screen.queryByText(/last answered|no answer yet|^as of /)).toBeNull();
+  });
+
+  /**
+   * One cause, one indicator. Under a rate limit every read fails at once —
+   * this poll and whatever page is open — and the cause is said once, by the
+   * shell's harness-health line. The pill keeps the count it last had, in the
+   * past tense, with no cause and no red.
+   */
+  it('leaves the cause to the one shell line and keeps the last known count', async () => {
+    vi.useFakeTimers();
+    const answer = switchable({ status: 200, rows: [approval(), approval({ id: 'a2' })] });
+    function OtherRead() {
+      usePoll(
+        async () => {
+          const res = await fetch('/api/audit');
+          if (!res.ok) throw new Error(`audit: ${res.status}`);
+        },
+        { intervalMs: 11_000 },
+      );
+      return null;
+    }
+    const { container } = render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <HarnessHealthLine />
+          <OtherRead />
+          <Line streaming={false} handled={[]} />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+    // The pill's own sentence: the shell line is a status region too.
+    const pillStatus = () =>
+      container.querySelector('[data-slot="attention-line"] [role="status"]')?.textContent ?? '';
+    await settle();
+    expect(pillStatus()).toContain('2 calls are waiting on you across the harness');
+
+    answer({ status: 429 });
+    await tick();
+    await tick();
+    const lines = container.querySelectorAll('[data-slot="harness-health"]');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.textContent).toMatch(/The harness is shedding load/);
+    expect(pillStatus()).toBe('2 calls were waiting on you across the harness');
+    expect(pillStatus()).not.toMatch(/rate-limited|can't reach|rechecking/i);
+    const pill = container.querySelector('[data-slot="attention-line"]') as HTMLElement;
+    expect(pill.innerHTML).not.toMatch(/state-failed/);
+    expect(within(pill).getByText(/^as of /)).toBeTruthy();
+
+    // An answer withdraws both.
+    answer({ status: 200, rows: [approval(), approval({ id: 'a2' })] });
+    await tick();
+    expect(container.querySelectorAll('[data-slot="harness-health"]')).toHaveLength(0);
+    expect(pillStatus()).toContain('2 calls are waiting on you across the harness');
   });
 
   /** Idle is not on the ramp: green claims a finished state this line has no evidence of. */

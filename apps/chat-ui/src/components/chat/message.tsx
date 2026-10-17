@@ -57,9 +57,17 @@ export function Message({
   feedback,
   onRate,
   verbose = false,
+  usage = false,
   debug = false,
+  continues = false,
 }: {
   turn: Turn;
+  /**
+   * The turn above is an assistant turn too: this is the same reply, carried on after its
+   * tool calls (the log keeps each model message as its own turn). Drawn without a second
+   * "Felix" — one reply, one label.
+   */
+  continues?: boolean;
   /** This message's other versions, when it was edited. */
   branch?: BranchPoint;
   /** Show another version. Absent while a run is live. */
@@ -81,7 +89,9 @@ export function Message({
   onRate?: (rating: 'up' | 'down' | null, opts?: { note?: string; evalDataset?: string }) => void;
   /** Expand tool I/O and surface tool counts when set. */
   verbose?: boolean;
-  /** Debug mode: the turn's ids and the spend the client holds, under it. */
+  /** Harness view: the spend the client holds for a reply, under it. */
+  usage?: boolean;
+  /** Debug: the turn's ids under it too, and the harness's wording on a note. */
   debug?: boolean;
 }) {
   if (turn.role === 'note' && turn.note?.workspaceEdit) {
@@ -147,20 +157,25 @@ export function Message({
   // would be conditional, and reading a turn's plan calls is cheap.
   const plans = plansInTurn(turn.tools);
   const toolCount = turn.tools?.length ?? 0;
+  const live = streaming && !empty && !turn.runStatus;
+  const counted = verbose && toolCount > 0;
   return (
-    <div className="group flex w-full flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-foreground">Felix</span>
-        {streaming && !empty && !turn.runStatus && (
-          <span className="text-xs text-muted-foreground">streaming</span>
-        )}
-        {verbose && toolCount > 0 && (
-          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
-            {toolCount} tool{toolCount === 1 ? '' : 's'}
-          </span>
-        )}
-        {label && <LabelChip label={label} />}
-      </div>
+    <div
+      className="group flex w-full flex-col gap-3"
+      {...(continues ? { 'data-continues': '' } : {})}
+    >
+      {(!continues || live || counted || label) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!continues && <span className="text-xs font-semibold text-foreground">Felix</span>}
+          {live && <span className="text-xs text-muted-foreground">streaming</span>}
+          {counted && (
+            <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+              {toolCount} tool{toolCount === 1 ? '' : 's'}
+            </span>
+          )}
+          {label && <LabelChip label={label} />}
+        </div>
+      )}
 
       {/* Keyed by position: segments are append-only while a turn streams — a card
           opens at the end of the prose so far, so nothing already rendered shifts. */}
@@ -225,9 +240,9 @@ export function Message({
         </Marker>
       )}
 
-      {/* Debug's, with the rest of the mechanism: the daily surface says what
-          the agent did, and the Debug tab and this line say what it cost. */}
-      {debug && !streaming && <TurnDebugLine turn={turn} />}
+      {/* Harness view's: the everyday surface says what the agent did, and this
+          line says what it cost — with the turn's ids beside it in debug. */}
+      {(usage || debug) && !streaming && <TurnDebugLine turn={turn} ids={debug} />}
 
       {/* A turn carrying reasoning already says "Thinking" in its own block. */}
       {empty && streaming && !turn.reasoning?.length && <AwaitingStatus />}

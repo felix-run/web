@@ -184,7 +184,7 @@ describe('in the app', () => {
   beforeEach(() => {
     localStorage.clear();
     // These pin debug-mode surfaces (the instrument, the harness pages).
-    localStorage.setItem('felix.debug', '1');
+    localStorage.setItem('felix.view', 'debug');
     approvals = [];
     vi.stubGlobal(
       'fetch',

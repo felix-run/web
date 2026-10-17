@@ -1,4 +1,6 @@
 import { Button } from '@felix/ui/button';
+import { Input } from '@felix/ui/input';
+import { Textarea } from '@felix/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import { ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -59,7 +61,7 @@ export function RateTurn({
           <label className="text-xs font-medium text-foreground" htmlFor="rate-note">
             What was wrong with this answer?
           </label>
-          <textarea
+          <Textarea
             id="rate-note"
             // biome-ignore lint/a11y/noAutofocus: the form was just opened for this
             autoFocus
@@ -71,7 +73,7 @@ export function RateTurn({
               if (e.key === 'Escape') setOpen(false);
             }}
             placeholder="Optional, but it is what makes the rating useful"
-            className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="min-h-0 resize-y"
           />
           <label
             className={cn(
@@ -86,12 +88,13 @@ export function RateTurn({
               onChange={(e) => setAsCase(e.target.checked)}
             />
             Also save as an eval case in
-            <input
+            <Input
               aria-label="Eval dataset"
               value={dataset}
               disabled={!note.trim() || !asCase}
               onChange={(e) => setDataset(e.target.value)}
-              className="h-6 w-36 rounded border border-border bg-background px-1.5 font-mono text-xs disabled:opacity-60"
+              size="sm"
+              className="w-36 font-mono"
             />
           </label>
           <div className="flex items-center gap-2">

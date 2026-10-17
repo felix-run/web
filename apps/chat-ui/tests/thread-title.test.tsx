@@ -44,29 +44,60 @@ afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
   // These pin debug-mode surfaces (the instrument, the harness pages).
-  localStorage.setItem('felix.debug', '1');
+  localStorage.setItem('felix.view', 'debug');
   sessionStorage.clear();
   document.body.innerHTML = '';
 });
 
 describe('ThreadTitle', () => {
   it('names the thread with the sidebar’s title, as a heading below the h1, and the agent in mono', () => {
-    render(<ThreadTitle threadId="abc" thread={meta()} readOnly={false} onRename={() => {}} />);
+    render(
+      <ThreadTitle
+        threadId="abc"
+        thread={meta({ title: 'Use write_file to create notes.txt with a summary', named: true })}
+        readOnly={false}
+        onRename={() => {}}
+      />,
+    );
     const heading = screen.getByRole('heading', { level: 2 });
     // Whole to a reader, however it is cut on screen.
-    expect(shown(heading)).toBe('Use write_file to create notes.txt with a summary…');
+    expect(shown(heading)).toBe('Use write_file to create notes.txt with a summary');
     // Cut from the middle: the end that tells two such titles apart is its own
     // span, and never shrinks.
     const tail = [...heading.querySelectorAll('.sm\\:flex > span')].at(-1);
-    expect(tail?.textContent).toBe('a summary…');
+    expect(tail?.textContent).toBe(' a summary');
     expect(tail?.className).toContain('shrink-0');
     // A phone gets one end-cut of the whole title instead.
     const phone = heading.querySelector('.sm\\:hidden');
-    expect(phone?.textContent).toBe('Use write_file to create notes.txt with a summary…');
+    expect(phone?.textContent).toBe('Use write_file to create notes.txt with a summary');
     expect(phone?.className).toContain('truncate');
     const agent = document.querySelector('[data-slot="thread-agent"]') as HTMLElement;
     expect(agent.textContent).toContain('cowork');
     expect(agent.className).toContain('font-mono');
+  });
+
+  it('end-cuts a title the harness already cut, rather than keeping a fragment as its tail', () => {
+    // The index's preview of a first message ends in its own ellipsis, so the
+    // last ten characters were half a word ("for writi…") and told nothing apart.
+    for (const title of [
+      'Create a scratch file for writing the quarterly summary for writi…',
+      'Create a scratch file for writing the quarterly summary for writi...',
+    ]) {
+      render(
+        <ThreadTitle
+          threadId="abc"
+          thread={meta({ title })}
+          readOnly={false}
+          onRename={() => {}}
+        />,
+      );
+      const heading = screen.getByRole('heading', { level: 2 });
+      expect(heading.querySelector('.sm\\:flex')).toBeNull();
+      const cut = heading.querySelectorAll('span.text-ellipsis');
+      expect(cut).toHaveLength(1);
+      expect(cut[0]?.textContent).toBe(title);
+      cleanup();
+    }
   });
 
   it('draws a thread with only an id as the sidebar does, muted mono', () => {

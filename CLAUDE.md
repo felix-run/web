@@ -226,6 +226,10 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
   says `gate: 'chat_key'` — a harness 401 is not answered by any key. The session lapses with no
   refresh and no revocation, so the header's account chip (`components/account-chip.tsx`) renews
   in a popover with the shell still mounted, and its Sign out says the token outlives it.
+  `/harness/github` offers the same sign-in wherever it says one is needed (2026-10-16: it said so
+  under the shared key and offered nothing) — redirect when offered, else the code in place, and
+  only while `bearer_required`; from the key or a Google session it forgets `felix.tabThread` and
+  reloads, since the new tenant may not hold the thread (`SignInWithGitHub` in `harness/github.tsx`).
 - In `vite dev` the Worker is not in the loop, so the `CHAT_UI_KEY` gate is skipped entirely.
 - **A cross-site write is refused** (403 `cross_site_request`) before any of the above: any method
   but GET/HEAD with `Sec-Fetch-Site: cross-site`, or an `Origin` that is not the Worker's own.
@@ -354,24 +358,32 @@ becomes one too. The instrument goes first because it is reference material, and
 cannot wait is already in the attention line and the banner above the composer — neither of which
 lives in a rail. The sidebar goes last because it holds every way to anywhere else.
 
-**Debug off is the daily surface, and most of the above is debug's** (2026-10-10). One mode,
-`ShellValue.debug` (`felix.debug`; `felix.verbose`, Verbose's old key, migrates on), toggled from
-the menu's View group on both addresses, `/debug` (`/verbose` is an alias in `slash-commands.tsx`)
-or the header badge. Off, the shell renders **no instrument** — `useRails({ enabled })` reads it
-closed and refuses to open it, keeping the stored preference for when debug returns, and the
-`Mod+'` handler checks `debugRef` — **one harness page** in the sidebar, *Activity* with its
-failure glance (`useActivityGlance`), since it answers "what happened while I was away" (2026-10-12),
-plus a *Skill drafts* row from `useDraftGlance` while drafts wait — the same rows on `/harness`
-(2026-10-12: listing all nine there read as the mechanism leaking into the daily surface), and
-the 768–1024 rail and the phone index list the same — no agent id or canary in the header, no context
-meter below 90% full, and no tokens under turns. Approvals, questions, the attention line, the
-run-state chip and failed/denied tool cards are never debug's. On, the instrument's fourth tab is
+**Everyday is the daily surface, and most of the above is harness view's** (2026-10-16). The View
+setting is a three-step ladder, `ShellValue.view` (`felix.view`: `everyday` | `harness` | `debug`),
+with `harnessView` (either level above everyday) and `debug` (the top one) derived from it. It was
+one Debug switch until then, which hid half the product behind a word promising only diagnostics;
+`felix.debug` and Verbose's `felix.verbose` migrate on to `debug`, so nobody loses what they had.
+It is a ladder rather than two switches because debug's main piece is a tab inside the instrument.
+Set from the menu's View radios on both addresses, `/view` (cycles), `/debug` (`/verbose` is an
+alias in `slash-commands.tsx`) or the header badge; `/debug` and the badge go back to the level
+debug was entered from. Everyday, the shell renders **no instrument** — `useRails({ enabled })`
+reads it closed and refuses to open it, keeping the stored preference for when harness view
+returns, and the `Mod+'` handler checks `harnessViewRef` — **one harness page** in the sidebar,
+*Activity* with its failure glance (`useActivityGlance`), since it answers "what happened while I
+was away" (2026-10-12), plus a *Skill drafts* row from `useDraftGlance` while drafts wait — the same
+rows on `/harness` (2026-10-12: listing all nine there read as the mechanism leaking into the daily
+surface), and the 768–1024 rail and the phone index list the same — no agent id or canary in the
+header, no context meter below 90% full, and no tokens under turns. Approvals, questions, the
+attention line, the run-state chip and failed/denied tool cards are never harness view's. **Debug
+adds only the plumbing**: the header's *Debug* badge, the event ids under turns (`TurnDebugLine`'s
+`ids`) and tool cards, tool I/O open with every plan call unfolded (`verbose`), the harness's
+wording on a workspace note, and the instrument's fourth tab,
 **Debug** (`components/inspector/debug-section.tsx`): `ShellValue.inspectClient()` reads the
 pool (`EnginePool.entries()`), each engine's `inspect()` — a read-only copy of the resume token,
 durable status, cursor and liveness proof the engine already keeps, never a new piece of state —
 and the lease keeper, once a second while the tab is open; `/usage?thread_id=` is its one
-request. **Tests that pin the instrument or the harness nav seed `felix.debug` = `'1'`** after
-`localStorage.clear()`; `tests/debug-mode.test.tsx` pins the daily surface.
+request. **Tests that pin the instrument or the harness nav seed `felix.view` = `'debug'`** after
+`localStorage.clear()`; `tests/debug-mode.test.tsx` pins each level and the migration.
 
 **The sidebar runs full height, and its top row is the brand.** The header and the attention line
 live in the `SidebarInset` beside it, so the sidebar's first row sits on the header's line — same
@@ -396,12 +408,17 @@ not move between addresses) comes the title, from `threadLabel` over the same me
 sidebar lists, and the agent the newest turn ran under in mono. The title is an **`h2`**, never a
 second `h1`, and is cut from the **middle** by CSS rather than by a character count — the head
 truncates, the last ten characters never do — so it follows the header as it narrows; below `sm`
-it is one end-cut, and under 23rem it goes `sr-only`. Clicking it renames in place through the
+it is one end-cut, and under 23rem it goes `sr-only`. **A title already ending in `…` or `...`
+is end-cut at every width**: the harness's preview truncation supplies that ellipsis, so the
+kept tail was a fragment of a word ("for writi…") and told nothing apart. Clicking it renames in place through the
 shell's `renameThread`, the sidebar's own action; not while the tab is **watching**, and not
 before the thread is in the index (nothing to name yet). `/harness` shows none. **The title gives
 way before the attention line**: the left cluster carries a shrink weight far above the line's,
 down to a `sm:min-w-52` floor, so the line keeps its sentence. Below `sm` the wordmark goes
-`sr-only` on `/t` for the title's room. `tests/thread-title.test.tsx` pins it.
+`sr-only` on `/t` for the title's room, and **the line gives way first**: at rest ("No
+approvals", "Working", "Checking") it is its dot alone, the sentence still its live region, its
+`title` and its name; only "N waiting" and "Unreachable" keep words there. With both drawn at
+390px the title read "Create a …". `tests/thread-title.test.tsx` pins it.
 
 **The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
 New chat; the threads, grouped as Waiting on you, Running, Pinned, Today, Yesterday, Previous 7 days
@@ -430,15 +447,32 @@ too.
 **The sidebar has two scroll regions, one above the other, and does not scroll as a whole**
 (2026-10-08). The thread list is `flex-1 min-h-0` and scrolls its own rows under a heading and
 search that do not scroll; the workspace and the harness's pages are one region below it
-(`data-slot="sidebar-lower"`), `h-[clamp(40svh,30rem,60svh)]` in debug and `h-[min(40svh,19rem)]` off — fixed, not a cap, since its rows
-change with the address and a region sized to them grew upward on arrival; 30rem fits the nine
-destinations — with its own `overflow-y-auto`, and one order everywhere: Harness, then the
-workspace (folded on `/harness`, its mount controls inside the fold); and the expanded
+(`data-slot="sidebar-lower"`) with its own `overflow-y-auto`, and one order everywhere: Harness,
+then the workspace, whose row is `sticky bottom-0` so a scrolled region still shows it; and the expanded
 `SidebarContent` is `overflow-y-hidden`. Before the list scrolled at all, an opened Older pushed the
 workspace and the harness's pages fifty rows down. Then the list scrolled but the sidebar did too,
 and on production a mounted folder's file tree — itself a third scroller — put three scrollbars
 side by side, left the list eight rows and pushed the harness's pages off the bottom. The file
 trees no longer scroll on their own for the same reason: they sit inside the lower region's scroll.
+**The lower region sizes to its content, capped at 35svh, in harness view** (2026-10-16). It was a
+fixed `h-[clamp(40svh,32.5rem,60svh)]` — 520px of a 997px window, which left the thread list four
+rows and scrolled the Workspace row out of sight — and fixed for a reason that still binds: a
+region sized to rows that change *with the address* grows upward on arrival and moves the row just
+clicked. So the rows no longer change with the address. Each run of destinations folds on its own
+(`felix.sidebar.harnessGroups`), *How it's set up* folded by default (`GROUP_FOLDED_BY_DEFAULT`)
+and a remembered choice winning; the run holding the page on screen is always open, its toggle
+disabled; and arriving on a page in a folded run unfolds it **for the rest of the visit** (state,
+never storage), so leaving the page never folds rows back up under the pointer. The operator's own
+folds are covered by `min-h-[min(35svh,25.5rem)]`, the default layout's height measured at
+1456×997, so folding the whole group leaves the rows where they were. Under ~1170px tall the cap
+is below that and the region is simply 35svh; measured at 1456×997 the thread list went from 4
+full rows to 8. Everyday keeps its fixed `h-[min(40svh,13rem)]`: three rows at most, and a region
+that moved when drafts came and went would be the same bug. `tests/workbench-layout.test.tsx` pins
+the shape and the default fold, `tests/harness-route.test.tsx` the current page's run.
+**A thread row says *Failed*** (2026-10-16) when its newest turn broke — after *Waiting on you* and
+*Running*, which outrank it. `threadOutcomes` (`lib/harness-glances.ts`) reads it off the audit
+read the Activity glance already polls (`useRecentAudit`, one shared key), so the list asks
+nothing per row; a thread outside that read is unmarked, which means unknown, not OK.
 **The workspace is one row, and its trees are the side pane's Files tab** (2026-10-12). Even
 folded, a mounted repository's tree held ~880px above the harness's pages when open, and the file
 it opened appeared on the far side of the screen. The row says what is mounted (or *on the
@@ -472,9 +506,10 @@ the thread's repository, the files — while the instrument holds what this thre
 "Harness" heading, since Changes reads no harness route; each tab's first line says its scope.
 `tests/inspector-run.test.tsx` pins that it neither renders a decision nor asks `/approvals`.
 **The panel is headed "This thread"** (2026-10-10), as is its drawer's dialog name. It was "This
-run", which its own readout (tokens summed over the thread) and Tools (*All threads · last 60
-minutes*, since `/audit/metrics` takes no thread filter) contradicted; the wider tab says so on its
-first line. The header's toggle and its shortcut (`shortcuts.ts`) say *This thread* too. A partial token sum reads `at least …` on the figure, not `Tokens (floor)`:
+run", which its own readout (tokens summed over the thread) and Tools (every thread's last 60
+minutes, since `/audit/metrics` takes no thread filter) contradicted. The wider tab says so in its
+**name** — *Tools · all threads*, the scope muted (`SECTIONS[].scope`) — and not only on its first
+line, which was a click away under a heading that said otherwise (2026-10-16). The header's toggle and its shortcut (`shortcuts.ts`) say *This thread* too. A partial token sum reads `at least …` on the figure, not `Tokens (floor)`:
 "floor" is the Activity page's word for unpriced cost. **The instrument starts closed over a thread
 with no turns**, even from 1600px: `useRails({ emptyThread })` derives the unchosen default each
 render (null pref, never written), so it opens once the thread has a turn and a stored choice
@@ -625,6 +660,11 @@ Flows worth knowing before editing the app:
   `clientHeight` — the viewport's height *rounded* — and `Math.ceil`s it, so a fractional viewport
   made content up to ~1.5px taller than itself and every short thread drew a near-full scrollbar
   thumb for a 1px scroll (666 over 665). Measured after: 695/695 and 841/841 at 1000 and 1101px.
+  **One reply, one label** (2026-10-16): the log keeps a message that both spoke and called a tool
+  as its own event, so a rebuilt reply is often two assistant turns, and each drew "Felix". The
+  workbench passes `continues` to an assistant turn straight after another and `Message` drops
+  the name; the rows stay one per turn, so the position naming and the anchors are untouched
+  (`tests/one-reply-label.test.tsx`).
 
   Three more were found only against a live harness (2026-10-03), where a thread opens from the
   local cache and is then rebuilt from the snapshot. **The viewport is `overflow-anchor: none`**:
@@ -638,6 +678,23 @@ Flows worth knowing before editing the app:
   viewport by the drift on every content resize until the reader scrolls, touches, presses a key
   or the content is still for 1.5s. For a message just sent it holds the scroller's own placement
   rather than re-aiming, so the previous turn still peeks above it.
+
+  Two more from a critique pass (2026-10-17). **The jump to the latest reply has a strip of its
+  own** (`data-slot="conversation-jump"`, `h-10` under the viewport, `h-0` on an empty thread):
+  floating bottom-centre it covered whatever was there — a plan step at 390px, a workspace note,
+  the tokens line — and only while there was more below, i.e. while someone was reading. Padding
+  the content cannot fix that, because the button shows only away from the end, where the padding
+  is off screen. **A View change keeps the reader's place** (`KeepPlaceAcrossViews`): each level
+  adds or removes lines inside turns, so the height above the reader changed and the view landed
+  elsewhere. The place — the deepest elements near the viewport's top on the column's centre line,
+  then their row — is recorded on every scroll; after the change commits the viewport moves by the
+  drift and holds for 600ms, unless the reader takes over. It dispatches `felix:hold-release` on
+  the viewport first, which `OpenAtLastAnchor` counts as the reader taking over, so the two never
+  pull against each other. `tests/conversation.test.tsx` pins both. **Debug folds long tool I/O**:
+  debug opens every card and draws every plan call, so a plan-heavy turn was screens of JSON. A
+  card's input or output over 12 lines (`DEBUG_FOLD_LINES` plus a slack of four, so a fold never
+  hides one line), or 960 characters, is clipped to ~8 lines under a fade with *Show all N lines* (`tests/tool-card.test.tsx`); outside debug the
+  ordinary scrolling cap is unchanged.
 - **`shimmer` and `scroll-fade-*` are vendored** into `src/chat-utilities.css`, not imported from the
   CLI package's `tailwind.css`, which also redefines `data-open`, `data-checked` and the other
   `data-*` variants this app uses with their plain Tailwind meaning. Pair `shimmer` with
@@ -779,6 +836,16 @@ Flows worth knowing before editing the app:
   harness's manifest wins over the local one, which only knows turns sent from this tab. An older
   harness sends neither. A thread that never reached it — or was created against a different deployment — exists only locally, so those
   rows are kept and marked rather than dropped.
+  - **A failed index read is said, and falls back to the last good one.** `refreshThreads` had an
+    empty `catch`, so a cold load under 429 showed the local half ("Older 1") as the whole list,
+    the header titled the thread with its raw suffix and the composer called its agent "not
+    recorded". Every good read is kept in `sessionStorage` (`felix.threadIndex`,
+    `src/lib/thread-index.ts`, one tab's like `felix.tabThread`) and merged in when a read fails,
+    so the title and agent come from it too; a delete drops its row. The failure is
+    `ShellValue.threadIndex`, drawn under the sidebar's Threads heading (*Couldn't refresh the
+    harness's threads · showing its list from 3m ago · Retry*, or *showing this browser's N* with
+    nothing remembered), neutral for a transient failure — which is also retried on a 2s/5s/15s/
+    30s/60s backoff and reported to the health line — and red for one Retry alone can answer.
   - That local manifest is what `loadThread` restores into the agent picker on a thread change, so
     the picker names the agent the next message will actually go to. It is not restored when
     `/v1/models` no longer lists it. **A Radix `Select` reports `""` through `onValueChange`** when
@@ -984,9 +1051,11 @@ Flows worth knowing before editing the app:
   came from**: the conversation (a link), the turn (a link into As of), the agent, when it was
   written and whether it has been recalled since — the hunt ends at "which conversation taught it
   this", and `kind · imp · seq` could not answer it. The line has a grammar of its own: muted, `from` and
-  the quoted title cut from the middle at 32, links marked by an underline that is always there
+  the quoted title **end-cut** at 32 (`endTruncate`; a middle cut broke a sentence into two
+  fragments, and a title already ending in `…` gets no second one), links marked by an underline that is always there
   (colour alone told them from the text by nothing — a title is usually the user's first message,
-  so a bare one read as the fact's next sentence) and padded to 24px without a taller line. Three rules that are easy to break.
+  so a bare one read as the fact's next sentence) and padded to 24px without a taller line. Retriever channels (`via lexical`) appear on Search hits only: a Recent or As-of
+  row was retrieved by nothing, so the old "lexical only" on unembedded rows is gone. Three rules that are easy to break.
   **As of is per conversation**: `origin_seq` is an ordinal into one thread's log, so the view asks
   for the thread before the turn and sends `thread_id` (`felix-run/felix#548`); without it
   `as-of/4` collected every conversation's fourth turn. The client re-filters by thread, because an
@@ -1027,11 +1096,47 @@ Flows worth knowing before editing the app:
   thread can show a cost rather than drawing every one as free. The window opens on **since this
   browser last left the page** (`felix.activity.lastVisit`), falling back to 24h; window and
   filters are in the address, and `?thread=<suffix>` opens one entry on arrival (the Jobs page links
-  a job's spend there; the poll still runs until its first answer, since an open entry pauses it). **A reload is not a visit**: the stamp is written on unmount and
+  a job's spend there, and its failures — `1 thread failed · 7d` from the glance's two reads
+  narrowed to the job's threads by full id, so a fresh-thread job counts one per failed run and
+  links to the week without `?thread=`, because a
+  job that failed four days ago and ran cleanly since read only `last ● OK` beside this page leading
+  with it; its `last` reads `Failed` when the scheduler said OK but the turn that firing ran broke,
+  `jobThreadOutcome`; the poll still runs until its first answer, since an open entry pauses it).
+  **The account line leads with failures and what they cost** (2026-10-16, `failureSentence`):
+  `1 thread failed after 943 turns — $27.17 of $27.60.`, then denials (`denialSentence`). It used to
+  carry denials alone, so a week whose one failed job held nearly all the spend read "1 thread had a
+  call denied at an approval". The share obeys `spendState`: `≥` when a failed thread's spend is a
+  floor or unrecorded or the total holds unpriced calls, and words, not `$0.00`, when none of it was
+  metered per thread. **A reload is not a visit**: the stamp is written on unmount and
   `pagehide` only after the page has been on screen `VISIT_MIN_MS` (5s), and a tab measures from
   the value it first read, held in `sessionStorage` (`felix.activity.sessionSince`) — before both,
   any reload, remount or second tab turned the window into "since a minute ago". The sidebar's
-  Activity glance links with `?since=24h` (`navSearch`), the window it counted in. **Spend before
+  Activity glance counts **threads that failed** over **a week** (2026-10-16; it was a day, and a job that failed
+  four days earlier left it blank while this page led with it) — or over less when its reads do
+  not reach that far back, which its span says (`glanceWindow`: `· 3h`, not `· 7d`) — and links
+  with `?since=7d` (`navSearch`), which holds either. **It merges two reads** (`useRecentAudit`,
+  `useRecentErrors`, `mergeReads`): the newest 60 events, and the newest 60 with `status=error`.
+  Measured on the reference harness, a job firing every few minutes put 60 events at 106 hours and
+  even 500 (262 KB) at 112, so the failure was in neither; the errors read reached 576 hours in
+  16 KB. The first read stays for the turns around a failure and a control's refusals (`denied`,
+  not `error`). **"Failed" is counted in threads on every surface** (2026-10-17): the glance
+  summed failure *events* (`3 failed · 7d`) beside this page's `1 with failures` and a job row's
+  calls-or-turns, three units for one broken thread. Now the glance (`recentFailures`), the page
+  header and a job's row all run `failureTally` over `buildLedger` — the page's own reading, in
+  turns — and say it with `failureLabel` (`1 thread failed`), and `useWeekFailures` is the one
+  hook behind the glance, the job rows and the page's pointer. It is the same rule over the same
+  window, not the same rows: the glance has its two reads, the page with `?since=7d` up to 2,000
+  events. The `""` bucket is never a thread: its failures are counted apart as events and said
+  (`N failed outside a thread`) only when no thread failed, so neither surface is blank over one
+  nor adds the two units. The *Failed* mark on a thread row (`threadOutcomes`) is a different
+  question — its **newest** turn — so a thread that broke and ran cleanly since counts in the
+  glance and carries no mark. **A window shorter than the week points at it**: on "since last
+  visit" or 24h, when the window holds no failure and the week does, the page says
+  `Nothing new since your last visit · 1 thread failed in the last 7 days` (or *No failures since
+  your last visit · …* above a clean list) with *Show the last 7 days*, because reaching the page
+  any way but the glance's link (the phone's `/harness` list, a bookmark, Back) read "Nothing ran"
+  under a red glance. A window with no model call shows no cost figure, not `$0.00`.
+  **Spend before
   per-thread metering lives in the `""` bucket**: `meteringStart` finds the first attributed call
   when unattributed spend came before it (`Infinity` when none is attributed at all), and
   `spendState` tells a thread's cell `cost`, `floor` (`≥`), `unrecorded` or `none` — so a thread
@@ -1063,11 +1168,21 @@ Flows worth knowing before editing the app:
 - **Skill library** — `/harness/skills` holds the agent's active/declared skills and the tenant
   library — below them, or **above them while a draft is waiting**, since that queue is why an
   operator opens the page. The library is a review queue (oldest draft first, its gate verdict and
-  diff against live open on the first row, publish or reject with a note), a feedback inbox, a list
-  filtered by status and source (it opens on **In use** — anything live or with a draft waiting,
+  diff against live open on the first row, publish or reject with a note) and a feedback inbox —
+  each a section above the list **only while it holds something** (or its read failed); empty,
+  both are one quiet line in the Library heading (*No drafts or feedback waiting*), because two
+  headed "nothing" sections sat above the list an operator came for. (`useStickyFailure` keeps
+  a failed section mounted through its own retry-on-mount, which otherwise flipped it away and
+  back forever.) Then the list, filtered by status and source through two `sm` Selects with
+  visible labels (it opens on **In use** — anything live or with a draft waiting,
   sorted out on the client since the route takes one status; archived skills are under Archived
-  and All, and an In use view that hid everything says how many rather than "empty"), and the tenant's **publish policy** form, which lives here and not
-  on a skill's page: it re-decides every skill's drafts. `?skill=&tab=&v=&against=` is a skill's
+  and All, and an In use view that hid everything says how many rather than "empty"). Below it,
+  **Manage** — one disclosure, closed by default and remembered for the tab
+  (`felix.skills.manageOpen` in `sessionStorage`), mounting nothing while closed — holds Import
+  from GitHub, Personal libraries and the tenant's **publish policy** form, which lives here and not
+  on a skill's page: it re-decides every skill's drafts. `?manage=import|personal|policy` opens it
+  on that section; the Gate tab's policy link is `?manage=policy`. Import's Browse is never
+  disabled (a greyed primary read as chrome): pressed empty it names the missing source. `?skill=&tab=&v=&against=` is a skill's
   page (Versions, Gate, Evals, Feedback; an old `tab=edit` opens Versions), so any view is a link; the Gate tab is still
   `tab=review` in the address, and a stored version's files are a section of Versions, so an old
   `tab=files` link lands there. **No decision is asked before the evidence:** every publish and
@@ -1131,7 +1246,7 @@ Flows worth knowing before editing the app:
   that names its code (`no_personal_library`, `missing_scope:…`) is said in its words, not as
   the generic `skills:write` one.
   **An administrator reads other people's libraries** (`?lib=<32 hex>`, `listPersonalLibraries`
-  → `GET /-/personal`, which strips the `~`). The team page's *Personal libraries* section lists
+  → `GET /-/personal`, which strips the `~`). The team page's *Personal libraries* section (under Manage) lists
   them **only on Show** — the harness audits every listing as `personal_library_accessed`, so a
   mount or a poll would record looks nobody took. That library is read-only except Archive:
   `useLibraryReadOnly()` (a library that is neither the team's nor `me`) makes `VersionDecision`
@@ -1196,7 +1311,16 @@ Flows worth knowing before editing the app:
   takes a second one. `tests/queued-messages.test.tsx` pins all of it at the wire.
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
   (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
-  `/chat/sessions/search`.
+  `/chat/sessions/search`. **Continue is for a turn that stopped short** — the harness refuses
+  `nothing_to_continue` and `already_complete` — so `continueOffer` (`src/lib/continue-run.ts`)
+  reads the last non-note turn and the phase, the Session menu leads with *Continue run* only
+  then (otherwise it follows Copy thread id, disabled, saying why), and `/continue` toasts the
+  reason instead of spending a request (2026-10-16, `tests/continue-run.test.tsx`).
+- **The empty thread's greeting is the manifest's, unless it is about a folder that is not
+  there** (2026-10-16). `felix.greeting` has one headline, and cowork's is "What should we do in
+  this folder?" — over a readout saying *none mounted*. For an agent whose tools work in the
+  browser (`inBrowser`) with no folder mounted, `Greeting` uses its own headline and says the
+  tools work in the tab's storage until one is; the starters stay.
 
 Each turn sends **only the new user message** — Felix replays thread history server-side.
 
@@ -1494,11 +1618,40 @@ on a cold `/` — which mints a thread and moves — neither adopted it. `tests/
 
 **It never says the all-clear on a list it could not refresh.** The hook keeps the last list on a
 failed tick and reports `error` and `lastOkAt`; the line says *Checking approvals…* before the first
-answer and *Can't reach approvals* plus the answer's age after a failed one, keeping the last known
-count. A **single** failure straight after an answer reads *Rechecking approvals…* in neutral rather
-than red — one 429 is the harness shedding a burst, and red on every one taught the operator to
-ignore red — so the hook counts `failures` in a row and the line turns red on the second. Its failures used to be swallowed, and it read "Nothing waiting on you." with a green dot for
-as long as the harness answered the route with 429. The resting dot is neutral, not `state-done`.
+answer and keeps the last known count after a failed one. **Why it failed is the pill's to say only
+when waiting will not cure it** (2026-10-16). A transient failure (429, 503/408, no answer) is a
+source for the shell's harness-health line (below), which names the cause once for every read;
+the pill drops its own cause words and says only that its list is not current, neutral and with
+the age outside the live region: *2 calls were waiting on you across the harness* · *as of 3m
+ago*, or *Approvals not refreshed* · *as of 3m ago* with none known, and *Checking approvals…* ·
+*no answer yet* before any answer. It used to say *Approvals rate-limited* in red beside a second
+line saying the same about the whole harness. A failure that is **not** transient (a 500) keeps
+the old treatment: a **single** one straight after an answer reads *Rechecking approvals…* in
+neutral, the hook counts `failures` in a row, and the second turns the pill red with *Can't reach
+approvals* and *last answered …*. Its failures used to be swallowed, and it read "Nothing waiting
+on you." with a green dot for as long as the harness answered the route with 429. The resting dot
+is neutral, not `state-done`.
+
+**A passing harness failure is one line in the shell, not a box per panel** (2026-10-16). Under a
+live 429, `/harness/skills` drew six red boxes — each with its own raw `skill-library/review: 429`
+and Try again — while the sidebar silently showed one thread of fifty. `src/lib/harness-health.ts`
+is the store: `transientKind` names a **429** (`rate_limited`), a **503 or 408** (`unavailable`) and
+`fetch`'s own network rejection (`unreachable` — not every `TypeError`, which is also what a client
+bug throws); each reader reports under its own source id and withdraws it on an answer or an
+unmount — `usePoll`, `useSharedPoll`, the always-on `/approvals` poll, the skill library's Query cache (`reportQueryHealth` in
+`query-root.tsx`, reads only, observed queries only), the thread index, and `TransientRead` in
+`inspector/primitives.tsx`, which `SectionBody`, `StaleNotice` and `ReadFailure` render for a
+transient error in place of their red. `components/harness-health-line.tsx` draws it once, under
+the header beside the attention line's queue slot, on both addresses: *The harness is shedding
+load · showing what it said 2m ago · Retry* (or *nothing has loaded from it yet*), **neutral and
+never red**, the raw text only in Debug; Retry re-runs every failing source. Panels keep their
+last rows and say nothing louder than *Not loaded yet* when they have none. Red stays in the panel
+for what waiting will not cure — any other 4xx, any other 5xx, a parse failure — and for a
+*write*, which is the operator's own act and is answered where it was made. **A panel quieted
+without reporting is the bug this exists to prevent**: render `TransientRead` (or one of the three
+above), never a bare `null`, for a transient read error. The attention line is one indicator with
+it, not a second: under a transient failure it says only that its count is not current (above).
+`tests/harness-health.test.tsx` and `tests/attention-line.test.tsx` pin it.
 
 It also counts **an agent's question** (`ask_user` → `ui_request`), which blocks the run as an
 approval does but never appears in `/approvals`: the line said "Working. Nothing waiting on you."
@@ -1606,7 +1759,7 @@ modules don't resolve under the workspace options); those apps type-check via th
 
 
 **AI Elements are vendored, not wired** (`apps/chat-ui/src/components/ai-elements/`, 48
-components, 2026-10-03). They are presentational shadcn components and **do not need the AI
+components, 2026-10-03; `snippet` and `web-preview` were deleted unused on 2026-10-16). They are presentational shadcn components and **do not need the AI
 SDK at runtime**: twelve import from `ai`, and only *types* (`UIMessage`, `ToolUIPart`, …), so
 `ai` is a **dev** dependency pinned to `^6` — the version they are written against (v7 renamed
 `LanguageModelUsage` fields). `tests/ai-elements.test.tsx` mocks `ai` with a module that throws,

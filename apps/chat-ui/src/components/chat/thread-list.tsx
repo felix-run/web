@@ -8,6 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@felix/ui/dropdown-menu';
+import { Input } from '@felix/ui/input';
 import {
   ChevronRightIcon,
   DownloadIcon,
@@ -32,12 +33,15 @@ import {
 } from 'react';
 import { searchSessions } from '@/api';
 import { CutId } from '@/components/cut-id';
+import { isTransientFailure } from '@/lib/harness-health';
 import { groupThreads, matchExcerpt, type ThreadGroupKey, threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
+import type { ThreadIndexStatus } from '@/shell-context';
 
 const NO_BLOCKED: ReadonlySet<string> = new Set();
 const NO_PINS: ReadonlySet<string> = new Set();
 const NO_RUNNING: ReadonlySet<string> = new Set();
+const NO_FAILED: ReadonlySet<string> = new Set();
 
 /**
  * Characters of an id a row draws: what the row's width holds in 13px mono. A
@@ -137,8 +141,8 @@ type Row = { thread: ThreadMeta; excerpt?: string };
  *
  * A row is read by someone coming back, so what it says has to tell rows apart
  * without hovering: the best title there is (see `threadLabel`), the agent when
- * this client knows it, how long ago, and whether the thread is running or
- * waiting on a person. There is no per-row icon — an icon on every row marks a
+ * this client knows it, how long ago, and whether the thread is running, waiting
+ * on a person, or its newest turn failed. There is no per-row icon — an icon on every row marks a
  * row, not a kind, and the width is worth more as title.
  */
 export function ThreadList({
@@ -154,12 +158,21 @@ export function ThreadList({
   readOnlyId,
   blocked = NO_BLOCKED,
   running = NO_RUNNING,
+  failed = NO_FAILED,
   pinned = NO_PINS,
   onTogglePin,
   searchRef,
+  indexStatus,
   className,
 }: {
   threads: ThreadMeta[];
+  /**
+   * Whether the harness's half of the list is current (the shell's
+   * `threadIndex`). When its read failed the list is this tab's remembered copy
+   * or this browser's threads alone, and a row under the heading says which —
+   * the list used to fall back silently, and "Older 1" read as the whole truth.
+   */
+  indexStatus?: ThreadIndexStatus | undefined;
   currentId: string;
   /**
    * The tab's thread while the address is not it (`/harness`). Drawn held — a
@@ -176,6 +189,12 @@ export function ThreadList({
   blocked?: ReadonlySet<string>;
   /** Threads with a run this tab is carrying, by suffix. */
   running?: ReadonlySet<string>;
+  /**
+   * Threads whose newest turn failed, by suffix — read off the sidebar's shared
+   * audit poll (`threadOutcomes`), never a request per row. Unknown is not OK:
+   * a thread outside that read is simply unmarked.
+   */
+  failed?: ReadonlySet<string>;
   /** Pinned thread ids, from this browser's own store (`readPins`). */
   pinned?: ReadonlySet<string>;
   /** Pin or unpin a thread. Omit to hide the action. */
@@ -437,6 +456,8 @@ export function ThreadList({
     const label = labels.get(t.id) ?? { text: t.title, isId: false };
     const waiting = blocked.has(t.id);
     const live = running.has(t.id);
+    // A run going now outranks how the last one ended: it may be the retry.
+    const broke = failed.has(t.id) && !live && !waiting;
     const isPinned = pinned.has(t.id);
     const local = t.onServer === false;
     const readOnly = t.id === readOnlyId;
@@ -508,11 +529,12 @@ export function ThreadList({
             </div>
           </div>
         ) : renaming?.id === t.id ? (
-          <input
+          <Input
             // Renaming is a text edit, so it happens in place rather than in
             // a dialog: the row already shows the name being changed.
             ref={renameInputRef}
             aria-label="Thread name"
+            placeholder="Name this thread"
             value={renaming.draft}
             onChange={(e) => setRenaming({ id: t.id, draft: e.target.value })}
             onBlur={() => {
@@ -535,7 +557,7 @@ export function ThreadList({
                 requestAnimationFrame(() => focusRow(t.id));
               }
             }}
-            className="min-w-0 flex-1 rounded-md border border-input bg-sidebar-accent px-2 py-1 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="min-w-0 flex-1 bg-sidebar-accent"
           />
         ) : (
           <button
@@ -589,6 +611,13 @@ export function ThreadList({
                 )}
                 {live && !waiting && inGroup !== 'running' && (
                   <StateMark className="text-state-running">Running</StateMark>
+                )}
+                {/* After the two live states: it asks nothing of the reader now,
+                    but it is why someone coming back opens this row first. */}
+                {broke && (
+                  <StateMark data-slot="thread-failed" className="text-state-failed">
+                    Failed
+                  </StateMark>
                 )}
                 {t.id === heldId && (
                   <span data-slot="thread-held" className="shrink-0 font-medium">
@@ -742,9 +771,13 @@ export function ThreadList({
             Threads
           </h2>
         </div>
-        <label className="relative mt-1 block">
+        {indexStatus?.error != null && (
+          <IndexStatusRow status={indexStatus} count={threads.length} />
+        )}
+        <div className="relative mt-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input
+            size="lg"
             ref={searchRef}
             type="search"
             aria-label="Search threads"
@@ -756,9 +789,11 @@ export function ThreadList({
             }}
             onKeyDown={onSearchKeyDown}
             placeholder="Search titles and messages…"
-            className="h-9 w-full rounded-full border border-input bg-sidebar-accent pr-3 pl-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring"
+            // The sidebar's two fields sit on its accent rather than the wash, which is
+            // too faint on the sidebar's ground; the inset clears the search glyph.
+            className="bg-sidebar-accent pl-8"
           />
-        </label>
+        </div>
         {status && (
           <p className="flex items-center gap-2 px-2 pt-1.5 text-xs text-muted-foreground">
             {status}
@@ -795,7 +830,9 @@ export function ThreadList({
                   ? searching
                     ? 'Searching…'
                     : `No thread matches “${query.trim()}”.`
-                  : 'No threads yet'}
+                  : indexStatus?.error != null
+                    ? 'None in this browser'
+                    : 'No threads yet'}
               </p>
               {!filtering && (
                 <p className="mt-1 text-xs text-muted-foreground">Your first message starts one.</p>
@@ -942,9 +979,17 @@ export function ThreadList({
 }
 
 /** A state word with its dot, ahead of a row's metadata. */
-function StateMark({ className, children }: { className: string; children: ReactNode }) {
+function StateMark({
+  className,
+  children,
+  'data-slot': slot,
+}: {
+  className: string;
+  children: ReactNode;
+  'data-slot'?: string;
+}) {
   return (
-    <span className={cn('flex shrink-0 items-center gap-1', className)}>
+    <span data-slot={slot} className={cn('flex shrink-0 items-center gap-1', className)}>
       <span aria-hidden className="size-1.5 rounded-full bg-current" />
       {children} ·
     </span>
@@ -964,5 +1009,42 @@ function Marked({ text, query }: { text: string; query: string }) {
       </mark>
       {text.slice(at + q.length)}
     </>
+  );
+}
+
+/**
+ * The row under Threads when the harness's index could not be read. Neutral for
+ * a failure that passes (it is asked again on a backoff, and the shell's health
+ * line names the cause); red for one that will not, which only Retry answers.
+ */
+function IndexStatusRow({ status, count }: { status: ThreadIndexStatus; count: number }) {
+  const transient = isTransientFailure(status.error);
+  const showing =
+    status.rememberedAt != null
+      ? `showing its list from ${relativeTime(status.rememberedAt)}`
+      : `showing this browser's ${count}`;
+  return (
+    <p
+      data-slot="thread-index-status"
+      className={cn(
+        'flex flex-wrap items-center gap-x-1.5 px-2.5 pb-1 text-xs',
+        transient ? 'text-muted-foreground' : 'text-state-failed',
+      )}
+    >
+      <span role="status">
+        {status.rememberedAt != null
+          ? "Couldn't refresh the harness's threads"
+          : "Couldn't load the harness's threads"}
+      </span>
+      <span aria-hidden>·</span>
+      <span>{showing}</span>
+      <button
+        type="button"
+        onClick={status.retry}
+        className="rounded font-medium text-foreground underline underline-offset-2 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+      >
+        Retry
+      </button>
+    </p>
   );
 }

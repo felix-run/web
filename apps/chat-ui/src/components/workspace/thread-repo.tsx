@@ -288,7 +288,6 @@ function RepoPicker({ onOpen }: { onOpen: (fullName: string) => Promise<void> })
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter repositories"
           aria-label="Filter repositories"
-          className="h-8 text-sm"
         />
         {error && (
           <p role="alert" className="text-xs text-state-failed">

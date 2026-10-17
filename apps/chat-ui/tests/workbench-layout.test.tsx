@@ -102,8 +102,10 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     manifestOptions: ['cowork'],
     manifestEntries: [],
     refreshCanary: () => {},
+    view: 'debug',
+    setView: () => {},
+    harnessView: true,
     debug: true,
-    setDebug: () => {},
     inspectClient: () => ({
       at: 0,
       threadId: 't1',
@@ -172,7 +174,7 @@ function mountInstrument(over: Partial<ShellValue> = {}) {
 beforeEach(() => {
   localStorage.clear();
   // These pin debug-mode surfaces (the instrument, the harness pages).
-  localStorage.setItem('felix.debug', '1');
+  localStorage.setItem('felix.view', 'debug');
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response(JSON.stringify({ requests: [], items: [] }), { status: 200 })),
@@ -340,13 +342,130 @@ describe('the sidebar', () => {
   it('scrolls the workspace and the harness as one region, and the sidebar not at all', () => {
     mountSidebar();
     const lower = document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement;
-    expect(lower.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(['h-[clamp(40svh,32.5rem,60svh)]', 'overflow-y-auto']),
-    );
+    expect(lower.className.split(/\s+/)).toEqual(expect.arrayContaining(['overflow-y-auto']));
     expect(lower.querySelector('[data-slot="workspace-row"]')).toBeTruthy();
     expect(lower.querySelector('nav[aria-label="Harness"]')).toBeTruthy();
     const content = lower.closest('[data-sidebar="content"]') as HTMLElement;
     expect(content.className).toContain('overflow-y-hidden');
+  });
+
+  /**
+   * Harness view held this region at a fixed `clamp(40svh,32.5rem,60svh)` — 520px
+   * of a 997px window — and the thread list, the sidebar's first job, was left
+   * four rows (2026-10-16). It is now sized by its content, capped at 35svh, with
+   * a reservation of the default layout's height so a fold never drops the row
+   * under the pointer. happy-dom lays nothing out, so the rule is pinned by shape;
+   * the heights were measured in a browser (8 thread rows at 1456×997, was 4).
+   */
+  it('sizes the lower region to its content in harness view, capped at 35svh', () => {
+    mountSidebar();
+    const classes = (
+      document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement
+    ).className.split(/\s+/);
+    expect(classes).toEqual(
+      expect.arrayContaining(['max-h-[35svh]', 'min-h-[min(35svh,25.5rem)]', 'shrink-0']),
+    );
+    expect(classes.some((c) => /^h-\[/.test(c))).toBe(false);
+    expect(classes.join(' ')).not.toMatch(/32\.5rem|30rem/);
+    // The Workspace row stays on screen while the harness's rows scroll under it.
+    const workspace = document.querySelector('[data-slot="workspace-row"]') as HTMLElement;
+    expect(workspace.parentElement?.className).toMatch(/\bsticky\b.*\bbottom-0\b/);
+  });
+
+  it('starts How it’s set up folded, and lets a remembered choice win', async () => {
+    mountSidebar();
+    const toggle = screen.getByRole('button', { name: 'How it’s set up' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    const rows = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(rows?.hidden).toBe(true);
+    // The other two runs are open, and say so.
+    expect(
+      screen.getByRole('button', { name: 'What happened' }).getAttribute('aria-expanded'),
+    ).toBe('true');
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(JSON.parse(localStorage.getItem('felix.sidebar.harnessGroups') ?? '{}')).toEqual({
+      setup: false,
+    });
+
+    cleanup();
+    mountSidebar();
+    expect(
+      screen.getByRole('button', { name: 'How it’s set up' }).getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  /**
+   * The thread rows read the audit poll the Activity glance already runs, so a
+   * thread whose newest turn broke says *Failed* in the list without a request
+   * of its own — and a thread whose failure was followed by a clean turn does not.
+   */
+  it('marks a thread whose newest turn failed, from the glance’s own read', async () => {
+    const ts = (minAgo: number) => (Date.now() - minAgo * 60_000) / 1000;
+    const events = [
+      {
+        id: 'a',
+        event_type: 'user_input',
+        status: 'ok',
+        ts: ts(9),
+        payload_json: { thread_id: 'default:other' },
+      },
+      {
+        id: 'b',
+        event_type: 'tool_call',
+        status: 'error',
+        ts: ts(8),
+        payload_json: { thread_id: 'default:other', tool: 'run' },
+      },
+      {
+        id: 'c',
+        event_type: 'user_input',
+        status: 'ok',
+        ts: ts(30),
+        payload_json: { thread_id: 'default:now' },
+      },
+      {
+        id: 'd',
+        event_type: 'tool_call',
+        status: 'error',
+        ts: ts(29),
+        payload_json: { thread_id: 'default:now' },
+      },
+      {
+        id: 'e',
+        event_type: 'user_input',
+        status: 'ok',
+        ts: ts(5),
+        payload_json: { thread_id: 'default:now' },
+      },
+      {
+        id: 'f',
+        event_type: 'final_response',
+        status: 'ok',
+        ts: ts(4),
+        payload_json: { thread_id: 'default:now' },
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(
+              String(url).includes('/audit') ? { events } : { requests: [], items: [] },
+            ),
+            { status: 200 },
+          ),
+      ),
+    );
+    mountSidebar();
+    const other = await screen.findByRole('button', { name: /^The other one/ });
+    await waitFor(() => expect(other.querySelector('[data-slot="thread-failed"]')).toBeTruthy());
+    const mark = other.querySelector('[data-slot="thread-failed"]') as HTMLElement;
+    expect(mark.textContent).toContain('Failed');
+    expect(mark.className).toContain('text-state-failed');
+    const current = screen.getByRole('button', { name: /^Current thread/ });
+    expect(current.querySelector('[data-slot="thread-failed"]')).toBeNull();
   });
 });
 
@@ -433,6 +552,13 @@ describe('the dropped-connection notice', () => {
 });
 
 describe('the run instrument', () => {
+  // The Debug tab is the debug level's; harness view has the other three.
+  it('draws the Debug tab only at the debug level', async () => {
+    mountInstrument({ view: 'harness', debug: false });
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools · all threads']);
+  });
+
   /**
    * The tab strip is a real tab widget, not roles painted on buttons.
    *
@@ -452,7 +578,12 @@ describe('the run instrument', () => {
     );
 
     const tabs = await screen.findAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools', 'Debug']);
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      'Changes',
+      'Plans',
+      'Tools · all threads',
+      'Debug',
+    ]);
 
     for (const tab of tabs) {
       const id = tab.getAttribute('aria-controls');
@@ -491,10 +622,12 @@ describe('the run instrument', () => {
     for (const panel of inactive) expect(panel.childElementCount).toBe(0);
 
     await act(async () => {
-      await userEvent.click(screen.getByRole('tab', { name: 'Tools' }));
+      await userEvent.click(screen.getByRole('tab', { name: 'Tools · all threads' }));
     });
     await waitFor(() =>
-      expect(screen.getByRole('tab', { name: 'Tools' }).getAttribute('aria-selected')).toBe('true'),
+      expect(
+        screen.getByRole('tab', { name: 'Tools · all threads' }).getAttribute('aria-selected'),
+      ).toBe('true'),
     );
     expect(screen.getByRole('tab', { name: 'Changes' }).getAttribute('aria-selected')).toBe(
       'false',

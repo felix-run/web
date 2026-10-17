@@ -74,7 +74,7 @@ const seed = (threadId: string, turns: Turn[]) =>
 beforeEach(() => {
   localStorage.clear();
   // These pin debug-mode surfaces (the instrument, the harness pages).
-  localStorage.setItem('felix.debug', '1');
+  localStorage.setItem('felix.view', 'debug');
   sessionStorage.clear();
   stubFetch();
 });
@@ -236,7 +236,7 @@ describe('the header names the thread', () => {
 
   /**
    * A menu named Session opened on a View group. Session's verbs come first now,
-   * then View, then Theme under a label of its own — the Debug checkbox and the
+   * then View, then Theme under a label of its own — the View radios and the
    * theme radios had run together as one unlabelled list.
    */
   it('opens on Session, then View, then a labelled Theme group', async () => {
@@ -250,12 +250,16 @@ describe('the header names the thread', () => {
         '[data-slot="dropdown-menu-label"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
       ),
     ).map((el) => el.getAttribute('aria-label') ?? el.textContent);
+    // Continue run follows Copy thread id here, disabled with its reason: since 2026-10-16
+    // it leads the group only when a run stopped short and there is something to pick up.
     expect(rows).toEqual([
       'Session',
-      'Continue run',
       'Copy thread id self-pr-306',
+      'Continue runNothing has run on this thread yet.',
       'View',
-      'DebugRun instrument, every harness page, ids',
+      'EverydayThe conversation and what waits on you',
+      'Harness viewRun instrument, every harness page, spend',
+      'Harness + debugAdds the Debug tab, ids and tool I/O',
       'Theme',
       'Light',
       'Dark',
@@ -269,8 +273,9 @@ describe('the header names the thread', () => {
     await waitFor(() => expect(address).toBe('/t/empty-thread'));
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Session' }));
-    const item = await screen.findByRole('menuitem', { name: 'Continue run' });
+    const item = await screen.findByRole('menuitem', { name: /^Continue run/ });
     expect(item.getAttribute('aria-disabled')).toBe('true');
+    expect(item.textContent).toContain('Nothing has run on this thread yet.');
     await user.keyboard('{Escape}');
   });
 });

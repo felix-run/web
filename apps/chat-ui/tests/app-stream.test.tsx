@@ -177,7 +177,7 @@ describe('usage', () => {
     // read `on_chain_end.output.usage`, a shape the harness never sent: that
     // frame's output reaches the wire as a Python repr string.
     // The per-turn line is debug's; the daily surface draws no tokens.
-    localStorage.setItem('felix.debug', '1');
+    localStorage.setItem('felix.view', 'debug');
     stubFetch([
       { event: 'text_delta', data: { delta: 'counted' } },
       { event: 'on_chain_end', data: { output: 'InvokeOutput(messages=[...])' } },
@@ -343,7 +343,7 @@ describe('the header run-state slot', () => {
       data: { approval_id: 'ap-1', tool_name: 'write_file', args: { path: 'a.txt' } },
     };
     // The sidebar's harness pages are debug's, and they are the way to `/harness`.
-    localStorage.setItem('felix.debug', '1');
+    localStorage.setItem('felix.view', 'debug');
     stubFetch([], () => {
       const bytes = new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`);
       return new Response(
