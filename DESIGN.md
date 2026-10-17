@@ -378,7 +378,10 @@ Every panel on screen keeps the rows it last had and draws no box of its own; on
 yet says *Not loaded yet* in muted text. Red is kept for a failure waiting will not cure (a 403,
 a 500, a body that would not parse) and for a write that failed, and those stay in the panel,
 where what they mean is known. Six red boxes for one rate limit taught the operator that red is
-weather. The sidebar's Threads heading carries its own muted row when the harness's index could
+weather. The attention line obeys it too: under a passing failure it names no cause and wears no
+red, and says only that its list is not current — the last count in the past tense (*2 calls
+were waiting on you across the harness*) or *Approvals not refreshed*, with *as of 3m ago* beside
+it — because it may still never claim the all-clear on a list it could not refresh. The sidebar's Threads heading carries its own muted row when the harness's index could
 not be read, because there the consequence — a shorter list — is local and needs saying where
 it shows.
 
@@ -540,8 +543,10 @@ cannot truncate (*1 waiting*, *No approvals*, *Unreachable*) with *Review* as it
 the full sentence kept as the live region and the `title`. It is tinted only when it has
 something to say (`state-blocked` at `/10` while a person is asked, `state-failed` while it
 cannot vouch for the list) and is muted text on no surface at rest. At rest its dot is the
-neutral idle dot; when its latest `/approvals` poll failed it says *Can't reach approvals* with
-the age of its last answer, in `state-failed`, and never the all-clear. Expanded, its queue opens
+neutral idle dot; when its latest `/approvals` poll failed it never says the all-clear. A
+passing failure (429, 503, no answer) keeps the last count, neutral, with *as of 3m ago* and no
+cause, which is the shell's health line's to name; any other says *Can't reach approvals* with
+the age of its last answer, in `state-failed`. Expanded, its queue opens
 **under the header**, in the flow, held to the transcript's measure on the transcript's centre
 line, and is **one line per call** (tool and target in mono, the thread, and a countdown chip
 that says what it counts down to: *Auto-denies in 4:20*; the clock alone below `sm`), opening

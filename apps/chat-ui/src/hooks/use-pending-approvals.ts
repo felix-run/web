@@ -2,6 +2,10 @@ import type { ApprovalRequest } from '@felix/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listApprovals } from '@/api';
 import { rememberDecidedHere } from '@/lib/denials';
+import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
+
+/** This poll's id in the shell's harness-health store. */
+const HEALTH_SOURCE = 'approvals';
 
 /** Slow: a TTL is minutes long, and this runs for the life of the tab. */
 export const PENDING_APPROVALS_POLL_MS = 10_000;
@@ -79,6 +83,7 @@ export function usePendingApprovals(): PendingApprovals {
   const [failures, setFailures] = useState(0);
   const [forbidden, setForbidden] = useState(false);
   const stopped = useRef(false);
+  const lastOkRef = useRef<number | null>(null);
   /** Approval id → when this tab decided it. See `markDecided`. */
   const decided = useRef(new Map<string, number>());
 
@@ -96,7 +101,9 @@ export function usePendingApprovals(): PendingApprovals {
         setPending(rows.filter((r) => !decided.current.has(r.id)));
         setError(null);
         setFailures(0);
-        setLastOkAt(Date.now());
+        lastOkRef.current = Date.now();
+        setLastOkAt(lastOkRef.current);
+        forgetHarnessRead(HEALTH_SOURCE);
       })
       // No toast: the harness being unreachable is already reported by the
       // composer's connection hint and by every call the operator makes on
@@ -107,6 +114,7 @@ export function usePendingApprovals(): PendingApprovals {
         if (/:\s*403\b/.test(String((err as Error)?.message ?? err))) {
           // Asking again will not change the answer while this credential stands.
           stopped.current = true;
+          forgetHarnessRead(HEALTH_SOURCE);
           setForbidden(true);
           setPending([]);
           setError(null);
@@ -116,13 +124,22 @@ export function usePendingApprovals(): PendingApprovals {
         }
         setError(err ?? new Error('approvals poll failed'));
         setFailures((n) => n + 1);
+        // A passing failure — a 429, a 503, no answer — is the shell's one line
+        // to name (`lib/harness-health.ts`); the attention line only says its
+        // list is not current. Anything else is the line's to say, in red.
+        if (!stopped.current) {
+          reportHarnessRead(HEALTH_SOURCE, err, { lastOkAt: lastOkRef.current, retry: refresh });
+        }
       });
   }, []);
 
   useEffect(() => {
     refresh();
     const id = window.setInterval(refresh, PENDING_APPROVALS_POLL_MS);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      forgetHarnessRead(HEALTH_SOURCE);
+    };
   }, [refresh]);
 
   const markDecided = useCallback((id: string) => {

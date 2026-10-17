@@ -16,6 +16,7 @@ import { decideApproval } from '@/api';
 import { ApprovalDecision } from '@/components/approval/approval-decision';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
 import { callTarget } from '@/lib/call-target';
+import { isTransientFailure } from '@/lib/harness-health';
 import { ariaShortcut, isMacPlatform } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
@@ -41,8 +42,9 @@ import { cn } from '@/lib/utils';
  * **It never claims the all-clear on a list it could not refresh.** "Nothing
  * waiting on you" is a statement about the harness, and it is only true when the
  * latest ask was answered. Before the first answer the line says it is checking;
- * after a failed one it says it cannot reach approvals and how old its last
- * answer is, keeping the last known count if there was one. It said all-clear
+ * after a failed one it keeps the last known count and says how old it is. Why
+ * the read failed is said here only when waiting will not cure it; a 429, a 503
+ * or no answer is the shell's harness-health line's to name. It said all-clear
  * for as long as the harness was returning 429 on this route — the one failure a
  * line whose whole promise is "true without being looked at" cannot have.
  *
@@ -202,15 +204,21 @@ export function AttentionLine({
    * line that flashed red on every one taught the operator to ignore the red.
    * A second failure in a row, or a failure with no answer ever, is red.
    */
-  const rechecking = stale && failures < 2 && lastOkAt !== null;
+  /**
+   * A failure that passes — a 429, a 503, no answer — is not this line's to
+   * name. The shell's harness-health line (`lib/harness-health.ts`) says the
+   * cause once for every read on screen, this poll among them; here the list
+   * is only *not current*: the last known count in the past tense and its age,
+   * neutral, never the all-clear. It used to say "Approvals rate-limited" in
+   * red beside a second line saying the same thing about the whole harness.
+   */
+  const transient = stale && isTransientFailure(error);
+  const rechecking = stale && !transient && failures < 2 && lastOkAt !== null;
+  /** A failure waiting will not cure, said here in red. */
+  const failing = stale && !transient && !rechecking;
   const where = allOnThisThread ? 'on this thread' : 'across the harness';
   const calls = `${count} ${count === 1 ? 'call' : 'calls'}`;
-  // A 429 is the harness answering, just not with the list. "Can't reach"
-  // reads as an outage; the operator's next move differs (wait, not restart),
-  // so the words say which. The dot stays red either way: in both cases this
-  // line cannot vouch that nothing is waiting.
-  const limited = stale && /:\s*429\b/.test(String((error as Error)?.message ?? error));
-  const failure = limited ? 'Approvals rate-limited' : "Can't reach approvals";
+  const failure = "Can't reach approvals";
   const asking = question != null;
   const othersAsking = elsewhereQuestions.length;
   const anyAsking = asking || othersAsking > 0;
@@ -237,21 +245,27 @@ export function AttentionLine({
     ? waiting
       ? `${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where} · rechecking`
       : 'Rechecking approvals…'
-    : stale
+    : transient
       ? waiting
-        ? `${failure} · ${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where}`
-        : failure
-      : unchecked
-        ? 'Checking approvals…'
-        : waiting
-          ? `${calls} ${count === 1 ? 'is' : 'are'} waiting on you ${where}`
-          : // Said for what this line counts — approvals and an agent's questions —
-            // not as an all-clear: a skill draft waiting for review is on no poll
-            // this line reads, and "Nothing waiting on you" sat above a page
-            // saying one was. Drafts have their own glance on Skills.
-            streaming
-            ? 'Working. No approvals or questions waiting.'
-            : 'No approvals or questions waiting.';
+        ? `${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where}`
+        : lastOkAt === null
+          ? 'Checking approvals…'
+          : 'Approvals not refreshed'
+      : stale
+        ? waiting
+          ? `${failure} · ${calls} ${count === 1 ? 'was' : 'were'} waiting on you ${where}`
+          : failure
+        : unchecked
+          ? 'Checking approvals…'
+          : waiting
+            ? `${calls} ${count === 1 ? 'is' : 'are'} waiting on you ${where}`
+            : // Said for what this line counts — approvals and an agent's questions —
+              // not as an all-clear: a skill draft waiting for review is on no poll
+              // this line reads, and "Nothing waiting on you" sat above a page
+              // saying one was. Drafts have their own glance on Skills.
+              streaming
+              ? 'Working. No approvals or questions waiting.'
+              : 'No approvals or questions waiting.';
   // A question is known locally, from the stream, so it is said even when the
   // approvals poll has not answered — "Checking approvals…" over an open question
   // would hide the one thing this line is certain of.
@@ -259,7 +273,7 @@ export function AttentionLine({
     ? base
     : waiting
       ? `${base}${alsoAsking}`
-      : stale && !rechecking
+      : failing
         ? `${failure} · ${questionsWaiting.charAt(0).toLowerCase()}${questionsWaiting.slice(1)}`
         : questionsWaiting;
   /**
@@ -270,26 +284,30 @@ export function AttentionLine({
   const short =
     waiting || anyAsking
       ? `${count + (asking ? 1 : 0) + othersAsking} waiting`
-      : stale && !rechecking
-        ? limited
-          ? 'Rate-limited'
-          : 'Unreachable'
-        : rechecking
-          ? 'Rechecking'
-          : unchecked
+      : failing
+        ? 'Unreachable'
+        : transient
+          ? lastOkAt === null
             ? 'Checking'
-            : streaming
-              ? 'Working'
-              : 'No approvals';
+            : 'Not refreshed'
+          : rechecking
+            ? 'Rechecking'
+            : unchecked
+              ? 'Checking'
+              : streaming
+                ? 'Working'
+                : 'No approvals';
   // Outside the live region: it changes on every failed tick, and a screen
   // reader re-reading the sentence for a clock would bury the change that matters.
   const age =
-    stale && !rechecking
+    failing || transient
       ? lastOkAt === null
         ? // Not "not checked yet": the check ran, which is how it failed. What has
           // not happened is an answer, and that is the thing to say.
           'no answer yet'
-        : `last answered ${relativeTime(lastOkAt)}`
+        : transient
+          ? `as of ${relativeTime(lastOkAt)}`
+          : `last answered ${relativeTime(lastOkAt)}`
       : null;
 
   /**
@@ -313,7 +331,7 @@ export function AttentionLine({
       : undefined;
   const dot = blocked
     ? 'bg-state-blocked'
-    : stale && !rechecking
+    : failing
       ? 'bg-state-failed'
       : streaming
         ? 'bg-state-running'
@@ -370,11 +388,7 @@ export function AttentionLine({
         title={summary}
         className={cn(
           'flex h-7 min-w-0 items-center gap-2 rounded-full px-2.5 text-sm',
-          blocked
-            ? 'bg-solid-state-blocked/10'
-            : stale && !rechecking
-              ? 'bg-solid-state-failed/10'
-              : undefined,
+          blocked ? 'bg-solid-state-blocked/10' : failing ? 'bg-solid-state-failed/10' : undefined,
           reviewable.length > 0 && 'pr-0.5',
         )}
       >
@@ -395,7 +409,7 @@ export function AttentionLine({
             'min-w-0 truncate max-sm:sr-only',
             blocked
               ? 'text-state-blocked'
-              : stale && !rechecking
+              : failing
                 ? 'text-state-failed'
                 : 'text-muted-foreground',
           )}
@@ -408,7 +422,7 @@ export function AttentionLine({
             'shrink-0 sm:hidden',
             blocked
               ? 'font-medium text-state-blocked'
-              : stale && !rechecking
+              : failing
                 ? 'font-medium text-state-failed'
                 : 'text-muted-foreground',
           )}
@@ -418,7 +432,7 @@ export function AttentionLine({
         {age && (
           <span
             className="hidden shrink-0 text-xs tabular-nums text-muted-foreground md:inline"
-            title={error instanceof Error ? error.message : undefined}
+            title={failing && error instanceof Error ? error.message : undefined}
           >
             {age}
           </span>
