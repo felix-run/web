@@ -291,7 +291,7 @@ function FolderAction({ request, onClose }: { request: FolderRequest; onClose: (
           autoCapitalize="off"
           autoCorrect="off"
           aria-invalid={error ? true : undefined}
-          className="font-mono text-sm"
+          className="font-mono"
         />
         {error && (
           <p aria-live="polite" className="text-sm text-state-failed">

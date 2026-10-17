@@ -416,7 +416,7 @@ function NewSkillForm({
           id={nameId}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="font-mono text-sm"
+          className="font-mono"
           aria-invalid={nameIssue ? true : undefined}
           aria-describedby={`${nameId}-issue`}
           autoComplete="off"
@@ -445,7 +445,7 @@ function NewSkillForm({
           value={description}
           maxLength={1024}
           onChange={(e) => setDescription(e.target.value)}
-          className="min-h-16 text-sm"
+          className="min-h-16"
           aria-invalid={descIssue ? true : undefined}
           aria-describedby={descIssue ? `${descId}-issue` : undefined}
         />

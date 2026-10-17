@@ -3,7 +3,6 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
 import {
   ClockIcon,
@@ -17,6 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { deleteJob, listJobRuns, listJobs, listUsageByThread, runJobNow, upsertJob } from '@/api';
+import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import {
@@ -30,6 +30,7 @@ import {
   plural,
 } from '@/components/harness/panel';
 import { StaleNotice, StatusDot, withAge } from '@/components/inspector/primitives';
+import { WhyDisabled } from '@/components/why-disabled';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { failing, JOBS_POLL_KEY } from '@/lib/harness-glances';
 import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '@/lib/job-schedule';
@@ -205,6 +206,12 @@ export function JobsSheet({
       return { schedule: null, error: err instanceof ScheduleError ? err.message : String(err) };
     }
   }, [schedule]);
+  // The schedule's own error is said under its field; this only points at it.
+  const jobUnready = !name.trim()
+    ? 'Name the job.'
+    : parsedSchedule.error !== null
+      ? 'Fix the schedule above.'
+      : null;
   const costly =
     parsedSchedule.schedule?.kind === 'interval' && parsedSchedule.schedule.ms < COSTLY_INTERVAL_MS;
 
@@ -449,7 +456,7 @@ export function JobsSheet({
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       aria-describedby={existing ? 'job-name-replaces' : undefined}
-                      className="mt-1 h-8 text-sm"
+                      className="mt-1"
                       onKeyDown={(e) => e.key === 'Enter' && create()}
                     />
                     {existing && (
@@ -466,24 +473,13 @@ export function JobsSheet({
                   </div>
                   <div>
                     <Label htmlFor="job-manifest">Agent</Label>
-                    {/* The shared primitive, not a bare `<select>`: a native one draws
-                        its option list with the OS, which ignores the app's theme. */}
-                    <Select value={manifestId} onValueChange={setManifestId}>
-                      <SelectTrigger
-                        id="job-manifest"
-                        size="sm"
-                        className="mt-1 h-8 w-full font-mono text-sm"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(manifestOptions.length ? manifestOptions : [manifest]).map((m) => (
-                          <SelectItem key={m} value={m} className="font-mono text-sm">
-                            {m}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <AgentSelect
+                      id="job-manifest"
+                      value={manifestId}
+                      options={manifestOptions.length ? manifestOptions : [manifest]}
+                      onValueChange={setManifestId}
+                      className="mt-1 w-full"
+                    />
                   </div>
                 </div>
                 <div>
@@ -494,7 +490,7 @@ export function JobsSheet({
                     onChange={(e) => setSchedule(e.target.value)}
                     aria-describedby="job-schedule-help job-schedule-next"
                     aria-invalid={parsedSchedule.error ? true : undefined}
-                    className="mt-1 h-8 max-w-xs font-mono text-sm"
+                    className="mt-1 max-w-xs font-mono"
                     onKeyDown={(e) => e.key === 'Enter' && create()}
                   />
                   <p
@@ -552,7 +548,7 @@ export function JobsSheet({
                     onChange={(e) => setPrompt(e.target.value)}
                     aria-describedby="job-prompt-help"
                     rows={3}
-                    className="mt-1 resize-y text-sm"
+                    className="mt-1 resize-y"
                   />
                   <p id="job-prompt-help" className="mt-1 text-xs text-muted-foreground">
                     Sent as the turn on each run. Empty sends “ping”.
@@ -610,6 +606,7 @@ export function JobsSheet({
                     size="sm"
                     className="gap-1"
                     disabled={busy || !name.trim() || parsedSchedule.error !== null}
+                    aria-describedby={jobUnready ? 'job-unready' : undefined}
                     onClick={create}
                   >
                     {existing ? 'Replace' : 'Create'}
@@ -617,6 +614,7 @@ export function JobsSheet({
                   <Button size="sm" variant="ghost" onClick={closeForm}>
                     Cancel
                   </Button>
+                  <WhyDisabled id="job-unready" reason={busy ? null : jobUnready} />
                 </div>
               </div>
             </PageSection>

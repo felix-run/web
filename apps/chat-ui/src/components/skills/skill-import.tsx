@@ -92,7 +92,7 @@ export function ImportSection({ linkTo }: { linkTo: (name: string, version?: str
             id={sourceId}
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="font-mono text-sm"
+            className="font-mono"
             autoComplete="off"
           />
         </div>
@@ -104,8 +104,8 @@ export function ImportSection({ linkTo }: { linkTo: (name: string, version?: str
             id={refId}
             value={ref}
             onChange={(e) => setRef(e.target.value)}
-            placeholder="default"
-            className="font-mono text-sm"
+            placeholder="the default branch"
+            className="font-mono placeholder:font-sans"
             autoComplete="off"
           />
         </div>
@@ -441,12 +441,7 @@ export function AdoptButton({ version: v }: { version: SkillVersion }) {
         Why you vouch for these files — recorded with the adoption. It becomes a draft that no
         longer counts as an import; nothing is published.
       </label>
-      <Input
-        id={reasonId}
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        className="h-8 text-xs"
-      />
+      <Input size="sm" id={reasonId} value={reason} onChange={(e) => setReason(e.target.value)} />
       {adopt.error ? <RefusalNotice error={adopt.error} doing="adopt this version" /> : null}
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" disabled={adopt.isPending || !reason.trim()}>

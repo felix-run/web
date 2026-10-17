@@ -156,6 +156,12 @@ components:
     typography: "{typography.body}"
     rounded: "{rounded.full}"
     height: "36px"
+  field:
+    backgroundColor: "{colors.input}"
+    textColor: "{colors.foreground}"
+    typography: "{typography.body}"
+    rounded: "{rounded.full}"
+    height: "32px"
   tab-list:
     backgroundColor: "{colors.ground}"
     textColor: "{colors.muted-foreground}"
@@ -624,9 +630,10 @@ row's own colour, not a decoration), and no texture.
 
 **Where the system and the code disagree.** The vendored primitives in `packages/ui/src` still
 carry shadcn defaults: `shadow-2xl` on select and hover-card, `shadow-lg` on dialog, sheet,
-popover and dropdown, `shadow-xs` on Input, Switch and ButtonGroup, `shadow-sm` on Textarea and
-Card. The redesign reconciled Button (the outline's `shadow-xs` is gone), Tabs and Sidebar only.
-Treat the rest as incumbent truth, not as a pattern to copy. `shadow-lift-focus` exists as a
+popover and dropdown, `shadow-xs` on Switch and ButtonGroup, `shadow-sm` on Card. The redesign reconciled Button (the
+outline's `shadow-xs` is gone), Tabs and Sidebar, and the fields: Input, the select trigger and
+Textarea are flat on the same wash (the One-Field Rule, below). Treat the rest as incumbent truth,
+not as a pattern to copy. `shadow-lift-focus` exists as a
 utility but nothing uses it; the composer and slash menu reach the variable directly.
 
 ### Named Rules
@@ -652,9 +659,10 @@ smallest objects: `kbd` keys and inline code.
 
 The roles, as the code uses them, run from what you press to what you read:
 
-- **Pill (`full`)**: everything pressed or toggled. Every button variant and size, badges,
-  state and deadline chips, the attention line, the thread search field, tab and view-switch
-  tracks and their active pills, state dots, the scrollbar thumb.
+- **Pill (`full`)**: everything pressed, toggled or typed on one line. Every button variant and
+  size, badges, state and deadline chips, the attention line, every one-line field (`Input`,
+  the thread search, the rename fields) and every select trigger, tab and view-switch tracks and
+  their active pills, state dots, the scrollbar thumb.
 - **22px (`2xl`)**: the soft objects a person reads or decides on. The floating sheet, the
   composer and its slash menu, a user turn, a waiting approval, the run readout, the Activity
   ledger's tray and the spend table's tray, a page's empty state; and, as vendored, the select,
@@ -664,11 +672,39 @@ The roles, as the code uses them, run from what you press to what you read:
   user-turn edit field, and the **decision buttons**, which are `xl` rather than pills so a label
   that wraps to two lines never reads as a broken pill.
 - **14px (`lg`)**: rows on the ground: thread tiles and sidebar menu rows. Also the toast.
-- **12px / 10px (`md`, `sm`)**: fields (`Input`, `Textarea`, the rename field) and small
-  controls inside rows.
+- **12px / 10px (`md`, `sm`)**: a field that runs to more than one line (`Textarea`, the
+  approval's argument editor), where a pill's ends would cut into the text, and small controls
+  inside rows.
 
 Borders are hairlines at `--border`, often at `/60`, or `--input` on a field and an outline
 button. Scrollbars are themed thin with the thumb inset by a transparent 3px border.
+
+**The One-Field Rule.** `Input`, `SelectTrigger` and `Textarea` share one surface
+(`fieldSurface` in `packages/ui/src/lib/field.ts`): an `--input` edge on an `input/30` wash in
+both themes, no shadow, a focus that turns the edge to full `--ring` under a 3px `ring/50` halo,
+and one invalid state, `destructive`. The wash is what makes a field findable in light: the edge
+alone is 1.41:1 on the sheet. The halo is half strength because the border carries the contrast;
+at full strength the two made a 4px dark band that read as an alert. The one-line fields are that
+surface as a pill (`fieldChrome`), in three sizes: `default`, 32px at 14px, for a form; `sm`,
+32px at 12px, for a dense row or toolbar (Activity's filters, the plan editor, a skill's
+version); `lg`, 36px at 14px, for the field that heads a region (the thread search, the access
+key). On a coarse pointer `default` and `sm` grow to 36px, as `Button size="sm"` does, and every
+field and select trigger reads at 16px (the unlayered rule in `index.css`), so a row of fields and
+`sm` buttons stays on one line at one size. `Textarea` keeps 12px corners (`default` 14px, `sm`
+12px), since a pill's ends would cut into text that wraps. A list opened from an `sm` trigger sets
+its rows at 12px (`SelectContent size`), never each item. A call site sets width and spacing,
+never height, radius, padding, text size or background; `tests/select-family.test.tsx` fails on
+one, with four named exceptions (the composer's chips, the sidebar's two fields on its accent, the
+pane's path fields on a tinted strip), and fails on a native `<select>`, whose list is the OS's.
+
+Every agent outside the composer is chosen with `AgentSelect` (`components/agent-select.tsx`):
+the name alone in the trigger in mono, our own words (a placeholder, *Every agent*) in sans, and
+each row the name over its provider model, the row the composer's pickers draw too
+(`OptionItem`); every agent list is at least 18rem wide and at most 26rem tall
+(`OPTION_LIST_BOUNDS`). A select's placeholder names its noun with no ellipsis (*Choose a
+manifest*), since an ellipsis promises a dialog; a field's example value starts with *e.g.*, or
+on the wash it reads as one already typed. A submit that is unavailable says why beside it
+(`WhyDisabled`), and the button names that line, since a disabled button fires no hover.
 
 **The Soft-Where-Touched Rule.** The larger a thing is as an object of attention, the larger its
 corner; a pill is for pressing. An object never takes a pill, and a control never takes a 22px
@@ -784,7 +820,7 @@ instrument toggle's slot is held empty, so the attention line does not move betw
 Two controls have one home on every page: a view switch and a create toggle (outline, the plus
 turning to a cross when open) both sit in the header, and the form a create toggle opens is the
 page's first section. A view that can be linked is in the address. Fields are the shared
-`Input`/`Textarea` at 14px with a visible `Label`; help that must survive typing goes under the
+`Input`/`Select`/`Textarea` at 14px with a visible `Label`; help that must survive typing goes under the
 field. A header value that mixes a window with a state draws the window neutral and only the
 state in its chip. A routine `OK` status is a muted word and dot; colour is kept for what went
 wrong. A page whose latest read failed after a good one keeps the good rows under one line saying
@@ -944,8 +980,8 @@ glance while drafts wait (or while the reader is on Skills), the current one mar
 workspace. On `/harness` the workspace is folded by default, header only, its mount controls
 inside the fold (that fold is not stored). Arriving moves nothing: the rows do not change. Collapsed, debug off shows those one or two icons below Workspace.
 
-Threads is a heading and a **pill search field** (36px, `sidebar-accent` face, `input` edge, 14px,
-a 3px focus ring) that stay put above a list that scrolls inside itself. Workspace and Harness are
+Threads is a heading and a **pill search field** (`Input size="lg"`: 36px, `sidebar-accent` face,
+`input` edge, 14px) that stay put above a list that scrolls inside itself. Workspace and Harness are
 one region below it at a **fixed** height — `min(40svh, 19rem)` with debug off, for its two rows
 and an open workspace; in debug `clamp(40svh, 32.5rem, 60svh)` — 32.5rem is what the ten
 destinations take (the folded workspace's header is a short scroll below), and a fixed height means the region does not
@@ -1159,7 +1195,8 @@ beneath it at 12px that names the keys worth learning as small bordered `kbd` ke
 
 **The composer row rests at five:** an *Add to message* menu (attach images, voice input), the
 agent, Thinking, then Run in background and Send, and only Send is primary. The agent and Thinking
-pickers are pills (`h-8`, muted wash, value in 12px mono). The mic leaves the menu while it
+pickers are the field pill at `size="sm"` on the composer's muted wash, value in 12px mono, and
+their lists open 18rem wide, capped at 26rem tall, rather than at the pill's width. The mic leaves the menu while it
 records (red `recording`, a pulsing halo, one click to stop).
 
 **The agent picker lists manifests in the harness's order**, each name over the provider model it

@@ -6,6 +6,7 @@ import { Textarea } from '@felix/ui/textarea';
 import { PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { listWorkflowTools } from '@/api';
+import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import { Fact, Facts, PageSection } from '@/components/harness/panel';
@@ -128,6 +129,7 @@ function JsonField({
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <Textarea
+        size="sm"
         id={id}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -150,7 +152,7 @@ function JsonField({
           setBad(why ? `${why} Kept as it was.` : null);
           if (!why) onChange(parsed);
         }}
-        className="min-h-24 font-mono text-xs"
+        className="min-h-24 font-mono"
         aria-invalid={Boolean(bad)}
         aria-describedby={`${id}-note`}
       />
@@ -283,18 +285,14 @@ function ManifestField({
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>Manifest</Label>
-      <Select value={value || undefined} onValueChange={onChange}>
-        <SelectTrigger id={id} className="w-full font-mono">
-          <SelectValue placeholder="Choose a manifest…" />
-        </SelectTrigger>
-        <SelectContent>
-          {choices.map((m) => (
-            <SelectItem key={m} value={m} className="font-mono">
-              {m}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <AgentSelect
+        id={id}
+        value={value}
+        options={choices}
+        onValueChange={onChange}
+        placeholder="Choose a manifest"
+        className="w-full"
+      />
     </div>
   );
 }
@@ -343,7 +341,7 @@ function ToolField({
       >
         <SelectTrigger id={id} className="w-full font-mono">
           <SelectValue
-            placeholder={tools.length ? 'Choose a tool…' : 'This manifest binds no tools'}
+            placeholder={tools.length ? 'Choose a tool' : 'This manifest binds no tools'}
           />
         </SelectTrigger>
         <SelectContent>
@@ -634,14 +632,10 @@ function PortWiring({
                   });
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full"
-                  aria-label={`Connect ${into.name} from`}
-                >
+                <SelectTrigger className="w-full" aria-label={`Connect ${into.name} from`}>
                   <SelectValue
                     placeholder={
-                      feeding.length && into.name !== 'when' ? 'Rewire from…' : 'Connect from…'
+                      feeding.length && into.name !== 'when' ? 'Rewire from' : 'Connect from'
                     }
                   />
                 </SelectTrigger>

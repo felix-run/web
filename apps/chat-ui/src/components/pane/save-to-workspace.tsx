@@ -127,6 +127,7 @@ export function SaveToWorkspaceForm({
       </label>
       <div className="flex flex-wrap items-center gap-2">
         <Input
+          size="sm"
           id={id}
           autoFocus
           value={path}
@@ -145,7 +146,7 @@ export function SaveToWorkspaceForm({
           autoCorrect="off"
           aria-invalid={error ? true : undefined}
           aria-describedby={`${id}-note`}
-          className="h-8 min-w-48 flex-1 bg-background font-mono text-xs"
+          className="min-w-48 flex-1 bg-background font-mono"
         />
         <div className="flex gap-1.5">
           <Button type="button" size="sm" variant="ghost" onClick={onDone}>

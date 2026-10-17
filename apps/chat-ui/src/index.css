@@ -365,7 +365,10 @@
 @media (pointer: coarse) {
   input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
   textarea,
-  select {
+  select,
+  /* A select trigger is a button, so iOS would not zoom on it; it is here so it reads at the
+     size of the input beside it rather than 12px next to 16px. */
+  [data-slot="select-trigger"] {
     font-size: 16px;
   }
 }

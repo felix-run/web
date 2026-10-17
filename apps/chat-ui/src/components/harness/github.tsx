@@ -236,7 +236,7 @@ function Repositories({ repos }: { repos: GitHubRepos }) {
             }}
             placeholder={repos.truncated ? 'Search repositories by name' : 'Filter repositories'}
             aria-label={repos.truncated ? 'Search repositories by name' : 'Filter repositories'}
-            className="h-8 max-w-sm text-sm"
+            className="max-w-sm"
           />
         )}
         {searchError ? <ErrorNotice error={searchError} doing="search your repositories" /> : null}
