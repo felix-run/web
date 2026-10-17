@@ -116,6 +116,7 @@ import { createEnginePool, type EnginePool } from '@/lib/engine-pool';
 import { toastError, toastProblem } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
 import { ImageUploadError, uploadImages } from '@/lib/image-upload';
+import { onLeave } from '@/lib/leave';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import { resyncPush } from '@/lib/push';
@@ -265,6 +266,8 @@ bindLeases({
 // Closing the tab unmounts nothing, so the keeper's own releases never run then.
 // Module scope, like the keeper: one pair of listeners for the life of the page.
 if (typeof window !== 'undefined') releaseOnPageExit(sessionLeases);
+// Signing out lets go of this tab's leases while the session can still ask (`lib/leave.ts`).
+onLeave(() => sessionLeases.releaseAllNow());
 
 function readBool(key: string, fallback: boolean): boolean {
   const raw = localStorage.getItem(key);

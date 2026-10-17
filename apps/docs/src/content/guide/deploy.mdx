@@ -687,7 +687,10 @@ browser sends its own bearer, and the Worker forwards it in place of both `x-cha
 but only while `GET /auth/methods` reports `bearer_required`. Under `FELIX_AUTH_MODE=none` any
 bearer would be accepted, and the Worker refuses to let one past its key there. The session is the
 harness's token, so it lasts `FELIX_GITHUB_LOGIN_TTL_SECONDS` and signing out of the page does not
-revoke it. The CLI,
+revoke it. Signing out does forget what the page kept for that person: its copies of their threads
+and transcripts, the agent's in-browser workspace and local folder, their thread leases and the
+device's push subscription. A sign-in as someone else, or into another tenant, forgets the same,
+and an open tab reloads when another tab signs out or in as someone else. The CLI,
 `felix-client`, curl and other services are not browsers, so none of this applies to them.
 
 With [Google sign-in](/internals/auth/#google-sign-in) on, the gate offers **Continue with Google**:

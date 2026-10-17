@@ -26,9 +26,12 @@ if (typeof globalThis.localStorage === 'undefined') {
 import { afterEach } from 'vitest';
 import { resetSkillQueryClient } from '../src/components/skills/query-root';
 import { resetSharedPolls } from '../src/hooks/useSharedPoll';
+import { resetOpenedIdentity } from '../src/lib/opened-identity';
 
 afterEach(() => {
   resetSharedPolls();
   // The skill library's Query cache is module state for the same reason.
   resetSkillQueryClient();
+  // Whose app the page last opened: a later test's sign-in would read as a switch and reload.
+  resetOpenedIdentity();
 });
