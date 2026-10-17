@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -45,13 +45,39 @@ describe('Run in background', () => {
     expect(send.dataset.variant).toBe('default');
   });
 
-  it('carries its explanation as a description, not as a hover-only title', () => {
+  it('carries its explanation as a description, not as a hover-only title', async () => {
     mount({ onBackground: vi.fn() });
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByRole('textbox', { name: 'Message Felix' }), 'hello');
     const background = screen.getByRole('button', {
       name: 'Run in background',
       description: BACKGROUND_EXPLANATION,
     });
     expect(background.getAttribute('title')).toBeNull();
+  });
+
+  it('says why it is unavailable, and stays focusable so the reason can be read', async () => {
+    const onBackground = vi.fn();
+    mount({ onBackground });
+    const background = screen.getByRole('button', {
+      name: 'Run in background',
+      description: `${BACKGROUND_EXPLANATION} Write a message to run it in the background.`,
+    });
+    // `aria-disabled`, not `disabled`: a disabled button opens no tooltip and takes no focus.
+    expect(background.getAttribute('aria-disabled')).toBe('true');
+    expect(background.hasAttribute('disabled')).toBe(false);
+    const user = userEvent.setup({ delay: null });
+    await user.click(background);
+    expect(onBackground).not.toHaveBeenCalled();
+    act(() => background.blur());
+    act(() => background.focus());
+    expect(document.activeElement).toBe(background);
+    expect(
+      (await screen.findAllByText('Write a message to run it in the background.')).length,
+    ).toBeGreaterThan(1);
+    // Typing makes it available, and the reason goes.
+    await user.type(screen.getByRole('textbox', { name: 'Message Felix' }), 'hello');
+    expect(background.getAttribute('aria-disabled')).toBeNull();
   });
 
   it('still starts a background run with what was typed, from the keyboard', async () => {

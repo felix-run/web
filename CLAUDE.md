@@ -408,12 +408,17 @@ not move between addresses) comes the title, from `threadLabel` over the same me
 sidebar lists, and the agent the newest turn ran under in mono. The title is an **`h2`**, never a
 second `h1`, and is cut from the **middle** by CSS rather than by a character count — the head
 truncates, the last ten characters never do — so it follows the header as it narrows; below `sm`
-it is one end-cut, and under 23rem it goes `sr-only`. Clicking it renames in place through the
+it is one end-cut, and under 23rem it goes `sr-only`. **A title already ending in `…` or `...`
+is end-cut at every width**: the harness's preview truncation supplies that ellipsis, so the
+kept tail was a fragment of a word ("for writi…") and told nothing apart. Clicking it renames in place through the
 shell's `renameThread`, the sidebar's own action; not while the tab is **watching**, and not
 before the thread is in the index (nothing to name yet). `/harness` shows none. **The title gives
 way before the attention line**: the left cluster carries a shrink weight far above the line's,
 down to a `sm:min-w-52` floor, so the line keeps its sentence. Below `sm` the wordmark goes
-`sr-only` on `/t` for the title's room. `tests/thread-title.test.tsx` pins it.
+`sr-only` on `/t` for the title's room, and **the line gives way first**: at rest ("No
+approvals", "Working", "Checking") it is its dot alone, the sentence still its live region, its
+`title` and its name; only "N waiting" and "Unreachable" keep words there. With both drawn at
+390px the title read "Create a …". `tests/thread-title.test.tsx` pins it.
 
 **The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
 New chat; the threads, grouped as Waiting on you, Running, Pinned, Today, Yesterday, Previous 7 days
@@ -673,6 +678,23 @@ Flows worth knowing before editing the app:
   viewport by the drift on every content resize until the reader scrolls, touches, presses a key
   or the content is still for 1.5s. For a message just sent it holds the scroller's own placement
   rather than re-aiming, so the previous turn still peeks above it.
+
+  Two more from a critique pass (2026-10-17). **The jump to the latest reply has a strip of its
+  own** (`data-slot="conversation-jump"`, `h-10` under the viewport, `h-0` on an empty thread):
+  floating bottom-centre it covered whatever was there — a plan step at 390px, a workspace note,
+  the tokens line — and only while there was more below, i.e. while someone was reading. Padding
+  the content cannot fix that, because the button shows only away from the end, where the padding
+  is off screen. **A View change keeps the reader's place** (`KeepPlaceAcrossViews`): each level
+  adds or removes lines inside turns, so the height above the reader changed and the view landed
+  elsewhere. The place — the deepest elements near the viewport's top on the column's centre line,
+  then their row — is recorded on every scroll; after the change commits the viewport moves by the
+  drift and holds for 600ms, unless the reader takes over. It dispatches `felix:hold-release` on
+  the viewport first, which `OpenAtLastAnchor` counts as the reader taking over, so the two never
+  pull against each other. `tests/conversation.test.tsx` pins both. **Debug folds long tool I/O**:
+  debug opens every card and draws every plan call, so a plan-heavy turn was screens of JSON. A
+  card's input or output over 12 lines (`DEBUG_FOLD_LINES` plus a slack of four, so a fold never
+  hides one line), or 960 characters, is clipped to ~8 lines under a fade with *Show all N lines* (`tests/tool-card.test.tsx`); outside debug the
+  ordinary scrolling cap is unchanged.
 - **`shimmer` and `scroll-fade-*` are vendored** into `src/chat-utilities.css`, not imported from the
   CLI package's `tailwind.css`, which also redefines `data-open`, `data-checked` and the other
   `data-*` variants this app uses with their plain Tailwind meaning. Pair `shimmer` with

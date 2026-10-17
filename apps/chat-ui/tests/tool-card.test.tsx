@@ -408,3 +408,42 @@ describe('a shell result with colour in it', () => {
     expect(screen.getByRole('button', { name: 'Copy stdout' })).toBeTruthy();
   });
 });
+
+describe('a long input or output in debug', () => {
+  const plan = {
+    title: 'Ship it',
+    steps: Array.from({ length: 12 }, (_, i) => ({ id: i + 1, text: `Step ${i + 1}` })),
+  };
+
+  it('folds to a few lines with a control to show it all, and only in debug', async () => {
+    const { Tool, DEBUG_FOLD_LINES } = await import('../src/components/chat/tool');
+    const tool = { name: 'plan_create', done: true, input: plan, output: 'ok' };
+    const { unmount } = render(<Tool tool={tool} verbose />);
+    const fold = screen.getByRole('button', { name: /^Show all \d+ lines of the input$/ });
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    const block = document.getElementById(fold.getAttribute('aria-controls') ?? '');
+    expect(block?.hasAttribute('data-folded')).toBe(true);
+    expect(block?.querySelector('[data-language="json"]')?.className).toContain('max-h-44');
+    // A short output has nothing to fold.
+    expect(screen.queryByRole('button', { name: /of the output$/ })).toBeNull();
+    expect(DEBUG_FOLD_LINES).toBeLessThan(JSON.stringify(plan, null, 2).split('\n').length);
+
+    act(() => fold.click());
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
+    expect(fold.textContent).toContain('Show less');
+    expect(block?.hasAttribute('data-folded')).toBe(false);
+    expect(block?.querySelector('[data-language="json"]')?.className).toContain('max-h-none');
+    unmount();
+
+    // Outside debug a card opens on request and keeps its ordinary scrolling cap.
+    const { unmount: unmountPlain } = render(<Tool tool={tool} />);
+    expect(screen.queryByRole('button', { name: /^Show all/ })).toBeNull();
+    unmountPlain();
+
+    // Nor is a block folded when that would hide only a line or two.
+    const nine = { a: 1, b: 2, c: 3, d: 4, e: { f: 5 } };
+    expect(JSON.stringify(nine, null, 2).split('\n')).toHaveLength(9);
+    render(<Tool tool={{ name: 'x', done: true, input: nine, output: 'ok' }} verbose />);
+    expect(screen.queryByRole('button', { name: /^Show all/ })).toBeNull();
+  });
+});
