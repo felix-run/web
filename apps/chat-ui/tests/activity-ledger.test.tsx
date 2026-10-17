@@ -9,6 +9,8 @@ import { middleTruncate } from '../src/lib/format';
 import {
   buildLedger,
   cutTurns,
+  denialSentence,
+  failureSentence,
   filterLedger,
   foldRoutine,
   groupFailures,
@@ -277,11 +279,84 @@ describe('meteringStart / spendState', () => {
 });
 
 describe('navSearch', () => {
+  // A week since 2026-10-16: the glance counts over seven days, or over less when
+  // its read reaches back less far, and the link carries the week, which holds both.
   it("carries the glance's window to Activity while the glance has something to say", () => {
-    const glance = { text: '3 failed', title: '3 failed in the last 24h', tone: 'failed' as const };
-    expect(navSearch('activity', '?agent=x', glance)).toBe('?agent=x&since=24h');
+    const glance = { text: '3 failed', title: '3 failed in the last 7d', tone: 'failed' as const };
+    expect(navSearch('activity', '?agent=x', glance)).toBe('?agent=x&since=7d');
     expect(navSearch('activity', '?agent=x', undefined)).toBe('?agent=x');
     expect(navSearch('memory', '', glance)).toBe('');
+  });
+});
+
+/**
+ * The account line leads with what failed and what it cost. Over a week whose one
+ * failed thread was a job that ran 943 turns and spent $27.17 of $27.60, it read
+ * "1 thread had a call denied at an approval" — two cents, ranked above the money.
+ */
+describe('failureSentence', () => {
+  /** A job's thread: `turns` turns, every one ending on a broken call. */
+  const job = (turns: number) =>
+    Array.from({ length: turns }, (_, i) => [
+      ev({
+        id: `ju${i}`,
+        ts: now - (2 * turns - 2 * i) * MIN,
+        event_type: 'user_input',
+        payload: { user_input: 'digest', thread_id: 'default:job:nightly' },
+      }),
+      ev({
+        id: `jt${i}`,
+        ts: now - (2 * turns - 2 * i - 1) * MIN,
+        status: 'error',
+        payload: { tool: 'run', thread_id: 'default:job:nightly' },
+      }),
+    ]).flat();
+  const denied = ev({
+    id: 'deny',
+    event_type: 'policy_deny',
+    status: 'denied',
+    payload: { tool: 'write_file', control: 'approvals', thread_id: 'default:gated' },
+  });
+  const opts = { total: 27.6, totalFloor: false, spendKnown: true, metered: null };
+
+  it('leads with the failed thread, its turns and its share of the spend', () => {
+    const ledger = buildLedger(
+      [...job(943), denied],
+      [
+        spend({ thread_id: 'default:job:nightly', cost_usd: 27.17, first_ts: now - 2000 * MIN }),
+        spend({ thread_id: 'default:gated', cost_usd: 0.02 }),
+      ],
+    );
+    expect(failureSentence(ledger, opts)).toBe(
+      '1 thread failed after 943 turns — $27.17 of $27.60.',
+    );
+    expect(denialSentence(1)).toBe('1 thread had a call denied at an approval.');
+  });
+
+  it('counts several, and says a share that is only a floor as one', () => {
+    const ledger = buildLedger(
+      [...job(2), ...failingTurn],
+      [
+        spend({ thread_id: 'default:job:nightly', cost_usd: 3, first_ts: now - 10 * MIN }),
+        spend({ thread_id: 'default:thread-a', cost_usd: 1 }),
+        // Unattributed spend before the first attributed call: metering began mid-window,
+        // and the job's thread was already running then.
+        spend({ thread_id: '', first_ts: now - 600 * MIN }),
+      ],
+    );
+    const cutover = meteringStart(ledger.flatMap((t) => (t.spend ? [t.spend] : [])));
+    expect(failureSentence(ledger, { ...opts, total: 5, totalFloor: true, metered: cutover })).toBe(
+      '2 threads failed — ≥ $4.00 of ≥ $5.00.',
+    );
+  });
+
+  it('says nothing about money it does not have, and nothing at all when nothing failed', () => {
+    const ledger = buildLedger(failingTurn, null);
+    expect(failureSentence(ledger, { ...opts, spendKnown: false })).toBe(
+      '1 thread failed after 1 turn.',
+    );
+    expect(failureSentence(buildLedger([denied], null), opts)).toBeNull();
+    expect(denialSentence(0)).toBeNull();
   });
 });
 
@@ -685,7 +760,13 @@ describe('the ledger page', () => {
     });
     mount();
     await user.click(await rowFor(/Changelog cleanup/));
-    expect(await screen.findByText(/predates per-thread metering/)).toBeTruthy();
+    // Said twice now, which is right: the entry, and the account line that leads
+    // with the failure (`failureSentence`), which has no figure to put on it.
+    const said = await screen.findAllByText(/predates per-thread metering/);
+    expect(said.length).toBe(2);
+    expect(document.querySelector('[data-slot="activity-account"]')?.textContent).toContain(
+      '1 thread failed after 1 turn — its spend predates per-thread metering.',
+    );
     expect(screen.queryByText(/No model spend recorded/)).toBeNull();
     expect(screen.getByText(/Spend recorded before per-thread metering/)).toBeTruthy();
   });

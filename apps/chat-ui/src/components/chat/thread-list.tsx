@@ -41,6 +41,7 @@ import type { ThreadIndexStatus } from '@/shell-context';
 const NO_BLOCKED: ReadonlySet<string> = new Set();
 const NO_PINS: ReadonlySet<string> = new Set();
 const NO_RUNNING: ReadonlySet<string> = new Set();
+const NO_FAILED: ReadonlySet<string> = new Set();
 
 /**
  * Characters of an id a row draws: what the row's width holds in 13px mono. A
@@ -140,8 +141,8 @@ type Row = { thread: ThreadMeta; excerpt?: string };
  *
  * A row is read by someone coming back, so what it says has to tell rows apart
  * without hovering: the best title there is (see `threadLabel`), the agent when
- * this client knows it, how long ago, and whether the thread is running or
- * waiting on a person. There is no per-row icon — an icon on every row marks a
+ * this client knows it, how long ago, and whether the thread is running, waiting
+ * on a person, or its newest turn failed. There is no per-row icon — an icon on every row marks a
  * row, not a kind, and the width is worth more as title.
  */
 export function ThreadList({
@@ -157,6 +158,7 @@ export function ThreadList({
   readOnlyId,
   blocked = NO_BLOCKED,
   running = NO_RUNNING,
+  failed = NO_FAILED,
   pinned = NO_PINS,
   onTogglePin,
   searchRef,
@@ -187,6 +189,12 @@ export function ThreadList({
   blocked?: ReadonlySet<string>;
   /** Threads with a run this tab is carrying, by suffix. */
   running?: ReadonlySet<string>;
+  /**
+   * Threads whose newest turn failed, by suffix — read off the sidebar's shared
+   * audit poll (`threadOutcomes`), never a request per row. Unknown is not OK:
+   * a thread outside that read is simply unmarked.
+   */
+  failed?: ReadonlySet<string>;
   /** Pinned thread ids, from this browser's own store (`readPins`). */
   pinned?: ReadonlySet<string>;
   /** Pin or unpin a thread. Omit to hide the action. */
@@ -448,6 +456,8 @@ export function ThreadList({
     const label = labels.get(t.id) ?? { text: t.title, isId: false };
     const waiting = blocked.has(t.id);
     const live = running.has(t.id);
+    // A run going now outranks how the last one ended: it may be the retry.
+    const broke = failed.has(t.id) && !live && !waiting;
     const isPinned = pinned.has(t.id);
     const local = t.onServer === false;
     const readOnly = t.id === readOnlyId;
@@ -601,6 +611,13 @@ export function ThreadList({
                 )}
                 {live && !waiting && inGroup !== 'running' && (
                   <StateMark className="text-state-running">Running</StateMark>
+                )}
+                {/* After the two live states: it asks nothing of the reader now,
+                    but it is why someone coming back opens this row first. */}
+                {broke && (
+                  <StateMark data-slot="thread-failed" className="text-state-failed">
+                    Failed
+                  </StateMark>
                 )}
                 {t.id === heldId && (
                   <span data-slot="thread-held" className="shrink-0 font-medium">
@@ -962,9 +979,17 @@ export function ThreadList({
 }
 
 /** A state word with its dot, ahead of a row's metadata. */
-function StateMark({ className, children }: { className: string; children: ReactNode }) {
+function StateMark({
+  className,
+  children,
+  'data-slot': slot,
+}: {
+  className: string;
+  children: ReactNode;
+  'data-slot'?: string;
+}) {
   return (
-    <span className={cn('flex shrink-0 items-center gap-1', className)}>
+    <span data-slot={slot} className={cn('flex shrink-0 items-center gap-1', className)}>
       <span aria-hidden className="size-1.5 rounded-full bg-current" />
       {children} ·
     </span>

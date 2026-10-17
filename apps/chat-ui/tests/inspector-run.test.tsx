@@ -119,7 +119,12 @@ describe('the instrument and approvals', () => {
     const fetch = stub([]);
     mount();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Changes', 'Plans', 'Tools', 'Debug']);
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      'Changes',
+      'Plans',
+      'Tools · all threads',
+      'Debug',
+    ]);
     expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
     expect(readout().contains(screen.getByRole('tablist'))).toBe(false);
     expect(screen.getByRole('heading', { name: 'This thread' })).toBeTruthy();
@@ -129,11 +134,18 @@ describe('the instrument and approvals', () => {
     expect(fetch.mock.calls.some(([url]) => String(url).includes('/plans'))).toBe(false);
   });
 
+  /**
+   * In the tab's name, not only on its first line. The tab was "Tools", under a
+   * panel headed "This thread", and the line saying otherwise was a click away —
+   * so the name now carries the scope, and is heard as well as seen.
+   */
   it('labels the tool metrics as every thread’s', async () => {
     stub([]);
     mount();
-    await userEvent.click(screen.getByRole('tab', { name: 'Tools' }));
-    expect(await screen.findByText('All threads · last 60 minutes')).toBeTruthy();
+    const tab = screen.getByRole('tab', { name: 'Tools · all threads' });
+    expect(screen.queryByRole('tab', { name: 'Tools' })).toBeNull();
+    await userEvent.click(tab);
+    expect(await screen.findByText('Every thread · last 60 minutes')).toBeTruthy();
   });
 
   it('says why the tool metrics are empty on a thread that has run tools', async () => {
@@ -148,7 +160,7 @@ describe('the instrument and approvals', () => {
         },
       ] as ShellValue['turns'],
     });
-    await userEvent.click(screen.getByRole('tab', { name: 'Tools' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Tools · all threads' }));
     expect(
       await screen.findByText('No tool calls on any thread in the last 60 minutes.'),
     ).toBeTruthy();

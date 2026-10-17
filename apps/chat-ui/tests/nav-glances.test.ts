@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { errorCodeOf, eventHelp, recentFailures } from '../src/components/harness/activity';
+import {
+  ACTIVITY_FETCH,
+  failedThreads,
+  glanceWindow,
+  jobThreadOutcome,
+  mergeReads,
+  threadOutcomes,
+} from '../src/lib/harness-glances';
 import { draftGlance, glanceOf } from '../src/routes/harness';
 
 /**
@@ -87,30 +95,61 @@ describe('glanceOf', () => {
 /**
  * The Activity page's glance is bounded by time. Counted over the page's last sixty
  * events instead, one failure on a quiet tenant kept the rail red for weeks.
+ *
+ * The bound was a day until 2026-10-16, which is why these read in days now: a
+ * job that failed four days earlier — nearly all of a week's spend — left the
+ * glance blank while the Activity page led with it.
  */
 describe('recentFailures', () => {
   const now = Date.UTC(2026, 8, 27, 12);
   const hours = (h: number) => (now - h * 3_600_000) / 1000; // the harness sends seconds
 
-  it('counts failures and denials inside the last 24 hours only', () => {
+  it('counts failures and refusals inside the last week only', () => {
     const events = [
       { status: 'error', ts: hours(1) },
-      { status: 'denied', ts: hours(23) },
+      { status: 'denied', ts: hours(4 * 24) },
       { status: 'ok', ts: hours(2) },
-      { status: 'error', ts: hours(25) },
+      { status: 'error', ts: hours(7 * 24 + 1) },
     ];
     expect(recentFailures(events, now)).toBe(2);
   });
 
   it('clears once the last failure ages out, with nothing newer', () => {
-    expect(recentFailures([{ status: 'error', ts: hours(24.1) }], now)).toBe(0);
+    expect(recentFailures([{ status: 'error', ts: hours(7 * 24 + 0.1) }], now)).toBe(0);
   });
 
   /**
-   * One declined write put `Activity · 2 failed` in red on the rail: the
-   * approval's `policy_deny`, and the reply the harness marks `error` after it.
-   * Neither is a failure.
+   * The read is the newest sixty events, not a week of them. When it comes back
+   * full and its oldest event is younger than a week, the glance covers only that
+   * far back and says so, rather than offering a week it never looked at.
    */
+  it('says the stretch it covered when a full read does not reach a week back', () => {
+    const full = Array.from({ length: ACTIVITY_FETCH }, (_, i) => ({
+      status: 'ok',
+      ts: hours(3 * (i / ACTIVITY_FETCH)),
+    }));
+    expect(glanceWindow(full, now).span).toBe('3h');
+    expect(glanceWindow(full.slice(1), now).span).toBe('7d');
+    expect(glanceWindow([], now).span).toBe('7d');
+  });
+
+  /**
+   * The case that was missed live: a job's sixty newest events were four days of
+   * clean runs, and its failure five days back was in none of them. The failures
+   * read reaches it; merged with the everything read, each event counts once.
+   */
+  it('counts a failure only the failures read reaches, once', () => {
+    const busy = Array.from({ length: ACTIVITY_FETCH }, (_, i) => ({
+      id: `ok${i}`,
+      status: 'ok',
+      ts: hours(4 * 24 * (i / ACTIVITY_FETCH)),
+    }));
+    const failures = [{ id: 'old', status: 'error', ts: hours(5 * 24) }];
+    expect(recentFailures(busy, now)).toBe(0);
+    const covered = glanceWindow(failures, now);
+    expect(covered.span).toBe('7d');
+    expect(recentFailures(mergeReads(failures, busy, failures), now, covered.since)).toBe(1);
+  });
   it('does not count an approval denial, or the reply after it, as a failure', () => {
     const thread = { thread_id: 'default:t' };
     const denial = [
@@ -153,6 +192,76 @@ describe('recentFailures', () => {
       ),
     ).toBe(1);
   });
+});
+
+/**
+ * A thread row's *Failed* mark and a job's outcome read each thread's newest turn
+ * off the glance's own read — no request per row — so they cannot disagree with
+ * the glance about what failed.
+ */
+describe('threadOutcomes', () => {
+  const now = Date.UTC(2026, 8, 27, 12);
+  const at = (min: number) => (now - min * 60_000) / 1000;
+  const e = (thread: string, min: number, over: Record<string, unknown> = {}) => ({
+    event_type: 'tool_call',
+    status: 'ok',
+    ts: at(min),
+    ...over,
+    payload: { thread_id: `default:${thread}`, ...((over.payload as object) ?? {}) },
+  });
+
+  it('marks a thread whose newest turn failed, and not one that has run cleanly since', () => {
+    const events = [
+      // `broke`: one turn, a call that broke.
+      e('broke', 30, { event_type: 'user_input' }),
+      e('broke', 29, { status: 'error' }),
+      // `mended`: failed, then asked again and went fine.
+      e('mended', 60, { event_type: 'user_input' }),
+      e('mended', 59, { status: 'error' }),
+      e('mended', 20, { event_type: 'user_input' }),
+      e('mended', 19),
+      // `gated`: an approval said no — not a failure.
+      e('gated', 10, { event_type: 'user_input' }),
+      e('gated', 9, {
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload: { control: 'approvals' },
+      }),
+    ];
+    const outcomes = threadOutcomes(events, now);
+    expect([...failedThreads(outcomes)]).toEqual(['broke']);
+    expect(outcomes.get('mended')?.failed).toBe(false);
+    expect(outcomes.get('gated')?.failed).toBe(false);
+  });
+
+  it('knows nothing of a thread outside the window: unknown, never OK', () => {
+    const outcomes = threadOutcomes([e('old', 8 * 24 * 60, { status: 'error' })], now);
+    expect(outcomes.has('old')).toBe(false);
+  });
+
+  it('gives a job its thread’s word only for the run the row is about', () => {
+    const outcomes = threadOutcomes(
+      [e('job:digest', 9, { event_type: 'user_input' }), e('job:digest', 8, { status: 'error' })],
+      now,
+    );
+    const ranAt = now - 10 * 60_000;
+    expect(jobThreadOutcome({ name: 'digest', last_run_at: ranAt }, outcomes)).toBe('failed');
+    // The firing after it has not reached the read yet.
+    expect(jobThreadOutcome({ name: 'digest', last_run_at: now - 60_000 }, outcomes)).toBeNull();
+    // A fresh thread per run is a thread this page cannot name.
+    expect(
+      jobThreadOutcome(
+        { name: 'digest', last_run_at: ranAt, payload: { fresh_thread: true } },
+        outcomes,
+      ),
+    ).toBeNull();
+  });
+
+  /**
+   * One declined write put `Activity · 2 failed` in red on the rail: the
+   * approval's `policy_deny`, and the reply the harness marks `error` after it.
+   * Neither is a failure.
+   */
 });
 
 /**

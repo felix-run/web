@@ -25,22 +25,23 @@ import {
   useRef,
 } from 'react';
 import { Link, Navigate, NavLink, Outlet, useMatch } from 'react-router';
-import { listAudit, listJobs, listSkillReviewQueue } from '@/api';
+import { listJobs, listSkillReviewQueue } from '@/api';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { DOCS_ORIGIN, PageBack, PageDocs, useMeasure } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
 import { PaneColumn, PaneOverlay, type PaneZoneProps } from '@/components/pane/pane-zone';
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { WORKSPACE_INLINE } from '@/hooks/use-rails';
+import { useRecentAudit, useRecentErrors } from '@/hooks/use-recent-audit';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { landedPaths } from '@/lib/changes';
 import {
-  ACTIVITY_FETCH,
   ACTIVITY_GLANCE_SPAN,
-  AUDIT_POLL_KEY,
   failing,
+  glanceWindow,
   JOBS_POLL_KEY,
+  mergeReads,
   recentFailures,
   SKILL_QUEUE_GLANCE_LIMIT,
   SKILL_QUEUE_POLL_KEY,
@@ -243,7 +244,8 @@ interface Glance {
    */
   age?: string;
   /**
-   * The window a count covers, drawn beside it — `24h` — so the rail's number
+   * The window a count covers, drawn beside it — `7d`, or `3h` when the read
+   * reached back only that far — so the rail's number
    * does not read as a contradiction of the page's, which counts a longer one.
    */
   span?: string;
@@ -264,9 +266,10 @@ interface Glance {
  */
 /**
  * The address a nav row links to. Activity's glance counts failures in the last
- * 24 hours, and its link opened the page on "since your last visit" — often a
- * minute ago, so the click on "8 failed" landed on "Nothing ran". While the glance
- * says something, the link carries the window it was counted in.
+ * week (or as far back as its read reaches), and its link opened the page on
+ * "since your last visit" — often a minute ago, so the click on "8 failed" landed
+ * on "Nothing ran". While the glance says something, the link carries the week,
+ * which holds every window the glance can have counted in.
  */
 export function navSearch(path: HarnessPath, search: string, glance: Glance | undefined): string {
   if (path !== 'activity' || !glance) return search;
@@ -327,19 +330,36 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
 }
 
 /**
- * Activity's failures in the last day, on their own. Debug off this is the one
- * harness glance the sidebar always keeps: Activity is the page that answers
- * "what happened while I was away", which is the daily surface's question too.
+ * Activity's failures in the last week, on their own — or over the stretch the
+ * reads reached, which the glance's span says (`glanceWindow`). Everyday this is
+ * the one harness glance the sidebar always keeps: Activity is the page that
+ * answers "what happened while I was away", which is the daily surface's
+ * question too.
+ *
+ * Two reads, merged: the newest failures, which reach back the week, and the
+ * newest events of every kind, which hold the turns around them and a control's
+ * refusals (`AUDIT_ERRORS_POLL_KEY` says why one was not enough). The window is
+ * the failures read's, since that is the one counting back that far.
  */
 export function useActivityGlance(enabled = true): Glance | undefined {
-  const audit = useSharedPoll(AUDIT_POLL_KEY, () => listAudit({ limit: ACTIVITY_FETCH }), {
-    enabled,
-    intervalMs: 30_000,
-  });
-  // Measured against the clock at render, which the 30s poll re-runs, so a
-  // failure ages out within a tick of turning 24 hours old.
-  const failedEvents = recentFailures(audit.data ?? [], Date.now());
-  return glanceOf(audit, failedEvents, 'failed', 'activity', ACTIVITY_GLANCE_SPAN);
+  const audit = useRecentAudit(enabled);
+  const errors = useRecentErrors(enabled);
+  // Measured against the clock at render, which the polls re-run, so a failure
+  // ages out within a tick of turning a week old.
+  const now = Date.now();
+  const covered = glanceWindow(errors.data ?? audit.data ?? [], now);
+  const failed = recentFailures(mergeReads(errors.data, audit.data), now, covered.since);
+  // One reading of two polls: answered only when both have, and failed when either
+  // did, with the older of the two answers as its age.
+  const poll = {
+    data: audit.data && errors.data ? audit.data : undefined,
+    error: audit.error ?? errors.error,
+    lastOkAt:
+      audit.lastOkAt != null && errors.lastOkAt != null
+        ? Math.min(audit.lastOkAt, errors.lastOkAt)
+        : null,
+  };
+  return glanceOf(poll, failed, 'failed', 'activity', covered.span);
 }
 
 /**

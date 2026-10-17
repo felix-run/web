@@ -797,7 +797,7 @@ the `>` are always neutral ink.
 `rounded-full`, 3px inset, 36px) and the active tab as a sheet-coloured pill with `shadow-sheet`,
 semibold. An inactive tab is `muted-foreground` in both themes (5.5:1 on the track in light, 7.7:1
 in dark, measured at 12px); it was `foreground/60`, 4.24:1, under AA at the size every caller
-uses. The instrument's tabs (Changes, Plans, Tools) use it at 12px, as do the skill page's and the
+uses. The instrument's tabs (Changes, Plans, Tools · all threads) use it at 12px, as do the skill page's and the
 skill editor's. `ViewSwitch` on
 `/harness` pages is the same shape at 32px; it is a `role="group"` of `aria-pressed` buttons, not
 tabs, because it switches the input above a list its modes share.
@@ -826,7 +826,7 @@ is three runs of at most four under visible 12px labels, named for the question 
 *What happened* (Activity, Jobs, Workflows), *What it knows* (Memory, Documents, Skills) and *How it's set up*
 (Agent, Manifests, Eval, GitHub). The 768–1024 rail draws its rows in the sidebar's grammar, on the
 ground with no rule beside it, since there it stands in for the sidebar. The rail carries exactly three
-glances, each only when non-zero: `Jobs · N failing` and `Activity · N failed` in `state-failed`,
+glances, each only when non-zero: `Jobs · N failing` and `Activity · N failed · 7d` (or the shorter span its read covered) in `state-failed`,
 and `Skills · N waiting` in `state-blocked`. Absence is the all-clear, so it is drawn only for a
 read that answered: a failed read shows a muted `unchecked`, and a count kept from an earlier read
 carries its age (`3 failed · 2m`). Every page header ends in a quiet `Docs ↗` link, checked
@@ -856,8 +856,11 @@ at fixed cents (`< $0.01`), drawn only when a thread on screen has a figure. Out
 `Failed` > `Refused` (red dot and word) > `Denied` (outlined muted chip, **no dot**) > `OK`; a
 thread whose only miss was a denial reads `Denied`, and the reply the harness marks `error` after a
 denial reads *after a denial* and is not a second failure. The header value carries the account
-(`$1.41 · 2 threads · 1 with failures`); below it, one muted when-line says the window and, when
-any, how many threads had a call denied (not a failure, so not in the red header). There is no
+(`$1.41 · 2 threads · 1 with failures`); below it, one muted when-line says the window, then
+**the failures and their share of the spend** (`1 thread failed after 943 turns — $27.17 of
+$27.60.`, `≥` where a figure is a floor), then, when any, how many threads had a call denied (not
+a failure, so last and never red). It carried the denials alone once, and two cents of declined
+writes read above the job that held nearly all the week's money. There is no
 Figure sentence repeating the header. Explanatory prose on the page is held to `70ch`. Opened, a
 thread shows its turns in the order they happened, each headed by what was asked (`h3`) and by
 clock time; inside a turn a run of three or more routine events folds to one line, and a run of
@@ -989,27 +992,32 @@ choosing a kind in the palette closes it and opens the new step there.
 
 On the ground, with no border: the sheet's edge is the divider. **New chat** (the ink pill), then
 **Threads**, then the lower region, with hairline separators between sections. The lower region has
-**one order** on every address and in both modes: **Harness**, then the workspace. In debug
-Harness is all ten destinations (never folded on `/harness`, where they are the page's own
-navigation). Debug off it is the same frame on every address, `/harness` included — the heading, *What happened* and **Activity** with its
+**one order** on every address and in both modes: **Harness**, then the workspace. In harness
+view Harness is all ten destinations (never folded on `/harness`, where they are the page's own
+navigation), each run folding on its own under its label — *How it's set up* folded until opened,
+and the run holding the page on screen always open, its chevron hidden and its toggle off. Debug off it is the same frame on every address, `/harness` included — the heading, *What happened* and **Activity** with its
 failure glance, and under *What it knows* a **Skill drafts** row with the amber `N waiting`
 glance while drafts wait (or while the reader is on Skills), the current one marked — then the
 workspace. On `/harness` the workspace is folded by default, header only, its mount controls
 inside the fold (that fold is not stored). Arriving moves nothing: the rows do not change. Collapsed, debug off shows those one or two icons below Workspace.
 
 Threads is a heading and a **pill search field** (`Input size="lg"`: 36px, `sidebar-accent` face,
-`input` edge, 14px) that stay put above a list that scrolls inside itself. Workspace and Harness are
-one region below it at a **fixed** height — `min(40svh, 19rem)` with debug off, for its two rows
-and an open workspace; in debug `clamp(40svh, 32.5rem, 60svh)` — 32.5rem is what the ten
-destinations take (the folded workspace's header is a short scroll below), and a fixed height means the region does not
-grow upward when its rows change between addresses (on a thread with debug off it leaves room
-under the workspace, the accepted cost), with one scroll of its own; the sidebar itself
-never scrolls when expanded. Workspace's *Files* is a disclosure with its entry count, folded
+`input` edge, 14px) that stay put above a list that scrolls inside itself. **The threads come
+first**: the list is what the sidebar is opened for. Workspace and Harness are one region below
+it with one scroll of its own — everyday at a fixed `min(40svh, 13rem)` for its three rows at
+most; in harness view **sized to its content and capped at 35svh**, holding at least the default
+layout's height (`min(35svh, 25.5rem)`) so a fold never drops the row under the pointer, and
+never changing its rows with the address (a run unfolded by arriving on its page stays unfolded).
+At 1456×997 that is 349px and eight full thread rows; it was 520px and four. The Workspace row
+sticks to the region's bottom edge on a hairline, so the harness's rows scroll under it rather
+than taking it out of view. The sidebar itself never scrolls when expanded. Workspace's *Files* is a disclosure with its entry count, folded
 until opened and remembered. The thread groups rank by state, then recency: *Waiting on you*
 (`state-blocked`, dot and words), *Running* (`state-running`), *Pinned* (labelled *this browser*),
 *Today*, *Yesterday*, *Previous 7 days*, and *Older*, which starts folded and, open, is cut by
 month. Group labels are 12px medium muted on the ground, 28px tall, and stick to the top of the
-list while their rows scroll under them. Empty groups are not drawn.
+list while their rows scroll under them. Empty groups are not drawn. A row's second line leads with
+its state, dot and word: *Waiting on you*, *Running*, or **Failed** (`state-failed`) when the
+thread's newest turn broke — the last only when neither of the others holds.
 
 **Two label weights, one edge.** The sidebar's three *section* headings (Threads, Workspace,
 Harness) are 12px semibold; every *subgroup* label inside them (the date groups, Older, Files,
@@ -1072,7 +1080,7 @@ tokens at all. A tool card's open body leads with its call id in debug.
 
 The top of the instrument, above its tabs, under the 18px "This thread" heading (no rule beneath
 it now). It was "This run", which the readout's tokens (summed over the thread) and the Tools tab
-(every thread, an hour) contradicted; a tab whose scope is wider says so on its own first line. It is a **stone tile** inset 8px from the instrument's sides (`rounded-2xl bg-ground`,
+(every thread, an hour) contradicted; a tab whose scope is wider says so in its name — *Tools · all threads*, the scope muted — as well as on its first line. It is a **stone tile** inset 8px from the instrument's sides (`rounded-2xl bg-ground`,
 `px-3.5 py-3`), because the run's state is the instrument's headline. An 8px dot and the **state
 word** as a Statement (18px semibold) in the ramp colour (*Waiting on you*, *Running*, *Rejoining
 thread*, *Failed*, *Idle*), then a stopwatch (`for 3:07` live, `last run 42s` at rest) in tabular

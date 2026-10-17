@@ -33,7 +33,12 @@ const job = (over: Record<string, unknown> = {}) => ({
 
 async function sheet(
   jobs: unknown[] = [],
-  opts: { runJobNow?: () => Promise<unknown>; runs?: unknown[]; spend?: unknown } = {},
+  opts: {
+    runJobNow?: () => Promise<unknown>;
+    runs?: unknown[];
+    spend?: unknown;
+    audit?: unknown[];
+  } = {},
 ) {
   const upsertJob = vi.fn().mockResolvedValue(job());
   const runJobNow = vi.fn(opts.runJobNow ?? (() => Promise.resolve({})));
@@ -45,6 +50,8 @@ async function sheet(
     deleteJob: vi.fn(),
     // `null` is a harness without `/usage/threads`: the rows say nothing about spend.
     listUsageByThread: vi.fn().mockResolvedValue(opts.spend ?? null),
+    // The audit read the sidebar's Activity glance polls; a job's thread outcome rides it.
+    listAudit: vi.fn().mockResolvedValue(opts.audit ?? []),
   }));
   const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
   render(
@@ -141,6 +148,7 @@ describe('a failed read after a good one', () => {
       upsertJob: vi.fn(),
       deleteJob: vi.fn(),
       listUsageByThread: vi.fn().mockResolvedValue(null),
+      listAudit: vi.fn().mockResolvedValue([]),
     }));
     const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
     render(
@@ -328,6 +336,76 @@ describe('what a job costs', () => {
     await sheet([job()]);
     await waitFor(() => expect(screen.getByText('nightly-digest')).toBeTruthy());
     expect(screen.queryByText(/· 24h/)).toBeNull();
+  });
+});
+
+/**
+ * The scheduler's `last_status` says the firing returned. A job whose turn ended
+ * on a broken call read `last ● OK` beside a thread the Activity page led with as
+ * failed. The thread's newest turn, from the audit read the sidebar already
+ * polls, now says what the run did — and only for the run the row is about.
+ */
+describe('how the last run went on its thread', () => {
+  const ranAt = Date.now() - 10 * 60_000;
+  const turn = (status: string, at = ranAt) => [
+    {
+      id: `u${at}`,
+      event_type: 'user_input',
+      status: 'ok',
+      ts: (at + 1_000) / 1000,
+      payload: { thread_id: 'default:job:nightly-digest' },
+    },
+    {
+      id: `c${at}`,
+      event_type: 'tool_call',
+      status,
+      ts: (at + 5_000) / 1000,
+      payload: { thread_id: 'default:job:nightly-digest', tool: 'run' },
+    },
+  ];
+
+  it('says the last run failed when its turn did, and links to its failures', async () => {
+    await sheet([job({ last_status: 'ok', last_run_at: ranAt })], { audit: turn('error') });
+    const outcome = await waitFor(() => {
+      const el = document.querySelector('[data-slot="job-thread-outcome"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(outcome.textContent).toContain('Failed');
+    expect(screen.queryByText('OK')).toBeNull();
+    const link = document.querySelector('[data-slot="job-thread-failures"]') as HTMLAnchorElement;
+    expect(link.textContent).toBe('1 failed · 7d');
+    expect(link.getAttribute('href')).toBe(
+      '/harness/activity?since=7d&failed=1&thread=nightly-digest',
+    );
+  });
+
+  it('keeps the scheduler’s word when the turn went fine, or belongs to an older run', async () => {
+    await sheet(
+      [
+        job({ last_status: 'ok', last_run_at: ranAt }),
+        // Its newest audited turn is a day older than its last firing: unknown.
+        job({ name: 'weekly', last_status: 'ok', last_run_at: ranAt }),
+      ],
+      {
+        audit: [
+          ...turn('ok'),
+          ...turn('error', ranAt - 86_400_000).map((e) => ({
+            ...e,
+            id: `w${e.id}`,
+            payload: { ...e.payload, thread_id: 'default:job:weekly' },
+          })),
+        ],
+      },
+    );
+    await waitFor(() => expect(screen.getAllByText('OK')).toHaveLength(2));
+    expect(document.querySelector('[data-slot="job-thread-outcome"]')).toBeNull();
+    // But the week behind it is said: `weekly` failed a day ago and its `last ● OK`
+    // alone hid that, which is the row the Activity page was leading with.
+    const failures = [...document.querySelectorAll('[data-slot="job-thread-failures"]')];
+    expect(failures.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['1 failed · 7d', '/harness/activity?since=7d&failed=1&thread=weekly'],
+    ]);
   });
 });
 
