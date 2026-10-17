@@ -258,7 +258,6 @@ export function SectionBody({
   failures?: number;
   children: React.ReactNode;
 }) {
-  const chrome = useContext(PanelMode);
   // A failure waiting cures is the shell's to say, once (`harness-health.ts`):
   // the rows stay, and nothing here turns red over them.
   const transient = isTransientFailure(error);
@@ -348,14 +347,10 @@ export function SectionBody({
           <Skeleton className="h-8 w-full rounded-md" />
         </div>
       )}
-      {/* A page frames its empty state; a row or a rail's tab keeps it to a line. */}
-      {!loading &&
-        empty &&
-        (chrome === 'disclosure' || chrome === 'tab' ? (
-          <p className="text-sm text-muted-foreground">{emptyText}</p>
-        ) : (
-          <PageEmpty>{emptyText}</PageEmpty>
-        ))}
+      {/* One line in every chrome, now that a page's is no longer a tray: the Activity
+          page draws through this outside a panel provider, and its sentence ran ~100
+          characters wide until the measure was `PageEmpty`'s too. */}
+      {!loading && empty && <PageEmpty>{emptyText}</PageEmpty>}
       {!loading && !empty && children}
     </>
   );

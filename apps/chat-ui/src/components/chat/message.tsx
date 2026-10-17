@@ -59,8 +59,15 @@ export function Message({
   verbose = false,
   usage = false,
   debug = false,
+  continues = false,
 }: {
   turn: Turn;
+  /**
+   * The turn above is an assistant turn too: this is the same reply, carried on after its
+   * tool calls (the log keeps each model message as its own turn). Drawn without a second
+   * "Felix" — one reply, one label.
+   */
+  continues?: boolean;
   /** This message's other versions, when it was edited. */
   branch?: BranchPoint;
   /** Show another version. Absent while a run is live. */
@@ -150,20 +157,25 @@ export function Message({
   // would be conditional, and reading a turn's plan calls is cheap.
   const plans = plansInTurn(turn.tools);
   const toolCount = turn.tools?.length ?? 0;
+  const live = streaming && !empty && !turn.runStatus;
+  const counted = verbose && toolCount > 0;
   return (
-    <div className="group flex w-full flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-foreground">Felix</span>
-        {streaming && !empty && !turn.runStatus && (
-          <span className="text-xs text-muted-foreground">streaming</span>
-        )}
-        {verbose && toolCount > 0 && (
-          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
-            {toolCount} tool{toolCount === 1 ? '' : 's'}
-          </span>
-        )}
-        {label && <LabelChip label={label} />}
-      </div>
+    <div
+      className="group flex w-full flex-col gap-3"
+      {...(continues ? { 'data-continues': '' } : {})}
+    >
+      {(!continues || live || counted || label) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!continues && <span className="text-xs font-semibold text-foreground">Felix</span>}
+          {live && <span className="text-xs text-muted-foreground">streaming</span>}
+          {counted && (
+            <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+              {toolCount} tool{toolCount === 1 ? '' : 's'}
+            </span>
+          )}
+          {label && <LabelChip label={label} />}
+        </div>
+      )}
 
       {/* Keyed by position: segments are append-only while a turn streams — a card
           opens at the end of the prose so far, so nothing already rendered shifts. */}

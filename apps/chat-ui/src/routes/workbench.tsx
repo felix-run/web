@@ -233,6 +233,11 @@ export function Workbench() {
                   <Message
                     key={t.id}
                     turn={t}
+                    // One reply can be several turns — the model's message that called
+                    // the tools, then the one after them — and each drew its own "Felix".
+                    // The rows stay one per turn (rows are named by position), so only the
+                    // label goes.
+                    continues={t.role === 'assistant' && turns[i - 1]?.role === 'assistant'}
                     streaming={streaming && isLast}
                     {...(t.eventId && branches?.has(t.eventId)
                       ? { branch: branches.get(t.eventId) }

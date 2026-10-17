@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivityLedger, repricedRoutes } from '../src/components/harness/activity-ledger';
-import { middleTruncate } from '../src/lib/format';
+import { clockTime, middleTruncate } from '../src/lib/format';
 import {
   buildLedger,
   cutTurns,
@@ -718,6 +718,45 @@ describe('the ledger page', () => {
     await user.click(within(turn).getByRole('button', { name: /edit_file/ }));
     const detail = await screen.findByText('Payload');
     expect(within(detail.parentElement as HTMLElement).getByText('error_code')).toBeTruthy();
+  });
+
+  /**
+   * A message and its reply in one minute printed the same `10:42 AM` twice, under a
+   * heading that already said it. The turn's time is said once; a row at a later minute
+   * still says its own, and every row keeps the exact stamp in its `title`.
+   */
+  it("says a turn's time once, and a row's only when it differs", async () => {
+    const user = userEvent.setup();
+    const at = new Date(now - 30 * MIN);
+    at.setSeconds(5, 0);
+    const start = at.getTime();
+    const thread = { thread_id: 'default:thread-a' };
+    stubHarness({
+      events: [
+        ev({
+          id: 'u',
+          ts: start,
+          event_type: 'user_input',
+          payload: { user_input: 'hi', ...thread },
+        }),
+        ev({ id: 'c', ts: start + 20_000, payload: { tool: 'read', ...thread } }),
+        ev({ id: 'f', ts: start + 3 * MIN, event_type: 'final_response', payload: thread }),
+      ],
+    });
+    mount();
+    await user.click(await rowFor(/Changelog cleanup/));
+    const turn = (await screen.findByRole('heading', { name: 'hi' })).closest(
+      'section',
+    ) as HTMLElement;
+    const stamps = [...turn.querySelectorAll('span[title]')].filter((s) =>
+      /^\d{4}-\d\d-\d\dT/.test(s.getAttribute('title') ?? ''),
+    );
+    // The heading's, the call's slot left blank, the reply's own later minute.
+    expect(stamps.map((s) => s.textContent)).toEqual([
+      clockTime(start),
+      '',
+      clockTime(start + 3 * MIN),
+    ]);
   });
 });
 

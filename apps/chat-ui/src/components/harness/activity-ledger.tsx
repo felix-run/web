@@ -282,7 +282,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
               />
               <Filters failuresOnly={failuresOnly} layer={layer} onChange={setFilters} />
               {shown.length === 0 ? (
-                <p className="max-w-[70ch] py-2 text-sm text-muted-foreground">
+                <p className="max-w-[28rem] py-2 text-sm text-muted-foreground">
                   {layer === 'approvals'
                     ? 'No thread in this window had a call denied at an approval.'
                     : layer !== 'any'
@@ -763,7 +763,7 @@ function ThreadDetail({
 
   return (
     <div className="mb-3 ml-5 border-l border-border/60 pl-3">
-      <p className="max-w-[70ch] text-sm text-muted-foreground">
+      <p className="max-w-[28rem] text-sm text-muted-foreground">
         {t.spend ? (
           <>
             <span className="font-mono tabular-nums text-foreground">
@@ -797,7 +797,7 @@ function ThreadDetail({
         </p>
       )}
       {t.turns.length === 0 && t.loose.length === 0 && (
-        <p className="mt-2 max-w-[70ch] text-sm text-muted-foreground">
+        <p className="mt-2 max-w-[28rem] text-sm text-muted-foreground">
           It spent in this window, but every audited event on it is older than the window.
         </p>
       )}
@@ -884,6 +884,7 @@ function TurnBlock({
         {/* The `user_input` is the heading; drawing it again as a row said it twice. */}
         <Segments
           events={turn.events.filter((e) => !(e.event_type === 'user_input' && turn.prompt))}
+          headedAt={clockTime(turn.startTs)}
           outcomes={turn.outcomes}
           openEvent={openEvent}
           onToggle={onToggle}
@@ -899,11 +900,14 @@ const OPEN_TURN_MS = 15 * 60_000;
 /** A list of events as drawn: routine runs folded, repeated failures counted. */
 function Segments({
   events,
+  headedAt,
   outcomes,
   openEvent,
   onToggle,
 }: {
   events: AuditEvent[];
+  /** The turn heading's clock time, which a row in the same minute does not repeat. */
+  headedAt?: string;
   /** Each event's outcome, read in its turn. */
   outcomes: Outcomes;
   openEvent: string | null;
@@ -919,6 +923,7 @@ function Segments({
             outcome={outcomes.get(seg.event.id) ?? 'ok'}
             hideThread
             clock
+            headedAt={headedAt}
             open={openEvent === seg.event.id}
             onToggle={() => onToggle(seg.event.id)}
           />
@@ -927,6 +932,7 @@ function Segments({
             key={seg.id}
             kind={seg.kind}
             events={seg.events}
+            headedAt={headedAt}
             outcomes={outcomes}
             openEvent={openEvent}
             onToggle={onToggle}
@@ -947,12 +953,14 @@ function Segments({
 function FoldedRun({
   kind,
   events,
+  headedAt,
   outcomes,
   openEvent,
   onToggle,
 }: {
   kind: 'fold' | 'repeat';
   events: AuditEvent[];
+  headedAt?: string;
   outcomes: Outcomes;
   openEvent: string | null;
   onToggle: (id: string) => void;
@@ -974,6 +982,7 @@ function FoldedRun({
               outcome={outcomes.get(e.id) ?? 'ok'}
               hideThread
               clock
+              headedAt={headedAt}
               open={openEvent === e.id}
               onToggle={() => onToggle(e.id)}
             />
@@ -1057,7 +1066,7 @@ function Caveats({
   ].filter(Boolean);
   if (lines.length === 0) return null;
   return (
-    <div className="mt-3 max-w-[70ch] space-y-1 text-sm text-muted-foreground">
+    <div className="mt-3 max-w-[28rem] space-y-1 text-sm text-muted-foreground">
       {lines.map((l) => (
         <p key={l}>{l}</p>
       ))}
@@ -1103,7 +1112,7 @@ function SpendByModel({ summary, recent }: { summary: UsageSummary; recent: Usag
         // Foreground, not red: an unpriced model is a gap in the pricing catalog,
         // not something that failed. Said in full because the consequence — a
         // spending cap that fails open — is one an operator acts on.
-        <p className="mt-2 max-w-[70ch] text-sm text-foreground">
+        <p className="mt-2 max-w-[28rem] text-sm text-foreground">
           {totals.unpriced} {totals.unpriced === 1 ? 'call is' : 'calls are'} metered but unpriced —
           the model has no entry in the pricing catalog, so its spend counts as zero and{' '}
           <code className="font-mono">limits.max_cost_usd</code> fails open for it.

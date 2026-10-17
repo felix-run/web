@@ -303,7 +303,7 @@ under 0.01 at hue 55–75, so the warmth reads as stone rather than paper.
 
 - **Stone Ground** (`ground`; dark `oklch(0.17 0.006 60)`): the shell behind everything, and the
   sidebar. Also the tone of every surface that *holds* things on the sheet: a user turn, the run
-  readout, the Activity ledger's tray, a page's empty state, the tab and view-switch tracks, the
+  readout, the Activity ledger's tray, the tab and view-switch tracks, the
   page icon tile. Light `muted` is the same value.
 - **Sheet** (`background`; dark `oklch(0.212 0.007 60)`): the floating surface that holds the
   header, the transcript, the instrument and every `/harness` page. Foreground on it measures
@@ -526,7 +526,8 @@ is a way back), a link and never a heading (the page's own `h2` names the destin
 not repeat it), and the run state before it is that thread's. Before the controls sits
 the **attention line** (below). On the right: New chat, only where the sidebar is a drawer, and
 a plus alone below `sm`; the instrument toggle, in harness view only; and one ellipsis menu named
-**Session**: *Session* (Continue run, Copy thread id), *View* (three radio items — Everyday,
+**Session**: *Session* (Continue run, Copy thread id; on a thread with nothing to pick up,
+Continue run follows Copy thread id, disabled, with its reason on a 12px muted second line), *View* (three radio items — Everyday,
 Harness view, Harness + debug — each with a 12px muted second line naming what it adds), then *Theme* as Light/Dark/System radio items. On `/harness` the menu
 is named **View** and holds View and Theme. Thinking is in the composer.
 
@@ -677,7 +678,7 @@ The roles, as the code uses them, run from what you press to what you read:
   their active pills, state dots, the scrollbar thumb.
 - **22px (`2xl`)**: the soft objects a person reads or decides on. The floating sheet, the
   composer and its slash menu, a user turn, a waiting approval, the run readout, the Activity
-  ledger's tray and the spend table's tray, a page's empty state; and, as vendored, the select,
+  ledger's tray and the spend table's tray; and, as vendored, the select,
   command and hover-card popovers.
 - **18px (`xl`)**: an object *in* something. A tool card, a plan card, a starter card, a queued
   message, the watching banner, the `ui_request` banner, a ledger tile, the page icon tile, the
@@ -814,8 +815,11 @@ the pane is narrow. A page whose value would need a request of its own shows non
 came back at its fetch cap reads `50+`. Every page's body **and** its header row are held to
 `READING_MEASURE` (`max-w-3xl`) and centred; `<Panel fullBleed>` is the opt-out, and only
 the Workflows canvas takes it (a graph is not read at a measure). Below the header a page is divided into `PageSection`s (an `h3` at 16px semibold, never a
-bordered box) and label/value pairs are a `Facts` grid. An empty page is a stone panel
-(`rounded-2xl bg-ground`) with one muted sentence. `/harness` looks at its own agent (`?agent=`),
+bordered box) and label/value pairs are a `Facts` grid (a 13rem label column at a page's measure,
+so `Approval workspace-write` stays on one line; an id in a label never breaks). An empty page
+is one muted line, left-aligned where the first row would sit (`PageEmpty`, held to ~70
+characters): no tray, no frame, its copy and any action kept (2026-10-16; the 160px stone tray it
+replaced read as the biggest object on an empty page). `/harness` looks at its own agent (`?agent=`),
 and the **picker lives only in the headers of the pages it scopes** (Skills, Eval, Agent). The nav
 is three runs of at most four under visible 12px labels, named for the question each answers:
 *What happened* (Activity, Jobs, Workflows), *What it knows* (Memory, Documents, Skills) and *How it's set up*
@@ -1084,6 +1088,8 @@ stopwatch is not.
   side, not coloured, and there is no avatar. Its edit field is a `rounded-xl` field on the sheet.
 - **Assistant turn:** a "Felix" label in 12px semibold foreground, then prose, reasoning and tool
   cards interleaved in the order they happened, then a mono usage line. No avatar, no surface.
+  **One reply, one label**: an assistant turn straight after another (the log keeps the message
+  that called the tools and the one after them as two) draws no second "Felix" (2026-10-16).
 - **Reasoning:** a collapsed row, never prose. While it streams, the 6px `state-running` dot
   pulses, *Thinking* sits in 12px medium `state-running`, then a stopwatch and a word count in
   tabular mono, with one muted 14px line of the **newest** reasoning beneath it on the reasoning's
@@ -1112,7 +1118,8 @@ stopwatch is not.
   (the code block's own palette, not the state ramp) with a copy control, capped at 16rem. A
   shell result's stdout and stderr each sit in a terminal panel on the code surface.
 - **A plan is a card in the turn.** `rounded-xl` with a `border/60` hairline, no fill. Title and
-  goal, `3 of 7 done` in mono as the header's value, then the steps: an icon in the state ramp
+  goal, `3 of 7 done` in mono as the header's value (on a card under 28rem the chips wrap under
+  the goal rather than squeezing it), then the steps: an icon in the state ramp
   beside the agent's own status word, never the colour alone.
 - **An edited message says it has versions.** `‹ 2 of 3 ›` in 12px mono beside *You*.
 - **A labelled turn is a restore point.** After it, a bookmark, the label and *Restore*, then a
@@ -1133,8 +1140,11 @@ stopwatch is not.
   Plain text wraps with `wrap-anywhere`; assistant prose uses `wrap-break-word`, so a table or a
   code block keeps its natural width and scrolls inside its own box.
 - **Empty thread:** a greeting, then the readout. Centred in the column at `max-w-3xl`: the
-  Display headline "What do you want to work on?", a 16px muted sentence naming the agent (either
-  replaced by the manifest's `felix.greeting`), then the agent's starter prompts as a two-column
+  Display headline "What do you want to work on?", a 16px muted sentence naming the agent held to
+  ~70 characters (`max-w-[32rem]`) (either replaced by the manifest's `felix.greeting` — except
+  for an agent whose tools work in the browser while no folder is mounted, whose greeting is about
+  a folder that is not there: the client's headline stands, and the sentence says the tools work
+  in the tab's own storage), then the agent's starter prompts as a two-column
   grid of `rounded-xl` outline cards (`border-border/60`, `bg-solid-card/40`, no shadow): title
   in 14px medium, the prompt beneath in 12px muted, clamped to two lines. They come from
   `felix.starters`, fall back to a built-in table, and are disabled while a run streams. Under the
