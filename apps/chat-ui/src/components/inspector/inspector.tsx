@@ -78,10 +78,14 @@ const SECTIONS = [
   // Plans draws its own line: whether it covers this thread or every thread is
   // only known once the harness has answered.
   { id: 'plans', label: 'Plans' },
-  { id: 'metrics', label: 'Tools', window: 'All threads · last 60 minutes' },
+  // The one tab whose rows are not this thread's: `/audit/metrics` takes no
+  // thread filter. Said in the tab's own name (2026-10-16), not only on its first
+  // line — under a panel headed "This thread", a tab called "Tools" promised this
+  // thread's tools, and the correction was one click away.
+  { id: 'metrics', label: 'Tools', scope: 'all threads', window: 'Every thread · last 60 minutes' },
   // Draws its own line beside Copy report, which is the tab's focal action.
   { id: 'debug', label: 'Debug' },
-] as const satisfies readonly { id: SectionId; label: string; window?: string }[];
+] as const satisfies readonly { id: SectionId; label: string; scope?: string; window?: string }[];
 
 export function Inspector({
   open,
@@ -143,9 +147,14 @@ export function Inspector({
           className="min-h-0 flex-1 gap-0"
         >
           <TabsList className="mx-2 mt-1.5 w-auto shrink-0">
-            {sections.map(({ id, label }) => (
-              <TabsTrigger key={id} value={id} className="text-xs">
-                {label}
+            {sections.map((section) => (
+              <TabsTrigger key={section.id} value={section.id} className="text-xs">
+                {section.label}
+                {/* Muted, so the strip still reads as four names; part of the
+                    tab's accessible name, so it is heard as well as seen. */}
+                {'scope' in section && (
+                  <span className="font-normal text-muted-foreground"> · {section.scope}</span>
+                )}
               </TabsTrigger>
             ))}
           </TabsList>

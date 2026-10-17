@@ -29,10 +29,25 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { StaleNotice, StatusDot, TransientRead, withAge } from '@/components/inspector/primitives';
+import {
+  isFailure,
+  StaleNotice,
+  StatusDot,
+  TransientRead,
+  withAge,
+} from '@/components/inspector/primitives';
 import { WhyDisabled } from '@/components/why-disabled';
+import { useRecentAudit, useRecentErrors } from '@/hooks/use-recent-audit';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
-import { failing, JOBS_POLL_KEY } from '@/lib/harness-glances';
+import {
+  failing,
+  failuresByThread,
+  glanceWindow,
+  JOBS_POLL_KEY,
+  jobThreadOutcome,
+  mergeReads,
+  threadOutcomes,
+} from '@/lib/harness-glances';
 import { isTransientFailure } from '@/lib/harness-health';
 import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '@/lib/job-schedule';
 import { cn } from '@/lib/utils';
@@ -173,6 +188,20 @@ export function JobsSheet({
     () => listUsageByThread({ since_ms: Date.now() - SPEND_WINDOW_MS, limit: 200 }),
     { intervalMs: 60_000 },
   ).data;
+  // How each job's last run went on its thread, from the audit read the sidebar's
+  // Activity glance already polls — no request of its own (`jobThreadOutcome`).
+  const recentAudit = useRecentAudit().data;
+  const recentErrors = useRecentErrors().data;
+  const outcomes = useMemo(() => threadOutcomes(recentAudit ?? [], Date.now()), [recentAudit]);
+  // And each job thread's failures over the glance's week — the same count, from
+  // the same two reads, as the sidebar's `Activity · N failed`.
+  const { recentFailuresBy, failureSpan } = useMemo(() => {
+    const covered = glanceWindow(recentErrors ?? recentAudit ?? [], Date.now());
+    return {
+      recentFailuresBy: failuresByThread(mergeReads(recentErrors, recentAudit), covered.since),
+      failureSpan: covered.span,
+    };
+  }, [recentAudit, recentErrors]);
   const spendOf = (jobName: string) => {
     if (!spend) return null;
     const rows = spend.items.filter((t) => isJobThread(t.thread_id, jobName));
@@ -645,6 +674,17 @@ export function JobsSheet({
               invalid = true;
             }
             const jobSpend = spendOf(j.name);
+            // The thread's word only where it disagrees: a firing the scheduler
+            // calls OK whose turn failed. Agreeing, the scheduler's word stands.
+            const threadFailed =
+              j.last_status !== 'running' &&
+              !(j.last_status && isFailure(j.last_status)) &&
+              jobThreadOutcome(j, outcomes) === 'failed';
+            // A job that keeps one thread; a fresh thread per run has no name here.
+            const threadFailures =
+              j.payload?.fresh_thread === true
+                ? 0
+                : (recentFailuresBy.get(threadSuffix(`job:${j.name}`)) ?? 0);
             return (
               <div
                 key={j.name}
@@ -770,11 +810,38 @@ export function JobsSheet({
                     <span className="inline-flex items-center gap-1">
                       <StatusDot status="running" />
                     </span>
+                  ) : threadFailed ? (
+                    // The scheduler records that the firing returned; the turn it
+                    // ran is what failed.
+                    <span
+                      data-slot="job-thread-outcome"
+                      className="inline-flex items-center gap-1"
+                      title="The run returned, but the turn it ran on the job's thread failed"
+                    >
+                      last <StatusDot status="error" />
+                    </span>
                   ) : j.last_status ? (
                     <span className="inline-flex items-center gap-1">
                       last <StatusDot status={j.last_status} />
                     </span>
                   ) : null}
+                  {/* The week behind the last run, which `last` alone hides: a job
+                      that failed four days ago and has run cleanly since read
+                      `last ● OK` beside the Activity page leading with it. Links to
+                      the failures on its thread, as the spend links to its turns. */}
+                  {threadFailures > 0 && (
+                    <Link
+                      data-slot="job-thread-failures"
+                      to={{
+                        pathname: '/harness/activity',
+                        search: `?since=7d&failed=1&thread=${encodeURIComponent(threadSuffix(`job:${j.name}`))}`,
+                      }}
+                      className="text-state-failed underline decoration-state-failed/40 underline-offset-2"
+                      title={`${threadFailures} failed ${threadFailures === 1 ? 'call or turn' : 'calls or turns'} on this job's thread in the last ${failureSpan} — open them on the Activity page`}
+                    >
+                      {threadFailures} failed · {failureSpan}
+                    </Link>
+                  )}
                   {j.last_run_at && (
                     <span title={new Date(j.last_run_at).toLocaleString()}>
                       ran {relativeTime(j.last_run_at)}

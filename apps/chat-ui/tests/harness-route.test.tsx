@@ -356,6 +356,32 @@ describe('the harness address', () => {
     expect([...document.querySelectorAll('h2')].map((h) => h.textContent)).toContain('Harness');
   });
 
+  /**
+   * One level down, the same rule: *How it's set up* starts folded, but the run
+   * holding the page on screen is open, and its toggle is off while it is. And it
+   * stays open once left, because folding it back as the reader moved to another
+   * page would shrink the region and move the row they had just clicked.
+   */
+  it('opens the run holding the page on screen, and leaves it open after', async () => {
+    mount('/harness/agent');
+    const setup = await waitFor(() => {
+      const el = [...document.querySelectorAll('button[aria-controls^="sidebar-harness-"]')].find(
+        (b) => b.textContent === 'How it’s set up',
+      );
+      expect(el).toBeTruthy();
+      return el as HTMLButtonElement;
+    });
+    expect(setup.getAttribute('aria-expanded')).toBe('true');
+    expect(setup.disabled).toBe(true);
+    await act(async () => {
+      go('/harness/activity');
+    });
+    await waitFor(() => expect(setup.disabled).toBe(false));
+    expect(setup.getAttribute('aria-expanded')).toBe('true');
+    // Not written down: next load, the remembered default stands.
+    expect(localStorage.getItem('felix.sidebar.harnessGroups')).toBeNull();
+  });
+
   it('offers a skip link as the first stop, landing on the page', async () => {
     mount('/harness/activity');
     const skip = await screen.findByText('Skip to content');

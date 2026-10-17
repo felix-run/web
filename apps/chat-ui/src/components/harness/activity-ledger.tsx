@@ -2,7 +2,7 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { ActivityIcon, ChevronRightIcon } from 'lucide-react';
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { getUsageSummary, listAuditWindow, listUsage, listUsageByThread } from '@/api';
 import {
@@ -28,6 +28,8 @@ import { usePoll } from '@/hooks/usePoll';
 import { middleTruncate } from '@/lib/format';
 import {
   buildLedger,
+  denialSentence,
+  failureSentence,
   filterLedger,
   foldRoutine,
   groupFailures,
@@ -205,6 +207,17 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   const costColumn =
     data?.spend != null && rows.some((t) => t.id !== NO_THREAD && t.spend !== null);
   const emptyLast = data !== undefined && ledger.length === 0 && win === 'last' && !data.fellBack;
+  // Failures first, with what they cost; a denial after them. Ranked by what it
+  // means rather than by which half of the record it came from.
+  const findings = [
+    failureSentence(ledger, {
+      total: totals?.cost ?? null,
+      totalFloor: (totals?.unpriced ?? 0) > 0,
+      spendKnown: data?.spend != null,
+      metered,
+    }),
+    denialSentence(denying),
+  ].filter((s): s is string => s !== null);
 
   return (
     <>
@@ -277,7 +290,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
                 win={win}
                 since={data.since}
                 fellBack={data.fellBack}
-                denying={denying}
+                findings={findings}
                 paused={openThread !== null}
               />
               <Filters failuresOnly={failuresOnly} layer={layer} onChange={setFilters} />
@@ -335,21 +348,23 @@ export function ActivityLedger({ docs }: { docs?: string }) {
  * directly under a header reading `$2.57 · 4 threads · 3 with failures`: the
  * same three facts twice, eighty pixels apart. The header value is the page
  * grammar every `/harness` page shares, so it stays and the sentence went. What
- * is left is what the header does not hold: which window this is, and how many
- * threads had a call denied, which is not a failure and so has no place in a
- * header value drawn in the failure colour.
+ * is left is what the header does not hold: which window this is, what the
+ * failures cost (`failureSentence` — the header counts them, it cannot rank them
+ * against the spend), and how many threads had a call denied, which is not a
+ * failure and so has no place in a header value drawn in the failure colour.
  */
 function Account({
   win,
   since,
   fellBack,
-  denying,
+  findings,
   paused,
 }: {
   win: LedgerWindow;
   since: number;
   fellBack: boolean;
-  denying: number;
+  /** Sentences, most serious first: the failures and their cost, then denials. */
+  findings: string[];
   paused: boolean;
 }) {
   const when =
@@ -370,16 +385,11 @@ function Account({
     // `ch` is the width of "0", wider than Geist's average letter: 70ch measured
     // ~93 to a line. 56ch holds it near 75.
     <div className="mb-3">
-      <p className="max-w-[56ch] text-sm text-muted-foreground">
+      <p data-slot="activity-account" className="max-w-[56ch] text-sm text-muted-foreground">
         {when}.
-        {denying > 0 && (
-          <>
-            {' '}
-            {denying === 1
-              ? '1 thread had a call denied at an approval.'
-              : `${denying} threads had a call denied at an approval.`}
-          </>
-        )}
+        {findings.map((s) => (
+          <Fragment key={s}> {s}</Fragment>
+        ))}
       </p>
       {/* Next to the window rather than under the list: the list is what stopped
           updating, and the reader is looking at the top of it. The line's height is
