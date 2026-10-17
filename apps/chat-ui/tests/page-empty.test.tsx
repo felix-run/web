@@ -69,4 +69,25 @@ describe('a page with nothing in it', () => {
     expectLine(line);
     expect(line.className).toContain('max-w-[28rem]');
   });
+
+  // The transient path (a 429 the shell reports once) keeps the last answer as it was —
+  // and when that answer was "nothing", it is this same line, with no red over it.
+  it('stays the same line under a passing failure, with nothing red', () => {
+    render(
+      <PanelModeProvider>
+        <SectionBody
+          loading={false}
+          error={new Error('documents: 429')}
+          doing="list documents"
+          lastOkAt={Date.now() - 60_000}
+          empty
+          emptyText="No documents yet."
+        >
+          <div>rows</div>
+        </SectionBody>
+      </PanelModeProvider>,
+    );
+    expectLine(screen.getByText('No documents yet.'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });
