@@ -32,17 +32,14 @@ import { relTime } from '@/components/inspector/primitives';
 import { PaneColumn, PaneOverlay, type PaneZoneProps } from '@/components/pane/pane-zone';
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { WORKSPACE_INLINE } from '@/hooks/use-rails';
-import { useRecentAudit, useRecentErrors } from '@/hooks/use-recent-audit';
+import { useWeekFailures } from '@/hooks/use-recent-audit';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import { landedPaths } from '@/lib/changes';
 import {
   ACTIVITY_GLANCE_SPAN,
   failing,
-  glanceWindow,
   JOBS_POLL_KEY,
-  mergeReads,
-  recentFailures,
   SKILL_QUEUE_GLANCE_LIMIT,
   SKILL_QUEUE_POLL_KEY,
 } from '@/lib/harness-glances';
@@ -226,13 +223,12 @@ export function walkNav(event: KeyboardEvent<HTMLElement>) {
  * someone coming back sees where to go first without opening eight pages, which
  * is what "legible on return" asks.
  *
- * The Activity page's is bounded by time, where its page's header is bounded by count.
- * The page counts failures in its last `ACTIVITY_FETCH` events, which is right
- * for a page you are reading and wrong for a marker that means "go look": on a
- * quiet tenant sixty events can span weeks, so one failure from last month kept
- * the rail red indefinitely and the marker stopped meaning anything. Jobs need
- * no bound — "failing" is each job's current state, and it clears when a run
- * succeeds.
+ * The Activity glance is bounded by time — a week — and counts **threads**, the
+ * unit the Activity page counts in, and its link opens the page on that week. It
+ * was once counted over the page's last `ACTIVITY_FETCH` events, which on a quiet
+ * tenant spanned weeks, so one failure from last month kept the rail red
+ * indefinitely and the marker stopped meaning anything. Jobs need no bound —
+ * "failing" is each job's current state, and it clears when a run succeeds.
  */
 
 interface Glance {
@@ -330,36 +326,23 @@ export function useNavGlances(enabled = true): Record<string, Glance | undefined
 }
 
 /**
- * Activity's failures in the last week, on their own — or over the stretch the
- * reads reached, which the glance's span says (`glanceWindow`). Everyday this is
- * the one harness glance the sidebar always keeps: Activity is the page that
+ * Activity's failed threads in the last week, on their own — or over the stretch
+ * the reads reached, which the glance's span says (`glanceWindow`). Everyday this
+ * is the one harness glance the sidebar always keeps: Activity is the page that
  * answers "what happened while I was away", which is the daily surface's
  * question too.
  *
- * Two reads, merged: the newest failures, which reach back the week, and the
- * newest events of every kind, which hold the turns around them and a control's
- * refusals (`AUDIT_ERRORS_POLL_KEY` says why one was not enough). The window is
- * the failures read's, since that is the one counting back that far.
+ * Counted in **threads**, by the Activity page's own rule (`recentFailures` over
+ * `buildLedger`), so `1 thread failed · 7d` here is the `1 thread failed` the page
+ * reads over `?since=7d` — the window this row links to. A failure outside any
+ * thread is said as one only when no thread failed (`failureLabel`).
  */
 export function useActivityGlance(enabled = true): Glance | undefined {
-  const audit = useRecentAudit(enabled);
-  const errors = useRecentErrors(enabled);
-  // Measured against the clock at render, which the polls re-run, so a failure
-  // ages out within a tick of turning a week old.
-  const now = Date.now();
-  const covered = glanceWindow(errors.data ?? audit.data ?? [], now);
-  const failed = recentFailures(mergeReads(errors.data, audit.data), now, covered.since);
-  // One reading of two polls: answered only when both have, and failed when either
-  // did, with the older of the two answers as its age.
-  const poll = {
-    data: audit.data && errors.data ? audit.data : undefined,
-    error: audit.error ?? errors.error,
-    lastOkAt:
-      audit.lastOkAt != null && errors.lastOkAt != null
-        ? Math.min(audit.lastOkAt, errors.lastOkAt)
-        : null,
-  };
-  return glanceOf(poll, failed, 'failed', 'activity', covered.span);
+  const { tally, span, poll } = useWeekFailures(enabled);
+  const threads = tally.ids.size;
+  return threads > 0 || tally.unattributed === 0
+    ? glanceOf(poll, threads, threads === 1 ? 'thread failed' : 'threads failed', 'activity', span)
+    : glanceOf(poll, tally.unattributed, 'failed outside a thread', 'activity', span);
 }
 
 /**

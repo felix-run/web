@@ -24,12 +24,15 @@ import {
 import { keepAgent } from '@/components/harness/harness-agent';
 import { PageEmpty, PageHeader, PanelBody, plural } from '@/components/harness/panel';
 import { relTime, SectionBody, tsToMs, withAge } from '@/components/inspector/primitives';
+import { useWeekFailures } from '@/hooks/use-recent-audit';
 import { usePoll } from '@/hooks/usePoll';
 import { middleTruncate } from '@/lib/format';
 import {
   buildLedger,
   denialSentence,
+  failureLabel,
   failureSentence,
+  failureTally,
   filterLedger,
   foldRoutine,
   groupFailures,
@@ -70,6 +73,15 @@ import type { AuditEvent, UsageEvent, UsageSummary } from '@/types';
  * question "what happened while I was away" asked literally; a fixed count of the
  * last 60 events was minutes on a busy tenant and weeks on a quiet one.
  */
+
+/** `7d` → `7 days`, `3h` → `3 hours`: a glance's short span, in a sentence. */
+function spanWords(span: string): string {
+  const m = /^(\d+)([mhd])$/.exec(span);
+  if (!m) return span;
+  const n = Number(m[1]);
+  const unit = m[2] === 'm' ? 'minute' : m[2] === 'h' ? 'hour' : 'day';
+  return `${n} ${n === 1 ? unit : `${unit}s`}`;
+}
 
 /** Threads drawn before the list says how many more there are. */
 const THREADS_VISIBLE = 30;
@@ -191,14 +203,20 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   const shown = filterLedger(ledger, { failuresOnly, layer });
   const rows = showAll ? shown : shown.slice(0, THREADS_VISIBLE);
   const conversations = ledger.filter((t) => t.id !== NO_THREAD);
-  const failing = conversations.filter((t) => t.failures.length > 0).length;
+  // Threads, the unit every surface counts a failure in (`failureTally`): the
+  // sidebar's `Activity · 1 thread failed · 7d` is this count over `?since=7d`.
+  const tally = failureTally(ledger);
+  const failedLabel = failureLabel(tally);
   // Counted apart from failures, and never in red: an approval saying no is the
   // gate working, and a thread whose only "failure" was one read *Failed*.
   const denying = conversations.filter((t) => t.denials.length > 0).length;
   // A summary with no `totals` is not one: say nothing about cost rather than
   // take the page down with it.
   const totals = data?.summary?.totals ? summarizeWindow(data.summary) : null;
-  const cost = totals ? `${totals.unpriced > 0 ? '≥ ' : ''}${money(totals.cost)}` : null;
+  // No figure for a window with no model call in it: `$0.00` beside "0 threads"
+  // read as "free", the one thing an unpriced cost must never read as.
+  const cost =
+    totals && totals.calls > 0 ? `${totals.unpriced > 0 ? '≥ ' : ''}${money(totals.cost)}` : null;
   const account = [cost, plural(conversations.length, 'thread')].filter(Boolean).join(' · ');
   const metered = data?.spend ? meteringStart(data.spend.items) : null;
   // The cost column is drawn only when a thread on screen has a figure for it. On
@@ -206,7 +224,19 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   // nearly always empty is texture, and the reason is said once below instead.
   const costColumn =
     data?.spend != null && rows.some((t) => t.id !== NO_THREAD && t.spend !== null);
-  const emptyLast = data !== undefined && ledger.length === 0 && win === 'last' && !data.fellBack;
+  // The sidebar's glance counts the week, and the window here defaults to "since
+  // your last visit" — so opening this page from anywhere but that glance's link
+  // (the phone's `/harness` list, a bookmark, Back) could read "Nothing ran" under
+  // a red `1 thread failed · 7d`. When a window shorter than the week holds no
+  // failure and the week does, the page says so and hands over the week, with the
+  // glance's own count (`useWeekFailures`).
+  const week = useWeekFailures();
+  const weekLabel = failureLabel(week.tally);
+  const pointWeek =
+    data !== undefined && (win === 'last' || win === '24h') && !failedLabel && weekLabel !== null;
+  const sinceVisit = win === 'last' && data !== undefined && !data.fellBack;
+  const emptyLast = data !== undefined && ledger.length === 0 && (sinceVisit || pointWeek);
+  const weekWords = weekLabel ? `${weekLabel} in the last ${spanWords(week.span)}` : '';
   // Failures first, with what they cost; a denial after them. Ranked by what it
   // means rather than by which half of the record it came from.
   const findings = [
@@ -216,6 +246,9 @@ export function ActivityLedger({ docs }: { docs?: string }) {
       spendKnown: data?.spend != null,
       metered,
     }),
+    tally.unattributed > 0 && tally.ids.size > 0
+      ? `${plural(tally.unattributed, 'failure')} outside any thread.`
+      : null,
     denialSentence(denying),
   ].filter((s): s is string => s !== null);
 
@@ -225,15 +258,11 @@ export function ActivityLedger({ docs }: { docs?: string }) {
         icon={<ActivityIcon />}
         title="Activity"
         docs={docs}
-        valueLead={data && failing > 0 ? `${account} ·` : undefined}
+        valueLead={data && failedLabel ? `${account} ·` : undefined}
         // Kept through a failed read, with its age, rather than dropped: the
         // figure is still the last thing the harness said.
-        value={
-          data
-            ? withAge(failing > 0 ? `${failing} with failures` : account, error ? lastOkAt : null)
-            : undefined
-        }
-        valueTone={failing > 0 ? 'failed' : 'default'}
+        value={data ? withAge(failedLabel ?? account, error ? lastOkAt : null) : undefined}
+        valueTone={failedLabel ? 'failed' : 'default'}
         controls={
           <Select value={win} onValueChange={(v) => setWin(v as LedgerWindow)}>
             <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Window">
@@ -261,7 +290,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
           emptyText="Nothing ran in this window. Turns, tool calls and their spend show up here, one entry per thread."
           status={
             data
-              ? `${plural(conversations.length, 'thread')}, ${failing} with failures${
+              ? `${plural(conversations.length, 'thread')}, ${failedLabel ?? 'none failed'}${
                   denying > 0 ? `, ${denying} with a call denied` : ''
                 }${cost ? `, ${cost} spent` : ''}.`
               : undefined
@@ -272,16 +301,34 @@ export function ActivityLedger({ docs }: { docs?: string }) {
             // someone who came here from a count of failures, so it hands over
             // the window that count was taken in.
             <PageEmpty>
-              <span className="max-w-[70ch]">
-                Nothing ran since your last visit, {relTime(data.since)} ago.{' '}
-                <button
-                  type="button"
-                  className={cn(TEXT_BUTTON, 'text-foreground')}
-                  onClick={() => setWin('24h')}
-                >
-                  Show the last 24 hours
-                </button>
-              </span>
+              {pointWeek ? (
+                // One line, in the glance's words and with its count, so the page
+                // and the sidebar beside it say the same thing about the week.
+                <span data-slot="activity-week-pointer" className="max-w-[70ch]">
+                  {sinceVisit
+                    ? `Nothing new since your last visit, ${relTime(data.since)} ago`
+                    : 'Nothing ran in the last 24 hours'}{' '}
+                  · {weekWords}.{' '}
+                  <button
+                    type="button"
+                    className={cn(TEXT_BUTTON, 'text-foreground')}
+                    onClick={() => setWin('7d')}
+                  >
+                    Show the last 7 days
+                  </button>
+                </span>
+              ) : (
+                <span className="max-w-[70ch]">
+                  Nothing ran since your last visit, {relTime(data.since)} ago.{' '}
+                  <button
+                    type="button"
+                    className={cn(TEXT_BUTTON, 'text-foreground')}
+                    onClick={() => setWin('24h')}
+                  >
+                    Show the last 24 hours
+                  </button>
+                </span>
+              )}
             </PageEmpty>
           )}
           {data && !emptyLast && (
@@ -292,6 +339,23 @@ export function ActivityLedger({ docs }: { docs?: string }) {
                 fellBack={data.fellBack}
                 findings={findings}
                 paused={openThread !== null}
+                aside={
+                  pointWeek ? (
+                    <span data-slot="activity-week-pointer">
+                      {sinceVisit
+                        ? 'No failures since your last visit'
+                        : 'No failures in this window'}{' '}
+                      · {weekWords}.{' '}
+                      <button
+                        type="button"
+                        className={cn(TEXT_BUTTON, 'text-foreground')}
+                        onClick={() => setWin('7d')}
+                      >
+                        Show the last 7 days
+                      </button>
+                    </span>
+                  ) : null
+                }
               />
               <Filters failuresOnly={failuresOnly} layer={layer} onChange={setFilters} />
               {shown.length === 0 ? (
@@ -359,6 +423,7 @@ function Account({
   fellBack,
   findings,
   paused,
+  aside,
 }: {
   win: LedgerWindow;
   since: number;
@@ -366,6 +431,8 @@ function Account({
   /** Sentences, most serious first: the failures and their cost, then denials. */
   findings: string[];
   paused: boolean;
+  /** Said after the findings: the week's failures, when this window holds none. */
+  aside?: ReactNode;
 }) {
   const when =
     win === 'last' && !fellBack
@@ -390,6 +457,7 @@ function Account({
         {findings.map((s) => (
           <Fragment key={s}> {s}</Fragment>
         ))}
+        {aside && <> {aside}</>}
       </p>
       {/* Next to the window rather than under the list: the list is what stopped
           updating, and the reader is looking at the top of it. The line's height is

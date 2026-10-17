@@ -409,8 +409,8 @@ semibold with tight tracking.
 
 - **Display** (600, 24px rising to 28px at `md`, tight): the empty thread's welcome headline,
   and nothing else. It exists only while a thread is empty.
-- **Figure** (600, 24px, tight): the Activity page's account sentence (`2 threads ran, 1 with
-  failures. $1.41 spent.`) and its *Where the spend went* total. The one number a page is opened
+- **Figure** (600, 24px, tight): the Activity page's account sentence (`2 threads ran, 1
+  thread failed. $1.41 spent.`) and its *Where the spend went* total. The one number a page is opened
   to read, so it is Geist with tabular figures, never mono: it is our own formatted total, and at
   24px a monospace full stop takes a whole cell and opens a gap (`$2 . 57`).
 - **Page Title** (600, 20px, tight): a `/harness` page's `h2`.
@@ -830,10 +830,13 @@ is three runs of at most four under visible 12px labels, named for the question 
 *What happened* (Activity, Jobs, Workflows), *What it knows* (Memory, Documents, Skills) and *How it's set up*
 (Agent, Manifests, Eval, GitHub). The 768–1024 rail draws its rows in the sidebar's grammar, on the
 ground with no rule beside it, since there it stands in for the sidebar. The rail carries exactly three
-glances, each only when non-zero: `Jobs · N failing` and `Activity · N failed · 7d` (or the shorter span its read covered) in `state-failed`,
+glances, each only when non-zero: `Jobs · N failing` and `Activity · N threads failed · 7d` (or the shorter span its read covered) in `state-failed`,
 and `Skills · N waiting` in `state-blocked`. Absence is the all-clear, so it is drawn only for a
 read that answered: a failed read shows a muted `unchecked`, and a count kept from an earlier read
-carries its age (`3 failed · 2m`). Every page header ends in a quiet `Docs ↗` link, checked
+carries its age (`3 threads failed · 2m`). **A failure is counted in threads, and the unit is
+said, everywhere** — the glance, the Activity header and a job's row (`1 thread failed · 7d`) — by
+one function over the page's own ledger; a failure outside any thread is never added to them and
+is named as such (`1 failed outside a thread`) only when no thread failed. Every page header ends in a quiet `Docs ↗` link, checked
 against the docs source by `tests/docs-links.test.ts`. Every page header row is `min-h-8`, so the
 rule under it sits on one line from page to page. On `/harness` the header drops the
 conversation's own controls; the ellipsis menu stays in the same slot (named **View**) and the
@@ -860,10 +863,13 @@ at fixed cents (`< $0.01`), drawn only when a thread on screen has a figure. Out
 `Failed` > `Refused` (red dot and word) > `Denied` (outlined muted chip, **no dot**) > `OK`; a
 thread whose only miss was a denial reads `Denied`, and the reply the harness marks `error` after a
 denial reads *after a denial* and is not a second failure. The header value carries the account
-(`$1.41 · 2 threads · 1 with failures`); below it, one muted when-line says the window, then
+(`$1.41 · 2 threads · 1 thread failed`), with no cost figure for a window in which no model ran; below it, one muted when-line says the window, then
 **the failures and their share of the spend** (`1 thread failed after 943 turns — $27.17 of
 $27.60.`, `≥` where a figure is a floor), then, when any, how many threads had a call denied (not
-a failure, so last and never red). It carried the denials alone once, and two cents of declined
+a failure, so last and never red). A window shorter than the week that holds no failure, while the
+sidebar's week does, says so in one line with the sidebar's count and a way to the week
+(`Nothing new since your last visit · 1 thread failed in the last 7 days. Show the last 7 days`),
+so the page never reads the all-clear beside a red glance. It carried the denials alone once, and two cents of declined
 writes read above the job that held nearly all the week's money. There is no
 Figure sentence repeating the header. Explanatory prose on the page is held to `70ch`. Opened, a
 thread shows its turns in the order they happened, each headed by what was asked (`h3`) and by

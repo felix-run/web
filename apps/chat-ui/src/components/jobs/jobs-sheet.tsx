@@ -37,15 +37,13 @@ import {
   withAge,
 } from '@/components/inspector/primitives';
 import { WhyDisabled } from '@/components/why-disabled';
-import { useRecentAudit, useRecentErrors } from '@/hooks/use-recent-audit';
+import { useRecentAudit, useWeekFailures } from '@/hooks/use-recent-audit';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import {
   failing,
-  failuresByThread,
-  glanceWindow,
   JOBS_POLL_KEY,
   jobThreadOutcome,
-  mergeReads,
+  recentFailures,
   threadOutcomes,
 } from '@/lib/harness-glances';
 import { isTransientFailure } from '@/lib/harness-health';
@@ -191,17 +189,22 @@ export function JobsSheet({
   // How each job's last run went on its thread, from the audit read the sidebar's
   // Activity glance already polls — no request of its own (`jobThreadOutcome`).
   const recentAudit = useRecentAudit().data;
-  const recentErrors = useRecentErrors().data;
   const outcomes = useMemo(() => threadOutcomes(recentAudit ?? [], Date.now()), [recentAudit]);
-  // And each job thread's failures over the glance's week — the same count, from
-  // the same two reads, as the sidebar's `Activity · N failed`.
-  const { recentFailuresBy, failureSpan } = useMemo(() => {
-    const covered = glanceWindow(recentErrors ?? recentAudit ?? [], Date.now());
-    return {
-      recentFailuresBy: failuresByThread(mergeReads(recentErrors, recentAudit), covered.since),
-      failureSpan: covered.span,
-    };
-  }, [recentAudit, recentErrors]);
+  // And the threads each job failed on over the glance's week, by the Activity
+  // page's rule and from the same two reads as the sidebar's `Activity · N threads
+  // failed` (`useWeekFailures`): a job's failures, narrowed to its threads and
+  // counted in the same unit. Matched on the full thread id, because a fresh-thread
+  // job's runs each have a suffix of their own that names no job.
+  const week = useWeekFailures();
+  const failedThreadsOf = (jobName: string) =>
+    recentFailures(
+      week.events.filter((e) => {
+        const raw = e.payload?.thread_id;
+        return typeof raw === 'string' && isJobThread(raw, jobName);
+      }),
+      Date.now(),
+      week.since,
+    ).ids.size;
   const spendOf = (jobName: string) => {
     if (!spend) return null;
     const rows = spend.items.filter((t) => isJobThread(t.thread_id, jobName));
@@ -680,11 +683,10 @@ export function JobsSheet({
               j.last_status !== 'running' &&
               !(j.last_status && isFailure(j.last_status)) &&
               jobThreadOutcome(j, outcomes) === 'failed';
-            // A job that keeps one thread; a fresh thread per run has no name here.
-            const threadFailures =
-              j.payload?.fresh_thread === true
-                ? 0
-                : (recentFailuresBy.get(threadSuffix(`job:${j.name}`)) ?? 0);
+            // Threads, as everywhere a failure is counted: one for a job that keeps
+            // its thread, one per failed run for a job that starts a fresh one.
+            const threadFailures = failedThreadsOf(j.name);
+            const freshThreads = j.payload?.fresh_thread === true;
             return (
               <div
                 key={j.name}
@@ -834,12 +836,20 @@ export function JobsSheet({
                       data-slot="job-thread-failures"
                       to={{
                         pathname: '/harness/activity',
-                        search: `?since=7d&failed=1&thread=${encodeURIComponent(threadSuffix(`job:${j.name}`))}`,
+                        // A fresh-thread job's runs have no one thread to open.
+                        search: freshThreads
+                          ? '?since=7d&failed=1'
+                          : `?since=7d&failed=1&thread=${encodeURIComponent(threadSuffix(`job:${j.name}`))}`,
                       }}
                       className="text-state-failed underline decoration-state-failed/40 underline-offset-2"
-                      title={`${threadFailures} failed ${threadFailures === 1 ? 'call or turn' : 'calls or turns'} on this job's thread in the last ${failureSpan} — open them on the Activity page`}
+                      title={
+                        freshThreads
+                          ? `${threadFailures} of this job's runs failed in the last ${week.span}, each on a thread of its own — open them on the Activity page`
+                          : `This job's thread failed in the last ${week.span} — open it on the Activity page`
+                      }
                     >
-                      {threadFailures} failed · {failureSpan}
+                      {threadFailures} {threadFailures === 1 ? 'thread' : 'threads'} failed ·{' '}
+                      {week.span}
                     </Link>
                   )}
                   {j.last_run_at && (
