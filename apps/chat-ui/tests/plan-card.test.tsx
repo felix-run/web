@@ -91,6 +91,35 @@ describe('plans in a turn', () => {
     expect(screen.queryByText('plan_update_step')).toBeNull();
   });
 
+  /**
+   * At 390px the count sat beside the goal and squeezed it to a word or two a line. The
+   * heading takes the whole row until the card is wide (a container query, since happy-dom
+   * evaluates none, pinned by shape) and the chips wrap under it; the toggle is outside the
+   * wrapping group, so it stays top-right.
+   */
+  it('lets the count wrap under the goal on a narrow card', () => {
+    const turn: Turn = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      tools: [call('plan_create', planOut([['Add column', 'pending']]))],
+    };
+    render(
+      <TooltipProvider>
+        <Message turn={turn} />
+      </TooltipProvider>,
+    );
+    const card = document.querySelector('[data-plan-id="p1"]') as HTMLElement;
+    expect(card.className).toContain('@container/plan');
+    const heading = card.querySelector('[data-plan-heading]') as HTMLElement;
+    expect(heading.className).toMatch(/\bbasis-full\b/);
+    expect(heading.className).toContain('@md/plan:basis-0');
+    const group = heading.parentElement as HTMLElement;
+    expect(group.className).toContain('flex-wrap');
+    expect(group.contains(screen.getByText('0 of 1 done'))).toBe(true);
+    expect(group.contains(screen.getByRole('button', { name: /toggle plan/i }))).toBe(false);
+  });
+
   it('recovers step titles the harness dropped, from what plan_create was sent', () => {
     // Measured on :8080: the model sent `description`, the harness stored `title: ""`.
     const create: ToolCall = {

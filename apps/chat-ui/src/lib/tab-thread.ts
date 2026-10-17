@@ -24,6 +24,18 @@ export function rememberTabThread(threadId: string): void {
   }
 }
 
+/**
+ * Forget it: the credential is about to change tenant, and a thread id remembered under the
+ * old one would address a conversation that does not exist under the new.
+ */
+export function forgetTabThread(): void {
+  try {
+    sessionStorage.removeItem(KEY);
+  } catch {
+    // Storage disabled: nothing was remembered.
+  }
+}
+
 export function recallTabThread(): string | null {
   try {
     return sessionStorage.getItem(KEY)?.trim() || null;

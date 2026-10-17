@@ -34,36 +34,41 @@ export function PlanCard({ plan, live }: { plan: PlanState; live: boolean }) {
   return (
     <Plan
       defaultOpen={open}
-      className="gap-0 rounded-xl border-border/60 bg-transparent py-0 text-sm"
+      className="@container/plan gap-0 rounded-xl border-border/60 bg-transparent py-0 text-sm"
       data-plan-id={plan.id}
     >
-      <PlanHeader className="flex items-center gap-2 px-3 py-2">
-        <div className="min-w-0 flex-1">
-          <PlanTitle className="truncate text-sm font-medium">{plan.title || 'Plan'}</PlanTitle>
-          {plan.goal && plan.goal !== plan.title ? (
-            <PlanDescription className="mt-0.5 text-xs text-muted-foreground">
-              {plan.goal}
-            </PlanDescription>
-          ) : null}
-        </div>
-        {plan.edited && (
-          // A person changed this plan by hand (felix-run/felix#605): said where the plan is
-          // drawn, so steps the agent did not write never read as the agent's.
-          <span
-            className="shrink-0 rounded-full border border-border/60 px-1.5 text-xs text-muted-foreground"
-            title={`Edited by ${plan.edited.by || 'a person'} · ${new Date(plan.edited.at).toLocaleString()}`}
-          >
-            edited
-          </span>
-        )}
-        <span
-          className={cn(
-            'shrink-0 font-mono text-xs tabular-nums text-muted-foreground',
-            live && open && 'shimmer shimmer-color-foreground',
+      <PlanHeader className="flex items-start gap-2 px-3 py-2">
+        {/* The chips wrap under the description where the card is narrow: beside it at
+            390px they squeezed the goal to a word or two a line (2026-10-16). A container
+            query, since what is narrow is the card. The toggle stays top-right either way. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <div data-plan-heading className="min-w-0 flex-1 basis-full @md/plan:basis-0">
+            <PlanTitle className="truncate text-sm font-medium">{plan.title || 'Plan'}</PlanTitle>
+            {plan.goal && plan.goal !== plan.title ? (
+              <PlanDescription className="mt-0.5 text-xs text-muted-foreground">
+                {plan.goal}
+              </PlanDescription>
+            ) : null}
+          </div>
+          {plan.edited && (
+            // A person changed this plan by hand (felix-run/felix#605): said where the plan is
+            // drawn, so steps the agent did not write never read as the agent's.
+            <span
+              className="shrink-0 rounded-full border border-border/60 px-1.5 text-xs text-muted-foreground"
+              title={`Edited by ${plan.edited.by || 'a person'} · ${new Date(plan.edited.at).toLocaleString()}`}
+            >
+              edited
+            </span>
           )}
-        >
-          {done} of {plan.steps.length} done
-        </span>
+          <span
+            className={cn(
+              'shrink-0 font-mono text-xs tabular-nums text-muted-foreground',
+              live && open && 'shimmer shimmer-color-foreground',
+            )}
+          >
+            {done} of {plan.steps.length} done
+          </span>
+        </div>
         <PlanTrigger className="size-7 shrink-0" />
       </PlanHeader>
       <PlanContent className="border-t border-border/50 px-3 py-2">

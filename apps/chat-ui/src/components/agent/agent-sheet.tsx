@@ -6,6 +6,7 @@ import { getAgentCard, getResolvedManifest } from '@/api';
 import { ErrorNotice } from '@/components/error-notice';
 import {
   Fact,
+  FactId,
   Facts,
   NameList,
   PageHeader,
@@ -212,7 +213,7 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
                           key={`appr-${i}`}
                           label={
                             <>
-                              Approval <span className="font-mono">{ap.id ?? i}</span>
+                              Approval <FactId>{ap.id ?? i}</FactId>
                             </>
                           }
                         >
@@ -230,7 +231,7 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
                           key={`judge-${i}`}
                           label={
                             <>
-                              Judge <span className="font-mono">{judge.name ?? i}</span>
+                              Judge <FactId>{judge.name ?? i}</FactId>
                             </>
                           }
                         >

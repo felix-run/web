@@ -250,10 +250,12 @@ describe('the header names the thread', () => {
         '[data-slot="dropdown-menu-label"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
       ),
     ).map((el) => el.getAttribute('aria-label') ?? el.textContent);
+    // Continue run follows Copy thread id here, disabled with its reason: since 2026-10-16
+    // it leads the group only when a run stopped short and there is something to pick up.
     expect(rows).toEqual([
       'Session',
-      'Continue run',
       'Copy thread id self-pr-306',
+      'Continue runNothing has run on this thread yet.',
       'View',
       'EverydayThe conversation and what waits on you',
       'Harness viewRun instrument, every harness page, spend',
@@ -271,8 +273,9 @@ describe('the header names the thread', () => {
     await waitFor(() => expect(address).toBe('/t/empty-thread'));
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Session' }));
-    const item = await screen.findByRole('menuitem', { name: 'Continue run' });
+    const item = await screen.findByRole('menuitem', { name: /^Continue run/ });
     expect(item.getAttribute('aria-disabled')).toBe('true');
+    expect(item.textContent).toContain('Nothing has run on this thread yet.');
     await user.keyboard('{Escape}');
   });
 });

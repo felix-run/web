@@ -226,6 +226,10 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
   says `gate: 'chat_key'` — a harness 401 is not answered by any key. The session lapses with no
   refresh and no revocation, so the header's account chip (`components/account-chip.tsx`) renews
   in a popover with the shell still mounted, and its Sign out says the token outlives it.
+  `/harness/github` offers the same sign-in wherever it says one is needed (2026-10-16: it said so
+  under the shared key and offered nothing) — redirect when offered, else the code in place, and
+  only while `bearer_required`; from the key or a Google session it forgets `felix.tabThread` and
+  reloads, since the new tenant may not hold the thread (`SignInWithGitHub` in `harness/github.tsx`).
 - In `vite dev` the Worker is not in the loop, so the `CHAT_UI_KEY` gate is skipped entirely.
 - **A cross-site write is refused** (403 `cross_site_request`) before any of the above: any method
   but GET/HEAD with `Sec-Fetch-Site: cross-site`, or an `Origin` that is not the Worker's own.
@@ -633,6 +637,11 @@ Flows worth knowing before editing the app:
   `clientHeight` — the viewport's height *rounded* — and `Math.ceil`s it, so a fractional viewport
   made content up to ~1.5px taller than itself and every short thread drew a near-full scrollbar
   thumb for a 1px scroll (666 over 665). Measured after: 695/695 and 841/841 at 1000 and 1101px.
+  **One reply, one label** (2026-10-16): the log keeps a message that both spoke and called a tool
+  as its own event, so a rebuilt reply is often two assistant turns, and each drew "Felix". The
+  workbench passes `continues` to an assistant turn straight after another and `Message` drops
+  the name; the rows stay one per turn, so the position naming and the anchors are untouched
+  (`tests/one-reply-label.test.tsx`).
 
   Three more were found only against a live harness (2026-10-03), where a thread opens from the
   local cache and is then rebuilt from the snapshot. **The viewport is `overflow-anchor: none`**:
@@ -1214,7 +1223,16 @@ Flows worth knowing before editing the app:
   takes a second one. `tests/queued-messages.test.tsx` pins all of it at the wire.
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
   (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
-  `/chat/sessions/search`.
+  `/chat/sessions/search`. **Continue is for a turn that stopped short** — the harness refuses
+  `nothing_to_continue` and `already_complete` — so `continueOffer` (`src/lib/continue-run.ts`)
+  reads the last non-note turn and the phase, the Session menu leads with *Continue run* only
+  then (otherwise it follows Copy thread id, disabled, saying why), and `/continue` toasts the
+  reason instead of spending a request (2026-10-16, `tests/continue-run.test.tsx`).
+- **The empty thread's greeting is the manifest's, unless it is about a folder that is not
+  there** (2026-10-16). `felix.greeting` has one headline, and cowork's is "What should we do in
+  this folder?" — over a readout saying *none mounted*. For an agent whose tools work in the
+  browser (`inBrowser`) with no folder mounted, `Greeting` uses its own headline and says the
+  tools work in the tab's storage until one is; the starters stay.
 
 Each turn sends **only the new user message** — Felix replays thread history server-side.
 

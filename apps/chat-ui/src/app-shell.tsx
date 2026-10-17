@@ -110,6 +110,7 @@ import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { landedPaths } from '@/lib/changes';
 import { useHarnessReachable } from '@/lib/connection';
+import { continueOffer } from '@/lib/continue-run';
 import { executeClientTool, readWorkspaceFile } from '@/lib/cowork';
 import { forgetDurableRun, recallDurableRun, rememberDurableRun } from '@/lib/durable-runs';
 import { createEnginePool, type EnginePool } from '@/lib/engine-pool';
@@ -1927,6 +1928,13 @@ export function AppShell() {
 
   const continueRun = useCallback(() => {
     if (streaming) return;
+    // `/continue` reaches here too: say why there is nothing to pick up rather than
+    // spend a request on the harness's `already_complete`.
+    const offer = continueOffer(engine.state.turns, engine.state.phase, engine.state.error);
+    if (!offer.ok) {
+      toast.message(offer.reason);
+      return;
+    }
     void continueChat({ threadId, manifest })
       .then(() => {
         toast.message('Continued');
@@ -1935,7 +1943,22 @@ export function AppShell() {
       })
       // No retry: continuing twice starts a second run on the same thread.
       .catch((err) => toastError(err, 'continue this run'));
-  }, [streaming, threadId, manifest, hydrateFromServer]);
+  }, [streaming, threadId, manifest, hydrateFromServer, engine]);
+  const continueAvailable = continueOffer(turns, engine.state.phase, error);
+  // Unavailable, it still says what it is and why, at full contrast: a disabled
+  // item's half opacity on muted text put the reason under the contrast floor.
+  const continueItem = continueAvailable.ok ? (
+    <DropdownMenuItem disabled={streaming || watching} onSelect={() => continueRun()}>
+      Continue run
+    </DropdownMenuItem>
+  ) : (
+    <DropdownMenuItem disabled className="data-[disabled]:opacity-100">
+      <span className="flex flex-col text-muted-foreground">
+        Continue run
+        <span className="text-xs">{continueAvailable.reason}</span>
+      </span>
+    </DropdownMenuItem>
+  );
 
   /**
    * Kept, where `chooseThinking` drops its toast.
@@ -3346,14 +3369,11 @@ export function AppShell() {
                     {!onHarness && (
                       <>
                         <DropdownMenuLabel>Session</DropdownMenuLabel>
-                        {/* Disabled on an empty thread: there is no run to continue, and
-                            the harness would start one from nothing. */}
-                        <DropdownMenuItem
-                          disabled={streaming || watching || turns.length === 0}
-                          onSelect={() => continueRun()}
-                        >
-                          Continue run
-                        </DropdownMenuItem>
+                        {/* First only when there is something to pick up — a run that
+                            stopped short. On a finished or empty thread the harness refuses
+                            it, so it sits after Copy thread id, disabled, saying why
+                            (`continueOffer`, 2026-10-16). */}
+                        {continueAvailable.ok && continueItem}
                         {/* Cut from the middle, never the end: `threadId.slice(0, 8)` read
                             `self-pr-` for every `self-pr-*` thread. The id is whole in
                             `title`, in the accessible name, and on the clipboard.
@@ -3373,6 +3393,7 @@ export function AppShell() {
                             {middleTruncate(threadId, 14)}
                           </span>
                         </DropdownMenuItem>
+                        {!continueAvailable.ok && continueItem}
                         <DropdownMenuSeparator />
                       </>
                     )}
