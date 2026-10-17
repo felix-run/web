@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ErrorNotice } from '@/components/error-notice';
 import { NameList, PageSection } from '@/components/harness/panel';
-import { Section, type SkillState } from '@/components/inspector/primitives';
+import { Section, type SkillState, TransientRead } from '@/components/inspector/primitives';
 import { middleTruncate } from '@/lib/format';
+import { isTransientFailure } from '@/lib/harness-health';
 import { cn } from '@/lib/utils';
 
 /**
@@ -133,7 +134,10 @@ export function SkillsSection({
                   </>
                 )}
               </p>
-              {specError != null ? (
+              {specError != null && isTransientFailure(specError) ? (
+                // A passing failure is the shell's line to say, once.
+                <TransientRead error={specError} lastOkAt={null} onRetry={onRetrySpec} />
+              ) : specError != null ? (
                 // Said, and retryable. The page used to fall silent here, which
                 // read exactly like a manifest that declares no skills.
                 <ErrorNotice

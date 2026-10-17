@@ -17,7 +17,8 @@ import {
   PanelBody,
   plural,
 } from '@/components/harness/panel';
-import { ReadFailure } from '@/components/inspector/primitives';
+import { ReadFailure, TransientRead } from '@/components/inspector/primitives';
+import { isTransientFailure } from '@/lib/harness-health';
 import { cn } from '@/lib/utils';
 import { FeedbackInbox } from './feedback-panel';
 import { LibraryList } from './library-list';
@@ -237,6 +238,12 @@ function PersonalLibrariesSection({ libraryTo }: { libraryTo: (next: string) => 
         <p className="max-w-[60ch] text-sm text-muted-foreground">
           Only an administrator can list personal libraries.
         </p>
+      ) : query.error && isTransientFailure(query.error) ? (
+        <TransientRead
+          error={query.error}
+          lastOkAt={query.dataUpdatedAt || null}
+          onRetry={() => void query.refetch()}
+        />
       ) : query.error ? (
         <RefusalNotice error={query.error} doing="list personal libraries" />
       ) : !query.data ? (

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
 
 /**
  * Poll an async fetcher on an interval while `enabled`. Returns the latest
@@ -8,6 +9,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Ticks are also skipped while the tab is hidden, and a fetch runs immediately on
  * return, so coming back to a backgrounded tab shows current data rather than
  * whatever was true when it was last looked at.
+ *
+ * Each poll is also a source for the shell's one harness-health line
+ * (`lib/harness-health.ts`): a 429, a 503 or no answer is reported there and said
+ * once, not by every page that polls; an answer or an unmount withdraws it.
  *
  * This is safe to do here because nothing depends on these panels while nobody is
  * looking. The unattended-run path deliberately does not use this hook: the
@@ -47,25 +52,38 @@ export function usePoll<T>(
   const [failures, setFailures] = useState(0);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  // Every poll is a source for the shell's one harness-health line: a transient
+  // failure is said there, once, rather than by each page that polls.
+  const source = `poll:${useId()}`;
+  const lastOkRef = useRef<number | null>(null);
+  const activeRef = useRef(false);
 
   const run = useCallback(async () => {
     setLoading(true);
     try {
       setData(await fetcherRef.current());
       setError(null);
-      setLastOkAt(Date.now());
+      lastOkRef.current = Date.now();
+      setLastOkAt(lastOkRef.current);
       setFailures(0);
+      forgetHarnessRead(source);
     } catch (err) {
       setError(err);
       setFailures((n) => n + 1);
+      // Only while polling: a read that lands after the poll stopped would put
+      // back a source nothing is left to clear.
+      if (activeRef.current) {
+        reportHarnessRead(source, err, { lastOkAt: lastOkRef.current, retry: () => void run() });
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [source]);
 
   useEffect(() => {
     if (!enabled) return;
     const hidden = () => document.visibilityState === 'hidden';
+    activeRef.current = true;
 
     void run();
     const id = setInterval(() => {
@@ -81,8 +99,11 @@ export function usePoll<T>(
     return () => {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
+      // A poll that stopped cannot hold the shell's line up.
+      activeRef.current = false;
+      forgetHarnessRead(source);
     };
-  }, [enabled, intervalMs, run]);
+  }, [enabled, intervalMs, run, source]);
 
   return { data, error, loading, lastOkAt, failures, refresh: run };
 }

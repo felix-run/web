@@ -787,6 +787,16 @@ Flows worth knowing before editing the app:
   harness's manifest wins over the local one, which only knows turns sent from this tab. An older
   harness sends neither. A thread that never reached it — or was created against a different deployment — exists only locally, so those
   rows are kept and marked rather than dropped.
+  - **A failed index read is said, and falls back to the last good one.** `refreshThreads` had an
+    empty `catch`, so a cold load under 429 showed the local half ("Older 1") as the whole list,
+    the header titled the thread with its raw suffix and the composer called its agent "not
+    recorded". Every good read is kept in `sessionStorage` (`felix.threadIndex`,
+    `src/lib/thread-index.ts`, one tab's like `felix.tabThread`) and merged in when a read fails,
+    so the title and agent come from it too; a delete drops its row. The failure is
+    `ShellValue.threadIndex`, drawn under the sidebar's Threads heading (*Couldn't refresh the
+    harness's threads · showing its list from 3m ago · Retry*, or *showing this browser's N* with
+    nothing remembered), neutral for a transient failure — which is also retried on a 2s/5s/15s/
+    30s/60s backoff and reported to the health line — and red for one Retry alone can answer.
   - That local manifest is what `loadThread` restores into the agent picker on a thread change, so
     the picker names the agent the next message will actually go to. It is not restored when
     `/v1/models` no longer lists it. **A Radix `Select` reports `""` through `onValueChange`** when
@@ -1507,6 +1517,26 @@ count. A **single** failure straight after an answer reads *Rechecking approvals
 than red — one 429 is the harness shedding a burst, and red on every one taught the operator to
 ignore red — so the hook counts `failures` in a row and the line turns red on the second. Its failures used to be swallowed, and it read "Nothing waiting on you." with a green dot for
 as long as the harness answered the route with 429. The resting dot is neutral, not `state-done`.
+
+**A passing harness failure is one line in the shell, not a box per panel** (2026-10-16). Under a
+live 429, `/harness/skills` drew six red boxes — each with its own raw `skill-library/review: 429`
+and Try again — while the sidebar silently showed one thread of fifty. `src/lib/harness-health.ts`
+is the store: `transientKind` names a **429** (`rate_limited`), a **503 or 408** (`unavailable`) and
+`fetch`'s own network rejection (`unreachable` — not every `TypeError`, which is also what a client
+bug throws); each reader reports under its own source id and withdraws it on an answer or an
+unmount — `usePoll`, `useSharedPoll`, the skill library's Query cache (`reportQueryHealth` in
+`query-root.tsx`, reads only, observed queries only), the thread index, and `TransientRead` in
+`inspector/primitives.tsx`, which `SectionBody`, `StaleNotice` and `ReadFailure` render for a
+transient error in place of their red. `components/harness-health-line.tsx` draws it once, under
+the header beside the attention line's queue slot, on both addresses: *The harness is shedding
+load · showing what it said 2m ago · Retry* (or *nothing has loaded from it yet*), **neutral and
+never red**, the raw text only in Debug; Retry re-runs every failing source. Panels keep their
+last rows and say nothing louder than *Not loaded yet* when they have none. Red stays in the panel
+for what waiting will not cure — any other 4xx, any other 5xx, a parse failure — and for a
+*write*, which is the operator's own act and is answered where it was made. **A panel quieted
+without reporting is the bug this exists to prevent**: render `TransientRead` (or one of the three
+above), never a bare `null`, for a transient read error. The `/approvals` poll is not a source; the
+attention line already says its own staleness. `tests/harness-health.test.tsx` pins it.
 
 It also counts **an agent's question** (`ask_user` → `ui_request`), which blocks the run as an
 approval does but never appears in `/approvals`: the line said "Working. Nothing waiting on you."

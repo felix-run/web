@@ -15,7 +15,9 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-const RATE_LIMITED = new Error('manifests : 429 {"error":"rate_limited"}');
+// A failure waiting will not cure. A 429 or a 503 is the shell's one line instead
+// (`lib/harness-health.ts`), and `tests/harness-health.test.tsx` pins that.
+const SERVER_FAILED = new Error('manifests : 500 {"error":"internal"}');
 
 describe('Manifests', () => {
   const row = { name: 'quick', version: 4, canary_version: 5, canary_weight: 10 };
@@ -24,7 +26,7 @@ describe('Manifests', () => {
     const listTenantManifests = vi
       .fn()
       .mockResolvedValueOnce([row])
-      .mockRejectedValue(RATE_LIMITED);
+      .mockRejectedValue(SERVER_FAILED);
     vi.doMock('../src/api', () => ({
       listTenantManifests,
       getResolvedManifest: vi.fn(),
@@ -102,10 +104,10 @@ describe('Eval', () => {
 
   it('draws no empty sections under a dataset nobody could read', async () => {
     await sheet({
-      listEvalItems: vi.fn().mockRejectedValue(RATE_LIMITED),
+      listEvalItems: vi.fn().mockRejectedValue(SERVER_FAILED),
       listEvalRuns: vi.fn().mockResolvedValue([]),
     });
-    // A 429 is described as a rate limit, so wait on the box's own retry.
+    // A 500 is the panel's own box, so wait on its retry.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy());
     expect(screen.queryByText(/Add an item before running/i)).toBeNull();
     expect(screen.queryByText('Not run yet.')).toBeNull();
@@ -115,7 +117,7 @@ describe('Eval', () => {
     const listEvalDatasets = vi
       .fn()
       .mockResolvedValueOnce([DATASET])
-      .mockRejectedValue(new Error('eval : 429'));
+      .mockRejectedValue(new Error('eval : 500'));
     await sheet({ listEvalDatasets, putEvalDataset: vi.fn().mockResolvedValue(undefined) });
     await waitFor(() => expect(screen.getByRole('button', { name: 'golden' })).toBeTruthy());
 

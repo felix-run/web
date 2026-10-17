@@ -13,7 +13,8 @@ import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import { browseSkillSource } from '@/api';
 import { PageSection } from '@/components/harness/panel';
-import { tsToMs } from '@/components/inspector/primitives';
+import { TransientRead, tsToMs } from '@/components/inspector/primitives';
+import { isTransientFailure } from '@/lib/harness-health';
 import { cn } from '@/lib/utils';
 import { useImportActions, useOutdatedSkills, useSourceCheck } from './queries';
 import { RefusalNotice } from './refusal';
@@ -236,7 +237,15 @@ export function UpdatesSection({ linkTo }: { linkTo: (name: string, version?: st
         </Button>
       }
     >
-      {query.error ? <RefusalNotice error={query.error} doing="check the sources" /> : null}
+      {query.error && isTransientFailure(query.error) ? (
+        <TransientRead
+          error={query.error}
+          lastOkAt={query.dataUpdatedAt || null}
+          onRetry={() => void query.refetch()}
+        />
+      ) : query.error ? (
+        <RefusalNotice error={query.error} doing="check the sources" />
+      ) : null}
       {query.data?.stopped && (
         <p className="mb-2 text-xs text-muted-foreground">
           {query.data.stopped === 'rate_limited'

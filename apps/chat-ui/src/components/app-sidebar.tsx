@@ -72,6 +72,7 @@ export function AppSidebar() {
     runningThreads,
     blockedThreads,
     harnessView,
+    threadIndex,
   } = useShell();
   const { state, open, isMobile, setOpen, setOpenMobile, toggleSidebar } = useSidebar();
   const collapsed = state === 'collapsed' && !isMobile;
@@ -249,6 +250,7 @@ export function AppSidebar() {
               onCompact={compactThread}
               onExport={exportThread}
               readOnlyId={watching ? threadId : undefined}
+              indexStatus={threadIndex}
             />
             <SidebarSeparator />
             {/* A fixed height, not a cap: the region's content changes with the

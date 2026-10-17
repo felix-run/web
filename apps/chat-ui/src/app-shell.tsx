@@ -98,6 +98,7 @@ import {
 } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
+import { HarnessHealthLine } from '@/components/harness-health-line';
 import type { SkillState } from '@/components/inspector/primitives';
 import { type Theme, useTheme } from '@/components/theme-provider';
 import { ThreadReturn, ThreadTitle } from '@/components/thread-title';
@@ -114,6 +115,7 @@ import { forgetDurableRun, recallDurableRun, rememberDurableRun } from '@/lib/du
 import { createEnginePool, type EnginePool } from '@/lib/engine-pool';
 import { toastError, toastProblem } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
+import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
 import { ImageUploadError, uploadImages } from '@/lib/image-upload';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
@@ -131,6 +133,12 @@ import {
   usePaneState,
 } from '@/lib/side-pane';
 import { recallTabThread, rememberTabThread } from '@/lib/tab-thread';
+import {
+  forgetIndexedThread,
+  rememberThreadIndex,
+  threadIndexAge,
+  withRememberedIndex,
+} from '@/lib/thread-index';
 import {
   clearTurns,
   indexThread,
@@ -166,6 +174,12 @@ import { AccountChip } from './components/account-chip';
 const MANIFEST_KEY = 'felix.manifest';
 /** How long a deleted conversation can be restored, and how long the server delete waits. */
 const DELETE_UNDO_MS = 7000;
+/**
+ * When a thread-index read that failed for a passing reason is asked again: soon
+ * at first, since one 429 is usually one burst, then at most once a minute.
+ */
+const THREAD_INDEX_BACKOFF_MS = [2_000, 5_000, 15_000, 30_000];
+const THREAD_INDEX_BACKOFF_MAX_MS = 60_000;
 
 /**
  * The View level, per browser. It was one Debug switch (`felix.debug`), and
@@ -873,18 +887,58 @@ export function AppShell() {
    *
    * Renders the local list first and upgrades it, so the rail is populated
    * immediately and a slow harness never shows an empty history. A failed fetch
-   * leaves the local list standing rather than emptying it — a sidebar that goes
+   * leaves the list standing rather than emptying it — a sidebar that goes
    * blank because one request failed reads as data loss.
+   *
+   * **And it says so.** This catch used to be empty, so a 429 on a cold load left
+   * the local subset ("Older 1") looking like the whole truth. Now the list falls
+   * back to the index this tab last read (`lib/thread-index.ts`), the failure is
+   * state the sidebar draws under Threads (`threadIndex`), a transient one is a
+   * source for the shell's harness-health line, and the read is asked again on a
+   * backoff until it answers.
    */
-  const refreshThreads = useCallback(async () => {
+  const [threadIndex, setThreadIndex] = useState<{ error: unknown; failures: number }>({
+    error: null,
+    failures: 0,
+  });
+  const indexRetry = useRef<number | null>(null);
+  const indexFailures = useRef(0);
+  const refreshThreads = useCallback(async (): Promise<void> => {
+    if (indexRetry.current != null) {
+      window.clearTimeout(indexRetry.current);
+      indexRetry.current = null;
+    }
     const local = listThreads();
-    setThreads(local);
+    setThreads(withRememberedIndex(local));
     try {
-      setThreads(mergeSessions(local, await listSessions()));
-    } catch {
-      // Local list is already rendered; nothing further to show.
+      const rows = await listSessions();
+      rememberThreadIndex(rows);
+      setThreads(mergeSessions(local, rows));
+      indexFailures.current = 0;
+      setThreadIndex({ error: null, failures: 0 });
+      forgetHarnessRead('threads');
+    } catch (err) {
+      const failures = ++indexFailures.current;
+      setThreadIndex({ error: err, failures });
+      const transient = reportHarnessRead('threads', err, {
+        lastOkAt: threadIndexAge(),
+        retry: () => void refreshThreads(),
+      });
+      // A passing failure is asked again by itself, backing off; one that waiting
+      // will not cure (a 403, a 500) waits for the operator's Retry.
+      if (transient) {
+        const delay = THREAD_INDEX_BACKOFF_MS[failures - 1] ?? THREAD_INDEX_BACKOFF_MAX_MS;
+        indexRetry.current = window.setTimeout(() => void refreshThreads(), delay);
+      }
     }
   }, []);
+  useEffect(
+    () => () => {
+      if (indexRetry.current != null) window.clearTimeout(indexRetry.current);
+      forgetHarnessRead('threads');
+    },
+    [],
+  );
 
   /**
    * Operator labels for this thread, keyed by event id — the snapshot's own map.
@@ -1298,7 +1352,8 @@ export function AppShell() {
       }
 
       removeThread(id);
-      const remaining = listThreads();
+      forgetIndexedThread(id);
+      const remaining = withRememberedIndex(listThreads());
       setThreads(remaining);
       if (id === threadId) {
         const back = [...visitedRef.current]
@@ -2827,6 +2882,12 @@ export function AppShell() {
     editTurn,
     onSlashCommand,
     threads,
+    threadIndex: {
+      error: threadIndex.error,
+      failures: threadIndex.failures,
+      rememberedAt: threadIndex.error != null ? threadIndexAge() : null,
+      retry: () => void refreshThreads(),
+    },
     selectThread,
     newThread,
     deleteThread,
@@ -3363,6 +3424,10 @@ export function AppShell() {
             {/* The attention line's queue opens here, under the bar the line sits
                 on, in the flow — it pushes the page down rather than covering it. */}
             <div ref={setAttentionHost} className="contents" />
+            {/* One line for every read the harness did not answer for a reason
+                that passes — a 429, a 503, no answer at all — in place of a red
+                box per panel (`lib/harness-health.ts`). */}
+            <HarnessHealthLine debug={debug} />
 
             <Outlet />
           </SidebarInset>

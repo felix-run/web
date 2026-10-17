@@ -370,6 +370,18 @@ stylesheet is the authored form; never edit the hex to match a change.
 deadline chip is the rule in one element: amber while a person can still answer, red the moment
 the harness has answered for them.
 
+**The One-Cause-One-Line Rule.** A read the harness did not answer for a reason that passes — a
+429, a 503, no answer at all — is not `failed`. It is said once, by the shell: a muted line under
+the header (`harness-health-line.tsx`), a neutral dot, *The harness is shedding load · showing
+what it said 2m ago · Retry*, the cause in the product's words and the status code only in Debug.
+Every panel on screen keeps the rows it last had and draws no box of its own; one with nothing
+yet says *Not loaded yet* in muted text. Red is kept for a failure waiting will not cure (a 403,
+a 500, a body that would not parse) and for a write that failed, and those stay in the panel,
+where what they mean is known. Six red boxes for one rate limit taught the operator that red is
+weather. The sidebar's Threads heading carries its own muted row when the harness's index could
+not be read, because there the consequence — a shorter list — is local and needs saying where
+it shows.
+
 ## Typography
 
 **UI and Prose Font:** Geist Variable (with `ui-sans-serif, system-ui, sans-serif`)

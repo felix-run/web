@@ -134,7 +134,7 @@ describe('a failed read after a good one', () => {
     const listJobs = vi
       .fn()
       .mockResolvedValueOnce([job({ name: 'digest' })])
-      .mockRejectedValue(new Error('jobs : 429 {"error":"rate_limited"}'));
+      .mockRejectedValue(new Error('jobs : 500 {"error":"internal"}'));
     vi.doMock('../src/api', () => ({
       listJobs,
       listJobRuns: vi.fn().mockResolvedValue([]),
