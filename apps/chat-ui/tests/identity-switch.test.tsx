@@ -271,6 +271,17 @@ describe('a 401', () => {
   });
 });
 
+/**
+ * The app on screen, and its listeners attached: `findByText` returns once the text renders, which
+ * on a slow runner can be before the effect that subscribes to another tab's writes has run.
+ */
+async function opened() {
+  await screen.findByText('chat is open');
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 describe('the open app', () => {
   const renderGate = () =>
     render(
@@ -282,7 +293,7 @@ describe('the open app', () => {
   it('reloads when another tab signs in as someone else', async () => {
     auth.setSession(github());
     renderGate();
-    await screen.findByText('chat is open');
+    await opened();
     localStorage.setItem('felix.session', JSON.stringify(google()));
     act(() => {
       window.dispatchEvent(new StorageEvent('storage', { key: 'felix.session' }));
@@ -293,7 +304,7 @@ describe('the open app', () => {
   it('reloads when another tab signs out', async () => {
     auth.setSession(github());
     renderGate();
-    await screen.findByText('chat is open');
+    await opened();
     localStorage.removeItem('felix.session');
     act(() => {
       window.dispatchEvent(new StorageEvent('storage', { key: 'felix.session' }));
@@ -304,7 +315,7 @@ describe('the open app', () => {
   it('stays put through a renewal another tab stores', async () => {
     auth.setSession(github());
     renderGate();
-    await screen.findByText('chat is open');
+    await opened();
     localStorage.setItem('felix.session', JSON.stringify(github({ token: 'renewed' })));
     act(() => {
       window.dispatchEvent(new StorageEvent('storage', { key: 'felix.session' }));
