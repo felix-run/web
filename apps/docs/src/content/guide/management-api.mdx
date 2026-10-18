@@ -1085,7 +1085,8 @@ curl -s -X POST "$BASE_URL/jobs/nightly-digest/run" -H "authorization: Bearer $F
 
 It runs exactly as a scheduled firing does: as the principal `cron` **on behalf of the job's last
 writer**, with the scopes recorded when they wrote it (an API-key writer's cut to what the key holds
-now) — not as the caller — on the job's own thread, with its prompt screened like any user turn. Only the run record
+now, and a writer who signed in through Felix — GitHub, Google or GitHub Actions — cut to what their
+account entry or org grant holds now; a writer neither admits any more has the run refused) — not as the caller — on the job's own thread, with its prompt screened like any user turn. Only the run record
 differs: `trigger` is `manual` (a scheduled run says `schedule`) and `requested_by` is the caller's
 subject. The schedule is not moved, and a **disabled job runs** when asked, since the call is
 explicit. It needs `jobs:write`, because whoever may rewrite a job's prompt may already make it
