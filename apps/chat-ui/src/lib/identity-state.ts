@@ -10,9 +10,9 @@
  * identity is stored (`IDENTITY_MARKER` holds whose state is here). Preferences that say nothing
  * about a person — the theme, a folded sidebar, the last sign-in provider — are kept.
  *
- * Imports nothing of the app's own, so the credential module can use it without a cycle.
+ * Imports nothing at load, so the credential module — which nearly everything imports — can use it
+ * without a cycle and without carrying the cowork client into every page and test that signs in.
  */
-import { clearMount } from '@felix/cowork-client';
 
 /** Whose state this browser holds: `auth.ts`'s `identityKey()` at the last sign-in. */
 export const IDENTITY_MARKER = 'felix.identity';
@@ -69,7 +69,10 @@ function sweep(storage: Storage, exact: readonly string[], prefixes: readonly st
  * the person changes. Storage that refuses is left as it is.
  */
 export function forgetIdentityState({ everything = false }: { everything?: boolean } = {}): void {
-  clearMount();
+  void import('@felix/cowork-client').then(
+    (cowork) => cowork.clearMount(),
+    () => undefined,
+  );
   try {
     sweep(
       localStorage,
