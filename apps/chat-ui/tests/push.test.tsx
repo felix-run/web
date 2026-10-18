@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { PushHint } from '../src/components/chat/push-hint';
 import { ThemeProvider } from '../src/components/theme-provider';
+import { setSession } from '../src/lib/auth';
 import { enablePush, pushCapability, resyncPush } from '../src/lib/push';
 
 /**
@@ -104,6 +105,7 @@ function device({
 beforeEach(() => {
   held = null;
   localStorage.removeItem('felix.pushHint');
+  localStorage.removeItem('felix.pushOwner');
 });
 
 afterEach(() => {
@@ -172,6 +174,26 @@ describe('resyncPush', () => {
     expect(posted.filter((p) => p.method === 'POST').map((p) => p.url)).toEqual([
       '/api/push/subscriptions',
     ]);
+  });
+
+  it('drops a subscription another sign-in made rather than register it under this one', async () => {
+    device({ permission: 'granted' });
+    // Someone else turned pushes on here; their session lapsed, and this one signed in.
+    localStorage.setItem('felix.pushOwner', 'session|google|google:1|family');
+    setSession({
+      token: 'h.e30.s',
+      expiresAt: Date.now() + 3_600_000,
+      login: 'octo',
+      tenant: 'default',
+      scopes: [],
+      provider: 'github',
+    });
+    const sub = fakeSub('https://fcm.googleapis.com/fcm/send/laptop', KEY);
+    held = sub;
+    await resyncPush();
+    expect(sub.unsubscribe).toHaveBeenCalled();
+    expect(posted.filter((p) => p.method === 'POST')).toEqual([]);
+    expect(localStorage.getItem('felix.pushOwner')).toBeNull();
   });
 
   it('drops a subscription whose permission was withdrawn, on both sides', async () => {

@@ -28,6 +28,7 @@
 
 import { Spinner } from '@felix/ui/spinner';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { AUTH_TIMEOUT_MS, getAuthMethods, githubAuthorizeUrl } from '@/api';
 import {
   authHeaders,
@@ -36,11 +37,15 @@ import {
   clearSession,
   credentialKind,
   getSession,
+  identityKey,
+  isCredentialStorageEvent,
   lastSignInProvider,
   type Relock,
   setApiKey,
   setRelockHandler,
   setSession,
+  settleIdentity,
+  subscribeCredentials,
 } from '@/lib/auth';
 import {
   completeRedirectSignIn,
@@ -50,6 +55,7 @@ import {
   returnTo,
   useDeviceLogin,
 } from '@/lib/github-login';
+import { openFor, reloadHome } from '@/lib/opened-identity';
 import { AccessKeyForm } from './auth/access-key-form';
 import { AuthCard, QuietAction } from './auth/auth-card';
 import { AuthLayout } from './auth/auth-layout';
@@ -174,6 +180,16 @@ function rejectedMessage(kind: CredentialKind): string {
     : 'That key was rejected. Try again.';
 }
 
+/**
+ * What a relock says. A request that carried no credential refused nothing — it went out after a
+ * sign-out, a lease letting go on the way down — so it says nothing, rather than telling a person
+ * who just signed out that their key was rejected.
+ */
+function relockMessage(why: Relock): string | null {
+  if (why.cause === 'signed-out' || why.kind === 'none') return null;
+  return rejectedMessage(why.kind);
+}
+
 function probeMessage(result: Extract<Probe, { ok: false }>, kind: CredentialKind): string {
   switch (result.reason) {
     case 'rejected':
@@ -191,7 +207,9 @@ function probeMessage(result: Extract<Probe, { ok: false }>, kind: CredentialKin
   }
 }
 
-type Check = { open: true } | { open: false; error: string | null; options: Options };
+type Check =
+  | { open: true; notice?: string | null }
+  | { open: false; error: string | null; options: Options };
 
 /**
  * Verify what is stored; failing that, ask the deployment what it offers. An
@@ -219,7 +237,9 @@ async function check(): Promise<Check> {
   let keyGate: boolean | undefined;
   if (kind !== 'none') {
     const result = await probe();
-    if (result.ok) return { open: true };
+    // A redirect sign-in that failed while a session was still stored opens on that session, but
+    // says so: the person meant to renew, or to switch, and would otherwise believe they had.
+    if (result.ok) return { open: true, notice: error };
     forgetIfRejected(result);
     error = probeMessage(result, kind);
     if (result.reason === 'rejected') keyGate = result.keyGate;
@@ -277,7 +297,7 @@ export function Gate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setRelockHandler((why: Relock) => {
-      setError(why.cause === 'signed-out' ? null : rejectedMessage(why.kind));
+      setError(relockMessage(why));
       cancel();
       setPhase('checking');
     });
@@ -291,6 +311,7 @@ export function Gate({ children }: { children: ReactNode }) {
       .then((result) => {
         if (!alive) return;
         if (result.open) {
+          if (result.notice) toast.error(result.notice);
           setPhase('open');
           return;
         }
@@ -357,7 +378,7 @@ export function Gate({ children }: { children: ReactNode }) {
     [value, submitting],
   );
 
-  if (phase === 'open') return <>{children}</>;
+  if (phase === 'open') return <Opened>{children}</Opened>;
   if (phase === 'checking') return <Holding />;
 
   const switchLink = (label: string, toKey: boolean) => (
@@ -470,4 +491,52 @@ function NoWayIn({ error, onRetry }: { error: string | null; onRetry: () => void
       </p>
     </AuthCard>
   );
+}
+
+/**
+ * The guarded app, for as long as the identity it opened for is the one stored. Another identity
+ * stored under it — another tab signing out or in as someone else, or a sign-in here that did not
+ * reload — would have requests carry the new credential while the screen still shows the old
+ * person's thread, approvals and leases. So it reloads to `/` instead, where the gate asks or
+ * opens for whoever is stored now.
+ */
+function Opened({ children }: { children: ReactNode }) {
+  const [opened] = useState(() => {
+    const now = identityKey();
+    const stale = openFor(now);
+    // Before the app below reads its cache: finish a forget the last page left, record whose this is.
+    if (!stale) settleIdentity();
+    return { now, stale };
+  });
+  useEffect(() => {
+    if (opened.stale) {
+      reloadHome();
+      return;
+    }
+    // Once: another tab's write reaches both listeners below.
+    let leaving = false;
+    const away = () => {
+      if (leaving) return;
+      leaving = true;
+      reloadHome();
+    };
+    // This tab's own writes: a credential cleared here is a relock, the gate's to handle with its
+    // message; a different identity stored here (a device-flow sign-in from the chip) is not.
+    const unsubscribe = subscribeCredentials(() => {
+      const now = identityKey();
+      if (now && now !== opened.now) away();
+    });
+    // Another tab's: signing out there, or in as someone else, must not leave this tab showing
+    // the last person's thread.
+    const onStorage = (e: StorageEvent) => {
+      if (isCredentialStorageEvent(e) && identityKey() !== opened.now) away();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [opened]);
+  if (opened.stale) return null;
+  return <>{children}</>;
 }
