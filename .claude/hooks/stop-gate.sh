@@ -23,7 +23,7 @@ surfaces=$(printf '%s\n' "$changed" | grep -E '^(apps/chat-ui/(src/(api|types)\.
 
 if [ -n "$surfaces" ]; then
   # Any doc-side change in the same tree counts as "docs were considered".
-  if ! printf '%s\n' "$changed" | grep -qE '^(apps/docs/(src/content/|astro\.config\.mjs)|CLAUDE\.md$|\.claude/)'; then
+  if ! printf '%s\n' "$changed" | grep -qE '^(apps/docs/(src/content/|astro\.config\.mjs)|(.*/)?CLAUDE\.md$|\.claude/)'; then
     hash=$(printf '%s\n' "$surfaces" | shasum | cut -c1-12)
     if ! grep -qs "$hash" "$state" 2>/dev/null; then
       echo "$hash" >> "$state"
