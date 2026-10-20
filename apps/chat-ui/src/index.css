@@ -26,6 +26,11 @@
    near-black page. */
 @source "../node_modules/streamdown/dist";
 
+/* `CLAUDE.md` sits in the app root, so Tailwind scans it, and its prose spells real
+   class names — the streamdown canary above among them. Every one compiled into the
+   shipped stylesheet, and the canary stopped proving the line above is needed. */
+@source not "../CLAUDE.md";
+
 @custom-variant dark (&:is(.dark *));
 /* Room for the empty thread to rise: a desktop-width window tall enough that the
    greeting and the composer fit together with nothing scrolled away. Measured, the

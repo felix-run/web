@@ -179,7 +179,10 @@ export async function compile(appDir, cssPath, overrideCss) {
 }
 
 /**
- * The directives a stylesheet needs to compile at all, minus every `@source`.
+ * The directives a stylesheet needs to compile at all, minus every `@source` that
+ * adds a tree. An `@source not` stays: it narrows Tailwind's own detection, so it
+ * belongs to the baseline as much as to the real build — dropped, a file the
+ * stylesheet excludes would put its classes back into the baseline alone.
  *
  * The baseline the guarded sources are measured against: whatever Tailwind finds
  * on its own from the app root. `@custom-variant` comes along because a canary
@@ -189,7 +192,7 @@ export async function compile(appDir, cssPath, overrideCss) {
 export function baselineCss(css) {
   return css
     .split('\n')
-    .filter((line) => /^\s*@(?:import|custom-variant)\b/.test(line))
+    .filter((line) => /^\s*@(?:import|custom-variant|source\s+not)\b/.test(line))
     .join('\n');
 }
 
@@ -245,9 +248,13 @@ function selfTest() {
   }
 
   const base = baselineCss(
-    '@import "tailwindcss";\n@source "../x";\n@custom-variant dark (&:is(.dark *));\n.a{}',
+    '@import "tailwindcss";\n@source "../x";\n@source not "../y";\n' +
+      '@custom-variant dark (&:is(.dark *));\n.a{}',
   );
-  if (base.includes('@source')) problems.push('baselineCss: kept an @source line');
+  if (base.includes('@source "')) problems.push('baselineCss: kept an @source line');
+  if (!base.includes('@source not "../y"')) {
+    problems.push('baselineCss: dropped an @source not line');
+  }
   if (!base.includes('@import') || !base.includes('@custom-variant')) {
     problems.push('baselineCss: dropped a directive the canaries need');
   }
