@@ -1152,6 +1152,86 @@ Several `task` calls in one turn run side by side when
 manifest are refused: the composite pattern would never offer the tool to a model. For an agent
 on another deployment, use [`spec.peers`](#specpeers).
 
+## `spec.scheduling`
+
+```yaml
+spec:
+  pattern: react
+  scheduling:
+    max_tasks: 10              # tasks one caller may hold on this manifest; 1–100
+    min_interval_minutes: 60   # the shortest gap a recurring task may fire at
+    approval: true             # hold each schedule_task call for a person
+```
+
+Lets the agent schedule its own follow-up work — a reminder, a check to repeat, work due at a set
+time. Binds three tools; unset binds nothing.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `schedule_task` | `when`, `prompt` (1–8,000 characters), `title` (optional, ≤ 200), `fresh_thread` (default `false`) | `{status: "scheduled", name, schedule, next_run_at, title}` |
+| `list_scheduled` | none | `{tasks: [{name, title, schedule, next_run_at, last_run_at, last_status, enabled, expires_at}]}` |
+| `cancel_scheduled` | `name` | `{status: "cancelled", name}` |
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `max_tasks` | int 1–100 | `10` | Tasks one caller may hold here at once. A one-shot that has fired, and a disabled task, no longer count; a recurring task counts until it is cancelled or disabled. |
+| `min_interval_minutes` | int ≥ 1 | `60` | The shortest gap a recurring task may fire at. For cron, the next 200 firings are walked and the smallest gap taken (`0 9,10 * * *` is 60 minutes). A one-shot is exempt. |
+| `approval` | bool | `true` | Add the built-in approval over `schedule_task` (below). `false` adds none. |
+
+**A task is a scheduled job.** `schedule_task` writes an ordinary [job](/guide/management-api/#jobs)
+named `task-<hex>` on this manifest, as the caller: `created_by` is who the conversation acts for and
+the job records their scopes, so each firing runs as `cron` on their behalf and reaches nothing they
+could not reach by asking. `prompt` is the job's `payload.prompt`, run as a new user message with no
+conversation around it, so it must be self-contained; every firing shares one thread unless
+`fresh_thread` is set. `when` takes the [job schedule grammar](/guide/management-api/#jobs) — most
+usefully `at:<ISO-8601 timestamp with offset>` for once, `every:90m`, a macro, or five-field cron in
+UTC. A recurring task first runs at its schedule's next slot, not on the next sweep as a job written
+over HTTP does. `list_scheduled` and `cancel_scheduled` see only the tasks the caller scheduled from
+this manifest — never an operator's job or another person's task — and a name that is not the
+caller's gets the same `no_such_task` as one that does not exist. The jobs stay visible to an
+operator through `GET /jobs`.
+
+**Refusals.** Every refusal is a tool result the model reads, `{"error": <code>, "detail": …}`, and
+nothing is written:
+
+| Code | When |
+|---|---|
+| `no_caller` | The conversation has no signed-in caller — every conversation under `FELIX_AUTH_MODE=none`. |
+| `shared_subject` | The caller's subject names no person: an API key with no `sub` (subject `api_key`), an inbound trigger's run (`trigger:<id>`, shared by every sender), or a machine actor (`cron`, `fiber`, `a2a`, `eval`, `consolidation`) acting for no one. A task belongs to its writer's subject, so a shared one would make each holder's tasks everyone's. A plugin authenticator that gives many people one subject cannot be detected here; avoiding that is the operator's responsibility. |
+| `scheduled_run` | `schedule_task` only: the caller is scheduled work. A job's firing is marked scheduled, and the mark is carried into everything it starts — a workflow run and its agent steps, a durable child — so scheduled work never schedules more, however many hops down. |
+| `missing_scope` | `schedule_task` and `cancel_scheduled` need `jobs:write`; `list_scheduled` needs `jobs:read` (`jobs:write` implies it). |
+| `invalid_prompt`, `invalid_title` | Empty or over-long text. |
+| `invalid_schedule`, `never_fires` | `when` is outside the grammar, or names no time (an empty, manual-only schedule). |
+| `in_the_past`, `too_far_ahead` | An `at:` that has passed, or more than 366 days out. |
+| `too_frequent` | A recurring schedule whose shortest gap is under `min_interval_minutes`. |
+| `outlives_credential` | An `at:` after the caller's token expires (its `exp`). An API key has no expiry and is never refused this way. |
+| `too_many_tasks` | The caller already holds `max_tasks` here. |
+
+A task records its writer's token expiry. A firing after it — on schedule or through
+`POST /jobs/{name}/run` — is refused and the job disabled, with `last_error` "the credential that scheduled this
+task has expired; schedule it again": a task lives no longer than the credential that wrote it. A
+task that will not run again — a one-shot that has fired, or a task that is disabled, such as one
+disabled when its credential expired — is deleted, with its run history, once its last run is older
+than `FELIX_SCHEDULED_TASK_RETENTION_DAYS` (30; `0` keeps them). An enabled recurring task, a task
+that has never run, and every job an operator wrote are never swept.
+
+**The approval.** With `approval: true` each `schedule_task` call waits for a person, through the
+same flow as any [approval](#specapprovals): rule `scheduling.schedule_task`, `one_shot` and
+`bind_principal`, so a grant is never a standing licence to schedule. The approver reads a preview —
+the schedule, the title, and the prompt that will run later as the person who asked. If one of
+your own [`approvals`](#specapprovals) rules names `schedule_task` literally and has no `when_args`,
+that rule applies as written instead. A glob such as `*` does not displace the built-in rule: as a
+literal, the built-in one is the rule selected, so a looser catch-all never stands in for it. **No
+[permission mode](#specpermissions) waives any approval on `schedule_task`, `bypass` included,
+whichever rule asked for it**: the prompt runs later with no one watching, which a person present
+in the conversation now does not answer for. The
+preview runs every check above first, so a call the tool would refuse is denied
+(`[approval preview failed] …`) with no approval row and no wait.
+
+The three tools are bound before the governance stack, so policies, limits and screening apply to them
+like any tool. `list_scheduled` is read-only and runs in plan mode; the other two do not. A manifest
+that already has a tool of one of these names fails the compile.
+
 ## `spec.max_turns` and `spec.recursion_limit`
 
 ```yaml
@@ -1849,7 +1929,7 @@ shown on the session snapshot as `permissionMode`. It applies from the next run.
 | `default` | Everything the rest of the manifest allows, with approvals as written. |
 | `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task` — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals`), and the conversation returns to `default_mode`. |
 | `accept_edits` | Approvals for `write_file`, `edit_file`, `delete_file`, `rename_file` and `edit_tools` are skipped; every other approval is asked as written. |
-| `bypass` | Every approval is skipped except a plan's. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
+| `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](#specscheduling), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
 
 `allowed_modes` defaults to `[default, plan]`: `accept_edits` and `bypass` skip approvals you wrote,
 so they apply only where you list them. **Plan mode binds every agent**, whatever its

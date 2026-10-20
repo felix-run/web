@@ -254,6 +254,13 @@ Scheduled jobs (`PUT /jobs/{name}`) use standard **five-field** cron, evaluated 
 | `0 3 * * *` | Daily at 03:00 |
 | `0 9 * * 1` | Mondays at 09:00 |
 
+Macros (`@daily`), intervals (`every:5m`) and a one-shot `at:2026-10-21T09:00:00Z` — an ISO-8601
+timestamp with a required offset — are accepted too; see [Jobs](/guide/management-api/#jobs). Tasks
+an agent schedules for itself ([`spec.scheduling`](/guide/manifest-reference/#specscheduling)) are
+jobs too, and run through the same sweep; the retention sweep deletes the ones that will not run
+again (a fired one-shot, a disabled task) once their last run is older than
+`FELIX_SCHEDULED_TASK_RETENTION_DAYS` (30, `0` keeps them).
+
 :::note
 The worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the sweep is *enqueued* by
 `felix-scheduler`. Run all three containers — API, worker **and** scheduler — or no job, retention
