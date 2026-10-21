@@ -2,7 +2,13 @@ import { Button } from '@felix/ui/button';
 import { BellIcon, XIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { isStandalone } from '@/lib/platform';
-import { currentSubscription, enablePush, loadPushKey, pushCapability } from '@/lib/push';
+import {
+  currentSubscription,
+  enablePush,
+  loadPushKey,
+  PUSH_CHANGED,
+  pushCapability,
+} from '@/lib/push';
 
 /**
  * One line, inside the installed app, offering a notification when a run is waiting on you.
@@ -10,13 +16,19 @@ import { currentSubscription, enablePush, loadPushKey, pushCapability } from '@/
  * The install line's other half: on iOS a push can reach only a web app on the Home Screen,
  * so this appears once the app is installed and never in a tab, which also keeps the two
  * lines from showing together. It offers only what will work: the deployment pushes (its key
- * loaded), the device can subscribe, permission has not been decided either way, and this
- * device is not already subscribed. Turning it off afterwards is the system's notification
+ * loaded), the device can subscribe, permission has not been refused, and this device holds
+ * no subscription — including one just dropped because the deployment's key changed, which
+ * is why "allowed" alone does not hide it. Turning it off afterwards is the system's notification
  * setting for the app; the push service then refuses the next send and the harness forgets
- * the device. Gone for good once dismissed.
+ * the device. Gone for good once dismissed with ×; turning it on only hides it while the
+ * subscription lasts.
  */
 
-const DISMISSED_KEY = 'felix.pushHint';
+// Not `felix.pushHint`: the first build wrote that on a successful Turn on as well as on ×, so on
+// every device that turned notifications on it would hide the line for good — including after
+// a key change dropped the subscription. A new name forgets those; a deliberate × costs the
+// person seeing the line once more.
+const DISMISSED_KEY = 'felix.pushHint.dismissed';
 
 function readDismissed(): boolean {
   try {
@@ -35,18 +47,25 @@ export function PushHint() {
     !dismissed &&
     isStandalone() &&
     pushCapability() === 'available' &&
-    Notification.permission === 'default';
+    Notification.permission !== 'denied';
 
   useEffect(() => {
     if (!eligible) return;
     let cancelled = false;
-    void (async () => {
-      if (await currentSubscription().catch(() => null)) return;
+    const check = async () => {
+      if (await currentSubscription().catch(() => null)) {
+        if (!cancelled) setKey(null);
+        return;
+      }
       const loaded = await loadPushKey();
       if (!cancelled) setKey(loaded);
-    })();
+    };
+    void check();
+    const onChange = () => void check();
+    window.addEventListener(PUSH_CHANGED, onChange);
     return () => {
       cancelled = true;
+      window.removeEventListener(PUSH_CHANGED, onChange);
     };
   }, [eligible]);
 
@@ -79,8 +98,12 @@ export function PushHint() {
           // Straight from the click: the key is already loaded, so nothing awaits the network
           // before the browser asks.
           void enablePush(key).then((result) => {
-            if (result === 'on') dismiss();
-            else setState(result);
+            // On: the subscription now exists, which is what hides the line. Not a dismissal,
+            // or a later key change could never offer it again.
+            if (result === 'on') {
+              setKey(null);
+              setState('idle');
+            } else setState(result);
           });
         }}
       >

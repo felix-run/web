@@ -94,13 +94,19 @@ export async function disablePush(): Promise<void> {
 }
 
 /**
- * On load: tell the harness about a subscription this device already holds.
+ * On load: bring the harness and this device back into agreement.
  *
- * The harness can lose a row without the browser knowing — five failed sends in a row, a
- * reset store, a different deployment behind the same address — and a device that believes
- * it is subscribed would then wait on pushes that never come. Subscribing is idempotent, so
- * re-sending costs one request. A subscription whose permission was since withdrawn is
- * dropped instead.
+ * The harness can lose a row without the browser knowing — five failed sends in a row, a reset
+ * store, a different deployment behind the same address — and a device that believes it is
+ * subscribed would then wait on pushes that never come. Subscribing is idempotent, so
+ * re-sending costs one request.
+ *
+ * Three cases are dropped instead of re-sent, on both sides. Permission withdrawn since. A
+ * subscription made with a key the deployment no longer uses: the push service refuses every
+ * push signed with the new key (Apple answers `VapidPkHashMismatch`), so re-registering it
+ * would keep a dead row alive and keep the device from ever being offered Turn on again. And
+ * one another identity made (below). Each time `push-changed` fires, so the offer can reappear
+ * without a reload.
  */
 export async function resyncPush(): Promise<void> {
   if (pushCapability() !== 'available') return;
@@ -108,6 +114,14 @@ export async function resyncPush(): Promise<void> {
   if (!sub) return;
   if (Notification.permission !== 'granted') {
     await disablePush().catch(() => {});
+    announce();
+    return;
+  }
+  const key = await loadPushKey();
+  if (!key) return; // the deployment does not push (or could not be asked): leave things be
+  if (!sameKey(sub, key)) {
+    await disablePush().catch(() => {});
+    announce();
     return;
   }
   // A subscription another identity made — a session that lapsed, then someone else's sign-in —
@@ -117,6 +131,7 @@ export async function resyncPush(): Promise<void> {
   const now = identityKey();
   if (owner !== null && owner !== now) {
     await disablePush().catch(() => {});
+    announce();
     return;
   }
   // One made before owners were recorded is taken as this identity's, as the cache is.
@@ -142,6 +157,13 @@ function rememberPushOwner(identity: string | null): void {
   } catch {
     // Not remembered: the next load re-registers, as before owners were kept.
   }
+}
+
+/** Fired on `window` when this device's subscription was dropped, so the offer can reappear. */
+export const PUSH_CHANGED = 'felix:push-changed';
+
+function announce(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(PUSH_CHANGED));
 }
 
 function sameKey(sub: PushSubscription, publicKey: string): boolean {

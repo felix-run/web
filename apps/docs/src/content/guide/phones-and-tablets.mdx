@@ -44,6 +44,10 @@ the device the next time it tries to reach it.
 Notifications need a key on the harness: `FELIX_PUSH_VAPID_PRIVATE_KEY` and
 `FELIX_PUSH_VAPID_SUBJECT` (see `.env.example` in the harness). Without them the **Turn on** line
 never appears. The routes are described under [Push](/guide/management-api/#push).
+
+Changing the private key ends every device's subscription: the push services refuse anything
+signed with a key the device did not subscribe with. Each device drops its old subscription the
+next time the app opens and offers **Turn on** again, so people need to tap it once more.
 </Aside>
 
 ## Typing
