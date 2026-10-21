@@ -177,7 +177,9 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
             Enter this code at{' '}
             <span className="text-foreground">{bareUrl(code.verification_uri)}</span>
           </p>
-          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-4 py-3">
+          {/* Held on the ground tone, as the app holds a user turn or the run readout: tone, not
+              a hairline, and in dark a well below the card rather than a wash above it. */}
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-ground px-4 py-3">
             {/* Where focus lands when the code arrives, so a screen reader reads it first. */}
             <output
               ref={codeRef}
@@ -218,18 +220,18 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
           </a>
         </Button>
 
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <p role="status" className="flex items-center gap-2">
-            <Loader2Icon aria-hidden className="size-3.5 animate-spin" />
+        {/* Top-aligned: at phone width the status wraps to two lines, and centring then hung
+            the spinner and the countdown between them. */}
+        <div className="flex items-start justify-between gap-3 text-xs text-muted-foreground">
+          <p role="status" className="flex items-start gap-2">
+            <Loader2Icon aria-hidden className="mt-0.5 size-3.5 shrink-0 animate-spin" />
             Waiting for you to approve on GitHub
           </p>
           {/* Labelled: a bare "15:00" beside a status line reads as a time of day. */}
           <span className="shrink-0 tabular-nums">Expires in {clock(expiresAt - now)}</span>
         </div>
 
-        <QuietAction className="text-xs" onClick={cancel}>
-          Cancel
-        </QuietAction>
+        <QuietAction onClick={cancel}>Cancel</QuietAction>
       </div>
     );
   }
@@ -242,9 +244,7 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
           approve once more.
         </p>
         <TenantChoices tenants={state.tenants} onChoose={(tenant) => void start(tenant)} />
-        <QuietAction className="text-xs" onClick={cancel}>
-          Cancel
-        </QuietAction>
+        <QuietAction onClick={cancel}>Cancel</QuietAction>
       </div>
     );
   }
@@ -274,9 +274,7 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
       )}
       {/* Back to the first step, which is where every other way in lives — Google's button,
           a tenant list. Without it a refusal with no retry was a card with nothing to press. */}
-      <QuietAction className="text-xs" onClick={cancel}>
-        Back
-      </QuietAction>
+      <QuietAction onClick={cancel}>Back</QuietAction>
     </div>
   );
 }

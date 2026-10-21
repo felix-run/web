@@ -6,11 +6,13 @@
  * The panel is painted from this app's own tokens instead, so the gate makes
  * no network request of its own.
  *
- * Flat `muted`, the resting-rail tone, rather than the `muted` → `background`
- * gradient it arrived with: that was the only gradient in the app, and "a
- * gradient somewhere" is one of the marks of the scaffolded default this surface
- * is meant not to look like. A tonal step is how everything else here separates
- * one region from another. Muted text measures 4.81:1 on it light, 5.66:1 dark.
+ * Flat `ground`, the tone the app's own sidebar carries the same mark on, rather
+ * than the `muted` → `background` gradient it arrived with: that was the only
+ * gradient in the app, and "a gradient somewhere" is one of the marks of the
+ * scaffolded default this surface is meant not to look like. Not `muted`: the two
+ * are one value in light, but dark `muted` is the hover wash, a step *above* the
+ * sheet, which made an empty panel the brightest thing on the page and the form
+ * beside it the dimmest. Muted text measures 5.46:1 on ground light, 7.70:1 dark.
  *
  * The heading is a headline (16px), the top of the type ramp. It was 24px, a
  * size the ramp does not define, on the one screen that renders before the app.
@@ -35,7 +37,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       */}
       <aside
         aria-hidden="true"
-        className="relative hidden overflow-hidden border-r border-border/60 bg-muted lg:block"
+        className="relative hidden overflow-hidden border-r border-border/60 bg-ground lg:block"
       >
         <div className="flex h-full flex-col justify-between p-8">
           <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider">
