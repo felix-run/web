@@ -51,6 +51,7 @@ Manifests use `apiVersion: felix/v1`, `kind: Agent` (Pydantic v2, `extra=forbid`
 | Checkpointer | `memory.checkpointer` → resolved through the checkpointer registry: `postgres` (default), `none`, or a plugin-registered store |
 | Strategy | `session.strategy` → `full_replay` / `windowed:N` / `summarizing:N` / `semantic:N` / `compacting` |
 | Long-term memory | `memory.recall.tools` binds `remember` / `recall` / `forget` / `list_memories` (not under `store: none`); `memory.store` ∈ `{pgvector, memory}` builds the active-facts prelude |
+| Date and time | `system_prompt.include_datetime` (default on): the date in `FELIX_TIMEZONE` is appended last to the system prompt, after tool guidance; the pattern is handed the install's clock as `ctx["now"]` (`felix.clock.Now`), which the react loop calls to put the current time on the run's first call as a transient note |
 | Artifacts | Large tool outputs spill to the object store; `read_artifact` is bound so the model can page through them, limited to its own conversation's |
 
 ## Caching
