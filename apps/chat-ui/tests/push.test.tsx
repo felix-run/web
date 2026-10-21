@@ -21,6 +21,8 @@ import { enablePush, pushCapability, resyncPush } from '../src/lib/push';
 
 const KEY =
   'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8';
+const OTHER_KEY =
+  'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4';
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15';
 const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15';
 
@@ -104,7 +106,7 @@ function device({
 
 beforeEach(() => {
   held = null;
-  localStorage.removeItem('felix.pushHint');
+  localStorage.removeItem('felix.pushHint.dismissed');
   localStorage.removeItem('felix.pushOwner');
 });
 
@@ -145,10 +147,7 @@ describe('enablePush', () => {
 
   it('replaces a subscription made for another deployment instead of registering it', async () => {
     device();
-    const stale = fakeSub(
-      'https://web.push.apple.com/old-device',
-      'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4',
-    );
+    const stale = fakeSub('https://web.push.apple.com/old-device', OTHER_KEY);
     held = stale;
     await enablePush(KEY);
     expect(stale.unsubscribe).toHaveBeenCalled();
@@ -196,6 +195,22 @@ describe('resyncPush', () => {
     expect(localStorage.getItem('felix.pushOwner')).toBeNull();
   });
 
+  it('drops a subscription made with a key the deployment no longer uses, and says so', async () => {
+    // Measured against Apple: such a subscription answers every push with 400
+    // VapidPkHashMismatch, so re-registering it would keep a dead row and hide Turn on.
+    device({ permission: 'granted' });
+    const stale = fakeSub('https://web.push.apple.com/old-key', OTHER_KEY);
+    held = stale;
+    const changed = vi.fn();
+    window.addEventListener('felix:push-changed', changed);
+    await resyncPush();
+    window.removeEventListener('felix:push-changed', changed);
+    expect(stale.unsubscribe).toHaveBeenCalled();
+    expect(posted.filter((p) => p.method === 'POST')).toEqual([]);
+    expect(posted.find((p) => p.method === 'DELETE')?.body).toEqual({ endpoint: stale.endpoint });
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
   it('drops a subscription whose permission was withdrawn, on both sides', async () => {
     device({ permission: 'denied' });
     const sub = fakeSub('https://fcm.googleapis.com/fcm/send/laptop', KEY);
@@ -220,6 +235,16 @@ describe('the notifications line', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Turn on' }));
     await waitFor(() => expect(posted.some((p) => p.method === 'POST')).toBe(true));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull());
+  });
+
+  it('offers Turn on again when permission is granted but no subscription is held', async () => {
+    // After a key change the device keeps its permission and loses its subscription; the
+    // line must come back, and turning on must not have dismissed it for good.
+    device({ ua: IPHONE, standalone: true, permission: 'granted' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on' }));
+    await waitFor(() => expect(posted.some((p) => p.method === 'POST')).toBe(true));
+    expect(localStorage.getItem('felix.pushHint.dismissed')).toBeNull();
   });
 
   it('offers nothing when the deployment does not push', async () => {
