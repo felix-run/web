@@ -3,10 +3,11 @@
  * uses to offer the other way in. One shell, so the four cards (key, GitHub, Google, and the
  * one that says there is no way in) cannot drift apart in spacing or heading.
  *
- * Flat, with the notice radius (`lg`). It once borrowed the composer's shadow and its 16px
- * radius, which made it a second floating surface in an app whose system reserves lift for
- * the composer alone. With no photo — and below `lg` no panel at all — the hairline is what
- * gives the card an edge at every width.
+ * Flat, with the 22px corner (`2xl`) the system gives what is read or decided on: pills for
+ * what you press, and this card holds nothing but pills and a field. It once borrowed the
+ * composer's shadow, which made it a second floating surface in an app whose system reserves
+ * lift for the composer alone. With no photo — and below `lg` no panel at all — the hairline
+ * is what gives the card an edge at every width.
  */
 
 import { Button } from '@felix/ui/button';
@@ -61,7 +62,7 @@ export function AuthCard({
     <Box
       ref={ref}
       onSubmit={onSubmit}
-      className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-6 [&_p]:text-pretty"
+      className="w-full max-w-sm space-y-6 rounded-2xl border border-border bg-card p-6 [&_p]:text-pretty"
     >
       <div className="space-y-1.5">
         {/* A headline — 16px, the top of the ramp. Only the wordmark is set in caps, and via

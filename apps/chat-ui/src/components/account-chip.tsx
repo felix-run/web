@@ -182,7 +182,7 @@ export function AccountChip() {
             type="button"
             variant="ghost"
             size="sm"
-            className="-ml-3 coarse:h-10"
+            className="-ml-3.5 coarse:h-10"
             onClick={() => {
               cancel();
               setOpen(false);
@@ -226,7 +226,13 @@ function GitHubConnectionRow({ open }: { open: boolean }) {
 
   if (state === 'unknown') return null;
   if (state === 'error') {
-    return <p className="text-xs text-muted-foreground">Could not check your GitHub connection.</p>;
+    // Under the same rule as the row it stands in for, or the popover's sections lose their
+    // rhythm only when the check fails.
+    return (
+      <p className="border-t border-border/60 pt-3 text-xs text-muted-foreground">
+        Could not check your GitHub connection.
+      </p>
+    );
   }
   const { connected, connection } = state;
   return (
