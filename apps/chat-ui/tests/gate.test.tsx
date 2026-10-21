@@ -45,6 +45,17 @@ const renderGate = () =>
     </Gate>,
   );
 
+/**
+ * Resolves once the locked gate is listening for `type`. The card is committed before the effect
+ * that attaches its listeners runs, so waiting on the card alone and then dispatching can lose the
+ * event in between — which a loaded CI runner hit, timing out on "chat is open". Call before
+ * rendering, so the spy sees the attach.
+ */
+function listeningFor(type: string): () => Promise<void> {
+  const spy = vi.spyOn(window, 'addEventListener');
+  return () => waitFor(() => expect(spy.mock.calls.some(([t]) => t === type)).toBe(true));
+}
+
 describe('Gate', () => {
   it('prompts for a key when none is stored and the Worker gates on one', async () => {
     fetchMock.mockResolvedValue(rejected());
@@ -306,8 +317,10 @@ describe('Gate, when the world changes under a locked prompt', () => {
 
   it('checks again when the network comes back', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    const listening = listeningFor('online');
     renderGate();
     await waitFor(() => expect(screen.getByText(/could not reach the server/i)).toBeTruthy());
+    await listening();
     fetchMock.mockImplementation(async () => unlocked());
     act(() => {
       window.dispatchEvent(new Event('online'));
@@ -318,8 +331,10 @@ describe('Gate, when the world changes under a locked prompt', () => {
   // Signing in in one tab writes the credential every other tab's gate is asking for.
   it('opens when another tab stores a credential', async () => {
     fetchMock.mockImplementation(keyed('k'));
+    const listening = listeningFor('storage');
     renderGate();
     await waitFor(() => expect(screen.getByPlaceholderText('Access key')).toBeTruthy());
+    await listening();
     localStorage.setItem('felix.apiKey', 'k');
     act(() => {
       window.dispatchEvent(new StorageEvent('storage', { key: 'felix.apiKey', newValue: 'k' }));
