@@ -171,9 +171,58 @@ export function createAuditClient(http: FelixHttp) {
     return (await res.json()) as ToolMetrics;
   }
 
+  /**
+   * GET /audit/export → every matching event as JSON lines, newest first — the whole window,
+   * not a page and not capped, which `listAuditWindow` is (it stops at `maxEvents`).
+   *
+   * The harness reads the first page before it answers, so most failures are a status code.
+   * One after that ends the file with `{"error": "export_incomplete", …}` instead; `complete`
+   * says which, because a file that stopped part way looks whole to whoever holds it. The text
+   * is returned as the harness wrote it, that line included, so the file says so too.
+   */
+  async function exportAudit(
+    opts: {
+      since?: number;
+      until?: number;
+      eventType?: string;
+      status?: string;
+      manifestId?: string;
+    } = {},
+  ): Promise<{ text: string; filename: string; events: number; complete: boolean }> {
+    const q = new URLSearchParams();
+    if (opts.since !== undefined) q.set('since', String(opts.since));
+    if (opts.until !== undefined) q.set('until', String(opts.until));
+    if (opts.eventType) q.set('event_type', opts.eventType);
+    if (opts.status) q.set('status', opts.status);
+    if (opts.manifestId) q.set('manifest_id', opts.manifestId);
+    const res = await chatFetch(`/audit/export?${q}`);
+    if (!res.ok) throw new Error(`audit export: ${res.status}`);
+    const text = await res.text();
+    const lines = text.split('\n').filter((line) => line.trim());
+    let complete = true;
+    const last = lines.at(-1);
+    if (last) {
+      try {
+        // Audit rows carry no `error` key, so one that does is the harness's marker.
+        complete = (JSON.parse(last) as { error?: unknown }).error !== 'export_incomplete';
+      } catch {
+        // A last line cut mid-object is a body that stopped, whatever the status said.
+        complete = false;
+      }
+    }
+    const named = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '');
+    return {
+      text,
+      filename: named?.[1] ?? 'audit.jsonl',
+      events: complete ? lines.length : Math.max(0, lines.length - 1),
+      complete,
+    };
+  }
+
   return {
     listAudit,
     listAuditWindow,
+    exportAudit,
     getToolMetrics,
   };
 }

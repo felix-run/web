@@ -125,6 +125,7 @@ import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import { resyncPush } from '@/lib/push';
 import { lastResume, onResume } from '@/lib/resume';
+import { saveText } from '@/lib/save-text';
 import { createLeaseKeeper, LEASE_RENEW_MS, releaseOnPageExit } from '@/lib/session-lease';
 import { ariaShortcut, isMacPlatform, shortcutLabel, whenMounted } from '@/lib/shortcuts';
 import {
@@ -1342,15 +1343,7 @@ export function AppShell() {
   /** GET /chat/sessions/{id}/export — hand the active branch to the user as a file. */
   const exportThread = useCallback((id: string) => {
     void exportSession(id)
-      .then((jsonl) => {
-        const url = URL.createObjectURL(new Blob([jsonl], { type: 'application/x-ndjson' }));
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${id}.jsonl`;
-        a.click();
-        // Revoking synchronously can beat the download starting in some browsers.
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      })
+      .then((jsonl) => saveText(jsonl, `${id}.jsonl`))
       .catch((err) => toastError(err, 'export this thread', { retry: () => exportThread(id) }));
   }, []);
 
