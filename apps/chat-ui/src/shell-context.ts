@@ -6,7 +6,18 @@ import type {
   SideAnswer,
   ThreadMeta,
 } from '@felix/client';
-import { createContext, type Dispatch, type SetStateAction, useContext } from 'react';
+import {
+  createContext,
+  createElement,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { KeptMessage } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
@@ -332,7 +343,86 @@ export const NO_RUN: RunClock = { startedAt: null, endedAt: null };
 
 const ShellContext = createContext<ShellValue | null>(null);
 
-export const ShellProvider = ShellContext.Provider;
+/**
+ * The same value as a store, for `useShellPick`. The value is rebuilt on every
+ * shell render — per streamed frame, while a reply streams — so every `useShell()`
+ * reader renders with it. A memoised component that reads only the fields it
+ * names through the store renders only when one of those changes: the sidebar was
+ * ~40% of render time during a reply and reads nothing that a reply changes.
+ */
+interface ShellStore {
+  current: ShellValue;
+  listeners: Set<() => void>;
+}
+const ShellStoreContext = createContext<ShellStore | null>(null);
+
+/**
+ * Provide the shell. The store's value is set as this renders, so anything
+ * rendering in the same pass reads the new one; subscribers that did not render
+ * (a memoised reader) are told once the pass commits, and re-render only if what
+ * they picked changed.
+ */
+export function ShellProvider({ value, children }: { value: ShellValue; children?: ReactNode }) {
+  const [store] = useState<ShellStore>(() => ({ current: value, listeners: new Set() }));
+  store.current = value;
+  useLayoutEffect(() => {
+    for (const l of store.listeners) l();
+  });
+  return createElement(
+    ShellContext.Provider,
+    { value },
+    createElement(ShellStoreContext.Provider, { value: store }, children),
+  );
+}
+
+const subscribeTo = (store: ShellStore) => (l: () => void) => {
+  store.listeners.add(l);
+  return () => {
+    store.listeners.delete(l);
+  };
+};
+const subscribers = new WeakMap<ShellStore, (l: () => void) => () => void>();
+
+/**
+ * Only the named fields of the shell, re-rendering only when one of them changes
+ * (compared with `Object.is`). For a memoised component: an unmemoised one renders
+ * with its parent anyway. A field that is rebuilt on every render — an inline
+ * object or closure — defeats it, so pick only stable ones; the shell's verbs are
+ * `useCallback`s and its state is React state.
+ */
+export function useShellPick<K extends keyof ShellValue>(...keys: K[]): Pick<ShellValue, K> {
+  const picked = useOptionalShellPick(...keys);
+  if (!picked) throw new Error('useShellPick must be used inside the app shell route');
+  return picked;
+}
+
+const noStore = () => () => {};
+const nothing = () => null;
+
+/** `useShellPick` for a piece also rendered outside the shell (tests, previews): null there. */
+export function useOptionalShellPick<K extends keyof ShellValue>(
+  ...keys: K[]
+): Pick<ShellValue, K> | null {
+  const store = useContext(ShellStoreContext);
+  let subscribe = store ? subscribers.get(store) : noStore;
+  if (store && !subscribe) {
+    subscribe = subscribeTo(store);
+    subscribers.set(store, subscribe);
+  }
+  const last = useRef<Pick<ShellValue, K> | null>(null);
+  const pick = store
+    ? () => {
+        const next = store.current;
+        const prev = last.current;
+        if (prev && keys.every((k) => Object.is(prev[k], next[k]))) return prev;
+        const picked = {} as Pick<ShellValue, K>;
+        for (const k of keys) picked[k] = next[k];
+        last.current = picked;
+        return picked;
+      }
+    : nothing;
+  return useSyncExternalStore(subscribe ?? noStore, pick, pick);
+}
 
 /**
  * Read the shell. Throws rather than returning a default, because every default

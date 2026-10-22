@@ -22,7 +22,7 @@ import {
 } from '@/lib/cowork';
 import { closePaneItem, isDirty, usePaneState } from '@/lib/side-pane';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
-import { type EditNotice, useOptionalShell } from '@/shell-context';
+import { type EditNotice, useOptionalShellPick } from '@/shell-context';
 
 export interface FolderRequest {
   path: string;
@@ -91,7 +91,7 @@ export function FolderActionDialog({
 
 function FolderAction({ request, onClose }: { request: FolderRequest; onClose: () => void }) {
   const { path, action, source } = request;
-  const shell = useOptionalShell();
+  const shell = useOptionalShellPick('manifest', 'threadId', 'showRecordedNote');
   const threadId = shell?.threadId ?? '';
   const manifest = shell?.manifest;
   const tellAgent = useTellAgent();

@@ -36,7 +36,7 @@ import { RepoFileTree } from '@/components/workspace/repo-files';
 import { getSession, subscribeCredentials } from '@/lib/auth';
 import { requestFileAction } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
-import { useOptionalShell } from '@/shell-context';
+import { useOptionalShellPick } from '@/shell-context';
 
 /** How often a cloning checkout is asked about. A clone is seconds to a few minutes. */
 const CLONING_POLL_MS = 2_000;
@@ -156,7 +156,7 @@ function RepoStatus({
   files: ThreadRepoFiles | null;
   onRemove: () => Promise<void>;
 }) {
-  const shell = useOptionalShell();
+  const shell = useOptionalShellPick('threadId', 'openInPane');
   const openInPane = shell?.openInPane;
   const facts =
     repo.state === 'ready'

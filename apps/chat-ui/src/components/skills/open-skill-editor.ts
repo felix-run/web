@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
 import { closePaneItem, paneKey, paneState } from '@/lib/side-pane';
-import { useOptionalShell } from '@/shell-context';
+import { useOptionalShellPick } from '@/shell-context';
 import { useLibraryId, useLibraryReadOnly } from './queries';
 
 /**
@@ -15,7 +15,7 @@ import { useLibraryId, useLibraryReadOnly } from './queries';
  * the operator is told, because silently dropping it is the one outcome nobody asked for.
  */
 export function useOpenSkillEditor(): ((name: string, opts?: { from?: string }) => void) | null {
-  const shell = useOptionalShell();
+  const shell = useOptionalShellPick('threadId', 'openInPane');
   const library = useLibraryId();
   const readOnly = useLibraryReadOnly();
   const open = shell?.openInPane;

@@ -18,7 +18,7 @@ import {
   PlusIcon,
   PuzzleIcon,
 } from 'lucide-react';
-import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
 import { ThreadList } from '@/components/chat/thread-list';
@@ -40,7 +40,7 @@ import {
   useNavGlances,
   walkNav,
 } from '@/routes/harness';
-import { useShell } from '@/shell-context';
+import { useShellPick } from '@/shell-context';
 
 /**
  * The app sidebar: every door this client has, in one place on both addresses.
@@ -58,7 +58,10 @@ import { useShell } from '@/shell-context';
  * land where they point, and the harness destinations navigate directly. Below
  * 1024px it is a drawer instead (`use-rails`), closed on every load.
  */
-export function AppSidebar() {
+export const AppSidebar = memo(function AppSidebar() {
+  // Picked, not `useShell()`, and memoised: the shell renders on every streamed frame and
+  // nothing here changes with a reply, so the sidebar — its thread list and every
+  // tooltip in it — was ~40% of render time while one streamed.
   const {
     threads,
     threadId,
@@ -75,7 +78,23 @@ export function AppSidebar() {
     blockedThreads,
     harnessView,
     threadIndex,
-  } = useShell();
+  } = useShellPick(
+    'threads',
+    'threadId',
+    'watching',
+    'selectThread',
+    'newThread',
+    'deleteThread',
+    'renameThread',
+    'forkThread',
+    'compactThread',
+    'exportThread',
+    'tenantApprovals',
+    'runningThreads',
+    'blockedThreads',
+    'harnessView',
+    'threadIndex',
+  );
   const { state, open, isMobile, setOpen, setOpenMobile, toggleSidebar } = useSidebar();
   const collapsed = state === 'collapsed' && !isMobile;
   const navigate = useNavigate();
@@ -329,7 +348,7 @@ export function AppSidebar() {
       </SidebarContent>
     </Sidebar>
   );
-}
+});
 
 const HARNESS_FOLD_KEY = 'felix.sidebar.harnessFolded';
 

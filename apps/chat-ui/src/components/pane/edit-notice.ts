@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { type EditNotice, useOptionalShell } from '@/shell-context';
+import { type EditNotice, useOptionalShellPick } from '@/shell-context';
 
 /**
  * Whether this harness answered that it has no way to tell the agent about an
@@ -18,7 +18,7 @@ export function resetEditNotice() {
  * test's partial shell), in which case a save is only a save.
  */
 export function useTellAgent() {
-  const tell = useOptionalShell()?.tellAgentEdited;
+  const tell = useOptionalShellPick('tellAgentEdited')?.tellAgentEdited;
   return useCallback(
     async (edit: {
       path: string;
@@ -37,7 +37,7 @@ export function useTellAgent() {
 
 /** Whether saving here tells the agent, as far as this page knows. */
 export function useTellsAgent(): boolean {
-  return Boolean(useOptionalShell()?.tellAgentEdited) && !routeMissing;
+  return Boolean(useOptionalShellPick('tellAgentEdited')?.tellAgentEdited) && !routeMissing;
 }
 
 /** What the save bar says once a save has landed. */

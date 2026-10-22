@@ -4,7 +4,7 @@ import remarkBreaks from 'remark-breaks';
 import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from 'streamdown';
 import { loadedMathPlugins, loadMathPlugins, needsMath, WITHOUT_MATH } from '@/lib/katex-plugin';
 import { cn } from '@/lib/utils';
-import { useOptionalShell } from '@/shell-context';
+import { useOptionalShellPick } from '@/shell-context';
 
 /**
  * Streamed assistant markdown. Tolerates incomplete fences mid-stream.
@@ -153,7 +153,7 @@ export function fencedCode(node: unknown): { code: string; language: string } | 
  * diagram (`mermaid`) is not code to read, and is left as it is.
  */
 function OpenablePre({ node, children }: { node?: unknown; children?: ReactNode }) {
-  const openInPane = useOptionalShell()?.openInPane;
+  const openInPane = useOptionalShellPick('openInPane')?.openInPane;
   const fenced = openInPane ? fencedCode(node) : null;
   if (!openInPane || !fenced || fenced.language === 'mermaid') return <>{children}</>;
   const lines = fenced.code.replace(/\n$/, '').split('\n').length;

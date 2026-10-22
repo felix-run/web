@@ -467,8 +467,21 @@ drawing it. The run's end writes at once. `tests/frame-store.test.ts`, `tests/tu
 verbs, the turn's own label, rating and branch — and builds `Message`'s closures itself; `Tool`
 is memoised too, since a finished call keeps its object across the engine's patches. Two things
 keep it holding: **pass a row nothing rebuilt per delta** (`regenerate` is, so only the turn it
-acts on receives it), and **nothing under `Message` may read `useShell()`**, whose value is new
-on every render and would wake every row through the memo. `lib/changes.ts` reads each call once
+acts on receives it), and **nothing under `Message` may read `useShell()` or
+`useOptionalShell()`**, whose value is new on every render and would wake every row through the
+memo — the code block's wrapper did, and every code block in the thread rendered each frame.
+Read it with `useShellPick('field', …)` (or `useOptionalShellPick`), which re-renders only when a
+picked field changes; `tests/shell-pick.test.tsx` fails on a whole-shell read in
+`components/chat` or `components/ai-elements`.
+
+**The same holds outside the transcript.** `ShellProvider` serves the value twice: as context
+for `useShell()`, and as a store `useShellPick` subscribes to. `AppSidebar` and `Inspector` are
+memoised pickers, because the sidebar — whose content no reply changes — was ~40% of render time
+while one streamed. A pick holds only while the fields it names are stable, so a shell field
+built inline is a regression even when it type-checks: `threadIndex` (now `threadIndexStatus`)
+and `usePendingApprovals`' return were new objects per render, and the sidebar redrew every frame
+until both were memoised. Find the culprit by measuring, not reading: one stale field looks
+exactly like a pick that does not work. `lib/changes.ts` reads each call once
 per call object (`factsOf`), relying on the same rule from the engine: a changed call is a new
 object. `tests/finished-turns-memo.test.tsx` counts `interleaveTurn` per turn during a stream.
 

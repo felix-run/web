@@ -1,5 +1,5 @@
 import type { ManifestWorkspace } from '@felix/client';
-import { useOptionalShell } from '@/shell-context';
+import { useOptionalShellPick } from '@/shell-context';
 
 export type WorkspaceTools = ManifestWorkspace['tools'];
 
@@ -14,7 +14,7 @@ export type WorkspaceTools = ManifestWorkspace['tools'];
  * folder is what such a client always offered, so it still offers it.
  */
 export function useWorkspaceTools(): WorkspaceTools | undefined {
-  const shell = useOptionalShell();
+  const shell = useOptionalShellPick('threadId', 'threads', 'manifest', 'manifestEntries');
   if (!shell) return undefined;
   const { threadId, threads, manifest, manifestEntries } = shell;
   const agent = threads?.find((t) => t.id === threadId)?.manifest?.trim() || manifest;

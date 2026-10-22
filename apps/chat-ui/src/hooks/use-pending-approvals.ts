@@ -1,5 +1,5 @@
 import type { ApprovalRequest } from '@felix/client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listApprovals } from '@/api';
 import { rememberDecidedHere } from '@/lib/denials';
 import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
@@ -150,5 +150,10 @@ export function usePendingApprovals(): PendingApprovals {
     setPending((rows) => rows.filter((r) => r.id !== id));
   }, []);
 
-  return { pending, error, lastOkAt, failures, forbidden, refresh, markDecided };
+  // One object per change, not per render: the sidebar picks this out of the shell and is
+  // memoised, so a fresh object every render would redraw it on every streamed frame.
+  return useMemo(
+    () => ({ pending, error, lastOkAt, failures, forbidden, refresh, markDecided }),
+    [pending, error, lastOkAt, failures, forbidden, refresh, markDecided],
+  );
 }

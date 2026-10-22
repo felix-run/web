@@ -2884,6 +2884,19 @@ export function AppShell() {
     };
   };
 
+  // Built once per change rather than per render: the sidebar picks it and is memoised, and a
+  // fresh object here redrew it on every streamed frame. `rememberedAt` moves only on a good
+  // read, which changes `threadIndex` too.
+  const threadIndexStatus = useMemo(
+    () => ({
+      error: threadIndex.error,
+      failures: threadIndex.failures,
+      rememberedAt: threadIndex.error != null ? threadIndexAge() : null,
+      retry: () => void refreshThreads(),
+    }),
+    [threadIndex, refreshThreads],
+  );
+
   /**
    * Everything below the `<Outlet/>`.
    *
@@ -2936,12 +2949,7 @@ export function AppShell() {
     editTurn,
     onSlashCommand,
     threads,
-    threadIndex: {
-      error: threadIndex.error,
-      failures: threadIndex.failures,
-      rememberedAt: threadIndex.error != null ? threadIndexAge() : null,
-      retry: () => void refreshThreads(),
-    },
+    threadIndex: threadIndexStatus,
     selectThread,
     newThread,
     deleteThread,
