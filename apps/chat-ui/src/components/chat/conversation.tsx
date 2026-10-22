@@ -9,6 +9,7 @@ import {
 } from '@felix/ui/message-scroller';
 import { type ComponentProps, type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { VIEW_WILL_CHANGE } from '@/lib/view-change';
 import { useShell } from '@/shell-context';
 
 /**
@@ -274,10 +275,20 @@ function capturePlace(viewport: HTMLElement): Place[] {
   const at = (el: Element) => el.getBoundingClientRect().top - box.top;
   const hits: Element[] = [];
   if (typeof document.elementFromPoint === 'function') {
-    const x = box.left + box.width / 2;
-    for (const dy of [8, 32, 64, 120, 200]) {
-      const el = document.elementFromPoint(x, box.top + dy);
-      if (el && el !== viewport && viewport.contains(el) && !hits.includes(el)) hits.push(el);
+    // Taken as the View menu is used, and that menu is modal: it sets `pointer-events: none`
+    // on the body while open, and hit-testing skips such elements — every probe returned
+    // <html>, so the place fell back to the whole row and a debug switch moved the reader
+    // 900px (measured live). Lifted for the probes alone, and put back straight after.
+    const blocked = document.body.style.pointerEvents;
+    if (blocked) document.body.style.pointerEvents = 'auto';
+    try {
+      const x = box.left + box.width / 2;
+      for (const dy of [8, 32, 64, 120, 200]) {
+        const el = document.elementFromPoint(x, box.top + dy);
+        if (el && el !== viewport && viewport.contains(el) && !hits.includes(el)) hits.push(el);
+      }
+    } finally {
+      if (blocked) document.body.style.pointerEvents = blocked;
     }
   }
   const near = hits.filter((el) => at(el) >= -80).sort((a, b) => Math.abs(at(a)) - Math.abs(at(b)));
@@ -297,7 +308,7 @@ function capturePlace(viewport: HTMLElement): Place[] {
  * Each level adds or removes lines inside turns — tool cards, a tokens line, ids
  * — so the content above the reader changed height and, with the viewport's
  * `overflow-anchor: none`, the view landed somewhere else entirely. The place is
- * recorded on every scroll (one frame's worth of reads), and after the change
+ * recorded when a change is announced (`announceViewChange`), and after the change
  * commits the viewport is moved by however far that place drifted, then held for
  * a moment while late layout lands, unless the reader takes over. It tells
  * `OpenAtLastAnchor` to let go first: a switch made while a thread is still
@@ -308,22 +319,14 @@ function KeepPlaceAcrossViews() {
   const probe = useRef<HTMLSpanElement>(null);
   const place = useRef<Place[] | null>(null);
 
+  // Taken when a change is announced, not on every scroll: see `lib/view-change.ts`.
   useEffect(() => {
-    const viewport = viewportOf(probe.current);
-    if (!viewport) return;
-    let frame = 0;
     const record = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        place.current = capturePlace(viewport);
-      });
+      const viewport = viewportOf(probe.current);
+      place.current = viewport ? capturePlace(viewport) : null;
     };
-    record();
-    viewport.addEventListener('scroll', record, { passive: true });
-    return () => {
-      cancelAnimationFrame(frame);
-      viewport.removeEventListener('scroll', record);
-    };
+    window.addEventListener(VIEW_WILL_CHANGE, record);
+    return () => window.removeEventListener(VIEW_WILL_CHANGE, record);
   }, []);
 
   const lastView = useRef(view);

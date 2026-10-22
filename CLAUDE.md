@@ -372,7 +372,12 @@ Flows worth knowing before editing the app:
   is off screen. **A View change keeps the reader's place** (`KeepPlaceAcrossViews`): each level
   adds or removes lines inside turns, so the height above the reader changed and the view landed
   elsewhere. The place — the deepest elements near the viewport's top on the column's centre line,
-  then their row — is recorded on every scroll; after the change commits the viewport moves by the
+  then their row — is recorded when the change is announced (`announceViewChange` in
+  `src/lib/view-change.ts`, called first by every setter of the level), not on every scroll: that
+  was five hit-tests per scroll event, 430 in one streamed reply. The View menu is modal and sets
+  `pointer-events: none` on the body, which hit-testing skips, so the probes lift it for their
+  duration — without that every probe hit `<html>` and a debug switch moved the reader ~900px
+  (measured live, 2026-10-22). After the change commits the viewport moves by the
   drift and holds for 600ms, unless the reader takes over. It dispatches `felix:hold-release` on
   the viewport first, which `OpenAtLastAnchor` counts as the reader taking over, so the two never
   pull against each other. `tests/conversation.test.tsx` pins both. **Debug folds long tool I/O**:

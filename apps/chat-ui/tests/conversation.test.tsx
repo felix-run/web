@@ -1,8 +1,9 @@
 /** @vitest-environment happy-dom */
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Conversation, ConversationItem } from '../src/components/chat/conversation';
+import { announceViewChange } from '../src/lib/view-change';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
@@ -106,9 +107,29 @@ describe('Conversation', () => {
     placeAt(second as Element, () => 20 + above);
     await act(frame);
     await act(frame);
-    // …until debug draws 300px more above it.
+    // …until debug draws 300px more above it. The shell announces a change before making
+    // it (`announceViewChange`), which is when the place is read.
+    act(() => announceViewChange());
     above = 300;
     rerender(tree(rows, { view: 'debug' }));
     expect(viewport.scrollTop).toBe(300);
+  });
+
+  it('reads the place only when a view change is announced, not as the reader scrolls', async () => {
+    // Recording it per scroll was five hit-tests a time: 430 in one streamed reply.
+    render(tree([{ id: 'turn-0', anchor: true }, { id: 'turn-1' }]));
+    const viewport = document.querySelector('[data-slot=message-scroller-viewport]') as HTMLElement;
+    const hits = vi.fn(() => null);
+    const before = document.elementFromPoint;
+    document.elementFromPoint = hits;
+    try {
+      for (let i = 0; i < 5; i++) viewport.dispatchEvent(new Event('scroll'));
+      await act(frame);
+      expect(hits).not.toHaveBeenCalled();
+      act(() => announceViewChange());
+      expect(hits).toHaveBeenCalled();
+    } finally {
+      document.elementFromPoint = before;
+    }
   });
 });
