@@ -122,6 +122,7 @@ import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
 import { ImageUploadError, uploadImages } from '@/lib/image-upload';
 import { onLeave } from '@/lib/leave';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
+import { readPendingApprovals } from '@/lib/pending-approvals-read';
 import { armNotifications, clearNotification, setPresence } from '@/lib/presence';
 import { resyncPush } from '@/lib/push';
 import { lastResume, onResume } from '@/lib/resume';
@@ -1561,7 +1562,12 @@ export function AppShell() {
    * both delivery paths — the `approval_required` frame and this poll — agree
    * about what is already queued.
    */
-  const syncApprovals = useCallback(() => engine.syncApprovals(), [engine]);
+  // Every engine reads the pending list through one shared read (`pending-approvals-read.ts`),
+  // with the attention line's poll: it used to be one request per engine per tick.
+  const syncApprovals = useCallback(
+    () => engine.syncApprovals({ listPending: readPendingApprovals }),
+    [engine],
+  );
 
   /**
    * Adopt on every thread this tab lands on, not only the first.
@@ -1625,8 +1631,8 @@ export function AppShell() {
   const syncLive = useCallback(
     (live: ChatEngine) =>
       live === pool.peek(threadIdRef.current)
-        ? live.syncApprovals()
-        : live.syncApprovals({ attributedOnly: true }),
+        ? live.syncApprovals({ listPending: readPendingApprovals })
+        : live.syncApprovals({ attributedOnly: true, listPending: readPendingApprovals }),
     [pool],
   );
   useEffect(() => {
@@ -1689,7 +1695,7 @@ export function AppShell() {
       onResume(({ hiddenForMs }) => {
         for (const live of pool.live()) live.checkLiveness();
         refreshTenantApprovals.current();
-        void engine.syncApprovals();
+        void engine.syncApprovals({ listPending: readPendingApprovals });
         for (const live of pool.live()) if (live !== engine) void syncLive(live);
         if (
           hiddenForMs > 0 &&

@@ -99,6 +99,12 @@ over-limit case only reproduces mid-run: `SendOrStop` swaps the submit button fo
 Stop while streaming, so PromptInput's own Enter guard has no disabled button left to find. **The inspector panels, and the
 composer's slash menu, are still verified by running them.**
 
+`usePoll` takes `intervalMs` as a **required** option: it defaulted to 3s, which is how panels came
+to poll an hour-wide aggregate and a search every three seconds without anyone choosing it. `null`
+reads once per `key` and never polls — a search — and a changed `key` reads at once and drops a late
+answer for the old one; before it, a refined search showed the last query's hits until a tick
+happened to read the new one.
+
 One thing that bites when verifying by hand: `usePoll` skips ticks while the tab is **hidden**, and a
 browser driven by automation reports `visibilityState: 'hidden'`. An inspector panel will sit on
 stale data forever under a driver, which looks like a broken refresh and is not. `.claude/hooks/tests/` covers the hooks.
@@ -763,7 +769,9 @@ Flows worth knowing before editing the app:
   that covers, so the warning is over the window rather than over whatever was on screen.
 
   **The page is a ledger by thread** (`components/harness/activity-ledger.tsx`, grouping in
-  `src/lib/ledger.ts`). One `usePoll` tick reads four things for one window: the audit events
+  `src/lib/ledger.ts`). It reads four things for one window — the audit events every 10s, the
+  other three at most once a minute (`SLOW_READS_MS`; a retry or a new window reads them at once),
+  since only the events move while someone watches: the audit events
   (`listAuditWindow`, which follows `/audit`'s cursor under `since` up to 2,000 and says when it
   stopped), spend per thread (`GET /usage/threads`, `felix-run/felix#542`), `/usage/summary` for
   the totals and the by-model table, and 20 recent `/usage` rows only to find routes priced as

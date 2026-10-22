@@ -1,8 +1,8 @@
 import type { ApprovalRequest } from '@felix/client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listApprovals } from '@/api';
 import { rememberDecidedHere } from '@/lib/denials';
 import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
+import { forgetPendingApprovalsRead, readPendingApprovals } from '@/lib/pending-approvals-read';
 
 /** This poll's id in the shell's harness-health store. */
 const HEALTH_SOURCE = 'approvals';
@@ -89,7 +89,8 @@ export function usePendingApprovals(): PendingApprovals {
 
   const refresh = useCallback(() => {
     if (stopped.current) return;
-    void listApprovals('pending')
+    // Shared with every engine's own sync: see `pending-approvals-read.ts`.
+    void readPendingApprovals()
       .then((rows) => {
         const now = Date.now();
         for (const [id, at] of decided.current) {
@@ -144,6 +145,8 @@ export function usePendingApprovals(): PendingApprovals {
 
   const markDecided = useCallback((id: string) => {
     decided.current.set(id, Date.now());
+    // A read from before the decision still lists it; the next one must not be that read.
+    forgetPendingApprovalsRead();
     // Every decision this tab makes passes through here, after the harness took
     // it, so this is the evidence a denied card needs to say "Denied by you".
     rememberDecidedHere(id);

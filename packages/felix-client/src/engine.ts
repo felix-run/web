@@ -28,6 +28,7 @@ import {
 } from '@felix/protocol';
 import { confirmTodos, endSubagent, readTodos, startSubagent } from './agent-work';
 import {
+  type ApprovalRequest,
   describeGate,
   type PendingApproval,
   readsBefore,
@@ -232,7 +233,15 @@ export interface ChatEngine {
    * keeps going off screen, so an unattributed approval is not adopted by every
    * engine at once (see `ApprovalSyncOptions.attributedOnly`).
    */
-  syncApprovals(opts?: { attributedOnly?: boolean }): Promise<void>;
+  syncApprovals(opts?: {
+    attributedOnly?: boolean;
+    /**
+     * Where to read the pending list, instead of asking the harness itself. For a client
+     * running several engines and a tenant-wide poll, which can share one read rather than
+     * send the same `GET /approvals` once per engine per tick.
+     */
+    listPending?: () => Promise<ApprovalRequest[]>;
+  }): Promise<void>;
   /** Drop the approval at the head of the queue, once decided. */
   shiftApproval(): void;
   clearUiPrompt(): void;
@@ -1404,7 +1413,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       // neither adopted it.
       const scratch = new Set(seenApprovals);
       const result = await syncApprovals({
-        listPending: () => ports.client.listApprovals('pending'),
+        listPending: opts.listPending ?? (() => ports.client.listApprovals('pending')),
         threadId,
         ...(opts.attributedOnly ? { attributedOnly: true } : {}),
         seen: scratch,

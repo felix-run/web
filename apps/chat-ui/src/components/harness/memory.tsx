@@ -237,18 +237,27 @@ export function MemorySection({
   const searchReady = mode === 'search' && committedQuery.length > 0;
   const manifestId = agent || undefined;
 
+  // Memory changes when an agent stores or someone forgets, so the lists read every 30s.
+  // A search and an as-of view are read once per question: they repeated every 3s, and a
+  // changed question showed the last one's answer until the next tick read the new one.
   const recent = usePoll(() => listMemories({ limit, manifestId }), {
     enabled: enabled && mode === 'recent',
+    intervalMs: 30_000,
+    key: `${limit}|${manifestId}`,
   });
   const found = usePoll(() => searchMemories(committedQuery, { limit: SEARCH_LIMIT, manifestId }), {
     enabled: enabled && searchReady,
+    intervalMs: null,
+    key: `${committedQuery}|${manifestId}`,
   });
   const past = usePoll(
     () => memoriesAsOf(seq, { limit: AS_OF_LIMIT, manifestId, threadId: asOfThread }),
-    { enabled: enabled && asOfReady },
+    { enabled: enabled && asOfReady, intervalMs: null, key: `${seq}|${manifestId}|${asOfThread}` },
   );
   const gone = usePoll(() => listMemories({ limit, manifestId, status: 'forgotten' }), {
     enabled: enabled && mode === 'forgotten',
+    intervalMs: 30_000,
+    key: `${limit}|${manifestId}`,
   });
 
   const active =

@@ -536,6 +536,9 @@ function ThreadPlans({ threadId, enabled }: { threadId: string; enabled: boolean
   const [editing, setEditing] = useState<string | null>(null);
   const { data, error, loading, refresh } = usePoll(() => listPlans(PLANS_LIMIT, { threadId }), {
     enabled: enabled && editing === null,
+    // A plan moves at the pace of a run's steps, not of a 3s tick.
+    intervalMs: 15_000,
+    key: threadId,
   });
   // Said only when the rows prove it — see `isThreadScoped`. Before the first
   // answer the line names the window alone.
@@ -667,6 +670,8 @@ function MetricsSection({
 }) {
   const { data, error, loading, refresh } = usePoll(() => getToolMetrics({ sinceMs: HOUR_MS }), {
     enabled,
+    // An hour-wide aggregate: a minute is fresh enough, and every read is a scan harness-side.
+    intervalMs: 60_000,
   });
   // Already aggregated per tool and sorted by calls descending, harness-side.
   const tools = data?.tools ?? [];

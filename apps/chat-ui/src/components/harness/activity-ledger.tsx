@@ -2,7 +2,15 @@ import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { ActivityIcon, ChevronRightIcon, DownloadIcon } from 'lucide-react';
-import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  Fragment,
+  type KeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { exportAudit, getUsageSummary, listAuditWindow, listUsage, listUsageByThread } from '@/api';
@@ -98,6 +106,8 @@ const MAX_EVENTS = 2000;
 const SPEND_THREADS = 200;
 /** Recent usage rows read only to find routes priced as another model. */
 const PRICING_SAMPLE = 20;
+/** How long spend, the totals and the pricing sample are reused between audit reads. */
+const SLOW_READS_MS = 60_000;
 
 const WINDOW_LABEL: Record<LedgerWindow, string> = {
   last: 'Since last visit',
@@ -168,20 +178,47 @@ export function ActivityLedger({ docs }: { docs?: string }) {
   // happened. `usePoll` refetches on the false→true edge, so closing it catches up.
   // Not before the first answer, though: arriving with `?thread=` open would never load.
   const [answered, setAnswered] = useState(false);
+  // The audit window is what moves while someone watches, so it is read every tick. Spend
+  // and the totals are read at most once a minute and the pricing sample once a window:
+  // all four used to go every 10s, three of them aggregates over the whole window. The
+  // totals can trail the events by that minute; a retry or a new window reads them now.
+  const slow = useRef<{
+    win: LedgerWindow;
+    at: number;
+    reads: Promise<[Awaited<ReturnType<typeof listUsageByThread>>, UsageSummary, UsageEvent[]]>;
+  } | null>(null);
   const { data, error, loading, lastOkAt, failures, refresh } = usePoll(
     async () => {
       const now = Date.now();
       const { since, fellBack } = resolveWindow(win, now, lastVisit);
-      const [audit, spend, summary, recent] = await Promise.all([
+      const cached = slow.current;
+      if (!cached || cached.win !== win || now - cached.at >= SLOW_READS_MS) {
+        const reads = Promise.all([
+          listUsageByThread({ since_ms: since, limit: SPEND_THREADS }),
+          getUsageSummary({ since_ms: since }),
+          cached?.win === win
+            ? cached.reads.then(([, , recent]) => recent)
+            : listUsage({ limit: PRICING_SAMPLE }).then((r) => r.items),
+        ]);
+        slow.current = { win, at: now, reads };
+        // A failed read is not kept: the next tick asks again.
+        reads.catch(() => {
+          if (slow.current?.reads === reads) slow.current = null;
+        });
+      }
+      const [audit, [spend, summary, recent]] = await Promise.all([
         listAuditWindow({ since, maxEvents: MAX_EVENTS }),
-        listUsageByThread({ since_ms: since, limit: SPEND_THREADS }),
-        getUsageSummary({ since_ms: since }),
-        listUsage({ limit: PRICING_SAMPLE }),
+        (slow.current as NonNullable<typeof slow.current>).reads,
       ]);
-      return { since, fellBack, audit, spend, summary, recent: recent.items };
+      return { since, fellBack, audit, spend, summary, recent };
     },
     { enabled: openThread === null || !answered, intervalMs: 10_000 },
   );
+  /** Read everything now, the minute-old totals included. */
+  const refreshAll = useCallback(() => {
+    slow.current = null;
+    refresh();
+  }, [refresh]);
   useEffect(() => {
     if (data !== undefined) setAnswered(true);
   }, [data]);
@@ -193,8 +230,8 @@ export function ActivityLedger({ docs }: { docs?: string }) {
     askedFor.current = win;
     setOpenThread(null);
     setShowAll(false);
-    refresh();
-  }, [win, refresh]);
+    refreshAll();
+  }, [win, refreshAll]);
 
   const { threads: threadMeta } = useShell();
   const titleOf = (id: string) => {
@@ -286,7 +323,7 @@ export function ActivityLedger({ docs }: { docs?: string }) {
       />
       <PanelBody>
         <SectionBody
-          onRetry={refresh}
+          onRetry={refreshAll}
           lastOkAt={lastOkAt}
           failures={failures}
           doing="load activity"

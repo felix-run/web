@@ -12,10 +12,16 @@ import { usePoll } from '../src/hooks/usePoll';
  * the life of the tab.
  */
 
-function Probe<T>(props: { fetcher: () => Promise<T>; enabled?: boolean; intervalMs?: number }) {
+function Probe<T>(props: {
+  fetcher: () => Promise<T>;
+  enabled?: boolean;
+  intervalMs?: number | null;
+  pollKey?: unknown;
+}) {
   const { data, error, loading } = usePoll(props.fetcher, {
     enabled: props.enabled,
-    intervalMs: props.intervalMs ?? 1000,
+    intervalMs: props.intervalMs === undefined ? 1000 : props.intervalMs,
+    key: props.pollKey,
   });
   return (
     <div>
@@ -197,5 +203,38 @@ describe('the error it reports', () => {
     });
     await flush();
     expect(seen).toBeNull();
+  });
+
+  it('reads once and never again with no interval', async () => {
+    const fetcher = vi.fn(async () => 'once');
+    render(<Probe fetcher={fetcher} intervalMs={null} />);
+    await flush();
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads at once when the key changes, and drops the older answer', async () => {
+    // The first query answers late, after the second: its hits must not replace the new ones.
+    const answers: Record<string, (v: string) => void> = {};
+    let query = 'foo';
+    const fetcher = vi.fn(() => {
+      const q = query;
+      return new Promise<string>((resolve) => {
+        answers[q] = resolve;
+      });
+    });
+    const { getByTestId, rerender } = render(
+      <Probe fetcher={fetcher} intervalMs={null} pollKey={query} />,
+    );
+    query = 'foobar';
+    rerender(<Probe fetcher={fetcher} intervalMs={null} pollKey={query} />);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => answers.foobar?.('foobar hits'));
+    await act(async () => answers.foo?.('foo hits'));
+    expect(getByTestId('data').textContent).toBe('"foobar hits"');
+    expect(getByTestId('loading').textContent).toBe('false');
   });
 });
