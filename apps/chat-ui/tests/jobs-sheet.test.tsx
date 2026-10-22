@@ -1,5 +1,6 @@
 /** @vitest-environment happy-dom */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -38,6 +39,7 @@ async function sheet(
     runs?: unknown[];
     spend?: unknown;
     audit?: unknown[];
+    workflows?: unknown[];
   } = {},
 ) {
   const upsertJob = vi.fn().mockResolvedValue(job());
@@ -52,6 +54,7 @@ async function sheet(
     listUsageByThread: vi.fn().mockResolvedValue(opts.spend ?? null),
     // The audit read the sidebar's Activity glance polls; a job's thread outcome rides it.
     listAudit: vi.fn().mockResolvedValue(opts.audit ?? []),
+    listWorkflows: vi.fn().mockResolvedValue(opts.workflows ?? []),
   }));
   const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
   render(
@@ -284,9 +287,7 @@ describe('a name that already exists', () => {
     const { upsertJob } = await sheet([job({ name: 'digest', enabled: false })]);
     await openForm();
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'digest' } });
-    expect(
-      screen.getByText(/exists\. Replace changes its schedule, agent and prompt/),
-    ).toBeTruthy();
+    expect(screen.getByText(/exists\. Replace changes its schedule and what it runs/)).toBeTruthy();
     expect(screen.getByText(/and it stays paused/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
     await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
@@ -494,5 +495,130 @@ describe('a job waiting on a person', () => {
     await waitFor(() =>
       expect(screen.getByText(/Waiting on an approval — see the attention line/)).toBeTruthy(),
     );
+  });
+});
+
+/**
+ * A job can run a workflow instead of an agent (`felix-run/felix#642`), held to the revision
+ * it was saved over. Pause used to send the record back without the workflow, which saved a
+ * workflow job as one that runs nothing.
+ */
+describe('a job that runs a workflow', () => {
+  const wfJob = (over: Record<string, unknown> = {}) =>
+    job({
+      name: 'triage',
+      manifest_id: '',
+      workflow_id: 'triage-flow',
+      workflow_revision: 'r1',
+      created_by: 'blake',
+      payload: { inputs: { repo: 'felix' } },
+      ...over,
+    });
+
+  it('keeps its workflow and revision through a pause', async () => {
+    const { upsertJob } = await sheet([wfJob()]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause triage' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0]).toEqual({
+      name: 'triage',
+      schedule: '0 9 * * *',
+      manifest_id: '',
+      workflow_id: 'triage-flow',
+      workflow_revision: 'r1',
+      payload: { inputs: { repo: 'felix' } },
+      enabled: false,
+    });
+  });
+
+  it('names its workflow and whose scopes it runs on, instead of "no agent"', async () => {
+    await sheet([wfJob()]);
+    const link = await screen.findByRole('link', { name: 'workflow triage-flow' });
+    expect(link.getAttribute('href')).toBe('/harness/workflows?workflow=triage-flow');
+    expect(screen.getByText('runs as blake')).toBeTruthy();
+    expect(screen.queryByText(/no agent/)).toBeNull();
+  });
+
+  it('offers to move a job held to an old revision onto the current one, which pins no revision', async () => {
+    const { upsertJob } = await sheet([
+      wfJob({
+        last_status: 'error',
+        last_error:
+          'workflow triage-flow changed since this job was written; re-save the job to run it',
+      }),
+    ]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Run the current revision' }));
+    // Armed: the confirmation says whose scopes it will run on.
+    expect(screen.getByText(/as it is now, on your scopes/)).toBeTruthy();
+    const confirm = screen
+      .getAllByRole('button', { name: 'Run the current revision' })
+      .at(-1) as HTMLElement;
+    fireEvent.click(confirm);
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    const sent = upsertJob.mock.calls[0][0];
+    expect(sent.workflow_id).toBe('triage-flow');
+    expect(sent.workflow_revision).toBeUndefined();
+  });
+
+  it('links a run to the workflow run it started', async () => {
+    await sheet([wfJob()], {
+      runs: [
+        {
+          run_id: 'j1',
+          status: 'ok',
+          started_at: Date.now() - 5_000,
+          finished_at: Date.now(),
+          result: { status: 'ok', workflow_id: 'triage-flow', workflow_run_id: 'run-9' },
+        },
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of triage' }));
+    const link = await screen.findByRole('link', { name: 'workflow run' });
+    expect(link.getAttribute('href')).toBe(
+      '/harness/workflows?workflow=triage-flow&view=run&run=run-9',
+    );
+  });
+
+  it('creates one from the form, with its inputs and the revision on screen', async () => {
+    const user = userEvent.setup();
+    const { upsertJob } = await sheet([], {
+      workflows: [
+        {
+          id: 'triage-flow',
+          name: 'Triage',
+          description: '',
+          version: 2,
+          revision: 'r2',
+          step_count: 3,
+          updated_at: 1,
+          updated_by: 'ops',
+        },
+      ],
+    });
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'triage' } });
+    await user.click(screen.getByRole('button', { name: 'Runs a workflow' }));
+    expect(screen.queryByLabelText('Prompt')).toBeNull();
+    const create = screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+    expect(screen.getByText('Choose a workflow.')).toBeTruthy();
+
+    await user.click(await screen.findByRole('combobox', { name: 'Workflow' }));
+    await user.click(await screen.findByRole('option', { name: /Triage/ }));
+    fireEvent.change(screen.getByLabelText('Inputs'), { target: { value: '[1]' } });
+    expect(screen.getByText(/must be a JSON object/)).toBeTruthy();
+    expect(create.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Inputs'), { target: { value: '{"repo":"felix"}' } });
+    expect(create.disabled).toBe(false);
+
+    fireEvent.click(create);
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    const sent = upsertJob.mock.calls[0][0];
+    expect(sent).toMatchObject({
+      name: 'triage',
+      workflow_id: 'triage-flow',
+      workflow_revision: 'r2',
+      payload: { inputs: { repo: 'felix' } },
+    });
+    expect(sent.manifest_id).toBeUndefined();
   });
 });
