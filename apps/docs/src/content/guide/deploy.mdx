@@ -234,6 +234,30 @@ without it — where each replica grants and remembers its own. See
 [Leases](/guide/rest-api/#leases) and
 [`Idempotency-Key`](/guide/rest-api/#resending-safely-idempotency-key) for the wire.
 
+## Date, time and timezone
+
+A model knows the world only up to its training data, so left alone it does date arithmetic
+against the year that data ends in. Every agent is told the date, and a react run the time, in
+`FELIX_TIMEZONE`:
+
+```bash
+FELIX_TIMEZONE=America/Chicago   # IANA zone name; default UTC
+```
+
+- **The date** ends the compiled system prompt: `Today is Tuesday, October 20, 2026 (2026-10-20,
+  America/Chicago).` It changes once a day, so it costs one prompt-cache write per conversation
+  per day.
+- **The time** is a note on the run's first model call, with its UTC offset:
+  `The current time is 2026-10-20T19:05-05:00 (America/Chicago).` It sits after the cache
+  breakpoints and is never written to the session log, so it costs nothing to change every run.
+  A durable run is told the time it resumed at.
+
+The zone is one per install: set it to where the people using it are, or an evening reads as
+tomorrow. An unknown name fails at boot. Anyone who can chat with an agent can ask it the time and
+learn the zone; a public manifest that should not say where the install is opts out. It does not move [cron schedules](#cron-schedules),
+which stay in UTC. A manifest opts out with
+[`system_prompt.include_datetime: false`](/guide/manifest-reference/#specsystem_prompt).
+
 ## Cron schedules
 
 Scheduled jobs (`PUT /jobs/{name}`) use standard **five-field** cron, evaluated in UTC:
