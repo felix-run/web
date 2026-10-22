@@ -55,10 +55,10 @@ import type { JobRecord, JobRun } from '@/types';
 /**
  * Scheduled-jobs workbench — the `/jobs` registry as a `/harness` page. A job is a
  * persistent, tenant-scoped record the scheduler fires on its `schedule`, in the grammar
- * `lib/job-schedule.ts` mirrors from the harness. **An empty schedule runs every 60
- * seconds**: this page called it "manual" and said it never ran on its own, while a job so
- * labelled fired about 1,440 times a day. A job with no `next_run_at` yet — a new one — fires
- * at the next sweep, whatever its schedule says, and then follows it.
+ * `lib/job-schedule.ts` mirrors from the harness. **An empty schedule is manual only**
+ * (`felix-run/felix#629`): it never fires on its own, only through Run now. A scheduled job with
+ * no `next_run_at` yet — a new one — fires at the next sweep, whatever its schedule says, and
+ * then follows it.
  *
  * The sweep only fires when felix-scheduler runs alongside felix-worker. Run now
  * (`POST /jobs/{name}/run`) fires a job by hand and answers when the run has finished.
@@ -556,21 +556,23 @@ export function JobsSheet({
                     {parsedSchedule.error
                       ? parsedSchedule.error
                       : parsedSchedule.schedule
-                        ? `${
-                            startPaused
-                              ? 'Starts paused: it runs only when resumed or run by hand'
-                              : 'First run at the next sweep, about a minute after creating it'
-                          }; then ${
-                            parsedSchedule.schedule.kind === 'interval'
-                              ? `${scheduleLabel(schedule)}${
-                                  costly
-                                    ? ` — about ${Math.round(
-                                        SPEND_WINDOW_MS / parsedSchedule.schedule.ms,
-                                      ).toLocaleString()} agent turns a day`
-                                    : ''
-                                }`
-                              : `next ${localAndUtc(nextAfter(parsedSchedule.schedule, now))}`
-                          }.`
+                        ? parsedSchedule.schedule.kind === 'manual'
+                          ? 'Manual only: it runs when you press Run now, never on its own.'
+                          : `${
+                              startPaused
+                                ? 'Starts paused: it runs only when resumed or run by hand'
+                                : 'First run at the next sweep, about a minute after creating it'
+                            }; then ${
+                              parsedSchedule.schedule.kind === 'interval'
+                                ? `${scheduleLabel(schedule)}${
+                                    costly
+                                      ? ` — about ${Math.round(
+                                          SPEND_WINDOW_MS / parsedSchedule.schedule.ms,
+                                        ).toLocaleString()} agent turns a day`
+                                      : ''
+                                  }`
+                                : `next ${localAndUtc(nextAfter(parsedSchedule.schedule, now) ?? Number.NaN)}`
+                            }.`
                         : null}
                   </p>
                 </div>
@@ -633,8 +635,8 @@ export function JobsSheet({
                     id="job-start-paused-help"
                     className="mt-1 ml-5.5 max-w-[56ch] text-xs text-muted-foreground"
                   >
-                    A new job runs at the next sweep. Paused, it waits until you resume it; Run now
-                    still works, to try it once first.
+                    A new scheduled job runs at the next sweep. Paused, it waits until you resume
+                    it; Run now still works, to try it once first.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -666,13 +668,14 @@ export function JobsSheet({
           {data && jobs.length === 0 && (
             <PageEmpty>
               No jobs yet. A job is an agent run the scheduler starts on its schedule. One with no
-              schedule runs every minute.
+              schedule runs only when you press Run now.
             </PageEmpty>
           )}
           {jobs.map((j) => {
             let invalid = false;
+            let manual = false;
             try {
-              parseSchedule(j.schedule ?? '');
+              manual = parseSchedule(j.schedule ?? '').kind === 'manual';
             } catch {
               invalid = true;
             }
@@ -708,7 +711,7 @@ export function JobsSheet({
                     // The badge is what the harness will do; the stored text is in the title
                     // when the two differ (an empty schedule).
                     title={
-                      j.schedule ? `Schedule: ${j.schedule}` : 'No schedule: runs every minute'
+                      j.schedule ? `Schedule: ${j.schedule}` : 'No schedule: runs only by hand'
                     }
                   >
                     {scheduleLabel(j.schedule ?? '')}
@@ -858,9 +861,11 @@ export function JobsSheet({
                     </span>
                   )}
                   {/* Null is a job the scheduler has not claimed yet — it fires at the next
-                    sweep; a time already past is due, not "next just now". */}
+                    sweep; a time already past is due, not "next just now". A manual job has
+                    no next time at all: its badge already says so. */}
                   {j.enabled !== false &&
                     !invalid &&
+                    !manual &&
                     (j.next_run_at == null ? (
                       <span>first run at the next sweep</span>
                     ) : j.next_run_at <= now + 1000 ? (

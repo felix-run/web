@@ -312,7 +312,7 @@ export interface ResolvedManifest {
 
 // --- Scheduled jobs (/jobs) ---
 // A job is a persistent, tenant-scoped record the worker's cron sweep invokes on
-// its `schedule`. There is no run-now route; runs are observed, not triggered.
+// its `schedule` — never, for an empty one — and `POST /jobs/{name}/run` fires by hand.
 
 export interface JobRecord {
   tenant_id: string;

@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '../src/lib/job-schedule';
 
 /**
- * The harness's schedule grammar (`felix/jobs/schedule.py`), held to its semantics. The page
- * said an empty schedule was "manual" while the harness ran it every minute; these pin that
- * the client now reads every form the way the harness does, and refuses what it refuses.
+ * The harness's schedule grammar (`felix/jobs/schedule.py`), held to its semantics: an empty
+ * schedule is manual only (`felix-run/felix#629`), and the client reads every other form the
+ * way the harness does, and refuses what it refuses.
  */
 const at = (iso: string) => Date.parse(iso);
 
 describe('parseSchedule', () => {
-  it('reads an empty schedule as every 60 seconds, as the harness does', () => {
-    expect(parseSchedule('')).toEqual({ kind: 'interval', ms: 60_000 });
-    expect(parseSchedule('   ')).toEqual({ kind: 'interval', ms: 60_000 });
+  it('reads an empty schedule as manual only, as the harness does', () => {
+    expect(parseSchedule('')).toEqual({ kind: 'manual' });
+    expect(parseSchedule('   ')).toEqual({ kind: 'manual' });
   });
 
   it('reads seconds and intervals', () => {
@@ -58,13 +58,17 @@ describe('nextAfter', () => {
   });
 
   it('adds an interval to the start', () => {
-    expect(nextAfter(parseSchedule(''), 1_000)).toBe(61_000);
+    expect(nextAfter(parseSchedule('every:1m'), 1_000)).toBe(61_000);
+  });
+
+  it('gives a manual-only schedule no next firing', () => {
+    expect(nextAfter(parseSchedule(''), 1_000)).toBeNull();
   });
 });
 
 describe('scheduleLabel', () => {
-  it('says what an empty schedule does, never "manual"', () => {
-    expect(scheduleLabel('')).toBe('every 1m');
+  it('says manual for an empty schedule, and an interval as one', () => {
+    expect(scheduleLabel('')).toBe('manual');
     expect(scheduleLabel('300')).toBe('every 5m');
     expect(scheduleLabel('every:90s')).toBe('every 90s');
     expect(scheduleLabel('every:2h')).toBe('every 2h');
