@@ -1,0 +1,10 @@
+# Workers Static Assets response headers (https://developers.cloudflare.com/workers/static-assets/headers/).
+#
+# Everything under /assets/ is named by a hash of its content, so a name never
+# serves two contents: cache it for a year and never revalidate. Without this a
+# browser revalidated every chunk on every load, about 40 conditional requests,
+# until the service worker installed (and always, where there is none).
+# index.html and sw.js are not hashed and keep the platform's default, which
+# revalidates: they are how a deploy reaches anyone.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

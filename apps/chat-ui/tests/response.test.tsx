@@ -178,7 +178,7 @@ describe('long content stays inside its own box', () => {
 
 /**
  * Math is rendered by a KaTeX that loads with the first reply needing it, and
- * runs *after* the sanitizer (`lib/katex-plugin.ts`). Before that reorder the
+ * runs *after* the sanitizer (`lib/reply-plugins.ts`). Before that reorder the
  * sanitizer scrubbed KaTeX's output, and a formula drew as MathML, TeX source and
  * glyphs run together — so what is pinned is KaTeX's real markup, not merely
  * that a `π` appeared somewhere, plus the two things the reorder must not cost:
@@ -235,7 +235,7 @@ describe('math in a reply', () => {
     // where streamdown's own request for this file is never made. Without it
     // nothing hides the MathML and every formula is followed by a copy of
     // itself as plain text.
-    const source = readFileSync(join(__dirname, '../src/lib/katex-plugin.ts'), 'utf8');
+    const source = readFileSync(join(__dirname, '../src/lib/reply-plugins.ts'), 'utf8');
     expect(source).toMatch(
       /Promise\.all\(\[\s*import\('rehype-katex'\),\s*import\('katex\/dist\/katex\.min\.css'\)/,
     );
@@ -243,15 +243,47 @@ describe('math in a reply', () => {
 
   it('runs KaTeX straight after sanitize, and keeps every other plugin in streamdown’s order', async () => {
     const { defaultRehypePlugins } = await import('streamdown');
-    const { WITHOUT_MATH, loadMathPlugins } = await import('../src/lib/katex-plugin');
-    const { katex: _katex, ...rest } = defaultRehypePlugins;
-    expect(WITHOUT_MATH).toEqual(Object.values(rest));
-    const withMath = await loadMathPlugins();
+    const { PLAIN, loadPlugins, pluginsFor } = await import('../src/lib/reply-plugins');
+    const { katex: _katex, raw, ...rest } = defaultRehypePlugins;
+    // Neither loaded: streamdown's list without either.
+    expect(PLAIN).toEqual(Object.values(rest));
+    await loadPlugins({ math: true, raw: true });
+    const both = pluginsFor({ math: true, raw: true });
     const isKatex = (p: unknown) =>
       Array.isArray(p) && (p[0] as { name?: string }).name === 'rehypeKatex';
-    expect(withMath.filter(isKatex)).toHaveLength(1);
-    expect(withMath.filter((p) => !isKatex(p))).toEqual(Object.values(rest));
-    expect(withMath.findIndex(isKatex)).toBe(Object.keys(rest).indexOf('sanitize') + 1);
+    expect(both.filter(isKatex)).toHaveLength(1);
+    // Raw where streamdown has it, first; KaTeX straight after sanitize.
+    expect(both.filter((p) => !isKatex(p))).toEqual([raw, ...Object.values(rest)]);
+    expect(both.findIndex(isKatex)).toBe(1 + Object.keys(rest).indexOf('sanitize') + 1);
+    // The same array every time, which is what `Response` keys on.
+    expect(pluginsFor({ math: true, raw: true })).toBe(both);
+  });
+});
+
+/**
+ * Raw HTML in a reply is parsed by a `rehype-raw` that loads with the first reply that has
+ * any (`lib/reply-plugins.ts`): it and parse5 were about 53 kB gzipped of every first load.
+ * It keeps its place before the sanitizer, so what is pinned is that the element arrives
+ * and that it arrives sanitized.
+ */
+describe('raw HTML in a reply', () => {
+  it('renders an element once the parser has loaded, and still sanitizes it', async () => {
+    const { container } = render(
+      <Response>
+        {'Press <kbd>Ctrl</kbd> <span style="color:red" onclick="x()">now</span>'}
+      </Response>,
+    );
+    await waitFor(() => expect(container.querySelector('kbd')?.textContent).toBe('Ctrl'));
+    expect(container.innerHTML).not.toContain('color:red');
+    expect(container.innerHTML).not.toContain('onclick');
+  });
+
+  it('is asked for by a tag, not by a less-than sign', async () => {
+    const { needsRaw } = await import('../src/lib/reply-plugins');
+    expect(needsRaw('a <b>bold</b> word')).toBe(true);
+    expect(needsRaw('</div>')).toBe(true);
+    expect(needsRaw('<!-- note -->')).toBe(true);
+    expect(needsRaw('if a < b and 3<4')).toBe(false);
   });
 });
 

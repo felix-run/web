@@ -402,10 +402,32 @@ describe('a shell result with colour in it', () => {
       stderr: '',
     });
     render(<Tool tool={{ name: 'test', done: true, output }} verbose />);
+    // The terminal loads with the first shell output (`tool-stream.tsx`); its copy button
+    // says it has.
+    expect(await screen.findByRole('button', { name: 'Copy stdout' })).toBeTruthy();
     const line = screen.getByText('✓ 12 passed');
     expect(line.closest('pre')?.textContent).not.toContain('\u001b');
     expect(line.getAttribute('style') ?? line.className).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Copy stdout' })).toBeTruthy();
+  });
+});
+
+describe('shell output, whether or not the terminal has loaded yet', () => {
+  it('reads as text with the colour codes taken out, from its first render', async () => {
+    const { Tool } = await import('../src/components/chat/tool');
+    const output = JSON.stringify({
+      argv: ['ls'],
+      exit_code: 0,
+      timed_out: false,
+      truncated: false,
+      stdout: '\u001b[1;34mdocs\u001b[0m  notes.md',
+      stderr: '',
+    });
+    const { container } = render(
+      <Tool tool={{ name: 'local_shell', done: true, output }} verbose />,
+    );
+    // The fallback until `tool-stream.tsx` arrives, the terminal after; neither prints escapes.
+    expect(container.textContent).not.toContain('\u001b');
+    expect(container.textContent).toContain('docs  notes.md');
   });
 });
 

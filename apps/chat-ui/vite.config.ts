@@ -115,29 +115,29 @@ function refuseCrossSiteWrites(): Plugin {
 }
 
 /**
- * Streamdown imports `rehype-katex` at the top of its bundle, which put all of
- * KaTeX in every first load. In a build that one import resolves to a no-op;
- * `src/lib/katex-plugin.ts` — the only importer let through — loads the real
- * plugin when a reply has math. Build-only: the dev server pre-bundles
- * streamdown with esbuild, which never asks this hook, and loading KaTeX eagerly
- * there costs nothing.
+ * Streamdown imports `rehype-katex` and `rehype-raw` at the top of its bundle, which put
+ * all of KaTeX and parse5 in every first load. In a build those two imports resolve to a
+ * no-op; `src/lib/reply-plugins.ts` — the only importer let through — loads the real ones
+ * when a reply has math or raw HTML. Build-only: the dev server pre-bundles streamdown with
+ * esbuild, which never asks this hook, and loading them eagerly there costs nothing.
  */
-function lazyKatex(): Plugin {
-  const shim = fileURLToPath(new URL('./src/lib/rehype-katex-omitted.ts', import.meta.url));
-  const loader = fileURLToPath(new URL('./src/lib/katex-plugin.ts', import.meta.url));
+function lazyReplyPlugins(): Plugin {
+  const shim = fileURLToPath(new URL('./src/lib/rehype-omitted.ts', import.meta.url));
+  const loader = fileURLToPath(new URL('./src/lib/reply-plugins.ts', import.meta.url));
+  const omitted = new Set(['rehype-katex', 'rehype-raw']);
   return {
-    name: 'felix:lazy-katex',
+    name: 'felix:lazy-reply-plugins',
     enforce: 'pre',
     apply: 'build',
     resolveId(id, importer) {
-      if (id === 'rehype-katex' && importer !== loader) return shim;
+      if (omitted.has(id) && importer !== loader) return shim;
       return null;
     },
   };
 }
 
 export default defineConfig({
-  plugins: [refuseCrossSiteWrites(), lazyKatex(), react(), tailwindcss()],
+  plugins: [refuseCrossSiteWrites(), lazyReplyPlugins(), react(), tailwindcss()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
