@@ -40,6 +40,7 @@ pnpm check-api-drift:live [origin]  # …vs a running deployment (FELIX_API_KEY;
 pnpm check-protocol-parity  # SSE events: every arm handled, every emitted event modelled
 pnpm check-tailwind-sources # every @source-covered tree still reaches the compiled CSS
 pnpm check-payload-shapes   # every required client field is one the harness actually sends
+pnpm check-bundle-budget    # chat-ui's first load (entry + preloads + CSS, gzipped) is within budget; run after build
 pnpm sync:harness [path]    # re-record all three contract files from a harness checkout
 pnpm sync:brand             # re-render favicons, touch/PWA icons, docs logo + social card (needs rsvg-convert, magick)
 pnpm --filter @felix/chat-ui <script>   # scope to one package
@@ -204,7 +205,7 @@ one would discard the reasoning and make the tokens look like a source of truth 
 
 CI (`.github/workflows/ci.yml`) is one `verify` job: `pnpm install --frozen-lockfile`, then lint,
 check-types, API drift, protocol parity, Tailwind sources, state palette, payload shapes, build
-(chat-ui, docs), tests, then the hook tests — each step runs even if an earlier one fails, so one
+(chat-ui, docs), the bundle budget, tests, then the hook tests — each step runs even if an earlier one fails, so one
 red run reports everything. Verification of app behavior still
 means running it against a live harness.
 

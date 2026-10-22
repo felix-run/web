@@ -81,6 +81,13 @@ jobs:
         env:
           FELIX_OPENAPI_SPEC: ${{ github.workspace }}/apps/chat-ui/harness-openapi.json
 
+      # What chat-ui loads before it can draw anything. KaTeX and rehype-raw each
+      # rode into it on one static import inside a dependency, and nothing above
+      # notices that: it type-checks, lints and renders the same.
+      - name: Bundle budget
+        if: ${{ !cancelled() }}
+        run: pnpm check-bundle-budget
+
       - name: Test
         if: ${{ !cancelled() }}
         run: pnpm test

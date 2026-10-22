@@ -2,7 +2,7 @@ import { PanelRightOpenIcon } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import remarkBreaks from 'remark-breaks';
 import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from 'streamdown';
-import { loadedMathPlugins, loadMathPlugins, needsMath, WITHOUT_MATH } from '@/lib/katex-plugin';
+import { loadedPlugins, loadPlugins, needsMath, needsRaw, pluginsFor } from '@/lib/reply-plugins';
 import { cn } from '@/lib/utils';
 import { useOptionalShellPick } from '@/shell-context';
 
@@ -195,26 +195,30 @@ const replyComponents: Components = { ...responseComponents, pre: OpenablePre };
  * Links carry `wrap-anywhere` from the renderer already.
  */
 export function Response({ children, className }: { children: string; className?: string }) {
-  // KaTeX loads with the first reply that has math in it — see `lib/katex-plugin.ts`.
-  // Until then the math shows as its source for a moment. The swap is a remount
-  // (the `key`), because streamdown's own `memo` compares `children`, the theme,
-  // `mode` and `isAnimating` and nothing else: a new plugin list alone never
-  // reaches the blocks, and the math stayed as source.
-  const [rehypePlugins, setRehypePlugins] = useState(() => loadedMathPlugins() ?? WITHOUT_MATH);
+  // KaTeX loads with the first reply that has math in it, and `rehype-raw` with the first
+  // that has raw HTML — see `lib/reply-plugins.ts`. Until then the math shows as its source,
+  // and the HTML is missing, for a moment. The swap is a remount (the `key`), because
+  // streamdown's own `memo` compares `children`, the theme, `mode` and `isAnimating` and
+  // nothing else: a new plugin list alone never reaches the blocks, and the math stayed as
+  // source.
+  const [loaded, setLoaded] = useState(loadedPlugins);
   const wantsMath = needsMath(children);
+  const wantsRaw = needsRaw(children);
   useEffect(() => {
-    if (!wantsMath || rehypePlugins !== WITHOUT_MATH) return;
+    if ((!wantsMath || loaded.math) && (!wantsRaw || loaded.raw)) return;
     let live = true;
-    loadMathPlugins()
-      .then((plugins) => live && setRehypePlugins(plugins))
-      .catch(() => {});
+    void loadPlugins({ math: wantsMath, raw: wantsRaw }).then(() => {
+      const now = loadedPlugins();
+      if (live && (now.math !== loaded.math || now.raw !== loaded.raw)) setLoaded(now);
+    });
     return () => {
       live = false;
     };
-  }, [wantsMath, rehypePlugins]);
+  }, [wantsMath, wantsRaw, loaded]);
+  const rehypePlugins = pluginsFor(loaded);
   return (
     <Streamdown
-      key={rehypePlugins === WITHOUT_MATH ? 'plain' : 'math'}
+      key={`${loaded.math ? 'math' : 'plain'}${loaded.raw ? '+raw' : ''}`}
       className={cn('max-w-none wrap-break-word', className)}
       components={replyComponents}
       remarkPlugins={responseRemarkPlugins}

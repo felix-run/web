@@ -511,13 +511,19 @@ one still matches something rendered. That is the failure this repo keeps meetin
 compiles, matches nothing, and reports nothing. The dependency is pinned **exactly** in the
 catalog for the same reason — a caret took it from 1.3 to 1.6 unannounced.
 
-**KaTeX loads with the first reply that has math, not with the app.** Streamdown imports
-`rehype-katex` at the top of its bundle, which put ~75 kB gzipped in every first load. A build-only
-resolver in `vite.config.ts` (`lazyKatex`) points that import at a no-op
-(`src/lib/rehype-katex-omitted.ts`); `src/lib/katex-plugin.ts` is the one importer let through, and
-`Response` passes streamdown's defaults minus KaTeX until a reply contains `$$` (the same test
-streamdown uses before loading KaTeX's CSS), then the list with it, keeping the order — sanitize and
-harden run after KaTeX. The swap is a **remount** (`key`): streamdown's top-level `memo` compares
+**KaTeX loads with the first reply that has math, and `rehype-raw` with the first that has raw
+HTML, not with the app.** Streamdown imports both at the top of its bundle, which put ~75 kB and
+(with parse5) ~53 kB gzipped in every first load. A build-only resolver in `vite.config.ts`
+(`lazyReplyPlugins`) points those imports at a no-op (`src/lib/rehype-omitted.ts`);
+`src/lib/reply-plugins.ts` is the one importer let through, and `Response` passes streamdown's
+defaults minus whichever is not loaded until a reply needs it — `$$` for math (the same test
+streamdown uses before loading KaTeX's CSS), a tag-like `<` for HTML (`needsRaw`, loose on purpose)
+— keeping the order: raw before sanitize, sanitize and harden after KaTeX. Until `rehype-raw`
+arrives, the reply's HTML reaches the sanitizer as `raw` nodes, which it drops: missing for a
+moment, never unsanitized. The terminal that draws a shell call's output is a lazy chunk too
+(`components/chat/tool-stream.tsx`), with its ANSI parser; until it loads the output is plain text
+with the colour codes stripped. `pnpm check-bundle-budget` fails CI when the first load passes its
+budget, because each of these arrived by one static import that changed nothing else anyone checks. The swap is a **remount** (`key`): streamdown's top-level `memo` compares
 `children`, the theme, `mode` and `isAnimating` and nothing else, so a new `rehypePlugins` alone
 never reaches the blocks and inline math stayed as `code.language-math`. `rehype-katex` and `katex`
 are direct dependencies only so those imports resolve; keep them on the versions streamdown uses.

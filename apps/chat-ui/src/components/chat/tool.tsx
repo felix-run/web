@@ -21,14 +21,6 @@ import {
 import { lazy, memo, Suspense, useEffect, useId, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
 import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block';
-import {
-  Terminal,
-  TerminalActions,
-  TerminalContent,
-  TerminalCopyButton,
-  TerminalHeader,
-  TerminalTitle,
-} from '@/components/ai-elements/terminal';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { type DenialRecord, denialSubject } from '@/lib/denials';
 import { clockTime } from '@/lib/format';
@@ -45,6 +37,9 @@ import { DebugId } from './turn-debug';
  * it brings TanStack Query and the library client with it, which a thread with
  * no `create_skill` in it should not pay for on every load.
  */
+const TerminalStream = lazy(() =>
+  import('@/components/chat/tool-stream').then((m) => ({ default: m.TerminalStream })),
+);
 const SkillProposalCard = lazy(() =>
   import('@/components/skills/skill-proposal-card').then((m) => ({
     default: m.SkillProposalCardEntry,
@@ -681,28 +676,23 @@ function Stream({ label, text, sayEmpty }: { label: string; text: string; sayEmp
     // empty stderr is the normal case and saying so on every card is noise.
     return sayEmpty ? <p className="text-xs text-muted-foreground">{label}: nothing</p> : null;
   }
-  // A terminal rather than a <pre>: commands colour their output with ANSI codes,
-  // and a <pre> printed them as `\u001b[32m` noise around the words. The surface is
-  // the code slab, not the vendored near-black, so it sits in both themes like
-  // every other block of tool output.
+  // A terminal (`tool-stream.tsx`), loaded with the first shell output. Until then the
+  // text as it reads, with the colour codes taken out rather than printed.
   return (
-    <Terminal
-      output={text}
-      autoScroll={false}
-      className="border-border/60 bg-code-surface text-foreground"
+    <Suspense
+      fallback={
+        <pre className="max-h-64 overflow-auto rounded-md border border-border/60 bg-code-surface p-2.5 font-mono text-xs whitespace-pre-wrap">
+          {text.replace(ANSI_CODES, '')}
+        </pre>
+      }
     >
-      <TerminalHeader className="border-border/60 px-2.5 py-1">
-        <TerminalTitle className="text-xs text-muted-foreground [&>svg]:size-3.5">
-          {label}
-        </TerminalTitle>
-        <TerminalActions>
-          <TerminalCopyButton aria-label={`Copy ${label}`} className="size-6" />
-        </TerminalActions>
-      </TerminalHeader>
-      <TerminalContent className="max-h-64 p-2.5 text-xs" />
-    </Terminal>
+      <TerminalStream label={label} text={text} />
+    </Suspense>
   );
 }
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: an ANSI escape starts with ESC
+const ANSI_CODES = /\u001b\[[0-9;?]*[A-Za-z]/g;
 
 /**
  * A value worth highlighting as JSON — an object or array, or a string holding

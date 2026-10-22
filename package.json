@@ -17,6 +17,7 @@
     "check-tailwind-sources": "node scripts/check-tailwind-sources.mjs",
     "check-state-palette": "node scripts/check-state-palette.mjs",
     "check-payload-shapes": "node scripts/check-payload-shapes.mjs",
+    "check-bundle-budget": "node scripts/check-bundle-budget.mjs",
     "sync:harness": "node scripts/sync-harness-contract.mjs",
     "sync:brand": "pnpm --filter @felix/design sync:brand",
     "sync:theme": "pnpm --filter @felix/design sync:theme",
