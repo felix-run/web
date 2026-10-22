@@ -641,20 +641,26 @@ export async function addEvalItem(
 }
 
 /**
- * POST /eval/datasets/{name}/run → replay the dataset against a manifest and
- * judge each item. Returns the summary; per-item scores come back via
- * getEvalRun(run_id). `deterministic_judge` skips the LLM judge and scores with
- * rubric heuristics only — the path CI uses.
+ * POST /eval/runs → replay the dataset against a manifest and judge each item.
+ * Returns the summary; per-item scores come back via getEvalRun(run_id).
+ * `deterministic_judge` skips the LLM judge and scores with rubric heuristics
+ * only — the path CI uses.
+ *
+ * `POST /eval/datasets/{name}/run` starts the same run and is what this called
+ * until `felix-run/felix#570` deprecated it (`Deprecation` + a `Link` to this
+ * route). This one has been served since the harness's first release, so no
+ * harness needs the old one.
  */
 export async function runEvalDataset(
   dataset: string,
   candidateManifest: string,
   deterministicJudge = false,
 ): Promise<EvalRunSummary> {
-  return evalFetch<EvalRunSummary>(`/datasets/${encodeURIComponent(dataset)}/run`, {
+  return evalFetch<EvalRunSummary>('/runs', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
+      dataset_name: dataset,
       candidate_manifest: candidateManifest,
       deterministic_judge: deterministicJudge,
     }),
