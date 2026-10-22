@@ -1,10 +1,10 @@
 import { Skeleton } from '@felix/ui/skeleton';
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { getResolvedManifest } from '@/api';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { modelsById } from '@/components/agent-select';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { ActivityLedger } from '@/components/harness/activity-ledger';
+import { AgentSkills } from '@/components/harness/agent-skills';
 import { DocumentsSection } from '@/components/harness/documents';
 import { GitHubPage } from '@/components/harness/github';
 import { HarnessAgentPicker, useHarnessAgent } from '@/components/harness/harness-agent';
@@ -16,7 +16,6 @@ import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useSkillsAddress } from '@/components/skills/skills-address';
 import { WorkflowsPage } from '@/components/workflows/workflows-page';
-import { threadLabel } from '@/lib/threads';
 import { useShell } from '@/shell-context';
 import { GITHUB_DOCS, type HarnessPath } from './harness';
 
@@ -101,67 +100,16 @@ function LibraryLoading() {
 function SkillsOverview() {
   // Reported up by the lazy library, which owns the queue's read.
   const [pendingText, setPendingText] = useState<string | undefined>(undefined);
-  const { skills, threads, threadId } = useShell();
-  const { agent, isChatAgent } = useHarnessAgent();
-  // What the manifest declares, so the page has something true to show before
-  // the agent has been asked. One read per visit — the spec does not change
-  // under a page that is open.
-  const [specSkills, setSpecSkills] = useState<string[] | undefined>(undefined);
-  // Kept, not swallowed. `.catch(() => {})` left a page that could not read the
-  // spec looking exactly like one whose spec declares nothing.
-  const [specError, setSpecError] = useState<unknown>(null);
-  const [specTry, setSpecTry] = useState(0);
-  useEffect(() => {
-    let live = true;
-    setSpecSkills(undefined);
-    setSpecError(null);
-    void specTry;
-    getResolvedManifest(agent)
-      .then((r) => {
-        const declared = (r.manifest as { spec?: { skills?: unknown[] } } | undefined)?.spec
-          ?.skills;
-        if (!live) return;
-        // A spec that declares none is an answer — `[]` — not the silence that
-        // reads as still loading.
-        if (!Array.isArray(declared)) {
-          setSpecSkills([]);
-          return;
-        }
-        setSpecSkills(
-          declared.map((sk) =>
-            typeof sk === 'string' ? sk : ((sk as { name?: string })?.name ?? String(sk)),
-          ),
-        );
-      })
-      .catch((e) => live && setSpecError(e));
-    return () => {
-      live = false;
-    };
-  }, [agent, specTry]);
-  // The conversation the active list came from, named the way the thread list
-  // names it — a link to it, rather than a button that wrote into it from here.
-  // Only a thread the index knows. A tab opened straight onto `/harness` mints a
-  // fresh id on every load, and naming that as where the list came from pointed
-  // at a conversation that had never happened.
-  const thread = useMemo(() => {
-    const meta = threads.find((t) => t.id === threadId);
-    return meta ? threadLabel(meta) : null;
-  }, [threads, threadId]);
+  // Reported up by the agent's list, for the header.
+  const [agentMeta, setAgentMeta] = useState<string | undefined>(undefined);
+  const { agent } = useHarnessAgent();
   return (
     <AsPanel>
       <SkillsSection
         open
         onToggle={() => {}}
-        // A thread's `list_skills` describes the chat's agent. Shown for another
-        // one it would be an answer to a question nobody asked about it.
-        skills={isChatAgent ? skills : null}
-        specSkills={specSkills}
         agent={agent}
-        thread={thread ? { ...thread, to: `/t/${threadId}` } : undefined}
-        chatTo={`/t/${threadId}`}
-        isChatAgent={isChatAgent}
-        specError={specError}
-        onRetrySpec={() => setSpecTry((n) => n + 1)}
+        agentMeta={agentMeta}
         controls={<HarnessAgentPicker />}
         library={
           <Suspense fallback={<LibraryLoading />}>
@@ -169,7 +117,9 @@ function SkillsOverview() {
           </Suspense>
         }
         pendingText={pendingText}
-      />
+      >
+        <AgentSkills key={agent} agent={agent} onCounts={setAgentMeta} />
+      </SkillsSection>
     </AsPanel>
   );
 }

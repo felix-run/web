@@ -99,6 +99,13 @@ export {
   type PlanWire,
 } from './management/plans';
 export type {
+  AgentSkill,
+  AgentSkillDetail,
+  AgentSkillSource,
+  AgentSkills,
+  SkillActivation,
+} from './management/runtime-skills';
+export type {
   OutdatedSkill,
   OutdatedSkillPage,
   SkillDiff,

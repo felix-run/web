@@ -1,6 +1,5 @@
 /** @vitest-environment happy-dom */
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -194,85 +193,6 @@ describe('every part of the page is a heading', () => {
   });
 });
 
-describe('Skills before the agent has been asked', () => {
-  it('shows what the manifest declares, says what is unknown, and links rather than writes', async () => {
-    const { SkillsSection } = await import('../src/components/harness/skills');
-    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
-    render(
-      <MemoryRouter>
-        <PanelModeProvider>
-          <SkillsSection
-            open
-            onToggle={() => {}}
-            skills={null}
-            specSkills={['calculator-help']}
-            agent="cowork"
-            thread={{
-              text: '72d69cb1-1ea6-4d6f-949b-fcfd326bccdf',
-              isId: true,
-              to: '/t/72d69cb1-1ea6-4d6f-949b-fcfd326bccdf',
-            }}
-          />
-        </PanelModeProvider>
-      </MemoryRouter>,
-    );
-    expect(screen.getByText('1 declared')).toBeTruthy();
-    expect(screen.getByText('calculator-help')).toBeTruthy();
-    expect(screen.getByText(/unknown until the agent calls/)).toBeTruthy();
-    // A link to the conversation, not a button that posts into it from here.
-    const link = screen.getByRole('link', { name: /untitled thread/ });
-    expect(link.getAttribute('href')).toBe('/t/72d69cb1-1ea6-4d6f-949b-fcfd326bccdf');
-    expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.queryByText('72d69cb1-1ea6-4d6f-949b-fcfd326bccdf')).toBeNull();
-  });
-
-  it("does not show a thread's active list for an agent that is not the chat's", async () => {
-    const { SkillsSection } = await import('../src/components/harness/skills');
-    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
-    render(
-      <MemoryRouter>
-        <PanelModeProvider>
-          <SkillsSection
-            open
-            onToggle={() => {}}
-            skills={null}
-            specSkills={['deep-research']}
-            agent="deep"
-            isChatAgent={false}
-          />
-        </PanelModeProvider>
-      </MemoryRouter>,
-    );
-    expect(screen.getByText(/only known for the agent Chat is talking to/)).toBeTruthy();
-    expect(screen.getByText('deep-research')).toBeTruthy();
-  });
-});
-
-describe('Skills when the spec cannot be read', () => {
-  it('says so and offers a retry, rather than looking like a manifest that declares nothing', async () => {
-    const { SkillsSection } = await import('../src/components/harness/skills');
-    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
-    const retry = vi.fn();
-    render(
-      <MemoryRouter>
-        <PanelModeProvider>
-          <SkillsSection
-            open
-            onToggle={() => {}}
-            skills={null}
-            agent="contributor"
-            isChatAgent={false}
-            specError={new Error('manifests /contributor: 500 {"error":"internal"}')}
-            onRetrySpec={retry}
-          />
-        </PanelModeProvider>
-      </MemoryRouter>,
-    );
-    screen.getByRole('button', { name: 'Try again' }).click();
-    expect(retry).toHaveBeenCalledOnce();
-  });
-});
-
 describe('a failed poll keeps what it last knew', () => {
   it('draws the last good rows under one line, not an error box in their place', async () => {
     const { SectionBody } = await import('../src/components/inspector/primitives');
@@ -300,59 +220,6 @@ describe('a failed poll keeps what it last knew', () => {
     const { withAge } = await import('../src/components/inspector/primitives');
     expect(withAge('0 documents', Date.now() - 120_000)).toMatch(/^0 documents · as of /);
     expect(withAge('0 documents', undefined)).toBe('0 documents');
-  });
-});
-
-describe('Skills tells loading from none, and names only a real thread', () => {
-  it('says it is reading while the spec is in flight', async () => {
-    const { SkillsSection } = await import('../src/components/harness/skills');
-    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
-    render(
-      <MemoryRouter>
-        <PanelModeProvider>
-          <SkillsSection open onToggle={() => {}} skills={null} agent="cowork" />
-        </PanelModeProvider>
-      </MemoryRouter>,
-    );
-    expect(screen.getByText('Reading the manifest…')).toBeTruthy();
-  });
-
-  it('reads "None" for a manifest that declares no skills', async () => {
-    const { SkillsSection } = await import('../src/components/harness/skills');
-    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
-    render(
-      <MemoryRouter>
-        <PanelModeProvider>
-          <SkillsSection open onToggle={() => {}} skills={null} specSkills={[]} agent="cowork" />
-        </PanelModeProvider>
-      </MemoryRouter>,
-    );
-    expect(screen.getByText('0 declared')).toBeTruthy();
-    expect(screen.getByText('None')).toBeTruthy();
-    expect(screen.queryByText('Reading the manifest…')).toBeNull();
-  });
-
-  it('offers Chat, not a made-up thread, when the thread is not one the index knows', async () => {
-    const { SkillsSection } = await import('../src/components/harness/skills');
-    const { PanelModeProvider } = await import('../src/components/inspector/primitives');
-    render(
-      <MemoryRouter>
-        <PanelModeProvider>
-          <SkillsSection
-            open
-            onToggle={() => {}}
-            skills={null}
-            specSkills={['a']}
-            agent="cowork"
-            chatTo="/t/fresh"
-          />
-        </PanelModeProvider>
-      </MemoryRouter>,
-    );
-    expect(screen.queryByText(/untitled thread/)).toBeNull();
-    expect(screen.getByRole('link', { name: 'Ask it in Chat' }).getAttribute('href')).toBe(
-      '/t/fresh',
-    );
   });
 });
 
