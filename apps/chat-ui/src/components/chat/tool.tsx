@@ -34,7 +34,7 @@ import { type DenialRecord, denialSubject } from '@/lib/denials';
 import { clockTime } from '@/lib/format';
 import { parseSkillCall } from '@/lib/skill-calls';
 import { cn } from '@/lib/utils';
-import { useOptionalShell } from '@/shell-context';
+import { useOptionalShellPick } from '@/shell-context';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { useDenial } from './denial-context';
 import { ToolTable } from './tool-table';
@@ -355,7 +355,7 @@ function ToolImages({ images, label }: { images: NonNullable<ToolCall['images']>
 
 function ToolImage({ url, alt }: { url: string; alt: string }) {
   const src = useDrawableUrl(url);
-  const openInPane = useOptionalShell()?.openInPane;
+  const openInPane = useOptionalShellPick('openInPane')?.openInPane;
   const [full, setFull] = useState(false);
   if (src === null) {
     return (
@@ -514,7 +514,7 @@ function Field({
  * these, and the whole point is that they are big.
  */
 function SpilledOutput({ ref_, tool }: { ref_: ArtifactRef; tool: string }) {
-  const openInPane = useOptionalShell()?.openInPane;
+  const openInPane = useOptionalShellPick('openInPane')?.openInPane;
   const [full, setFull] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

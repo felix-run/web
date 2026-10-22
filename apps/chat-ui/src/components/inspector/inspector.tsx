@@ -4,7 +4,7 @@ import { Button } from '@felix/ui/button';
 import { ScrollArea } from '@felix/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { GaugeIcon, ListTodoIcon, XIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { deletePlan, getToolMetrics, listPlans } from '@/api';
 import { ConfirmButton } from '@/components/confirm-button';
 import {
@@ -17,7 +17,7 @@ import { ThreadChanges } from '@/components/workspace/changes-list';
 import { usePoll } from '@/hooks/usePoll';
 import { callTarget } from '@/lib/call-target';
 import { cn } from '@/lib/utils';
-import { type ShellValue, useOptionalShell, useShell } from '@/shell-context';
+import { type ShellValue, useOptionalShellPick, useShell } from '@/shell-context';
 import type { Plan, Turn } from '@/types';
 import { DebugSection } from './debug-section';
 import { PlanEditor } from './plan-editor';
@@ -87,7 +87,10 @@ const SECTIONS = [
   { id: 'debug', label: 'Debug' },
 ] as const satisfies readonly { id: SectionId; label: string; scope?: string; window?: string }[];
 
-export function Inspector({
+// Memoised, and reading the shell by pick: it sits under the workbench, which renders on
+// every streamed frame. What is live in it (the run readout, the changes) reads the shell
+// itself and still follows the run.
+export const Inspector = memo(function Inspector({
   open,
   onClose,
   className,
@@ -99,7 +102,7 @@ export function Inspector({
 }) {
   const [chosen, setActive] = useState<SectionId>('changes');
   // The Debug tab is the debug level's; no shell (a test mounting the panel) shows it.
-  const debug = useOptionalShell()?.debug ?? true;
+  const debug = useOptionalShellPick('debug')?.debug ?? true;
   const sections = debug ? SECTIONS : SECTIONS.filter((s) => s.id !== 'debug');
   // Leaving debug with its tab open lands on Changes, not on a strip with nothing chosen.
   const active = chosen === 'debug' && !debug ? 'changes' : chosen;
@@ -196,7 +199,7 @@ export function Inspector({
       </div>
     </aside>
   );
-}
+});
 
 // --- Run readout ---
 

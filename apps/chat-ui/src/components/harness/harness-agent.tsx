@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router';
 import { AgentSelect } from '@/components/agent-select';
-import { useShell } from '@/shell-context';
+import { useShell, useShellPick } from '@/shell-context';
 
 /**
  * The agent `/harness` is looking at.
@@ -20,7 +20,8 @@ export function useHarnessAgent(): {
   /** `?agent=…` when one is chosen, for links that must keep it. */
   search: string;
 } {
-  const { manifest } = useShell();
+  // Picked: the sidebar's harness group reads this, and `useShell()` redrew it every streamed frame.
+  const { manifest } = useShellPick('manifest');
   const [params, setParams] = useSearchParams();
   const chosen = params.get('agent');
   const agent = chosen || manifest;

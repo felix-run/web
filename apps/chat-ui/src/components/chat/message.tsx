@@ -19,7 +19,7 @@ import {
 import { useState } from 'react';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { cn } from '@/lib/utils';
-import { useOptionalShell } from '@/shell-context';
+import { useOptionalShellPick } from '@/shell-context';
 import type { Turn, TurnFeedback } from '@/types';
 import { MessageActions } from './message-actions';
 import { PlanCard } from './plan-card';
@@ -524,7 +524,13 @@ function WorkspaceEditNote({
   label?: string;
   onLabel?: (next: string | null) => void;
 }) {
-  const shell = useOptionalShell();
+  const shell = useOptionalShellPick(
+    'openInPane',
+    'threads',
+    'threadId',
+    'manifest',
+    'manifestEntries',
+  );
   const openInPane = shell?.openInPane;
   // The note does not say which workspace the edit was in; the agent's tools do.
   // An agent that works on the harness was told about a harness file.

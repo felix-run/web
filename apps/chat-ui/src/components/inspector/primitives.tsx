@@ -9,7 +9,7 @@ import { ErrorNotice } from '@/components/error-notice';
 import { PageEmpty, PageHeader, READING_MEASURE } from '@/components/harness/panel';
 import { forgetHarnessRead, isTransientFailure, reportHarnessRead } from '@/lib/harness-health';
 import { cn } from '@/lib/utils';
-import { useOptionalShell } from '@/shell-context';
+import { useOptionalShellPick } from '@/shell-context';
 
 /**
  * The pieces every harness panel is built from.
@@ -457,7 +457,7 @@ export function TransientRead({
   lastOkAt: number | null;
   onRetry?: () => void;
 }) {
-  const debug = useOptionalShell()?.debug ?? false;
+  const debug = useOptionalShellPick('debug')?.debug ?? false;
   const source = `read:${useId()}`;
   // The retry is read through the newest render, and a new closure every render
   // must not re-report: the effect keys on the error and the age only.

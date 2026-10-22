@@ -2,7 +2,7 @@ import type { BranchPoint } from '@felix/client';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { LogOutIcon, UnplugIcon } from 'lucide-react';
-import { lazy, memo, Suspense, useEffect, useMemo, useRef } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useInRouterContext, useSearchParams } from 'react-router';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill, NEARLY_FULL } from '@/components/chat/context-meter';
@@ -200,6 +200,8 @@ export function Workbench() {
     () => (streaming && lastUser !== -1 ? landedPaths(turns, lastUser) : new Set<string>()),
     [turns, streaming, lastUser],
   );
+  // Stable, for the memoised Inspector: an inline closure redrew it on every frame.
+  const closeInspector = useCallback(() => setInspectorOpen(false), [setInspectorOpen]);
   const inRouter = useInRouterContext();
   const paneZone = { threadId, changedPaths, runPaths, streaming, open: paneOpen, layout };
 
@@ -227,37 +229,33 @@ export function Workbench() {
             {turns.map((t, i) => {
               const isLast = i === turns.length - 1;
               return (
-                // The row is keyed by position and the message by turn: the scroller
-                // remembers which anchors it has handled by DOM element, so a
-                // snapshot rebuild that re-mints turn ids must not re-create the
-                // rows, or every anchor reads as new and the view jumps to the first.
-                <ConversationItem key={`turn-${i}`} id={`turn-${i}`} anchor={t.role === 'user'}>
-                  <TurnRow
-                    key={t.id}
-                    turn={t}
-                    first={i === 0}
-                    isLast={isLast}
-                    // One reply can be several turns — the model's message that called
-                    // the tools, then the one after them — and each drew its own "Felix".
-                    // The rows stay one per turn (rows are named by position), so only the
-                    // label goes.
-                    continues={t.role === 'assistant' && turns[i - 1]?.role === 'assistant'}
-                    streaming={streaming}
-                    drives={drives}
-                    debug={debug}
-                    harnessView={harnessView}
-                    branch={t.eventId ? branches?.get(t.eventId) : undefined}
-                    label={t.eventId ? labels[t.eventId] : undefined}
-                    feedback={t.eventId ? feedback[t.eventId] : undefined}
-                    switchBranch={switchBranch}
-                    // `regenerate` is rebuilt on every delta; only the turn it acts on gets it.
-                    regenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
-                    rewindTo={rewindTo}
-                    editTurn={editTurn}
-                    labelTurn={labelTurn}
-                    rateTurn={rateTurn}
-                  />
-                </ConversationItem>
+                // Keyed by position, the message inside by turn: see `TurnItem`.
+                <TurnItem
+                  key={`turn-${i}`}
+                  index={i}
+                  turn={t}
+                  first={i === 0}
+                  isLast={isLast}
+                  // One reply can be several turns — the model's message that called
+                  // the tools, then the one after them — and each drew its own "Felix".
+                  // The rows stay one per turn (rows are named by position), so only the
+                  // label goes.
+                  continues={t.role === 'assistant' && turns[i - 1]?.role === 'assistant'}
+                  streaming={streaming}
+                  drives={drives}
+                  debug={debug}
+                  harnessView={harnessView}
+                  branch={t.eventId ? branches?.get(t.eventId) : undefined}
+                  label={t.eventId ? labels[t.eventId] : undefined}
+                  feedback={t.eventId ? feedback[t.eventId] : undefined}
+                  switchBranch={switchBranch}
+                  // `regenerate` is rebuilt on every delta; only the turn it acts on gets it.
+                  regenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
+                  rewindTo={rewindTo}
+                  editTurn={editTurn}
+                  labelTurn={labelTurn}
+                  rateTurn={rateTurn}
+                />
               );
             })}
             {/* Neutral, not `running`: the run this names was torn down when the
@@ -408,7 +406,7 @@ export function Workbench() {
         {instrumentInline && (
           <RailPresence open={inspectorOpen} side="right">
             <Suspense fallback={<InspectorLoading />}>
-              <Inspector open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
+              <Inspector open={inspectorOpen} onClose={closeInspector} />
             </Suspense>
           </RailPresence>
         )}
@@ -443,7 +441,7 @@ export function Workbench() {
             <Suspense fallback={<InspectorLoading className="w-full border-l-0 bg-transparent" />}>
               <Inspector
                 open={inspectorOpen}
-                onClose={() => setInspectorOpen(false)}
+                onClose={closeInspector}
                 className="w-full border-l-0 bg-transparent"
               />
             </Suspense>
@@ -501,15 +499,33 @@ function OpenLink({
   return null;
 }
 
+type TurnRowProps = Parameters<typeof TurnRow>[0];
+
 /**
- * One turn of the transcript and its restore point. Memoised, and given only values that
- * stay put while a reply streams — the shell's verbs, this turn's own label, rating and
- * branch — so a finished turn renders nothing per delta: without it every message, tool
- * card and reasoning block in the thread was redrawn each frame to change only the last one.
- * The closures `Message` takes are built here, where they cost nothing unless this turn
- * itself re-renders.
+ * A turn's row in the scroller, memoised as a whole: the scroller's own row wrapper
+ * re-rendered around every finished turn on every frame, which was most of what the
+ * conversation still cost once the turns themselves were memoised. The row is keyed by
+ * position (by the caller) and the message inside it by turn: the scroller remembers
+ * which anchors it has handled by DOM element, so a snapshot rebuild that re-mints turn
+ * ids must not re-create the rows, or every anchor reads as new and the view jumps.
  */
-const TurnRow = memo(function TurnRow({
+const TurnItem = memo(function TurnItem({ index, ...row }: TurnRowProps & { index: number }) {
+  return (
+    <ConversationItem id={`turn-${index}`} anchor={row.turn.role === 'user'}>
+      <TurnRow key={row.turn.id} {...row} />
+    </ConversationItem>
+  );
+});
+
+/**
+ * One turn of the transcript and its restore point, given only values that stay put while
+ * a reply streams — the shell's verbs, this turn's own label, rating and branch — so that
+ * `TurnItem`'s memo holds for every finished turn: without it every message, tool card and
+ * reasoning block in the thread was redrawn each frame to change only the last one. The
+ * closures `Message` takes are built here, where they cost nothing unless this turn itself
+ * re-renders.
+ */
+function TurnRow({
   turn: t,
   first,
   isLast,
@@ -583,4 +599,4 @@ const TurnRow = memo(function TurnRow({
       )}
     </>
   );
-});
+}

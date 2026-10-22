@@ -50,7 +50,7 @@ import {
 import { cn } from '@/lib/utils';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 import type { EditNotice } from '@/shell-context';
-import { useOptionalShell } from '@/shell-context';
+import { useOptionalShellPick } from '@/shell-context';
 
 // The skill library's renderer, because it is the one that already trusts its
 // input less than the transcript does: no inline HTML becomes an element, and no
@@ -109,7 +109,7 @@ export function FileView({
   const tellAgent = useTellAgent();
   // The agent the thread will run under next, which the harness uses to find
   // the workspace of a thread that has never run (afterwards it uses its own).
-  const shell = useOptionalShell();
+  const shell = useOptionalShellPick('manifest', 'showRecordedNote');
   const manifest = shell?.manifest;
   const showRecordedNote = shell?.showRecordedNote;
   /** The harness file's hash as last read: a save is refused unless it still is. */
