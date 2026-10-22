@@ -1,3 +1,4 @@
+import { isClosedApproval } from '@felix/client';
 import { cancelWorkflowRun, decideApproval } from '@/api';
 import { ApprovalDecision, CodePane } from '@/components/approval/approval-decision';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -256,7 +257,13 @@ function WaitingApproval({ approvalId }: { approvalId: string }) {
       reason={row.reason || undefined}
       expiresAt={row.expires_at ?? undefined}
       onDecide={async (status) => {
-        await decideApproval(row.id, { status });
+        try {
+          await decideApproval(row.id, { status });
+        } catch (err) {
+          // Decided elsewhere or timed out: re-read so the card goes; the toast says why.
+          if (isClosedApproval(err)) shell?.tenantApprovals.refresh();
+          throw err;
+        }
         shell?.tenantApprovals.markDecided(row.id);
         shell?.tenantApprovals.refresh();
       }}

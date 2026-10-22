@@ -99,6 +99,40 @@ export class IdempotencyKeyReusedError extends Error {
   }
 }
 
+/**
+ * Refusals the harness names with a code of its own (`felix-run/felix#635`), each of which
+ * the generic reading of its status gets wrong: every 409 read as "something else changed
+ * it", and every 403 as a key that needs a broader scope — but an operator key is refused
+ * `self_approval_forbidden` too, and no scope lets a non-writer run someone else's job.
+ */
+const REFUSALS: Record<string, string> = {
+  approval_already_decided: 'someone already decided it, so this is no longer pending.',
+  approval_expired:
+    'its deadline passed before the decision arrived, so the harness denied it on timeout.',
+  self_approval_forbidden:
+    'this deployment requires someone other than whoever started the run to decide it.',
+  not_job_writer:
+    'only whoever last saved this job, or an operator, may run it by hand. Saving it again makes it yours.',
+};
+
+/** The harness's refusal code in a thrown error's text, when it is one of `REFUSALS`. */
+function refusalCode(text: string): string | null {
+  const m =
+    /\b(approval_already_decided|approval_expired|self_approval_forbidden|not_job_writer)\b/.exec(
+      text,
+    );
+  return m ? (m[1] as string) : null;
+}
+
+/**
+ * The decision failed because the approval is no longer open — decided elsewhere, or
+ * timed out — so there is nothing left to answer and the card asking should go.
+ */
+export function isClosedApproval(err: unknown): boolean {
+  const code = refusalCode(String((err as Error)?.message ?? err));
+  return code === 'approval_already_decided' || code === 'approval_expired';
+}
+
 /** A network-layer failure, i.e. the request never reached the harness at all. */
 function isOffline(err: unknown): boolean {
   // fetch() rejects with a TypeError when DNS, TLS or the connection itself fails.
@@ -163,6 +197,9 @@ export function describeError(err: unknown, doing: string): DescribedError {
 
   const pinned = pinRefusal(detail);
   if (pinned) return { message: `Could not ${doing}: ${pinned}`, detail };
+
+  const code = refusalCode(detail);
+  if (code) return { message: `Could not ${doing}: ${REFUSALS[code]}`, detail };
 
   const status = statusOf(detail);
   // A send the harness refused for a reason this client has no sentence for says the

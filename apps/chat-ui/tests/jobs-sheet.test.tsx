@@ -203,6 +203,16 @@ describe('running a job now', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^Run nightly-digest now$/ }));
     expect(await screen.findByText(/not allowed to/)).toBeTruthy();
   });
+
+  // `felix-run/felix#635`: no scope lets someone run a job another person saved.
+  it('says who may run it when the harness refuses a non-writer', async () => {
+    await sheet([job()], {
+      runJobNow: () =>
+        Promise.reject(new Error('jobs /nightly-digest/run: 403 {"detail":"not_job_writer"}')),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /^Run nightly-digest now$/ }));
+    expect(await screen.findByText(/only whoever last saved this job/)).toBeTruthy();
+  });
 });
 
 /**

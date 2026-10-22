@@ -53,6 +53,7 @@ export {
   type DescribedError,
   describeError,
   IdempotencyKeyReusedError,
+  isClosedApproval,
   isLeaseRefusal,
   LeaseRefusedError,
   RunInProgressError,
