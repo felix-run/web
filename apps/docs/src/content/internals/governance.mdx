@@ -182,6 +182,31 @@ workflow step get fresh. A call reserves its run slot before it awaits anything,
 parallel calls cannot all pass the cap, and returns it only if the hourly limit refuses; past that a
 screened or undelivered call still counts.
 
+**A notice is also left in the conversation it links to, for the person only.** A scheduled task's
+firing links its notice to the chat thread the task was scheduled from, read off
+`payload.scheduled_by`, a record only `schedule_task` writes: `PUT /jobs` ignores one in the body
+(`routes/jobs.py:_payload_to_store`), so a job written there cannot name somebody else's
+conversation. It carries the stored record forward only when the job's own writer (`acting_for` ==
+the stored `created_by`) re-saves it, so pausing or resuming a task keeps it a task; re-saved by
+anyone else it becomes an ordinary job, since carrying the record would let them write into its
+writer's conversation. The record is used only for a task the notified person wrote,
+and only for a chat thread of the tenant's own — a suffix in plain id characters with no `:`, which
+no chat client can create and every thread the harness mints for itself (`job:`, `channel:`, `a2a:`,
+`workflow:`, `fiber:`) has. The same cleaned text is appended there before the push goes
+(`_Notices.append`), as `notice_entry`: a `custom` entry with `metadata.type: notice` and
+`in_context: false`, which `session.types.include_in_llm_context` leaves out of every prompt — so
+text a model wrote in one run, possibly under injection, never becomes context for another run in
+a conversation it was not part of. It is checked and appended inside the thread's `leaf_lock`,
+parented on the leaf the store holds. It is never written into a thread that does not exist (a
+notice creates no conversation), nor while a run is going on in it — a turn that marked itself
+(`workspace_notes.run_active`, from before its first append to after its last) or a durable run not
+yet finished — since an entry landing inside a run would sit between a message and its reply.
+Without Redis the turn's mark is per process, so a firing on the worker cannot see a turn running
+in the API. An exclusive lease is not a run: a client holds one while the person has the thread
+open. The run's own thread gets nothing. In every case the push still goes; the result's `thread`
+says what happened there (`appended`, `run_live`, `missing`, `failed`, `not_eligible`) and
+`channels` lists only the channels that delivered.
+
 **Reaching the human.** Step 2 emits `approval_required` as a *side event* — a per-thread
 in-process `asyncio.Queue` — which the react loop drains into the stream. That works when the agent
 and the stream are in one process, and a **durable** run is exactly when they are not: the agent is

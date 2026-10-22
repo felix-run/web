@@ -4,6 +4,7 @@ import {
   branchPoints,
   eventsToTurns,
   mergeSessions,
+  noticeOf,
   snapshotToEvents,
   type ThreadMeta,
   threadSuffix,
@@ -521,6 +522,78 @@ describe('custom entries (`POST /chat/sessions/custom`)', () => {
       ev({ seq: 3, role: 'assistant', content: 'hello' }),
     ]);
     expect(turns.map((t) => t.role)).toEqual(['user', 'note', 'assistant']);
+  });
+});
+
+/**
+ * A scheduled task's `notify` also leaves the notice in the chat thread the task
+ * was scheduled from: a custom entry, role assistant, `metadata.type: "notice"`
+ * with the title and `in_context: false`, content `"{title}\n\n{message}"`
+ * (felix `push/agent_tool.py:notice_entry`). A snapshot carries the metadata
+ * whole; a `session_event` frame passes `type` and `in_context` but not `title`.
+ */
+describe('a notice entry (`notify`)', () => {
+  const notice = (over: Partial<SessionEvent> & { seq: number }) =>
+    ev({
+      kind: 'custom',
+      role: 'assistant',
+      content: 'Backup done\n\nAll 3 volumes copied.',
+      ...over,
+    });
+
+  it('is read off a snapshot row as the notice, for the person only', () => {
+    const [turn] = eventsToTurns([
+      notice({
+        seq: 1,
+        id: 'n1',
+        metadata: { type: 'notice', title: 'Backup done', in_context: false },
+      }),
+    ]);
+    expect(turn?.role).toBe('note');
+    expect(turn?.eventId).toBe('n1');
+    expect(turn?.note).toEqual({
+      role: 'assistant',
+      inContext: false,
+      notice: { title: 'Backup done', body: 'All 3 volumes copied.' },
+    });
+  });
+
+  it('takes the title from the first line when a live frame carries none', () => {
+    const [turn] = eventsToTurns([
+      notice({ seq: 1, metadata: { type: 'notice', in_context: false } }),
+    ]);
+    expect(turn?.note?.notice).toEqual({ title: 'Backup done', body: 'All 3 volumes copied.' });
+  });
+
+  it('ignores a title that is not a string within the harness’s 80 characters', () => {
+    expect(noticeOf({ type: 'notice', title: 'x'.repeat(81) }, 'Short\n\nbody')).toEqual({
+      title: 'Short',
+      body: 'body',
+    });
+    expect(noticeOf({ type: 'notice', title: 42 }, 'Short\n\nbody')?.title).toBe('Short');
+    // Counted in characters, as the harness counts them, not UTF-16 units.
+    const emoji = '🔔'.repeat(80);
+    expect(noticeOf({ type: 'notice', title: emoji }, `${emoji}\n\nbody`)?.title).toBe(emoji);
+  });
+
+  it('is a plain note when nothing usable names it, or it is another kind of entry', () => {
+    expect(noticeOf({ type: 'notice' }, '')).toBeNull();
+    expect(noticeOf({ type: 'notice', title: '' }, `${'y'.repeat(81)}\n\nbody`)).toBeNull();
+    expect(noticeOf({ type: 'workspace_edit', title: 'T' }, 'T\n\nbody')).toBeNull();
+    expect(noticeOf(undefined, 'T\n\nbody')).toBeNull();
+    const [turn] = eventsToTurns([notice({ seq: 1, metadata: { title: 'Backup done' } })]);
+    expect(turn?.note && 'notice' in turn.note).toBe(false);
+  });
+
+  it('keeps a body that only begins with the title’s words', () => {
+    expect(noticeOf({ type: 'notice', title: 'Done' }, 'Done\n\nDone twice.')?.body).toBe(
+      'Done twice.',
+    );
+    expect(noticeOf({ type: 'notice', title: 'Done' }, 'Doneness reached.')).toEqual({
+      title: 'Done',
+      body: 'Doneness reached.',
+    });
+    expect(noticeOf({ type: 'notice', title: 'Done' }, 'Done')?.body).toBe('');
   });
 });
 

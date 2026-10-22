@@ -304,9 +304,12 @@ nothing, and a push is held by the push service only until the approval's deadli
 
 A `notice` carries text an agent wrote with `notify`, because it is addressed to one person: secrets
 redacted, links replaced with `[link removed]`, screened, then end-to-end encrypted to the browser
-(RFC 8291). For a scheduled task's firing its `thread_id` is the conversation the task was scheduled
-from when that person wrote the task and the id is one of the tenant's own; otherwise the run's own
-thread. See
+(RFC 8291). For a scheduled task's firing its `thread_id` is the chat thread the task was scheduled
+from when that person wrote the task and the id is one of the tenant's own chat threads (a suffix with
+no `:`); otherwise the run's own thread. In that case the notice is also left in the linked
+conversation, before the push goes, as an entry for the person that the model never reads (a
+`custom` entry with `metadata.type: "notice"`), so it is there when they open it even if no device
+took the push. See
 [`spec.notify`](/guide/manifest-reference/#specnotify).
 
 ### `GET /push/vapid-public-key`
@@ -1067,7 +1070,8 @@ with `422`. Its claim clears `next_run_at`, so it fires once; re-saving it with 
 that (a fired one-shot stays fired), while a new `at:` schedules it again. Run now still runs it.
 
 `payload.prompt` (or `payload.message`) is the user turn the manifest is invoked with; the rest
-of the payload is the job's to interpret. Every firing runs on one thread named after the job,
+of the payload is the job's to interpret, except `payload.scheduled_by`: one sent in the body is
+ignored, since only an agent's `schedule_task` writes it (below). Every firing runs on one thread named after the job,
 so a job that should remember its last run — a weekly digest — does. Set `payload.fresh_thread:
 true` for a job that works something different each time, such as the next ticket in a queue:
 each firing then gets a thread of its own, so one run's transcript never sits in the next run's
@@ -1131,7 +1135,13 @@ and listed, read, run and deleted here like any job. A task also records when it
 expires (none for an API key; these routes do not show it, `list_scheduled` does): a firing after
 that — on schedule or through Run now — is refused, recorded as an `error` run with `last_error`
 "the credential that scheduled this task has expired; schedule it again", and the job disabled.
-Re-saving a task with `PUT` records the new writer, as for any job, and no expiry. The nightly retention
+Re-saving a task with `PUT` records the new writer, as for any job, and no expiry. When the task's
+own writer re-saves it — pausing or resuming it from the jobs page re-sends the whole job — the
+stored `scheduled_by` is kept, so it stays a task. Re-saved by anyone else it becomes an ordinary
+job, since carrying the record would let them write into its writer's conversation:
+`list_scheduled` no longer lists it, the retention sweep below leaves it, and a `notify` from its
+firing links to the job's own thread rather than the conversation it was scheduled from, and is not
+left there. The nightly retention
 sweep deletes tasks that will not run again — a one-shot that has fired, or a disabled task, such as
 one disabled when its credential expired — with their runs, once the last run is older than
 `FELIX_SCHEDULED_TASK_RETENTION_DAYS` (30; `0` keeps them). An enabled recurring task, a task that

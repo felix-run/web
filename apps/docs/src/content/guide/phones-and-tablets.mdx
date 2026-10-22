@@ -47,6 +47,13 @@ conversation you scheduled it from. A notice whose thread the app cannot open, s
 job an operator set up, opens the app's home view instead. Two notices are two notifications; a later one does
 not replace an unread one.
 
+A scheduled task's notice is also left in the conversation you scheduled it from, so it is there when
+you open it — even if notifications are off, or no device took it. It shows as a **Notice** with a
+bell, its title and message as plain text, marked *for you only — the agent doesn't see this*: the
+agent never reads it back, so it does not steer the conversation when you carry on. It is not left
+there if the conversation no longer exists, or if the agent was answering in it at that moment; the
+notification still comes.
+
 To stop them, turn notifications off for the app in the system's settings. The harness forgets
 the device the next time it tries to reach it.
 

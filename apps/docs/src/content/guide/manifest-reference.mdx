@@ -1235,7 +1235,8 @@ that already has a tool of one of these names fails the compile.
 
 A task's firing has nobody reading its thread. To have it tell its writer what it found, give the
 manifest [`spec.notify`](#specnotify) as well: a notice sent from a firing reaches the person who
-scheduled the task and opens the conversation it was scheduled from.
+scheduled the task, opens the conversation it was scheduled from, and is left in that conversation
+for them to read.
 
 ## `spec.notify`
 
@@ -1254,7 +1255,7 @@ unset binds nothing.
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `notify` | `title` (1–80 characters), `message` (1–500) | `{delivered, channels: ["push"], note?}` |
+| `notify` | `title` (1–80 characters), `message` (1–500) | `{delivered, channels, thread, note?}` |
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
@@ -1291,16 +1292,49 @@ anything leaves, in order:
 
 The push payload is `{kind: "notice", title, body, thread_id}`, encrypted end to end to the browser
 (RFC 8291), so the push service relays ciphertext. It may still show on the person's lock screen.
-`thread_id` is the run's own thread. For a scheduled task's firing it is the thread the task was
-scheduled from (`payload.scheduled_by.thread_id`), but only when the task's writer is the person
-being notified and the id is one of the tenant's own threads with a suffix of plain id characters;
-a job's payload is free-form under `PUT /jobs`, so anything else falls back to the run's thread. The
-push service holds an undelivered notice for 12 hours.
+`thread_id` is the run's own thread. For a scheduled task's firing it is the chat thread the task
+was scheduled from (`payload.scheduled_by.thread_id`), but only when the task's writer is the person
+being notified and the id is a chat thread of the tenant's own: a suffix of plain id characters with
+no `:`. A chat client cannot create a thread with a `:` in it, and every thread the harness makes for
+itself has one (`job:`, `channel:`, `a2a:`, `workflow:`, `fiber:`), so a recorded origin naming one
+of those is neither linked nor written to. Only `schedule_task` writes `scheduled_by`:
+[`PUT /jobs`](/guide/management-api/#jobs) ignores one in the body, so a job written there cannot
+name somebody else's conversation. A task re-saved there by its own writer keeps its stored record;
+re-saved by anyone else it becomes an ordinary job. Anything else falls back to the run's thread. The push service
+holds an undelivered notice for 12 hours.
+
+**In the conversation.** When the notice links to a thread other than the run's own — a scheduled
+task's firing, pointing at the conversation it was scheduled from — the same cleaned text is also
+left in that thread, before the push goes, so it is there when the person opens it, even when no
+browser took the push. It is an entry for the person, never for the model: a `custom` entry, role
+`assistant`, content `"{title}\n\n{message}"` as plain text, metadata
+`{type: "notice", title, in_context: false}`. No prompt is built from it, so text a model wrote in
+one run never becomes context for a later run in a conversation it was not part of. It joins the
+thread's active branch, so the next turn continues after it. A client draws it from the session
+snapshot, and one watching the thread's stream (`GET /chat/stream/{thread_id}`) gets it live as a
+`session_event`, which carries `type` and `in_context` but not `title` — the title is the content's
+first line. Nothing is written:
+
+- into a thread that does not exist — a notice creates no conversation (`missing`);
+- while a run is going on in it, since an entry landing inside a run would sit between a message and
+  its reply (`run_live`): a turn marks itself from before its first append to after its last, and a
+  durable run counts until it finishes. Without Redis the mark is per process, so a firing on the
+  worker cannot see a turn running in the API. A client holding the thread's
+  [exclusive lease](/guide/rest-api/#leases) is not a run — that is the person, watching;
+- into the run's own thread, which already shows the call and the answer, or when there is no other
+  chat thread to leave it in (`not_eligible`).
+
+In each of these cases the push still goes.
 
 **The result.** `delivered` is how many of the person's browsers' push services accepted the notice.
-A `0` comes with a `note` saying why: push is not configured on this deployment
-(`FELIX_PUSH_VAPID_PRIVATE_KEY` unset), the person has no subscribed device, or every send failed.
-None of these is an error.
+`channels` lists the channels that delivered it: `["push", "thread"]`, `["push"]` when only a
+browser took it, `["thread"]` when only the conversation did, `[]` when neither did. `thread` is what
+became of it in the conversation it links to: `appended`, `run_live`, `missing`, `failed` (the write
+raised), or `not_eligible` (above). A `note` says why anything did not arrive: push is not
+configured on this deployment (`FELIX_PUSH_VAPID_PRIVATE_KEY` unset), the person has no subscribed
+device or none accepted it, the push failed, or the entry was not added — and, when the entry landed
+but no push did, that it is in their conversation for when they next open it. None of these is an
+error.
 
 **Counting.** A call takes its `max_per_run` slot in the same step that checks it, before anything
 awaits, so a turn's parallel `notify` calls cannot all pass the cap. It gives the slot back only if

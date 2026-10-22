@@ -234,7 +234,7 @@ firing — and `payload.recipient` is the person notified.
 
 | `event_type` | Emitted | `status` | Payload |
 |---|---|---|---|
-| `notify.sent` | A `notify` call that passed its checks, both limits and screening, after the send was attempted | `ok` (delivered to at least one browser), `undelivered` (push off, no subscription, or every send failed) | `channels` (`["push"]`), `delivered`, `thread_id`, `recipient` — never the title or message, since `audit:read` holders read this log |
+| `notify.sent` | A `notify` call that passed its checks, both limits and screening, after the send was attempted | `ok` (at least one channel delivered it: a browser took the push, or it was left in the linked conversation), `undelivered` (neither) | `channels` (the channels that delivered it: `["push", "thread"]`, `["push"]`, `["thread"]` or `[]`), `delivered` (browsers that took the push), `thread` (what became of it in the linked conversation: `appended`, `run_live`, `missing`, `failed`, `not_eligible`), `thread_id`, `recipient` — never the title or message, since `audit:read` holders read this log |
 
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
 truncation marker) so a runaway loop cannot flood storage.

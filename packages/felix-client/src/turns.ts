@@ -130,6 +130,17 @@ export interface WorkspaceEdit {
   files?: number;
 }
 
+/**
+ * A notice an agent sent the person (`notify`) and the harness also left in the
+ * conversation it links to: a custom entry with `metadata.type: "notice"`, for
+ * the person and never the model (felix `push/agent_tool.py:notice_entry`).
+ * `body` is the entry's content with the title line taken off, as plain text.
+ */
+export interface Notice {
+  title: string;
+  body: string;
+}
+
 export interface Turn {
   id: string;
   role: Exclude<Role, 'tool' | 'system'> | 'note';
@@ -144,7 +155,7 @@ export interface Turn {
    * model — so a note keeps its role here for the renderer to say, and
    * `inContext` for the renderer to say whether the model read it.
    */
-  note?: { role: Role; inContext: boolean; workspaceEdit?: WorkspaceEdit };
+  note?: { role: Role; inContext: boolean; workspaceEdit?: WorkspaceEdit; notice?: Notice };
   content: string;
   tools?: ToolCall[];
   /** Reasoning the model streamed, if the harness is new enough to name it. */
