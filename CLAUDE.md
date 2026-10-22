@@ -620,8 +620,10 @@ Flows worth knowing before editing the app:
   in the Activity ledger, while the run readout said Idle. Now every surface says `denied` in the
   neutral tone; red stays for `failed` and for a control's `refused`. The result says only *that*
   it was denied; who and when are on the decided `/approvals` row, which
-  `src/lib/denials.ts` matches back to the card **by order** (the n-th denied call of a tool on
-  the thread is the n-th denied row for it, and nothing when the counts disagree), read once per
+  `src/lib/denials.ts` matches back to the card **by the row's `tool_call_id`** against the
+  card's `callId` (live and rebuilt cards both carry it), and what is left **by order** (the n-th
+  denied call of a tool on the thread is the n-th denied row for it, and nothing when the counts
+  disagree), read once per
   thread by `DenialsSync` in the workbench, which publishes to a small store the card reads
   (`components/chat/denial-context.ts`). `decided_by` names a principal, and through the
   proxy every browser is the same one, so the card says **"Denied by you" only when this browser

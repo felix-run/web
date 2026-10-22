@@ -63,6 +63,20 @@ describe('eventsToTurns — rebuilding a transcript from the server log', () => 
     expect(turn?.tools?.[0]).toMatchObject({ name: 'read_file', at: 'let me check'.length });
   });
 
+  // The id an approval row's `tool_call_id` names: without it a reloaded card could
+  // only be matched to its decision by order.
+  it('keeps the call id on a rebuilt card, as a live one has it', () => {
+    const [turn] = eventsToTurns([
+      ev({
+        seq: 1,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-7', name: 'write_file', args: {} }],
+      }),
+    ]);
+    expect(turn?.tools?.[0]?.callId).toBe('call-7');
+  });
+
   it('keeps a tool-only step ahead of the prose it is carried into', () => {
     // No content on the calling step, so its cards stamp 0 and stay above the
     // answer they were held for, while that answer's own call lands below it.

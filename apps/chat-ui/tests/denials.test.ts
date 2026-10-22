@@ -14,8 +14,8 @@ import type { ApprovalRequest, ToolCall, Turn } from '../src/types';
 
 /**
  * Who denied a call, and when, is on the approval row, not on the tool result.
- * These pin how a card is matched to its row — by order, and only while the
- * order is certain — and that "you" is never said without this browser having
+ * These pin how a card is matched to its row — by the call id the row names, else by
+ * order and only while the order is certain — and that "you" is never said without this browser having
  * made the decision.
  */
 
@@ -85,6 +85,56 @@ describe('matchDenials', () => {
     const a = denied('write_file');
     const m = matchDenials(deniedCalls([turn('assistant', [a])]), [row({ id: 'mine' })], 'th');
     expect(m.get(a)?.here).toBe(true);
+  });
+});
+
+/**
+ * Since 0.15 the row names the call it blocked (`tool_call_id`), so a card that carries its
+ * `callId` is matched exactly — even where the order rule would refuse, or would pair it with
+ * the wrong row.
+ */
+describe('matchDenials by call id', () => {
+  const withId = (tool: string, callId: string): ToolCall => ({ ...denied(tool), callId });
+
+  it('matches a card to the row that names its call, whatever the order says', () => {
+    const a = withId('write_file', 'call-a');
+    const b = withId('write_file', 'call-b');
+    // Created in the opposite order to the cards: by order, each would get the other's row.
+    const rows = [
+      row({ id: 'rb', tool_call_id: 'call-b', created_at: 1, decided_by: 'ops' }),
+      row({ id: 'ra', tool_call_id: 'call-a', created_at: 2, decided_by: 'blake' }),
+    ];
+    const out = matchDenials([a, b], rows, 'th', () => false);
+    expect(out.get(a)?.id).toBe('ra');
+    expect(out.get(b)?.id).toBe('rb');
+  });
+
+  it('matches by id where the counts disagree, which the order rule refuses', () => {
+    const a = withId('write_file', 'call-a');
+    // A second row for the tool, on a branch since abandoned: two rows, one card.
+    const rows = [
+      row({ id: 'old', tool_call_id: 'call-x', created_at: 1 }),
+      row({ id: 'ra', tool_call_id: 'call-a', created_at: 2 }),
+    ];
+    expect(matchDenials([a], rows, 'th', () => false).get(a)?.id).toBe('ra');
+  });
+
+  it('falls back to order for what is left, only where the remaining counts agree', () => {
+    const a = withId('write_file', 'call-a');
+    const legacy = denied('write_file'); // rebuilt with no id
+    const rows = [
+      row({ id: 'ra', tool_call_id: 'call-a', created_at: 2 }),
+      row({ id: 'r-old', created_at: 1 }), // an older harness's row, no call id
+    ];
+    const out = matchDenials([legacy, a], rows, 'th', () => false);
+    expect(out.get(a)?.id).toBe('ra');
+    expect(out.get(legacy)?.id).toBe('r-old');
+  });
+
+  it('never matches a row to a card of another tool, even on the same call id', () => {
+    const a = withId('delete_file', 'call-a');
+    const rows = [row({ id: 'ra', tool_name: 'write_file', tool_call_id: 'call-a' })];
+    expect(matchDenials([a], rows, 'th', () => false).get(a)).toBeUndefined();
   });
 });
 

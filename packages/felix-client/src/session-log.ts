@@ -360,7 +360,16 @@ export function eventsToTurns(
         // This also dates the tools carried over from a tool-only step correctly
         // and for free: that step's content is empty, so its cards are stamped 0
         // and stay ahead of the prose they were carried into.
-        const t: ToolCall = { name: tc.name, input: tc.args, done: false, at: content.length };
+        //
+        // The call's id rides along, as it does on a live card: it is what an approval row's
+        // `tool_call_id` names, so a rebuilt card can be matched to its decision exactly.
+        const t: ToolCall = {
+          name: tc.name,
+          input: tc.args,
+          done: false,
+          at: content.length,
+          ...(tc.id ? { callId: tc.id } : {}),
+        };
         toolById.set(tc.id, t);
         return t;
       });

@@ -97,15 +97,15 @@ export function deniedCalls(turns: readonly Turn[]): ToolCall[] {
 /**
  * Each denied card's approval row, where the match is certain.
  *
- * Nothing on the card names its row: the tool result carries the tool and the
- * rule, the row carries an argument *hash* the client cannot recompute, and the
- * audit row's `tool_call_id` is not on the approval. So the match is by order:
- * the n-th denied `write_file` on this thread is the n-th denied `write_file` row
- * for it, oldest first. That holds only while the two lists agree, so a tool
- * whose counts differ — a denial on an abandoned branch, two calls that shared
- * one pending row, a row past the read's limit — gets no record at all, and its
- * card says *Denied* without a who or a when. The same refusal `rateTurn` makes
- * when positions disagree: an unattributed denial beats a misattributed one.
+ * A row that names its call (`tool_call_id`, which the harness sends since 0.15) is
+ * matched to the card with that `callId`, exactly. What is left — rows from an older
+ * harness, cards rebuilt without an id — is matched by order: the n-th denied
+ * `write_file` on this thread is the n-th denied `write_file` row for it, oldest
+ * first. That holds only while the two lists agree, so a tool whose remaining counts
+ * differ — a denial on an abandoned branch, two calls that shared one pending row, a
+ * row past the read's limit — gets no record at all, and its card says *Denied*
+ * without a who or a when. The same refusal `rateTurn` makes when positions
+ * disagree: an unattributed denial beats a misattributed one.
  *
  * `denied` is the thread's denied calls in order — `deniedCalls(turns)` — taken
  * rather than the turns, so a caller can hold it steady while text streams in.
@@ -116,30 +116,46 @@ export function matchDenials(
   threadId: string,
   isHere: (id: string) => boolean = decidedHere,
 ): Map<ToolCall, DenialRecord> {
+  const record = (row: ApprovalRequest): DenialRecord => ({
+    id: row.id,
+    decidedBy: row.decided_by ?? '',
+    decidedAt: row.decided_at ?? null,
+    ttlSeconds: row.ttl_seconds ?? DEFAULT_TTL_SECONDS,
+    here: isHere(row.id),
+  });
+  const own = rows.filter(
+    (row) => row.status === 'denied' && Boolean(row.thread_id) && row.thread_id === threadId,
+  );
+  const out = new Map<ToolCall, DenialRecord>();
+
+  // Exact first: the row names the call it blocked.
+  const byCall = new Map<string, ApprovalRequest>();
+  for (const row of own) if (row.tool_call_id) byCall.set(row.tool_call_id, row);
+  const used = new Set<string>();
   const cards = new Map<string, ToolCall[]>();
   for (const tool of denied) {
     const name = bareName(tool.name);
-    cards.set(name, [...(cards.get(name) ?? []), tool]);
+    const row = tool.callId ? byCall.get(tool.callId) : undefined;
+    if (row && row.tool_name === name && !used.has(row.id)) {
+      used.add(row.id);
+      out.set(tool, record(row));
+    } else {
+      cards.set(name, [...(cards.get(name) ?? []), tool]);
+    }
   }
+
+  // Then by order, among what neither side matched exactly.
   const byTool = new Map<string, ApprovalRequest[]>();
-  for (const row of rows) {
-    if (row.status !== 'denied' || !row.thread_id || row.thread_id !== threadId) continue;
+  for (const row of own) {
+    if (used.has(row.id)) continue;
     byTool.set(row.tool_name, [...(byTool.get(row.tool_name) ?? []), row]);
   }
-  const out = new Map<ToolCall, DenialRecord>();
   for (const [name, tools] of cards) {
-    const own = (byTool.get(name) ?? []).sort((a, b) => a.created_at - b.created_at);
-    if (own.length !== tools.length) continue;
+    const left = (byTool.get(name) ?? []).sort((a, b) => a.created_at - b.created_at);
+    if (left.length !== tools.length) continue;
     tools.forEach((tool, i) => {
-      const row = own[i];
-      if (!row) return;
-      out.set(tool, {
-        id: row.id,
-        decidedBy: row.decided_by ?? '',
-        decidedAt: row.decided_at ?? null,
-        ttlSeconds: row.ttl_seconds ?? DEFAULT_TTL_SECONDS,
-        here: isHere(row.id),
-      });
+      const row = left[i];
+      if (row) out.set(tool, record(row));
     });
   }
   return out;
