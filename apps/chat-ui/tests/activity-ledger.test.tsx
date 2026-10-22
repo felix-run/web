@@ -687,6 +687,26 @@ describe('the ledger page', () => {
     expect(screen.queryByText(/Paused while a thread is open/)).toBeNull();
   });
 
+  it('reads the audit window on every read, and the totals at most once a minute', async () => {
+    // Four reads every 10s, three of them aggregates over the whole window: only the
+    // events move while someone watches.
+    const user = userEvent.setup();
+    const spy = stubHarness({ events: failingTurn });
+    const calls = (part: string) =>
+      spy.mock.calls.filter((c) => String(c[0]).includes(part)).length;
+    mount();
+    const thread = await rowFor(/Changelog cleanup/);
+    const audit = auditCalls(spy);
+    expect(calls('/api/usage/summary')).toBe(1);
+    // Opening a thread pauses the poll and closing it reads again at once.
+    await user.click(thread);
+    await user.click(thread);
+    await waitFor(() => expect(auditCalls(spy)).toBeGreaterThan(audit));
+    expect(calls('/api/usage/summary')).toBe(1);
+    expect(calls('/api/usage/threads')).toBe(1);
+    expect(calls('/api/usage?')).toBe(1);
+  });
+
   it('asks for the window since the last visit, and says when there was none', async () => {
     const spy = stubHarness({ events: failingTurn });
     localStorage.setItem('felix.activity.lastVisit', String(now - 90 * MIN));

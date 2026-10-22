@@ -351,7 +351,11 @@ then it is not a signal but a surprise. It reads an always-on `/approvals` poll
 (`src/hooks/use-pending-approvals.ts`), owned by the shell so the thread list's *Waiting on you*
 row marker reads the same rows, and deliberately **not** through `usePoll`: that hook skips ticks
 while the tab is hidden, which is right for a reference panel and exactly wrong here, since a hidden
-tab is the case this exists for. The shell's other approvals poll (`syncApprovals`) is gated on
+tab is the case this exists for. **Both polls, and every live engine, read the list through
+`readPendingApprovals`** (`src/lib/pending-approvals-read.ts`), which shares a read still in
+flight — never a finished one, because a refresh after a refused decision wants the list as it is
+now — so N engines' ticks, the load and a return to the page cost one request, not N+1. A
+decision calls `forgetPendingApprovalsRead`. The shell's other approvals poll (`syncApprovals`) is gated on
 `streaming`, i.e. on someone already watching — **but it is not the only way the engine adopts.**
 It also runs on every thread change and whenever this poll lists a row for the open thread the
 engine does not hold. Until it did, the line and everything else disagreed: title, favicon, header

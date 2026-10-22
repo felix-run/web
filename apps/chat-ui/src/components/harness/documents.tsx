@@ -84,11 +84,17 @@ export function DocumentsSection({
 
   const searchReady = mode === 'search' && committedQuery.length > 0;
 
+  // The corpus changes when someone ingests, not between ticks. A search is read once per
+  // query — it used to repeat every 3s, and a refined query showed the last one's hits
+  // until the next tick happened to read the new one.
   const recent = usePoll(() => listDocuments({ limit: RECENT_LIMIT }), {
     enabled: enabled && mode === 'recent',
+    intervalMs: 30_000,
   });
   const found = usePoll(() => searchDocuments(committedQuery, { limit: SEARCH_LIMIT }), {
     enabled: enabled && searchReady,
+    intervalMs: null,
+    key: committedQuery,
   });
 
   const active = mode === 'search' ? found : recent;
@@ -98,7 +104,9 @@ export function DocumentsSection({
 
   const remove = async (docId: string) => {
     await deleteDocument(docId);
-    recent.refresh();
+    // Whichever list it was deleted from: a search is not re-read on a timer any more, so
+    // its hits for the deleted document would otherwise stay.
+    active.refresh();
   };
 
   return (

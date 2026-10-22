@@ -27,6 +27,7 @@ import { afterEach } from 'vitest';
 import { resetSkillQueryClient } from '../src/components/skills/query-root';
 import { resetSharedPolls } from '../src/hooks/useSharedPoll';
 import { resetOpenedIdentity } from '../src/lib/opened-identity';
+import { forgetPendingApprovalsRead } from '../src/lib/pending-approvals-read';
 
 afterEach(() => {
   resetSharedPolls();
@@ -34,4 +35,6 @@ afterEach(() => {
   resetSkillQueryClient();
   // Whose app the page last opened: a later test's sign-in would read as a switch and reload.
   resetOpenedIdentity();
+  // The shared pending-approvals read, likewise.
+  forgetPendingApprovalsRead();
 });

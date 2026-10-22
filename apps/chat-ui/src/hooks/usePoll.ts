@@ -21,7 +21,26 @@ import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
  */
 export function usePoll<T>(
   fetcher: () => Promise<T>,
-  { enabled = true, intervalMs = 3000 }: { enabled?: boolean; intervalMs?: number } = {},
+  {
+    enabled = true,
+    intervalMs,
+    key,
+  }: {
+    enabled?: boolean;
+    /**
+     * How often to read again, or `null` to read once per `key` and not poll — a search
+     * result, which changes when the query does and not while it sits on screen. Required:
+     * it used to default to 3s, which is how four panels came to poll an hour-wide
+     * aggregate and a search every three seconds without anyone choosing that.
+     */
+    intervalMs: number | null;
+    /**
+     * What the fetcher reads, when that can change while `enabled` does not — a query. A
+     * new key reads at once, and an answer for an older one is dropped. Without it a
+     * refined search showed the previous query's hits until the next tick.
+     */
+    key?: unknown;
+  },
 ): {
   data: T | undefined;
   error: unknown;
@@ -58,16 +77,23 @@ export function usePoll<T>(
   const lastOkRef = useRef<number | null>(null);
   const activeRef = useRef(false);
 
+  /** The newest read; an answer for any other is stale. */
+  const latestRef = useRef(0);
+
   const run = useCallback(async () => {
+    const mine = ++latestRef.current;
     setLoading(true);
     try {
-      setData(await fetcherRef.current());
+      const next = await fetcherRef.current();
+      if (mine !== latestRef.current) return;
+      setData(next);
       setError(null);
       lastOkRef.current = Date.now();
       setLastOkAt(lastOkRef.current);
       setFailures(0);
       forgetHarnessRead(source);
     } catch (err) {
+      if (mine !== latestRef.current) return;
       setError(err);
       setFailures((n) => n + 1);
       // Only while polling: a read that lands after the poll stopped would put
@@ -76,7 +102,7 @@ export function usePoll<T>(
         reportHarnessRead(source, err, { lastOkAt: lastOkRef.current, retry: () => void run() });
       }
     } finally {
-      setLoading(false);
+      if (mine === latestRef.current) setLoading(false);
     }
   }, [source]);
 
@@ -86,15 +112,19 @@ export function usePoll<T>(
     activeRef.current = true;
 
     void run();
-    const id = setInterval(() => {
-      if (!hidden()) void run();
-    }, intervalMs);
+    const id =
+      intervalMs === null
+        ? undefined
+        : setInterval(() => {
+            if (!hidden()) void run();
+          }, intervalMs);
 
     // Fetch on the way back rather than waiting out the remainder of the interval.
+    // A read-once poll has no interval to wait out, and what it read has not aged.
     const onVisible = () => {
       if (!hidden()) void run();
     };
-    document.addEventListener('visibilitychange', onVisible);
+    if (intervalMs !== null) document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       clearInterval(id);
@@ -103,7 +133,8 @@ export function usePoll<T>(
       activeRef.current = false;
       forgetHarnessRead(source);
     };
-  }, [enabled, intervalMs, run, source]);
+    // `key` is a dependency for its change alone: the fetcher reads the new one through its ref.
+  }, [enabled, intervalMs, run, source, key]);
 
   return { data, error, loading, lastOkAt, failures, refresh: run };
 }

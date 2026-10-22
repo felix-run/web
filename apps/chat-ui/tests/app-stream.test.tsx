@@ -269,6 +269,19 @@ describe('what the app does not read', () => {
   });
 });
 
+describe('approvals on load', () => {
+  it('asks the harness once, for the attention line and the thread together', async () => {
+    // The tenant-wide poll and the thread's own sync fire together on load; they used to
+    // send two identical requests (`pending-approvals-read.ts`).
+    const fetch = stubFetch([]);
+    mount();
+    await waitFor(() => expect(document.querySelector('textarea')).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 50));
+    const asked = fetch.mock.calls.filter((c) => String(c[0]).includes('/approvals')).length;
+    expect(asked).toBe(1);
+  });
+});
+
 describe('reasoning', () => {
   it('renders a thinking_delta block separately from the answer', async () => {
     stubFetch([
