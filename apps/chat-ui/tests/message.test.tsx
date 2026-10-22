@@ -222,6 +222,39 @@ describe('a note', () => {
 });
 
 /**
+ * A scheduled task's `notify`, left in the thread it was scheduled from. It is
+ * the agent's entry but not a reply, and the model never reads it back.
+ */
+describe('a notice', () => {
+  const notice = (body: string): Turn => ({
+    id: 'n1',
+    role: 'note',
+    content: `Backup done\n\n${body}`,
+    note: { role: 'assistant', inContext: false, notice: { title: 'Backup done', body } },
+  });
+
+  it('draws the title and body under a notice header, saying the agent does not see it', () => {
+    const { container } = render(<Message turn={notice('All 3 volumes copied.')} />);
+    const text = container.textContent ?? '';
+    expect(text).toContain('Notice');
+    expect(text).toContain('Backup done');
+    expect(text).toContain('All 3 volumes copied.');
+    expect(text).toContain('the agent doesn’t see this');
+    // Not a reply, and not the generic note it was drawn as before.
+    expect(text).not.toContain('Felix');
+    expect(text).not.toContain('Note · assistant');
+  });
+
+  it('is plain text: markdown stays as written and nothing becomes a link', () => {
+    const body = '**Done** — see [the log](https://example.com) or https://example.com';
+    const { container } = render(<Message turn={notice(body)} />);
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.querySelector('strong')).toBeNull();
+    expect(container.textContent).toContain(body);
+  });
+});
+
+/**
  * Whose turn it is, said in words.
  *
  * The operator's turn was an inverted bubble and the agent's carried an "F"

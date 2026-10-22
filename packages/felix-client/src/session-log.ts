@@ -14,7 +14,7 @@ import {
   type SessionSnapshot,
   type TokenUsage,
 } from '@felix/protocol';
-import { type ReasoningBlock, type ToolCall, type Turn, toolImages } from './turns';
+import { type Notice, type ReasoningBlock, type ToolCall, type Turn, toolImages } from './turns';
 import { workspaceEditOf } from './workspace-edits';
 
 /**
@@ -264,6 +264,43 @@ function storedAttachments(metadata: Record<string, unknown> | undefined): Image
   });
 }
 
+/** The harness's own cap on a notice's title (`agent_tool.py:MAX_TITLE_CHARS`). */
+const MAX_NOTICE_TITLE = 80;
+
+/** A usable notice title: a non-blank string within the harness's cap, in characters. */
+function noticeTitle(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const title = raw.trim();
+  return title && [...title].length <= MAX_NOTICE_TITLE ? title : null;
+}
+
+/**
+ * A notice read off a custom entry (`metadata.type: "notice"`), or null for any
+ * other entry. The harness writes the content as `"{title}\n\n{message}"` and the
+ * title into `metadata.title`; a `session_event` frame passes `type` and
+ * `in_context` through but not `title`, so without one the title is the
+ * content's first line. A title that is not a string within the cap is ignored
+ * the same way, and an entry with no usable title at all draws as a plain note.
+ */
+export function noticeOf(metadata: unknown, content: string | null | undefined): Notice | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const md = metadata as Record<string, unknown>;
+  if (md.type !== 'notice') return null;
+  const text = content ?? '';
+  const [firstLine = ''] = text.split('\n', 1);
+  const title = noticeTitle(md.title) ?? noticeTitle(firstLine);
+  if (!title) return null;
+  const head = text.trimStart();
+  let body = text;
+  if (head.startsWith(title)) {
+    const rest = head.slice(title.length);
+    // Only a title on a line of its own is taken off: a body that merely begins
+    // with the title's words keeps them.
+    if (rest === '' || rest.startsWith('\n')) body = rest;
+  }
+  return { title, body: body.trim() };
+}
+
 function storedUsage(metadata: Record<string, unknown> | undefined): TokenUsage | undefined {
   return readUsage(metadata?.usage);
 }
@@ -309,6 +346,8 @@ export function eventsToTurns(
       // The operator's own edit to a workspace file, which the harness told the
       // agent about (`POST /chat/workspace/edited`): drawn as that, not as prose.
       const workspaceEdit = workspaceEditOf(ev.metadata, { requireType: true });
+      // A notice an agent sent the person, left here for them to read (`notify`).
+      const notice = noticeOf(ev.metadata, ev.content);
       turns.push({
         id: ev.id ?? newId(),
         role: 'note',
@@ -317,6 +356,7 @@ export function eventsToTurns(
           role: ev.role ?? 'system',
           inContext: ev.metadata?.in_context === true,
           ...(workspaceEdit ? { workspaceEdit } : {}),
+          ...(notice ? { notice } : {}),
         },
         eventId: ev.id,
       });

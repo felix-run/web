@@ -1,4 +1,10 @@
-import { type BranchPoint, interleaveTurn, plansInTurn, type WorkspaceEdit } from '@felix/client';
+import {
+  type BranchPoint,
+  interleaveTurn,
+  type Notice,
+  plansInTurn,
+  type WorkspaceEdit,
+} from '@felix/client';
 import {
   Attachment,
   AttachmentContent,
@@ -10,6 +16,7 @@ import { Button } from '@felix/ui/button';
 import { ButtonGroup, ButtonGroupText } from '@felix/ui/button-group';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import {
+  BellIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   FilePenLineIcon,
@@ -99,6 +106,18 @@ export function Message({
       <WorkspaceEditNote
         edit={turn.note.workspaceEdit}
         debug={debug}
+        text={turn.content}
+        onRewind={onRewind}
+        {...(label === undefined ? {} : { label })}
+        {...(onLabel ? { onLabel } : {})}
+      />
+    );
+  }
+
+  if (turn.role === 'note' && turn.note?.notice) {
+    return (
+      <NoticeNote
+        notice={turn.note.notice}
         text={turn.content}
         onRewind={onRewind}
         {...(label === undefined ? {} : { label })}
@@ -597,6 +616,57 @@ function WorkspaceEditNote({
           {text}
         </p>
       )}
+      <MessageActions
+        content={text}
+        onRewind={onRewind}
+        {...(label === undefined ? {} : { label })}
+        {...(onLabel ? { onLabel } : {})}
+      />
+    </div>
+  );
+}
+
+/**
+ * A notice an agent sent the person (`notify`), which the harness also left in
+ * the conversation it links to — most often a scheduled task reporting back into
+ * the thread it was scheduled from. It is the agent's, but it is not a reply: no
+ * one asked here, and the model never reads it back, so it is drawn as a quiet
+ * note with a bell rather than a "Felix" turn, and says so in words.
+ *
+ * Plain text, never markdown: the harness wrote it as text and stripped its
+ * links, and an entry composed in one run should not gain formatting or a link
+ * by being rendered in another.
+ */
+function NoticeNote({
+  notice,
+  text,
+  onRewind,
+  label,
+  onLabel,
+}: {
+  notice: Notice;
+  text: string;
+  onRewind?: () => void;
+  label?: string;
+  onLabel?: (next: string | null) => void;
+}) {
+  return (
+    <div className="group flex w-full flex-col gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <BellIcon aria-hidden className="size-3.5 shrink-0" />
+        <span className="font-medium">Notice</span>
+        <span aria-hidden>·</span>
+        <span>for you only — the agent doesn’t see this</span>
+        {label && <LabelChip label={label} />}
+      </div>
+      <div className="ml-5.5 border-l-2 border-border py-0.5 pl-3">
+        <div className="wrap-anywhere text-sm font-medium text-foreground">{notice.title}</div>
+        {notice.body && (
+          <div className="mt-0.5 whitespace-pre-wrap wrap-anywhere text-sm text-foreground">
+            {notice.body}
+          </div>
+        )}
+      </div>
       <MessageActions
         content={text}
         onRewind={onRewind}
