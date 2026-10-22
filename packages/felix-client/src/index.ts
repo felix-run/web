@@ -214,6 +214,7 @@ export {
   type ManifestOutputStyle,
   type ManifestStarter,
   type ManifestWorkspace,
+  manifestEntriesFrom,
   type SideAnswer,
   SideQuestionError,
   type StreamArgs,

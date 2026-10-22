@@ -336,6 +336,16 @@ helper, and `check-api-drift` skips those helper *definitions* with a regex spel
 `/manifests{}` and `/jobs{}` and fail against routes that are fine. `src/types.ts` re-exports both
 packages and declares what is left.
 
+**Two reads on the way in are answered once.** The gate checks the credential with
+`GET /v1/models` and keeps the answer (`primeManifestEntries` in `api.ts`); the shell's first
+`listManifestEntries` takes it, once and within 10s, rather than asking for the agent list a moment
+later. And the canary check reuses the tenant's manifest rows for five minutes (`CANARY_ROWS_MS`):
+a thread change asks only which side serves the thread (`getResolvedManifest`), where it used to
+re-read the whole list, three times by the first new chat. The shell exposes the re-read that
+leaving the Manifests page asks for as `refreshCanary`, **stable**: that page calls it from an
+effect's cleanup, and as an inline closure it was new on every shell render, so the cleanup
+re-checked the canary on every render while the page was open. `tests/startup-reads.test.tsx`.
+
 ## Unattended runs
 
 A background run (`POST /chat` → `202 + resume_token`) has no stream to carry an approval frame, so

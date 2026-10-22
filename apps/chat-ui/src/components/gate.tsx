@@ -29,7 +29,7 @@
 import { Spinner } from '@felix/ui/spinner';
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AUTH_TIMEOUT_MS, getAuthMethods, githubAuthorizeUrl } from '@/api';
+import { AUTH_TIMEOUT_MS, getAuthMethods, githubAuthorizeUrl, primeManifestEntries } from '@/api';
 import {
   authHeaders,
   type CredentialKind,
@@ -144,7 +144,11 @@ async function probe(): Promise<Probe> {
     const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
     return { ok: false, reason: timedOut ? 'timeout' : 'offline' };
   }
-  if (res.ok) return { ok: true };
+  if (res.ok) {
+    // The shell's agent picker reads this same route next; it takes this answer instead.
+    primeManifestEntries(res);
+    return { ok: true };
+  }
   if (res.status === 401) {
     const body = (await res.json().catch(() => null)) as { gate?: string } | null;
     return { ok: false, reason: 'rejected', keyGate: body?.gate === 'chat_key' };

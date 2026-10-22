@@ -24,6 +24,7 @@ if (typeof globalThis.localStorage === 'undefined') {
  * previous test's success. Every test starts with no reads in flight or cached.
  */
 import { afterEach } from 'vitest';
+import { forgetPrimedManifestEntries } from '../src/api';
 import { resetSkillQueryClient } from '../src/components/skills/query-root';
 import { resetSharedPolls } from '../src/hooks/useSharedPoll';
 import { resetOpenedIdentity } from '../src/lib/opened-identity';
@@ -37,4 +38,6 @@ afterEach(() => {
   resetOpenedIdentity();
   // The shared pending-approvals read, likewise.
   forgetPendingApprovalsRead();
+  // And the gate's kept `/v1/models` answer.
+  forgetPrimedManifestEntries();
 });
