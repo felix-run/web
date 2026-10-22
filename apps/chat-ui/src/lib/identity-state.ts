@@ -33,6 +33,8 @@ const LOCAL_KEYS = [
   'felix.pinnedThreads',
   'felix.durableRuns',
   'felix.manifest',
+  // Retired: the manifests page reads the harness's version log now. Still swept, so a
+  // blob written before that does not outlive the person who wrote it.
   'felix.manifestVersions',
   'felix.decidedHere',
   'felix.activity.lastVisit',

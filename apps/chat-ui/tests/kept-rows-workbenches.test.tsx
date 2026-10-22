@@ -30,6 +30,7 @@ describe('Manifests', () => {
     vi.doMock('../src/api', () => ({
       listTenantManifests,
       getResolvedManifest: vi.fn(),
+      listManifestVersions: vi.fn().mockResolvedValue({ items: [], next_before: null }),
       createManifestVersion: vi.fn(),
       activateManifestVersion: vi.fn(),
       setManifestCanary: vi.fn(),
@@ -54,6 +55,7 @@ describe('Manifests', () => {
     vi.doMock('../src/api', () => ({
       listTenantManifests: vi.fn().mockResolvedValue([row]),
       getResolvedManifest: vi.fn(),
+      listManifestVersions: vi.fn().mockResolvedValue({ items: [], next_before: null }),
       createManifestVersion: vi.fn(),
       activateManifestVersion: vi.fn(),
       setManifestCanary: vi.fn(),

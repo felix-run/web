@@ -3,6 +3,7 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
+import { cn } from '@felix/ui/lib/utils';
 import { SelectItem } from '@felix/ui/select';
 import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
@@ -13,6 +14,7 @@ import {
   clearManifestCanary,
   createManifestVersion,
   getResolvedManifest,
+  listManifestVersions,
   listTenantManifests,
   setManifestCanary,
 } from '@/api';
@@ -30,13 +32,7 @@ import {
   plural,
 } from '@/components/harness/panel';
 import { ReadFailure, withAge } from '@/components/inspector/primitives';
-import {
-  type KnownVersion,
-  knownVersions,
-  recordFromPointer,
-  recordVersion,
-} from '@/lib/manifest-versions';
-import type { ManifestSummary, ManifestVersionRow } from '@/types';
+import type { ManifestSummary, ManifestVersionMeta, ManifestVersionRow } from '@/types';
 
 /**
  * Manifest lifecycle workbench — the `/manifests` surface as a `/harness` page.
@@ -45,10 +41,11 @@ import type { ManifestSummary, ManifestVersionRow } from '@/types';
  * current agent into the tenant version log, append edited versions, flip the
  * active pointer, and drive a weighted canary.
  *
- * The harness exposes no version *list* route, so there is no version log to
- * render: `GET /manifests` returns active pointers only, and a version is acted
- * on by number. Canary routing is decided server-side by a deterministic hash,
- * not by a request header.
+ * The version log is `GET /manifests/{name}/versions`, newest first, and every
+ * version is activated or canaried from its row. This page used to say the
+ * harness had no such route — it has served one since v0.5.0 — and offered a
+ * number field plus the versions this browser happened to have seen. Canary
+ * routing is decided server-side by a deterministic hash, not by a request header.
  *
  * Writes need the `manifests:write` scope; with FELIX_AUTH_MODE=none the harness
  * skips scope checks, so the whole flow is drivable unauthenticated locally.
@@ -98,7 +95,6 @@ export function ManifestsSheet({
   const refresh = useCallback(async () => {
     try {
       const r = await listTenantManifests();
-      for (const row of r) recordFromPointer(row.name, row);
       setRows(r);
       setLoaded(true);
       setListError(null);
@@ -137,11 +133,6 @@ export function ManifestsSheet({
           ? `imported from v${resolved.version}`
           : 'imported from its resolved spec',
       );
-      recordVersion(name, {
-        version: created.version,
-        comment: created.comment,
-        via: 'created',
-      });
       setWarned((w) => ({ ...w, [name]: warningsOf(created) }));
       await refresh();
       setSelected(name);
@@ -391,14 +382,6 @@ export function ManifestsSheet({
   );
 }
 
-/**
- * Versions this browser has seen, as something to click.
- *
- * Labelled honestly: a version created elsewhere will not appear, so this is offered
- * as a shortcut rather than as the version log. Picking one fills the activate field
- * instead of acting directly — the confirmation step still stands between a click
- * here and production traffic moving.
- */
 /** The harness's warnings about one stored version: shown until dismissed or saved over. */
 interface SavedWarnings {
   version: number;
@@ -458,42 +441,151 @@ function SavedWarningsNote({
   );
 }
 
-function VersionChips({
-  known,
+/** A page of the version log: enough to roll back a few steps without scrolling past it. */
+const VERSIONS_PAGE = 10;
+
+/**
+ * The version log, newest first, each row acting on itself. Activate is
+ * confirmed — it moves every request for the manifest — and Canary only fills
+ * the canary field below, so the weight is still chosen before anything moves.
+ * The marks are read off the pointer the page already holds, not the rows' own
+ * `active`/`canary`, so the list and the header never disagree about what serves.
+ */
+function VersionList({
+  name,
+  versions,
+  error,
   activeV,
   canaryV,
-  onPick,
+  canaryWeight,
+  busy,
+  hasOlder,
+  loadingOlder,
+  onOlder,
+  onRetry,
+  onActivate,
+  onCanary,
 }: {
-  known: KnownVersion[];
+  name: string;
+  versions: ManifestVersionMeta[] | null;
+  error: unknown;
   activeV: number | null;
   canaryV: number | null;
-  onPick: (v: string) => void;
+  canaryWeight: number;
+  busy: boolean;
+  hasOlder: boolean;
+  loadingOlder: boolean;
+  onOlder: () => void;
+  onRetry: () => void;
+  onActivate: (version: number) => Promise<void>;
+  onCanary: (version: number) => void;
 }) {
-  if (known.length === 0) return null;
   return (
-    <div className="mb-2">
-      <div className="mb-1 text-xs text-muted-foreground">Seen from this browser</div>
-      <div className="flex flex-wrap gap-1">
-        {known.map((k) => {
-          const isActive = k.version === activeV;
-          const isCanary = k.version === canaryV;
-          return (
-            <Button
-              key={k.version}
-              size="sm"
-              variant={isActive ? 'secondary' : 'ghost'}
-              className="gap-1 font-mono text-xs"
-              disabled={isActive}
-              title={k.comment ? `${k.comment} · seen ${relativeTime(k.seenAt)}` : undefined}
-              onClick={() => onPick(String(k.version))}
-            >
-              v{k.version}
-              {isActive && <span className="text-muted-foreground">active</span>}
-              {isCanary && !isActive && <span className="text-muted-foreground">canary</span>}
-            </Button>
-          );
-        })}
-      </div>
+    <div>
+      {error != null && (
+        <ReadFailure
+          error={error}
+          doing={`list the versions of ${name}`}
+          lastOkAt={null}
+          onRetry={onRetry}
+        />
+      )}
+      {versions == null ? (
+        error == null && (
+          <div className="space-y-1.5">
+            <Skeleton className="h-8 w-full rounded-md" />
+            <Skeleton className="h-8 w-full rounded-md" />
+          </div>
+        )
+      ) : versions.length === 0 ? (
+        // Bundled-only deployments store no versions, so the route answers empty.
+        <p className="text-sm text-muted-foreground">
+          The harness lists no stored versions of {name}.
+        </p>
+      ) : (
+        <ul aria-label={`Versions of ${name}`} className="text-sm">
+          {versions.map((v) => {
+            const active = v.version === activeV;
+            const canary = v.version === canaryV;
+            return (
+              <li
+                key={v.version}
+                data-slot="manifest-version"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 py-1.5 first:border-t"
+              >
+                <span className="w-10 shrink-0 font-mono font-medium">v{v.version}</span>
+                {active && (
+                  <Badge variant="secondary" className="py-0 text-xs">
+                    active
+                  </Badge>
+                )}
+                {canary && (
+                  <Badge
+                    variant={canaryWeight > 0 ? 'default' : 'secondary'}
+                    className="py-0 text-xs"
+                  >
+                    {canaryWeight > 0 ? `canary · ${canaryWeight}%` : 'canary · no traffic'}
+                  </Badge>
+                )}
+                <span
+                  className={cn(
+                    // Its own line on a phone, under the number: squeezed beside the
+                    // meta and the buttons at 390px it read "raise…" on every row, and the
+                    // comment is what tells one version from the next.
+                    'order-last min-w-0 basis-full truncate pl-13 sm:order-none sm:flex-1 sm:basis-0 sm:pl-0',
+                    v.comment ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                  title={v.comment || undefined}
+                >
+                  {v.comment || 'no comment'}
+                </span>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {[
+                    v.created_by ? `by ${v.created_by}` : null,
+                    v.created_at != null ? relativeTime(v.created_at) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+                {!active && (
+                  <span className="flex gap-1">
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={busy || canary}
+                      aria-label={`Canary v${v.version}`}
+                      onClick={() => onCanary(v.version)}
+                    >
+                      Canary
+                    </Button>
+                    <ConfirmButton
+                      size="xs"
+                      variant="outline"
+                      disabled={busy}
+                      question={`v${v.version} will serve all traffic for ${name}.`}
+                      confirmLabel={`Activate v${v.version}`}
+                      onConfirm={() => onActivate(v.version)}
+                    >
+                      Activate
+                    </ConfirmButton>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {hasOlder && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="mt-1"
+          disabled={loadingOlder}
+          onClick={onOlder}
+        >
+          {loadingOlder ? 'Loading…' : 'Show older versions'}
+        </Button>
+      )}
     </div>
   );
 }
@@ -521,13 +613,48 @@ function VersionsPanel({
   const [canaryVersion, setCanaryVersion] = useState<string>(
     liveCanaryV != null ? String(liveCanaryV) : '',
   );
-  const [targetVersion, setTargetVersion] = useState<string>('');
   const [busy, setBusy] = useState(false);
+  // The version log, newest first. `null` until the first page answers, so an empty
+  // list is never drawn while it is still coming.
+  const [versions, setVersions] = useState<ManifestVersionMeta[] | null>(null);
+  const [nextBefore, setNextBefore] = useState<number | null>(null);
+  const [versionsError, setVersionsError] = useState<unknown>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [editor, setEditor] = useState<string | null>(null);
   // A syntax error in the textarea is a field problem, not a failed request, so it
   // belongs next to the textarea rather than in the sheet-level error slot.
   const [editorError, setEditorError] = useState<string | null>(null);
   const [comment, setComment] = useState('');
+
+  const loadVersions = useCallback(async () => {
+    try {
+      const page = await listManifestVersions(name, { limit: VERSIONS_PAGE });
+      setVersions(page.items);
+      setNextBefore(page.next_before);
+      setVersionsError(null);
+    } catch (err) {
+      setVersionsError(err);
+    }
+  }, [name]);
+
+  useEffect(() => {
+    void loadVersions();
+  }, [loadVersions]);
+
+  async function loadOlder() {
+    if (nextBefore == null) return;
+    setLoadingOlder(true);
+    try {
+      const page = await listManifestVersions(name, { limit: VERSIONS_PAGE, before: nextBefore });
+      setVersions((cur) => [...(cur ?? []), ...page.items]);
+      setNextBefore(page.next_before);
+      setVersionsError(null);
+    } catch (err) {
+      setVersionsError(err);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   /** @param doing verb phrase completing "Could not …", e.g. `activate v13 of quick`. */
   async function act(fn: () => Promise<unknown>, doing: string) {
@@ -535,6 +662,8 @@ function VersionsPanel({
     try {
       await fn();
       onChanged();
+      // A save adds a row; the others move the marks, which are read off the pointer.
+      void loadVersions();
     } catch (err) {
       onError(err, doing);
     } finally {
@@ -568,11 +697,6 @@ function VersionsPanel({
     const note = comment.trim() || 'edited in chat-ui';
     await act(async () => {
       const created = await createManifestVersion(name, parsed, note);
-      recordVersion(name, {
-        version: created.version,
-        comment: created.comment ?? note,
-        via: 'created',
-      });
       onWarned(warningsOf(created));
       setEditor(null);
     }, `save a new version of ${name}`);
@@ -580,30 +704,20 @@ function VersionsPanel({
 
   const canaryN = Number(canaryVersion);
   const canaryValid = canaryVersion.trim() !== '' && Number.isInteger(canaryN) && canaryN > 0;
-  const targetN = Number(targetVersion);
-  const targetValid =
-    targetVersion.trim() !== '' && Number.isInteger(targetN) && targetN > 0 && targetN !== activeV;
-
-  // Versions seen from this browser. Re-read on every render rather than held in
-  // state: the poll writes to it, and the list is a handful of integers.
-  const known = knownVersions(name);
+  // Versions are numbered densely from 1 and never rewritten, so the newest
+  // number bounds every version that exists — even ones on a page not loaded yet.
+  const newest = versions?.[0]?.version ?? null;
 
   /**
-   * Why a control is refusing, in a sentence. Both of these used to be silent
-   * disables — type the version already active and the button simply died.
+   * Why the canary refuses, in a sentence. It used to be a silent disable —
+   * type the version already active and the button simply died.
    */
-  function targetReason(): string | null {
-    if (targetVersion.trim() === '') return null;
-    if (!Number.isInteger(targetN) || targetN <= 0) return 'Version must be a whole number.';
-    if (targetN === activeV) return `v${targetN} is already active.`;
-    return null;
-  }
   function canaryReason(): string | null {
     if (canaryVersion.trim() === '') return null;
     if (!Number.isInteger(canaryN) || canaryN <= 0) return 'Version must be a whole number.';
     if (canaryN === activeV) return `v${canaryN} is already serving all traffic.`;
-    if (known.length > 0 && !known.some((k) => k.version === canaryN)) {
-      return `This browser has not seen v${canaryN}. Check the number before rolling it out.`;
+    if (newest != null && canaryN > newest) {
+      return `There is no v${canaryN}: the newest version of ${name} is v${newest}.`;
     }
     return null;
   }
@@ -618,7 +732,7 @@ function VersionsPanel({
         />
       )}
       <PageSection
-        title="Active"
+        title="Versions"
         meta={
           // Who moved this pointer and when. Both are on the wire and neither was
           // rendered — it is the first thing worth knowing before moving it again.
@@ -631,56 +745,30 @@ function VersionsPanel({
         actions={
           activeV != null ? (
             <Badge variant="secondary" className="py-0 font-mono text-xs">
-              v{activeV}
+              v{activeV} active
             </Badge>
           ) : (
             <span className="text-xs text-muted-foreground">no tenant version</span>
           )
         }
       >
-        <VersionChips
-          known={known}
-          activeV={activeV}
+        <VersionList
+          name={name}
+          versions={versions}
+          error={versionsError}
+          activeV={activeV ?? null}
           canaryV={liveCanaryV}
-          onPick={setTargetVersion}
+          canaryWeight={liveWeight}
+          busy={busy}
+          hasOlder={nextBefore != null}
+          loadingOlder={loadingOlder}
+          onOlder={() => void loadOlder()}
+          onRetry={() => void loadVersions()}
+          onActivate={(v) =>
+            act(() => activateManifestVersion(name, v), `activate v${v} of ${name}`)
+          }
+          onCanary={(v) => setCanaryVersion(String(v))}
         />
-        {/* wraps so an armed confirmation gets its own line instead of squeezing the
-            version field it is echoing */}
-        {/* A visible label, and the reason the field is a number: this moves every
-            request for the manifest, and a placeholder that vanished on the first
-            digit was its only name. */}
-        <Label htmlFor={`manifest-activate-${name}`}>Version to activate</Label>
-        <div className="mt-1 flex max-w-md flex-wrap items-center gap-2">
-          <Input
-            id={`manifest-activate-${name}`}
-            value={targetVersion}
-            onChange={(e) => setTargetVersion(e.target.value)}
-            inputMode="numeric"
-            aria-describedby={`manifest-activate-help-${name}`}
-            className="min-w-0 flex-1 font-mono"
-          />
-          <ConfirmButton
-            size="sm"
-            className="gap-1"
-            disabled={busy || !targetValid}
-            question={`v${targetN} will serve all traffic for ${name}.`}
-            confirmLabel={`Activate v${targetN}`}
-            onConfirm={() =>
-              act(async () => {
-                await activateManifestVersion(name, targetN);
-                setTargetVersion('');
-              }, `activate v${targetN} of ${name}`)
-            }
-          >
-            {/* No icon: it was a rollback arrow, on a control that as often
-                moves forward. */}
-            Activate
-          </ConfirmButton>
-        </div>
-        <p id={`manifest-activate-help-${name}`} className="mt-1 text-xs text-muted-foreground">
-          {targetReason() ??
-            'The harness does not list versions, so this takes a number; the chips above are the ones this browser has seen.'}
-        </p>
       </PageSection>
 
       <PageSection
@@ -795,8 +883,8 @@ function VersionsPanel({
           */}
         {editor == null && (
           <p className="text-sm text-muted-foreground">
-            Saving appends a version and leaves the active one where it is. There is no version
-            history route, so activate it by number under Active.
+            Saving appends a version and leaves the active one where it is; activate it from
+            Versions.
           </p>
         )}
         {editor != null && (

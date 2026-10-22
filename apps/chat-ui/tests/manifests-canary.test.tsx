@@ -26,6 +26,7 @@ const row = (over: Record<string, unknown> = {}) => ({
 async function sheet(over: Record<string, unknown> = {}) {
   vi.doMock('../src/api', () => ({
     listTenantManifests: vi.fn().mockResolvedValue([row(over)]),
+    listManifestVersions: vi.fn().mockResolvedValue({ items: [], next_before: null }),
     getResolvedManifest: vi.fn().mockResolvedValue({ source: 'tenant', version: 4, manifest: {} }),
     createManifestVersion: vi.fn(),
     activateManifestVersion: vi.fn(),
