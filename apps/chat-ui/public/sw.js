@@ -6,7 +6,9 @@
  *   - show the harness's pushes (a run waiting on an approval, an agent's
  *     question) and, on a tap, bring the app to that thread. A push carries
  *     the kind of wait and the thread, never the call or the question, so
- *     the notification says what kind of thing is waiting and where.
+ *     the notification says what kind of thing is waiting and where. The one
+ *     kind that carries text is a `notice`, a message an agent wrote for the
+ *     person, and it is shown as untrusted plain text (`showNotice`).
  *   - answer a page load from the network, and from the last copy of the page
  *     only when the network fails. An installed app opened on a train then
  *     shows the gate's own "offline" screen instead of the browser's error
@@ -129,6 +131,10 @@ self.addEventListener('push', (event) => {
     // A push this file cannot read still has to show something: Safari revokes the
     // subscription of a worker that receives pushes and shows nothing.
   }
+  if (data.kind === 'notice') {
+    event.waitUntil(showNotice(data));
+    return;
+  }
   const suffix = threadSuffix(data.thread_id);
   const approval = data.kind === 'approval';
   const title = approval ? 'Waiting on your approval' : 'Felix is asking you something';
@@ -179,6 +185,54 @@ async function openPath(path) {
 function threadSuffix(threadId) {
   if (typeof threadId !== 'string' || !threadId) return '';
   return threadId.slice(threadId.lastIndexOf(':') + 1);
+}
+
+/**
+ * A `notice`: a message an agent wrote for one person (`notify`), title and body included.
+ *
+ * Unlike the other kinds this carries model-written text, so it is held as untrusted: shown
+ * as plain text only (a notification renders no markup, and nothing here parses any), cut
+ * to the harness's own limits, stripped of control and bidi-override characters that could
+ * disguise it, and never a source of a URL -- the tap opens a path built here.
+ */
+function showNotice(data) {
+  const title = plainText(data.title, 80) || 'Felix';
+  const body = plainText(data.body, 500);
+  const path = noticePath(data.thread_id);
+  return self.registration.showNotification(title, {
+    body,
+    // No tag: two notices are two messages, and a later one must not replace an unread one.
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    data: { path },
+  });
+}
+
+/** Control characters and the bidi overrides and isolates; `plainText` keeps newline and tab. */
+const UNSAFE_CHARS = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/gu;
+
+function plainText(value, limit) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(UNSAFE_CHARS, (c) => (c === '\n' || c === '\t' ? c : ''))
+    .trim()
+    .slice(0, limit);
+}
+
+/**
+ * Where a notice's tap goes: its thread when the app can address it, else the app.
+ *
+ * The app addresses only `{tenant}:{suffix}` threads (the address carries the suffix and the
+ * harness refuses one with `:`). A thread the harness minted in a namespace of its own -- a
+ * scheduled job's `{tenant}:job:{name}` -- has no address here, and taking its last segment,
+ * as `threadSuffix` does, would open some other thread; so it, and any suffix outside a
+ * conservative character set, opens the app instead.
+ */
+const NOTICE_THREAD = /^[^:#/]+:([A-Za-z0-9._~-]{1,256})$/;
+
+function noticePath(threadId) {
+  const match = typeof threadId === 'string' ? NOTICE_THREAD.exec(threadId) : null;
+  return match ? `/t/${encodeURIComponent(match[1])}` : '/';
 }
 
 function deadline(expiresAt) {

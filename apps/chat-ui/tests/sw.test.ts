@@ -258,6 +258,81 @@ describe('the service worker', () => {
     expect(options.data).toEqual({ path: '/t/thread-7' });
   });
 
+  /** Deliver one push with this payload and wait for what it shows. */
+  async function push(payload: unknown) {
+    let done: Promise<unknown> = Promise.resolve();
+    handlers.push({
+      data: { json: () => payload },
+      waitUntil: (p: Promise<unknown>) => (done = p),
+    });
+    await done;
+    return shown[shown.length - 1];
+  }
+
+  it('shows a notice as the agent wrote it and routes its tap to the thread suffix', async () => {
+    const { title, options } = await push({
+      kind: 'notice',
+      title: 'Build finished',
+      body: 'All 312 tests passed.\nThe deploy is next.',
+      thread_id: 'acme:thread-7',
+    });
+    expect(title).toBe('Build finished');
+    expect(options.body).toBe('All 312 tests passed.\nThe deploy is next.');
+    expect(options.tag).toBeUndefined();
+    expect(options.data).toEqual({ path: '/t/thread-7' });
+  });
+
+  it('holds a notice as untrusted plain text, cut to the harness limits', async () => {
+    const { title, options } = await push({
+      kind: 'notice',
+      title: `\u202Eevil\u0007${'t'.repeat(200)}`,
+      body: `<b>hi</b> [x](https://evil.example) ${'b'.repeat(900)}`,
+      thread_id: 'acme:t1',
+      url: 'https://evil.example',
+    });
+    expect(title).toBe(`evil${'t'.repeat(76)}`);
+    // Markup is not interpreted, only passed through as the characters it is.
+    expect(options.body?.startsWith('<b>hi</b> [x](https://evil.example) ')).toBe(true);
+    expect(options.body).toHaveLength(500);
+    expect(options.data).toEqual({ path: '/t/t1' });
+  });
+
+  it('gives a notice with no usable title or text a plain one', async () => {
+    const { title, options } = await push({
+      kind: 'notice',
+      title: 7,
+      body: null,
+      thread_id: 'acme:t1',
+    });
+    expect(title).toBe('Felix');
+    expect(options.body).toBe('');
+  });
+
+  it('opens the app, not some other thread, for a notice whose thread has no address', async () => {
+    for (const thread_id of [
+      'acme:job:nightly-digest', // a scheduled job's thread: its tail is not its suffix
+      'acme:../../admin',
+      'acme:%2F%2Fevil.example',
+      'acme:',
+      'thread-7', // no tenant
+      '//evil.example:x',
+      'https://evil.example',
+      42,
+      undefined,
+    ]) {
+      const { options } = await push({ kind: 'notice', title: 't', body: 'b', thread_id });
+      expect(options.data, String(thread_id)).toEqual({ path: '/' });
+    }
+  });
+
+  it('still shows a question push as before', async () => {
+    const { title, options } = await push({ kind: 'question', thread_id: 'acme:thread-7' });
+    expect(title).toBe('Felix is asking you something');
+    expect(options.body).toBe('Open the thread to answer it.');
+    expect(options.tag).toBe('question:thread-7');
+    expect(options.data).toEqual({ path: '/t/thread-7' });
+  });
+
   it('shows something for a push it cannot read, since Safari revokes a worker that shows nothing', async () => {
     let done: Promise<unknown> = Promise.resolve();
     handlers.push({

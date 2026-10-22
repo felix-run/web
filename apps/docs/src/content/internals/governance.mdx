@@ -145,13 +145,42 @@ Unattended runs (scheduler, eval replay) refuse approval-gated tools unless `all
 
 A permission mode may waive an approval (`waives_approval`), except a rule in
 `permission_mode.UNWAIVABLE_RULE_IDS` — `plan-approval`, which is how plan mode ends, and
-`scheduling.schedule_task`, the rule [`spec.scheduling`](/guide/manifest-reference/#specscheduling)
-adds — or any approval on a tool in `permission_mode.UNWAIVABLE_TOOLS` (`schedule_task`), whichever
-rule selected it, a manifest's own rule or glob included. A scheduled task's prompt runs later on its
-writer's authority with no one watching, which a thread in `bypass` does not answer for. The built-in
+`scheduling.schedule_task` and `notify.notify`, the rules
+[`spec.scheduling`](/guide/manifest-reference/#specscheduling) and
+[`spec.notify`](/guide/manifest-reference/#specnotify) add — or any approval on a tool in
+`permission_mode.UNWAIVABLE_TOOLS` (`schedule_task`, `notify`), whichever rule selected it, a
+manifest's own rule or glob included. A scheduled task's prompt runs later on its writer's authority
+with no one watching, which a thread in `bypass` does not answer for. The built-in
 rule is left out only when a manifest rule names `schedule_task` literally with no `when_args`;
 beside a glob such as `*` it is still added, and as the literal it is the rule selected. `schedule_task`'s preview runs the tool's own checks, so a call it would
 refuse is denied before any row is written.
+
+`notify.notify` (`one_shot`, `bind_principal`) is added only with `approval: true`: a notice goes
+only to the person the run acts for, and the runs that send one have nobody watching. Once asked
+for, it is never waived. Its preview runs the tool's checks and its cleaning, so the approver reads
+the text as it would be sent and a call the tool would refuse is denied before any row is written —
+except the hourly limit, which the limiter can only count, not peek at: an over-limit call can open a
+row and is refused when it runs.
+
+**Notices are the one push that carries text.** An approval or question push goes to every
+subscription in the tenant with metadata only. `notify` (`push/agent_tool.py`) goes to
+`AuthContext.acting_for` alone, through `push/store.py:list_for_principal`, and takes no recipient
+argument; a run for no one or for a shared subject is refused (`tools/refusal.py:require_person`,
+shared with `schedule_task`; the machine actors are `auth/actors.py:MACHINE_ACTORS`). The text is
+model-written and may be injected, so before encrypting the tool, in order: redacts
+`collected_secret_values` from `title` and `body` (the masking wrapper covers a tool's output, and a
+notice's text is its arguments; personal data is not redacted); replaces every link-shaped run with
+`[link removed]` (`strip_links`, after NFKC normalization and deleting invisible format characters:
+scheme URLs, hosts in any script, IP addresses, and the usual dot obfuscations), so a notice cannot
+put a phishing target on a lock screen — at the cost of over-stripping filenames such as `notes.md`;
+and screens the result — the marker scan always, plus the
+manifest's `content_screening` model and decider when it is enabled. A flag, or a screener that
+cannot run, refuses the call as `screened` without echoing the text. `max_per_hour` is the real
+bound, keyed on a hash of tenant, manifest and person in the shared rate-limit store; `max_per_run`
+counts on `RequestContext.extras`, which a durable run's resume, a background child and each
+workflow step get fresh. A call reserves its run slot before it awaits anything, so a turn's
+parallel calls cannot all pass the cap, and returns it only if the hourly limit refuses; past that a
+screened or undelivered call still counts.
 
 **Reaching the human.** Step 2 emits `approval_required` as a *side event* — a per-thread
 in-process `asyncio.Queue` — which the react loop drains into the stream. That works when the agent

@@ -1198,7 +1198,7 @@ nothing is written:
 | Code | When |
 |---|---|
 | `no_caller` | The conversation has no signed-in caller — every conversation under `FELIX_AUTH_MODE=none`. |
-| `shared_subject` | The caller's subject names no person: an API key with no `sub` (subject `api_key`), an inbound trigger's run (`trigger:<id>`, shared by every sender), or a machine actor (`cron`, `fiber`, `a2a`, `eval`, `consolidation`) acting for no one. A task belongs to its writer's subject, so a shared one would make each holder's tasks everyone's. A plugin authenticator that gives many people one subject cannot be detected here; avoiding that is the operator's responsibility. |
+| `shared_subject` | The caller's subject names no person: an API key with no `sub` (subject `api_key`), an inbound trigger's run (`trigger:<id>`, shared by every sender), or a machine actor (`cron`, `fiber`, `a2a`, `eval`, `consolidation`, `skill-improver`, `skill-eval`) acting for no one. A task belongs to its writer's subject, so a shared one would make each holder's tasks everyone's. A plugin authenticator that gives many people one subject cannot be detected here; avoiding that is the operator's responsibility. |
 | `scheduled_run` | `schedule_task` only: the caller is scheduled work. A job's firing is marked scheduled, and the mark is carried into everything it starts — a workflow run and its agent steps, a durable child — so scheduled work never schedules more, however many hops down. |
 | `missing_scope` | `schedule_task` and `cancel_scheduled` need `jobs:write`; `list_scheduled` needs `jobs:read` (`jobs:write` implies it). |
 | `invalid_prompt`, `invalid_title` | Empty or over-long text. |
@@ -1232,6 +1232,109 @@ preview runs every check above first, so a call the tool would refuse is denied
 The three tools are bound before the governance stack, so policies, limits and screening apply to them
 like any tool. `list_scheduled` is read-only and runs in plan mode; the other two do not. A manifest
 that already has a tool of one of these names fails the compile.
+
+A task's firing has nobody reading its thread. To have it tell its writer what it found, give the
+manifest [`spec.notify`](#specnotify) as well: a notice sent from a firing reaches the person who
+scheduled the task and opens the conversation it was scheduled from.
+
+## `spec.notify`
+
+```yaml
+spec:
+  pattern: react
+  notify:
+    max_per_run: 3       # notices one run may send; 1–20
+    max_per_hour: 10     # notices one person may receive from this agent in an hour; 1–100
+    approval: false      # hold each notify call for a person
+```
+
+Lets the agent tell the person it acts for something — a task it was scheduled to watch has
+finished, something they asked about needs them — as a Web Push to their own devices. Binds one tool;
+unset binds nothing.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `notify` | `title` (1–80 characters), `message` (1–500) | `{delivered, channels: ["push"], note?}` |
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `max_per_run` | int 1–20 | `3` | Notices one request context may send. Agents a run delegates to inline share its count; a durable run's resume, a background delegation child and each workflow step start their own. `max_per_hour` is the bound across them. |
+| `max_per_hour` | int 1–100 | `10` | Notices one person may receive from this manifest in any hour — per person, per manifest, per tenant — across every replica, in the shared rate-limit store (Redis when configured). The real bound on a looping or prompted agent. |
+| `approval` | bool | `false` | Hold each `notify` call for a person (below). |
+
+**The recipient is not an argument.** A notice goes to the person the run acts for (`acting_for`) and
+only to the browsers that person subscribed themselves through
+[`POST /push/subscriptions`](/guide/management-api/#push) — never another subscriber in the tenant.
+A model cannot be talked into telling someone else, because there is no one else to name. From a
+[scheduled task](#specscheduling)'s firing, which runs as `cron` on its writer's behalf, that person is
+the task's writer.
+
+**What is sent.** A notice is text a model wrote, possibly under a prompt injection, so before
+anything leaves, in order:
+
+1. **Secrets are redacted.** The governance stack masks a tool's *output*, and a notice's text is its
+   *arguments*, so known secret values are replaced with `[REDACTED]` in both fields here.
+   Personal data is not redacted.
+2. **Links are removed.** The text is NFKC-normalized and stripped of invisible format characters
+   and soft hyphens, then each link-shaped run becomes `[link removed]`: anything with a scheme
+   (`hxxp` included) or a `javascript:`, `data:`, `mailto:`, `tel:`, `sms:` or `intent:` prefix,
+   `www.` hosts, bare `host.tld/path` in any script (lookalike and IDN hosts), a host split across
+   lines, a single-label host with a port, `localhost`, and IPv4 (dotted decimal or hex), hex and
+   IPv6 addresses — with dots written as `[.]`, `(dot)`, ` dot `, `%2E` or full-width. It errs
+   toward removing: a filename such as `notes.md`, a phrase with "dot" between two words, and
+   `word:port` may go too. A phone number, and an IPv4 address written as one decimal number with
+   no scheme, are left.
+3. **The cleaned text is screened.** The marker scan always runs; when the manifest's
+   [`content_screening`](#speccontent_screening) is enabled (and its `model_tools`, if set, match
+   `notify`), its screening model and decider run as well. A flag refuses the call with `screened`,
+   and so does a screener that cannot run. The refusal does not echo the text.
+
+The push payload is `{kind: "notice", title, body, thread_id}`, encrypted end to end to the browser
+(RFC 8291), so the push service relays ciphertext. It may still show on the person's lock screen.
+`thread_id` is the run's own thread. For a scheduled task's firing it is the thread the task was
+scheduled from (`payload.scheduled_by.thread_id`), but only when the task's writer is the person
+being notified and the id is one of the tenant's own threads with a suffix of plain id characters;
+a job's payload is free-form under `PUT /jobs`, so anything else falls back to the run's thread. The
+push service holds an undelivered notice for 12 hours.
+
+**The result.** `delivered` is how many of the person's browsers' push services accepted the notice.
+A `0` comes with a `note` saying why: push is not configured on this deployment
+(`FELIX_PUSH_VAPID_PRIVATE_KEY` unset), the person has no subscribed device, or every send failed.
+None of these is an error.
+
+**Counting.** A call takes its `max_per_run` slot in the same step that checks it, before anything
+awaits, so a turn's parallel `notify` calls cannot all pass the cap. It gives the slot back only if
+the hourly limit then refuses it; once the hourly limit admits it, the call counts against both,
+before cleaning. An undelivered notice and a `screened` refusal still count, so a run that keeps
+provoking a refusal still runs out.
+
+**Refusals.** Every refusal is a tool result the model reads, `{"error": <code>, "detail": …}`, and
+nothing is sent:
+
+| Code | When |
+|---|---|
+| `no_caller` | The run acts for no signed-in person — every run under `FELIX_AUTH_MODE=none`. |
+| `shared_subject` | The subject names no person: an API key with no `sub` (`api_key`), an inbound trigger's run (`trigger:<id>`), or a machine actor (`cron`, `fiber`, `a2a`, `eval`, `consolidation`, `skill-improver`, `skill-eval`) acting for no one. A notice to it would reach every holder of the credential. A plugin authenticator that gives many people one subject cannot be detected here. |
+| `invalid_title`, `invalid_message` | Empty (or whitespace only) or over 80 / 500 characters. |
+| `rate_limited` | The run has sent `max_per_run`, or the person has received `max_per_hour` from this manifest in the last hour. |
+| `screened` | Screening flagged the cleaned text, or a screener could not run. |
+
+**The approval.** Off by default: the runs a notice is for — a scheduled task's firing — have nobody
+watching the conversation to approve anything. With `approval: true` each call waits for a person,
+through the same flow as any [approval](#specapprovals): rule `notify.notify`, `one_shot` and
+`bind_principal`. The approver reads a preview naming the recipient and showing the title and
+message as they would be sent — redacted, links removed. The preview runs the caller, length and
+per-run checks and the screening first, so a call they would refuse is denied with no approval row
+and no wait. It does not check `max_per_hour`: an over-limit call can open an approval request and is
+refused as `rate_limited` when it runs. A
+manifest rule naming `notify` literally with no `when_args` applies instead. **No
+[permission mode](#specpermissions) waives any approval on `notify`, `bypass` included, whichever
+rule asked for it** — as for `schedule_task`.
+
+`notify` is bound before the governance stack, so policies, limits and screening apply to it. It is
+not read-only, so plan mode refuses it. Each sent call is audited as
+[`notify.sent`](/internals/observability/#notices) — never with its text. A manifest that already
+has a tool named `notify` fails the compile.
 
 ## `spec.max_turns` and `spec.recursion_limit`
 
@@ -1930,7 +2033,7 @@ shown on the session snapshot as `permissionMode`. It applies from the next run.
 | `default` | Everything the rest of the manifest allows, with approvals as written. |
 | `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task` — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals`), and the conversation returns to `default_mode`. |
 | `accept_edits` | Approvals for `write_file`, `edit_file`, `delete_file`, `rename_file` and `edit_tools` are skipped; every other approval is asked as written. |
-| `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](#specscheduling), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
+| `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](#specscheduling) or [`notify`](#specnotify), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
 
 `allowed_modes` defaults to `[default, plan]`: `accept_edits` and `bypass` skip approvals you wrote,
 so they apply only where you list them. **Plan mode binds every agent**, whatever its

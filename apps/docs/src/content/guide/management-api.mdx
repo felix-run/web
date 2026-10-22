@@ -279,23 +279,35 @@ A browser subscribes to be **woken when a run is waiting on a person**: a new ap
 agent's question (`ui_request`). It is the one signal that reaches a device whose page is not
 running, such as a phone that suspended the web app when its owner switched apps. The web UI does
 this from the installed app (see [Phones and iPads](/guide/phones-and-tablets/)); any client can.
+The same subscription is where an agent with [`spec.notify`](/guide/manifest-reference/#specnotify)
+reaches its subscriber with a notice.
 
 The deployment must opt in. Until `FELIX_PUSH_VAPID_PRIVATE_KEY` and `FELIX_PUSH_VAPID_SUBJECT`
 are set, reading the key and subscribing answer **503** `push_not_configured`, so a client can tell
 "this harness does not push" from a failure. Every route needs `approvals:read`, the scope the
 `approval_required` frame needs, so a push tells nobody what the frame would not.
 
-What a push carries is deliberately thin, because it crosses the browser vendor's push service:
+Approval and question pushes go to **every subscription in the tenant**, and what they carry is
+deliberately thin, because every subscriber receives them and they cross the browser vendor's push
+service. A notice is the one addressed kind:
 
-| `kind` | Fields |
-|---|---|
-| `approval` | `approval_id`, `tool_name`, `thread_id`, `expires_at` |
-| `question` | `thread_id` |
+| `kind` | Sent to | Fields |
+|---|---|---|
+| `approval` | every subscription in the tenant | `approval_id`, `tool_name`, `thread_id`, `expires_at` |
+| `question` | every subscription in the tenant | `thread_id` |
+| `notice` | only the subscriptions the run's person made (matched on the subject recorded at subscribe) | `title`, `body`, `thread_id` |
 
-Never the call's arguments, the rule's reason, or the question's text: those are read from the
-thread, where the decision is made. `thread_id` is the full `{tenant}:{suffix}`. An approval row
-that `create_pending` reuses for a byte-identical call pushes nothing, and a push is held by the
-push service only until the approval's deadline.
+An approval or question push never carries the call's arguments, the rule's reason, or the
+question's text: those are read from the thread, where the decision is made. `thread_id` is the full
+`{tenant}:{suffix}`. An approval row that `create_pending` reuses for a byte-identical call pushes
+nothing, and a push is held by the push service only until the approval's deadline.
+
+A `notice` carries text an agent wrote with `notify`, because it is addressed to one person: secrets
+redacted, links replaced with `[link removed]`, screened, then end-to-end encrypted to the browser
+(RFC 8291). For a scheduled task's firing its `thread_id` is the conversation the task was scheduled
+from when that person wrote the task and the id is one of the tenant's own; otherwise the run's own
+thread. See
+[`spec.notify`](/guide/manifest-reference/#specnotify).
 
 ### `GET /push/vapid-public-key`
 
