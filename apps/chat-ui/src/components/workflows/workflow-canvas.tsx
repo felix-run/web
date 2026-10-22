@@ -373,7 +373,7 @@ function Canvas({ workflow, run, selected, onSelect, editing, fullScreen = false
       ),
     [workflow],
   );
-  const { fitView, getViewport, setViewport } = useReactFlow();
+  const { fitView, getNodesBounds, getViewport, setViewport } = useReactFlow();
 
   // The steps a run view frames: the ones working or waiting, else the ones that failed.
   const statusOf = (status: WorkflowStepStatus) =>
@@ -400,14 +400,21 @@ function Canvas({ workflow, run, selected, onSelect, editing, fullScreen = false
       const duration = animate && !stillMotion() ? 200 : 0;
       const focus = focusRef.current;
       if (focus.length) {
-        // A framed step keeps what leads into and out of it, so it is read in place.
+        // A framed step keeps what leads into and out of it, so it is read in place, unless that
+        // will not fit at the floor zoom: centred between them, the step itself was cut off.
         const ids = new Set(focus);
         for (const w of wiresRef.current) {
           if (focus.includes(w.target)) ids.add(w.source);
           if (focus.includes(w.source)) ids.add(w.target);
         }
+        const el = rootRef.current;
+        const box = getNodesBounds([...ids]);
+        const fits =
+          !el ||
+          (box.width * MIN_FIT_ZOOM <= el.clientWidth &&
+            box.height * MIN_FIT_ZOOM <= el.clientHeight);
         void fitView({
-          nodes: [...ids].map((id) => ({ id })),
+          nodes: (fits ? [...ids] : focus).map((id) => ({ id })),
           padding: 0.15,
           minZoom: MIN_FIT_ZOOM,
           maxZoom: 1,
@@ -422,7 +429,7 @@ function Canvas({ workflow, run, selected, onSelect, editing, fullScreen = false
         if (zoom <= MIN_FIT_ZOOM) void setViewport({ x: 24 - ORIGIN.x * zoom, y, zoom });
       });
     },
-    [fitView, getViewport, setViewport],
+    [fitView, getNodesBounds, getViewport, setViewport],
   );
   // A new workflow, a different run, the other view or full screen: the view is the canvas's again.
   const runId = run?.id ?? null;

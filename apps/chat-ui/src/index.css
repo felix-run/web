@@ -590,6 +590,7 @@ html [data-sonner-toast] {
   --xy-background-color: var(--ground);
   --xy-edge-label-background-color: var(--ground);
   --xy-edge-label-color: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--ring);
   --xy-controls-box-shadow: none;
   --xy-controls-button-background-color: var(--card);
   --xy-controls-button-background-color-hover: var(--secondary);
@@ -609,8 +610,9 @@ html [data-sonner-toast] {
 
 /* A wire's stroke per state (`buildEdges`), by class so that React Flow's own selected and focus
    rules still reach it: an inline stroke outranked them, and a wire picked for deleting looked
-   like every other. The selected rule is one class heavier than React Flow's, so it wins in any
-   load order. */
+   like every other. React Flow's `.selectable:focus` rule weighs the same as ours and loads
+   later, so the colour comes from `--xy-edge-stroke-selected` above, which both rules paint;
+   ours adds the width, which React Flow's does not set. */
 .react-flow__edge.wf-wire-plain .react-flow__edge-path {
   stroke: var(--muted-foreground);
   stroke-width: 1.5;
