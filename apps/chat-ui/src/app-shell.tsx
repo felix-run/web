@@ -170,6 +170,7 @@ import {
 import type {
   ChatMessage,
   ImageAttachment,
+  ManifestSummary,
   SessionSnapshot,
   ThinkingLevel,
   Turn,
@@ -180,6 +181,8 @@ import { AccountChip } from './components/account-chip';
 const MANIFEST_KEY = 'felix.manifest';
 /** How long a deleted conversation can be restored, and how long the server delete waits. */
 const DELETE_UNDO_MS = 7000;
+/** How long the tenant's manifest rows serve the canary check before it reads them again. */
+const CANARY_ROWS_MS = 5 * 60_000;
 /**
  * When a thread-index read that failed for a passing reason is asked again: soon
  * at first, since one 429 is usually one burst, then at most once a minute.
@@ -849,38 +852,65 @@ export function AppShell() {
   //
   // Only tenant-managed manifests have a pointer, so a bundled one has no
   // rollout and no badge, and the second call is skipped entirely.
-  const refreshCanary = useCallback(async () => {
-    try {
-      const rows = await listTenantManifests();
-      const row = rows.find((r) => r.name === manifest);
-      const weight = row?.canary_weight ?? 0;
-      const version = row?.canary_version ?? null;
-      if (version == null || weight <= 0) {
-        setCanary(null);
-        return;
-      }
-      // Only a `canary` answer is treated as one. A harness that does not yet
-      // take `thread_id` replies `stable` for every thread, and reporting that
-      // as "this thread is on stable" would be a confident guess — so an
-      // unconfirmed thread shows the rollout, and claims nothing about itself.
-      let onCanary = false;
+  //
+  // The tenant's rows are read once and reused for `CANARY_ROWS_MS`: a thread switch changes
+  // which side serves the thread, not whether a rollout exists, and it used to re-read the
+  // whole list each time (twice at startup, once with the stored agent and once corrected).
+  // `fresh` re-reads them — what leaving the Manifests page asks for, since it can change them.
+  const tenantRows = useRef<{ at: number; rows: Promise<ManifestSummary[]> } | null>(null);
+  const refreshCanary = useCallback(
+    async (fresh = false) => {
       try {
-        const resolved = await getResolvedManifest(manifest, { threadId });
-        onCanary = resolved.variant === 'canary';
+        const cached = tenantRows.current;
+        let read = cached?.rows;
+        if (fresh || !cached || !read || Date.now() - cached.at >= CANARY_ROWS_MS) {
+          const next = listTenantManifests();
+          tenantRows.current = { at: Date.now(), rows: next };
+          // A failed read is not kept: the next ask tries again.
+          next.catch(() => {
+            if (tenantRows.current?.rows === next) tenantRows.current = null;
+          });
+          read = next;
+        }
+        const rows = await read;
+        const row = rows.find((r) => r.name === manifest);
+        const weight = row?.canary_weight ?? 0;
+        const version = row?.canary_version ?? null;
+        if (version == null || weight <= 0) {
+          setCanary(null);
+          return;
+        }
+        // Only a `canary` answer is treated as one. A harness that does not yet
+        // take `thread_id` replies `stable` for every thread, and reporting that
+        // as "this thread is on stable" would be a confident guess — so an
+        // unconfirmed thread shows the rollout, and claims nothing about itself.
+        let onCanary = false;
+        try {
+          const resolved = await getResolvedManifest(manifest, { threadId });
+          onCanary = resolved.variant === 'canary';
+        } catch {
+          // Resolution is best-effort; the rollout badge still stands without it.
+        }
+        setCanary({ version, weight, onCanary });
       } catch {
-        // Resolution is best-effort; the rollout badge still stands without it.
+        // The tenant store is optional and the route needs `manifests:read`;
+        // a badge is not worth surfacing an error for.
+        setCanary(null);
       }
-      setCanary({ version, weight, onCanary });
-    } catch {
-      // The tenant store is optional and the route needs `manifests:read`;
-      // a badge is not worth surfacing an error for.
-      setCanary(null);
-    }
-  }, [manifest, threadId]);
+    },
+    [manifest, threadId],
+  );
 
   useEffect(() => {
     void refreshCanary();
   }, [refreshCanary]);
+  /**
+   * Re-read the rollout, the tenant's rows included. Stable between thread and agent changes:
+   * the Manifests page calls it from an effect's cleanup, and the inline closure this replaced
+   * was new on every shell render, so that cleanup re-checked the canary — two requests —
+   * on every render while the page was open.
+   */
+  const recheckCanary = useCallback(() => void refreshCanary(true), [refreshCanary]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -2952,7 +2982,7 @@ export function AppShell() {
     setManifest,
     manifestOptions: options,
     manifestEntries,
-    refreshCanary: () => void refreshCanary(),
+    refreshCanary: recheckCanary,
     thinkingLevel,
     thinkingLevels: THINKING_LEVELS,
     chooseThinking,

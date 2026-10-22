@@ -294,6 +294,17 @@ function toStarters(raw: unknown): ManifestStarter[] | undefined {
   );
 }
 
+/**
+ * A `GET /v1/models` body as `listManifestEntries` returns it, for a client that already
+ * holds the answer — a browser's sign-in gate reads the route to check the credential, and
+ * reading it again a moment later to fill the agent picker was a second request for the
+ * same thing.
+ */
+export function manifestEntriesFrom(body: unknown): ManifestEntry[] {
+  const data = (body as { data?: RawModelEntry[] } | null)?.data;
+  return Array.isArray(data) ? data.map(toManifestEntry) : [];
+}
+
 function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   const entry: ManifestEntry = { id: raw.id };
   const provider = raw.felix?.providerModel;
@@ -495,8 +506,7 @@ export function createFelixClient(opts: FelixClientOptions) {
   async function listManifestEntries(signal?: AbortSignal): Promise<ManifestEntry[]> {
     const res = await chatFetch('/v1/models', { signal });
     if (!res.ok) throw new Error(`models: ${res.status}`);
-    const body = (await res.json()) as { data?: RawModelEntry[] };
-    return (body.data ?? []).map(toManifestEntry);
+    return manifestEntriesFrom(await res.json());
   }
 
   return {

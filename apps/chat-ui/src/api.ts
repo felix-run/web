@@ -24,7 +24,12 @@
  * real auth, send an Authorization header (see README).
  */
 
-import { createFelixClient, type LeaseRefusal } from '@felix/client';
+import {
+  createFelixClient,
+  type LeaseRefusal,
+  type ManifestEntry,
+  manifestEntriesFrom,
+} from '@felix/client';
 import { readSseStream } from '@felix/protocol';
 import { reportReachability } from '@/lib/connection';
 import { authHeaders, handleUnauthorized } from './lib/auth';
@@ -90,7 +95,37 @@ export const felix = createFelixClient({
   onLeaseRefused: (threadId, code) => leases.refused(threadId, code),
 });
 
-export const listManifestEntries = felix.listManifestEntries.bind(felix);
+/**
+ * The gate's own `/v1/models` answer, kept for the first reader after it. The gate reads the
+ * route to check the credential and the shell read it again a moment later to fill the agent
+ * picker — the same request, twice, before the app had drawn anything. Taken once, and only
+ * while fresh: past `PRIMED_MS` the list is read again as before.
+ */
+const PRIMED_MS = 10_000;
+let primed: { at: number; entries: Promise<ManifestEntry[]> } | null = null;
+
+/** Keep a `/v1/models` response the caller has not read, for `listManifestEntries`. */
+export function primeManifestEntries(res: Response): void {
+  const entries = res.json().then(manifestEntriesFrom);
+  // Possibly never taken (the shell did not mount, or took it too late): not an unhandled
+  // rejection. A taker falls back to reading the route itself.
+  entries.catch(() => {});
+  primed = { at: Date.now(), entries };
+}
+
+/** Drop a kept answer. Between tests: the next test's shell must not take the last one's. */
+export function forgetPrimedManifestEntries(): void {
+  primed = null;
+}
+
+export function listManifestEntries(signal?: AbortSignal): Promise<ManifestEntry[]> {
+  const kept = primed;
+  primed = null;
+  if (kept && Date.now() - kept.at < PRIMED_MS) {
+    return kept.entries.catch(() => felix.listManifestEntries(signal));
+  }
+  return felix.listManifestEntries(signal);
+}
 export const streamChat = felix.streamChat.bind(felix);
 export const steerChat = felix.steerChat.bind(felix);
 export const workspaceEdited = felix.workspaceEdited.bind(felix);
