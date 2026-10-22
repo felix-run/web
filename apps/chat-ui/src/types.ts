@@ -299,6 +299,27 @@ export interface ManifestVersionRow {
 }
 
 /**
+ * One row of `GET /manifests/{name}/versions`: a stored version without its manifest.
+ * `active` and `canary` are the route's reading of the pointer at the time it answered.
+ */
+export interface ManifestVersionMeta {
+  name: string;
+  version: number;
+  created_at?: number;
+  created_by?: string;
+  comment?: string;
+  active?: boolean;
+  canary?: boolean;
+}
+
+/** `GET /manifests/{name}/versions`: newest first, paged by `before`. */
+export interface ManifestVersionPage {
+  items: ManifestVersionMeta[];
+  /** Pass as `before` for the next page; null on the last. */
+  next_before: number | null;
+}
+
+/**
  * GET /manifests/{name} — resolved through the 4-layer chain
  * (tenant Postgres → tenant object store → global object store → bundled).
  */

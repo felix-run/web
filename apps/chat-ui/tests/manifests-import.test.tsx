@@ -25,6 +25,7 @@ async function open(
     listTenantManifests: vi
       .fn()
       .mockResolvedValue(managed.map((name) => ({ name, version: 1, canary_version: null }))),
+    listManifestVersions: vi.fn().mockResolvedValue({ items: [], next_before: null }),
     getResolvedManifest: vi.fn(),
     createManifestVersion: vi.fn(),
     activateManifestVersion: vi.fn(),

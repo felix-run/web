@@ -33,6 +33,7 @@ async function sheet(warnings: string[] | undefined, activeAfter = 4) {
       .mockResolvedValue([
         { name: 'ops', version: activeAfter, canary_version: null, canary_weight: 0 },
       ]),
+    listManifestVersions: vi.fn().mockResolvedValue({ items: [], next_before: null }),
     getResolvedManifest: vi.fn().mockResolvedValue({
       source: 'tenant_postgres',
       version: 4,

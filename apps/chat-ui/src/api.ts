@@ -39,6 +39,7 @@ import type {
   JobRun,
   ManifestPointer,
   ManifestSummary,
+  ManifestVersionPage,
   ManifestVersionRow,
   ResolvedManifest,
   Rubric,
@@ -716,8 +717,9 @@ export async function getEvalRun(id: string): Promise<EvalRun> {
 // harness skips scope checks entirely, so local dev drives the full lifecycle
 // unauthenticated.
 //
-// The harness exposes no version *list* route: `GET /manifests` returns active
-// pointers, and a specific version is read with `GET /manifests/{name}?version=N`.
+// `GET /manifests` returns active pointers; `GET /manifests/{name}/versions` lists a
+// manifest's stored versions (metadata only), and one version's body is read with
+// `GET /manifests/{name}?version=N`.
 
 async function manifestFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(`/api/manifests${path}`, init);
@@ -734,6 +736,27 @@ export async function listTenantManifests(): Promise<ManifestSummary[]> {
     '',
   );
   return body.items ?? body.manifests ?? [];
+}
+
+/**
+ * GET /manifests/{name}/versions → stored versions, newest first, without their
+ * manifests. Page with `before` (the last version seen); the harness answers
+ * `next_before: null` on the last page, and an empty list under
+ * `FELIX_BUNDLED_ONLY`.
+ */
+export async function listManifestVersions(
+  name: string,
+  opts: { limit?: number; before?: number } = {},
+): Promise<ManifestVersionPage> {
+  const q = new URLSearchParams();
+  if (opts.limit) q.set('limit', String(opts.limit));
+  if (opts.before) q.set('before', String(opts.before));
+  // Typed whole and read partially, and the query after a literal `?`: check-api-drift
+  // reads one level of `<…>`, and a bare `${suffix}` after the path as one more segment.
+  const body: Partial<ManifestVersionPage> = await manifestFetch<ManifestVersionPage>(
+    `/${encodeURIComponent(name)}/versions?${q}`,
+  );
+  return { items: body.items ?? [], next_before: body.next_before ?? null };
 }
 
 /**
