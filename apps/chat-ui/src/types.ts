@@ -318,7 +318,17 @@ export interface JobRecord {
   tenant_id: string;
   name: string;
   schedule: string;
+  /** `''` for a job that runs a workflow: a job names one or the other (`felix-run/felix#642`). */
   manifest_id: string;
+  /** The workflow each firing starts a run of, with `payload.inputs` as its inputs. */
+  workflow_id?: string;
+  /**
+   * The workflow revision the job is held to — current when it was last saved. Once anyone
+   * saves the workflow again the job refuses to fire until it is saved over the new one.
+   */
+  workflow_revision?: string;
+  /** Who last saved the job; its runs carry their scopes. Null on a job saved before 0.15. */
+  created_by?: string | null;
   enabled?: boolean;
   last_run_at?: number | null;
   next_run_at?: number | null;
@@ -345,8 +355,12 @@ export interface JobRun {
     status?: string;
     answer?: string;
     reason?: string;
+    error?: string;
     trigger?: string;
     requested_by?: string;
+    /** A workflow job's firing: the run it started, for `/harness/workflows`. */
+    workflow_id?: string;
+    workflow_run_id?: string;
   };
 }
 

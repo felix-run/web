@@ -3,6 +3,7 @@ import { Badge } from '@felix/ui/badge';
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Label } from '@felix/ui/label';
+import { Select, SelectContent, SelectTrigger, SelectValue } from '@felix/ui/select';
 import { Textarea } from '@felix/ui/textarea';
 import {
   ClockIcon,
@@ -15,8 +16,16 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { deleteJob, listJobRuns, listJobs, listUsageByThread, runJobNow, upsertJob } from '@/api';
-import { AgentSelect } from '@/components/agent-select';
+import {
+  deleteJob,
+  listJobRuns,
+  listJobs,
+  listUsageByThread,
+  listWorkflows,
+  runJobNow,
+  upsertJob,
+} from '@/api';
+import { AgentSelect, OPTION_LIST_BOUNDS, OptionItem } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import {
@@ -28,6 +37,7 @@ import {
   Panel,
   PanelBody,
   plural,
+  ViewSwitch,
 } from '@/components/harness/panel';
 import {
   isFailure,
@@ -50,7 +60,7 @@ import { isTransientFailure } from '@/lib/harness-health';
 import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '@/lib/job-schedule';
 import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/shell-context';
-import type { JobRecord, JobRun } from '@/types';
+import type { JobRecord, JobRun, WorkflowSummary } from '@/types';
 
 /**
  * Scheduled-jobs workbench — the `/jobs` registry as a `/harness` page. A job is a
@@ -92,6 +102,42 @@ const SPEND_POLL_KEY = 'jobs-spend';
 function isJobThread(threadId: string, jobName: string): boolean {
   const suffix = threadId.slice(threadId.indexOf(':') + 1);
   return suffix === `job:${jobName}` || suffix.startsWith(`job:${jobName}:`);
+}
+
+/** Where a workflow job's firing can be watched: the run view of its workflow. */
+function workflowRunHref(workflowId: string, runId: string): string {
+  return `/harness/workflows?workflow=${encodeURIComponent(workflowId)}&view=run&run=${encodeURIComponent(runId)}`;
+}
+
+/**
+ * The scheduler's refusal for a workflow saved again since the job was (`felix/jobs/scheduler.py`):
+ * the job is held to the revision it was written over, so a later edit never runs on the writer's
+ * scopes until someone saves the job over it.
+ */
+function heldToOldRevision(j: JobRecord): boolean {
+  return Boolean(j.workflow_id) && /changed since this job was written/.test(j.last_error ?? '');
+}
+
+/** `412 workflow_changed` on a save that named the revision it was holding. */
+function isWorkflowChanged(err: unknown): boolean {
+  return (
+    /\b412\b/.test(String((err as Error)?.message ?? err)) &&
+    /workflow_changed/.test(String((err as Error)?.message ?? err))
+  );
+}
+
+/** `payload.inputs` as typed: an object, or why not. Empty is `{}`. */
+function parseInputs(text: string): { inputs: Record<string, unknown> } | { error: string } {
+  if (!text.trim()) return { inputs: {} };
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { inputs: parsed as Record<string, unknown> };
+    }
+    return { error: 'Inputs must be a JSON object, like {"repo": "felix"}.' };
+  } catch (err) {
+    return { error: `Not valid JSON: ${String((err as Error)?.message ?? err)}` };
+  }
 }
 
 /** Below this an interval is said as a cost: an every-minute job is ~1,440 agent turns a day. */
@@ -154,6 +200,13 @@ export function JobsSheet({
   // carry ticket N's transcript into ticket N+1's context.
   const [prompt, setPrompt] = useState('');
   const [freshThread, setFreshThread] = useState(false);
+  // What each firing runs: an agent turn, or a run of a workflow (`felix-run/felix#642`).
+  const [target, setTarget] = useState<'agent' | 'workflow'>('agent');
+  const [workflowId, setWorkflowId] = useState('');
+  const [inputsText, setInputsText] = useState('');
+  // Read when the form opens, not with the page: most visits only look at the list.
+  const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
+  const [workflowsError, setWorkflowsError] = useState<unknown>(null);
   // A new job fires at the next sweep whatever its schedule; started paused, it waits until
   // someone resumes it — the one way to set a job up without it running first.
   const [startPaused, setStartPaused] = useState(false);
@@ -239,35 +292,73 @@ export function JobsSheet({
       return { schedule: null, error: err instanceof ScheduleError ? err.message : String(err) };
     }
   }, [schedule]);
+  const parsedInputs = useMemo(() => parseInputs(inputsText), [inputsText]);
   // The schedule's own error is said under its field; this only points at it.
   const jobUnready = !name.trim()
     ? 'Name the job.'
     : parsedSchedule.error !== null
       ? 'Fix the schedule above.'
-      : null;
+      : target === 'workflow' && !workflowId
+        ? 'Choose a workflow.'
+        : target === 'workflow' && 'error' in parsedInputs
+          ? 'Fix the inputs above.'
+          : null;
+
+  useEffect(() => {
+    if (!creating || workflows !== null) return;
+    let live = true;
+    listWorkflows().then(
+      (items) => {
+        if (!live) return;
+        setWorkflows(items);
+        setWorkflowsError(null);
+      },
+      (err: unknown) => live && setWorkflowsError(err),
+    );
+    return () => {
+      live = false;
+    };
+  }, [creating, workflows]);
   const costly =
     parsedSchedule.schedule?.kind === 'interval' && parsedSchedule.schedule.ms < COSTLY_INTERVAL_MS;
 
   async function create() {
-    if (!name.trim() || parsedSchedule.error) return;
+    if (jobUnready) return;
     setBusy(true);
     setActionError(null);
     try {
       // Only the keys that were set: the scheduler reads `payload.get(...)`, so an
       // explicit `fresh_thread: false` is noise on every row nobody asked for.
       const payload: Record<string, unknown> = {};
-      if (prompt.trim()) payload.prompt = prompt.trim();
-      if (freshThread) payload.fresh_thread = true;
+      if (target === 'workflow') {
+        if ('inputs' in parsedInputs && Object.keys(parsedInputs.inputs).length) {
+          payload.inputs = parsedInputs.inputs;
+        }
+      } else {
+        if (prompt.trim()) payload.prompt = prompt.trim();
+        if (freshThread) payload.fresh_thread = true;
+      }
       await upsertJob({
         name: name.trim(),
         schedule: schedule.trim(),
-        manifest_id: manifestId,
+        ...(target === 'workflow'
+          ? {
+              workflow_id: workflowId,
+              // The revision on screen when it was picked, so an edit saved meanwhile is
+              // refused rather than becoming what the job runs.
+              ...(workflows?.find((w) => w.id === workflowId)?.revision
+                ? { workflow_revision: workflows.find((w) => w.id === workflowId)?.revision }
+                : {}),
+            }
+          : { manifest_id: manifestId }),
         payload,
         // Replacing keeps the job's own state unless the form says to pause it.
         enabled: startPaused ? false : (existing?.enabled ?? true),
       });
       setName('');
       setPrompt('');
+      setInputsText('');
+      setWorkflowId('');
       setFreshThread(false);
       setStartPaused(false);
       closeForm();
@@ -341,14 +432,46 @@ export function JobsSheet({
     setBusy(true);
     setActionError(null);
     try {
+      // The whole record back, workflow and its revision included: without them a pause
+      // saved a workflow job as one with no agent and no workflow, and without the revision
+      // it would re-pin a workflow someone has edited since — on the pauser's scopes.
       await upsertJob({
         name: j.name,
         schedule: j.schedule ?? '',
         manifest_id: j.manifest_id ?? '',
+        ...(j.workflow_id
+          ? { workflow_id: j.workflow_id, workflow_revision: j.workflow_revision || undefined }
+          : {}),
         payload: j.payload ?? {},
         enabled,
       });
       setAnnounce(`${j.name} ${enabled ? 'resumed' : 'paused'}.`);
+      refresh();
+    } catch (err) {
+      setActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Save a workflow job over the workflow as it is now. Its firings are held to the revision
+   * current when it was saved; after the workflow changes it refuses to fire until someone
+   * saves it again, and whoever does becomes who it runs for.
+   */
+  async function repin(j: JobRecord) {
+    if (!j.workflow_id) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await upsertJob({
+        name: j.name,
+        schedule: j.schedule ?? '',
+        workflow_id: j.workflow_id,
+        payload: j.payload ?? {},
+        enabled: j.enabled !== false,
+      });
+      setAnnounce(`${j.name} now runs the current revision of ${j.workflow_id}.`);
       refresh();
     } catch (err) {
       setActionError(err);
@@ -461,7 +584,16 @@ export function JobsSheet({
             }
           />
         ) : null}
-        {actionError != null && <ErrorNotice error={actionError} doing="update this job" />}
+        {actionError != null &&
+          (isWorkflowChanged(actionError) ? (
+            // A 412 reads as "rejected" in the shared words, which says nothing to act on.
+            <p role="alert" className="mb-3 text-sm text-state-failed">
+              Could not update this job: its workflow has been saved again since the job was. Use
+              “Run the current revision” on the job to move it onto the new one first.
+            </p>
+          ) : (
+            <ErrorNotice error={actionError} doing="update this job" />
+          ))}
 
         {creating && (
           // A section with a heading, not a dashed box: the form is a part of
@@ -483,6 +615,18 @@ export function JobsSheet({
                   keystroke — and a half-typed `0 9 * *` has nothing to check it
                   against. */}
               <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">Each run</span>
+                  <ViewSwitch
+                    label="What each run of the job does"
+                    value={target}
+                    options={[
+                      ['agent', 'Sends a prompt'],
+                      ['workflow', 'Runs a workflow'],
+                    ]}
+                    onChange={setTarget}
+                  />
+                </div>
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
                   <div>
                     <Label htmlFor="job-name">Name</Label>
@@ -502,21 +646,62 @@ export function JobsSheet({
                         className="mt-1 max-w-[56ch] text-xs text-state-blocked"
                       >
                         <span className="font-mono">{existing.name}</span> exists. Replace changes
-                        its schedule, agent and prompt; its run history stays
+                        its schedule and what it runs; its run history stays
                         {existing.enabled === false ? ', and it stays paused' : ''}.
                       </p>
                     )}
                   </div>
-                  <div>
-                    <Label htmlFor="job-manifest">Agent</Label>
-                    <AgentSelect
-                      id="job-manifest"
-                      value={manifestId}
-                      options={manifestOptions.length ? manifestOptions : [manifest]}
-                      onValueChange={setManifestId}
-                      className="mt-1 w-full"
-                    />
-                  </div>
+                  {target === 'agent' ? (
+                    <div>
+                      <Label htmlFor="job-manifest">Agent</Label>
+                      <AgentSelect
+                        id="job-manifest"
+                        value={manifestId}
+                        options={manifestOptions.length ? manifestOptions : [manifest]}
+                        onValueChange={setManifestId}
+                        className="mt-1 w-full"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <Label htmlFor="job-workflow">Workflow</Label>
+                      <Select
+                        value={workflowId || undefined}
+                        onValueChange={(v) => v && setWorkflowId(v)}
+                      >
+                        <SelectTrigger
+                          id="job-workflow"
+                          className="mt-1 w-full font-mono"
+                          aria-describedby={
+                            workflowsError != null || workflows?.length === 0
+                              ? 'job-workflow-help'
+                              : undefined
+                          }
+                        >
+                          <SelectValue
+                            placeholder={workflows === null ? 'Loading…' : 'Choose a workflow'}
+                          />
+                        </SelectTrigger>
+                        <SelectContent className={OPTION_LIST_BOUNDS}>
+                          {(workflows ?? []).map((w) => (
+                            <OptionItem
+                              key={w.id}
+                              value={w.id}
+                              label={w.name || w.id}
+                              description={w.name && w.name !== w.id ? w.id : undefined}
+                            />
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {(workflowsError != null || workflows?.length === 0) && (
+                        <p id="job-workflow-help" className="mt-1 text-xs text-muted-foreground">
+                          {workflowsError != null
+                            ? 'Could not list workflows.'
+                            : 'No workflows yet. Author one on the Workflows page.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="job-schedule">Schedule</Label>
@@ -535,7 +720,7 @@ export function JobsSheet({
                   >
                     Five-field cron in UTC (minute hour day month weekday), <code>@daily</code>,{' '}
                     <code>every:5m</code> or seconds.{' '}
-                    <strong className="font-medium">Empty runs every minute.</strong>
+                    <strong className="font-medium">Empty runs only when you press Run now.</strong>
                   </p>
                   {/* What the harness will do with it, said before it is created: a new job
                       fires at the next sweep whatever its schedule, then follows it. */}
@@ -576,49 +761,79 @@ export function JobsSheet({
                         : null}
                   </p>
                 </div>
-                <div>
-                  <Label htmlFor="job-prompt">Prompt</Label>
-                  {/* A textarea: the prompt is a whole instruction, and one line of
+                {target === 'agent' ? (
+                  <>
+                    <div>
+                      <Label htmlFor="job-prompt">Prompt</Label>
+                      {/* A textarea: the prompt is a whole instruction, and one line of
                       input showed a sliver of it while it was being written. */}
-                  <Textarea
-                    id="job-prompt"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    aria-describedby="job-prompt-help"
-                    rows={3}
-                    className="mt-1 resize-y"
-                  />
-                  <p id="job-prompt-help" className="mt-1 text-xs text-muted-foreground">
-                    Sent as the turn on each run. Empty sends “ping”.
-                  </p>
-                </div>
-                {/* A native checkbox: the shared primitives have no switch, and a `<button
+                      <Textarea
+                        id="job-prompt"
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        aria-describedby="job-prompt-help"
+                        rows={3}
+                        className="mt-1 resize-y"
+                      />
+                      <p id="job-prompt-help" className="mt-1 text-xs text-muted-foreground">
+                        Sent as the turn on each run. Empty sends “ping”.
+                      </p>
+                    </div>
+                    {/* A native checkbox: the shared primitives have no switch, and a `<button
               aria-pressed>` for a yes/no that is submitted with a form promises a
               toggle rather than a field. */}
-                {/* The label is the choice; the reasoning is help under it. It was one
+                    {/* The label is the choice; the reasoning is help under it. It was one
                     three-line 11px paragraph wrapped round the box, so the thing
                     being chosen was the first clause of a sentence. */}
-                <div>
-                  <label htmlFor="job-fresh-thread" className="flex items-center gap-2 text-sm">
-                    <input
-                      id="job-fresh-thread"
-                      type="checkbox"
-                      checked={freshThread}
-                      onChange={(e) => setFreshThread(e.target.checked)}
-                      aria-describedby="job-fresh-thread-help"
-                      className="size-3.5 shrink-0 accent-primary"
+                    <div>
+                      <label htmlFor="job-fresh-thread" className="flex items-center gap-2 text-sm">
+                        <input
+                          id="job-fresh-thread"
+                          type="checkbox"
+                          checked={freshThread}
+                          onChange={(e) => setFreshThread(e.target.checked)}
+                          aria-describedby="job-fresh-thread-help"
+                          className="size-3.5 shrink-0 accent-primary"
+                        />
+                        Fresh thread each run
+                      </label>
+                      <p
+                        id="job-fresh-thread-help"
+                        className="mt-1 ml-5.5 max-w-[56ch] text-xs text-muted-foreground"
+                      >
+                        Off, every run shares one thread named after the job, so a digest remembers
+                        last week. On, each run starts clean — for a job that works something
+                        different each time.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <Label htmlFor="job-inputs">Inputs</Label>
+                    <Textarea
+                      id="job-inputs"
+                      value={inputsText}
+                      onChange={(e) => setInputsText(e.target.value)}
+                      aria-describedby="job-inputs-help"
+                      aria-invalid={'error' in parsedInputs ? true : undefined}
+                      rows={3}
+                      spellCheck={false}
+                      placeholder="{}"
+                      className="mt-1 resize-y font-mono"
                     />
-                    Fresh thread each run
-                  </label>
-                  <p
-                    id="job-fresh-thread-help"
-                    className="mt-1 ml-5.5 max-w-[56ch] text-xs text-muted-foreground"
-                  >
-                    Off, every run shares one thread named after the job, so a digest remembers last
-                    week. On, each run starts clean — for a job that works something different each
-                    time.
-                  </p>
-                </div>
+                    <p
+                      id="job-inputs-help"
+                      className={cn(
+                        'mt-1 max-w-[56ch] text-xs',
+                        'error' in parsedInputs ? 'text-state-failed' : 'text-muted-foreground',
+                      )}
+                    >
+                      {'error' in parsedInputs
+                        ? parsedInputs.error
+                        : 'The workflow’s inputs for every run, as a JSON object. The harness checks them against the workflow when the job is saved.'}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label htmlFor="job-start-paused" className="flex items-center gap-2 text-sm">
                     <input
@@ -643,7 +858,7 @@ export function JobsSheet({
                   <Button
                     size="sm"
                     className="gap-1"
-                    disabled={busy || !name.trim() || parsedSchedule.error !== null}
+                    disabled={busy || jobUnready !== null}
                     aria-describedby={jobUnready ? 'job-unready' : undefined}
                     onClick={create}
                   >
@@ -717,7 +932,15 @@ export function JobsSheet({
                     {scheduleLabel(j.schedule ?? '')}
                   </Badge>
                   {/* Mono: the harness named it (the Provenance Rule). */}
-                  {j.manifest_id ? (
+                  {j.workflow_id ? (
+                    <Link
+                      to={`/harness/workflows?workflow=${encodeURIComponent(j.workflow_id)}`}
+                      className="font-mono text-xs text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+                      title="The workflow each run starts"
+                    >
+                      workflow {j.workflow_id}
+                    </Link>
+                  ) : j.manifest_id ? (
                     <span className="font-mono text-xs text-muted-foreground">{j.manifest_id}</span>
                   ) : (
                     // The harness skips a run with no agent (`no_manifest`); said in words.
@@ -743,7 +966,9 @@ export function JobsSheet({
                     title={
                       j.enabled === false
                         ? 'Run once now. The job stays disabled for its schedule.'
-                        : 'Run once now, without waiting for the schedule. A whole agent turn.'
+                        : j.workflow_id
+                          ? 'Start a run of its workflow now, without waiting for the schedule.'
+                          : 'Run once now, without waiting for the schedule. A whole agent turn.'
                     }
                     onClick={() => runNow(j.name)}
                   >
@@ -909,7 +1134,21 @@ export function JobsSheet({
                       “{j.payload.prompt}”
                     </span>
                   )}
+                  {/* Whose scopes its runs carry: whoever saved it last. */}
+                  {j.created_by && <span>runs as {j.created_by}</span>}
                   {j.last_error && <span className="text-state-failed">{j.last_error}</span>}
+                  {heldToOldRevision(j) && (
+                    <ConfirmButton
+                      size="xs"
+                      variant="outline"
+                      disabled={busy}
+                      question={`${j.name} will run ${j.workflow_id} as it is now, on your scopes.`}
+                      confirmLabel="Run the current revision"
+                      onConfirm={() => repin(j)}
+                    >
+                      Run the current revision
+                    </ConfirmButton>
+                  )}
                 </div>
                 {expanded === j.name && (
                   <div id={`job-runs-${j.name}`} className="mt-1.5 border-t pt-1.5">
@@ -944,8 +1183,20 @@ export function JobsSheet({
                             <span className="flex min-w-0 gap-2">
                               {/* Said only when it was not the schedule: the default is cron. */}
                               {r.result?.trigger === 'manual' && <span>run by hand</span>}
-                              {r.error ? (
-                                <span className="text-state-failed">{r.error}</span>
+                              {r.error || r.result?.error ? (
+                                <span className="text-state-failed">
+                                  {r.error || r.result?.error}
+                                </span>
+                              ) : r.result?.workflow_run_id && r.result.workflow_id ? (
+                                <Link
+                                  to={workflowRunHref(
+                                    r.result.workflow_id,
+                                    r.result.workflow_run_id,
+                                  )}
+                                  className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+                                >
+                                  workflow run
+                                </Link>
                               ) : r.result?.reason ? (
                                 <span>skipped: {r.result.reason}</span>
                               ) : r.result?.answer ? (

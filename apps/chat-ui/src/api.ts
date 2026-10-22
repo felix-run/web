@@ -842,14 +842,29 @@ export async function upsertJob(job: {
   name: string;
   schedule?: string;
   manifest_id?: string;
+  /** A workflow to run instead of an agent (`felix-run/felix#642`); never with `manifest_id`. */
+  workflow_id?: string;
+  /**
+   * The revision the writer reviewed: the save is refused (`412 workflow_changed`) unless it is
+   * still current. Left out, the job is pinned to whatever is current now.
+   */
+  workflow_revision?: string;
   payload?: Record<string, unknown>;
   enabled?: boolean;
 }): Promise<JobRecord> {
   const { name, schedule = '', manifest_id = '', payload = {}, enabled = true } = job;
+  // The workflow keys only when set: `JobUpsert` forbids extra fields, so a harness older
+  // than workflow jobs would refuse every write that carried them, even empty.
+  const workflow = job.workflow_id
+    ? {
+        workflow_id: job.workflow_id,
+        ...(job.workflow_revision ? { workflow_revision: job.workflow_revision } : {}),
+      }
+    : {};
   return jobsFetch<JobRecord>(`/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ schedule, manifest_id, payload, enabled }),
+    body: JSON.stringify({ schedule, manifest_id, ...workflow, payload, enabled }),
   });
 }
 
