@@ -18,7 +18,7 @@ import {
   LoaderIcon,
   PanelRightOpenIcon,
 } from 'lucide-react';
-import { lazy, Suspense, useEffect, useId, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useEffect, useId, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
 import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block';
 import {
@@ -62,31 +62,41 @@ const SkillProposalCard = lazy(() =>
  * was the half that never did, on every card, which is an icon marking a row
  * rather than a kind.
  */
-export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: boolean }) {
+// Memoised: a finished call keeps its object across the engine's per-delta patches, so only a
+// card whose call changed redraws while the reply around it streams.
+export const Tool = memo(function Tool({
+  tool,
+  verbose = false,
+}: {
+  tool: ToolCall;
+  verbose?: boolean;
+}) {
   const [open, setOpen] = useState(verbose);
   useEffect(() => {
     if (verbose) setOpen(true);
   }, [verbose]);
-  const shell = tool.done ? parseShellResult(tool.output) : null;
+  const shell = useMemo(
+    () => (tool.done ? parseShellResult(tool.output) : null),
+    [tool.done, tool.output],
+  );
   const shellState = shell ? shellStatus(shell) : null;
   // A call that failed or was refused. Its result is a marker the model reads,
   // not a sentence a person does, and `done` is true and useless here for the
   // same reason it is on a shell command that exited 1: a write that failed
   // with Errno 13 sat under a green `done` badge on the reference deployment.
-  const issue = tool.done ? classifyToolResult(tool.name, tool.output) : null;
+  const issue = useMemo(
+    () => (tool.done ? classifyToolResult(tool.name, tool.output) : null),
+    [tool.done, tool.name, tool.output],
+  );
   // An approval gate's no is not a failure: nothing broke. It cancels like one,
   // but in the neutral tone, and red is kept for calls that went wrong.
   const denied = issue?.kind === 'denied';
   const denial = useDenial(tool);
   // Only a finished, successful result is read as a table; a failure says so in words.
-  // Memoised on the tool's own fields: a transcript re-renders on every streamed
-  // delta, and a large result would otherwise be re-parsed each time.
+  // Memoised on the tool's own fields, like the two reads above it.
   const table = useMemo(
-    () =>
-      tool.done && !parseShellResult(tool.output) && !classifyToolResult(tool.name, tool.output)
-        ? parseTabular(tool.output)
-        : null,
-    [tool.done, tool.name, tool.output],
+    () => (tool.done && !shell && !issue ? parseTabular(tool.output) : null),
+    [tool.done, shell, issue, tool.output],
   );
   // A `task` call is a child agent's job: named by the agent and the job, not by
   // the first string argument, and running as that agent rather than as a tool.
@@ -258,7 +268,7 @@ export function Tool({ tool, verbose = false }: { tool: ToolCall; verbose?: bool
       {card}
     </div>
   );
-}
+});
 
 /**
  * A denied call's subject line, and the way forward.

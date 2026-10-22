@@ -1,7 +1,8 @@
+import type { BranchPoint } from '@felix/client';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { LogOutIcon, UnplugIcon } from 'lucide-react';
-import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
+import { lazy, memo, Suspense, useEffect, useMemo, useRef } from 'react';
 import { useInRouterContext, useSearchParams } from 'react-router';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill, NEARLY_FULL } from '@/components/chat/context-meter';
@@ -25,7 +26,8 @@ import { landedPaths } from '@/lib/changes';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { openInPane, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
-import { useShell } from '@/shell-context';
+import { type ShellValue, useShell } from '@/shell-context';
+import type { Turn, TurnFeedback } from '@/types';
 
 /**
  * The run instrument loads with its first showing, not with the app. Below 1280
@@ -230,65 +232,31 @@ export function Workbench() {
                 // snapshot rebuild that re-mints turn ids must not re-create the
                 // rows, or every anchor reads as new and the view jumps to the first.
                 <ConversationItem key={`turn-${i}`} id={`turn-${i}`} anchor={t.role === 'user'}>
-                  <Message
+                  <TurnRow
                     key={t.id}
                     turn={t}
+                    first={i === 0}
+                    isLast={isLast}
                     // One reply can be several turns — the model's message that called
                     // the tools, then the one after them — and each drew its own "Felix".
                     // The rows stay one per turn (rows are named by position), so only the
                     // label goes.
                     continues={t.role === 'assistant' && turns[i - 1]?.role === 'assistant'}
-                    streaming={streaming && isLast}
-                    {...(t.eventId && branches?.has(t.eventId)
-                      ? { branch: branches.get(t.eventId) }
-                      : {})}
-                    {...(drives && !streaming && switchBranch
-                      ? { onSwitchBranch: switchBranch }
-                      : {})}
-                    verbose={debug}
-                    usage={harnessView}
+                    streaming={streaming}
+                    drives={drives}
                     debug={debug}
-                    onRegenerate={
-                      drives && isLast && t.role === 'assistant' ? regenerate : undefined
-                    }
-                    onRewind={
-                      drives && !streaming && t.eventId && !isLast
-                        ? () => rewindTo(t.eventId!)
-                        : undefined
-                    }
-                    {...(drives && !streaming && t.role === 'user' && (i > 0 || t.parentEventId)
-                      ? { onEdit: (text: string) => void editTurn(t.id, text) }
-                      : {})}
-                    {...(t.eventId && labels[t.eventId] !== undefined
-                      ? { label: labels[t.eventId] }
-                      : {})}
-                    {...(drives && t.eventId
-                      ? { onLabel: (next) => labelTurn(t.eventId!, next) }
-                      : {})}
-                    {...(t.role === 'assistant' && !(streaming && isLast)
-                      ? {
-                          onRate: (
-                            rating: 'up' | 'down' | null,
-                            opts?: { note?: string; evalDataset?: string },
-                          ) => void rateTurn(t.id, rating, opts),
-                          ...(t.eventId && feedback[t.eventId]
-                            ? { feedback: feedback[t.eventId] }
-                            : {}),
-                        }
-                      : {})}
+                    harnessView={harnessView}
+                    branch={t.eventId ? branches?.get(t.eventId) : undefined}
+                    label={t.eventId ? labels[t.eventId] : undefined}
+                    feedback={t.eventId ? feedback[t.eventId] : undefined}
+                    switchBranch={switchBranch}
+                    // `regenerate` is rebuilt on every delta; only the turn it acts on gets it.
+                    regenerate={isLast && t.role === 'assistant' ? regenerate : undefined}
+                    rewindTo={rewindTo}
+                    editTurn={editTurn}
+                    labelTurn={labelTurn}
+                    rateTurn={rateTurn}
                   />
-                  {/* A labelled turn is a restore point, so it says so where it is
-                      rather than only in the hover-revealed actions. */}
-                  {drives &&
-                    t.eventId &&
-                    labels[t.eventId] !== undefined &&
-                    !streaming &&
-                    !isLast && (
-                      <TurnCheckpoint
-                        label={labels[t.eventId] as string}
-                        onRestore={() => rewindTo(t.eventId as string)}
-                      />
-                    )}
                 </ConversationItem>
               );
             })}
@@ -532,3 +500,87 @@ function OpenLink({
   }, [linked, asked, threadId, setParams]);
   return null;
 }
+
+/**
+ * One turn of the transcript and its restore point. Memoised, and given only values that
+ * stay put while a reply streams — the shell's verbs, this turn's own label, rating and
+ * branch — so a finished turn renders nothing per delta: without it every message, tool
+ * card and reasoning block in the thread was redrawn each frame to change only the last one.
+ * The closures `Message` takes are built here, where they cost nothing unless this turn
+ * itself re-renders.
+ */
+const TurnRow = memo(function TurnRow({
+  turn: t,
+  first,
+  isLast,
+  continues,
+  streaming,
+  drives,
+  debug,
+  harnessView,
+  branch,
+  label,
+  feedback,
+  switchBranch,
+  regenerate,
+  rewindTo,
+  editTurn,
+  labelTurn,
+  rateTurn,
+}: {
+  turn: Turn;
+  first: boolean;
+  isLast: boolean;
+  continues: boolean;
+  /** The thread's run, not this turn's: only the last turn is being written. */
+  streaming: boolean;
+  drives: boolean;
+  debug: boolean;
+  harnessView: boolean;
+  branch: BranchPoint | undefined;
+  label: string | undefined;
+  feedback: TurnFeedback | undefined;
+  switchBranch: ShellValue['switchBranch'];
+  regenerate: (() => void) | undefined;
+  rewindTo: ShellValue['rewindTo'];
+  editTurn: ShellValue['editTurn'];
+  labelTurn: ShellValue['labelTurn'];
+  rateTurn: ShellValue['rateTurn'];
+}) {
+  const eventId = t.eventId;
+  return (
+    <>
+      <Message
+        turn={t}
+        continues={continues}
+        streaming={streaming && isLast}
+        {...(branch ? { branch } : {})}
+        {...(drives && !streaming && switchBranch ? { onSwitchBranch: switchBranch } : {})}
+        verbose={debug}
+        usage={harnessView}
+        debug={debug}
+        onRegenerate={drives ? regenerate : undefined}
+        onRewind={drives && !streaming && eventId && !isLast ? () => rewindTo(eventId) : undefined}
+        {...(drives && !streaming && t.role === 'user' && (!first || t.parentEventId)
+          ? { onEdit: (text: string) => void editTurn(t.id, text) }
+          : {})}
+        {...(label !== undefined ? { label } : {})}
+        {...(drives && eventId ? { onLabel: (next) => labelTurn(eventId, next) } : {})}
+        {...(t.role === 'assistant' && !(streaming && isLast)
+          ? {
+              onRate: (
+                rating: 'up' | 'down' | null,
+                opts?: { note?: string; evalDataset?: string },
+              ) => void rateTurn(t.id, rating, opts),
+              ...(feedback ? { feedback } : {}),
+            }
+          : {})}
+      />
+      {/* A labelled turn is a restore point, so it says so where it is
+          rather than only in the hover-revealed actions. */}
+      {drives && eventId && label !== undefined && !streaming && !isLast && (
+        <TurnCheckpoint label={label} onRestore={() => rewindTo(eventId)} />
+      )}
+    </>
+  );
+});

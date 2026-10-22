@@ -462,6 +462,16 @@ time, flushed on `pagehide`, withdrawn by `saveTurns`/`clearTurns` for that thre
 `forgetIdentityState`), because `JSON.stringify` of the whole thread per token cost more than
 drawing it. The run's end writes at once. `tests/frame-store.test.ts`, `tests/turns-cache.test.ts`.
 
+**A finished turn renders nothing while the next one streams.** Each turn is a memoised
+`TurnRow` (`routes/workbench.tsx`) that takes only values steady through a stream — the shell's
+verbs, the turn's own label, rating and branch — and builds `Message`'s closures itself; `Tool`
+is memoised too, since a finished call keeps its object across the engine's patches. Two things
+keep it holding: **pass a row nothing rebuilt per delta** (`regenerate` is, so only the turn it
+acts on receives it), and **nothing under `Message` may read `useShell()`**, whose value is new
+on every render and would wake every row through the memo. `lib/changes.ts` reads each call once
+per call object (`factsOf`), relying on the same rule from the engine: a changed call is a new
+object. `tests/finished-turns-memo.test.tsx` counts `interleaveTurn` per turn during a stream.
+
 **Streamdown's rendered markup is an interface here.** Assistant messages go through it,
 and the app has opinions about two parts of the result, styled two different ways for one
 reason. Lists it *owns*: `components/chat/response.tsx` overrides `ul`/`ol`/`li`, because the
