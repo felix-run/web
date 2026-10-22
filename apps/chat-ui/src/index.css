@@ -583,6 +583,55 @@ html [data-sonner-toast] {
   transition-duration: 200ms;
 }
 
+/* The workflow canvas (React Flow). Its stylesheet is unlayered, so these are too, and are themed
+   through its own variables rather than fought with `!`. Every value is a token that already
+   changes under `.dark`, which is why the canvas sets no `colorMode` of its own. */
+.react-flow {
+  --xy-background-color: var(--ground);
+  --xy-edge-label-background-color: var(--ground);
+  --xy-edge-label-color: var(--muted-foreground);
+  --xy-controls-box-shadow: none;
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--secondary);
+  --xy-controls-button-color: var(--muted-foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-minimap-background-color: var(--card);
+  --xy-minimap-mask-background-color: color-mix(in oklch, var(--ground) 70%, transparent);
+  --xy-selection-background-color: color-mix(in oklch, var(--ring) 10%, transparent);
+  --xy-selection-border: 1px dotted var(--ring);
+}
+.react-flow__minimap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* A wire's stroke per state (`buildEdges`), by class so that React Flow's own selected and focus
+   rules still reach it: an inline stroke outranked them, and a wire picked for deleting looked
+   like every other. The selected rule is one class heavier than React Flow's, so it wins in any
+   load order. */
+.react-flow__edge.wf-wire-plain .react-flow__edge-path {
+  stroke: var(--muted-foreground);
+  stroke-width: 1.5;
+}
+.react-flow__edge.wf-wire-taken .react-flow__edge-path {
+  stroke: var(--foreground);
+  stroke-width: 2;
+}
+.react-flow__edge.wf-wire-passed .react-flow__edge-path {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.react-flow__edge.wf-wire-dashed .react-flow__edge-path {
+  stroke-dasharray: 4 4;
+}
+.react-flow__edge.wf-wire.selected .react-flow__edge-path,
+.react-flow__edge.wf-wire:focus-visible .react-flow__edge-path {
+  stroke: var(--ring);
+  stroke-width: 3;
+}
+
 /* Motion in this app is all state feedback (sheet entrances, the tool-metrics bar,
    spinners), never narrative, so the reduced-motion answer is to collapse it to an
    instant state change rather than swap in a different animation.

@@ -53,11 +53,23 @@ const MAX_PORTS = 12;
 /** A port row's height, and a node's without ports: `nodeHeight` lays out the column from them. */
 const PORT_ROW = 24;
 const NODE_CHROME = 64;
+/** The `ports unknown` line: a rule, `py-2` and one 16px line. */
+const UNKNOWN_ROW = 33;
+/** A failed step's error: a rule, `py-2` and at most two 16px lines (`line-clamp-2`). */
+const ERROR_ROWS = 49;
 
-/** The height a node draws at, from its ports: the layout stacks a column by it. */
-export function nodeHeight(inputs: number, outputs: number): number {
+/**
+ * The height a node draws at, from its ports: the layout stacks a column by it. `unknown` draws one
+ * line in place of the ports; `error` is room for a failure's message under them.
+ */
+export function nodeHeight(
+  inputs: number,
+  outputs: number,
+  { unknown = false, error = false }: { unknown?: boolean; error?: boolean } = {},
+): number {
   const rows = Math.min(inputs, MAX_PORTS + 1) + Math.min(outputs, MAX_PORTS + 1);
-  return NODE_CHROME + rows * PORT_ROW + (rows ? 12 : 0);
+  const ports = unknown ? UNKNOWN_ROW : rows * PORT_ROW + (rows ? 12 : 0);
+  return NODE_CHROME + ports + (error ? ERROR_ROWS : 0);
 }
 
 const TONE_TEXT: Record<StateTone, string> = {
