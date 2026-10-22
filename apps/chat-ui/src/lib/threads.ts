@@ -17,6 +17,7 @@
  */
 
 import { type ThreadMeta, titleFromText, UNTITLED_THREAD_TITLE } from '@felix/client';
+import { beforeForgetIdentity } from '@/lib/identity-state';
 import type { Turn } from '@/types';
 
 const INDEX_KEY = 'felix.threads';
@@ -43,19 +44,80 @@ export function loadTurns(threadId: string): Turn[] {
 }
 
 /**
- * Persist a thread's transcript blob (cheap; called per streamed token). An
- * empty transcript is not written: a caller holding `[]` may simply not have
- * loaded the thread yet. Emptying a cache on purpose is `clearTurns`.
+ * Persist a thread's transcript blob, now. An empty transcript is not written: a
+ * caller holding `[]` may simply not have loaded the thread yet. Emptying a cache
+ * on purpose is `clearTurns`. A full or blocked storage keeps the last good copy:
+ * the cache is a convenience, and a quota error thrown from an effect would take
+ * the whole shell down with it.
  */
 export function saveTurns(threadId: string, turns: Turn[]): void {
+  pendingTurns.delete(threadId);
   if (turns.length === 0) return;
-  localStorage.setItem(TURNS_PREFIX + threadId, JSON.stringify(turns));
+  try {
+    localStorage.setItem(TURNS_PREFIX + threadId, JSON.stringify(turns));
+  } catch {
+    // Storage full or blocked: the harness's snapshot is still the transcript.
+  }
 }
 
 /** Drop a thread's cached transcript — the thread on screen really is empty now. */
 export function clearTurns(threadId: string): void {
-  localStorage.removeItem(TURNS_PREFIX + threadId);
+  pendingTurns.delete(threadId);
+  try {
+    localStorage.removeItem(TURNS_PREFIX + threadId);
+  } catch {
+    // Storage blocked: there is nothing there to clear.
+  }
 }
+
+/** How long a streaming transcript may go unwritten. */
+export const TURNS_SAVE_MS = 1000;
+/** Each thread's latest transcript, read when the write is due rather than when it was asked for. */
+const pendingTurns = new Map<string, () => readonly Turn[]>();
+let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+let flushOnHide = false;
+
+/**
+ * Persist a thread's transcript within `TURNS_SAVE_MS`, for a caller that changes
+ * it many times a second — a streaming reply. Writing per delta serialised the
+ * whole thread to storage on every token, so a long thread spent more time in
+ * `JSON.stringify` than in rendering. `read` is called at write time, so the copy
+ * written is the newest and never one captured by a stale render; an empty one
+ * clears, like `saveTurns`'s callers do. `saveTurns` and `clearTurns` for the same
+ * thread withdraw a write still waiting, and `pagehide` flushes them all.
+ */
+export function scheduleSaveTurns(threadId: string, read: () => readonly Turn[]): void {
+  pendingTurns.set(threadId, read);
+  if (!flushOnHide && typeof window !== 'undefined') {
+    flushOnHide = true;
+    window.addEventListener('pagehide', flushPendingTurns);
+  }
+  pendingTimer ??= setTimeout(flushPendingTurns, TURNS_SAVE_MS);
+}
+
+/** Write every scheduled transcript now. */
+export function flushPendingTurns(): void {
+  clearTimeout(pendingTimer);
+  pendingTimer = undefined;
+  const due = [...pendingTurns];
+  pendingTurns.clear();
+  for (const [id, read] of due) {
+    const turns = read();
+    if (turns.length) saveTurns(id, [...turns]);
+    else clearTurns(id);
+  }
+}
+
+/**
+ * Withdraw every scheduled write without making it — for forgetting an identity,
+ * where a write landing a second later would put the last person's transcript back.
+ */
+export function cancelPendingTurns(): void {
+  clearTimeout(pendingTimer);
+  pendingTimer = undefined;
+  pendingTurns.clear();
+}
+beforeForgetIdentity(cancelPendingTurns);
 
 /**
  * Upsert a thread's index entry (title + updatedAt). Separate from `saveTurns`

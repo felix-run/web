@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { listApprovals } from '@/api';
 import { setDenials } from '@/components/chat/denial-context';
 import { askAgainText, askableDenials, deniedCalls, matchDenials } from '@/lib/denials';
-import type { ApprovalRequest, Turn } from '@/types';
+import type { ApprovalRequest, ToolCall, Turn } from '@/types';
 
 /** The most decided rows the route returns; a thread's denials are filtered from these. */
 const DENIED_ROWS = 200;
@@ -28,7 +28,11 @@ export function DenialsSync({
   /** Absent while this tab cannot drive the thread: there is no composer to fill. */
   onAskAgain?: (text: string) => void;
 }) {
-  const denied = useMemo(() => deniedCalls(turns).length, [turns]);
+  // The cards a denial is about, held steady while only text streams in: `turns`
+  // changes per delta, and republishing on it woke every mounted tool card.
+  const cards = useSameCalls(useMemo(() => deniedCalls(turns), [turns]));
+  const askable = useSameCalls(useMemo(() => [...askableDenials(turns)], [turns]));
+  const denied = cards.length;
   const [rows, setRows] = useState<{ thread: string; rows: ApprovalRequest[] } | null>(null);
 
   useEffect(() => {
@@ -55,15 +59,25 @@ export function DenialsSync({
 
   useEffect(() => {
     const own = rows?.thread === threadId ? rows.rows : [];
-    const records = matchDenials(turns, own, threadId);
-    const askable = askableDenials(turns);
+    const records = matchDenials(cards, own, threadId);
+    const offered = new Set(askable);
     setDenials({
       recordOf: (tool) => records.get(tool) ?? null,
       askAgainFor: (tool) =>
-        onAskAgain && askable.has(tool) ? () => onAskAgain(askAgainText(tool.name)) : null,
+        onAskAgain && offered.has(tool) ? () => onAskAgain(askAgainText(tool.name)) : null,
     });
-  }, [rows, threadId, turns, onAskAgain]);
+  }, [rows, threadId, cards, askable, onAskAgain]);
   useEffect(() => () => setDenials(null), []);
 
   return null;
+}
+
+/** `calls`, or the previous array when it holds the same calls in the same order. */
+function useSameCalls(calls: ToolCall[]): ToolCall[] {
+  const kept = useRef(calls);
+  const prev = kept.current;
+  if (prev !== calls && (prev.length !== calls.length || prev.some((c, i) => c !== calls[i]))) {
+    kept.current = calls;
+  }
+  return kept.current;
 }

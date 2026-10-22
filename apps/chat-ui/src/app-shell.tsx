@@ -116,6 +116,7 @@ import { forgetDurableRun, recallDurableRun, rememberDurableRun } from '@/lib/du
 import { createEnginePool, type EnginePool } from '@/lib/engine-pool';
 import { toastError, toastProblem } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
+import { frameStoreFor } from '@/lib/frame-store';
 import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness-health';
 import { ImageUploadError, uploadImages } from '@/lib/image-upload';
 import { onLeave } from '@/lib/leave';
@@ -150,6 +151,7 @@ import {
   readPins,
   removeThread,
   saveTurns,
+  scheduleSaveTurns,
   threadLabel,
   writePins,
 } from '@/lib/threads';
@@ -589,7 +591,9 @@ export function AppShell() {
       // The foreground thread is persisted by the effect below; a run in the
       // background has nobody rendering it, so it writes its own cache.
       onTurns: (id, e) => {
-        if (id !== threadIdRef.current) saveTurns(id, e.state.turns);
+        if (id === threadIdRef.current) return;
+        if (e.state.streaming) scheduleSaveTurns(id, () => e.state.turns);
+        else saveTurns(id, e.state.turns);
       },
     });
   }
@@ -609,7 +613,11 @@ export function AppShell() {
     approvals: pendingQueue,
     uiPrompt,
     permissionMode,
-  } = useSyncExternalStore(engine.subscribe, () => engine.state);
+  } = useSyncExternalStore(
+    // Per frame, not per delta: see `frame-store.ts`. `engine.state` is exact for handlers.
+    frameStoreFor(engine).subscribe,
+    frameStoreFor(engine).getSnapshot,
+  );
   // Workspace open by default wherever it fits inline: it is the subject (the
   // folder, and the only door to other threads), and it used to open only once a
   // profile had threads, so a first visit started with the subject hidden.
@@ -820,10 +828,18 @@ export function AppShell() {
     // Empty is written too, as a removal. A refused first message is dropped
     // from the engine, leaving `[]`; skipping that write kept the refused turn
     // and its empty reply in the cache, and a reload put both back on screen.
+    //
+    // Mid-stream the write is deferred (`scheduleSaveTurns`): this runs per delta,
+    // and serialising the whole thread each time cost more than drawing it. The
+    // run's end — `streaming` dropping — writes at once and withdraws it.
+    if (engine.state.streaming) {
+      scheduleSaveTurns(threadId, () => engine.state.turns);
+      return;
+    }
     const current = engine.state.turns;
     if (current.length) saveTurns(threadId, current);
     else clearTurns(threadId);
-  }, [threadId, turns, engine]);
+  }, [threadId, turns, streaming, engine]);
 
   // Canary state for the selected manifest on *this* thread. Two questions, two
   // sources: whether a rollout exists at all comes from the active pointer, and
