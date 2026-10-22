@@ -1643,7 +1643,13 @@ export function createFelixClient(opts: FelixClientOptions) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(decision),
       });
-      if (!res.ok) throw new Error(`decide: ${res.status}`);
+      // The body names the refusal (`approval_expired`, `self_approval_forbidden`, …),
+      // which `describeError` and `isClosedApproval` read; the status alone cannot tell
+      // a decision someone else made from a deadline that passed.
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`decide: ${res.status} ${body.slice(0, 200)}`.trimEnd());
+      }
       return (await res.json()) as ApprovalRequest;
     },
   };

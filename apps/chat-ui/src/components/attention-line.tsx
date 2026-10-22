@@ -2,6 +2,7 @@ import {
   type ApprovalRequest,
   approvalRuleLabel,
   formatCountdown,
+  isClosedApproval,
   msUntilDecision,
   readsBefore,
   relativeTime,
@@ -365,6 +366,7 @@ export function AttentionLine({
               markDecided(a.id);
               refresh();
             }}
+            onClosed={refresh}
           />
         ))}
       </ul>
@@ -505,6 +507,7 @@ function QueueRow({
   threads,
   reason,
   onDecided,
+  onClosed,
 }: {
   approval: ApprovalRequest;
   /** The banner owns it but is not on screen: route to it rather than offer a weaker card. */
@@ -513,6 +516,8 @@ function QueueRow({
   threads: ThreadMeta[];
   reason?: string;
   onDecided: () => void;
+  /** Decided elsewhere or timed out: re-read so the row goes, without claiming this browser decided it. */
+  onClosed: () => void;
 }) {
   const elsewhere = Boolean(a.thread_id) && a.thread_id !== threadId;
   const [expanded, setExpanded] = useState(!elsewhere && !inBanner);
@@ -609,7 +614,12 @@ function QueueRow({
             expiresAt={a.expires_at}
             reason={reason}
             onDecide={async (status) => {
-              await decideApproval(a.id, { status });
+              try {
+                await decideApproval(a.id, { status });
+              } catch (err) {
+                if (isClosedApproval(err)) onClosed();
+                throw err;
+              }
               onDecided();
             }}
           />

@@ -597,6 +597,35 @@ function mountDecided() {
   );
 }
 
+/**
+ * A decision that arrives too late (`felix-run/felix#635`): the harness refuses it
+ * `409 approval_expired` or `approval_already_decided`. Nothing is left to answer, so the
+ * card goes on a fresh read — and not through `markDecided`, which would make it
+ * "Denied by you" when this browser decided nothing.
+ */
+describe('an approval that closed before the decision arrived', () => {
+  it('re-reads the queue so the card goes, rather than offering it again', async () => {
+    let rows: unknown[] = [approval({ thread_id: 'here' })];
+    const fn = vi.fn(async (input: unknown) => {
+      if (String(input).includes('/decide')) {
+        rows = [];
+        return new Response(JSON.stringify({ detail: 'approval_expired' }), { status: 409 });
+      }
+      return new Response(JSON.stringify({ requests: rows }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fn);
+    mount();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve write_file' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe('No approvals or questions waiting.'),
+    );
+    expect(screen.queryByRole('button', { name: 'Approve write_file' })).toBeNull();
+    expect(localStorage.getItem('felix.decidedHere') ?? '').not.toContain('a1');
+  });
+});
+
 describe('an approval this tab just decided', () => {
   it('is not re-offered while the poll still lists it', async () => {
     // The harness has not caught up: every poll still returns the row.

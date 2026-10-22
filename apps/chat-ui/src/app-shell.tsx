@@ -5,6 +5,7 @@ import {
   createChatEngine,
   describeError,
   eventsToTurns,
+  isClosedApproval,
   LeaseRefusedError,
   type ManifestEntry,
   mergeSessions,
@@ -1535,14 +1536,22 @@ export function AppShell() {
   const onDecide = useCallback(
     async (status: 'approved' | 'denied', editedArgs?: Record<string, unknown>) => {
       if (!pending) return;
-      await decideApproval(pending.approvalId, {
-        status,
-        // Only when the operator actually changed something: `edited_args`
-        // installs a substitution that stands for every identical call until
-        // the grant expires, so sending the originals back would quietly create
-        // one nobody asked for.
-        ...(editedArgs ? { edited_args: editedArgs } : {}),
-      });
+      try {
+        await decideApproval(pending.approvalId, {
+          status,
+          // Only when the operator actually changed something: `edited_args`
+          // installs a substitution that stands for every identical call until
+          // the grant expires, so sending the originals back would quietly create
+          // one nobody asked for.
+          ...(editedArgs ? { edited_args: editedArgs } : {}),
+        });
+      } catch (err) {
+        // Decided elsewhere or timed out (`felix-run/felix#635`): nothing is left to
+        // answer, so the banner lets go of it and the toast says why. Not `markDecided`
+        // — this browser did not decide it.
+        if (isClosedApproval(err)) engine.shiftApproval();
+        throw err;
+      }
       // Before the banner lets go of it: the moment `shiftApproval` drops the id
       // from `bannerOwned`, the attention line would otherwise re-offer it from a
       // list up to one poll old.
