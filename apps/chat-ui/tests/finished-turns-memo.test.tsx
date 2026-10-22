@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { TooltipProvider } from '@felix/ui/tooltip';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -54,10 +54,12 @@ afterEach(() => {
 
 describe('finished turns', () => {
   it('are not laid out again while the next reply streams', async () => {
-    const replies = [
-      ['first ', 'answer'],
-      ['second ', 'reply ', 'in ', 'several ', 'chunks'],
-    ];
+    // Twelve chunks: enough to tell a turn redrawn per frame from one redrawn only when
+    // the run starts and ends.
+    const second = 'second reply in a good many small chunks one frame apart each'
+      .split(' ')
+      .map((w, i, all) => (i < all.length - 1 ? `${w} ` : w));
+    const replies = [['first ', 'answer'], second];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: unknown) => {
@@ -87,10 +89,15 @@ describe('finished turns', () => {
 
     laidOut.length = 0;
     await send('two');
-    await screen.findByText('second reply in several chunks', undefined, { timeout: 3000 });
+    await screen.findByText(second.join(''), undefined, { timeout: 5000 });
+    // The run's end is a render of its own, which can land after the last text does.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Stop generating' })).toBeNull(),
+    );
     // The second reply was laid out as it grew…
-    expect(laidOut.filter((c) => c.startsWith('second')).length).toBeGreaterThan(1);
-    // …and the first, finished before it started, at most once (sending re-renders the rows).
-    expect(laidOut.filter((c) => c === 'first answer').length).toBeLessThanOrEqual(1);
+    expect(laidOut.filter((c) => c.startsWith('second')).length).toBeGreaterThan(4);
+    // …and the first, finished before it started, only as the run started and as it ended —
+    // its actions depend on whether a run is live — and not once per chunk.
+    expect(laidOut.filter((c) => c === 'first answer').length).toBeLessThanOrEqual(2);
   });
 });
