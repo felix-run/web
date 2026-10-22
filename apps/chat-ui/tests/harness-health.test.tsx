@@ -168,7 +168,9 @@ describe('the thread index under a 429', () => {
 describe('/harness/skills under a 429', () => {
   it('draws one shell line and no red section boxes', async () => {
     route = (url) =>
-      url.includes('/skill-library') || url.includes('/manifests') ? limited() : undefined;
+      url.includes('/skill-library') || url.includes('/manifests') || url.includes('/api/skills/')
+        ? limited()
+        : undefined;
     mount('/harness/skills');
 
     await waitFor(() => expect(healthLines()).toHaveLength(1));
