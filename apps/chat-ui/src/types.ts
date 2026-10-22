@@ -249,7 +249,7 @@ export interface EvalRun {
   stats?: EvalRunStats;
 }
 
-/** POST /eval/datasets/{name}/run response. */
+/** POST /eval/runs response. */
 export interface EvalRunSummary {
   run_id: string;
   pass_count: number;

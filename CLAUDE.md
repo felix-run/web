@@ -118,9 +118,10 @@ route for the wrong purpose, and it says nothing about payload shapes. It also p
 harness serves that nothing calls — sometimes the direction where a whole unbuilt feature shows up,
 and sometimes just a duplicate. **An uncalled route is not evidence of a missing feature.**
 `POST /eval/runs` sat on that list while `/harness/eval` had started runs all along, through
-`POST /eval/datasets/{name}/run` — a second harness route whose docstring reads "Alias for chat-ui".
-A list built from call sites cannot tell the two apart, so check the harness for an alias before
-building anything it suggests.
+`POST /eval/datasets/{name}/run` — a second route that started the same run. A list built from
+call sites cannot tell the two apart, so check the harness for an alias before building anything
+it suggests. (That one has since flipped: `felix-run/felix#570` deprecated the dataset route, and
+chat-ui now calls `/eval/runs`.)
 
 **`pnpm check-api-drift:live [origin]` asks the other question: not "does the client match the
 contract" but "does it match *this deployment*".** The record is only as current as the last sync,

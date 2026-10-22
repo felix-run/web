@@ -83,6 +83,31 @@ describe('deletePlan', () => {
   });
 });
 
+/**
+ * `POST /eval/datasets/{name}/run` is deprecated (`felix-run/felix#570`); the
+ * run starts on `/eval/runs` with the dataset in the body, which the harness
+ * refuses without (`400 dataset_name_required`).
+ */
+describe('runEvalDataset', () => {
+  it('starts the run on /eval/runs, naming the dataset in the body', async () => {
+    const fetchMock = okJson({ run_id: 'r1', pass_count: 1, fail_count: 0, pass_rate: 1 });
+    vi.stubGlobal('fetch', fetchMock);
+    const { runEvalDataset } = await import('../src/api');
+
+    await runEvalDataset('refunds', 'support');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new URL(url, 'http://x').pathname).toBe('/api/eval/runs');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      dataset_name: 'refunds',
+      candidate_manifest: 'support',
+      deterministic_judge: false,
+    });
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('compareEvalRuns', () => {
   it('names the dataset, the baseline and every candidate', async () => {
     const fetchMock = okJson({

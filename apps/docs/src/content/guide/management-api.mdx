@@ -1311,8 +1311,8 @@ Datasets and scored runs, stored in Postgres.
 | `GET` | `/eval/datasets` | `eval:read` |
 | `GET` | `/eval/datasets/{name}` | `eval:read` |
 | `PUT` | `/eval/datasets/{name}` | `eval:write` |
-| `POST` | `/eval/datasets/{name}/run` | `eval:write` |
 | `POST` | `/eval/runs` | `eval:write` |
+| `POST` | `/eval/datasets/{name}/run` (deprecated) | `eval:write` |
 | `POST` | `/eval/runs/compare` | `eval:write` |
 | `GET` | `/eval/runs?limit=&dataset=` | `eval:read` |
 | `GET` | `/eval/runs/{run_id}` | `eval:read` |
@@ -1398,14 +1398,17 @@ model's.
 Run one:
 
 ```bash
-curl -s -X POST "$BASE_URL/eval/datasets/refunds/run" \
+curl -s -X POST "$BASE_URL/eval/runs" \
   -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
-  -d '{"candidate_manifest":"support","deterministic_judge":true}'
+  -d '{"dataset_name":"refunds","candidate_manifest":"support","deterministic_judge":true}'
 ```
+
+`POST /eval/datasets/{name}/run` starts the same run with the dataset in the path. It is
+deprecated since Felix 0.13 and answers with `Deprecation` and a `Link` to `/eval/runs`.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `dataset_name` | string \| null | `null` | Implied by the path on `/datasets/{name}/run`. |
+| `dataset_name` | string | required | `400 dataset_name_required` without it. Implied by the path on the deprecated route. |
 | `candidate_manifest` | string | required | |
 | `manifest_version` | int \| null | `null` | Pin to a specific version — the only way to eval an inactive one before promoting it. |
 | `deterministic_judge` | bool | `false` | Rubric matching only, no model calls. |
