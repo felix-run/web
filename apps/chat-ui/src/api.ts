@@ -434,6 +434,25 @@ export async function removeGitHubConnection(): Promise<void> {
   if (!res.ok && res.status !== 404) throw await problem(res, 'remove github connection');
 }
 
+/**
+ * GET /github/connections → every stored GitHub connection in the tenant, for an administrator
+ * (`github:admin`). A 403 is the ordinary answer for everyone else.
+ */
+export async function listGitHubConnections(): Promise<GitHubConnection[]> {
+  const res = await apiFetch('/api/github/connections');
+  if (!res.ok) throw await problem(res, 'github connections');
+  return ((await res.json()) as { items?: GitHubConnection[] }).items ?? [];
+}
+
+/**
+ * DELETE /github/connections/{github_user_id} → revoke someone's connection in the tenant
+ * (`github:admin`). A 404 means it was already gone, which is what was asked for.
+ */
+export async function revokeGitHubConnection(githubUserId: number): Promise<void> {
+  const res = await apiFetch(`/api/github/connections/${githubUserId}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 404) throw await problem(res, 'revoke github connection');
+}
+
 export interface GitHubRepo {
   full_name: string;
   private: boolean;

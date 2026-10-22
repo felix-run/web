@@ -56,6 +56,13 @@ const DEFAULT_RECORD = 'scripts/harness-payloads.json';
  */
 export const GUARDED = [
   {
+    // A GitHub connection: the caller's own (`/github/connection`) and, for an administrator,
+    // every one in the tenant (`/github/connections`).
+    type: 'GitHubConnection',
+    file: 'apps/chat-ui/src/api.ts',
+    serializer: 'felix/auth/github_connections.py:_connection_dict',
+  },
+  {
     // The eval run row. Its `scores` list is nested and stays invisible to this
     // check — which is how the client rendered `verdict` and `reasoning` off
     // rows that carried `pass` and `rule` for as long as it did — but the row's
