@@ -37,6 +37,16 @@ and, for an approval, the tool and how long is left. It never contains the call'
 the question itself, because it travels through Apple's, Google's or Mozilla's servers to reach
 you. Those you read in the app, where you decide.
 
+The same **Turn on** also lets an agent send you a **notice**: a short title and message it wrote
+for you, such as a scheduled task reporting what it found (see
+[`spec.notify`](/guide/manifest-reference/#specnotify)). A notice reaches only the devices you turned
+on yourself, never anyone else's, and it does carry text, so it can show on your lock screen. It is
+shown as plain text, and links never reach it: the harness replaces each with `[link removed]`
+before sending. Tapping it opens the conversation it is about — for a scheduled task you wrote, the
+conversation you scheduled it from. A notice whose thread the app cannot open, such as one from a
+job an operator set up, opens the app's home view instead. Two notices are two notifications; a later one does
+not replace an unread one.
+
 To stop them, turn notifications off for the app in the system's settings. The harness forgets
 the device the next time it tries to reach it.
 

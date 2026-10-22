@@ -225,6 +225,17 @@ never the owner's subject. Feedback events name `skill`, `target_version`, `feed
 | `skill_policy_updated` / `skill_policy_deleted` | `PATCH` / `DELETE /skill-library/-/policy` | `ok` | `before`, `after` (each with `source`), `tenant` |
 | `skill_update_notification_queued` | A recorded check queued a `skill.update_available` (principal `skill-upstream`) | `ok` | `skill`, `source`, `version`, `upstream_commit`, `upstream_tree_hash`, `endpoints`, `superseded` (it replaced an undelivered one) |
 
+### Notices
+
+`notify` ([`spec.notify`](/guide/manifest-reference/#specnotify)) writes one row per notice it
+sends. A refused call writes none — a `screened` one included, though it counts against the
+limits. `principal_subj` is the caller — `cron` for a scheduled task's
+firing — and `payload.recipient` is the person notified.
+
+| `event_type` | Emitted | `status` | Payload |
+|---|---|---|---|
+| `notify.sent` | A `notify` call that passed its checks, both limits and screening, after the send was attempted | `ok` (delivered to at least one browser), `undelivered` (push off, no subscription, or every send failed) | `channels` (`["push"]`), `delivered`, `thread_id`, `recipient` — never the title or message, since `audit:read` holders read this log |
+
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
 truncation marker) so a runaway loop cannot flood storage.
 
