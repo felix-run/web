@@ -348,9 +348,9 @@ describe('a run when the operator switches threads', () => {
     expect(releasesOf(net, 'thread-up')).toHaveLength(0);
 
     await act(async () => streamA.finish('saw the image'));
-    await waitFor(() =>
-      expect(loadTurns('thread-up').some((t) => t.content.includes('saw the image'))).toBe(true),
-    );
+    // Cached as the run ends, not on the mid-stream delay: nothing renders this thread, so
+    // the cache is all a return to it has until the snapshot answers.
+    expect(loadTurns('thread-up').some((t) => t.content.includes('saw the image'))).toBe(true);
     await waitFor(() => expect(releasesOf(net, 'thread-up')).toHaveLength(1));
 
     // Nothing asked the harness about the minted thread: it was never sent to.

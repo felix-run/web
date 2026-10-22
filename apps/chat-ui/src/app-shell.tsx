@@ -579,8 +579,11 @@ export function AppShell() {
         runStartsRef.current.set(id, Date.now());
         return sessionLeases.attach(id);
       },
-      onRunEnd: (id) => {
+      onRunEnd: (id, e) => {
         if (id === threadIdRef.current) return;
+        // Its last delta was cached on a delay (`onTurns`, below), and the run ending
+        // changes no turn to write it sooner: write it now, as the foreground does.
+        saveTurns(id, e.state.turns);
         // A run that finished after the operator left: nothing keeps its engine
         // now. Pruned a task later, so the send's own `.then` — which can still
         // rewrite the transcript on a failed outcome — lands before it goes, and
