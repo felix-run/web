@@ -158,6 +158,7 @@ import {
   writePins,
 } from '@/lib/threads';
 import { cn } from '@/lib/utils';
+import { announceViewChange } from '@/lib/view-change';
 import {
   type ClientDiagnostics,
   NO_RUN,
@@ -457,7 +458,9 @@ export function AppShell() {
    * goes back there: from everyday, a look at the ids is not a move to harness view.
    */
   const beforeDebugRef = useRef<ViewLevel>(view === 'debug' ? 'harness' : view);
+  // Every setter says so first, while the old level is still on screen: see `view-change.ts`.
   const chooseView = useCallback((next: ViewLevel) => {
+    announceViewChange();
     setView((v) => {
       if (next === 'debug' && v !== 'debug') beforeDebugRef.current = v;
       return next;
@@ -466,6 +469,7 @@ export function AppShell() {
   // From the level as it stands, not as a render saw it: the composer can hold a
   // command handler from an earlier render, and `/view` from that one stepped twice.
   const stepView = useCallback(() => {
+    announceViewChange();
     setView((v) => {
       const at = VIEW_OPTIONS.findIndex((o) => o.value === v);
       const next = VIEW_OPTIONS[(at + 1) % VIEW_OPTIONS.length]!.value;
@@ -474,6 +478,7 @@ export function AppShell() {
     });
   }, []);
   const toggleDebug = useCallback(() => {
+    announceViewChange();
     setView((v) => {
       if (v === 'debug') return beforeDebugRef.current;
       beforeDebugRef.current = v;
