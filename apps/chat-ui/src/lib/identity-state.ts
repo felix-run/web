@@ -62,6 +62,17 @@ function sweep(storage: Storage, exact: readonly string[], prefixes: readonly st
   for (const key of doomed) storage.removeItem(key);
 }
 
+const beforeForget = new Set<() => void>();
+
+/**
+ * Run `hook` before every forget — for a module holding a write it has not made yet, which
+ * would otherwise land after the sweep and put the last person's state back. Registered by
+ * that module rather than imported from here, so this one still imports nothing.
+ */
+export function beforeForgetIdentity(hook: () => void): void {
+  beforeForget.add(hook);
+}
+
 /**
  * Forget every identity-bound key in both storages, and the local folder the agent was given (its
  * handle in IndexedDB, which a browser that allows the folder on every visit restores silently).
@@ -73,6 +84,7 @@ export function forgetIdentityState({ everything = false }: { everything?: boole
     (cowork) => cowork.clearMount(),
     () => undefined,
   );
+  for (const hook of beforeForget) hook();
   try {
     sweep(
       localStorage,

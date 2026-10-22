@@ -5,6 +5,7 @@ import {
   askableDenials,
   decidedHere,
   denialSubject,
+  deniedCalls,
   matchDenials,
   rememberDecidedHere,
   waitLength,
@@ -61,7 +62,7 @@ describe('matchDenials', () => {
       row({ id: 'first', created_at: 10, decided_at: 11 }),
       row({ id: 'elsewhere', created_at: 5, thread_id: 'other' }),
     ];
-    const m = matchDenials(turns, rows, 'th', () => false);
+    const m = matchDenials(deniedCalls(turns), rows, 'th', () => false);
     expect(m.get(a)?.id).toBe('first');
     expect(m.get(b)?.id).toBe('second');
     expect(m.get(b)?.ttlSeconds).toBe(300);
@@ -70,7 +71,7 @@ describe('matchDenials', () => {
   it('matches nothing for a tool whose counts disagree, rather than guess', () => {
     const a = denied('write_file');
     const m = matchDenials(
-      [turn('assistant', [a])],
+      deniedCalls([turn('assistant', [a])]),
       [row({ id: '1', created_at: 1 }), row({ id: '2', created_at: 2 })],
       'th',
     );
@@ -82,7 +83,7 @@ describe('matchDenials', () => {
     expect(decidedHere('mine')).toBe(true);
     expect(decidedHere('theirs')).toBe(false);
     const a = denied('write_file');
-    const m = matchDenials([turn('assistant', [a])], [row({ id: 'mine' })], 'th');
+    const m = matchDenials(deniedCalls([turn('assistant', [a])]), [row({ id: 'mine' })], 'th');
     expect(m.get(a)?.here).toBe(true);
   });
 });

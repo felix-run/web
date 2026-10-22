@@ -106,15 +106,18 @@ export function deniedCalls(turns: readonly Turn[]): ToolCall[] {
  * one pending row, a row past the read's limit — gets no record at all, and its
  * card says *Denied* without a who or a when. The same refusal `rateTurn` makes
  * when positions disagree: an unattributed denial beats a misattributed one.
+ *
+ * `denied` is the thread's denied calls in order — `deniedCalls(turns)` — taken
+ * rather than the turns, so a caller can hold it steady while text streams in.
  */
 export function matchDenials(
-  turns: readonly Turn[],
+  denied: readonly ToolCall[],
   rows: readonly ApprovalRequest[],
   threadId: string,
   isHere: (id: string) => boolean = decidedHere,
 ): Map<ToolCall, DenialRecord> {
   const cards = new Map<string, ToolCall[]>();
-  for (const tool of deniedCalls(turns)) {
+  for (const tool of denied) {
     const name = bareName(tool.name);
     cards.set(name, [...(cards.get(name) ?? []), tool]);
   }

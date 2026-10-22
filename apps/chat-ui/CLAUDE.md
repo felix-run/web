@@ -445,6 +445,23 @@ which is now a mode of chat-ui rather than a separate surface. See `PRODUCT.md`.
 
 ## Rendering
 
+**A streaming reply is drawn once per frame, not once per delta** (`src/lib/frame-store.ts`).
+The engine emits on every SSE frame, and the reader hands frames over one at a time, so a network
+chunk of twenty deltas rendered the whole shell twenty times in one task, none of them painted. The
+shell subscribes through `frameStoreFor(engine)`: a change that only grows text — a turn's
+`content`, or the text of a reasoning block it already has — waits for the next animation frame (a
+250ms timer while the page is hidden, which gets no frames); **anything else is drawn at once**,
+including any change to the transcript's shape. That second half is load-bearing, not caution:
+the Files tab opens on a write seen *while streaming*, and a thought is timed because it was
+watched being written, so merging a `tool_end` or a new reasoning block into the end of the run
+that followed it in the same chunk broke both (`tests/files-auto-open.test.tsx`,
+`tests/app-stream.test.tsx`). Only what React draws lags; `engine.state` is exact for every
+handler. The transcript cache follows the same rule from the other side: mid-stream the shell's
+write is `scheduleSaveTurns` (`lib/threads.ts`, at most once per `TURNS_SAVE_MS`, read at write
+time, flushed on `pagehide`, withdrawn by `saveTurns`/`clearTurns` for that thread and by
+`forgetIdentityState`), because `JSON.stringify` of the whole thread per token cost more than
+drawing it. The run's end writes at once. `tests/frame-store.test.ts`, `tests/turns-cache.test.ts`.
+
 **Streamdown's rendered markup is an interface here.** Assistant messages go through it,
 and the app has opinions about two parts of the result, styled two different ways for one
 reason. Lists it *owns*: `components/chat/response.tsx` overrides `ul`/`ol`/`li`, because the
