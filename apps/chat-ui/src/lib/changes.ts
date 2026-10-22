@@ -319,6 +319,33 @@ function isGone(path: string, calls: readonly PathCall[]): boolean {
   return landed.kind === 'rename' && !samePath(str(record(landed.tool.input).to_path), path);
 }
 
+interface CallFacts {
+  kind: CallKind;
+  outcome: CallOutcome;
+  issue?: string;
+  label?: string;
+  paths: readonly string[];
+}
+
+/**
+ * What one call did, read once per call object. The scan runs over the whole thread several
+ * times a frame while a reply streams, and classifying every result in it each time was the
+ * cost; a call object is never changed once the engine has handed it out (a changed call is a
+ * new object), so its reading cannot go stale. `null` for a call that touches no path.
+ */
+const factsByCall = new WeakMap<ToolCall, CallFacts | null>();
+function factsOf(tool: ToolCall): CallFacts | null {
+  const known = factsByCall.get(tool);
+  if (known !== undefined) return known;
+  const name = bareName(tool.name);
+  const kind = kindOf(name, record(tool.input));
+  const facts = kind
+    ? { kind, ...outcomeOf(name, tool), paths: collectTouchedPaths(tool.name, tool.input) }
+    : null;
+  factsByCall.set(tool, facts);
+  return facts;
+}
+
 /**
  * Every workspace path this transcript's tool calls named, with what was done
  * to it: paths a write or edit was attempted on first, then the rest, each group
@@ -330,11 +357,10 @@ export function collectChanges(turns: readonly Turn[]): PathChange[] {
   for (const turn of turns) {
     for (const tool of turn.tools ?? []) {
       order++;
-      const name = bareName(tool.name);
-      const kind = kindOf(name, record(tool.input));
-      if (!kind) continue;
-      const { outcome, issue, label } = outcomeOf(name, tool);
-      for (const path of collectTouchedPaths(tool.name, tool.input)) {
+      const facts = factsOf(tool);
+      if (!facts) continue;
+      const { kind, outcome, issue, label } = facts;
+      for (const path of facts.paths) {
         const entry = byPath.get(path) ?? { calls: [], newest: 0 };
         entry.calls.unshift({ kind, outcome, issue, label, tool });
         entry.newest = order;
