@@ -554,7 +554,7 @@ near-black page). The block's own surface is ours: Shiki tries to pass its dark 
 
 
 **AI Elements are vendored, not wired** (`apps/chat-ui/src/components/ai-elements/`, 48
-components, 2026-10-03; `snippet` and `web-preview` were deleted unused on 2026-10-16). They are presentational shadcn components and **do not need the AI
+components, 2026-10-03; `snippet` and `web-preview` were deleted unused on 2026-10-16, and the xyflow `canvas`, `connection`, `edge`, `node`, `panel` and `toolbar` on 2026-10-21 — the workflow canvas is its own, and uses `controls` alone). They are presentational shadcn components and **do not need the AI
 SDK at runtime**: twelve import from `ai`, and only *types* (`UIMessage`, `ToolUIPart`, …), so
 `ai` is a **dev** dependency pinned to `^6` — the version they are written against (v7 renamed
 `LanguageModelUsage` fields). `tests/ai-elements.test.tsx` mocks `ai` with a module that throws,
@@ -599,7 +599,7 @@ something chat-ui already renders with Felix-specific behaviour — message, con
 reasoning, attachments, confirmation (the approval card), context (the meter), model-selector
 (the agent picker), suggestion (starters), queue (the queued-messages tray), test-results (the
 eval run cards), speech-input — or has no Felix data to show (stack-trace, commit, package-info,
-environment-variables, the xyflow canvas). Adopting one of the first group means *replacing* a
+environment-variables). Adopting one of the first group means *replacing* a
 component its tests pin, not filling a gap. `context.tsx` was edited too: its rows printed `$0.00`
 with no model to price against, which reads as free rather than unpriced. `file-tree.tsx` was edited on the way in: folder icons
 were `text-blue-500` (blue is `running` here), and each folder was three Tab stops — its wrapper,

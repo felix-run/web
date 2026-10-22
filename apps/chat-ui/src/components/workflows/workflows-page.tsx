@@ -786,6 +786,7 @@ function WorkflowDetail({ id }: { id: string }) {
           <WorkflowCanvas
             workflow={shown}
             run={view === 'run' ? current : null}
+            fullScreen={expanded}
             selected={selected}
             onSelect={setSelected}
             editing={

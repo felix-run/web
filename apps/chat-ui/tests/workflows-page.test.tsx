@@ -793,6 +793,62 @@ describe('the canvas, full screen and mid-drag', () => {
     ).toBe(false);
     expect(wireFits(wf, text, { node: 'trigger', port: 'issue' })).toBe(false);
   });
+
+  it('draws a wire by class, so a selected one can look selected', async () => {
+    // React Flow marks a selected or focused wire with a stylesheet rule; an inline stroke
+    // outranked it, and the only way to delete a wire is to select it.
+    const { buildEdges } = await import('../src/components/workflows/workflow-canvas');
+    const wf = WORKFLOW as unknown as Parameters<typeof buildEdges>[0];
+    const run = RUN as unknown as NonNullable<Parameters<typeof buildEdges>[1]>;
+    for (const edge of [...buildEdges(wf, null, true), ...buildEdges(wf, run)]) {
+      expect(edge.style?.stroke).toBeUndefined();
+      expect(edge.className).toMatch(/\bwf-wire wf-wire-(plain|taken|passed)\b/);
+    }
+    // The classify step completed with `text`, so the run took that wire.
+    const taken = buildEdges(wf, run).find((e) => e.source === 'classify');
+    expect(taken?.className).toContain('wf-wire-taken');
+  });
+
+  it('keeps a node that draws the same as the very object on the canvas', async () => {
+    // Every two-second poll rebuilds the nodes; handing React Flow fresh ones redrew every step.
+    const { buildNodes, buildEdges, keepNodes, keepEdges } = await import(
+      '../src/components/workflows/workflow-canvas'
+    );
+    const wf = WORKFLOW as unknown as Parameters<typeof buildNodes>[0];
+    const run = RUN as unknown as NonNullable<Parameters<typeof buildNodes>[1]>;
+    const measured = { width: 288, height: 120 };
+    const first = buildNodes(wf, run).map((n) => ({ ...n, measured }));
+    // An identical poll changes nothing at all, down to the array.
+    expect(keepNodes(first, buildNodes(wf, structuredClone(run)))).toBe(first);
+    // A step that moved on is a new node, with what React Flow measured kept; the rest stay.
+    const moved = structuredClone(run);
+    moved.steps.approve = {
+      ...moved.steps.approve,
+      status: 'completed',
+    } as typeof moved.steps.approve;
+    const next = keepNodes(first, buildNodes(wf, moved));
+    const at = (id: string) => next.find((n) => n.id === id);
+    expect(at('approve')).not.toBe(first.find((n) => n.id === 'approve'));
+    expect(at('approve')?.data.status).toBe('completed');
+    expect(at('approve')?.measured).toEqual(measured);
+    expect(at('classify')).toBe(first.find((n) => n.id === 'classify'));
+
+    const edges = buildEdges(wf, run).map((e) => ({ ...e, selected: e.source === 'classify' }));
+    expect(keepEdges(edges, buildEdges(wf, structuredClone(run)))).toBe(edges);
+  });
+
+  it('keeps room for a failure under every step of a run, so a failing step moves nothing', async () => {
+    const { heightsOf } = await import('../src/components/workflows/workflow-canvas');
+    const wf = WORKFLOW as unknown as Parameters<typeof heightsOf>[0];
+    const definition = heightsOf(wf);
+    const run = heightsOf(wf, false, true);
+    expect(run('classify')).toBeGreaterThan(definition('classify'));
+    // The inputs never fail.
+    expect(run('trigger')).toBe(definition('trigger'));
+    // A step whose ports are unknown draws a line in place of them, and is stacked by it.
+    const unknown = { ...wf, ports: { trigger: wf.ports.trigger } } as typeof wf;
+    expect(heightsOf(unknown)('classify')).toBe(64 + 33);
+  });
 });
 
 describe('below 1024', () => {

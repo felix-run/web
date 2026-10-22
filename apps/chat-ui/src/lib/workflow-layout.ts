@@ -2,8 +2,7 @@
  * Where a workflow's nodes go on the canvas, and which of its wires a run actually took.
  *
  * Layered left to right by longest path from the workflow's inputs, each column ordered by the
- * barycentre of its neighbours (two sweeps), as durablefibers' pipeline canvas lays out a DAG:
- * the shapes an authored workflow has — a fan out to a branch's cases, a fan back in — untangle
+ * barycentre of its neighbours (two sweeps). The shapes an authored workflow has — a fan out to a branch's cases, a fan back in — untangle
  * without a full Sugiyama pass or a layout dependency. A position saved with the definition
  * wins; the layout only places what was never placed, and never moves a node when a status
  * changes.
