@@ -657,6 +657,8 @@ export async function runEvalDataset(
   dataset: string,
   candidateManifest: string,
   deterministicJudge = false,
+  /** A stored version to run instead of the active one — how an inactive one is tried first. */
+  manifestVersion?: number,
 ): Promise<EvalRunSummary> {
   return evalFetch<EvalRunSummary>('/runs', {
     method: 'POST',
@@ -664,6 +666,7 @@ export async function runEvalDataset(
     body: JSON.stringify({
       dataset_name: dataset,
       candidate_manifest: candidateManifest,
+      ...(manifestVersion ? { manifest_version: manifestVersion } : {}),
       deterministic_judge: deterministicJudge,
     }),
   });
