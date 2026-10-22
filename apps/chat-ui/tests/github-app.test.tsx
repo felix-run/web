@@ -538,3 +538,68 @@ describe('your GitHub connection', () => {
     await screen.findByRole('button', { name: 'Reconnect GitHub' });
   });
 });
+
+/**
+ * An administrator (`github:admin`) sees every connection in the tenant and can revoke one.
+ * Everyone else is refused the list with a 403, and the page draws nothing for it.
+ */
+describe("everyone's connections", () => {
+  const page = () =>
+    render(
+      <MemoryRouter>
+        <GitHubPage docs="https://docs.example/auth" />
+      </MemoryRouter>,
+    );
+
+  beforeEach(() => {
+    signedInAsOcto();
+    routes['/api/github/connection'] = () => json({ connected: true, connection: CONNECTION });
+    routes['/api/github/repos'] = () => json(REPOS);
+  });
+
+  it('lists the tenant’s connections for an administrator, marking yours', async () => {
+    routes['/api/github/connections'] = () =>
+      json({
+        items: [
+          CONNECTION,
+          { ...CONNECTION, github_user_id: 7, github_login: 'hubot', status: 'revoked' },
+        ],
+      });
+    page();
+    const list = await screen.findByRole('list', { name: 'GitHub connections in this tenant' });
+    const rows = [...list.querySelectorAll('li')];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining('octo'),
+      expect.stringContaining('hubot'),
+    ]);
+    expect(rows[0]?.textContent).toContain('you');
+    expect(rows[1]?.textContent).toContain('stopped working');
+  });
+
+  it('revokes one after a confirmation, by its GitHub user id', async () => {
+    const deleted: string[] = [];
+    routes['/api/github/connections'] = () =>
+      json({ items: [CONNECTION, { ...CONNECTION, github_user_id: 7, github_login: 'hubot' }] });
+    routes['/api/github/connections/7'] = (init) => {
+      deleted.push(init?.method ?? 'GET');
+      return new Response(null, { status: 204 });
+    };
+    page();
+    const list = await screen.findByRole('list', { name: 'GitHub connections in this tenant' });
+    const hubot = [...list.querySelectorAll('li')].find((r) => r.textContent?.includes('hubot'));
+    fireEvent.click(hubot?.querySelector('button') as HTMLButtonElement);
+    expect(deleted).toEqual([]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke hubot' }));
+    await waitFor(() => expect(deleted).toEqual(['DELETE']));
+    await waitFor(() => expect(screen.queryByText('hubot')).toBeNull());
+  });
+
+  it('draws nothing for someone the harness refuses the list', async () => {
+    routes['/api/github/connections'] = () => json({ detail: 'missing_scope:github:admin' }, 403);
+    page();
+    await screen.findByRole('button', { name: /Revoke GitHub access/ });
+    await act(async () => {});
+    expect(screen.queryByText("Everyone's connections")).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});

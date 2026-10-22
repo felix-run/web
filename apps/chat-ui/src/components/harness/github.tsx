@@ -25,14 +25,18 @@ import { ExternalLinkIcon, GithubIcon, Loader2Icon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   type AuthMethods,
+  type GitHubConnection,
   type GitHubConnectionState,
   type GitHubRepo,
   type GitHubRepos,
   getAuthMethods,
   getGitHubConnection,
   githubAuthorizeUrl,
+  listGitHubConnections,
   listMyRepos,
+  RepoRouteError,
   removeGitHubConnection,
+  revokeGitHubConnection,
 } from '@/api';
 import { DeviceLoginBody, GitHubMark } from '@/components/auth/github-sign-in';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -191,6 +195,9 @@ export function GitHubPage({ docs }: { docs: string }) {
           </PageSection>
         )}
         {connection?.connected && repos && <Repositories repos={repos} />}
+        {/* A person's, not the shared key's: the key names no one, and this page asks
+            nothing under it. */}
+        {signedIn && <TenantConnections own={connection?.connection?.github_user_id ?? null} />}
       </PanelBody>
     </Panel>
   );
@@ -304,6 +311,108 @@ function Repositories({ repos }: { repos: GitHubRepos }) {
  * chip does the same on a tenant change. Signing in again as a GitHub account of the same tenant
  * only stores the new session, and the page re-reads the connection it made.
  */
+/**
+ * Every GitHub connection in the tenant, for an administrator (`github:admin`): who Felix holds a
+ * token for, and the one change to make — revoke someone's. Drawn only when the list can be
+ * read; a 403 is the answer for everyone else and says nothing worth showing them.
+ */
+function TenantConnections({ own }: { own: number | null }) {
+  const [rows, setRows] = useState<GitHubConnection[] | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [revokeError, setRevokeError] = useState<{ err: unknown; login: string } | null>(null);
+
+  const load = useCallback(() => {
+    setError(null);
+    listGitHubConnections().then(setRows, (err: unknown) => {
+      // Not an administrator, or a harness without the route: nothing to show.
+      if (err instanceof RepoRouteError && (err.status === 403 || err.status === 404)) {
+        setHidden(true);
+      } else {
+        setError(err);
+      }
+    });
+  }, []);
+  useEffect(load, [load]);
+
+  if (hidden) return null;
+  if (error) {
+    return (
+      <PageSection title="Everyone's connections">
+        <ErrorNotice
+          error={error}
+          doing="list the tenant's GitHub connections"
+          action={
+            <Button size="sm" variant="outline" className="h-7 self-start text-xs" onClick={load}>
+              Try again
+            </Button>
+          }
+        />
+      </PageSection>
+    );
+  }
+  if (rows === null) return null;
+
+  const revoke = (row: GitHubConnection) => {
+    setRevokeError(null);
+    return revokeGitHubConnection(row.github_user_id)
+      .then(() =>
+        setRows((cur) => (cur ?? []).filter((r) => r.github_user_id !== row.github_user_id)),
+      )
+      .catch((err: unknown) => setRevokeError({ err, login: row.github_login }));
+  };
+
+  return (
+    <PageSection title="Everyone's connections" meta={plural(rows.length, 'connection')}>
+      <p className="mb-2 max-w-prose text-sm text-muted-foreground">
+        Every GitHub account Felix holds a token for in this tenant. Revoking one makes that person
+        sign in with GitHub again before Felix can open a repository as them.
+      </p>
+      {revokeError ? (
+        <ErrorNotice
+          error={revokeError.err}
+          doing={`revoke ${revokeError.login}'s connection`}
+          className="mb-2"
+        />
+      ) : null}
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Felix holds no GitHub connections here.</p>
+      ) : (
+        <ul aria-label="GitHub connections in this tenant" className="text-sm">
+          {rows.map((r) => (
+            <li
+              key={r.github_user_id}
+              data-slot="github-connection"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 py-1.5 first:border-t"
+            >
+              <span className="font-mono font-medium">{r.github_login}</span>
+              {r.github_user_id === own && (
+                <span className="text-xs text-muted-foreground">you</span>
+              )}
+              {r.status === 'revoked' && (
+                <span className="text-xs font-medium text-state-blocked">stopped working</span>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">
+                connected {new Date(r.created_at).toLocaleDateString()}
+              </span>
+              <ConfirmButton
+                size="xs"
+                variant="ghost"
+                destructive
+                question={`Felix forgets ${r.github_login}'s GitHub token.`}
+                confirmLabel={`Revoke ${r.github_login}`}
+                onConfirm={() => revoke(r)}
+              >
+                Revoke
+              </ConfirmButton>
+            </li>
+          ))}
+        </ul>
+      )}
+    </PageSection>
+  );
+}
+
 function SignInWithGitHub({ label }: { label: string }) {
   const [methods, setMethods] = useState<AuthMethods | null | undefined>(undefined);
   useEffect(() => {
