@@ -485,6 +485,12 @@ function stubHarness({
   const spy = vi.fn(async (input: unknown) => {
     const url = String(input);
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+    if (url.includes('/api/audit/export')) {
+      return new Response(`${JSON.stringify(wire(events[0] as AuditEvent))}\n`, {
+        status: 200,
+        headers: { 'content-disposition': 'attachment; filename="audit-1-2.jsonl"' },
+      });
+    }
     if (url.includes('/api/audit')) {
       const windowed = new URL(url, 'http://x').searchParams.has('since');
       const rows = (windowed ? events : week).map(wire);
@@ -1025,5 +1031,36 @@ describe('a thread whose only miss was a denial', () => {
     expect(screen.queryByText('Any denial or none')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Failures only' }));
     expect(await screen.findByText('No thread in this window had a failure.')).toBeTruthy();
+  });
+});
+
+/**
+ * The page reads at most 2,000 events; the file is every one in the window
+ * (`GET /audit/export`), fetched with the page's credentials and handed over as a download.
+ */
+describe('exporting the window', () => {
+  it('asks for the window the page shows, ending now, and saves the harness’s file', async () => {
+    const user = userEvent.setup();
+    const spy = stubHarness({ events: [ev({ id: 'e1' })] });
+    const saved: string[] = [];
+    const made = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+    const revoked = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      saved.push(this.download);
+    });
+    mount('/harness/activity?since=24h');
+    const button = await screen.findByRole('button', { name: /Export/ });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    await user.click(button);
+    await waitFor(() => expect(saved).toEqual(['audit-1-2.jsonl']));
+    const asked = spy.mock.calls.map((c) => String(c[0])).find((u) => u.includes('/audit/export'));
+    const q = new URL(asked as string, 'http://x').searchParams;
+    expect(Number(q.get('since'))).toBeGreaterThan(0);
+    expect(Number(q.get('until'))).toBeGreaterThanOrEqual(Number(q.get('since')));
+    click.mockRestore();
+    made.mockRestore();
+    revoked.mockRestore();
   });
 });

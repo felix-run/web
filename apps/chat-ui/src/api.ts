@@ -136,6 +136,7 @@ export const decideApproval = felix.decideApproval.bind(felix);
 // same questions. Bound here so every `@/api` import site is unchanged.
 export const listAudit = felix.listAudit.bind(felix);
 export const listAuditWindow = felix.listAuditWindow.bind(felix);
+export const exportAudit = felix.exportAudit.bind(felix);
 export const getToolMetrics = felix.getToolMetrics.bind(felix);
 export const listUsage = felix.listUsage.bind(felix);
 export const getUsageSummary = felix.getUsageSummary.bind(felix);

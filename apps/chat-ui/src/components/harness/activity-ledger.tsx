@@ -1,10 +1,11 @@
 import { Button } from '@felix/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
-import { ActivityIcon, ChevronRightIcon } from 'lucide-react';
+import { ActivityIcon, ChevronRightIcon, DownloadIcon } from 'lucide-react';
 import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { getUsageSummary, listAuditWindow, listUsage, listUsageByThread } from '@/api';
+import { toast } from 'sonner';
+import { exportAudit, getUsageSummary, listAuditWindow, listUsage, listUsageByThread } from '@/api';
 import {
   ActivityRow,
   byModel,
@@ -26,6 +27,7 @@ import { PageEmpty, PageHeader, PanelBody, plural } from '@/components/harness/p
 import { relTime, SectionBody, tsToMs, withAge } from '@/components/inspector/primitives';
 import { useWeekFailures } from '@/hooks/use-recent-audit';
 import { usePoll } from '@/hooks/usePoll';
+import { toastError } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
 import {
   buildLedger,
@@ -53,6 +55,7 @@ import {
   type Worst,
   writeLastVisit,
 } from '@/lib/ledger';
+import { saveText } from '@/lib/save-text';
 import { threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/shell-context';
@@ -264,18 +267,21 @@ export function ActivityLedger({ docs }: { docs?: string }) {
         value={data ? withAge(failedLabel ?? account, error ? lastOkAt : null) : undefined}
         valueTone={failedLabel ? 'failed' : 'default'}
         controls={
-          <Select value={win} onValueChange={(v) => setWin(v as LedgerWindow)}>
-            <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Window">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent size="sm">
-              {(Object.keys(WINDOW_LABEL) as LedgerWindow[]).map((w) => (
-                <SelectItem key={w} value={w}>
-                  {WINDOW_LABEL[w]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <>
+            <ExportWindow since={data?.since} truncated={data?.audit.truncated ?? false} />
+            <Select value={win} onValueChange={(v) => setWin(v as LedgerWindow)}>
+              <SelectTrigger size="sm" className="w-auto gap-1" aria-label="Window">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent size="sm">
+                {(Object.keys(WINDOW_LABEL) as LedgerWindow[]).map((w) => (
+                  <SelectItem key={w} value={w}>
+                    {WINDOW_LABEL[w]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
         }
       />
       <PanelBody>
@@ -1265,4 +1271,51 @@ export function repricedRoutes(rows: UsageEvent[]): { model: string; wire: strin
     seen.set(`${r.model_id}\u0000${r.wire_model_id}`, { model: r.model_id, wire: r.wire_model_id });
   }
   return [...seen.values()];
+}
+
+/**
+ * The window's audit events as a file (`GET /audit/export`): every one, not the 2,000 this page
+ * reads, which is the case where it matters — a window this page could only show part of. The
+ * window ends when the button is pressed, so the file is a fixed range whatever lands after.
+ * A file the harness could not finish says so, in the toast and in its own last line.
+ */
+function ExportWindow({ since, truncated }: { since: number | undefined; truncated: boolean }) {
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    if (since === undefined) return;
+    setBusy(true);
+    try {
+      const out = await exportAudit({ since, until: Date.now() });
+      saveText(out.text, out.filename);
+      if (out.complete) {
+        toast.success(`Exported ${plural(out.events, 'audit event')}.`);
+      } else {
+        toast.warning(
+          `The export stopped part way: ${plural(out.events, 'event')} saved, and the file ends with the harness’s error line. Export again to get the rest.`,
+          { duration: Number.POSITIVE_INFINITY },
+        );
+      }
+    } catch (err) {
+      toastError(err, 'export the audit log', { retry: () => void run() });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="gap-1"
+      disabled={since === undefined || busy}
+      onClick={() => void run()}
+      title={
+        truncated
+          ? 'This window holds more events than the page shows. The export has every one.'
+          : 'Every audit event in this window, as JSON lines.'
+      }
+    >
+      <DownloadIcon className="size-3.5" />
+      {busy ? 'Exporting…' : 'Export'}
+    </Button>
+  );
 }
