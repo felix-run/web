@@ -232,6 +232,11 @@ export interface EvalRun {
   id: string;
   dataset_name: string;
   candidate_manifest: string;
+  /**
+   * The stored version the run was pinned to; null for whichever was active when it ran. The
+   * only record of which build a score belongs to once the active pointer moves.
+   */
+  manifest_version?: number | null;
   started_at: number;
   finished_at: number | null;
   status: 'in_progress' | 'completed' | 'failed';

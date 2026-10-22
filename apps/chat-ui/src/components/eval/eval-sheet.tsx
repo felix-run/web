@@ -5,10 +5,19 @@ import { Label } from '@felix/ui/label';
 import { Skeleton } from '@felix/ui/skeleton';
 import { Textarea } from '@felix/ui/textarea';
 import { ChevronRightIcon, FlaskConicalIcon, PlayIcon, PlusIcon } from 'lucide-react';
-import { type ComponentProps, type ReactNode, useCallback, useEffect, useState } from 'react';
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { Link, useSearchParams } from 'react-router';
 import {
   addEvalItem,
   compareEvalRuns,
+  getEvalRun,
   listEvalDatasets,
   listEvalItems,
   listEvalRuns,
@@ -78,6 +87,30 @@ export function EvalSheet({
   // reload keeps the datasets it last had, under a line saying how old they are.
   const [listError, setListError] = useState<unknown>(null);
   const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+
+  // `?run=<id>` opens one run: its dataset is selected and the run is drawn there even
+  // when it is older than the newest few the list reads.
+  const [params] = useSearchParams();
+  const runParam = params.get('run');
+  const [linked, setLinked] = useState<EvalRun | null>(null);
+  useEffect(() => {
+    if (!runParam) {
+      setLinked(null);
+      return;
+    }
+    let live = true;
+    getEvalRun(runParam).then(
+      (r) => {
+        if (!live) return;
+        setLinked(r);
+        setSelected(r.dataset_name);
+      },
+      (err: unknown) => live && setFailure({ err, doing: `open the eval run ${runParam}` }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [runParam]);
 
   const refreshDatasets = useCallback(async () => {
     try {
@@ -265,6 +298,7 @@ export function EvalSheet({
             manifest={manifest}
             manifestOptions={manifestOptions}
             onError={reportFailure}
+            linked={linked?.dataset_name === selected ? linked : null}
           />
         ) : null}
       </PanelBody>
@@ -277,13 +311,19 @@ function DatasetPanel({
   manifest,
   manifestOptions,
   onError,
+  linked = null,
 }: {
   dataset: string;
   manifest: string;
   manifestOptions: string[];
   onError: (err: unknown, doing: string) => void;
+  /** The run `?run=` names, when it is on this dataset. */
+  linked?: EvalRun | null;
 }) {
   const [addingItem, setAddingItem] = useState(false);
+  // Blank runs whatever is active; a number runs that stored version, which is how a
+  // version is tried before it is activated.
+  const [version, setVersion] = useState('');
   const [items, setItems] = useState<EvalDatasetItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
   const [running, setRunning] = useState(false);
@@ -310,13 +350,17 @@ function DatasetPanel({
     void refresh();
   }, [refresh]);
 
+  const versionN = Number(version);
+  const versionValid = version.trim() === '' || (Number.isInteger(versionN) && versionN > 0);
+  const pinned = version.trim() && versionValid ? versionN : undefined;
+
   async function run() {
     setRunning(true);
     try {
-      await runEvalDataset(dataset, manifest);
+      await runEvalDataset(dataset, manifest, false, pinned);
       await refresh();
     } catch (err) {
-      onError(err, `run ${dataset} against ${manifest}`);
+      onError(err, `run ${dataset} against ${manifest}${pinned ? ` v${pinned}` : ''}`);
     } finally {
       setRunning(false);
     }
@@ -362,15 +406,26 @@ function DatasetPanel({
             >
               {comparing ? 'Hide compare' : 'Compare…'}
             </Button>
+            <Input
+              aria-label={`Version of ${manifest} to run`}
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              inputMode="numeric"
+              placeholder="active"
+              aria-invalid={versionValid ? undefined : true}
+              title="A stored version to run instead of the active one"
+              size="sm"
+              className="w-20 font-mono placeholder:font-sans"
+            />
             <Button
               size="sm"
               className="gap-1"
-              disabled={running || items.length === 0}
+              disabled={running || items.length === 0 || !versionValid}
               onClick={run}
               title={items.length === 0 ? undefined : `Replay against ${manifest}`}
             >
               <PlayIcon className="size-3.5" />
-              {running ? 'Running…' : `Run vs ${manifest}`}
+              {running ? 'Running…' : `Run vs ${manifest}${pinned ? ` v${pinned}` : ''}`}
             </Button>
           </>
         }
@@ -399,10 +454,14 @@ function DatasetPanel({
           />
         )}
 
-        {runs.length > 0 && (
+        {(runs.length > 0 || linked) && (
           <ol>
+            {/* A linked run older than the newest the list reads is still the one asked for. */}
+            {linked && !runs.some((r) => r.id === linked.id) && (
+              <RunCard key={linked.id} run={linked} linked />
+            )}
             {runs.map((r) => (
-              <RunCard key={r.id} run={r} />
+              <RunCard key={r.id} run={r} linked={r.id === linked?.id} />
             ))}
           </ol>
         )}
@@ -882,14 +941,27 @@ function duration(ms: number): string {
   return `${m}m ${Math.round((ms % 60_000) / 1000)}s`;
 }
 
-function RunCard({ run }: { run: EvalRun }) {
+function RunCard({ run, linked = false }: { run: EvalRun; linked?: boolean }) {
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (linked) ref.current?.scrollIntoView?.({ block: 'start' });
+  }, [linked]);
   const total = run.pass_count + run.fail_count;
   const rate = total ? Math.round((run.pass_count / total) * 100) : 0;
   const t = runTotals(run);
   const at = new Date(run.started_at);
   const startedAt = Number.isFinite(at.getTime()) ? at : null;
   return (
-    <li className="border-b border-border/60 py-2.5 text-sm first:border-t">
+    <li
+      ref={ref}
+      data-slot="eval-run"
+      aria-current={linked ? 'true' : undefined}
+      className={cn(
+        'border-b border-border/60 py-2.5 text-sm first:border-t',
+        // The run the address names, marked without a box: a rule at its edge.
+        linked && '-mx-2 border-l-2 border-l-primary px-2',
+      )}
+    >
       <div className="flex flex-wrap items-center gap-2">
         {/*
           Read against the state palette rather than by swapping two variants.
@@ -910,7 +982,11 @@ function RunCard({ run }: { run: EvalRun }) {
         >
           {run.pass_count}/{total} pass · {rate}%
         </span>
-        <span className="font-mono text-xs text-muted-foreground">{run.candidate_manifest}</span>
+        <span className="font-mono text-xs text-muted-foreground">
+          {run.candidate_manifest}
+          {/* Null ran whatever was active then — which may not be what is active now. */}
+          {run.manifest_version != null ? ` v${run.manifest_version}` : ''}
+        </span>
         <span className="ml-auto text-xs text-muted-foreground">{run.status}</span>
       </div>
       {/*
@@ -926,11 +1002,18 @@ function RunCard({ run }: { run: EvalRun }) {
           `started_at` is required on the wire and a run without one is still a
           run worth listing.
         */}
-        {startedAt ? (
-          <time dateTime={startedAt.toISOString()}>{startedAt.toLocaleString()}</time>
-        ) : (
-          'start time unreported'
-        )}
+        {/* The run's own address, so a result can be handed to someone. */}
+        <Link
+          to={`?run=${encodeURIComponent(run.id)}`}
+          className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+          title="A link to this run"
+        >
+          {startedAt ? (
+            <time dateTime={startedAt.toISOString()}>{startedAt.toLocaleString()}</time>
+          ) : (
+            'start time unreported'
+          )}
+        </Link>
         {t.wallMs == null ? ' · still running' : ` · ${duration(t.wallMs)}`}
         {t.toolCalls > 0 ? ` · ${t.toolCalls} tool ${t.toolCalls === 1 ? 'call' : 'calls'}` : ''}
         {t.toolErrors > 0

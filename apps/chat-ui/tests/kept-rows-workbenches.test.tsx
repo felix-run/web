@@ -1,5 +1,6 @@
 /** @vitest-environment happy-dom */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -86,7 +87,11 @@ describe('Eval', () => {
       ...api,
     }));
     const { EvalSheet } = await import('../src/components/eval/eval-sheet');
-    render(<EvalSheet manifest="quick" />);
+    render(
+      <MemoryRouter>
+        <EvalSheet manifest="quick" />
+      </MemoryRouter>,
+    );
   }
 
   it('reads a dataset once, not once per keystroke elsewhere on the page', async () => {

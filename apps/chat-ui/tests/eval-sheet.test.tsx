@@ -1,5 +1,6 @@
 /** @vitest-environment happy-dom */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -34,7 +35,11 @@ async function sheet(over: { items?: unknown[]; runs?: unknown[] } = {}) {
     listTenantManifests: vi.fn().mockResolvedValue([]),
   }));
   const { EvalSheet } = await import('../src/components/eval/eval-sheet');
-  render(<EvalSheet manifest="quick" />);
+  render(
+    <MemoryRouter>
+      <EvalSheet manifest="quick" />
+    </MemoryRouter>,
+  );
 }
 
 describe('an empty dataset says how to proceed', () => {
@@ -397,7 +402,11 @@ describe('the add form writes the keys the scorer reads', () => {
       listTenantManifests: vi.fn().mockResolvedValue([]),
     }));
     const { EvalSheet } = await import('../src/components/eval/eval-sheet');
-    render(<EvalSheet manifest="quick" />);
+    render(
+      <MemoryRouter>
+        <EvalSheet manifest="quick" />
+      </MemoryRouter>,
+    );
 
     // Behind the Items section's toggle now, as every create is.
     fireEvent.click(await screen.findByRole('button', { name: 'Add item', expanded: false }));
@@ -444,7 +453,11 @@ describe('the dataset picker cannot push the panel off the sheet', () => {
       listTenantManifests: vi.fn().mockResolvedValue([]),
     }));
     const { EvalSheet } = await import('../src/components/eval/eval-sheet');
-    render(<EvalSheet manifest="quick" />);
+    render(
+      <MemoryRouter>
+        <EvalSheet manifest="quick" />
+      </MemoryRouter>,
+    );
 
     const first = await waitFor(() => screen.getByRole('button', { name: 'set-0' }));
     const picker = first.parentElement;

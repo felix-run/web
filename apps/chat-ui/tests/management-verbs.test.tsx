@@ -108,6 +108,23 @@ describe('runEvalDataset', () => {
   });
 });
 
+describe('runEvalDataset with a version', () => {
+  it('pins the run to a stored version only when one is named', async () => {
+    const fetchMock = okJson({ run_id: 'r1', pass_count: 1, fail_count: 0, pass_rate: 1 });
+    vi.stubGlobal('fetch', fetchMock);
+    const { runEvalDataset } = await import('../src/api');
+
+    await runEvalDataset('refunds', 'support', false, 3);
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))).toEqual({
+      dataset_name: 'refunds',
+      candidate_manifest: 'support',
+      manifest_version: 3,
+      deterministic_judge: false,
+    });
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('compareEvalRuns', () => {
   it('names the dataset, the baseline and every candidate', async () => {
     const fetchMock = okJson({
