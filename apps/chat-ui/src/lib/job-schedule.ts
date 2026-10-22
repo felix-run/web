@@ -1,15 +1,13 @@
 /**
  * A job's `schedule`, read the way the harness reads it (`felix/jobs/schedule.py`).
  *
- * The page used to say an empty schedule was "manual" and "never runs on its own". The harness
- * runs it every 60 seconds — the default an unscheduled job has always had — so a job labelled
- * manual fired about 1,440 times a day while the page said it was idle. This is the grammar the
+ * An empty schedule is **manual only** (`felix-run/felix#629`): the job never fires on its own,
+ * only through Run now. Through Felix 0.13.1 it meant "every 60 seconds", and this page said so
+ * — correctly then, and wrongly from the release that changed it. This is the grammar the
  * harness accepts, ported field for field, so the badge, the form's preview of the next firing
  * and its validation all say what the harness will actually do. It refuses what the harness
  * refuses rather than guessing, as the harness does.
  */
-
-export const DEFAULT_INTERVAL_MS = 60_000;
 
 /** What the harness says when a schedule is outside its grammar. */
 export const SCHEDULE_GRAMMAR =
@@ -52,7 +50,10 @@ interface Cron {
   weekdaysRestricted: boolean;
 }
 
-export type Schedule = { kind: 'interval'; ms: number } | { kind: 'cron'; cron: Cron };
+export type Schedule =
+  | { kind: 'manual' }
+  | { kind: 'interval'; ms: number }
+  | { kind: 'cron'; cron: Cron };
 
 function dayMatches(c: Cron, d: Date): boolean {
   const inDays = c.days.has(d.getUTCDate());
@@ -144,7 +145,7 @@ function parseCron(text: string): Cron {
 /** Parse as the harness does; throws `ScheduleError` for anything it would refuse. */
 export function parseSchedule(schedule: string): Schedule {
   const s = (schedule ?? '').trim().toLowerCase();
-  if (!s) return { kind: 'interval', ms: DEFAULT_INTERVAL_MS };
+  if (!s) return { kind: 'manual' };
   if (/^\d+$/.test(s)) return { kind: 'interval', ms: Math.max(Number(s), 1) * 1_000 };
   const m = INTERVAL.exec(s);
   if (m) {
@@ -156,8 +157,9 @@ export function parseSchedule(schedule: string): Schedule {
   return { kind: 'cron', cron: parseCron(MACROS[s] ?? s) };
 }
 
-/** When a parsed schedule next fires after `fromMs`. */
-export function nextAfter(schedule: Schedule, fromMs: number): number {
+/** When a parsed schedule next fires after `fromMs`; null for a manual-only one, which never does. */
+export function nextAfter(schedule: Schedule, fromMs: number): number | null {
+  if (schedule.kind === 'manual') return null;
   if (schedule.kind === 'interval') return fromMs + schedule.ms;
   // Unreachable for a cron that passed `parseCron`, which refuses one that never fires.
   return cronNextAfter(schedule.cron, fromMs) ?? Number.NaN;
@@ -170,14 +172,15 @@ function intervalText(ms: number): string {
 }
 
 /**
- * The schedule as a row's badge says it. An interval is said as one (`every 1m`) — the empty
- * schedule above all, which is what the old `manual` stood for. A macro or cron is the
- * harness's own text, quoted back; anything the harness would not parse is quoted too, since
- * the row should show what is stored rather than a guess at what was meant.
+ * The schedule as a row's badge says it. An empty one is `manual`; an interval is said as one
+ * (`every 1m`). A macro or cron is the harness's own text, quoted back; anything the harness
+ * would not parse is quoted too, since the row should show what is stored rather than a guess
+ * at what was meant.
  */
 export function scheduleLabel(schedule: string): string {
   try {
     const parsed = parseSchedule(schedule);
+    if (parsed.kind === 'manual') return 'manual';
     if (parsed.kind === 'interval') return `every ${intervalText(parsed.ms)}`;
   } catch {
     // Fall through: quote what is stored.

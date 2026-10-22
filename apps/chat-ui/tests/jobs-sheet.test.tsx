@@ -206,14 +206,16 @@ describe('running a job now', () => {
 });
 
 /**
- * The harness runs an empty schedule every 60 seconds. The page called it "manual" and said
- * it never ran on its own, while a job so labelled fired about 1,440 times a day.
+ * An empty schedule is manual only (`felix-run/felix#629`). Through Felix 0.13.1 it meant every
+ * 60 seconds, and the page said so; from the release that changed it, it was saying a job ran
+ * 1,440 times a day that never ran on its own.
  */
 describe('a schedule says what the harness will do', () => {
-  it('labels an empty schedule by what it does, never "manual"', async () => {
-    await sheet([job({ schedule: '' })]);
-    await waitFor(() => expect(screen.getByText('every 1m')).toBeTruthy());
-    expect(screen.queryByText('manual')).toBeNull();
+  it('labels an empty schedule manual, and gives it no next run', async () => {
+    await sheet([job({ schedule: '', next_run_at: null })]);
+    await waitFor(() => expect(screen.getByText('manual')).toBeTruthy());
+    expect(screen.queryByText('every 1m')).toBeNull();
+    expect(screen.queryByText('first run at the next sweep')).toBeNull();
   });
 
   it('says a job the scheduler has not claimed yet runs at the next sweep', async () => {
@@ -236,7 +238,7 @@ describe('a schedule says what the harness will do', () => {
     );
     expect(screen.getByText(/Not a schedule/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '' } });
-    expect(screen.getByText(/First run at the next sweep.*then every 1m/)).toBeTruthy();
+    expect(screen.getByText(/Manual only: it runs when you press Run now/)).toBeTruthy();
     expect(upsertJob).not.toHaveBeenCalled();
   });
 
@@ -455,7 +457,7 @@ describe('schedules the operator should notice', () => {
   it('says what an every-minute schedule costs in turns, before it is created', async () => {
     await sheet([]);
     await openForm();
-    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: 'every:1m' } });
     expect(screen.getByText(/every 1m — about 1,440 agent turns a day/)).toBeTruthy();
   });
 
