@@ -92,11 +92,6 @@ export const felix = createFelixClient({
 
 export const listManifestEntries = felix.listManifestEntries.bind(felix);
 export const streamChat = felix.streamChat.bind(felix);
-export const resumeStream = felix.resumeStream.bind(felix);
-export const postToolResult = felix.postToolResult.bind(felix);
-export const startChat = felix.startChat.bind(felix);
-export const getDurableRun = felix.getDurableRun.bind(felix);
-export const pollDurableRun = felix.pollDurableRun.bind(felix);
 export const steerChat = felix.steerChat.bind(felix);
 export const workspaceEdited = felix.workspaceEdited.bind(felix);
 export const workspaceTree = felix.workspaceTree.bind(felix);
@@ -193,10 +188,8 @@ export const acceptSkillFeedback = felix.acceptSkillFeedback.bind(felix);
 export const rejectSkillFeedback = felix.rejectSkillFeedback.bind(felix);
 export const queueSkillEval = felix.queueSkillEval.bind(felix);
 export const listSkillEvals = felix.listSkillEvals.bind(felix);
-export const getSkillEval = felix.getSkillEval.bind(felix);
 
 export type { StreamArgs, StreamHandlers } from '@felix/client';
-export { flattenPlan } from '@felix/client';
 
 /**
  * `fetch` for the management routes below, with the shared-key header attached.
@@ -276,7 +269,7 @@ export interface GitHubLoginToken {
 }
 
 /** Every refusal from the login routes. `interval` rides a 428/429, `tenants` a 409. */
-export interface GitHubLoginRefusal {
+interface GitHubLoginRefusal {
   error: string;
   message: string;
   interval?: number;

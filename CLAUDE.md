@@ -116,7 +116,10 @@ the `check-api-drift` script in `package.json` is simply not walked — the chec
 code. It catches a route the harness renamed or dropped; it cannot catch a call that hits a real
 route for the wrong purpose, and it says nothing about payload shapes. It also prints, advisory only, the routes the
 harness serves that nothing calls — sometimes the direction where a whole unbuilt feature shows up,
-and sometimes just a duplicate. **An uncalled route is not evidence of a missing feature.**
+and sometimes just a duplicate. Routes no web client is meant to call (probes, protocol endpoints,
+webhooks, OAuth returns, navigations, deprecated aliases) are in its `NOT_A_CLIENT_CALL` table with
+a reason each and are only counted; an entry that stops being served, or gets a caller, is
+reported. **An uncalled route is not evidence of a missing feature.**
 `POST /eval/runs` sat on that list while `/harness/eval` had started runs all along, through
 `POST /eval/datasets/{name}/run` — a second route that started the same run. A list built from
 call sites cannot tell the two apart, so check the harness for an alias before building anything
