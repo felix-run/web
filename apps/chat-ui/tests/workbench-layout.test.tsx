@@ -58,7 +58,6 @@ function shell(over: Partial<ShellValue> = {}): ShellValue {
     reattaching: false,
     error: null,
     sessionPhase: null,
-    skills: null,
     pending: null,
     queueLength: 0,
     tenantApprovals: {

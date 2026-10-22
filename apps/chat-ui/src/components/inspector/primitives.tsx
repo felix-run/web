@@ -590,8 +590,3 @@ export function relTime(ts: number): string {
   if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h`;
   return `${Math.round(diff / 86_400_000)}d`;
 }
-
-export interface SkillState {
-  declared: string[];
-  active: string[];
-}

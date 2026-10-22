@@ -77,6 +77,34 @@ const API_PREFIXED = new Set(['apiFetch', 'fetch']);
 const VERBS = ['get', 'post', 'put', 'delete', 'patch'];
 
 /**
+ * Served routes no web client is meant to call, with why. They are counted rather than listed,
+ * so the advisory list holds only routes a client could still have a use for — an audit on
+ * 2026-10-21 spent most of its time re-deriving this table from the harness. Keyed as
+ * `uncovered()` prints a route. Advisory only: nothing here can hide drift, and an entry that is
+ * no longer served, or that a client now calls, is reported so the table cannot go stale quietly.
+ */
+export const NOT_A_CLIENT_CALL = {
+  'GET /health': 'probe (legacy name of /live)',
+  'GET /live': 'probe',
+  'GET /ready': 'probe',
+  'GET /metrics': 'Prometheus scrape',
+  'GET /.well-known/jwks.json': 'token verifiers',
+  'GET /mcp': 'MCP protocol endpoint',
+  'POST /mcp': 'MCP protocol endpoint',
+  'POST /a2a': 'A2A protocol endpoint',
+  'POST /v1/chat/completions': 'OpenAI-compatible endpoint',
+  'POST /internal/sessions/{}/events': 'internal write-back, behind a consumer secret',
+  'POST /triggers/{}': 'signed webhooks',
+  'POST /auth/github/actions': 'GitHub Actions OIDC exchange',
+  'GET /auth/github/callback': "GitHub's OAuth return",
+  'GET /auth/google/callback': "Google's OAuth return",
+  'GET /auth/github/authorize':
+    'reached by navigation (githubAuthorizeUrl), which no fetch extractor sees',
+  'GET /auth/google/authorize': 'reached by navigation, which no fetch extractor sees',
+  'POST /eval/datasets/{}/run': 'deprecated alias of POST /eval/runs (felix-run/felix#570)',
+};
+
+/**
  * Collapse every `${…}` to `{}`, counting braces rather than matching a regex.
  *
  * `/api/chat/history/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}` is a real
@@ -474,13 +502,29 @@ const missing = diff(calls, spec);
 
 console.log(`checked ${calls.length} client call sites against ${spec.size} ${against}`);
 
-const unused = uncovered(calls, spec);
-if (unused.length && !liveOrigin) {
+const uncalled = uncovered(calls, spec);
+const notForClients = uncalled.filter((u) => u in NOT_A_CLIENT_CALL);
+const unused = uncalled.filter((u) => !(u in NOT_A_CLIENT_CALL));
+if (!liveOrigin) {
   // stdout, not stderr: this is information, not a problem. Skipped under --live,
   // where it would repeat the record's list with the deployment's gaps mixed in.
-  console.log(`\n  ${unused.length} route(s) the harness serves and no client calls:`);
-  for (const u of unused) console.log(`    ${u}`);
-  console.log('  (advisory — machine-facing surfaces belong here, and so does anything unbuilt)');
+  if (unused.length) {
+    console.log(`\n  ${unused.length} route(s) the harness serves and no client calls:`);
+    for (const u of unused) console.log(`    ${u}`);
+    console.log('  (advisory — an uncalled route is not evidence of a missing feature)');
+  }
+  if (notForClients.length) {
+    console.log(
+      `\n  ${notForClients.length} more no web client is meant to call (NOT_A_CLIENT_CALL in this script)`,
+    );
+  }
+  const stale = Object.keys(NOT_A_CLIENT_CALL).filter((k) => !uncalled.includes(k));
+  if (stale.length) {
+    console.log(
+      '\n  NOT_A_CLIENT_CALL names route(s) that are no longer served, or that a client now calls:',
+    );
+    for (const k of stale) console.log(`    ${k}`);
+  }
 }
 
 if (!missing.length) {

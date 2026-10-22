@@ -22,7 +22,6 @@ import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { KeptMessage } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
-import type { SkillState } from '@/components/inspector/primitives';
 import type { MessageQueue } from '@/hooks/use-message-queue';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
 import type { PaneItemInput } from '@/lib/side-pane';
@@ -87,7 +86,6 @@ export interface ShellValue {
   error: EngineState['error'];
   /** The engine's phase, or null while it is resting; a chip renders it. */
   sessionPhase: string | null;
-  skills: SkillState | null;
 
   /** The two blocking interrupts, which the run is waiting on. */
   pending: EngineState['approvals'][number] | null;

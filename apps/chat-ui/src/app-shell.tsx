@@ -100,7 +100,6 @@ import {
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
 import { HarnessHealthLine } from '@/components/harness-health-line';
-import type { SkillState } from '@/components/inspector/primitives';
 import { type Theme, useTheme } from '@/components/theme-provider';
 import { ThreadReturn, ThreadTitle } from '@/components/thread-title';
 import { useMessageQueue } from '@/hooks/use-message-queue';
@@ -477,7 +476,6 @@ export function AppShell() {
       return 'debug';
     });
   }, []);
-  const [skills, setSkills] = useState<SkillState | null>(null);
   const { theme, resolved, setTheme } = useTheme();
   /** Where focus lands when the Debug badge turns debug off and unmounts. */
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -541,9 +539,6 @@ export function AppShell() {
           },
           onToolStart: () => {
             if (harnessViewRef.current && threadIdRef.current === id) revealInspector();
-          },
-          onSkills: (s) => {
-            if (threadIdRef.current === id) setSkills(s);
           },
           // `open_file`: the agent showing the operator a file from the harness's workspace,
           // opened as the sidebar's *On the harness* tree opens one — in this engine's own
@@ -1185,7 +1180,6 @@ export function AppShell() {
       if (recorded && (served.length === 0 || served.includes(recorded))) {
         setManifest(recorded);
       }
-      setSkills(null);
       // Server-owned like the rest of session state, so this clears and
       // hydration refills it rather than merging.
       setLabels({});
@@ -1944,7 +1938,6 @@ export function AppShell() {
   // server reset). Distinct from "New thread" which mints a fresh id.
   const clearThread = useCallback(() => {
     stopRun();
-    setSkills(null);
     engine.reset();
     void deleteThreadHistory(threadId);
     clearTurns(threadId);
@@ -2907,7 +2900,6 @@ export function AppShell() {
     dropped,
     error,
     sessionPhase,
-    skills,
     pending,
     queueLength: pendingQueue.length,
     tenantApprovals,
