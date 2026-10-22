@@ -78,6 +78,12 @@ export interface ApprovalRequest {
    * client holds.
    */
   thread_id?: string;
+  /**
+   * The tool call this approval blocks — the id a transcript's tool card carries as
+   * `callId`. Empty for a gate outside a tool loop and absent from an older harness. Like
+   * `thread_id` it names whichever call asked first when byte-identical calls share a row.
+   */
+  tool_call_id?: string;
 }
 
 /**
