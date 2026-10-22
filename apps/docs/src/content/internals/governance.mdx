@@ -143,6 +143,16 @@ assets as reaching whatever they resolve to at load time.
 
 Unattended runs (scheduler, eval replay) refuse approval-gated tools unless `allow_unattended: true`. TTL / one-shot options bound standing grants.
 
+A permission mode may waive an approval (`waives_approval`), except a rule in
+`permission_mode.UNWAIVABLE_RULE_IDS` — `plan-approval`, which is how plan mode ends, and
+`scheduling.schedule_task`, the rule [`spec.scheduling`](/guide/manifest-reference/#specscheduling)
+adds — or any approval on a tool in `permission_mode.UNWAIVABLE_TOOLS` (`schedule_task`), whichever
+rule selected it, a manifest's own rule or glob included. A scheduled task's prompt runs later on its
+writer's authority with no one watching, which a thread in `bypass` does not answer for. The built-in
+rule is left out only when a manifest rule names `schedule_task` literally with no `when_args`;
+beside a glob such as `*` it is still added, and as the literal it is the rule selected. `schedule_task`'s preview runs the tool's own checks, so a call it would
+refuse is denied before any row is written.
+
 **Reaching the human.** Step 2 emits `approval_required` as a *side event* — a per-thread
 in-process `asyncio.Queue` — which the react loop drains into the stream. That works when the agent
 and the stream are in one process, and a **durable** run is exactly when they are not: the agent is

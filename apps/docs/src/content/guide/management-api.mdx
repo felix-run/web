@@ -1040,13 +1040,19 @@ curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
 | `enabled` | bool | `true` |
 
 `schedule` is five-field cron in **UTC** (`minute hour day month weekday`), a macro (`@hourly`,
-`@daily`, `@weekly`, `@monthly`, `@yearly`), an interval (`every:30s`, `every:5m`, `@every 2h`), or
-integer seconds. **An empty schedule is manual only**: the job never fires on its own and runs
+`@daily`, `@weekly`, `@monthly`, `@yearly`), an interval (`every:30s`, `every:5m`, `@every 2h`),
+integer seconds, or a one-shot `at:` with an ISO-8601 timestamp and its offset
+(`at:2026-10-21T09:00:00Z`, `at:2026-10-21T11:00:00+02:00`). A timestamp with no offset is refused
+rather than read as UTC or the server's zone. **An empty schedule is manual only**: the job never fires on its own and runs
 only through Run now. (Through Felix 0.13.1 it meant "every 60 seconds", so a job created to be tried
 by hand fired every minute on one thread; a row stored with an empty schedule simply stops firing.)
 To pause a scheduled job, set `enabled: false` — Run now still works on a disabled job. A schedule
 outside that grammar is refused with `422`. A new scheduled job, with no `next_run_at` yet, fires at
 the next sweep whatever its schedule says, and follows the schedule from then on.
+
+A one-shot is due at its moment from the write that sets it, and an `at:` already past is refused
+with `422`. Its claim clears `next_run_at`, so it fires once; re-saving it with the same `at:` keeps
+that (a fired one-shot stays fired), while a new `at:` schedules it again. Run now still runs it.
 
 `payload.prompt` (or `payload.message`) is the user turn the manifest is invoked with; the rest
 of the payload is the job's to interpret. Every firing runs on one thread named after the job,
@@ -1064,7 +1070,7 @@ opens the job's run history with that run on top.
 
 Schedules use standard five-field cron, evaluated in UTC — see [Deploy](/guide/deploy/#cron-schedules).
 `@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly` work too, as do plain intervals (`300` seconds,
-`every:5m`). Anything else is refused with `422` and nothing is stored. A job stored before that check
+`every:5m`) and one-shot `at:` timestamps. Anything else is refused with `422` and nothing is stored. A job stored before that check
 existed, with a schedule it cannot read, does not fire: its `last_status` reads `error` and
 `last_error` says why.
 
@@ -1102,6 +1108,22 @@ workflow (`422 unknown_workflow`) and inputs it takes (`422 bad_inputs`). The jo
 workflow's revision — `workflow_revision` if you send the one you reviewed, else the current one —
 and **runs only that revision**: once anyone saves the workflow again, each firing is refused
 until the job is re-saved, so a later edit never runs on its writer's scopes unseen.
+
+### Tasks an agent scheduled
+
+An agent with [`spec.scheduling`](/guide/manifest-reference/#specscheduling) writes jobs itself,
+through `schedule_task`: each is named `task-<hex>`, targets that manifest, carries the prompt in
+`payload.prompt` and is marked by `payload.scheduled_by` (`{tool: "schedule_task", manifest,
+thread_id}`). It is recorded as written by the person the conversation acted for, with their scopes,
+and listed, read, run and deleted here like any job. A task also records when its writer's token
+expires (none for an API key; these routes do not show it, `list_scheduled` does): a firing after
+that — on schedule or through Run now — is refused, recorded as an `error` run with `last_error`
+"the credential that scheduled this task has expired; schedule it again", and the job disabled.
+Re-saving a task with `PUT` records the new writer, as for any job, and no expiry. The nightly retention
+sweep deletes tasks that will not run again — a one-shot that has fired, or a disabled task, such as
+one disabled when its credential expired — with their runs, once the last run is older than
+`FELIX_SCHEDULED_TASK_RETENTION_DAYS` (30; `0` keeps them). An enabled recurring task, a task that
+has never run, and any job written through this API are never swept.
 
 ## Workflows
 
