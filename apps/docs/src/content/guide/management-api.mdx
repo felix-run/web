@@ -27,7 +27,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `manifests:read` / `manifests:write` | read manifests / publish, canary, rollback |
 | `eval:read` / `eval:write` | read datasets and runs / write and run them |
 | `usage:read` | `/usage` |
-| `memory:read` / `memory:write` | read stored memory / write and forget it |
+| `memory:read` / `memory:write` | read stored memory / write and forget it, in every person's pool in the tenant |
 | `documents:read` / `documents:write` | search and list the corpus / ingest and delete |
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 | `files:read` / `files:write` | read an upload back / upload and delete |
@@ -407,15 +407,16 @@ it without a database console.
 
 | Method | Path | Scope |
 |---|---|---|
-| `GET` | `/memory?limit=&thread_id=&status=` | `memory:read` |
-| `GET` | `/memory/search?q=&limit=` | `memory:read` |
-| `GET` | `/memory/as-of/{turn_seq}?thread_id=` | `memory:read` |
+| `GET` | `/memory?manifest_id=&principal=&kind=&limit=&thread_id=&status=` | `memory:read` |
+| `GET` | `/memory/search?q=&manifest_id=&principal=&kind=&limit=` | `memory:read` |
+| `GET` | `/memory/as-of/{turn_seq}?manifest_id=&principal=&kind=&thread_id=` | `memory:read` |
 | `POST` | `/memory` | `memory:write` |
 | `DELETE` | `/memory/{memory_id}` | `memory:write` |
 | `POST` | `/memory/{memory_id}/restore` | `memory:write` |
 
 Every row says where it came from: `thread_id` (`{tenant}:{suffix}`, or `''` for a memory written
-outside any conversation), `origin_seq` (the turn of that thread that wrote it), `manifest_id`,
+outside any conversation), `origin_seq` (the turn of that thread that wrote it), `manifest_id` (the
+agent that wrote it), `principal` (the person whose pool holds it, `''` for an agent pool),
 `created_at` and `last_used_at`. `search` hits carry the same fields, plus the agent's own hybrid
 ranking and which retriever found each hit, so a surprising recall answers both "why that" and
 "which conversation taught it this".
@@ -426,9 +427,30 @@ suffix, as every chat route takes it) to ask about one conversation; without it,
 whatever every conversation wrote at its own fourth turn. `GET /memory` takes the same `thread_id`,
 and an empty one means memories written outside any thread.
 
-`POST` takes `{content, kind, manifest_id, topic_key, importance}`. `manifest_id` decides who
-recalls it: an agent recalls only memories stored under its own manifest id, so a memory stored with
-an empty one is recalled by no agent. `content` is up to 4000 chars,
+### Pools and people
+
+The operator sees every pool in the tenant: each agent's own (`principal` empty) and each person's.
+`memory:read` and `memory:write` span every person. Person isolation keeps one person's memory from
+another person's *agents*, not from this surface, so grant these scopes to operators. An org grant
+(`FELIX_GITHUB_ORG_TENANTS`) that includes `memory:read` lets every member read every other member's
+memory.
+
+`principal` narrows a read to one pool. Absent, the read covers every pool; empty (`?principal=`)
+means the agent pools only. A value is a person key, `issuer|subject`, or a bare subject under Felix's
+own sign-in issuer (`github:70701` is `felix-self|github:70701`). It goes through
+`FELIX_PRINCIPAL_ALIASES`, so it names the pool the agents use. A subject that itself contains `|`
+(Auth0's `auth0|5f7c`) must be written in full `issuer|subject` form. A value that names no single
+person, such as a sub-less API key's subject, a machine actor or a trigger, is `422
+principal_not_a_person`.
+
+`POST` takes `{content, kind, manifest_id, topic_key, importance, principal}`. With `principal`,
+the memory goes to that person's pool, where every agent working for them reads it. Without it, the
+memory goes to the agent pool `manifest_id` names, and under
+[`scope: person`](/guide/manifest-reference/#memoryscope) every person's agent reads it, because an
+operator wrote it. A memory stored with no `principal` and an empty `manifest_id` is recalled by no
+agent. The answer is `{id, status, principal}`. `409 memory_held_by_another_pool` means the
+content's id is held by a row of another pool, which only `felix memory assign` leaves behind.
+`content` is up to 4000 chars,
 `topic_key` up to 200, `importance` in 0–1. A `POST` with a `topic_key` retires every other active
 memory under that key: this route is the only writer that can. The agent's own writes — capture and
 the `remember` tool — are stored beside what already holds a key, so a topic can carry several
@@ -454,6 +476,34 @@ whose last write is older than `FELIX_MEMORY_TASK_RETENTION_DAYS` (30 days; `0` 
 else retires a task, since it has no topic key. Each one is stamped `retired_by: retention` in its
 `metadata` and listed under `status=forgotten`; `restore` brings it back, and so does the agent
 storing the same text again. A task written through this route is never expired.
+
+### Moving an agent's memory to a person
+
+Before Felix 0.17.0 every memory was in an agent pool. Under `scope: person` a person reads only the
+operator-written rows of an agent pool, so what an agent learnt there reaches nobody until it is
+moved:
+
+```bash
+felix memory assign --tenant default --manifest assistant --to github:70701 --dry-run
+felix memory assign --tenant default --manifest assistant --to github:70701
+```
+
+| Flag | Default | |
+|---|---|---|
+| `--tenant` | required | The tenant whose agent pool moves. |
+| `--manifest` | required | The agent whose pool moves. |
+| `--to` | required | The person it becomes: `issuer\|subject`, or a bare subject under `felix-self`. Resolved through `FELIX_PRINCIPAL_ALIASES`. A shared credential or machine actor is refused. |
+| `--include-operator` | off | Move operator-written rows (`POST /memory`) too. By default they stay in the agent pool, where every person's agent already reads them. |
+| `--dry-run` | off | Count what would move; write nothing. |
+| `--batch-size` | `500` | Rows moved per transaction. |
+
+It moves every agent-written row, whether active, forgotten or superseded. A row the person's pool
+already holds is merged: the existing row is kept, and the moved one is retired as superseded by it.
+Running the command again moves nothing. It prints `<tenant>/<manifest> -> <person>: moved N,
+merged M of K row(s)` (`would move` under `--dry-run`). Run it with the API's own settings: it
+refuses `FELIX_DATABASE_URL=memory://`, which has nothing stored to move. A job or durable run
+recorded before 0.17.0 carries no person key, so it writes no memory; a job records one when it is
+saved again.
 
 ## Documents
 

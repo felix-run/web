@@ -1302,6 +1302,7 @@ spec:
   memory:
     checkpointer: postgres   # default; `none` also built in
     store: pgvector          # default
+    scope: person            # default; `agent` keeps one pool per manifest
 ```
 
 <Aside type="caution">
@@ -1323,12 +1324,45 @@ would leave the agent reading one log while `/history`, `/continue` and `/compac
 | `capture` | object | disabled | Extract durable facts from a turn. |
 | `recall` | object | tools off | How stored facts reach the model beyond the prelude. |
 | `consolidate` | object | disabled | Periodically merge agent-written facts that say the same thing (below). |
+| `scope` | `person` \| `agent` | `person` | Whose long-term memory the agent reads and writes (below). A closed set: an unknown value fails validation. |
 
 The bundled `assistant` manifest is the worked example: `capture` on `claude-haiku` with
 `max_facts: 3` and `min_chars: 200`, `recall.tools: true`, `content_screening` on, an approval
-(`memory-forget`) on `forget`, and `auth.inbound.allow_anonymous: false`. Memory is keyed by tenant
-and manifest, not by caller, so a manifest that captures on a deployment shared by more than one
-person puts one caller's facts in another's prompt.
+(`memory-forget`) on `forget`, and `auth.inbound.allow_anonymous: false`, since an anonymous caller
+names no person and would remember nothing.
+
+#### `memory.scope`
+
+Memory rows live in pools (`memory_vectors.principal`). An agent pool is one manifest's own rows
+(`principal` empty). A person pool is one person's rows, whichever of their agents wrote them.
+
+| `scope` | Writes | Reads |
+|---|---|---|
+| `person` (default) | The pool of the person the request acts for | That pool, plus the operator-written rows (`POST /memory`) of this agent's own pool |
+| `person`, no person | Nothing | The operator-written rows of this agent's own pool |
+| `agent` | This agent's own pool | Every row of this agent's own pool, the behaviour before Felix 0.17.0 |
+
+- **The person** is `issuer|subject` of the request's verified caller, or of whoever a durable run,
+  job or workflow step was started for. `FELIX_PRINCIPAL_ALIASES` maps a second sign-in to the same
+  person; see [Person keys](/internals/auth/#person-keys).
+- **No person, no writes.** An anonymous caller, an API key with no `sub` of its own, an inbound
+  trigger's run, a GitHub Actions workflow, a Slack message and an eval item name no person.
+  Capture skips without spending an extraction call, and `remember` answers `not stored`.
+- **Agent-written rows of the agent pool reach no person.** They are what the agent learnt before
+  person pools, or from runs that named no one, and whose they are is not known. Move them with
+  [`felix memory assign`](/guide/management-api/#moving-an-agents-memory-to-a-person).
+- **The tools stay in their pool.** `forget` reaches only rows of the pool the agent writes. An id
+  from another person's pool, or from the shared agent pool, is a miss. Capture's known topic-keyed
+  values are the whole person pool's, whichever agent stored them.
+- **Use `agent`** for an agent that serves a shared purpose rather than a person, or for local
+  `make dev`: `FELIX_AUTH_MODE=none` names no person, so under `person` capture writes nothing.
+- **Procedural memory is always the agent's.** `remember_procedure` writes the agent pool and every
+  caller's turn retrieves from it. Leave `spec.procedural_memory` off where how-tos must not travel
+  between people.
+
+Isolation between people is the memory store's filter inside a tenant, not a database policy, and it
+stops at thread access. Someone posting into another person's thread runs with their own pool, but
+their facts appear in that thread's replies.
 
 #### `memory.consolidate`
 
@@ -1353,7 +1387,9 @@ spec:
 | `max_facts` | int 1–500 | `200` | The newest facts shown per pass. |
 
 The Worker's `consolidate_memory` cron (every 15 minutes) shows the model the newest `max_facts`
-active facts of the pool and asks which state the same thing. What it is allowed to do is narrow
+active facts of the pool and asks which state the same thing. A pool here is
+`(tenant, manifest, principal)`: an agent's own rows, or the rows one agent wrote into one person's
+pool, so a merge never crosses people. What it is allowed to do is narrow
 on purpose:
 
 - **It only merges duplicates.** Facts that merely relate, or that disagree, are left as they are.
@@ -1406,7 +1442,7 @@ Content is matched case- and whitespace-insensitively but not punctuation-insens
 verifier that echoes an item back with a trailing full stop counts as having rewritten it.
 
 Capture does not store what the pool already holds. A topic the agent stored with `remember`
-earlier in the same request is skipped, for that manifest's pool only. The extractor is shown up to
+earlier in the same request is skipped, for that pool only. The extractor is shown up to
 50 of the pool's current topic-keyed values, fenced as data, and asked not to restate them and to
 reuse their keys; a proposal repeating a known value under the same key (compared after
 normalising) is dropped in code whether or not it listens. A changed value under a known key is still stored. The `verify` pass is not shown
@@ -1918,6 +1954,7 @@ spec:
     manifests: [quick, deep]   # steps may name these; empty means this manifest only
     max_workflows: 10
     max_active_runs: 3
+    run_approval: auto         # auto | always | never
 ```
 
 | Field | Type | Default | Meaning |
@@ -1928,6 +1965,7 @@ spec:
 | `kinds` | list | `[agent_turn, tool_call, approval, branch]` | The step kinds it may use. An allowlist: a kind a plugin registers later is closed to the agent until it is named here. |
 | `max_active_runs` | int 1–20 | `3` | Runs one person may have going at once from the workflows this agent holds for them (`too_many_runs`). |
 | `approval` | bool | `true` | Hold every `save_workflow` call for that person's approval. |
+| `run_approval` | `auto` \| `always` \| `never` | `auto` | When `run_workflow` waits for that person's approval: `auto` when the call's inputs can reach a tool that changes things, `always` on every run, `never` not at all (below). |
 
 | Tool | Scope | Does |
 |---|---|---|
@@ -1975,8 +2013,35 @@ checks run before anyone is asked, so a save it would refuse never reaches an ap
 - a manifest whose inbound rules refuse the person (`not_permitted`);
 - `max_workflows`.
 
-**What runs.** `run_workflow` asks no one: once a workflow's shape is approved, the agent may start
-it with any inputs. Each run starts as the person, and every manifest a step names is checked
+**What runs, and when a run is approved.** A saved workflow's shape is approved, but the inputs of each
+run are chosen by the model. `run_approval` decides when the person is asked about a run:
+
+| `run_approval` | `run_workflow` waits for approval | Rule id |
+|---|---|---|
+| `auto` (default) | When an input the call supplies can reach a `tool_call` step, through any chain of edges, whose tool can change something | `workflow_authoring.run_workflow.auto` |
+| `always` | On every call | `workflow_authoring.run_workflow` |
+| `never` | Never. This is the behaviour before Felix 0.17.0 | none |
+
+- **What counts as changing something.** Any tool not marked `read_only` in the manifest the step
+  names, compiled as the person. A peer (`task`, an A2A agent) always counts, since it acts on what
+  it is told. So does a tool that manifest no longer binds, or a manifest that does not compile.
+  Inputs that reach only `agent_turn` steps ask no one: an agent step reads its inputs fenced as data.
+  A call the tool would refuse now still counts as needing approval under `auto`, but its preview
+  refuses it before anyone is asked.
+- **Who is asked.** The person the run is for. The rule is one-shot and bound to them, and the grant
+  is bound to the workflow's revision at the time, so an approval of one revision starts no other.
+  The approver reads the workflow's name, id and revision, the inputs as the agent chose them (escaped
+  JSON), and every `tool_call` step those inputs reach, with whether its tool changes things.
+- **Your own rule wins.** Under `auto`, any rule in [`spec.approvals`](#specapprovals) whose `tools`
+  match `run_workflow`, a glob or one with `when_args` included, keeps the call as it was and no rule
+  is added. Under `always`, a rule naming `run_workflow` literally with no `when_args` replaces it.
+- **A permission mode may waive it.** Unlike the save's approval, `bypass` (where the manifest allows
+  it and the caller holds `approvals:bypass`) waives a run's approval, because a run starts now, in front of the person, while a save outlives the turn.
+- **Upgrading.** A manifest that already sets `spec.workflow_authoring` now asks before a run whose
+  inputs reach a writing tool, because `auto` is the default. Set `run_approval: never` to keep the
+  earlier behaviour.
+
+Each run starts as the person, and every manifest a step names is checked
 against them again. Every input counts as untrusted, so each agent step reads the inputs fenced as
 data. A `tool_call` step receives its inputs as tool arguments, governed only by that manifest's own
 policies, screening and approvals.

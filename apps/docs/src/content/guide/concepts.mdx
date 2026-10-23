@@ -420,11 +420,36 @@ extracts facts from each turn into `memory_vectors` (pgvector, HNSW) under kinds
 `spec.memory.recall.tools` adds `remember`, `recall`, `forget` and `list_memories`.
 `spec.procedural_memory` recalls stored how-tos and adds a `remember_procedure` tool.
 
-Durable memory is keyed by **tenant and manifest, not by caller**: everyone who talks to one
-manifest in one tenant shares its facts. That is why `quick` stays stateless and the bundled
-`assistant` manifest — `quick` plus capture, recall tools, content screening and an approval on
-`forget` — sets `auth.inbound.allow_anonymous: false`. Under `FELIX_AUTH_MODE=none` every caller is
-anonymous, so `assistant` answers `401`; call it with an API key or JWT.
+Durable memory is kept in **pools**, chosen by `spec.memory.scope`:
+
+| Scope | Writes to | Reads |
+|---|---|---|
+| `person` (default) | the pool of the person the request acts for, shared by every agent working for them | that pool, plus the **operator-written** rows (`POST /memory`) of the agent's own pool |
+| `agent` | the agent's own pool, `(tenant, manifest)` | every row of the agent's own pool |
+
+A person is `issuer|subject`, worked out from the verified credential and carried into durable runs,
+jobs and workflow steps, so a resume writes the same person's memory as the request that started it.
+`FELIX_PRINCIPAL_ALIASES` joins one person signing in two ways
+([Person keys](/internals/auth/#person-keys)). Under `scope: person`, a request that names no person
+writes nothing: anonymous callers, an API key with no `sub` of its own, an inbound trigger's run, a
+GitHub Actions workflow, a Slack message and an eval item. Capture does not run for it, and
+`remember` answers that nothing was stored. It still reads the operator-written rows.
+
+Agent-written rows in an agent pool reach no person's prompt under `scope: person`. That includes
+every memory stored before Felix 0.17.0, until [`felix memory assign`](/guide/management-api/#moving-an-agents-memory-to-a-person)
+moves them to the person they belong to. Procedural memory (`remember_procedure`) stays the agent's
+whatever the scope, so a how-to learnt for one person is offered to the next.
+
+Person isolation is the memory store's filter inside a tenant, and it stops at thread access.
+Threads belong to the tenant, so someone who posts into another person's thread runs with their own
+pool, but their facts show up in that thread's replies. The `memory:read` and `memory:write`
+scopes cover every person in the tenant.
+
+The bundled `assistant` manifest is `quick` plus capture, recall tools, content screening and an
+approval on `forget`. It sets `auth.inbound.allow_anonymous: false`, because an anonymous caller
+names no person and would remember nothing. `quick` stays stateless. Under `FELIX_AUTH_MODE=none`
+every caller is anonymous, so `assistant` answers `401`; call it with an API key or JWT that has a
+`sub`.
 
 Recall fuses a full-text channel, topic keys and a vector channel. The vector channel runs when
 `FELIX_MEMORY_EMBEDDER` resolves to an embedder: the default `auto` uses the local
