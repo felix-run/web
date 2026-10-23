@@ -171,9 +171,12 @@ function PortRow({
       >
         {port.name}
         {port.required && side === 'in' ? (
-          <span className="text-muted-foreground" title="required">
-            *
-          </span>
+          <>
+            <span aria-hidden className="text-muted-foreground" title="required">
+              *
+            </span>
+            <span className="sr-only"> required</span>
+          </>
         ) : null}
       </span>
       <span className="max-w-[50%] shrink-0 truncate font-mono text-muted-foreground">

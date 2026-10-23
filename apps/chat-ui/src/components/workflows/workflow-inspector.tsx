@@ -134,6 +134,18 @@ function ConfigFacts({ step }: { step: WorkflowStepDef }) {
   );
 }
 
+function ProblemText({ problem: p }: { problem: WorkflowProblem }) {
+  return (
+    <>
+      <span className="text-state-failed">{p.message}</span>
+      <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
+        {p.code}
+        {p.step ? ` · ${p.step}${p.port ? `.${p.port}` : ''}` : ''}
+      </span>
+    </>
+  );
+}
+
 export function Problems({
   problems,
   onSelect,
@@ -148,18 +160,21 @@ export function Problems({
     <ul className="space-y-1">
       {problems.map((p, i) => (
         <li key={`${p.code}-${p.step ?? ''}-${p.port ?? ''}-${i}`}>
-          <button
-            type="button"
-            disabled={!p.step}
-            onClick={() => p.step && onSelect(p.step)}
-            className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none disabled:hover:bg-transparent"
-          >
-            <span className="text-state-failed">{p.message}</span>
-            <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
-              {p.code}
-              {p.step ? ` · ${p.step}${p.port ? `.${p.port}` : ''}` : ''}
-            </span>
-          </button>
+          {/* A problem naming a step selects it; one about the whole workflow is only read, so it
+              is text rather than a button announced as dimmed. */}
+          {p.step ? (
+            <button
+              type="button"
+              onClick={() => p.step && onSelect(p.step)}
+              className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              <ProblemText problem={p} />
+            </button>
+          ) : (
+            <div className="px-2 py-1.5 text-sm">
+              <ProblemText problem={p} />
+            </div>
+          )}
         </li>
       ))}
     </ul>
