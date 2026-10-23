@@ -41,6 +41,18 @@ const rows: Row[] = [
   },
   { event: 'done', state: 'done', text: 'Final message, stop_reason and token usage.' },
 ];
+
+/**
+ * Each row opens its own entry: a frame at its anchor in REST API → Events, the
+ * decision at its route in the Management API. The figure is the overview and
+ * the list is the reference, so a row that went to the top of the list sent the
+ * reader to scroll a long page for the one frame they had just pointed at.
+ */
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const href = (row: Row) =>
+  row.state === 'request'
+    ? '/guide/management-api/#post-approvalsapproval_iddecide'
+    : `/guide/rest-api/#event-${row.event}`;
 ---
 
 <figure class="run-trace not-content">
@@ -49,7 +61,9 @@ const rows: Row[] = [
       rows.map((row) => (
         <li class:list={['row', `row--${row.state}`]}>
           <span class="dot" aria-hidden="true" />
-          <code class="event">{row.event}</code>
+          <a class="event" href={href(row)}>
+            <code>{row.event}</code>
+          </a>
           <span class="text">
             {/* The dot's hue says in flight or finished; say it in words too. */}
             {row.state === 'running' && <span class="sr-only">In flight. </span>}
@@ -141,6 +155,20 @@ const rows: Row[] = [
     font-size: var(--sl-text-sm);
     color: var(--sl-color-white);
     overflow-wrap: anywhere;
+    text-decoration: none;
+  }
+
+  .event code {
+    font: inherit;
+    color: inherit;
+    background: none;
+    padding: 0;
+  }
+
+  /* Every name is a link, so none is underlined at rest; the underline says which. */
+  .event:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
   }
 
   .row--request .event {

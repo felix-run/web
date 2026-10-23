@@ -24,6 +24,8 @@ colors:
   state-blocked-light: "#973c00"
   state-failed: "#ff807f"
   state-failed-light: "#a20002"
+  code-accent: "#a7bac9"
+  code-accent-light: "#4f606d"
 typography:
   display:
     fontFamily: "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
@@ -149,12 +151,21 @@ that once sat behind the top of the reading column was removed (2026-10-08).
 
 A warm stone/charcoal scale (hue ~60–75, chroma under 0.016 in chat-ui's oklch) carries every
 surface and all text; four state hues are the only colour, and
-they appear on callouts, RunTrace and the explorer's method labels — never as decoration.
+they appear on callouts, RunTrace, the events list and the explorer's method labels — never as
+decoration.
 
-**Where the system and the code disagree.** Code blocks are highlighted by Expressive Code's
-default themes — Night Owl in dark mode — and its cyans and violets are the only saturated colour
-on the site outside the state ramp. Left as it is on purpose for now: a code theme that reads well
-is its own job, and replacing it is a decision rather than a fix. It is the open colour question.
+### Code
+
+Code blocks are highlighted by Felix's own theme, `codeTheme()` in `tokens.ts`, built into the
+Expressive Code config at build time (2026-10-22). It replaced Night Owl, whose strings were red in
+light and whose literals were pink-red in dark: the failed colour, on a site where hue means state,
+so a bearer token in a curl read as an error. Structure is carried by weight and lightness —
+keywords, constants and command names in ink and bold, keys and numbers in ink, everything else in
+body text, comments (italic) and punctuation in faint — and by one hue that is not a state: the
+**code accent**, a stone-blue at oklch chroma 0.03 (`oklch(0.78 0.03 240)` dark,
+`oklch(0.48 0.03 240)` light), on strings only, so a key and its value are told apart. 9.57:1 and
+5.64:1 on the code panel. The frame and background are Starlight's (`useStarlightUiThemeColors`),
+so a block sits on the panel step like inline code. No red, amber or green ever reaches syntax.
 
 The neutral hexes are canonical in `packages/design/src/tokens.ts` (`NEUTRAL`, converted to hex
 from the stone/charcoal oklch chat-ui authors in `apps/chat-ui/src/index.css`) and reach the site
@@ -169,14 +180,13 @@ from these, so `--sl-color-white` means "highest-contrast text" in both themes, 
   charcoal sheet (`NEUTRAL[900]`), no longer near-black; light is a barely warm paper
   (`NEUTRAL[0]`).
 - **Charcoal Ground / Stone** (panel): one tonal step off the page — *darker* than the page in
-  dark (`NEUTRAL[950]`), the stone ground in light (`NEUTRAL[100]`). It fills Starlight's
-  `gray-6`/`gray-7` slots and the explorer's own sidebar and secondary background
-  (`--scalar-sidebar-background-1`, `--scalar-background-2`).
-  **Where the system and the code disagree:** `tokens.ts` says light's stone ground is there "so
-  the docs' sidebar matches" chat-ui's, but `brand.css` still puts Starlight's header and sidebar
-  on the page colour (`--sl-color-bg-nav`, `--sl-color-bg-sidebar`), separated by their hairlines
-  alone. So the stone sidebar ships in the explorer, not on the manual's pages. Recorded as built;
-  which one is wrong is a decision, not a fix.
+  dark (`NEUTRAL[950]`), the stone ground in light (`NEUTRAL[100]`). It is for **inset surfaces
+  only**: Starlight's `gray-6`/`gray-7` slots (code blocks), inline code, and the explorer's
+  request panels (`--scalar-background-2`). Navigation is never on it (decided 2026-10-22): the
+  manual's header and sidebar (`--sl-color-bg-nav`, `--sl-color-bg-sidebar` in `brand.css`) and
+  the explorer's sidebar (`--scalar-sidebar-background-1`) are all the page colour, separated by
+  hairlines, so the manual and the explorer read as one sheet of the same material. The explorer
+  used to keep the stone sidebar, the one page that changed material.
 - **Hairline** (both themes' `NEUTRAL[800]` / `[200]`): every rule, table border and row
   separator — and the sidebar's current-page fill.
 - **Ink**: headings, links, the current page, button fills, `--sl-color-white`.
@@ -338,6 +348,31 @@ name is copied from the REST API Events list and must be renamed there and here 
 The stream's events as a `<dl>`: the event in bold mono, what it means, then the `data` shape on a
 line of its own that scrolls if it must. Nothing sits beside the JSON, so nothing clips.
 
+Every event is its own anchor (`#event-approval_required`; the second `tool_execution_update`
+is `-complete`), and its name is the link to it, underlined on hover only. RunTrace's rows link
+here, one row to one entry, and the decision row to `POST /approvals/{approval_id}/decide` in the
+Management API. A targeted entry's name takes an 8% ink tint.
+
+The events that move the run carry **RunTrace's dot**, hung in the left margin on the ramp: in
+flight (the streaming and tool-call frames), waiting on someone (`tool_request`,
+`approval_required`, `ui_request`), finished (`tool_end`, the completing `tool_execution_update`,
+`done`), failed (`on_error`). The rest carry none. A sentence above the list says what the dot
+means, and each entry's own text says it again, so no meaning rests on the hue. The legacy
+`on_chat_model_stream` is folded into a `<details>` after the list rather than sitting second in
+the order a turn emits them.
+
+### Field index (`src/components/FieldIndex.astro`, Manifest reference)
+
+The Manifest reference is grouped into six `##` bands — Model and prompts, Tools, Agents and
+delegation, Skills, memory and sessions, Running and reaching people, Governance — with each
+`spec.*` field an `###` under its band, so the table of contents nests rather than listing every field as a peer. Field headings kept their text, so every anchor into the page is unchanged. Under
+`metadata`, the field index lists every field by band, built from the page's own source the way
+RouteIndex reads the guides: the band name (body face, 600) beside its fields (code face, without
+the `spec.` every one shares) on one wrapping line, hairline-separated, so the index is one screen
+on a phone. It has the Route index's filter, field for field, matching a field's name and the
+keys its tables list (`allow_hosts` finds `network`); Enter opens the first match. Its links
+are 24px tall.
+
 ### Route index (`src/components/RouteIndex.astro`)
 
 Every route in the release spec, grouped by its tags in the spec's own order (the explorer's),
@@ -372,16 +407,21 @@ you are" the loudest object on the page.
 
 ### Where next (`.where-next`, home)
 
-The sidebar's three groups, abridged — every Start and Reference page including the explorer, and
-four of the internals — as plain lists under small faint labels, hairline-separated. It is also
+The sidebar's three groups, abridged — every Start and Reference page including the explorer (all
+of them since 2026-10-22; it had dropped Skill import, Phones and iPads and MCP), and four of the
+internals — as plain lists under small faint labels, hairline-separated. It is also
 the home page's only navigation on a phone, where the splash layout has no menu. The 404 page
 (`src/content/404.mdx`) uses the same component for its ways back in, and has no hero, so the
-home page's RunTrace cannot appear there.
+home page's RunTrace cannot appear there. Its group labels are `h2` there (the home page's are
+`h3`, under "Where next"), so neither page skips a heading level.
 
 ### The explorer header (`src/pages/reference.astro`)
 
-A 3.5rem bar above Scalar — the wordmark, Start, Route index, and a note that response bodies are
-documented in the guides — reserved through `--scalar-custom-header-height`. The theme is resolved
+A 3.5rem bar above Scalar — the mark and wordmark (the docs' own pair, one mark per theme), the
+page's name, Start, Route index, and a note that response bodies are documented in the guides —
+reserved through `--scalar-custom-header-height`. The page's name is **OpenAPI explorer**, as the
+sidebar, the docs header's link, the guides and the tab title all call it; it hides below 30rem,
+where the tab names the page. Until Scalar has loaded from its CDN, the page says it is loading. The theme is resolved
 from Starlight's `starlight-theme` before first paint, and Scalar's own toggle is hidden.
 
 ### Browser surfaces

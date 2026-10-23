@@ -234,7 +234,9 @@
   gap: 1.5rem 2rem;
   margin-top: 1rem;
 }
-.where-next h3 {
+/* Group labels: `h3` under the home page's "Where next", `h2` on the 404, which
+   has no section heading above them and so must not skip a level. */
+.where-next :is(h2, h3) {
   font-size: var(--sl-text-sm);
   font-weight: 600;
   color: var(--sl-color-gray-3);
@@ -287,6 +289,63 @@
 .sl-markdown-content .event-list dd {
   margin: 0.25rem 0 0;
   padding: 0;
+}
+
+/*
+ * Each event is its own link target (`#event-approval_required`), so the home
+ * page's picture, a search result or a message can land on the one frame asked
+ * about rather than on a 22-event list. The name is the link: underlined only
+ * on hover, since every name in the list is one.
+ */
+.sl-markdown-content .event-list dt {
+  position: relative;
+  scroll-margin-top: calc(var(--sl-nav-height) + 1rem);
+}
+.sl-markdown-content .event-list dt a {
+  text-decoration: none;
+}
+.sl-markdown-content .event-list dt a:hover {
+  text-decoration: underline;
+}
+.sl-markdown-content .event-list dt:target code {
+  background-color: color-mix(in srgb, var(--sl-color-white) 8%, var(--sl-color-black));
+  box-decoration-break: clone;
+  padding-inline: 0.25rem;
+  margin-inline: -0.25rem;
+  border-radius: 0.375rem;
+}
+
+/*
+ * RunTrace's dot, hung in the margin beside the events that move the run: in
+ * flight, waiting on someone, finished, failed. The same ramp and the same
+ * size, so the list reads as the reference for that picture. The text above the
+ * list says what the dot means; each event's own sentence says it again, so no
+ * meaning rests on the hue.
+ */
+.sl-markdown-content .event-list dt[data-state]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -0.875rem;
+  top: calc(0.75rem + 0.5lh - 0.25rem);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background-color: var(--felix-event-hue);
+}
+.sl-markdown-content .event-list dt[data-state]:first-child::before {
+  top: calc(0.5lh - 0.25rem);
+}
+.sl-markdown-content .event-list dt[data-state="running"] {
+  --felix-event-hue: var(--felix-state-running);
+}
+.sl-markdown-content .event-list dt[data-state="blocked"] {
+  --felix-event-hue: var(--felix-state-blocked);
+}
+.sl-markdown-content .event-list dt[data-state="done"] {
+  --felix-event-hue: var(--felix-state-done);
+}
+.sl-markdown-content .event-list dt[data-state="failed"] {
+  --felix-event-hue: var(--felix-state-failed);
 }
 .sl-markdown-content .event-list .event-data {
   max-inline-size: none;

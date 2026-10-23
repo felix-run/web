@@ -1,6 +1,6 @@
 ---
 /*
- * Public API reference — Scalar over `/openapi.json`, which
+ * The OpenAPI explorer — Scalar over `/openapi.json`, which
  * `scripts/fetch-api-spec.mjs` downloads at build time from the felix release
  * that `api.felix.run/health` reports. The harness serves the same UI at its own
  * `/docs`, but behind its credential, so a browser following a link gets a 401.
@@ -31,6 +31,11 @@ import { join } from 'node:path';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/jetbrains-mono';
 import { DARK, LIGHT, scalarThemeCss } from '@felix/design/tokens';
+// The docs' own mark, one per theme, so the explorer's header reads as the same site.
+// biome-ignore lint/correctness/noUnusedImports: rendered below
+import markDark from '../assets/mark-dark.svg';
+// biome-ignore lint/correctness/noUnusedImports: rendered below
+import markLight from '../assets/mark-light.svg';
 
 // Biome parses only the frontmatter, so constants used in the markup read as dead.
 // biome-ignore lint/correctness/noUnusedVariables: used in the <script> below
@@ -46,7 +51,7 @@ try {
   // `dev --soft` without a spec; Scalar shows its own load error.
 }
 const origin = (process.env.FELIX_ORIGIN || 'https://api.felix.run').replace(/\/+$/, '');
-const title = version ? `Felix API reference · v${version}` : 'Felix API reference';
+const title = version ? `OpenAPI explorer · v${version} | Felix` : 'OpenAPI explorer | Felix';
 
 // The faces chat-ui and the rest of the docs set: Geist for UI and prose, JetBrains Mono
 // for what the harness said. Self-hosted by the imports above.
@@ -154,15 +159,42 @@ body {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
-/* The same wordmark treatment as the docs' .site-title (brand.css). */
+/* The same wordmark treatment as the docs' .site-title (brand.css), mark included. */
 .ref-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 1.25rem;
   font-weight: 650;
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
+.ref-wordmark img {
+  height: 1.5rem;
+  width: auto;
+}
+.ref-mark-light,
+:root[data-theme='light'] .ref-mark-dark {
+  display: none;
+}
+:root[data-theme='light'] .ref-mark-light {
+  display: inline;
+}
+/* Which page this is, named as the sidebar and the header link name it. */
+.ref-here {
+  color: var(--text);
+  font-weight: 600;
+}
 .ref-note {
   margin-inline-start: auto;
+}
+/* Scalar loads from a CDN and draws nothing until it has; say so in the meantime. */
+.ref-loading {
+  margin: 0;
+  padding: 2rem 1.5rem;
+  font-family: ${UI_SANS};
+  font-size: 0.875rem;
+  color: var(--muted);
 }
 .ref-note a {
   text-decoration: underline;
@@ -170,6 +202,12 @@ body {
 }
 @media (max-width: 50rem) {
   .ref-note {
+    display: none;
+  }
+}
+/* On a phone the bar holds the way home and the two links; the tab names the page. */
+@media (max-width: 30rem) {
+  .ref-here {
     display: none;
   }
 }
@@ -184,7 +222,7 @@ body {
     <title>{title}</title>
     <meta
       name="description"
-      content="REST, OpenAI-compatible, A2A and MCP endpoints of the Felix agents harness."
+      content="Request schemas for every endpoint of Felix, the self-hosted agents harness: REST, OpenAI-compatible, A2A and MCP."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <!-- Before anything paints: resolve the reader's docs theme onto <html>. -->
@@ -207,7 +245,12 @@ body {
   </head>
   <body>
     <header class="ref-header">
-      <a class="ref-wordmark" href="/">Felix</a>
+      <a class="ref-wordmark" href="/">
+        <img class="ref-mark-dark" src={markDark.src} alt="" width="24" height="24" />
+        <img class="ref-mark-light" src={markLight.src} alt="" width="24" height="24" />
+        Felix
+      </a>
+      <span class="ref-here" aria-current="page">OpenAPI explorer</span>
       <a href="/guide/getting-started/">Start</a>
       <a href="/guide/routes/">Route index</a>
       <p class="ref-note">
@@ -215,7 +258,7 @@ body {
         <a href="/guide/management-api/">Management API</a>.
       </p>
     </header>
-    <div id="app"></div>
+    <div id="app"><p class="ref-loading" role="status">Loading the OpenAPI explorer…</p></div>
     <script is:inline src={SCALAR_JS_URL} integrity={SCALAR_JS_SRI} crossorigin="anonymous"></script>
     <script is:inline define:vars={{ config }}>
       Scalar.createApiReference('#app', {

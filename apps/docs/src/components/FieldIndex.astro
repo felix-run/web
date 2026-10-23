@@ -1,0 +1,264 @@
+---
+/*
+ * The Manifest reference's own index: every `spec.*` section, grouped under the
+ * band it sits in, with a filter. The page is ~2,500 lines and most visits are a
+ * lookup of one field, so this is the tier between "the whole page" and "one
+ * field" that a 64-entry table of contents was not.
+ *
+ * Built at build time from the page's source, the way RouteIndex reads the
+ * guides, so a field added to the page is in the index without being listed
+ * twice: an `##` heading after this component opens a band, each `###` under it
+ * is a field, and the bands stop at the first `##` after the last one that has
+ * fields. Anchors are the same GitHub-style slugs Starlight generates, so every
+ * link here is a heading's own id and chat-ui's links into the page are
+ * untouched.
+ */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+interface Field {
+  /** The heading as written, code marks off: `spec.model`. */
+  name: string;
+  /** What the filter matches: the name plus the keys its tables list. */
+  hay: string;
+  anchor: string;
+}
+
+const source = readFileSync(
+  join(process.cwd(), 'src/content/guide/manifest-reference.mdx'),
+  'utf8',
+);
+
+/** GitHub-style heading slug — Starlight's, RouteIndex's and docs-links.test.ts's. */
+function slug(heading: string): string {
+  return heading
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .replace(/\s/g, '-');
+}
+
+const bands: { name: string; anchor: string; fields: Field[] }[] = [];
+let started = false;
+let inFence = false;
+let current: Field | null = null;
+for (const line of source.split('\n')) {
+  if (line.startsWith('```')) inFence = !inFence;
+  if (inFence) continue;
+  if (line.includes('<FieldIndex')) {
+    started = true;
+    continue;
+  }
+  if (!started) continue;
+  const h2 = line.match(/^## (.*)$/);
+  if (h2) {
+    current = null;
+    // A band with no fields ends the run: everything after is closing matter.
+    if (bands.length > 0 && bands[bands.length - 1].fields.length === 0) bands.pop();
+    bands.push({ name: h2[1], anchor: slug(h2[1]), fields: [] });
+    continue;
+  }
+  const h3 = line.match(/^### (.*)$/);
+  if (h3 && bands.length > 0) {
+    current = { name: h3[1].replace(/\x60/g, ''), hay: '', anchor: slug(h3[1]) };
+    current.hay = current.name.toLowerCase();
+    bands[bands.length - 1].fields.push(current);
+    continue;
+  }
+  // The keys a field's tables list join what the filter matches, so "schedule_task"
+  // finds `spec.scheduling` and "allow_hosts" finds `spec.network`: an operator often knows the
+  // key they set and not the section it lives in. (A backtick is spelled \x60 in
+  // these patterns: Astro's compiler reads a literal one inside a regex in the
+  // frontmatter as the start of a template string.)
+  const key = current && line.match(/^\|\s*\x60([^\x60]+)\x60\s*\|/);
+  if (current && key) current.hay += ` ${key[1].toLowerCase()}`;
+}
+const groups = bands.filter((b) => b.fields.length > 0);
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const total = groups.reduce((n, b) => n + b.fields.length, 0);
+/** `spec.model` reads as `model` here: every field in the index is under `spec`. */
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const short = (name: string) => name.replace(/\bspec\./g, '');
+---
+
+<nav class="field-index not-content" aria-labelledby="field-index-label">
+  <p id="field-index-label" class="field-index-label">
+    {total} fields under <code>spec</code>, in {groups.length} groups
+  </p>
+  <div class="field-filter" data-field-filter hidden>
+    <label for="field-filter-input">Filter fields</label>
+    <input
+      id="field-filter-input"
+      type="search"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="model, approvals, allow_hosts…"
+      aria-describedby="field-filter-status"
+    />
+    <p id="field-filter-status" class="field-filter-status" role="status" aria-live="polite"></p>
+  </div>
+  {
+    groups.map((band) => (
+      <div class="field-group" data-field-group>
+        <a class="field-band" href={`#${band.anchor}`}>
+          {band.name}
+        </a>
+        <ul>
+          {band.fields.map((field) => (
+            <li data-field={field.hay}>
+              <a href={`#${field.anchor}`}>{short(field.name)}</a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))
+  }
+</nav>
+
+<style>
+  .field-index {
+    margin-block: 1.5rem 2rem;
+    padding-block: 1rem;
+    border-block: 1px solid var(--sl-color-hairline);
+  }
+
+  .field-index-label {
+    margin: 0;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+  .field-index-label code {
+    font-size: inherit;
+  }
+
+  /* The Route index's filter, field for field, so the two lookups read as one tool. */
+  .field-filter {
+    margin-top: 0.75rem;
+    max-inline-size: 24rem;
+  }
+  .field-filter label {
+    display: block;
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    color: var(--sl-color-white);
+    margin-bottom: 0.25rem;
+  }
+  .field-filter input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--sl-color-gray-3) 75%, var(--sl-color-black));
+    border-radius: 0.5rem;
+    background: var(--sl-color-black);
+    color: var(--sl-color-white);
+    font: inherit;
+    font-size: var(--sl-text-sm);
+  }
+  .field-filter input::placeholder {
+    color: var(--sl-color-gray-3);
+  }
+  .field-filter-status {
+    margin: 0.25rem 0 0;
+    min-height: 1.25rem;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+
+  /*
+   * A band is a label and its fields on one wrapping line, like the Route
+   * index's jump list: six short rows rather than a 56-line column, so the index
+   * stays one screen on a phone. The band name is a link to the band's heading,
+   * in the body face; the fields are in the code face because they are keys.
+   */
+  .field-group {
+    display: grid;
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: 0 1rem;
+    align-items: baseline;
+    padding-block: 0.4rem;
+    border-top: 1px solid var(--sl-color-hairline);
+  }
+  .field-group:first-of-type {
+    margin-top: 0.75rem;
+  }
+
+  .field-band {
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    color: var(--sl-color-white);
+    text-decoration: none;
+    padding-block: 0.1875rem;
+  }
+  .field-band:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  .field-group ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 1rem;
+  }
+  .field-group li {
+    margin: 0;
+  }
+  .field-group li a {
+    display: inline-block;
+    padding-block: 0.1875rem;
+    font-family: var(--__sl-font-mono);
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+  }
+  .field-group li a:hover {
+    color: var(--sl-color-white);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  @media (max-width: 50rem) {
+    .field-group {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>
+
+<script>
+  // Progressive: without script the filter stays hidden and the index is whole.
+  const box = document.querySelector<HTMLElement>('[data-field-filter]');
+  const input = box?.querySelector<HTMLInputElement>('input');
+  const status = box?.querySelector<HTMLElement>('.field-filter-status');
+  const fields = [...document.querySelectorAll<HTMLElement>('[data-field]')];
+  const groups = [...document.querySelectorAll<HTMLElement>('[data-field-group]')];
+  if (box && input && status) {
+    box.hidden = false;
+    input.addEventListener('input', () => {
+      const terms = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const field of fields) {
+        const match = terms.every((t) => (field.dataset.field ?? '').includes(t));
+        field.hidden = !match;
+        if (match) shown++;
+      }
+      for (const group of groups) {
+        group.hidden = !group.querySelector('[data-field]:not([hidden])');
+      }
+      status.textContent = terms.length
+        ? shown === 0
+          ? 'No field matches.'
+          : `${shown} of ${fields.length} fields · Enter opens the first`
+        : '';
+    });
+    // The lookup ends at the field: Enter goes to the first match.
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || !input.value.trim()) return;
+      const first = document.querySelector<HTMLAnchorElement>('[data-field]:not([hidden]) a');
+      if (!first) return;
+      event.preventDefault();
+      location.hash = first.hash;
+    });
+  }
+</script>

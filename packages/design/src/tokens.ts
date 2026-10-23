@@ -57,9 +57,10 @@ export interface ThemePalette {
 
 export const LIGHT: ThemePalette = {
   bg: NEUTRAL[0],
-  // The stone ground, chat-ui's shell colour. In the docs it fills Starlight's gray-6/7
-  // slots and the Scalar explorer's sidebar; the manual's own nav and sidebar stay the
-  // page colour by choice (`brand.css`), so they do not read as separate surfaces.
+  // The stone ground, chat-ui's shell colour. In the docs it is for inset surfaces —
+  // inline code, code blocks (Starlight's gray-6/7), the explorer's request panels — and
+  // never for navigation: the manual's nav and sidebar, and the explorer's sidebar, are
+  // the page colour behind a hairline (`brand.css`, `scalarVars`), so each reads as one sheet.
   bgSubtle: NEUTRAL[100],
   bgMuted: NEUTRAL[100],
   border: NEUTRAL[200],
@@ -158,7 +159,7 @@ function scalarVars(p: ThemePalette, s: StatePalette): string {
     --scalar-button-1: ${p.accent};
     --scalar-button-1-color: ${p.accentContrast};
     --scalar-button-1-hover: ${p.text};
-    --scalar-sidebar-background-1: ${p.bgSubtle};
+    --scalar-sidebar-background-1: ${p.bg};
     --scalar-sidebar-color-1: ${p.text};
     --scalar-sidebar-color-2: ${p.textFaint};
     --scalar-sidebar-border-color: ${p.border};
@@ -182,6 +183,84 @@ export function scalarThemeCss(): string {
   .dark-mode {${scalarVars(DARK, STATE_DARK)}
   }
 `;
+}
+
+/**
+ * The one hue syntax highlighting may use: a stone-blue at oklch chroma 0.03, near
+ * enough to grey that it reads as a tint of the material rather than a colour. It
+ * marks strings, so a JSON key and its value are told apart. Not a state, and not
+ * near one: syntax that drew strings red put a credential in the failed colour.
+ * Dark `oklch(0.78 0.03 240)`, light `oklch(0.48 0.03 240)`; 9.57:1 and 5.64:1 on
+ * their code panels (`DARK.bgSubtle`, `LIGHT.bgSubtle`).
+ */
+export const CODE_ACCENT = { dark: '#a7bac9', light: '#4f606d' } as const;
+
+/**
+ * A TextMate theme for the docs' code blocks (Expressive Code), from the scale and
+ * `CODE_ACCENT` alone, so no hue reaches code that the docs do not otherwise allow.
+ * Weight and lightness carry the structure: keywords and constants in ink and bold,
+ * keys and numbers in ink, the rest in body text, comments and punctuation faint.
+ * The frame and background come from Starlight's own colours
+ * (`useStarlightUiThemeColors` in the docs config), which this file already fills.
+ */
+export function codeTheme(scheme: 'dark' | 'light') {
+  const p = scheme === 'dark' ? DARK : LIGHT;
+  const ink = scheme === 'dark' ? NEUTRAL[0] : NEUTRAL[950];
+  const accent = CODE_ACCENT[scheme];
+  return {
+    name: `felix-${scheme}`,
+    type: scheme,
+    colors: {
+      'editor.background': p.bgSubtle,
+      'editor.foreground': p.textMuted,
+    },
+    tokenColors: [
+      { settings: { foreground: p.textMuted } },
+      {
+        scope: ['comment', 'punctuation.definition.comment'],
+        settings: { foreground: p.textFaint, fontStyle: 'italic' },
+      },
+      {
+        scope: ['punctuation', 'meta.brace', 'keyword.operator'],
+        settings: { foreground: p.textFaint },
+      },
+      {
+        scope: [
+          'keyword',
+          'storage',
+          'constant.language',
+          'support.function.builtin',
+          'entity.name.function',
+          'entity.name.command',
+          'support.function',
+        ],
+        settings: { foreground: ink, fontStyle: 'bold' },
+      },
+      {
+        scope: [
+          'support.type.property-name',
+          'meta.object-literal.key',
+          'entity.name.tag',
+          'entity.other.attribute-name',
+          'variable.other.property',
+          'constant.numeric',
+          'constant.other',
+        ],
+        settings: { foreground: ink },
+      },
+      {
+        scope: ['string', 'punctuation.definition.string', 'markup.inline.raw'],
+        settings: { foreground: accent },
+      },
+      {
+        scope: ['variable.other.normal', 'variable.parameter', 'punctuation.definition.variable'],
+        settings: { foreground: ink },
+      },
+      { scope: ['markup.bold'], settings: { fontStyle: 'bold' } },
+      { scope: ['markup.italic'], settings: { fontStyle: 'italic' } },
+      { scope: ['markup.heading'], settings: { foreground: ink, fontStyle: 'bold' } },
+    ],
+  };
 }
 
 /** The state ramp as `--felix-state-*`, which the docs' asides read. */

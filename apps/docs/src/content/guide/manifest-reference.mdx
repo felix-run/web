@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import FieldIndex from '../../components/FieldIndex.astro';
 
 Every field in the `apiVersion: felix/v1` manifest schema. Source of truth:
 [`packages/harness/src/felix/manifests/schema.py`](https://github.com/felix-run/felix/blob/main/packages/harness/src/felix/manifests/schema.py),
@@ -52,7 +53,13 @@ metadata:
       prompt: Search the workspace for TODO and summarize the matches by file.
 ```
 
-## `spec.pattern`
+<FieldIndex />
+
+## Model and prompts
+
+What the agent runs on and what it is told: the model, the loop, the prompts and how its replies are shaped.
+
+### `spec.pattern`
 
 ```yaml
 spec:
@@ -66,7 +73,7 @@ nothing in core enumerates the list. See [Patterns](/internals/patterns/).
 Multi-agent patterns require `sub_agents` and reject `peers`, `containers`, `queues`, `sandboxes`
 and `browser_tools`; a sub-agent's own leaf manifest declares those instead.
 
-## `spec.model`
+### `spec.model`
 
 ```yaml
 spec:
@@ -125,7 +132,7 @@ allowlist built from `spec.model.id`, `spec.model.fallbacks`, `FELIX_DEFAULT_MOD
 table. Anything else is `400 model_not_allowlisted:<id>`.
 :::
 
-## `spec.system_prompt`
+### `spec.system_prompt`
 
 ```yaml
 spec:
@@ -163,7 +170,7 @@ spec:
 Parts are joined with `"\n\n---\n\n"` in the order **soul → base → inline**, then file-sourced parts.
 Empty parts are dropped.
 
-## `spec.prompts`
+### `spec.prompts`
 
 Named user-message templates, expanded with `$1` / `$@` / `${1:-default}`. A chat request runs one
 by passing `template` and `template_args`, or a person runs one as a slash command.
@@ -185,7 +192,7 @@ spec:
 | `description` | string \| null, ≤200 chars | `null` | One line a client shows beside the command. |
 | `argument_hint` | string \| null, ≤80 chars | `null` | How a client hints the arguments after the name. |
 
-### Slash commands
+#### Slash commands
 
 A user turn on `POST /chat`, `/chat/stream` or `/v1/chat/completions` whose text is
 `/triage FEL-12 high` is replaced, before screening and hooks see it, by the expansion of `triage`
@@ -206,7 +213,7 @@ history shows the model each earlier command as it was answered. One request may
 type. A client that has slash commands of its own should send a name it does not handle itself
 through to the harness when it is on that list.
 
-## `spec.output_styles`
+### `spec.output_styles`
 
 How the agent writes its answers, picked per conversation. Each style is a block of prose that
 joins the end of the system prompt of the agent the person is talking to.
@@ -249,7 +256,26 @@ In chat-ui a **Style** picker appears beside Thinking whenever the selected agen
 with `default` first (its description names the style it is); in the terminal, `/style` lists them and `/style <name>` (or
 `/style default`) sets one.
 
-## `spec.network`
+### `spec.max_turns` and `spec.recursion_limit`
+
+```yaml
+spec:
+  max_turns: 4          # rounds for the multi-agent patterns; default 4, ceiling 100
+  recursion_limit: 10   # steps for a react loop; default 10, ceiling 50
+```
+
+They bound different loops. `max_turns` is read by `groupchat`, `plan_execute` and the other
+delegating patterns. A `react` agent — the default pattern — is bounded by `recursion_limit`,
+where one step is a model call plus the tool batch it asked for; `max_turns` on a react agent
+bounds nothing, and the compile step warns (`felix_rule_targets_nothing{kind="max_turns"}`).
+A react loop that runs out of steps with tool calls still pending ends with
+`stop_reason: max_turns`, a `truncated` session status, and `felix_run_stop_reason{reason="max_turns"}`.
+
+## Tools
+
+What the agent can call, where those calls run, and what reaches the network.
+
+### `spec.network`
 
 Which hosts this agent's tools may reach. Unset, it is any public address the egress guard
 allows, as before; set, it is these and nothing else.
@@ -284,7 +310,7 @@ internationalised name in punycode (`xn--mnchen-3ya.de`).
 - **A2A peers are pinned.** With a list set, a `peer__*` tool has no `manifest` argument: the
   agent answering on the far side is the peer's default, not one the model picks.
 
-### Credentials the model never holds
+#### Credentials the model never holds
 
 With `credentials: [github]`, a fetch to the operator's registered host and path carries the
 registered header — `Authorization: Bearer …` — which the harness adds as the request leaves. The
@@ -314,7 +340,7 @@ are the operator's traffic, not the agent's.
 On a host many people publish to — `*.github.io`, `*.vercel.app`, `docs.google.com` — a listed
 host still admits pages anyone wrote. Pair it with an `http_tools` `path_prefix` there.
 
-## `spec.tools`
+### `spec.tools`
 
 A list of built-in tool names.
 
@@ -364,7 +390,7 @@ writing the workspace swap a directory for a link between the two. `list_dir` re
 Patterns contribute their own tools: `plan_create` / `plan_update_step` / `plan_get` (`deep`), and
 `remember_procedure` when procedural memory is on.
 
-## `spec.workspace`
+### `spec.workspace`
 
 Which directory the workspace tools, [`shell_tools`](#specshell_tools), an image tool's `path` and
 [`publish_commits`](#specgithub_publish) work in. Each is a directory under `FELIX_WORKSPACE_ROOT`:
@@ -408,7 +434,7 @@ docker compose exec api felix workspace migrate --dry-run
 docker compose exec api felix workspace migrate --keep AGENTS.md
 ```
 
-## `spec.tool_guidance`
+### `spec.tool_guidance`
 
 One line of advice per tool, keyed by tool name or glob, appended to the system prompt under a
 **Tool guidance** heading — only for tools the agent actually has once the manifest compiles.
@@ -429,99 +455,7 @@ as `felix_rule_targets_nothing`, like the other tool lists. Tools defined in cod
 carry their own line, which is listed alongside. Set `system_prompt.include_tool_guidance: false`
 to leave the section out.
 
-## `spec.skills`
-
-```yaml
-spec:
-  skills:
-    - name: calculator-help
-```
-
-| Field | Type | Default |
-|---|---|---|
-| `name` | string | required |
-| `version` | string \| null | `null` |
-| `description` | string \| null | `null` |
-
-A skill is a `SKILL.md` with YAML frontmatter and a Markdown body. The system prompt carries the
-catalog — each skill's name and description — and `activate_skill` returns the body to the model as
-instructions. `description` here is not read by the loader (the SKILL.md's own frontmatter supplies
-the catalog's); it is surfaced on the A2A agent card. `version` pins an operator upload at
-`skills/{tenant}/{name}/{version}/SKILL.md`, which then wins over a tenant library skill of the same
-name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the full precedence.
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `spec.skills_declared_only` | bool | `false` | `false` seeds the catalog with every bundled skill, every skill in `FELIX_SKILLS_DIR` and every live tenant-library skill, and `spec.skills` adds to that. `true` makes the declared names the whole catalog. |
-| `spec.personal_skills` | `off` \| `read` \| `write` | `off` | `read` offers each authenticated caller the live skills in their own personal library, ahead of the tenant's (see [where skills come from](/guide/concepts/#where-skills-come-from)). A caller's skill never replaces one the manifest names in `spec.skills`. A durable run keeps the library of the caller who started it. `write` reads as `read` does and points the [authoring tools](#specskill_authoring) at the caller's library; it needs `skill_authoring.enabled`. Anything but `off` is refused together with `skills_declared_only: true`. |
-
-## `spec.skill_authoring`
-
-Lets the agent write to its tenant's skill library: binds `create_skill`, `update_skill` and
-`submit_skill_feedback`. Off by default.
-
-```yaml
-spec:
-  skill_authoring:
-    enabled: true
-    mode: draft
-    max_pending: 20
-    auto_eval: false
-```
-
-| Field | Type | Default | Meaning |
-|---|---|---|---|
-| `enabled` | bool | `false` | Bind the three tools. |
-| `mode` | `draft` \| `publish` | `draft` | `draft`: every save waits for a person to publish it. `publish`: a save is published at once if the publish gate passes, and stays a draft (the result carries `publish_blocked` with the reasons) if not. |
-| `max_pending` | int 1–200 | `20` | Undecided agent drafts this manifest may hold in the tenant's library, and undecided feedback it may have filed, before the tools refuse (`pending_cap_reached`, `feedback_cap_reached`). |
-| `auto_eval` | bool | `false` | Queue an evaluation (`FELIX_SKILL_EVAL_MODEL`) of every draft the agent saves; the result carries its `eval_id`. Model calls on the tenant's bill. |
-
-With `spec.personal_skills: write` the tools save into the caller's own library instead:
-
-| Tool | Saves into |
-|---|---|
-| `create_skill` | the caller's library, always |
-| `update_skill` | the caller's library when it holds the name (live, or a draft not yet in a catalog) and the manifest does not name it in `spec.skills`; the tenant's otherwise |
-| `submit_skill_feedback` | the tenant's library only; feedback on one of the caller's own skills is refused (`personal_skill`) |
-
-A personal save needs a caller who has a library and holds the `skills:personal` scope, checked when
-the tool runs. Without either it is refused (`no_personal_library`, `missing_scope`) and nothing is
-saved; it is never redirected to the tenant's library. The result carries `library: "personal"`.
-`max_pending` and `mode` apply as for the tenant's library, except that in `publish` mode a personal
-skill that would replace a tenant or host skill for its owner stays a draft for them to publish.
-`auto_eval` skips a personal save. An approval of the call binds the library it saves into, so a
-grant for one caller's save authorizes none into another's or the tenant's. Under `read` or `off`
-the tools write the tenant's library and refuse a name that is the caller's own skill in the catalog
-(`personal_skill`).
-
-**`mode: publish` needs an approval on both writes.** Validation refuses the manifest unless the
-approval rule [`spec.approvals`](#specapprovals) would select for `create_skill`, and the one it
-would select for `update_skill`, both exist and carry no `when_args` — a conditional rule lets the
-calls without those arguments through ungated. Literal tool names win over globs and the last match
-wins, as for any approval. So a person reads every skill an agent publishes, in the approval preview
-the harness renders: the SKILL.md that would be saved and, for an edit, the parent version and every
-file kept from it by sha256.
-
-```yaml
-spec:
-  skill_authoring:
-    enabled: true
-    mode: publish
-  approvals:
-    - id: skill-author
-      description: Confirm saving a skill to the library
-      tools: [create_skill, update_skill]
-      ttl_seconds: 600
-      allow_unattended: false
-```
-
-In either mode, an agent's edit of a version an operator wrote is saved as a draft and never
-published automatically, and `submit_skill_feedback` only reaches library skills in this agent's own
-catalog. Drafts and feedback are decided through [`/skill-library`](/guide/management-api/#skill-library).
-The self-build `contributor` manifest enables authoring in `draft` mode; `governed` carries the
-`skill-author` approval rule above.
-
-## `spec.mcp_servers`
+### `spec.mcp_servers`
 
 Each entry becomes one tool per remote tool, namespaced `{name}__{tool}`. The client is the official
 MCP Python SDK's, on either protocol era; how discovery, calls, failures and timeouts behave is on
@@ -573,22 +507,7 @@ helper is unavailable ([details](/guide/mcp/#felix-as-an-mcp-client)). Allowlist
 JSON on stdio, as the protocol specifies.
 :::
 
-## `spec.peers`
-
-Each entry becomes a `peer__{name}` tool that calls a remote Felix over A2A.
-
-```yaml
-spec:
-  peers:
-    - name: billing
-      url: https://billing.example.com
-      auth: secret:BILLING_TOKEN
-```
-
-`name` and `url` are required; `auth` accepts a literal or `secret:NAME`. Hop depth is bounded by
-`limits.max_peer_hops`.
-
-## `spec.containers`
+### `spec.containers`
 
 An HTTPS container gateway, one tool per entry.
 
@@ -604,7 +523,7 @@ An HTTPS container gateway, one tool per entry.
 | `args_schema` | JSON Schema \| null | `null` | |
 | `fatal` | bool | `false` | When true, a failure aborts the tool batch. |
 
-## `spec.queues`
+### `spec.queues`
 
 Asynchronous work handed to a separate consumer over a **Valkey/Redis list**. The result lands back
 on the session later, so the run can continue without blocking.
@@ -629,7 +548,7 @@ spec:
 The consumer writes the result back with `POST /internal/sessions/{session_id}/events`, which
 requires the `X-Felix-Consumer-Secret` header.
 
-## `spec.sandboxes`
+### `spec.sandboxes`
 
 Container-backed code execution (the `sandbox` extra, Docker).
 
@@ -644,7 +563,7 @@ Container-backed code execution (the `sandbox` extra, Docker).
 | `args_schema` | JSON Schema \| null | `null` |
 | `fatal` | bool | `false` |
 
-## `spec.shell_tools`
+### `spec.shell_tools`
 
 Exec an allowlisted argv in the manifest's workspace scope ([`spec.workspace`](#specworkspace)) — the tool that lets a coding agent
 run the repository's own gates. No shell interpreter: `&&`, `|` and `;` are literal arguments. It
@@ -683,7 +602,7 @@ API's user, beside it, and can read the API process's environment through `/proc
 database credentials, any token the API holds. Run untrusted work through a runner.
 :::
 
-### Background commands
+#### Background commands
 
 A dev server, a file watcher or a long build should not hold the turn. A shell tool with
 `background: true` takes one more argument, `run_in_background`. The command starts, and the call
@@ -751,7 +670,7 @@ with `cap_drop: ALL`, `no-new-privileges` and a process limit. Workspace clone a
 too, since `git fetch` runs hooks the agent can write. It still has outbound internet for
 `git fetch` and `uv`, so a builder host must not carry a cloud instance role.
 
-## `spec.browser_tools`
+### `spec.browser_tools`
 
 Browser automation through the `browser` extra (Playwright). Install it explicitly — it is never in
 the default image.
@@ -776,7 +695,7 @@ build logs a warning saying so: set `image_model` to let screenshots through. A 
 KiB is reported by size instead. `pdf` is not an image either wire can show and is still returned
 inline as text, up to 32 KB.
 
-## `spec.image_tools`
+### `spec.image_tools`
 
 Image operations the model can run on the images in its conversation, backed by Pillow. Install the
 `image` extra (`uv sync --extra image`, or `FELIX_DOCKER_EXTRAS=image`). Without it each tool still
@@ -836,7 +755,7 @@ Under `content_screening`, results are screened according to where their input c
 - without it, a result made from a workspace file is quarantined, and one made from a thread image
   passes.
 
-## `spec.search_tools`
+### `spec.search_tools`
 
 Search the web through the backend an **operator** configured. The model supplies a query,
 not a destination — the inverse of [`spec.http_tools`](#spechttp_tools) below, and the reason
@@ -886,7 +805,7 @@ screening does not close — which is why the bundled `deep` manifest requires a
 `FELIX_SEARCH_BACKEND` is unset — rather than the field silently doing nothing. The compile logs a
 warning too.
 
-## `spec.http_tools`
+### `spec.http_tools`
 
 Read a URL the **model** chooses. This is the inverse of an MCP server or an A2A peer, where
 the manifest fixes the destination — so `path_prefix` is how an author narrows it back down,
@@ -937,7 +856,7 @@ Compiling a manifest that binds a fetch tool without `spec.content_screening.ena
 **Not replay-safe.** A resumed run will not re-issue a fetch. The model names the endpoint, and a
 `GET` that changes something is ordinary on the open web.
 
-## `spec.github_publish`
+### `spec.github_publish`
 
 Publish commits the agent already made in its workspace to GitHub, without the file contents
 passing through the model. Binds one tool, `publish_commits`.
@@ -986,7 +905,7 @@ writes them through GitHub's Git Data API — blobs, one tree, one commit, then 
   them through a [shell runner](#specshell_tools), as the builder stack does. Either way keep the
   token's GitHub permissions to contents and pull requests, and its Workflows permission off.
 
-## `spec.client_tools`
+### `spec.client_tools`
 
 Tools the **browser or CLI client** executes, not the server. This is how the web clients run local
 shell commands and open local files.
@@ -1014,7 +933,7 @@ spec:
 | `timeout_seconds` | float, `0 < x ≤ 3600` | `null` → 120 s | |
 | `fatal` | bool | `false` | |
 
-### The user's folder: `local_*` file tools
+#### The user's folder: `local_*` file tools
 
 Both bundled clients answer seven file tools by name, against the folder the person has open — in
 chat-ui the mounted folder (or the tab's own files when none is mounted), in the terminal client
@@ -1050,7 +969,42 @@ answers with `POST /chat/tool_result`. A client that never answers stalls the ru
 which returns `[error/timeout] client tool timed out` as the tool result. See
 [the streaming contract](/guide/rest-api/#client-executed-tools).
 
-## `spec.sub_agents` and `spec.aggregator_prompt`
+### `spec.tools_retrieval`
+
+Selects a relevant subset of tools per turn instead of sending the whole catalogue.
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `false` |
+| `top_k` | int ≥ 1 | `20` |
+| `model` | string | `"bge-base-en-v1.5"` |
+| `decider` | bool | `false` |
+
+With `decider: true`, [`spec.decider`](#specdecider) picks the shortlist: one choice over the whole
+catalogue per user turn, the `top_k` most probable offered, tools already used this thread always
+kept. It falls back to the embedding (or keyword) ranking when the decider errors or when the
+shortlist holds less than `spec.decider.min_confidence` of the probability mass. Needs `enabled`.
+
+## Agents and delegation
+
+Other agents this one hands work to, asks, or routes between.
+
+### `spec.peers`
+
+Each entry becomes a `peer__{name}` tool that calls a remote Felix over A2A.
+
+```yaml
+spec:
+  peers:
+    - name: billing
+      url: https://billing.example.com
+      auth: secret:BILLING_TOKEN
+```
+
+`name` and `url` are required; `auth` accepts a literal or `secret:NAME`. Hop depth is bounded by
+`limits.max_peer_hops`.
+
+### `spec.sub_agents` and `spec.aggregator_prompt`
 
 `sub_agents` is a list of manifest names, required by the multi-agent patterns and resolved at build
 time the way a request resolves a manifest — the tenant's stored versions, then object storage, then
@@ -1065,7 +1019,7 @@ else a child declares (tools, policies, approvals, screening, limits) is compile
 however it was reached. A `router` with [`spec.decider`](#specdecider) picks its child with the
 decider and falls back to its model classifier when the decider is unsure.
 
-## `spec.delegation`
+### `spec.delegation`
 
 ```yaml
 spec:
@@ -1165,7 +1119,458 @@ Several `task` calls in one turn run side by side when
 manifest are refused: the composite pattern would never offer the tool to a model. For an agent
 on another deployment, use [`spec.peers`](#specpeers).
 
-## `spec.scheduling`
+### `spec.decider`
+
+A **decision model** answers typed questions — pick one option, score against levels, true or false —
+with calibrated probabilities instead of generating text. Naming one here does nothing on its own;
+each consumer opts in with its own flag, and each keeps its previous behaviour as the fallback.
+
+```yaml
+spec:
+  decider:
+    id: clef             # a FELIX_DECISION_ROUTES id
+    min_confidence: 0.5
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `id` | string | `""` | Off when empty. `clef` and `clef-flash` (Cloudflare's, on Workers AI), `jev` (TypeSafe) and `jev-cf` (Jev on Workers AI) are built in; an id not in `FELIX_DECISION_ROUTES` fails the compile. |
+| `min_confidence` | float 0–1 | `0.5` | Below this a consumer treats the decision as unsure and takes its fallback. |
+
+| Consumer | Flag | What the decider decides |
+|---|---|---|
+| Tool selection | `tools_retrieval.decider` | Which tools the model is offered this turn |
+| Router | `pattern: router` with `decider.id` set | Which sub-agent answers |
+| Escalation | `model.confidence_escalation.decider` | Whether the reply answers the request |
+| Judges | `guardrails.judges[].decider` | Probability the text meets `criteria` |
+| Reflect | `reflect.decider` | Whether a draft meets the criteria |
+| Skill hints | `skill_suggestion.enabled` | Which skill fits a task, sent as a hint |
+| Screening | `content_screening.decider` | Injection, jailbreak and exfiltration risk |
+
+Every decision is metered like a model turn and counts against `limits.max_cost_usd`. The request
+text — and, for the consumers that judge them, replies and tool output — goes to the decider's
+provider unmasked. The bundled `decider-support` manifest switches on every consumer that fits a
+support agent. See [Model client](/internals/model-client/#decision-models).
+
+### `spec.reflect`
+
+| Field | Type | Default |
+|---|---|---|
+| `verifier_model` | string | `""` |
+| `threshold` | float 0–1 | `0.7` |
+| `max_iterations` | int 1–5 | `2` |
+| `criteria` | string | `""` |
+| `decider` | bool | `false` |
+
+`decider: true` verifies each draft with [`spec.decider`](#specdecider) instead of asking
+`verifier_model` for a bare number; the model verifier and the heuristic remain the fallback.
+
+### `spec.plan_execute`
+
+| Field | Type | Default |
+|---|---|---|
+| `planner_model` | string | `""` |
+| `executor_model` | string | `""` |
+| `max_subtasks` | int 1–20 | `8` |
+| `replan_on_failure` | bool | `true` |
+| `max_replans` | int 0–5 | `2` |
+| `executor_recursion_limit` | int 1–20 | `6` |
+
+`planner_model` routes the planning turn and `executor_model` the per-subtask agent; empty
+keeps `spec.model` for that turn, and everything else on `spec.model` — price overrides,
+fallbacks, thinking level — is carried across either way. Naming a planner route chooses
+which route plans, not which model configuration applies. A `model` named on the request
+outranks both.
+
+`replan_on_failure` replaces the *unfinished remainder* of the plan when a subtask ends
+early, keeping the completed steps and their notes; `max_replans` bounds it, and `0` turns
+it off as surely as the boolean does. "Ends early" means the subtask stopped on `refusal`
+or `max_tokens` — a governance denial or a truncated answer. A short answer is not a
+failure, so it does not replan. `max_subtasks` bounds the whole run, not each plan: a
+replan is asked only for the budget the ceiling has left.
+
+:::caution[Removed after 0.3.0]
+`planner_few_shots` is gone. It named a count of planner examples with no corpus behind it,
+so nothing could make it mean anything. A stored manifest that sets it still loads — the
+field is stripped on read with a warning rather than failing under `extra: forbid`. Delete
+the line to clear the warning; nothing else changes, because nothing ever read the value.
+:::
+
+## Skills, memory and sessions
+
+What the agent keeps between turns and between conversations.
+
+### `spec.skills`
+
+```yaml
+spec:
+  skills:
+    - name: calculator-help
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `version` | string \| null | `null` |
+| `description` | string \| null | `null` |
+
+A skill is a `SKILL.md` with YAML frontmatter and a Markdown body. The system prompt carries the
+catalog — each skill's name and description — and `activate_skill` returns the body to the model as
+instructions. `description` here is not read by the loader (the SKILL.md's own frontmatter supplies
+the catalog's); it is surfaced on the A2A agent card. `version` pins an operator upload at
+`skills/{tenant}/{name}/{version}/SKILL.md`, which then wins over a tenant library skill of the same
+name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the full precedence.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `spec.skills_declared_only` | bool | `false` | `false` seeds the catalog with every bundled skill, every skill in `FELIX_SKILLS_DIR` and every live tenant-library skill, and `spec.skills` adds to that. `true` makes the declared names the whole catalog. |
+| `spec.personal_skills` | `off` \| `read` \| `write` | `off` | `read` offers each authenticated caller the live skills in their own personal library, ahead of the tenant's (see [where skills come from](/guide/concepts/#where-skills-come-from)). A caller's skill never replaces one the manifest names in `spec.skills`. A durable run keeps the library of the caller who started it. `write` reads as `read` does and points the [authoring tools](#specskill_authoring) at the caller's library; it needs `skill_authoring.enabled`. Anything but `off` is refused together with `skills_declared_only: true`. |
+
+### `spec.skill_authoring`
+
+Lets the agent write to its tenant's skill library: binds `create_skill`, `update_skill` and
+`submit_skill_feedback`. Off by default.
+
+```yaml
+spec:
+  skill_authoring:
+    enabled: true
+    mode: draft
+    max_pending: 20
+    auto_eval: false
+```
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `false` | Bind the three tools. |
+| `mode` | `draft` \| `publish` | `draft` | `draft`: every save waits for a person to publish it. `publish`: a save is published at once if the publish gate passes, and stays a draft (the result carries `publish_blocked` with the reasons) if not. |
+| `max_pending` | int 1–200 | `20` | Undecided agent drafts this manifest may hold in the tenant's library, and undecided feedback it may have filed, before the tools refuse (`pending_cap_reached`, `feedback_cap_reached`). |
+| `auto_eval` | bool | `false` | Queue an evaluation (`FELIX_SKILL_EVAL_MODEL`) of every draft the agent saves; the result carries its `eval_id`. Model calls on the tenant's bill. |
+
+With `spec.personal_skills: write` the tools save into the caller's own library instead:
+
+| Tool | Saves into |
+|---|---|
+| `create_skill` | the caller's library, always |
+| `update_skill` | the caller's library when it holds the name (live, or a draft not yet in a catalog) and the manifest does not name it in `spec.skills`; the tenant's otherwise |
+| `submit_skill_feedback` | the tenant's library only; feedback on one of the caller's own skills is refused (`personal_skill`) |
+
+A personal save needs a caller who has a library and holds the `skills:personal` scope, checked when
+the tool runs. Without either it is refused (`no_personal_library`, `missing_scope`) and nothing is
+saved; it is never redirected to the tenant's library. The result carries `library: "personal"`.
+`max_pending` and `mode` apply as for the tenant's library, except that in `publish` mode a personal
+skill that would replace a tenant or host skill for its owner stays a draft for them to publish.
+`auto_eval` skips a personal save. An approval of the call binds the library it saves into, so a
+grant for one caller's save authorizes none into another's or the tenant's. Under `read` or `off`
+the tools write the tenant's library and refuse a name that is the caller's own skill in the catalog
+(`personal_skill`).
+
+**`mode: publish` needs an approval on both writes.** Validation refuses the manifest unless the
+approval rule [`spec.approvals`](#specapprovals) would select for `create_skill`, and the one it
+would select for `update_skill`, both exist and carry no `when_args` — a conditional rule lets the
+calls without those arguments through ungated. Literal tool names win over globs and the last match
+wins, as for any approval. So a person reads every skill an agent publishes, in the approval preview
+the harness renders: the SKILL.md that would be saved and, for an edit, the parent version and every
+file kept from it by sha256.
+
+```yaml
+spec:
+  skill_authoring:
+    enabled: true
+    mode: publish
+  approvals:
+    - id: skill-author
+      description: Confirm saving a skill to the library
+      tools: [create_skill, update_skill]
+      ttl_seconds: 600
+      allow_unattended: false
+```
+
+In either mode, an agent's edit of a version an operator wrote is saved as a draft and never
+published automatically, and `submit_skill_feedback` only reaches library skills in this agent's own
+catalog. Drafts and feedback are decided through [`/skill-library`](/guide/management-api/#skill-library).
+The self-build `contributor` manifest enables authoring in `draft` mode; `governed` carries the
+`skill-author` approval rule above.
+
+### `spec.memory`
+
+```yaml
+spec:
+  memory:
+    checkpointer: postgres   # default; `none` also built in
+    store: pgvector          # default
+```
+
+<Aside type="caution">
+  `checkpointer: none` keeps no session state, so anything that needs one has
+  nothing to act on. A `session.strategy` other than `full_replay`,
+  `session.compact_after_turn`, and `memory.capture.enabled` are each refused
+  alongside it, rather than being silently dropped.
+</Aside>
+
+**There is no in-process built-in, on purpose.** A thread is not manifest-scoped — the session
+routes address one by id with no manifest in hand — so a manifest choosing a different *backend*
+would leave the agent reading one log while `/history`, `/continue` and `/compact` read another.
+`none` is exempt because it is a claim about the agent, not a competing backend.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `checkpointer` | `postgres` \| `none`, or a registered name | `postgres` | Where the session log lives. `none` keeps no session state, so every turn starts from the messages it was given. Add your own with `register_checkpointer`. |
+| `store` | `pgvector` \| `memory` \| `none` (aliases `agentcore`, `vectorize` accepted but inert) | `pgvector` | Durable-fact vector store. |
+| `capture` | object | disabled | Extract durable facts from a turn. |
+| `recall` | object | tools off | How stored facts reach the model beyond the prelude. |
+| `consolidate` | object | disabled | Periodically merge agent-written facts that say the same thing (below). |
+
+The bundled `assistant` manifest is the worked example: `capture` on `claude-haiku` with
+`max_facts: 3` and `min_chars: 200`, `recall.tools: true`, `content_screening` on, an approval
+(`memory-forget`) on `forget`, and `auth.inbound.allow_anonymous: false`. Memory is keyed by tenant
+and manifest, not by caller, so a manifest that captures on a deployment shared by more than one
+person puts one caller's facts in another's prompt.
+
+#### `memory.consolidate`
+
+Capture only adds, so a pool of facts grows on every long turn. Consolidation merges the ones that
+say the same thing.
+
+```yaml
+spec:
+  memory:
+    consolidate:
+      enabled: true
+      model: claude-haiku
+      after_facts: 50
+      max_facts: 200
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | Opt in, per manifest. |
+| `model` | string | `"claude-haiku"` | The route asked which facts are duplicates. Its calls are metered to the tenant and manifest. |
+| `after_facts` | int ≥ 10 | `50` | Only a pool holding more than this many eligible facts is considered. |
+| `max_facts` | int 1–500 | `200` | The newest facts shown per pass. |
+
+The worker's `consolidate_memory` cron (every 15 minutes) shows the model the newest `max_facts`
+active facts of the pool and asks which state the same thing. What it is allowed to do is narrow
+on purpose:
+
+- **It only merges duplicates.** Facts that merely relate, or that disagree, are left as they are.
+- **The model returns groups of ids, never text.** The store keeps the **oldest** fact of each group
+  — the model's ordering is ignored — and supersedes the rest, which stay stored and auditable.
+  No memory text is ever written by consolidation.
+- **Only agent-written facts.** Facts an operator wrote through `/memory` are never shown and never
+  retired. Facts of a different `kind`, or a different `topic_key` (absent counts), are never merged.
+- **Every group is checked first** — ids from the batch shown, none in two groups — and is applied
+  whole or not at all; a malformed answer changes nothing.
+- **A pool that has not changed is not asked again**, and at most 50 pools are consolidated per
+  tick. The skip is remembered per worker process, so a restart costs one call per pool.
+
+Facts reach the model fenced as untrusted data, since capture extracts them from turns that can
+include tool output.
+
+`capture`:
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `false` |
+| `model` | string | `"claude-haiku"` |
+| `max_facts` | int, 1–20 | `5` |
+| `min_chars` | int ≥ 0 | `80` |
+| `verify` | bool | `false` |
+
+`verify` adds a second pass that hands the proposed facts back to `model` along with the excerpt and
+keeps only what the excerpt actually supports. It doubles the extraction calls, which is why it is
+off by default — turn it on where stored memory is acted on rather than merely recalled.
+
+The pass can only **remove**. Its verdict selects from the proposals; it never supplies a memory of
+its own, and it cannot alter a kept memory's `kind`, `topic_key` or `importance`. That matters
+because the excerpt it reads is untrusted transcript. A captured `topic_key` cannot retire anything
+— only an operator retires a memory by its key, and a captured value is stored beside the one it
+contradicts — but a verdict that could set a key could still make its own memory the one the
+prelude shows as current.
+
+It fails open on anything it cannot read, on the grounds that a broken verifier is not evidence the
+facts were wrong:
+
+| Verdict | Result |
+|---|---|
+| A subset of the proposals | Just that subset is stored |
+| `[]` — a well-formed empty array | Nothing is stored. The one unambiguous way to reject everything |
+| The call errors | The unverified set is kept |
+| Unparseable, or every item unusable | The unverified set is kept |
+| Valid items that match no proposal | The unverified set is kept — the verifier rewrote rather than chose |
+
+Content is matched case- and whitespace-insensitively but not punctuation-insensitively, so a
+verifier that echoes an item back with a trailing full stop counts as having rewritten it.
+
+Extraction runs on `model`, not on the turn's model — it is a small, mechanical job on every
+completed turn, and billing it to a frontier model roughly doubles the cost of having memory at
+all. If that model cannot be built, extraction falls back to the turn's model rather than dropping
+the fact.
+
+Facts land in `memory_vectors` (pgvector, HNSW) with one of four kinds: `fact`, `event`,
+`instruction`, `task`. The extractor asks the model to classify each fact, and **anything outside
+that set is silently rewritten to `fact`** rather than rejected — so a prompt that invents a kind
+degrades quietly instead of failing.
+
+Stored facts reach the model two ways. The **prelude** — the active facts, which the ReAct loop
+renders as a message directly after the system prompt on each run — is built whenever `store` is
+`pgvector` or `memory`; it is escaped but bypasses the governance stack. `recall`:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `tools` | bool | `false` | Bind `remember`, `recall`, `forget` and `list_memories`. They are bound before the governance stack, so recalled text passes through content screening, policies and approvals like any tool output. Not bound when `store: none`. |
+| `limit` | int, 1–50 | `5` | Default number of hits `recall` returns. |
+
+Recall is hybrid: full text, topic keys, and a vector channel when `FELIX_MEMORY_EMBEDDER` resolves
+to an embedder. The default, `auto`, uses the local model when `felix-harness[embeddings]` is
+installed and skips the vector channel otherwise — see [Embeddings](/guide/deploy/#embeddings).
+
+Procedural memory is a separate subsystem under `spec.procedural_memory`, not a kind in this table.
+
+### `spec.session`
+
+```yaml
+spec:
+  session:
+    strategy: compacting
+    reserve_tokens: 16384
+    keep_recent_tokens: 20000
+    context_window_tokens: 128000   # optional: omit to use the model's window
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `strategy` | string | `"full_replay"` | `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N` (needs `embeddings`), `compacting`. |
+| `compaction_enabled` | bool | `true` | |
+| `reserve_tokens` | int ≥ 0 | `16384` | Headroom kept for the reply. |
+| `keep_recent_tokens` | int ≥ 0 | `20000` | Never compacted. |
+| `context_window_tokens` | int ≥ 1024 \| null | `null` | The window to compact against. Unset: the model's own, from the catalog through its route (1M on a 1M-context model). Set it to compact earlier on purpose — a smaller window is a cheaper turn. |
+| `steering_mode` | `all` \| `one-at-a-time` | `all` | |
+| `follow_up_mode` | `all` \| `one-at-a-time` | `all` | How queued follow-ups are answered once the run has an answer: `all` gives every one waiting to a single further turn; `one-at-a-time` gives each its own. A follow-up's turn is an ordinary step — tools run, it streams — and counts against `recursion_limit`; a run with no step left, or that stopped on a budget, truncation or abort, keeps them for the thread's next run. |
+| `branch_summary` | bool | `true` | Summarize an abandoned branch on rewind. |
+| `compact_after_turn` | bool | `false` | |
+| `clear_tool_results` | `{keep_turns, min_chars}` \| null | `null` (off) | Stub stale tool results in what the model is sent. See below. |
+
+The session log is append-only and lives *outside* the context window; the strategy decides what the
+model actually sees. See [Persistence](/internals/persistence/).
+
+#### Clearing stale tool results
+
+A long run piles up tool results — file reads, search hits, command output, screenshots — that the
+agent needed once and never reads again, and every later model call pays for them.
+`clear_tool_results` replaces each old one with a one-line stub in what the model is sent:
+
+```yaml
+spec:
+  session:
+    clear_tool_results:
+      keep_turns: 10    # 1–1000
+      min_chars: 1000   # text results this size or smaller are kept, unless they carry an image
+```
+
+- **Which results.** A tool result is stubbed when it sits behind the newest `keep_turns` user
+  messages and is longer than `min_chars` or carries an image. The cut-off advances `keep_turns`
+  user messages at a time, so between `keep_turns` and `2 × keep_turns − 1` of the newest are always
+  whole. A steer or a compaction summary counts as a user message, which only ever keeps more.
+- **Only the request changes.** The session log keeps every result, so a rewind, fork, export or
+  compaction summary still has them.
+- **The call stays paired.** Only the result's content and images are replaced; the assistant's
+  tool call and the result's id are kept, so every provider still sees a result for every call.
+- **A spilled result keeps its handle.** A result that [`spec.artifacts`](#specartifacts) spilled
+  names its artifact id in the stub, so `read_artifact` still reaches the full output.
+- **The stub asks the model to re-run only a tool that reads**, never to repeat an action to see
+  what it returned. A result content screening replaced with a `[quarantined]` notice is never
+  stubbed.
+- **What the caller sent is left alone.** A client that re-sends the whole conversation (the
+  OpenAI-compatible `/v1` surface) has its messages passed through as written.
+- **Prompt caching.** For `full_replay` and `compacting`, the cached prefix changes once every
+  `keep_turns` user messages rather than on every call. `windowed:N`, `summarizing:N` and
+  `semantic:N` change their prefix every turn anyway.
+- Clearing runs before replay image screening, so a stubbed screenshot is not screened again.
+  `POST /chat/ask` reads the thread the same way its next turn would. A router's setting also
+  applies to the children it hands the thread to.
+
+The `compacting` strategy measures the window before results are stubbed, so it can still compact
+when clearing alone would have made room.
+
+### `spec.skill_suggestion`
+
+Ranks the skill catalogue with [`spec.decider`](#specdecider), reranks a shortlist against each
+skill's body (an imported skill's listed description only, never its body; see
+[Skill import](/guide/skill-import/#imported-text-in-front-of-the-model)), and — only when the request asks for a task and a skill fits it — adds a one-line hint
+naming that skill. The model still decides whether to `activate_skill`. The hint rides the turn's
+first model call as a transient message: after the prompt-cache breakpoint, never in the session log.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | Needs `spec.decider.id`; `react` and `deep` only. |
+| `shortlist` | int 1–10 | `3` | Skills carried into the rerank; a catalogue no larger skips the ranking. |
+| `min_gate` | float 0–1 | `0.3` | Probability the request asks for a task at all. |
+| `min_fit` | float 0–1 | `0.3` | Probability the best skill does what was asked. |
+
+### `spec.artifacts`
+
+Spills oversized tool output to the object store, shows the model a preview, and gives it a tool to
+read the rest.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `false` | Spill, and bind `read_artifact` |
+| `threshold_chars` | int ≥ 1 | `8000` | A tool result longer than this is spilled |
+| `preview_chars` | int ≥ 1 | `200` | How much of it stays in the transcript |
+| `default_window_chars` | int ≥ 1 | `4000` | `read_artifact` window when the model gives no `length` |
+| `max_window_chars` | int ≥ 1 | `16000` | Largest window one `read_artifact` call returns |
+
+Output over the threshold is written to `artifacts/{tenant}/{manifest}/{uuid}.txt` and replaced with
+the preview plus a marker, which is always the last thing in the output:
+
+```
+…[artifact:<id> key=artifacts/<tenant>/<manifest>/<id>.txt chars=<N> spilled_at=<unix>]
+```
+
+**The model reads it back with `read_artifact`**, bound automatically whenever `enabled` is true and
+an object store is configured:
+
+| Argument | Type | Default |
+|---|---|---|
+| `artifact_id` | string | — the id from the marker |
+| `offset` | int ≥ 0 | `0` |
+| `length` | int ≥ 1 | `default_window_chars`, capped at `max_window_chars` |
+
+Each window comes back headed `[artifact-window:<id> chars <start>-<end> of <total>; continue at
+offset=<end>]`, or `; end]` on the last one, so the model pages by the offset it was given.
+
+- **It reads only what its own conversation spilled** — the thread, or the request when there is no
+  thread. The tenant and manifest prefix is shared by every caller of a manifest, so an id alone
+  would otherwise reach another caller's run. Another conversation's id is refused exactly as a
+  missing one is.
+- **It is governed like any tool.** It is bound before the governance stack, so policies, limits,
+  screening and audit apply to a read as to the call that produced the artifact.
+- **It is never itself spilled**, although a window can be larger than `threshold_chars`.
+- **Spill expires.** The worker's retention sweep deletes spills older than
+  `FELIX_ARTIFACT_RETENTION_DAYS` (30 by default, `0` keeps forever); after that `read_artifact`
+  reports the id as missing.
+
+Clients read artifacts through [`GET /artifacts`](/guide/management-api/#artifacts) instead, which
+needs `artifacts:read` and is not held to a conversation. The manifests that read files or fetch
+pages — `cowork`, `deep` and `support`, and the self-build `contributor` and `triage` — enable
+artifacts.
+
+### `spec.procedural_memory`
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `false` |
+| `top_k` | int ≥ 1 | `3` |
+| `embedding_model` | string | `"bge-base-en-v1.5"` |
+
+Adds a `remember_procedure` tool and recalls stored how-tos as `procedural` memory rows.
+
+## Running and reaching people
+
+How a run executes, when it runs without being asked, how it tells someone, and who may call it.
+
+### `spec.scheduling`
 
 ```yaml
 spec:
@@ -1251,7 +1656,7 @@ scheduled the task, opens the conversation it was scheduled from, and is left in
 for them to read. For a recurring check-in whose instructions the operator writes and each person
 only turns on or off, use [`spec.heartbeat`](#specheartbeat) instead.
 
-## `spec.notify`
+### `spec.notify`
 
 ```yaml
 spec:
@@ -1387,7 +1792,7 @@ not read-only, so plan mode refuses it. Each sent call is audited as
 [`notify.sent`](/internals/observability/#notices) — never with its text. A manifest that already
 has a tool named `notify` fails the compile.
 
-## `spec.heartbeat`
+### `spec.heartbeat`
 
 ```yaml
 spec:
@@ -1491,223 +1896,7 @@ sign-in to a personal tenant — leaves Felix nothing to re-check, so enrolment 
 `exp` and the heartbeat stops there (step 1). The person turns it on again with a fresh
 credential. [`GET /heartbeats`](/guide/management-api/#heartbeats) shows that end as `expires_at`.
 
-## `spec.max_turns` and `spec.recursion_limit`
-
-```yaml
-spec:
-  max_turns: 4          # rounds for the multi-agent patterns; default 4, ceiling 100
-  recursion_limit: 10   # steps for a react loop; default 10, ceiling 50
-```
-
-They bound different loops. `max_turns` is read by `groupchat`, `plan_execute` and the other
-delegating patterns. A `react` agent — the default pattern — is bounded by `recursion_limit`,
-where one step is a model call plus the tool batch it asked for; `max_turns` on a react agent
-bounds nothing, and the compile step warns (`felix_rule_targets_nothing{kind="max_turns"}`).
-A react loop that runs out of steps with tool calls still pending ends with
-`stop_reason: max_turns`, a `truncated` session status, and `felix_run_stop_reason{reason="max_turns"}`.
-
-## `spec.memory`
-
-```yaml
-spec:
-  memory:
-    checkpointer: postgres   # default; `none` also built in
-    store: pgvector          # default
-```
-
-<Aside type="caution">
-  `checkpointer: none` keeps no session state, so anything that needs one has
-  nothing to act on. A `session.strategy` other than `full_replay`,
-  `session.compact_after_turn`, and `memory.capture.enabled` are each refused
-  alongside it, rather than being silently dropped.
-</Aside>
-
-**There is no in-process built-in, on purpose.** A thread is not manifest-scoped — the session
-routes address one by id with no manifest in hand — so a manifest choosing a different *backend*
-would leave the agent reading one log while `/history`, `/continue` and `/compact` read another.
-`none` is exempt because it is a claim about the agent, not a competing backend.
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `checkpointer` | `postgres` \| `none`, or a registered name | `postgres` | Where the session log lives. `none` keeps no session state, so every turn starts from the messages it was given. Add your own with `register_checkpointer`. |
-| `store` | `pgvector` \| `memory` \| `none` (aliases `agentcore`, `vectorize` accepted but inert) | `pgvector` | Durable-fact vector store. |
-| `capture` | object | disabled | Extract durable facts from a turn. |
-| `recall` | object | tools off | How stored facts reach the model beyond the prelude. |
-| `consolidate` | object | disabled | Periodically merge agent-written facts that say the same thing (below). |
-
-The bundled `assistant` manifest is the worked example: `capture` on `claude-haiku` with
-`max_facts: 3` and `min_chars: 200`, `recall.tools: true`, `content_screening` on, an approval
-(`memory-forget`) on `forget`, and `auth.inbound.allow_anonymous: false`. Memory is keyed by tenant
-and manifest, not by caller, so a manifest that captures on a deployment shared by more than one
-person puts one caller's facts in another's prompt.
-
-### `memory.consolidate`
-
-Capture only adds, so a pool of facts grows on every long turn. Consolidation merges the ones that
-say the same thing.
-
-```yaml
-spec:
-  memory:
-    consolidate:
-      enabled: true
-      model: claude-haiku
-      after_facts: 50
-      max_facts: 200
-```
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `enabled` | bool | `false` | Opt in, per manifest. |
-| `model` | string | `"claude-haiku"` | The route asked which facts are duplicates. Its calls are metered to the tenant and manifest. |
-| `after_facts` | int ≥ 10 | `50` | Only a pool holding more than this many eligible facts is considered. |
-| `max_facts` | int 1–500 | `200` | The newest facts shown per pass. |
-
-The worker's `consolidate_memory` cron (every 15 minutes) shows the model the newest `max_facts`
-active facts of the pool and asks which state the same thing. What it is allowed to do is narrow
-on purpose:
-
-- **It only merges duplicates.** Facts that merely relate, or that disagree, are left as they are.
-- **The model returns groups of ids, never text.** The store keeps the **oldest** fact of each group
-  — the model's ordering is ignored — and supersedes the rest, which stay stored and auditable.
-  No memory text is ever written by consolidation.
-- **Only agent-written facts.** Facts an operator wrote through `/memory` are never shown and never
-  retired. Facts of a different `kind`, or a different `topic_key` (absent counts), are never merged.
-- **Every group is checked first** — ids from the batch shown, none in two groups — and is applied
-  whole or not at all; a malformed answer changes nothing.
-- **A pool that has not changed is not asked again**, and at most 50 pools are consolidated per
-  tick. The skip is remembered per worker process, so a restart costs one call per pool.
-
-Facts reach the model fenced as untrusted data, since capture extracts them from turns that can
-include tool output.
-
-`capture`:
-
-| Field | Type | Default |
-|---|---|---|
-| `enabled` | bool | `false` |
-| `model` | string | `"claude-haiku"` |
-| `max_facts` | int, 1–20 | `5` |
-| `min_chars` | int ≥ 0 | `80` |
-| `verify` | bool | `false` |
-
-`verify` adds a second pass that hands the proposed facts back to `model` along with the excerpt and
-keeps only what the excerpt actually supports. It doubles the extraction calls, which is why it is
-off by default — turn it on where stored memory is acted on rather than merely recalled.
-
-The pass can only **remove**. Its verdict selects from the proposals; it never supplies a memory of
-its own, and it cannot alter a kept memory's `kind`, `topic_key` or `importance`. That matters
-because the excerpt it reads is untrusted transcript. A captured `topic_key` cannot retire anything
-— only an operator retires a memory by its key, and a captured value is stored beside the one it
-contradicts — but a verdict that could set a key could still make its own memory the one the
-prelude shows as current.
-
-It fails open on anything it cannot read, on the grounds that a broken verifier is not evidence the
-facts were wrong:
-
-| Verdict | Result |
-|---|---|
-| A subset of the proposals | Just that subset is stored |
-| `[]` — a well-formed empty array | Nothing is stored. The one unambiguous way to reject everything |
-| The call errors | The unverified set is kept |
-| Unparseable, or every item unusable | The unverified set is kept |
-| Valid items that match no proposal | The unverified set is kept — the verifier rewrote rather than chose |
-
-Content is matched case- and whitespace-insensitively but not punctuation-insensitively, so a
-verifier that echoes an item back with a trailing full stop counts as having rewritten it.
-
-Extraction runs on `model`, not on the turn's model — it is a small, mechanical job on every
-completed turn, and billing it to a frontier model roughly doubles the cost of having memory at
-all. If that model cannot be built, extraction falls back to the turn's model rather than dropping
-the fact.
-
-Facts land in `memory_vectors` (pgvector, HNSW) with one of four kinds: `fact`, `event`,
-`instruction`, `task`. The extractor asks the model to classify each fact, and **anything outside
-that set is silently rewritten to `fact`** rather than rejected — so a prompt that invents a kind
-degrades quietly instead of failing.
-
-Stored facts reach the model two ways. The **prelude** — the active facts, which the ReAct loop
-renders as a message directly after the system prompt on each run — is built whenever `store` is
-`pgvector` or `memory`; it is escaped but bypasses the governance stack. `recall`:
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `tools` | bool | `false` | Bind `remember`, `recall`, `forget` and `list_memories`. They are bound before the governance stack, so recalled text passes through content screening, policies and approvals like any tool output. Not bound when `store: none`. |
-| `limit` | int, 1–50 | `5` | Default number of hits `recall` returns. |
-
-Recall is hybrid: full text, topic keys, and a vector channel when `FELIX_MEMORY_EMBEDDER` resolves
-to an embedder. The default, `auto`, uses the local model when `felix-harness[embeddings]` is
-installed and skips the vector channel otherwise — see [Embeddings](/guide/deploy/#embeddings).
-
-Procedural memory is a separate subsystem under `spec.procedural_memory`, not a kind in this table.
-
-## `spec.session`
-
-```yaml
-spec:
-  session:
-    strategy: compacting
-    reserve_tokens: 16384
-    keep_recent_tokens: 20000
-    context_window_tokens: 128000   # optional: omit to use the model's window
-```
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `strategy` | string | `"full_replay"` | `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N` (needs `embeddings`), `compacting`. |
-| `compaction_enabled` | bool | `true` | |
-| `reserve_tokens` | int ≥ 0 | `16384` | Headroom kept for the reply. |
-| `keep_recent_tokens` | int ≥ 0 | `20000` | Never compacted. |
-| `context_window_tokens` | int ≥ 1024 \| null | `null` | The window to compact against. Unset: the model's own, from the catalog through its route (1M on a 1M-context model). Set it to compact earlier on purpose — a smaller window is a cheaper turn. |
-| `steering_mode` | `all` \| `one-at-a-time` | `all` | |
-| `follow_up_mode` | `all` \| `one-at-a-time` | `all` | How queued follow-ups are answered once the run has an answer: `all` gives every one waiting to a single further turn; `one-at-a-time` gives each its own. A follow-up's turn is an ordinary step — tools run, it streams — and counts against `recursion_limit`; a run with no step left, or that stopped on a budget, truncation or abort, keeps them for the thread's next run. |
-| `branch_summary` | bool | `true` | Summarize an abandoned branch on rewind. |
-| `compact_after_turn` | bool | `false` | |
-| `clear_tool_results` | `{keep_turns, min_chars}` \| null | `null` (off) | Stub stale tool results in what the model is sent. See below. |
-
-The session log is append-only and lives *outside* the context window; the strategy decides what the
-model actually sees. See [Persistence](/internals/persistence/).
-
-### Clearing stale tool results
-
-A long run piles up tool results — file reads, search hits, command output, screenshots — that the
-agent needed once and never reads again, and every later model call pays for them.
-`clear_tool_results` replaces each old one with a one-line stub in what the model is sent:
-
-```yaml
-spec:
-  session:
-    clear_tool_results:
-      keep_turns: 10    # 1–1000
-      min_chars: 1000   # text results this size or smaller are kept, unless they carry an image
-```
-
-- **Which results.** A tool result is stubbed when it sits behind the newest `keep_turns` user
-  messages and is longer than `min_chars` or carries an image. The cut-off advances `keep_turns`
-  user messages at a time, so between `keep_turns` and `2 × keep_turns − 1` of the newest are always
-  whole. A steer or a compaction summary counts as a user message, which only ever keeps more.
-- **Only the request changes.** The session log keeps every result, so a rewind, fork, export or
-  compaction summary still has them.
-- **The call stays paired.** Only the result's content and images are replaced; the assistant's
-  tool call and the result's id are kept, so every provider still sees a result for every call.
-- **A spilled result keeps its handle.** A result that [`spec.artifacts`](#specartifacts) spilled
-  names its artifact id in the stub, so `read_artifact` still reaches the full output.
-- **The stub asks the model to re-run only a tool that reads**, never to repeat an action to see
-  what it returned. A result content screening replaced with a `[quarantined]` notice is never
-  stubbed.
-- **What the caller sent is left alone.** A client that re-sends the whole conversation (the
-  OpenAI-compatible `/v1` surface) has its messages passed through as written.
-- **Prompt caching.** For `full_replay` and `compacting`, the cached prefix changes once every
-  `keep_turns` user messages rather than on every call. `windowed:N`, `summarizing:N` and
-  `semantic:N` change their prefix every turn anyway.
-- Clearing runs before replay image screening, so a stubbed screenshot is not screened again.
-  `POST /chat/ask` reads the thread the same way its next turn would. A router's setting also
-  applies to the children it hands the thread to.
-
-The `compacting` strategy measures the window before results are stubbed, so it can still compact
-when clearing alone would have made room.
-
-## `spec.auth`
+### `spec.auth`
 
 ```yaml
 spec:
@@ -1726,7 +1915,7 @@ spec:
 | `inbound.allow_anonymous` | bool | `false` | Enforced. Anonymous callers get `401` unless true. |
 | `outbound.providers` | string[] | `[]` | Enforced at **compile**. The resolved provider for the primary model and every fallback must be listed, or the build fails — not the first model call. |
 
-## `spec.a2a` and `spec.observability`
+### `spec.a2a` and `spec.observability`
 
 ```yaml
 spec:
@@ -1741,7 +1930,7 @@ spec:
 | `observability.trace` | bool | `true` | |
 | `observability.metrics[]` | string[] | `[]` | Empty = every counter. Non-empty is an **allowlist**: unlisted counter names are dropped before the series exists, which also bounds the Prometheus cardinality that tenant-supplied manifest ids and remote MCP tool names would otherwise create. |
 
-## `spec.execution`
+### `spec.execution`
 
 ```yaml
 spec:
@@ -1773,173 +1962,11 @@ allowed tenants, and the worker POSTs the finished run to it. See
 [Completion webhooks](/guide/rest-api/#completion-webhooks) for the payload and signature, and
 [Deploy](/guide/deploy/#completion-webhooks) for registering endpoints.
 
-## `spec.tools_retrieval`
+## Governance
 
-Selects a relevant subset of tools per turn instead of sending the whole catalogue.
+What the agent is allowed to do, how much, and what a person must approve.
 
-| Field | Type | Default |
-|---|---|---|
-| `enabled` | bool | `false` |
-| `top_k` | int ≥ 1 | `20` |
-| `model` | string | `"bge-base-en-v1.5"` |
-| `decider` | bool | `false` |
-
-With `decider: true`, [`spec.decider`](#specdecider) picks the shortlist: one choice over the whole
-catalogue per user turn, the `top_k` most probable offered, tools already used this thread always
-kept. It falls back to the embedding (or keyword) ranking when the decider errors or when the
-shortlist holds less than `spec.decider.min_confidence` of the probability mass. Needs `enabled`.
-
-## `spec.decider`
-
-A **decision model** answers typed questions — pick one option, score against levels, true or false —
-with calibrated probabilities instead of generating text. Naming one here does nothing on its own;
-each consumer opts in with its own flag, and each keeps its previous behaviour as the fallback.
-
-```yaml
-spec:
-  decider:
-    id: clef             # a FELIX_DECISION_ROUTES id
-    min_confidence: 0.5
-```
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `id` | string | `""` | Off when empty. `clef` and `clef-flash` (Cloudflare's, on Workers AI), `jev` (TypeSafe) and `jev-cf` (Jev on Workers AI) are built in; an id not in `FELIX_DECISION_ROUTES` fails the compile. |
-| `min_confidence` | float 0–1 | `0.5` | Below this a consumer treats the decision as unsure and takes its fallback. |
-
-| Consumer | Flag | What the decider decides |
-|---|---|---|
-| Tool selection | `tools_retrieval.decider` | Which tools the model is offered this turn |
-| Router | `pattern: router` with `decider.id` set | Which sub-agent answers |
-| Escalation | `model.confidence_escalation.decider` | Whether the reply answers the request |
-| Judges | `guardrails.judges[].decider` | Probability the text meets `criteria` |
-| Reflect | `reflect.decider` | Whether a draft meets the criteria |
-| Skill hints | `skill_suggestion.enabled` | Which skill fits a task, sent as a hint |
-| Screening | `content_screening.decider` | Injection, jailbreak and exfiltration risk |
-
-Every decision is metered like a model turn and counts against `limits.max_cost_usd`. The request
-text — and, for the consumers that judge them, replies and tool output — goes to the decider's
-provider unmasked. The bundled `decider-support` manifest switches on every consumer that fits a
-support agent. See [Model client](/internals/model-client/#decision-models).
-
-## `spec.skill_suggestion`
-
-Ranks the skill catalogue with [`spec.decider`](#specdecider), reranks a shortlist against each
-skill's body (an imported skill's listed description only, never its body; see
-[Skill import](/guide/skill-import/#imported-text-in-front-of-the-model)), and — only when the request asks for a task and a skill fits it — adds a one-line hint
-naming that skill. The model still decides whether to `activate_skill`. The hint rides the turn's
-first model call as a transient message: after the prompt-cache breakpoint, never in the session log.
-
-| Field | Type | Default | Notes |
-|---|---|---|---|
-| `enabled` | bool | `false` | Needs `spec.decider.id`; `react` and `deep` only. |
-| `shortlist` | int 1–10 | `3` | Skills carried into the rerank; a catalogue no larger skips the ranking. |
-| `min_gate` | float 0–1 | `0.3` | Probability the request asks for a task at all. |
-| `min_fit` | float 0–1 | `0.3` | Probability the best skill does what was asked. |
-
-## `spec.artifacts`
-
-Spills oversized tool output to the object store, shows the model a preview, and gives it a tool to
-read the rest.
-
-| Field | Type | Default | Meaning |
-|---|---|---|---|
-| `enabled` | bool | `false` | Spill, and bind `read_artifact` |
-| `threshold_chars` | int ≥ 1 | `8000` | A tool result longer than this is spilled |
-| `preview_chars` | int ≥ 1 | `200` | How much of it stays in the transcript |
-| `default_window_chars` | int ≥ 1 | `4000` | `read_artifact` window when the model gives no `length` |
-| `max_window_chars` | int ≥ 1 | `16000` | Largest window one `read_artifact` call returns |
-
-Output over the threshold is written to `artifacts/{tenant}/{manifest}/{uuid}.txt` and replaced with
-the preview plus a marker, which is always the last thing in the output:
-
-```
-…[artifact:<id> key=artifacts/<tenant>/<manifest>/<id>.txt chars=<N> spilled_at=<unix>]
-```
-
-**The model reads it back with `read_artifact`**, bound automatically whenever `enabled` is true and
-an object store is configured:
-
-| Argument | Type | Default |
-|---|---|---|
-| `artifact_id` | string | — the id from the marker |
-| `offset` | int ≥ 0 | `0` |
-| `length` | int ≥ 1 | `default_window_chars`, capped at `max_window_chars` |
-
-Each window comes back headed `[artifact-window:<id> chars <start>-<end> of <total>; continue at
-offset=<end>]`, or `; end]` on the last one, so the model pages by the offset it was given.
-
-- **It reads only what its own conversation spilled** — the thread, or the request when there is no
-  thread. The tenant and manifest prefix is shared by every caller of a manifest, so an id alone
-  would otherwise reach another caller's run. Another conversation's id is refused exactly as a
-  missing one is.
-- **It is governed like any tool.** It is bound before the governance stack, so policies, limits,
-  screening and audit apply to a read as to the call that produced the artifact.
-- **It is never itself spilled**, although a window can be larger than `threshold_chars`.
-- **Spill expires.** The worker's retention sweep deletes spills older than
-  `FELIX_ARTIFACT_RETENTION_DAYS` (30 by default, `0` keeps forever); after that `read_artifact`
-  reports the id as missing.
-
-Clients read artifacts through [`GET /artifacts`](/guide/management-api/#artifacts) instead, which
-needs `artifacts:read` and is not held to a conversation. The manifests that read files or fetch
-pages — `cowork`, `deep` and `support`, and the self-build `contributor` and `triage` — enable
-artifacts.
-
-## `spec.reflect`
-
-| Field | Type | Default |
-|---|---|---|
-| `verifier_model` | string | `""` |
-| `threshold` | float 0–1 | `0.7` |
-| `max_iterations` | int 1–5 | `2` |
-| `criteria` | string | `""` |
-| `decider` | bool | `false` |
-
-`decider: true` verifies each draft with [`spec.decider`](#specdecider) instead of asking
-`verifier_model` for a bare number; the model verifier and the heuristic remain the fallback.
-
-## `spec.plan_execute`
-
-| Field | Type | Default |
-|---|---|---|
-| `planner_model` | string | `""` |
-| `executor_model` | string | `""` |
-| `max_subtasks` | int 1–20 | `8` |
-| `replan_on_failure` | bool | `true` |
-| `max_replans` | int 0–5 | `2` |
-| `executor_recursion_limit` | int 1–20 | `6` |
-
-`planner_model` routes the planning turn and `executor_model` the per-subtask agent; empty
-keeps `spec.model` for that turn, and everything else on `spec.model` — price overrides,
-fallbacks, thinking level — is carried across either way. Naming a planner route chooses
-which route plans, not which model configuration applies. A `model` named on the request
-outranks both.
-
-`replan_on_failure` replaces the *unfinished remainder* of the plan when a subtask ends
-early, keeping the completed steps and their notes; `max_replans` bounds it, and `0` turns
-it off as surely as the boolean does. "Ends early" means the subtask stopped on `refusal`
-or `max_tokens` — a governance denial or a truncated answer. A short answer is not a
-failure, so it does not replan. `max_subtasks` bounds the whole run, not each plan: a
-replan is asked only for the budget the ceiling has left.
-
-:::caution[Removed after 0.3.0]
-`planner_few_shots` is gone. It named a count of planner examples with no corpus behind it,
-so nothing could make it mean anything. A stored manifest that sets it still loads — the
-field is stripped on read with a warning rather than failing under `extra: forbid`. Delete
-the line to clear the warning; nothing else changes, because nothing ever read the value.
-:::
-
-## `spec.procedural_memory`
-
-| Field | Type | Default |
-|---|---|---|
-| `enabled` | bool | `false` |
-| `top_k` | int ≥ 1 | `3` |
-| `embedding_model` | string | `"bge-base-en-v1.5"` |
-
-Adds a `remember_procedure` tool and recalls stored how-tos as `procedural` memory rows.
-
-## `spec.policies`
+### `spec.policies`
 
 Scope-gated tool access.
 
@@ -1968,7 +1995,7 @@ server whose discovery failed binds no tools.
 
 A denial emits a `policy_deny` audit event with `status: denied`.
 
-## `spec.limits`
+### `spec.limits`
 
 ```yaml
 spec:
@@ -2004,7 +2031,7 @@ capped the same way. A breach denies the call like any other governance layer: t
 becomes a deny string, `felix_tool_calls{status="denied"}` increments, and the run records a
 `policy_deny` audit row. There is no distinct `limit_exceeded` event type.
 
-## `spec.guardrails`
+### `spec.guardrails`
 
 ```yaml
 spec:
@@ -2045,7 +2072,7 @@ blocks and below-threshold judge scores deny through the same path as every othe
 `policy_deny` audit row and `felix_tool_calls{status="denied"}` — not under event types of their
 own.
 
-## `spec.content_screening`
+### `spec.content_screening`
 
 Screens tool **output** for prompt injection before the model sees it.
 
@@ -2080,7 +2107,7 @@ content_screening:
 
 Inbound user turns are screened on `/chat`, `/v1` and `/a2a` as well.
 
-### Images
+#### Images
 
 A turn's screeners read its text. Text drawn *inside* an image — a screenshot that says "ignore
 previous instructions" — is invisible to them unless `image_model` is set:
@@ -2126,7 +2153,7 @@ expired credential, 429, provider outage — or returns a score that cannot be p
 content, and a `felix_control_unavailable` counter is emitted. This matters most on the tool-output
 path, which is what screens MCP, A2A, browser, and sandbox content.
 
-## `spec.command_screening`
+### `spec.command_screening`
 
 Pattern rules over shell-style command arguments.
 
@@ -2157,7 +2184,7 @@ required), `reason` (string \| null).
 `require_approval` creates a real approval request and blocks on it, bounded by
 `approval_ttl_seconds` so a run cannot wait forever on an approver who never comes.
 
-## `spec.anomaly`
+### `spec.anomaly`
 
 Thresholds for the worker's anomaly scan. Read from the manifest — findings carry the values
 that produced them.
@@ -2169,7 +2196,7 @@ that produced them.
 | `baseline_factor` | float ≥ 1 | `3.0` | Multiple of the baseline that counts as an anomaly. |
 | `min_rate` | float 0–1 | `0.2` | **Still unimplemented** — deliberately, since its intended semantics are not recoverable from the code. |
 
-## `spec.permissions`
+### `spec.permissions`
 
 ```yaml
 spec:
@@ -2199,7 +2226,7 @@ conversation, and expires after 30 minutes. Every skipped approval is audited (`
 An MCP tool's own read-only annotation does not count for plan mode (the server wrote it); list the
 tool in `read_only_tools`.
 
-## `spec.hooks`
+### `spec.hooks`
 
 ```yaml
 spec:
@@ -2243,7 +2270,7 @@ reach (a sidecar beside the API) and have the operator register it with `"privat
 `"hooks": true`; it receives the same signed request and answers the same JSON. Hooks run on `react` and `deep`; any other pattern
 refuses a manifest that declares them. Hook ids must be unique; at most 16.
 
-## `spec.approvals`
+### `spec.approvals`
 
 Human-in-the-loop gates on named tools.
 
@@ -2300,7 +2327,7 @@ as `args.preview`, is never part of the signature, and is stripped from `edited_
 that fails refuses the call (`[approval preview failed]`) and writes no row, so nothing is
 approved unseen.
 
-## `spec.governance`
+### `spec.governance`
 
 Opt-in framework mapping. These are compile-time requirements, **not a certification**.
 
