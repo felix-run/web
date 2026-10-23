@@ -1903,6 +1903,87 @@ sign-in to a personal tenant — leaves Felix nothing to re-check, so enrolment 
 `exp` and the heartbeat stops there (step 1). The person turns it on again with a fresh
 credential. [`GET /heartbeats`](/guide/management-api/#heartbeats) shows that end as `expires_at`.
 
+### `spec.workflow_authoring`
+
+Lets the agent build [workflows](/guide/management-api/#workflows) for the person it is talking to,
+and run them. It binds `workflow_catalog`, `check_workflow`, `save_workflow`, `list_my_workflows`
+and `run_workflow`. Unset binds nothing.
+
+```yaml
+spec:
+  workflow_authoring:
+    manifests: [quick, deep]   # steps may name these; empty means this manifest only
+    max_workflows: 10
+    max_active_runs: 3
+```
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `max_workflows` | int 1–100 | `10` | Workflows one person may hold from this agent at once (`too_many_workflows`). Replacing one never counts. |
+| `max_steps` | int 1–200 | `30` | Steps one workflow saved here may have. |
+| `manifests` | list | `[]` | The manifests its `agent_turn` and `tool_call` steps may name. Empty: this manifest only. |
+| `kinds` | list | `[agent_turn, tool_call, approval, branch]` | The step kinds it may use. An allowlist: a kind a plugin registers later is closed to the agent until it is named here. |
+| `max_active_runs` | int 1–20 | `3` | Runs one person may have going at once from the workflows this agent holds for them (`too_many_runs`). |
+| `approval` | bool | `true` | Hold every `save_workflow` call for that person's approval. |
+
+| Tool | Scope | Does |
+|---|---|---|
+| `workflow_catalog` | `workflows:read` | Lists the allowed step kinds with each config's JSON Schema, the manifests steps may name, and the definition's schema. Given `manifest`, it also lists the tools a `tool_call` step there can call, compiled as the person. |
+| `check_workflow` | `workflows:read` | Returns a definition's `problems` and each node's `ports`, without saving it. |
+| `save_workflow` | `workflows:write` | Creates a workflow (a new `wf-<hex>` id), or replaces one this agent still holds for the person. Refused while any problem remains. Returns the `workflow_id` and `revision`. |
+| `list_my_workflows` | `workflows:read` | The person's workflows from this agent: id, name, revision, inputs, whether it is still `editable`, and the last run's status. |
+| `run_workflow` | `workflows:write` | Starts a run as the person with a value for each input. Pass the `revision` `save_workflow` returned to run exactly what was approved. |
+
+**Whose workflows.** A workflow the agent saves belongs to the person. It is recorded as their
+issuer-qualified key (`created_by`), so the same subject signed in through another issuer is someone
+else, and marked `authored_via: agent:<manifest>`. The agent sees, changes and runs only those. It
+never touches an operator's workflow or another person's. All five tools need a signed-in person.
+They refuse an anonymous caller, a shared credential (an API key with no `sub` of its own) and a
+sign-in whose issuer is unknown.
+
+**A person's edit takes it over.** Once a workflow is saved through
+[`PUT /workflows/{id}`](/guide/management-api/#workflows), for example in the web UI, the agent can no
+longer change it:
+
+- **Saved by the person it was made for:** it becomes `owner:agent:<manifest>`. The agent may still
+  run it for them, because they wrote what it now holds. `save_workflow` answers `edited_by_person`.
+- **Saved by anyone else:** `authored_via` is cleared, and the agent may neither change nor run it.
+  Otherwise their edit would run as the owner, through the owner's agent, without the owner having
+  seen it.
+
+The store makes this call under the same row lock as the revision, so a save racing an edit cannot
+land on a workflow that was taken over in between.
+
+**Every save is approved.** By default `save_workflow` waits for the person's approval, under a
+one-shot rule bound to them (`workflow_authoring.save_workflow`). A rule in
+[`spec.approvals`](#specapprovals) that names `save_workflow` literally and has no `when_args`
+replaces it. A glob such as `*` does not. No [permission mode](#specpermissions) waives either one,
+`bypass` included: a saved workflow runs later as whoever starts it, a job or a trigger included.
+
+The approver reads the whole definition, every field, as escaped JSON. Text the model wrote stays
+inside quoted strings, so it cannot pass itself off as part of the preview's layout. An agent step's
+prompt is held to 4,000 characters, so nothing is cut short (`prompt_too_long`). The tool's own
+checks run before anyone is asked, so a save it would refuse never reaches an approver:
+
+- problems in the definition;
+- `max_steps`;
+- a step kind outside `kinds` (`kind_not_allowed`);
+- a manifest outside `manifests` (`manifest_not_allowed`);
+- a manifest whose inbound rules refuse the person (`not_permitted`);
+- `max_workflows`.
+
+**What runs.** `run_workflow` asks no one: once a workflow's shape is approved, the agent may start
+it with any inputs. Each run starts as the person, and every manifest a step names is checked
+against them again. Every input counts as untrusted, so each agent step reads the inputs fenced as
+data. A `tool_call` step receives its inputs as tool arguments, governed only by that manifest's own
+policies, screening and approvals.
+
+Saving and running are refused in a run no person is in, a scheduled job's or an inbound trigger's
+(`unattended`). They are also refused inside a workflow, so a workflow cannot write or start another
+(`in_workflow`). A job keeps the revision its writer saw. A [trigger](/guide/deploy/#inbound-triggers)
+pinned to no `revision` runs whatever the agent saves next, under the trigger's scopes, so pin
+triggers that target an agent's workflows.
+
 ### `spec.auth`
 
 ```yaml
@@ -2222,7 +2303,7 @@ shown on the session snapshot as `permissionMode`. It applies from the next run.
 | `default` | Everything the rest of the manifest allows, with approvals as written. |
 | `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task` — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals`), and the conversation returns to `default_mode`. |
 | `accept_edits` | Approvals for `write_file`, `edit_file`, `delete_file`, `rename_file` and `edit_tools` are skipped; every other approval is asked as written. |
-| `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](#specscheduling) or [`notify`](#specnotify), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
+| `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](#specscheduling), [`notify`](#specnotify) or [`save_workflow`](#specworkflow_authoring), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
 
 `allowed_modes` defaults to `[default, plan]`: `accept_edits` and `bypass` skip approvals you wrote,
 so they apply only where you list them. **Plan mode binds every agent**, whatever its
