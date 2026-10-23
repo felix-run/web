@@ -41,7 +41,6 @@ const ANSI = {
   blue: RGBA.fromIndex(4),
   magenta: RGBA.fromIndex(5),
   cyan: RGBA.fromIndex(6),
-  grey: RGBA.fromIndex(8),
   brightBlue: RGBA.fromIndex(12),
 } as const;
 
@@ -71,7 +70,9 @@ const STYLES: Record<string, StyleDefinitionInput> = {
   number: { fg: ANSI.yellow },
   boolean: { fg: ANSI.yellow },
   constant: { fg: ANSI.yellow },
-  comment: { fg: ANSI.grey, italic: true },
+  // The terminal's own text in italics, not ANSI 8: a comment is content, and
+  // in Solarized Dark colour 8 is the background, so comments vanished.
+  comment: { fg: RGBA.defaultForeground(), italic: true },
   type: { fg: ANSI.cyan },
   'type.builtin': { fg: ANSI.cyan, italic: true },
   function: { fg: ANSI.blue },

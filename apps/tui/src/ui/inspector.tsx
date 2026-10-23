@@ -121,6 +121,7 @@ export function Inspector({
             focused
             value={query}
             placeholder="what the agent might remember…"
+            placeholderColor={theme.faint}
             onInput={onQuery}
             backgroundColor={theme.surface}
           />

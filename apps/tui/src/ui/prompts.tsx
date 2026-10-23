@@ -26,7 +26,7 @@ import {
   summarizeToolArgs,
 } from '@felix/client';
 import type { PendingUiRequest } from '@felix/protocol';
-import type { KeyEvent } from '@opentui/core';
+import { type KeyEvent, RGBA } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
 import { writeDiff } from '../approval.js';
@@ -133,11 +133,25 @@ export function ApprovalPrompt({
           {/* The patch's own `---`/`+++` header is metadata to the renderer and
               is never drawn, so the path has to be said here or the banner
               names a change without naming what it changes. */}
-          <text attributes={DIM}>
+          {/* Full weight: the path is what this decision changes. */}
+          <text>
             {diff.isNew ? 'creates ' : 'changes '}
             {diff.path}
           </text>
-          <diff diff={diff.patch} view="unified" showLineNumbers height={diff.rows} />
+          {/* Every colour passed: the renderable's defaults are dark-theme
+              literals that left a light terminal's patch at 1.1–2.2:1. */}
+          <diff
+            diff={diff.patch}
+            view="unified"
+            showLineNumbers
+            height={diff.rows}
+            fg={RGBA.defaultForeground()}
+            addedBg={theme.diff.addedBg}
+            removedBg={theme.diff.removedBg}
+            addedSignColor={theme.diff.added}
+            removedSignColor={theme.diff.removed}
+            lineNumberFg={theme.faint}
+          />
           {diff.omitted > 0 ? (
             <text attributes={DIM}>… {diff.omitted} more line(s) not shown</text>
           ) : null}
@@ -247,6 +261,17 @@ export function UiPrompt({
           }))}
           showDescription={false}
           wrapSelection
+          // Every colour passed, as the inspector's strip does: the defaults
+          // are a fixed dark box (#1a1a1a, #334455, yellow) painted over the
+          // user's palette. The selection is the `▶`, and amber because the
+          // question is waiting on you.
+          showSelectionIndicator
+          backgroundColor="transparent"
+          focusedBackgroundColor="transparent"
+          selectedBackgroundColor="transparent"
+          textColor={RGBA.defaultForeground()}
+          focusedTextColor={RGBA.defaultForeground()}
+          selectedTextColor={theme.blocked}
           // Sized to the list so the banner does not reserve rows for options
           // that do not exist, and capped so a long list scrolls rather than
           // pushing the composer off the screen.
@@ -260,7 +285,12 @@ export function UiPrompt({
         // A real editor: a cursor, word motion, undo, and a paste that arrives
         // whole. The version this replaces read single-character key names, so
         // pasting a branch name put nothing in the field at all.
-        <input focused={!busy} placeholder="type an answer · enter sends" onSubmit={onRespond} />
+        <input
+          focused={!busy}
+          placeholder="type an answer · enter sends"
+          placeholderColor={theme.faint}
+          onSubmit={onRespond}
+        />
       )}
       {busy ? <text attributes={DIM}>sending…</text> : null}
     </box>

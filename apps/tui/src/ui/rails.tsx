@@ -10,6 +10,7 @@
  */
 
 import type { ThreadMeta } from '@felix/client';
+import { useTerminalDimensions } from '@opentui/react';
 import { oneLine } from '../text.js';
 import { BOLD, DIM, type Theme } from '../theme.js';
 
@@ -49,10 +50,16 @@ export function railRows(height: number): number {
  *
  * Wider than the old rail because it no longer competes with the conversation
  * for the same row — it is drawn over it — so a thread title can be read rather
- * than guessed at from its first twenty characters.
+ * than guessed at from its first twenty characters. A terminal narrower than
+ * that gets the picker it has room for — two columns either side, as at full
+ * width — rather than one clipped at the right edge, which cut a title and the
+ * frame's corner off with nothing to say so.
  */
 const PICKER_WIDTH = 46;
-const PICKER_TEXT = PICKER_WIDTH - 4;
+
+export function pickerWidth(columns: number): number {
+  return Math.max(20, Math.min(PICKER_WIDTH, columns - 4));
+}
 
 /**
  * The slice of a list to draw so that `cursor` is always inside it.
@@ -114,13 +121,14 @@ export function ThreadPicker({
 }) {
   const all = total ?? threads.length;
   const { start, end } = railWindow(threads.length, cursor, rows);
+  const width = pickerWidth(useTerminalDimensions().width);
 
   return (
     <box
       position="absolute"
       left={2}
       top={1}
-      width={PICKER_WIDTH}
+      width={width}
       zIndex={10}
       flexDirection="column"
       border
@@ -163,7 +171,7 @@ export function ThreadPicker({
                 would eat the two spaces that keep unselected rows aligned under
                 the selected one. */}
             {selected ? '▶ ' : '  '}
-            {oneLine(label, PICKER_TEXT - 2)}
+            {oneLine(label, width - 6)}
           </text>
         );
       })}
