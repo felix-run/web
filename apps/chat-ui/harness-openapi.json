@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.14.1"
+    "version": "0.16.1"
   },
   "paths": {
     "/health": {
@@ -209,6 +209,16 @@
     },
     "/jobs/{name}/runs": {
       "get": {}
+    },
+    "/heartbeats": {
+      "get": {}
+    },
+    "/heartbeats/{manifest}": {
+      "put": {},
+      "delete": {}
+    },
+    "/heartbeats/{manifest}/run": {
+      "post": {}
     },
     "/workflows/-/kinds": {
       "get": {}
@@ -456,12 +466,10 @@
     "/a2a": {
       "post": {}
     },
-    "/mcp/": {
-      "get": {},
+    "/mcp": {
       "post": {}
     },
-    "/mcp": {
-      "get": {},
+    "/mcp/{manifest_name}": {
       "post": {}
     },
     "/.well-known/agent-card.json": {

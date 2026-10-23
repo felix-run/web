@@ -11,6 +11,7 @@ import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import { Fact, Facts, PageSection } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
+import { AuthorshipFact } from '@/components/workflows/authorship';
 import { kindIcon, kindWord } from '@/components/workflows/step-node';
 import type { SaveConflict } from '@/components/workflows/use-workflow-draft';
 import { Problems } from '@/components/workflows/workflow-inspector';
@@ -844,6 +845,7 @@ export function WorkflowSettings({
               {relTime(record.updated_at)}
               {record.updated_by ? <span className="font-mono"> · {record.updated_by}</span> : null}
             </Fact>
+            <AuthorshipFact workflow={record} />
           </Facts>
         </div>
       </PageSection>
