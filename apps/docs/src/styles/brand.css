@@ -56,10 +56,20 @@
  * the TOC follows it, and the spare room falls to the far right. The header's
  * search box is placed by the same split (`--__main-column-fr`), so it is moved
  * with the content or it would float over the gap.
+ *
+ * A page without a TOC (the Route index) sits against the sidebar too. Left to
+ * Starlight it was centred, so its text started 152px right of every other
+ * page's at 1440 and 392px at 1920, and moved sideways on the way in from the
+ * sidebar. Pages with no sidebar (home, 404) stay centred: left of them is the
+ * window edge, not navigation.
  */
 @media (min-width: 72rem) {
-  [data-has-sidebar][data-has-toc] .main-pane {
+  [data-has-sidebar] .main-pane {
     --sl-content-margin-inline: 0;
+  }
+  /* Only beside a TOC: with none, the cap took the sidebar off twice and held the
+     Route index to 613px at 1280 with room for the full column. */
+  [data-has-sidebar][data-has-toc] .main-pane {
     width: min(
       calc(100% - var(--sl-sidebar-width)),
       calc(var(--sl-content-width) + 2 * var(--sl-content-pad-x))
@@ -68,7 +78,7 @@
   [data-has-sidebar][data-has-toc] .right-sidebar-container {
     flex: 1;
   }
-  [data-has-sidebar][data-has-toc] .header {
+  [data-has-sidebar] .header {
     --__main-column-fr: 0rem;
   }
 }
@@ -112,7 +122,7 @@
  * reduced strength, a faint tint behind, the hue on the title, and body text
  * left in the ordinary text colour. Both are mixed into the page colour rather
  * than laid on as alphas, so each is a flat colour — nothing behind can tint
- * them (the Nesting Rule in DESIGN.md).
+ * them (the Flat-Mix Rule in apps/docs/DESIGN.md).
  *
  * Caution is for things that can hurt a deployment. A note about what an older
  * harness did is a note, or the amber stops meaning anything.
@@ -316,7 +326,8 @@
 
 /*
  * Captions carry inline code at the caption's faint colour on the code surface —
- * #737373 on #f5f5f5, 4.3:1, under AA. Code in a caption takes the body colour.
+ * #706760 on the light stone #f2eeea, 4.79:1: AA at 13px with nothing to spare, the
+ * floor DESIGN.md names. Code in a caption takes the body colour instead.
  */
 .sl-markdown-content figcaption code {
   color: var(--sl-color-gray-2);
