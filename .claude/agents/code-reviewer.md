@@ -29,9 +29,9 @@ pre-existing code unless the diff makes it newly wrong.
 3. **Hung runs.** Frames the model loop waits on — `tool_request`, `approval_required`, `ui_request` —
    must always be answered on every path, including the error and abort paths. A `try` that returns
    early without posting a tool result hangs the conversation with no error shown.
-4. **Header and credential handling in the Workers.** `x-chat-key` must still be deleted before the
-   upstream fetch; `timingSafeEqual` must not have become `===`; `FELIX_API_KEY` must not leak into
-   a response.
+4. **Header and credential handling in the Workers.** The Worker holds no credential: a browser's
+   bearer passes through untouched, and nothing may attach one of the Worker's own (the retired
+   `CHAT_UI_KEY`/`FELIX_API_KEY` pair coming back in any form is a finding).
 5. **Streaming integrity.** Any code that buffers the proxied body, rebuilds the `Response`, or drops
    `x-manifest-variant` breaks SSE. In the SSE reader, check the carry-buffer logic still handles a
    frame split across chunks.

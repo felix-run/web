@@ -1,6 +1,6 @@
 ---
 name: threat-review
-description: Security review procedure for felix-web, scoped to this architecture — the proxy Workers and their credential handling, the shared-key gate, browser-executed client tools and the virtual filesystem, rendered model output, and secret placement. Use before merging changes to worker/index.ts, auth, cowork-client, or anything that renders or executes untrusted content, and for a periodic security pass.
+description: Security review procedure for felix-web, scoped to this architecture — the proxy Workers and their credential handling, the sign-in gate, browser-executed client tools and the virtual filesystem, rendered model output, and secret placement. Use before merging changes to worker/index.ts, auth, cowork-client, or anything that renders or executes untrusted content, and for a periodic security pass.
 license: MIT
 metadata:
   repo: felix-web
@@ -25,8 +25,9 @@ attacker-controlled ──▶ browser ──▶ proxy Worker ──▶ Python ha
 
 Three properties make this different from a normal SPA:
 
-1. **The Worker holds credentials the browser must never see** — `CHAT_UI_KEY` is checked and
-   stripped; `FELIX_API_KEY` is injected outbound.
+1. **The Worker holds no credential, and must not gain one** — a browser's bearer from the
+   harness sign-in passes through untouched; anything the Worker attached would make every
+   anonymous visitor that principal.
 2. **The model can drive the user's filesystem.** `tool_request` frames are executed in the browser
    by `@felix/cowork-client`, against an in-tab VFS or a real File System Access mount.
 3. **Model output is rendered as markdown** and may embed content from tools, pages, and files the
@@ -34,10 +35,10 @@ Three properties make this different from a normal SPA:
 
 ## Review order
 
-1. **Credential flow.** Is `x-chat-key` still deleted before the upstream fetch? Can `FELIX_API_KEY`
-   reach a response body, an error, or a log? Is the key comparison still constant-time?
-2. **Gate coverage.** Does the check run for every `/api/*` request regardless of method or path
-   shape? Is there a path that reaches `ASSETS` or upstream without passing it?
+1. **Credential flow.** Does the Worker still attach nothing of its own? Does the browser's bearer
+   go only to `/api/*`, and never into a URL or a log?
+2. **Cross-site coverage.** Does `crossSiteWrite` run for every non-GET/HEAD `/api/*` request
+   regardless of path shape?
 3. **Upstream request construction.** `FELIX_ORIGIN` is concatenated with a client-controlled path
    and query. Can traversal, an absolute URL, or CRLF retarget the request or inject a header?
 4. **Client tools.** Can a tool argument escape the VFS root or the mounted directory? Are
@@ -47,8 +48,8 @@ Three properties make this different from a normal SPA:
    (`javascript:`, `data:`), or tool output rendered as markup instead of text?
 6. **Secrets at rest.** Anything sensitive in `wrangler.jsonc` `vars`, in a tracked `.dev.vars`, in
    `index.html`, or in the client bundle. `vars` and `VITE_`-prefixed env are public by construction.
-7. **Trust claims.** Does any new code treat the shared `CHAT_UI_KEY` as user identity, or widen what
-   an anonymous caller (tenant `default`) can reach?
+7. **Trust claims.** Does any new code bring back a shared credential, or widen what an anonymous
+   caller (tenant `default`) can reach?
 
 ## Calibration
 

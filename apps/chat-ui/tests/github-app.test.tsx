@@ -6,7 +6,7 @@ import { AccountChip } from '../src/components/account-chip';
 import { Gate } from '../src/components/gate';
 import { GitHubPage } from '../src/components/harness/github';
 import { ThreadRepoSection } from '../src/components/workspace/thread-repo';
-import { getSession, setApiKey, setRelockHandler, setSession } from '../src/lib/auth';
+import { getSession, setRelockHandler, setSession } from '../src/lib/auth';
 
 /**
  * The GitHub App half of the browser: sign-in by redirect, the thread's repository on the harness,
@@ -15,7 +15,7 @@ import { getSession, setApiKey, setRelockHandler, setSession } from '../src/lib/
  * What these pin: the redirect button goes to the harness's authorize route and comes back to this
  * page; the return collects the token once and clears the fragment so a reload cannot replay it;
  * an ambiguous membership offers a tenant per button; the repository block says nothing and asks
- * nothing under the shared key; a repository opens, clones and reports itself; and revoking is one
+ * nothing when not signed in with GitHub; a repository opens, clones and reports itself; and revoking is one
  * click that asks the harness.
  */
 
@@ -78,7 +78,7 @@ beforeEach(() => {
     '/api/v1/models': (init) =>
       (init?.headers as Record<string, string> | undefined)?.authorization === 'Bearer felix-jwt'
         ? json({ data: [] })
-        : json({ error: 'unauthorized', gate: 'chat_key' }, 401),
+        : json({ error: 'unauthorized' }, 401),
     '/api/auth/methods': () =>
       json({ github_device: true, github_redirect: true, bearer_required: true }),
     '/api/auth/github/exchange': () => json(TOKEN),
@@ -209,8 +209,7 @@ describe('sign-in by redirect', () => {
 });
 
 describe("the thread's repository on the harness", () => {
-  it('says nothing and asks nothing under the shared access key', () => {
-    setApiKey('shared');
+  it('says nothing and asks nothing when not signed in', () => {
     const { container } = render(<ThreadRepoSection threadId="t1" />);
     expect(container.innerHTML).toBe('');
     expect(calls).toHaveLength(0);
@@ -476,9 +475,8 @@ describe('your GitHub connection', () => {
 
   // Until 2026-10-16 this asserted no request at all: the page said a sign-in was needed and
   // offered no way to make one. It now asks `/auth/methods` — the one call a credential-less
-  // sign-in needs — and still asks no GitHub route the shared key could not answer.
-  it('under the shared key, says a GitHub sign-in is needed and offers one', async () => {
-    setApiKey('shared');
+  // sign-in needs — and still asks no GitHub route that only a GitHub sign-in could answer.
+  it('when not signed in, says a GitHub sign-in is needed and offers one', async () => {
     render(
       <MemoryRouter>
         <GitHubPage docs="https://docs.example/auth" />
@@ -492,7 +490,6 @@ describe('your GitHub connection', () => {
   });
 
   it('runs the device code in place when the harness offers no redirect', async () => {
-    setApiKey('shared');
     routes['/api/auth/methods'] = () =>
       json({ github_device: true, github_redirect: false, bearer_required: true });
     routes['/api/auth/github/device'] = () =>
@@ -514,7 +511,6 @@ describe('your GitHub connection', () => {
   });
 
   it('says no sign-in is on offer when the harness verifies no bearer', async () => {
-    setApiKey('shared');
     routes['/api/auth/methods'] = () =>
       json({ github_device: true, github_redirect: true, bearer_required: false });
     render(

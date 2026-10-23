@@ -2,10 +2,10 @@
  * Where the harness is, and how to prove who is asking.
  *
  * The browser client cannot talk to the harness directly — no CORS, no static
- * assets — so it goes through a proxy Worker that holds the credential. Nothing
- * here needs that: this process reaches `FELIX_ORIGIN` itself and sends its own
- * `Authorization: Bearer`, which is why the shared-key gate has no counterpart
- * in this app.
+ * assets — so it goes through a proxy Worker and signs in to the harness.
+ * Nothing here needs that: this process reaches `FELIX_ORIGIN` itself and sends
+ * its own `Authorization: Bearer`, which is why the sign-in gate has no
+ * counterpart in this app.
  *
  * Precedence is narrowest first, in the sense of how many runs a source
  * affects: a flag (this one) beats the environment (this shell), which beats

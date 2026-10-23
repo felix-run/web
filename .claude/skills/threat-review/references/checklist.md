@@ -4,12 +4,9 @@ Reference for `threat-review`.
 
 ## Proxy Worker — `apps/chat-ui/worker/index.ts`
 
-- [ ] `headers.delete('x-chat-key')` still runs on every upstream path
+- [ ] The Worker attaches no credential of its own on any upstream path
 - [ ] `host` and the `cf-*` headers still stripped (they are trusted signals upstream)
-- [ ] `FELIX_API_KEY` appears only as the outbound `Authorization` header — never in a response,
-      error body, or log
-- [ ] `timingSafeEqual` still used for the gate comparison (length check plus XOR accumulate)
-- [ ] Gate covers every method and every `/api/*` path shape; no early return skips it
+- [ ] `crossSiteWrite` covers every non-GET/HEAD `/api/*` path shape; no early return skips it
 - [ ] `FELIX_ORIGIN` unset produces a 502, not a request to a relative or attacker-chosen origin
 - [ ] Path/query concatenation is not exploitable by `..`, an absolute URL, encoded slashes, or CRLF
 - [ ] Client-supplied `Authorization` cannot pass through when `FELIX_API_KEY` is unset — or that is
@@ -21,9 +18,9 @@ Reference for `threat-review`.
 
 ## Gate and identity — `src/lib/auth.ts`, `components/gate.tsx`
 
-- [ ] `CHAT_UI_KEY` is treated as an access gate, never as user authentication or isolation
+- [ ] The session is the only credential; no shared key or service token has come back
 - [ ] Stored only in `localStorage` under the known key; not sent anywhere but `/api/*`
-- [ ] 401 clears the stored key and re-prompts (no silent retry loop that hammers with a bad key)
+- [ ] 401 clears the stored session and re-prompts (no silent retry loop that hammers with a bad one)
 - [ ] No key, token, or thread id in a URL, query string, or `Referer`-visible position
 - [ ] Nothing new widens anonymous (`tenant: default`) access
 

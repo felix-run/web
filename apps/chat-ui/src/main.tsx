@@ -12,8 +12,8 @@ import './index.css';
 
 registerServiceWorker();
 
-// In dev the Vite proxy reaches Felix directly (no proxy Worker / secret), so
-// there's nothing to gate. In a built/deployed app, wrap App in the key gate.
+// In dev the Vite proxy reaches Felix directly with the developer's key, so
+// there's nothing to gate. In a built/deployed app, wrap App in the sign-in gate.
 const Root = import.meta.env.DEV ? (
   <App />
 ) : (

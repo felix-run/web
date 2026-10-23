@@ -4,8 +4,8 @@
  *
  * There are two very different callers. A browser cannot reach the harness at
  * all — no CORS, no static assets — so chat-ui points this at its own
- * same-origin `/api` prefix and lets the proxy Worker forward upstream, adding
- * `x-chat-key` on the way out. A terminal client has no such restriction: it
+ * same-origin `/api` prefix, sends the sign-in's bearer, and lets the proxy
+ * Worker forward it upstream. A terminal client has no such restriction: it
  * points at `FELIX_ORIGIN` and sends `Authorization: Bearer` itself. Nothing
  * below knows which of those it is doing.
  *

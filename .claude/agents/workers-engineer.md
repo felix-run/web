@@ -22,17 +22,15 @@ client possible at all. Same-origin in, HTTP out.
 
 - **`vite.config.ts` is the second copy of this contract.** The dev proxy (`/api` → `127.0.0.1:8080`,
   same prefix rewrite) must keep matching, or dev and prod diverge silently.
-- **Header hygiene.** `x-chat-key` is stripped before the upstream fetch, along with `host` and the
-  `cf-*` set. Never forward the gate key upstream; never add a header that leaks client identity.
-  `FELIX_API_KEY`, when set, is injected as `Authorization: Bearer …` — that is the only credential
-  that should ever reach the harness.
+- **Header hygiene.** `host` and the `cf-*` set are stripped before the upstream fetch; never add a
+  header that leaks client identity. The Worker holds **no credential**: the browser's own
+  `Authorization: Bearer …` (from a harness sign-in) is the only one that reaches the harness, and
+  nothing may attach one of the Worker's own.
 - **Streaming must survive.** The upstream fetch uses `duplex: 'half'` with `redirect: 'manual'`
   and passes the body through untouched. Do not buffer, do not `await res.text()`, do not construct
   a new `Response` that drops `x-manifest-variant`. SSE breaks the moment you do.
-- **Key comparison stays constant-time.** `timingSafeEqual` is there on purpose. Never replace it
-  with `===`.
-- **`FELIX_ORIGIN` is a `var`, secrets are secrets.** `CHAT_UI_KEY` and `FELIX_API_KEY` go through
-  `wrangler secret put` — never into `vars` in a wrangler.jsonc, which is a file people read.
+- **`FELIX_ORIGIN` is a `var`, and the Worker takes no secrets.** The retired `CHAT_UI_KEY` and
+  `FELIX_API_KEY` are ignored if an older deployment still has them; delete them.
 
 ## Config facts
 

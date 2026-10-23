@@ -45,8 +45,8 @@ import { argv, env, exit } from 'node:process';
  * Call spellings in the client sources, mapped to the prefix each prepends.
  *
  * `fetch` is here because call sites deliberately bypass the wrapper — a 401
- * from them means "no server history", not "the key is wrong", and going
- * through the wrapper would trip the shared-key reset and reload the page. They
+ * from them means "no server history", not "the sign-in ended", and going
+ * through the wrapper would trip the credential reset and re-prompt. They
  * were invisible to this check, so the harness could have renamed
  * `/chat/history/{thread_id}` and nothing would have failed.
  *

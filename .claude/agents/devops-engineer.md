@@ -31,8 +31,9 @@ Each app deploys as its own Worker: `pnpm <app>:deploy` = build then `wrangler d
 
 - `apps/chat-ui/wrangler.jsonc` is **gitignored**; the app ships a tracked `wrangler.example.jsonc`.
   A fresh clone cannot deploy until that copy exists.
-- `vars.FELIX_ORIGIN` is public config. `CHAT_UI_KEY` and `FELIX_API_KEY` are **secrets** —
-  `wrangler secret put`, never `vars`.
+- `vars.FELIX_ORIGIN` is public config, and the chat-ui Worker takes no secrets: browsers sign in
+  to the harness. `CHAT_UI_KEY` and `FELIX_API_KEY` on an older deployment are ignored leftovers —
+  `wrangler secret delete` them.
 - Custom domains: `make.felix.run`, `docs.felix.run`. `chat.felix.run` is chat-ui's previous name
   and only redirects there (a zone redirect rule, not the Worker).
   (`float.felix.run` served the removed float app; the Worker `felix-float` may still exist in

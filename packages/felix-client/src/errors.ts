@@ -213,7 +213,7 @@ export function describeError(err: unknown, doing: string): DescribedError {
   }
   switch (status) {
     case 401:
-      return { message: 'Your access key was rejected. Enter it again to continue.', detail };
+      return { message: 'Your sign-in was refused. Sign in again to continue.', detail };
     case 403:
       return {
         message: `This key is not allowed to ${doing}. It needs a broader scope on the harness.`,

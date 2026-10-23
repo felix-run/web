@@ -1,16 +1,11 @@
 /**
- * The browser's credential for `/api/*` — one of two kinds, never both.
+ * The browser's credential for `/api/*`: a session — a bearer the harness minted after a GitHub
+ * or Google sign-in (`lib/github-login.ts`), sent as `Authorization: Bearer`. It names a person
+ * and the tenant their org maps to, and it lapses on its own — the harness keeps no revocation
+ * list, so signing out here forgets the token without cancelling it.
  *
- * - **An access key**: the proxy Worker's shared `CHAT_UI_KEY`, sent as
- *   `x-chat-key`. Every holder is the same principal.
- * - **A session**: a bearer the harness minted after a GitHub or Google sign-in
- *   (`lib/github-login.ts`), sent as `Authorization: Bearer`. It names a
- *   person and the tenant their org maps to, and it lapses on its own — the
- *   harness keeps no revocation list, so signing out here forgets the token
- *   without cancelling it.
- *
- * Storing one clears the other, so a request never carries both: the Worker
- * would honour the key and silently drop the person.
+ * There used to be a second kind, the proxy Worker's shared access key, which ran every holder
+ * as the deployment. It is gone; `dropLegacyKey` clears the copy a browser may still hold.
  *
  * In `vite dev` the Worker isn't in the loop (Vite proxies `/api` straight to
  * Felix), so the Gate is skipped entirely — see components/gate.tsx.
@@ -18,7 +13,8 @@
 
 import { forgetIdentityState, IDENTITY_MARKER, SWEEP_PENDING } from '@/lib/identity-state';
 
-const KEY_STORAGE = 'felix.apiKey';
+/** Where the retired access key was kept. Read only to be removed. */
+const LEGACY_KEY_STORAGE = 'felix.apiKey';
 const SESSION_STORAGE = 'felix.session';
 /**
  * Which provider this browser last signed in with. Kept past sign-out on purpose — that is when
@@ -65,11 +61,11 @@ export function safePicture(value: unknown): string | undefined {
 }
 
 /** Which credential a 401 was answering — the gate says something different for each. */
-export type CredentialKind = 'key' | 'session' | 'none';
+export type CredentialKind = 'session' | 'none';
 
 /**
- * Why the gate is being shown again: a credential the harness or Worker turned
- * down, or the person choosing to leave.
+ * Why the gate is being shown again: a session the harness turned down, or the
+ * person choosing to leave.
  */
 export type Relock = { cause: 'unauthorized'; kind: CredentialKind } | { cause: 'signed-out' };
 
@@ -97,8 +93,9 @@ function notify(): void {
   for (const fn of listeners) fn();
 }
 
-export function getApiKey(): string | null {
-  return read(KEY_STORAGE);
+/** Forget an access key stored before the key was retired: a secret nothing reads any more. */
+export function dropLegacyKey(): void {
+  write(LEGACY_KEY_STORAGE, null);
 }
 
 /** A JWT's `sub`, read without verifying it: the harness verified it, this only tells people apart. */
@@ -114,17 +111,14 @@ function subjectOf(token: string): string {
 }
 
 /**
- * Who a credential belongs to, as this browser can tell: an access key is one shared principal; a
- * session is its subject (the token's `sub`, else the account the harness reported) in its tenant.
+ * Who a session belongs to, as this browser can tell: its subject (the token's `sub`, else the account the harness reported) in its tenant.
  * Empty with nothing stored. Two sign-ins of one person by two providers are two identities here,
  * as they are to the harness. `|`-separated, since an email carries `@`.
  */
-function identityOf(session: GitHubSession | null, key: string | null): string {
-  if (session) {
-    const account = subjectOf(session.token) || session.login || session.email || '';
-    return ['session', session.provider ?? 'github', account, session.tenant].join('|');
-  }
-  return key ? 'key' : '';
+function identityOf(session: GitHubSession | null): string {
+  if (!session) return '';
+  const account = subjectOf(session.token) || session.login || session.email || '';
+  return ['session', session.provider ?? 'github', account, session.tenant].join('|');
 }
 
 /** The person an identity names, its tenant aside. */
@@ -134,7 +128,7 @@ function personOf(identity: string): string {
 
 /** The identity of what is stored now; see `identityOf`. */
 export function identityKey(): string {
-  return identityOf(getSession(), getApiKey());
+  return identityOf(getSession());
 }
 
 /**
@@ -164,18 +158,6 @@ export function settleIdentity(): void {
   }
   const now = identityKey();
   if (now && read(IDENTITY_MARKER) === null) write(IDENTITY_MARKER, now);
-}
-
-export function setApiKey(key: string): void {
-  takeIdentity(identityOf(null, key));
-  write(SESSION_STORAGE, null);
-  write(KEY_STORAGE, key);
-  notify();
-}
-
-export function clearApiKey(): void {
-  write(KEY_STORAGE, null);
-  notify();
 }
 
 // `useSyncExternalStore` needs the same object back for the same stored value.
@@ -228,8 +210,7 @@ export function activeSession(now = Date.now()): GitHubSession | null {
 }
 
 export function setSession(session: GitHubSession): void {
-  takeIdentity(identityOf(session, null));
-  write(KEY_STORAGE, null);
+  takeIdentity(identityOf(session));
   write(SESSION_STORAGE, JSON.stringify(session));
   write(LAST_PROVIDER_STORAGE, session.provider ?? 'github');
   notify();
@@ -248,7 +229,7 @@ export function clearSession(): void {
 
 /** Whether a `storage` event (another tab's write) touched the credential. */
 export function isCredentialStorageEvent(e: StorageEvent): boolean {
-  return e.key === null || e.key === KEY_STORAGE || e.key === SESSION_STORAGE;
+  return e.key === null || e.key === SESSION_STORAGE;
 }
 
 /** For `useSyncExternalStore`. Fires on this tab's own writes and on another tab's. */
@@ -265,17 +246,13 @@ export function subscribeCredentials(fn: () => void): () => void {
 }
 
 export function credentialKind(): CredentialKind {
-  if (activeSession()) return 'session';
-  if (getApiKey()) return 'key';
-  return 'none';
+  return activeSession() ? 'session' : 'none';
 }
 
 /** Header merged into every `/api` fetch; empty when nothing is stored. */
 export function authHeaders(): Record<string, string> {
   const session = activeSession();
-  if (session) return { authorization: `Bearer ${session.token}` };
-  const key = getApiKey();
-  return key ? { 'x-chat-key': key } : {};
+  return session ? { authorization: `Bearer ${session.token}` } : {};
 }
 
 /** The Gate registers here so a 401 anywhere, or a sign-out, brings it back. */
@@ -294,19 +271,14 @@ export function setRelockHandler(fn: ((why: Relock) => void) | null): void {
  * was never refused.
  */
 export function handleUnauthorized(sent?: Record<string, string>): void {
-  if (sent && !sameCredential(sent, authHeaders())) return;
+  if (sent && sent.authorization !== authHeaders().authorization) return;
   const kind = credentialKind();
   // An expired session sends nothing, so `credentialKind` reads `none` for it;
   // the stored copy is what says a session is what lapsed.
   const lapsed = kind === 'none' && getSession() !== null ? 'session' : kind;
-  write(KEY_STORAGE, null);
   write(SESSION_STORAGE, null);
   notify();
   onRelock?.({ cause: 'unauthorized', kind: lapsed });
-}
-
-function sameCredential(a: Record<string, string>, b: Record<string, string>): boolean {
-  return a.authorization === b.authorization && a['x-chat-key'] === b['x-chat-key'];
 }
 
 /**

@@ -64,7 +64,6 @@ function mount(at: string) {
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
-  localStorage.setItem('felix.apiKey', 'test');
   resetPresence();
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
 });

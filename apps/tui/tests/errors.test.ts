@@ -5,7 +5,7 @@ import { explainError } from '../src/errors';
 /**
  * A 401 is the one message the shared copy gets wrong here.
  *
- * The browser client answers it by re-opening the shared-key gate, so "enter it
+ * The browser client answers it by re-opening the sign-in gate, so "sign in
  * again" is a real instruction there. In a terminal it is not, and the useful
  * distinction is one the wire cannot make: a first run with no key at all, and a
  * key that has been rotated, are the same 401 and need opposite advice.
@@ -23,7 +23,7 @@ describe('explainError', () => {
     const message = explainError(new Error('models: 401'), 'list the agents', base);
     expect(message).toContain('--key');
     expect(message).toContain('FELIX_API_KEY');
-    expect(message).not.toContain('Enter it again');
+    expect(message).not.toContain('Sign in again');
   });
 
   it('says the key was rejected when one is configured', () => {

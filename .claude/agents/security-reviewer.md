@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Security review for felix-web — the proxy Workers, the shared-key gate, browser-executed client tools and the virtual filesystem, rendered model output, and secret handling. Use proactively before merging changes to worker/index.ts, auth, client tools, or anything that renders or executes untrusted content. Read-only.
+description: Security review for felix-web — the proxy Workers, the sign-in gate, browser-executed client tools and the virtual filesystem, rendered model output, and secret handling. Use proactively before merging changes to worker/index.ts, auth, client tools, or anything that renders or executes untrusted content. Read-only.
 tools: Read, Grep, Glob, Bash, WebFetch
 model: inherit
 color: red
@@ -18,12 +18,11 @@ attacker-influenceable content, and one carries credentials.
 
 ### 1. The proxy Worker (`apps/chat-ui/worker/index.ts`)
 
-- **Credential leakage.** `x-chat-key` must be deleted before the upstream fetch. `FELIX_API_KEY` is
-  injected as `Authorization` on the way out and must never appear in a response, an error body, or
-  a log line.
-- **Gate bypass.** `CHAT_UI_KEY` comparison must stay constant-time. Check that the gate covers
-  *every* `/api/*` method and path — including preflight-ish and non-GET verbs — and that nothing
-  routes around it.
+- **No credential of its own.** The Worker forwards a browser's bearer untouched and attaches
+  nothing. Any change that makes it add a credential to a request — an injected key, a service
+  token — turns every anonymous visitor into that principal, and is a finding.
+- **Cross-site writes.** `crossSiteWrite` must still refuse every non-GET/HEAD `/api/*` request a
+  browser marks cross-site or sends from a foreign `Origin`.
 - **Request smuggling / SSRF.** `FELIX_ORIGIN` is concatenated with a client-controlled path and
   query. Verify a path like `/api/../…`, an absolute URL, or CRLF in the path cannot retarget the
   upstream request or inject headers.
@@ -35,12 +34,13 @@ attacker-influenceable content, and one carries credentials.
   `index.html`. Confirm no sensitive path is shadowed and that build output in `dist/` contains no
   source maps or secrets you didn't intend to publish.
 
-### 2. The shared-key gate is not user authentication
+### 2. The gate decides what the page draws; the harness decides access
 
-`CHAT_UI_KEY` lives in `localStorage` and is one shared secret for all browser clients. It gates
-access; it does not identify a user and gives no per-user isolation. Any change that treats it as
-authentication — or that widens what an anonymous caller can reach — is a finding. Note that
-anonymous callers resolve to tenant `default` upstream.
+The browser's only credential is the harness's session (`localStorage`, `felix.session`). The gate
+in `components/gate.tsx` is presentation: it is the harness that refuses a request. Findings here
+are a session reaching another origin, surviving a sign-out or a switch of identity, or one
+person's cached state reaching the next — and anything that widens what an anonymous caller can
+reach (anonymous callers resolve to tenant `default` upstream).
 
 ### 3. Browser-executed client tools and the VFS (`packages/cowork-client`)
 

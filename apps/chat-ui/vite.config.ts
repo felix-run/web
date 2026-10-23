@@ -86,8 +86,8 @@ const LOGIN_ROUTES = new Set([
 
 /**
  * The Worker's cross-site write refusal (`worker/index.ts`, `crossSiteWrite`),
- * mirrored for `vite dev`, which injects the dev key just as the Worker injects
- * `FELIX_API_KEY` — so a page on another site could otherwise post to the local
+ * mirrored for `vite dev`. It matters more here than there: this proxy injects
+ * the dev key, so a page on another site could otherwise post to the local
  * harness as you. Registered before Vite's own middleware, so it runs ahead of
  * the proxy. The app itself is same-origin and never sees it.
  */
@@ -150,17 +150,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
         // The harness defaults to FELIX_AUTH_MODE=api_key (`make up` generates a
-        // key), and every /api/* call 401s without this. The production Worker
-        // injects the same header from its own FELIX_API_KEY secret — see
-        // worker/index.ts. The *other* half of the Worker's auth, the CHAT_UI_KEY
-        // gate on `x-chat-key`, stays absent here on purpose: the Worker is not
-        // in the loop under `vite dev`, so there is nothing to gate.
-        //
-        // The Worker's other two rules are mirrored here, minus the check that
-        // the harness verifies bearers — with no gate, there is nothing for a
-        // bearer to get past. A browser's own bearer (from GitHub login) goes
-        // upstream in place of the dev key, and the login routes carry no
-        // credential at all.
+        // key), and every /api/* call 401s without this. This is where dev and
+        // the Worker part on purpose: the deployed Worker holds no credential and
+        // a browser there must sign in, while under `vite dev` the gate is skipped
+        // and the developer's own key stands in. A browser's own bearer (from a
+        // sign-in) goes upstream in place of the dev key, and the login routes
+        // carry no credential at all.
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req) => {
             const path = (req.url ?? '').replace(/^\/api/, '').split('?')[0];

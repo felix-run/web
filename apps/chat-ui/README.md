@@ -70,8 +70,9 @@ browser ──/api/*──▶ chat-ui Worker ──FELIX_ORIGIN──▶ Felix (
         ◀── SSE / JSON ──              ◀── SSE / JSON ──
 ```
 
-When `CHAT_UI_KEY` is set (production), the Gate prompts for that shared key and sends
-`x-chat-key`; the Worker checks it and **strips** the header before upstream.
+The Worker holds **no credential**. The Gate signs the browser in to the harness (GitHub or Google
+login) and every request carries that bearer, which the Worker forwards untouched. A harness with
+no login on offers a browser no way in, and the Gate says so.
 
 ## Local dev
 
@@ -80,7 +81,7 @@ When `CHAT_UI_KEY` is set (production), the Gate prompts for that shared key and
 make up && make migrate
 
 # terminal 2 — this monorepo
-pnpm chat:dev   # Vite :5173, /api → :8080 (no CHAT_UI_KEY gate)
+pnpm chat:dev   # Vite :5173, /api → :8080 with FELIX_API_KEY from .dev.vars (no Gate)
 ```
 
 Open http://localhost:5173.
@@ -91,12 +92,11 @@ Open http://localhost:5173.
 cp wrangler.example.jsonc wrangler.jsonc
 # set vars.FELIX_ORIGIN to your public Python Felix API
 pnpm --filter @felix/chat-ui build
-pnpm --filter @felix/chat-ui exec wrangler secret put CHAT_UI_KEY   # once
 pnpm --filter @felix/chat-ui exec wrangler deploy
 ```
 
-Production today: `make.felix.run` → `FELIX_ORIGIN=https://api.felix.run`. Enter the
-`CHAT_UI_KEY` in the Gate when prompted. Rotate with `wrangler secret put CHAT_UI_KEY`.
+Production today: `make.felix.run` → `FELIX_ORIGIN=https://api.felix.run`. Sign in with GitHub when
+the Gate asks.
 
 ## Files
 

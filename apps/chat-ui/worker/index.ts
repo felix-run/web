@@ -5,90 +5,28 @@
  * Felix harness (`FELIX_ORIGIN`), stripping the `/api` prefix. Same contract
  * as the Vite dev proxy.
  *
- * A browser reaches the harness one of two ways:
+ * **It holds no credential of its own.** A browser reaches the harness as the
+ * person who signed in — the bearer from the harness's GitHub or Google login,
+ * forwarded untouched — and the harness alone decides what that bearer may do.
+ * A request with none arrives with none, so a harness that requires sign-in
+ * refuses it and one running `FELIX_AUTH_MODE=none` is open by its own choice.
+ * There used to be a shared access key (`CHAT_UI_KEY`) that, once matched, sent
+ * the request upstream as the deployment (`FELIX_API_KEY`); every holder was one
+ * principal, and it was the way past every per-person control. Both are gone,
+ * and a Worker that still has those secrets set ignores them.
  *
- * - **The shared key.** When `CHAT_UI_KEY` is set, a request must carry it as
- *   `x-chat-key`. That header is stripped before the upstream request, and
- *   `FELIX_API_KEY` (when set) is injected as the upstream credential — every
- *   key holder is the same principal.
- * - **Its own bearer** — a token from the harness's GitHub login. It goes
- *   upstream untouched and in place of the shared key, but only while the
- *   harness says it verifies bearers (`GET /auth/methods` → `bearer_required`).
- *   Under `FELIX_AUTH_MODE=none` the harness accepts any bearer at all, so
- *   honouring one there would make `Authorization: Bearer x` a way past the only
- *   lock the deployment has.
- *
- * The three login routes are public on both sides: they are how a browser
- * *gets* a bearer, so they cannot require one, and no credential of ours is
- * attached to them.
- *
- * **A write from another site's page is refused before any of that.** This
- * Worker attaches `FELIX_API_KEY` itself, so without a `CHAT_UI_KEY` a plain
- * cross-site form post — no custom header, no preflight — would arrive at the
- * harness carrying the deployment's credential: publish a skill, decide an
- * approval, forget a memory. Any method but GET and HEAD is refused when the
- * browser says the request is `Sec-Fetch-Site: cross-site`, or sends an
+ * **A write from another site's page is refused before reaching the harness.**
+ * The redirect sign-ins leave cookies on this origin, and refusing the write
+ * costs a same-origin page nothing. Any method but GET and HEAD is refused when
+ * the browser says the request is `Sec-Fetch-Site: cross-site`, or sends an
  * `Origin` that is not this one. A request with neither header is not a
- * browser's, and is held to the same gate as before: the shared key when one
- * is set.
+ * browser's, and goes through on whatever credential it carries.
  */
 
 interface Env {
   ASSETS: Fetcher;
   /** Public origin of Python Felix, e.g. https://api.example.com */
   FELIX_ORIGIN: string;
-  /** Shared gate key for browser clients (`x-chat-key`). */
-  CHAT_UI_KEY?: string;
-  /** Upstream Felix API key injected as `Authorization: Bearer …` (api_key mode). */
-  FELIX_API_KEY?: string;
-}
-
-/** `<method> <harness path>` for each route a caller uses to obtain a credential. */
-const LOGIN_ROUTES = new Set([
-  'GET /auth/methods',
-  'POST /auth/github/device',
-  'POST /auth/github/token',
-  // Redirect sign-in: GitHub's return lands on the callback as a top-level GET, and the page
-  // collects its token with a same-origin POST. The callback's 302 and its HttpOnly cookies pass
-  // through untouched (`redirect: 'manual'`), so the sign-in cookies are this origin's.
-  'GET /auth/github/authorize',
-  'GET /auth/github/callback',
-  'POST /auth/github/exchange',
-  // Google sign-in by redirect, the same shape.
-  'GET /auth/google/authorize',
-  'GET /auth/google/callback',
-  'POST /auth/google/exchange',
-]);
-
-/**
- * How long one answer about the harness's auth is trusted. A failed or
- * unreadable answer is held far shorter: it fails closed, and a harness that was
- * restarting should not lock every signed-in browser out for a minute.
- */
-const METHODS_TTL_MS = 60_000;
-const METHODS_RETRY_MS = 5_000;
-
-/** Per isolate, keyed by origin so a re-pointed `FELIX_ORIGIN` asks again. */
-const bearerVerified = new Map<string, { until: number; value: boolean }>();
-
-async function harnessVerifiesBearers(origin: string): Promise<boolean> {
-  const now = Date.now();
-  const cached = bearerVerified.get(origin);
-  if (cached && cached.until > now) return cached.value;
-  let value = false;
-  let ttl = METHODS_RETRY_MS;
-  try {
-    const res = await fetch(`${origin}/auth/methods`, { headers: { accept: 'application/json' } });
-    if (res.ok) {
-      const body = (await res.json()) as { bearer_required?: unknown };
-      value = body.bearer_required === true;
-      ttl = METHODS_TTL_MS;
-    }
-  } catch {
-    // Unreachable or not JSON: fail closed, and ask again soon.
-  }
-  bearerVerified.set(origin, { until: now + ttl, value });
-  return value;
 }
 
 /** A state-changing request a browser made on another site's behalf. */
@@ -97,13 +35,6 @@ function crossSiteWrite(req: Request, self: string): boolean {
   if (req.headers.get('sec-fetch-site') === 'cross-site') return true;
   const origin = req.headers.get('origin');
   return origin !== null && origin !== self;
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 export default {
@@ -124,44 +55,20 @@ export default {
       }
 
       const rest = url.pathname.slice('/api'.length);
-      const login = LOGIN_ROUTES.has(`${req.method} ${rest}`);
-
-      // A browser's own bearer stands in for the shared key only when it is the
-      // whole credential (no key alongside it) and the harness will check it.
-      let asCaller = false;
-      if (!login && !req.headers.has('x-chat-key')) {
-        const bearer = /^bearer\s+\S/i.test(req.headers.get('authorization') ?? '');
-        asCaller = bearer && (await harnessVerifiesBearers(origin));
-      }
-
-      if (!login && !asCaller && env.CHAT_UI_KEY) {
-        const provided = req.headers.get('x-chat-key') ?? '';
-        if (!timingSafeEqual(provided, env.CHAT_UI_KEY)) {
-          // `gate` says the refusal is ours, not the harness's: the page offers
-          // the key prompt only when there is a key that would open it.
-          return Response.json({ error: 'unauthorized', gate: 'chat_key' }, { status: 401 });
-        }
-      }
-
       const target = `${origin}${rest}${url.search}`;
 
       const headers = new Headers(req.headers);
-      headers.delete('x-chat-key');
       headers.delete('host');
       headers.delete('cf-connecting-ip');
       headers.delete('cf-ray');
       headers.delete('cf-visitor');
       headers.delete('cf-ipcountry');
-      if (login) {
-        headers.delete('authorization');
-      } else if (!asCaller && env.FELIX_API_KEY) {
-        headers.set('Authorization', `Bearer ${env.FELIX_API_KEY}`);
-      }
 
       return fetch(target, {
         method: req.method,
         headers,
         body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
+        // A sign-in callback's 302 and the cookies it sets pass through to the page untouched.
         redirect: 'manual',
         // @ts-expect-error Workers duplex streaming
         duplex: 'half',

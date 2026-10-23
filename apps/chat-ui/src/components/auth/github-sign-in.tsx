@@ -279,7 +279,7 @@ function DeviceLoginStep({ login, idle }: { login: DeviceLogin; idle: ReactNode 
   );
 }
 
-/** The gate's card when the harness offers GitHub login. `alternative` is the access-key way in. */
+/** The gate's card when the harness offers GitHub login. */
 export function GitHubSignIn({
   login,
   error,
@@ -289,8 +289,6 @@ export function GitHubSignIn({
   google,
   lastUsed = false,
   secondary = false,
-  alternative,
-  focusOnMount,
 }: {
   login: DeviceLogin;
   error: string | null;
@@ -309,9 +307,6 @@ export function GitHubSignIn({
   lastUsed?: boolean;
   /** Draw GitHub's button as the second choice: Google was used last. */
   secondary?: boolean;
-  alternative?: ReactNode;
-  /** Take focus on mount: the person switched here from the access-key card. */
-  focusOnMount?: boolean;
 }) {
   // A redirect leaves the page, but not at once: hold the button until it does.
   // Which tenant was asked for, or '' for none, so only that button spins.
@@ -337,8 +332,6 @@ export function GitHubSignIn({
             ? 'Sign in with GitHub. Felix is invite-only for now.'
             : 'Sign in with the GitHub account your organization uses.'
       }
-      footer={alternative}
-      focusOnMount={focusOnMount}
     >
       <DeviceLoginBody
         login={login}

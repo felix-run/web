@@ -41,8 +41,8 @@ Use the `api-contract-change` skill for the full procedure.
   drives the thread: the keeper observes (`shared`), the shell goes read-only, and the keeper
   retries `exclusive` once per renewal tick — never in a tight loop. Driving requests carry the
   tab's token as `X-Felix-Lease-Token`; a `LeaseRefusedError` means "watching", not an error toast.
-- Every `/api/*` call goes through the module's `apiFetch`, which attaches the `x-chat-key` header
-  and drops the key on 401. Never call bare `fetch('/api/...')`.
+- Every `/api/*` call goes through the module's `apiFetch`, which attaches the session's bearer
+  and drops the session on 401. Never call bare `fetch('/api/...')`.
 - TypeScript is strict with `noUnusedLocals`, `noUnusedParameters`, and (at workspace level)
   `noUncheckedIndexedAccess`. Index access returns `T | undefined` — handle it, don't `!` past it
   reflexively.

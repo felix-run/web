@@ -134,10 +134,11 @@ describe('a credential for someone else', () => {
     expect(traces()).toEqual(SWITCHED);
   });
 
-  it('forgets everything when an access key replaces a session', () => {
-    auth.setSession(github());
+  // The retired access key recorded its holder as `key`; whoever signs in next is someone else.
+  it('forgets everything when a session replaces the retired access key', () => {
+    localStorage.setItem('felix.identity', 'key');
     leaveTraces();
-    auth.setApiKey('k');
+    auth.setSession(github());
     expect(traces()).toEqual(NONE);
   });
 
@@ -344,17 +345,19 @@ describe('the open app', () => {
     expect(auth.getSession()?.provider).toBe('github');
   });
 
-  it('says nothing was rejected when a request after sign-out carried no credential', async () => {
+  it('says no sign-in ended when a request after sign-out carried no credential', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () => new Response('{"error":"unauthorized","gate":"chat_key"}', { status: 401 }),
+      vi.fn(async (url: string) =>
+        url === '/api/auth/methods'
+          ? Response.json({ github_device: true, bearer_required: true })
+          : new Response('{"error":"unauthorized"}', { status: 401 }),
       ),
     );
     renderGate();
-    await screen.findByPlaceholderText('Access key');
+    await screen.findByRole('button', { name: /continue with github/i });
     act(() => auth.handleUnauthorized({}));
-    await screen.findByPlaceholderText('Access key');
-    expect(screen.queryByText(/rejected/i)).toBeNull();
+    await screen.findByRole('button', { name: /continue with github/i });
+    expect(screen.queryByText(/sign-in has ended/i)).toBeNull();
   });
 });

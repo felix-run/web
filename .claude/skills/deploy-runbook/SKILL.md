@@ -52,13 +52,14 @@ public origin of the Python harness (production: `https://api.felix.run`).
 
 Secrets go through wrangler, once per Worker, and are ask-gated:
 
-```bash
-pnpm --filter @felix/chat-ui exec wrangler secret put CHAT_UI_KEY    # browser gate key
-pnpm --filter @felix/chat-ui exec wrangler secret put FELIX_API_KEY  # optional upstream bearer
-```
+The chat-ui Worker takes none: browsers sign in to the harness (GitHub or Google login), so the
+harness must have one on before this deploy. A Worker deployed before the shared access key was
+retired still holds `CHAT_UI_KEY` and `FELIX_API_KEY`; they are ignored — delete them:
 
-Rotating `CHAT_UI_KEY` invalidates every browser's stored key — users get re-prompted by the Gate.
-Say so before rotating.
+```bash
+pnpm --filter @felix/chat-ui exec wrangler secret delete CHAT_UI_KEY
+pnpm --filter @felix/chat-ui exec wrangler secret delete FELIX_API_KEY
+```
 
 ## 3. Deploy
 
@@ -73,9 +74,9 @@ curl -sS -o /dev/null -w 'spa=%{http_code}\n' https://make.felix.run/
 curl -sS -o /dev/null -w 'api=%{http_code}\n' https://make.felix.run/api/v1/models   # 401 expected when the gate is on
 ```
 
-Then in a browser: the SPA loads, the Gate accepts the key, a chat turn streams, and the Inspector
+Then in a browser: the SPA loads, the Gate signs you in, a chat turn streams, and the Inspector
 polls. A 502 with `felix_origin_unset` means `vars.FELIX_ORIGIN` is missing; a 401 on every call
-means the `CHAT_UI_KEY` secret and the key you entered disagree.
+means the harness refused the session — check its auth mode and login settings.
 
 ## 5. Rollback
 

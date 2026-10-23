@@ -95,13 +95,10 @@ version and fetches that felix release's `openapi.json` (`apps/docs/scripts/fetc
 fails if either is unreachable. Offline, point `FELIX_OPENAPI_SPEC` at a local file. Redeploy the
 docs after upgrading production — the daily `reference-freshness` workflow fails until you do.
 
-The proxy Workers take two secrets, never `vars`: `CHAT_UI_KEY` gates browser clients (the SPA
-sends it as `x-chat-key`; the Worker strips the header before going upstream), and `FELIX_API_KEY`
-is injected upstream as `Authorization: Bearer`.
-
-```bash
-pnpm --filter @felix/chat-ui exec wrangler secret put CHAT_UI_KEY
-```
+The chat-ui proxy Worker takes no secrets: it holds no credential, and a browser gets in by signing
+in to the harness (GitHub or Google login), whose bearer the Worker forwards untouched. A Worker
+deployed before the shared access key was retired still has `CHAT_UI_KEY` and `FELIX_API_KEY` set;
+they are ignored, and worth deleting (`wrangler secret delete <name>`).
 
 ## License
 

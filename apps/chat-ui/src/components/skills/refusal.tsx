@@ -107,7 +107,7 @@ export function RefusalNotice({
       'This version already has an evaluation queued or running. Wait for it to finish.',
     invalid_address: 'That is not a skill, version or item the library could hold.',
     no_personal_library:
-      'Your sign-in has no personal library. Each person signed in with their own account has one; a shared key or an anonymous session does not.',
+      'Your sign-in has no personal library. Each person signed in with their own account has one; an API key or an anonymous session does not.',
     personal_libraries_need_auth:
       'This harness runs without sign-in, so nobody has a personal library.',
     personal_library_read_only:

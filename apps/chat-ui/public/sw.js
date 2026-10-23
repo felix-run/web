@@ -17,7 +17,7 @@
  *     change under one name, so that offline page has scripts to run.
  *
  * It does NOT touch `/api/*`. That is the live console: SSE streams, uploads,
- * `x-chat-key`, approvals that must be current or not shown at all. A cached
+ * credentialed reads, approvals that must be current or not shown at all. A cached
  * approval list is worse than none. Those requests are never intercepted, so a
  * new version of this file can take over at once (`skipWaiting`) without any
  * risk to a run in flight — there is nothing of a run's here to disturb.

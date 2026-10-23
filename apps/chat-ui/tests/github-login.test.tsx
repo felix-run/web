@@ -5,10 +5,8 @@ import { AccountChip } from '../src/components/account-chip';
 import { Gate } from '../src/components/gate';
 import {
   authHeaders,
-  getApiKey,
   getSession,
   handleUnauthorized,
-  setApiKey,
   setRelockHandler,
   setSession,
 } from '../src/lib/auth';
@@ -17,12 +15,11 @@ import {
  * GitHub sign-in, at the wire. The device flow is a loop against a person who is
  * somewhere else: the page polls `/auth/github/token` and every answer but one
  * means "not yet". What these pin is that each answer moves the card to the
- * right place, that the session it ends with is what every request then sends,
- * and that the two ways in never ride one request together.
+ * right place, and that the session it ends with is what every request then sends.
  */
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
-const workerRefusal = () => json({ error: 'unauthorized', gate: 'chat_key' }, 401);
+const harnessRefusal = () => json({ error: 'unauthorized' }, 401);
 const DEVICE = {
   device_code: 'dc-1',
   user_code: 'WDJB-MJHT',
@@ -50,7 +47,7 @@ beforeEach(() => {
     '/api/v1/models': (init) =>
       (init?.headers as Record<string, string> | undefined)?.authorization === 'Bearer felix-jwt'
         ? json({ data: [] })
-        : workerRefusal(),
+        : harnessRefusal(),
     '/api/auth/methods': () => json({ github_device: true, bearer_required: true }),
     '/api/auth/github/device': () => json(DEVICE),
     '/api/auth/github/token': () => json(TOKEN),
@@ -89,20 +86,6 @@ const tick = async (ms: number) => {
 };
 
 describe('the gate, when the harness offers GitHub', () => {
-  // Each step of the flow unmounts the control the person was on. Without a destination, focus
-  // falls to <body> and a keyboard or screen-reader user starts again from the top.
-  it('moves focus to the card a person switches to', async () => {
-    renderGate();
-    fireEvent.click(await screen.findByRole('button', { name: /use an access key instead/i }));
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Access key')));
-    fireEvent.click(screen.getByRole('button', { name: /sign in with github instead/i }));
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByRole('button', { name: /continue with github/i }),
-      ),
-    );
-  });
-
   it('puts focus on the code when it arrives, and back on the button after Cancel', async () => {
     routes['/api/auth/github/token'] = () =>
       json({ error: 'authorization_pending', message: 'pending', interval: 5 }, 428);
@@ -129,34 +112,24 @@ describe('the gate, when the harness offers GitHub', () => {
     await waitFor(() => expect(document.activeElement).toBe(retry));
   });
 
-  it('leads with GitHub and keeps the key one step behind it', async () => {
-    renderGate();
-    await screen.findByRole('button', { name: /continue with github/i });
-    expect(screen.queryByPlaceholderText('Access key')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /use an access key instead/i }));
-    expect(screen.getByPlaceholderText('Access key')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /sign in with github instead/i }));
-    expect(screen.getByRole('button', { name: /continue with github/i })).toBeTruthy();
-  });
-
-  it('offers no key when only the harness refuses', async () => {
-    routes['/api/v1/models'] = () => json({ error: 'unauthorized' }, 401);
+  it('offers GitHub and never an access key', async () => {
     renderGate();
     await screen.findByRole('button', { name: /continue with github/i });
     expect(screen.queryByText(/access key/i)).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('falls back to the key alone on a harness with no /auth/methods', async () => {
+  it('says there is no way in on a harness with no /auth/methods', async () => {
     delete routes['/api/auth/methods'];
     renderGate();
-    await screen.findByPlaceholderText('Access key');
-    expect(screen.queryByText(/github/i)).toBeNull();
+    await screen.findByText(/offers no way to sign in/i);
+    expect(screen.queryByText(/access key/i)).toBeNull();
   });
 
   it('signs in through the device flow and opens on the bearer', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    setApiKey('old-shared-key');
-    // The stored key is stale; GitHub is how this person gets in now.
+    // A key stored before the access key was retired: dropped, never sent.
+    localStorage.setItem('felix.apiKey', 'old-shared-key');
     let pending = 2;
     routes['/api/auth/github/token'] = () =>
       pending-- > 0
@@ -184,8 +157,10 @@ describe('the gate, when the harness offers GitHub', () => {
     expect(JSON.parse(String(tokenCalls()[0]?.init?.body))).toEqual({ device_code: 'dc-1' });
     const session = getSession();
     expect(session).toMatchObject({ token: 'felix-jwt', login: 'octo', tenant: 'acme' });
-    // One credential, never both: the Worker would honour the key and drop the person.
-    expect(getApiKey()).toBeNull();
+    expect(localStorage.getItem('felix.apiKey')).toBeNull();
+    expect(
+      calls.some((c) => (c.init?.headers as Record<string, string> | undefined)?.['x-chat-key']),
+    ).toBe(false);
     expect(authHeaders()).toEqual({ authorization: 'Bearer felix-jwt' });
   });
 
@@ -222,7 +197,7 @@ describe('the gate, when the harness offers GitHub', () => {
     routes['/api/v1/models'] = (init) => {
       if (first && !(init?.headers as Record<string, string>)?.authorization) {
         first = false;
-        return workerRefusal();
+        return harnessRefusal();
       }
       return json({ data: [] });
     };
@@ -337,8 +312,7 @@ describe('the account chip', () => {
     scopes: ['chat'],
   });
 
-  it('names no one under the shared key', () => {
-    setApiKey('shared');
+  it('names no one when not signed in', () => {
     const { container } = render(<AccountChip />);
     expect(container.innerHTML).toBe('');
   });
