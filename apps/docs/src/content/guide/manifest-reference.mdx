@@ -268,8 +268,11 @@ They bound different loops. `max_turns` is read by `groupchat`, `plan_execute` a
 delegating patterns. A `react` agent — the default pattern — is bounded by `recursion_limit`,
 where one step is a model call plus the tool batch it asked for; `max_turns` on a react agent
 bounds nothing, and the compile step warns (`felix_rule_targets_nothing{kind="max_turns"}`).
-A react loop that runs out of steps with tool calls still pending ends with
-`stop_reason: max_turns`, a `truncated` session status, and `felix_run_stop_reason{reason="max_turns"}`.
+On the last step the model is still sent its tools, but with `tool_choice: none` and a note
+that no more calls can run, so it answers from what it has found instead of asking for a call
+that would never execute. A model that calls a tool anyway — or a provider whose wire format
+cannot refuse tools — ends with `stop_reason: max_turns`, a `truncated` session status, and
+`felix_run_stop_reason{reason="max_turns"}`.
 
 ## Tools
 
