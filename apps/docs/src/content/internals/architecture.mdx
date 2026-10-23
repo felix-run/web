@@ -1,6 +1,6 @@
 ---
 title: "Architecture"
-description: "End-to-end request flow through the Felix Python harness — API, worker, scheduler, and data plane."
+description: "End-to-end request flow through the Felix Python harness — API, Worker, scheduler, and data plane."
 sidebar:
   order: 1
 ---
@@ -22,7 +22,7 @@ own. All three connect to the same Postgres with pgvector, Valkey, and object st
 |---|---|
 | **API** (`apps/api`) | HTTP surfaces, OpenAPI/`/docs`, agent invoke/stream |
 | **Worker** (`apps/worker`) | Audit flush, jobs, memory consolidation, retention, anomaly, continuous eval, fiber resume |
-| **Scheduler** | Enqueues labeled Taskiq cron tasks (required alongside the worker) |
+| **Scheduler** | Enqueues labeled Taskiq cron tasks (required alongside the Worker) |
 
 The harness library lives in `packages/harness` (`felix`). The CLI is `apps/cli` (`felix migrate|doctor|eval|mint-jwt|…`).
 
@@ -99,7 +99,7 @@ Names are the actual callables: `felix.runtime` owns `resolve_tenant_manifest` a
 
 ## Durability
 
-The durability backend is **fibers** (Postgres-backed sleep/step/resume; each worker polls for due fibers every second and advances up to eight at once, with a once-a-minute cron sweep as the backstop). Set `spec.execution.mode: durable` to enqueue and return `202` with a `resume_token`.
+The durability backend is **fibers** (Postgres-backed sleep/step/resume; each Worker polls for due fibers every second and advances up to eight at once, with a once-a-minute cron sweep as the backstop). Set `spec.execution.mode: durable` to enqueue and return `202` with a `resume_token`.
 
 ## Background work
 
@@ -127,6 +127,6 @@ the following ever fires:
 |---|---|
 | `packages/harness/src/felix/` | Manifests, patterns, tools, session, governance, auth, plugins |
 | `apps/api` | FastAPI composition + routes |
-| `apps/worker` | Taskiq worker and scheduler entrypoints |
+| `apps/worker` | Taskiq Worker and scheduler entrypoints |
 | `apps/cli` | Ops CLI |
 | `manifests/` | Bundled agents (`quick`, `deep`, `router`, …) |

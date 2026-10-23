@@ -958,7 +958,7 @@ banner is approved, and a delete's banner shows the file it removes; the termina
 on its own prompt, naming the absolute path, and refuses `.git/`, `.husky/`, `node_modules/`,
 executable files and symbolic links outright.
 
-On a [durable](#specexecution) run the agent is in the worker, not the process serving the stream,
+On a [durable](#specexecution) run the agent is in the Worker, not the process serving the stream,
 so the harness records each pending request and the durable stream announces it as the same
 `tool_request` frame a streamed run sends. A harness older than that (`felix-run/felix#513`)
 cannot run client tools on a durable run at all: the request never reaches the client, and the
@@ -1062,9 +1062,9 @@ must be unique.
 `background: true` to `task`: the child starts as a [durable run](/guide/rest-api/#durable-runs) and
 `task` returns a task id at once, and a second tool, `task_result(task_id, wait_seconds)`, reads its
 status and — once it is done — its answer, waiting up to 60 seconds. The child runs in
-`felix-worker` (so the worker and `felix-scheduler` must be running), on a thread of its own linked
+`felix-worker` (so the Worker and `felix-scheduler` must be running), on a thread of its own linked
 to the parent's, as the caller who started it, and pinned to the manifest the parent compiled — a
-child edited before the worker picks it up does not run. It expires no later than the token or run
+child edited before the Worker picks it up does not run. It expires no later than the token or run
 that started it. Since the parent's run may end first, the child cannot share its counters; instead
 it runs on what is **left** of every budget above it when it starts — a lead capped at ten tool
 calls that has made four hands its background child six. A background child cannot start
@@ -1349,7 +1349,7 @@ spec:
 | `after_facts` | int ≥ 10 | `50` | Only a pool holding more than this many eligible facts is considered. |
 | `max_facts` | int 1–500 | `200` | The newest facts shown per pass. |
 
-The worker's `consolidate_memory` cron (every 15 minutes) shows the model the newest `max_facts`
+The Worker's `consolidate_memory` cron (every 15 minutes) shows the model the newest `max_facts`
 active facts of the pool and asks which state the same thing. What it is allowed to do is narrow
 on purpose:
 
@@ -1554,7 +1554,7 @@ offset=<end>]`, or `; end]` on the last one, so the model pages by the offset it
 - **It is governed like any tool.** It is bound before the governance stack, so policies, limits,
   screening and audit apply to a read as to the call that produced the artifact.
 - **It is never itself spilled**, although a window can be larger than `threshold_chars`.
-- **Spill expires.** The worker's retention sweep deletes spills older than
+- **Spill expires.** The Worker's retention sweep deletes spills older than
   `FELIX_ARTIFACT_RETENTION_DAYS` (30 by default, `0` keeps forever); after that `read_artifact`
   reports the id as missing.
 
@@ -1748,7 +1748,7 @@ first line. Nothing is written:
 - while a run is going on in it, since an entry landing inside a run would sit between a message and
   its reply (`run_live`): a turn marks itself from before its first append to after its last, and a
   durable run counts until it finishes. Without Redis the mark is per process, so a firing on the
-  worker cannot see a turn running in the API. A client holding the thread's
+  Worker cannot see a turn running in the API. A client holding the thread's
   [exclusive lease](/guide/rest-api/#leases) is not a run — that is the person, watching;
 - into the run's own thread, which already shows the call and the answer, or when there is no other
   chat thread to leave it in (`not_eligible`).
@@ -1860,7 +1860,7 @@ exactly as a [scheduled task](#specscheduling) does. In order:
    midnight. Every run that ran counts, scheduled or asked for with
    [`POST /heartbeats/{manifest}/run`](/guide/management-api/#heartbeats), so a person cannot fire
    past it by hand; skipped runs do not count, so an operator raising the cap mid-day gives that day
-   the difference. A cancelled firing (a worker shutting down, a caller leaving a manual run) is
+   the difference. A cancelled firing (a Worker shutting down, a caller leaving a manual run) is
    recorded as an `error` run and counts. A `schedule` that could fire more often than the cap is
    allowed: the cap binds, the rest of the day's slots are recorded `skipped`, and `PUT /manifests`
    (`warnings`) and `felix validate-manifest` warn about it. With the field unset there is no cap
@@ -2037,7 +2037,7 @@ spec:
 
 A durable `POST /chat` returns **`202`** with `{status, resume_token, fiber_id, expires_at,
 thread_id}`; poll `GET /chat/runs/{resume_token}`. Fibers checkpoint in Postgres and are picked up
-by the worker within about a second (`FELIX_FIBER_POLL_SECONDS`, see
+by the Worker within about a second (`FELIX_FIBER_POLL_SECONDS`, see
 [Deploy → Durable runs](/guide/deploy/#durable-runs)). Fibers are the one durable backend; the
 Temporal backend was removed, and `FELIX_DURABILITY=temporal` now fails startup.
 
@@ -2046,7 +2046,7 @@ Temporal backend was removed, and `FELIX_DURABILITY=temporal` now fails startup.
 [REST API](/guide/rest-api/#post-chatstream)).
 
 `webhooks` names endpoints, never URLs: the operator registers each one's URL, signing secret and
-allowed tenants, and the worker POSTs the finished run to it. See
+allowed tenants, and the Worker POSTs the finished run to it. See
 [Completion webhooks](/guide/rest-api/#completion-webhooks) for the payload and signature, and
 [Deploy](/guide/deploy/#completion-webhooks) for registering endpoints.
 
@@ -2274,7 +2274,7 @@ required), `reason` (string \| null).
 
 ### `spec.anomaly`
 
-Thresholds for the worker's anomaly scan. Read from the manifest — findings carry the values
+Thresholds for the Worker's anomaly scan. Read from the manifest — findings carry the values
 that produced them.
 
 | Field | Type | Default | Notes |

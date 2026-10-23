@@ -11,10 +11,10 @@ What Felix emits and where to look. Complements [governance](/internals/governan
 
 | Path | Sink |
 |---|---|
-| **Counters / histograms** | Prometheus (`record_counter` / `record_histogram`); scrape `/metrics` on the API, and `FELIX_METRICS_PORT` on the worker |
+| **Counters / histograms** | Prometheus (`record_counter` / `record_histogram`); scrape `/metrics` on the API, and `FELIX_METRICS_PORT` on the Worker |
 | **Spans** | In-process + optional OTLP when `FELIX_OTEL_ENABLED=true` (`uv sync --extra otel`) |
 | **Logs** | Optional OTLP with `FELIX_OTEL_LOGS=true`, stamped with the trace that produced them |
-| **Audit events** | Buffered → Postgres `audit_events` (worker flush); query via `GET /audit` |
+| **Audit events** | Buffered → Postgres `audit_events` (Worker flush); query via `GET /audit` |
 
 :::caution[`/metrics` is authenticated, and not by accident]
 Label values include tenant-supplied manifest ids and remote MCP tool names, so an anonymous
@@ -22,8 +22,8 @@ scrape would disclose every tenant's manifests and tools. It is not in the publi
 is not rate-limit exempt. A scraper needs a credential — give it an API key with an empty `scopes`
 array: `/metrics` has no scope gate, so an unscoped key reads metrics and is refused everywhere else.
 
-The worker's `FELIX_METRICS_PORT` endpoint carries the **same** label values with **no**
-authentication, because the worker has no auth middleware. Keep it on an internal network; never
+The Worker's `FELIX_METRICS_PORT` endpoint carries the **same** label values with **no**
+authentication, because the Worker has no auth middleware. Keep it on an internal network; never
 publish it.
 :::
 
@@ -65,7 +65,7 @@ out of a non-empty allowlist is never registered at all.
 | `felix_rule_targets_nothing` | `manifest_id`, `rule`, `kind` | A rule matches no tool |
 | `felix_untrusted_tools_unscreened` | `manifest_id` | Untrusted tool output reached the model without content screening |
 | `felix_imported_skills_unscreened` | `manifest_id` | A compile offered an imported skill with content screening off, so only the injection markers screen it |
-| `felix_worker_task` | `task`, `status` | Once per periodic worker sweep |
+| `felix_worker_task` | `task`, `status` | Once per periodic Worker sweep |
 | `felix_webhook_delivery` | `kind` (`run` / `skill_update`), `endpoint`, `outcome` (`delivered` / `retry` / `dead`) | One signed webhook attempt: a finished durable run's completion webhook, or a queued `skill.update_available`. `dead` is out of tries, or an endpoint no longer registered for — or, for `skill_update`, no longer bound to — the tenant. `kind` arrived with skill update notifications: a query that ignores it counts both, `{kind="run"}` counts runs alone. **Watch `dead`**: nobody waiting on that webhook heard about it |
 | `felix_skill_update_notification` | `outcome` (`enqueued` / `superseded`) | A `skill.update_available` event before it is sent: `enqueued` when a check queues one, `superseded` when one never will be — a newer digest replaced it, the origin moved on, or the skill's newest version already holds it |
 | `felix_buffer_dropped` | `buffer` | Audit or usage rows dropped because a buffer hit its cap |
@@ -199,8 +199,8 @@ incident query filtered to `policy_deny` alone sees none of those three.
 
 `skill_activation` is written by `activate_skill` and `deactivate_skill` inside a turn. The rest are
 written by the skill library for work done outside one — a management route acting for an operator,
-or a worker job — so `principal_subj` is the operator, the authoring manifest's id for an agent's
-save, or `skill-improver` / `skill-eval` for the worker. The version events (`skill_draft_saved`
+or a Worker job — so `principal_subj` is the operator, the authoring manifest's id for an agent's
+save, or `skill-improver` / `skill-eval` for the Worker. The version events (`skill_draft_saved`
 through `skill_archived`, `skill_adopted` and `skill_promoted` included) carry the version's `origin_manifest_id` as `manifest_id` — empty for an
 operator's save or a promotion — and their payloads name `skill`, `version`, `source`, `author`, `quality_score`,
 `security_status` and `library`: `org`, or a personal library's digest (`~` and 32 hex characters),
@@ -220,7 +220,7 @@ never the owner's subject. Feedback events name `skill`, `target_version`, `feed
 | `personal_library_accessed` | An administrator's `GET /skill-library/-/personal`, or any request under `/skill-library/~{digest}` | `ok` | `library` (the digest, or `*` for the listing), `method`, `path` |
 | `skill_feedback_submitted` | Feedback filed | `ok` | `feedback_status`, `body_chars`, `has_patch` — never the body |
 | `skill_feedback_accepted` / `skill_feedback_rejected` | A person's decision | `ok` | `improve` |
-| `skill_feedback_applied` / `skill_feedback_failed` | The worker's improvement | `ok` | `result_version`, `model`, `error` |
+| `skill_feedback_applied` / `skill_feedback_failed` | The Worker's improvement | `ok` | `result_version`, `model`, `error` |
 | `skill_eval_queued` / `skill_eval_finished` | An evaluation queued / run | `ok`, `failed` | `skill`, `version`, `eval_id`, `eval_status`, `scenario_source`, `baseline_score`, `with_skill_score`, `uplift`, `error` |
 | `skill_policy_updated` / `skill_policy_deleted` | `PATCH` / `DELETE /skill-library/-/policy` | `ok` | `before`, `after` (each with `source`), `tenant` |
 | `skill_update_notification_queued` | A recorded check queued a `skill.update_available` (principal `skill-upstream`) | `ok` | `skill`, `source`, `version`, `upstream_commit`, `upstream_tree_hash`, `endpoints`, `superseded` (it replaced an undelivered one) |

@@ -181,7 +181,7 @@ A **pre-install/pre-upgrade Job** runs `felix migrate head` (`migrate.enabled=tr
 Rolling the schema back is a separate, deliberate step: `felix migrate <revision> --down` runs each
 revision's `downgrade()`, which drops what it added. Without `--down`, asking for a revision the
 database has already passed is refused (exit 2) rather than reported as done.
-The chart runs **api**, **worker**, and **scheduler**. For `FELIX_OBJECT_STORE=fs`,
+The chart runs `api`, `worker` and `scheduler`. For `FELIX_OBJECT_STORE=fs`,
 enable `persistence.enabled=true`.
 
 Set `serviceMonitor.enabled=true` for a Prometheus Operator scrape of `/metrics`. It reads a bearer
@@ -292,22 +292,22 @@ untouched for `FELIX_MEMORY_TASK_RETENTION_DAYS` (30, `0` keeps them); see
 [Memory](/guide/management-api/#memory).
 
 :::note
-The worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the sweep is *enqueued* by
-`felix-scheduler`. Run all three containers — API, worker **and** scheduler — or no job, retention
-sweep, memory consolidation, skill evaluation or skill improvement ever fires. Durable runs are the exception: each worker polls for them
+The Worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the sweep is *enqueued* by
+`felix-scheduler`. Run all three containers — API, Worker **and** scheduler — or no job, retention
+sweep, memory consolidation, skill evaluation or skill improvement ever fires. Durable runs are the exception: each Worker polls for them
 itself (below), and the scheduler's once-a-minute `fiber_scheduler` sweep is only the backstop.
 :::
 
 ## Durable runs
 
-A durable run is a `pending` fiber until a worker claims it, and nothing tells the worker when one
-is submitted — so each worker polls. The claim is the same lease plus `FOR UPDATE SKIP LOCKED` the
-cron sweep takes, so any number of workers, polling or sweeping, never run one fiber twice.
+A durable run is a `pending` fiber until a Worker claims it, and nothing tells the Worker when one
+is submitted — so each Worker polls. The claim is the same lease plus `FOR UPDATE SKIP LOCKED` the
+cron sweep takes, so any number of Workers, polling or sweeping, never run one fiber twice.
 
 | Setting | Default | |
 |---|---|---|
-| `FELIX_FIBER_POLL_SECONDS` | `1.0` | How often each worker checks for due fibers. `0` turns the poll off and leaves only the once-a-minute sweep, which is how durable runs were started before 0.5.0 — each waited up to a minute before its first model call. |
-| `FELIX_FIBER_CONCURRENCY` | `8` | Fibers one worker advances at once. A run parked on an approval holds its slot until someone answers, so this bounds how many such waits can pile up before a new run waits for a slot. A full worker leaves further runs unclaimed for another worker. |
+| `FELIX_FIBER_POLL_SECONDS` | `1.0` | How often each Worker checks for due fibers. `0` turns the poll off and leaves only the once-a-minute sweep, which is how durable runs were started before 0.5.0 — each waited up to a minute before its first model call. |
+| `FELIX_FIBER_CONCURRENCY` | `8` | Fibers one Worker advances at once. A run parked on an approval holds its slot until someone answers, so this bounds how many such waits can pile up before a new run waits for a slot. A full Worker leaves further runs unclaimed for another Worker. |
 | `FELIX_FIBER_MAX_ATTEMPTS` | `5` | Consecutive failed steps before a fiber is `dead`; retries back off 1m doubling to 1h. |
 
 ## Credentials the model never holds
@@ -372,7 +372,7 @@ marks pending deliveries to it `dead` rather than sending them.
 | `FELIX_WEBHOOK_MAX_ATTEMPTS` | `8` | Tries per endpoint before `dead`; backoff 1m doubling to 1h. |
 | `FELIX_WEBHOOK_TIMEOUT_SECONDS` | `10` | Above 0, at most `60`; a larger value fails the boot. Whole-attempt bound, including a receiver that answers slowly. A sweep starts no delivery after the first 60 seconds of its 120-second claim, and the cap keeps one attempt inside that. |
 
-Delivery runs in the worker's `webhook_delivery` cron, so it needs `felix-scheduler` like every
+Delivery runs in the Worker's `webhook_delivery` cron, so it needs `felix-scheduler` like every
 other periodic task. Each attempt increments `felix_webhook_delivery{kind, endpoint, outcome}` with
 `kind="run"` and `outcome` one of `delivered`, `retry`, `dead`. The payload and how to verify it:
 [REST API → Completion webhooks](/guide/rest-api/#completion-webhooks).
@@ -449,12 +449,12 @@ change what the trigger's `scopes` reach; pin the workflow with `"revision"` whe
 
 With the optional `felix-channels` plugin installed, people can talk to an agent from Slack: a
 mention in a channel, or a DM to the app. Each message starts a [durable run](#durable-runs) as
-its sender, a Slack thread is one Felix conversation, and the worker posts the answer back in the
+its sender, a Slack thread is one Felix conversation, and the Worker posts the answer back in the
 thread when the run ends.
 
-**Install the plugin** in both the API and the worker image: `FELIX_EXTRAS=channels` when building
+**Install the plugin** in both the API and the Worker image: `FELIX_EXTRAS=channels` when building
 (`docker build --build-arg FELIX_EXTRAS="channels" .`), or `uv sync --extra channels` from a
-checkout. Without it, `FELIX_CHANNELS` is inert. The worker must run with `felix-scheduler`, as
+checkout. Without it, `FELIX_CHANNELS` is inert. The Worker must run with `felix-scheduler`, as
 for every durable run.
 
 **Create the Slack app** (api.slack.com/apps):
@@ -501,7 +501,7 @@ web client or the API), Telegram, and per-user linking.
 | Setting | Default | |
 |---|---|---|
 | `FELIX_CHANNELS` | empty | The registry above, as JSON. Read by the `felix-channels` plugin. |
-| `FELIX_SECRET_NAMES` | empty | Add the channel's secret names (`SLACK_SIGNING_SECRET,SLACK_BOT_TOKEN`), so the worker, where channel runs execute, masks them from boot rather than from its first reply. |
+| `FELIX_SECRET_NAMES` | empty | Add the channel's secret names (`SLACK_SIGNING_SECRET,SLACK_BOT_TOKEN`), so the Worker, where channel runs execute, masks them from boot rather than from its first reply. |
 
 ## Skill library
 
@@ -535,8 +535,8 @@ egress guard. The settings are read at boot. See [Skill import](/guide/skill-imp
 | `FELIX_SKILL_IMPORT_MIN_AGE_DAYS` | `0` | 0–365. Refuse (`403 too_recent`) files this tenant first saw fewer than this many days ago, by Felix's own clock. Tenants can raise it, never lower it. |
 | `FELIX_SKILL_IMPORT_CALLS_PER_HOUR` | `500` | 1–100000. GitHub calls one tenant's browses and imports may make per hour (`429 rate_limited`). |
 | `FELIX_SKILL_IMPORT_CALLS_PER_HOUR_TOTAL` | `4000` | 1–1000000. The same for the whole deployment, protecting the token's own limit. |
-| `FELIX_SKILL_IMPORT_CHECK_HOURS` | `0` | 0–168; `0` is off. Check every imported skill against its origin this often, from the worker's `skill_upstream_checks` task, spending at most half of each budget above. Needs `felix-scheduler`, and the worker needs the same `FELIX_SKILL_IMPORT_SOURCES` and `FELIX_SKILL_IMPORT_GITHUB_TOKEN` as the API; `felix doctor` notes this when it is set. |
-| `FELIX_SKILL_UPDATE_WEBHOOKS` | empty | Comma-separated `tenant=endpoint_id` (`acme=ops,acme=ci,beta=beta-hook`): where each tenant's `skill.update_available` events go. Each id must be a `FELIX_WEBHOOK_ENDPOINTS` endpoint open to that tenant, or boot fails; no wildcard, and a tenant not listed gets none. Set it on the API and the worker alike. See [Update notifications](/guide/skill-import/#update-notifications). |
+| `FELIX_SKILL_IMPORT_CHECK_HOURS` | `0` | 0–168; `0` is off. Check every imported skill against its origin this often, from the Worker's `skill_upstream_checks` task, spending at most half of each budget above. Needs `felix-scheduler`, and the Worker needs the same `FELIX_SKILL_IMPORT_SOURCES` and `FELIX_SKILL_IMPORT_GITHUB_TOKEN` as the API; `felix doctor` notes this when it is set. |
+| `FELIX_SKILL_UPDATE_WEBHOOKS` | empty | Comma-separated `tenant=endpoint_id` (`acme=ops,acme=ci,beta=beta-hook`): where each tenant's `skill.update_available` events go. Each id must be a `FELIX_WEBHOOK_ENDPOINTS` endpoint open to that tenant, or boot fails; no wildcard, and a tenant not listed gets none. Set it on the API and the Worker alike. See [Update notifications](/guide/skill-import/#update-notifications). |
 
 A malformed `FELIX_SKILL_IMPORT_SOURCES` entry stops the API at boot. With the token set, boot also
 refuses an empty list, an entry naming no tenant, and an entry whose owner is a glob — each would
@@ -546,12 +546,12 @@ let one tenant read whatever the token reads — unless `FELIX_ENVIRONMENT=devel
 
 ### Skill jobs
 
-Evaluations and AI improvements from accepted feedback run in the worker's `skill_jobs` task,
+Evaluations and AI improvements from accepted feedback run in the Worker's `skill_jobs` task,
 enqueued every minute by **`felix-scheduler`** — run it alongside `felix-worker`, or a queued
 evaluation stays `queued` and accepted feedback is never rewritten. The API never enqueues to the
-worker directly. Each sweep runs at most five jobs of each kind, and one sweep runs at a time across
-every worker, held by a lease row that works through a transaction pooler, so the PgBouncer overlay
-needs nothing special. A worker that dies mid-sweep frees it within the job deadline plus five
+Worker directly. Each sweep runs at most five jobs of each kind, and one sweep runs at a time across
+every Worker, held by a lease row that works through a transaction pooler, so the PgBouncer overlay
+needs nothing special. A Worker that dies mid-sweep frees it within the job deadline plus five
 minutes.
 
 | Setting | Default | |
@@ -647,12 +647,12 @@ channel. Build with `--build-arg FELIX_EXTRAS=embeddings` to turn it on. On an i
 extra, set `FELIX_MEMORY_EMBEDDER=none` to keep full-text-only recall.
 
 A memory stored while no embedder was configured, or while it was down, is stored without a
-vector. The worker's `consolidate_memory` cron (every 15 minutes) embeds those: up to 100 active
+vector. The Worker's `consolidate_memory` cron (every 15 minutes) embeds those: up to 100 active
 memories a tick, newest first, in one embedder call, across tenants. Turning an embedder on
 therefore covers memories stored before it, a batch at a time. It never overwrites a vector capture
 wrote meanwhile, and it does not spend on an embedder of the wrong width: one whose declared
 dimension disagrees with the column is never called, and one whose first batch comes back the wrong
-width is skipped until the worker restarts, with a warning naming the model. Those rows stay
+width is skipped until the Worker restarts, with a warning naming the model. Those rows stay
 vectorless and still recall by full text.
 
 Under Compose, `FELIX_MEMORY_EMBEDDER`, `FELIX_MEMORY_EMBEDDING_MODEL`, `FELIX_MEMORY_EMBEDDING_DIM`
@@ -667,7 +667,7 @@ column.
 By default a [workspace scope](/guide/manifest-reference/#specworkspace) is a directory under
 `FELIX_WORKSPACE_ROOT` on the host. With **`FELIX_WORKSPACE_BACKEND=hosted`** each scope instead
 lives in its own sandbox: a Cloudflare Container (a Firecracker microVM) started with the internet
-off and an empty environment, reached through a gateway Worker that ships with the harness
+off and an empty environment, reached through a Cloudflare Worker that ships with the harness
 (`deploy/cloudflare/workspace-gateway`). Nothing a model writes or runs touches the host.
 
 - **The tools answer as they do locally.** The file operations run in the sandbox with the local
@@ -704,17 +704,17 @@ npx wrangler secret put WORKSPACE_GATEWAY_TOKEN < gateway-token
 npx wrangler deploy                             # builds the image: needs Docker
 ```
 
-| Setting (API and worker) | Value |
+| Setting (API and Worker) | Value |
 |---|---|
 | `FELIX_WORKSPACE_BACKEND` | `hosted` |
-| `FELIX_WORKSPACE_GATEWAY_URL` | the Worker's https URL |
+| `FELIX_WORKSPACE_GATEWAY_URL` | the Cloudflare Worker's https URL |
 | `FELIX_WORKSPACE_GATEWAY_TOKEN` | the same token, 32+ characters |
 
 Boot refuses `hosted` without an https URL (plain http only for localhost) and a long enough token.
 Measured on the reference deployment: a sandbox's cold start took 2.6–11s, a warm operation about
 0.5s, and a backup about 2s.
 
-## Chat UI / docs Workers
+## Chat UI / docs Cloudflare Workers
 
 Frontends live in [felix-run/web](https://github.com/felix-run/web). Deploy chat-ui with
 `vars.FELIX_ORIGIN` pointing at your public Felix API; docs is a static Workers site.
@@ -729,16 +729,16 @@ Felix directly would have to hold a bearer token or API key, where any script on
 it.
 
 Put a server-side proxy on the page's own origin instead. It holds the credential, adds
-`Authorization`, and forwards to Felix. The chat-ui Worker does exactly this: it forwards `/api/*`
+`Authorization`, and forwards to Felix. The chat-ui Cloudflare Worker does exactly this: it forwards `/api/*`
 to `FELIX_ORIGIN`, and when `CHAT_UI_KEY` is set it first checks the browser's `x-chat-key`. An
 nginx or Caddy `location /api/` block that sets the header works the same way.
 
 With [GitHub login](/internals/auth/#github-login) on, the chat-ui gate leads with
 **Continue with GitHub** and keeps the access key behind it (when `CHAT_UI_KEY` is set). A signed-in
-browser sends its own bearer, and the Worker forwards it in place of both `x-chat-key` and
+browser sends its own bearer, and the Cloudflare Worker forwards it in place of both `x-chat-key` and
 `FELIX_API_KEY` — so each person runs as their org's tenant rather than as the deployment's key —
 but only while `GET /auth/methods` reports `bearer_required`. Under `FELIX_AUTH_MODE=none` any
-bearer would be accepted, and the Worker refuses to let one past its key there. The session is the
+bearer would be accepted, and the Cloudflare Worker refuses to let one past its key there. The session is the
 harness's token, so it lasts `FELIX_GITHUB_LOGIN_TTL_SECONDS` and signing out of the page does not
 revoke it. Signing out does forget what the page kept for that person: its copies of their threads
 and transcripts, the agent's in-browser workspace and local folder, their thread leases and the
@@ -748,7 +748,7 @@ and an open tab reloads when another tab signs out or in as someone else. The CL
 
 With [Google sign-in](/internals/auth/#google-sign-in) on, the gate offers **Continue with Google**:
 as the card when it is the only way in, or under GitHub's button when both are. Only the accounts on
-`FELIX_GOOGLE_ACCOUNTS` get through. The Worker passes `/auth/google/*` through as it does GitHub's
+`FELIX_GOOGLE_ACCOUNTS` get through. The Cloudflare Worker passes `/auth/google/*` through as it does GitHub's
 routes, and the redirect URI to register in Google Cloud is `https://<chat-ui>/api/auth/google/callback`.
 A Google session lasts `FELIX_GOOGLE_LOGIN_TTL_SECONDS`. The account chip renews it by sending the
 browser to Google and back to the same page, since Google has no code to enter in place. A durable
