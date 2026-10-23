@@ -449,6 +449,12 @@ turn time and is not restorable), and `403 restore_refused` when the caller rank
 forgot it, so an agent cannot undo an operator's forget. These three arrived with harness
 `felix-run/felix#548`.
 
+The nightly retention sweep forgets, in the same sense, every active `task` memory an agent wrote
+whose last write is older than `FELIX_MEMORY_TASK_RETENTION_DAYS` (30 days; `0` keeps them). Nothing
+else retires a task, since it has no topic key. Each one is stamped `retired_by: retention` in its
+`metadata` and listed under `status=forgotten`; `restore` brings it back, and so does the agent
+storing the same text again. A task written through this route is never expired.
+
 ## Documents
 
 An operator-owned corpus, separate from Memory: Memory holds facts the *agent* wrote, this holds
@@ -1330,7 +1336,10 @@ skipped or none of its `when` ports fired. A failed step fails the run.
 
 **Saves are conditional.** Every response carries the revision as its `ETag`. `If-Match:
 "<revision>"` saves only over that revision and `If-None-Match: *` only where none exists; a miss
-is `412` with the workflow as it stands. A definition with problems saves — each response lists the
+is `412` with the workflow as it stands. A workflow and each `GET /workflows` item carry
+`updated_by` (the last writer), `created_by` (the caller whose `PUT` created it, kept on every later
+save) and `authored_via` (empty for a workflow saved through these routes). Workflows created before
+harness `felix-run/felix#667` have an empty `created_by`. A definition with problems saves — each response lists the
 node `ports` and the `problems` (`code`, `message`, `step`, `port`) that stop it running — and only a
 run refuses it.
 
