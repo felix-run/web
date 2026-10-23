@@ -96,6 +96,11 @@ this *is* the connection.
 TLS is unaffected: certificate verification and SNI run against the hostname the caller asked
 for while the socket goes to the pinned address.
 
+The MCP client is the official MCP SDK's, whose HTTP stack is httpx2 rather than httpx. The same
+guard is installed there (`felix.security.egress_httpx2`): the pin (`connect_pinned`), the per-hop
+URL and host checks (`guard_request`) and the refused bypass arguments are shared functions, so a
+route closed on one stack is closed on the other.
+
 `proxy`, `mounts` and `uds` are refused rather than ignored, since each chooses a destination
 the guard never sees. Supplying a transport also disables httpx's environment proxies, so
 `HTTP_PROXY` and `HTTPS_PROXY` do **not** apply to these calls — worth knowing if your egress

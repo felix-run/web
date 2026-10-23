@@ -1,0 +1,209 @@
+---
+title: "MCP"
+description: "Felix as an MCP server (/mcp, /mcp/{manifest}, both protocol eras) and as an MCP client (spec.mcp_servers) — both on the official MCP Python SDK."
+sidebar:
+  order: 6
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Felix speaks the [Model Context Protocol](https://modelcontextprotocol.io) in both directions, and
+both are the official `mcp` Python SDK rather than a JSON-RPC implementation of Felix's own:
+
+- **As a server**, it serves a manifest's governed tools to any MCP host at `/mcp/{manifest}`.
+- **As a client**, a manifest's `spec.mcp_servers` binds a remote server's tools into the agent as
+  `{server}__{tool}`.
+
+The SDK owns the protocol — versions, handshakes, headers, framing. Felix owns what is its own: who
+the caller is, which manifest a request means, the governance around every tool call, and where an
+outbound connection may go.
+
+## Felix as an MCP server
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/mcp/{manifest_name}` | MCP for one manifest: its governed tools, compiled as the caller. |
+| `POST` | `/mcp` | MCP for the default manifest (`FELIX_DEFAULT_MANIFEST`, `quick` unless set). A legacy client may name another in `params.manifest`; the path wins when both are given. |
+| `GET` | `/mcp`, `/mcp/{manifest_name}` | `405` with `Allow: POST`. There is no standalone server-to-client stream. |
+
+The transport is the SDK's **stateless Streamable HTTP**: every message is one `POST`, answered with
+one JSON object. There are no sessions — no `Mcp-Session-Id` is minted or read — so any replica can
+answer any request and nothing outlives the HTTP exchange. A request must send
+`Content-Type: application/json` and an `Accept` that includes `application/json`. A notification is
+answered `202` with no body.
+
+The server advertises `tools` only. There are no resources or prompts yet.
+
+### Protocol versions
+
+Both eras of the protocol are served on the same endpoint. The SDK picks one per request from the
+`MCP-Protocol-Version` header.
+
+| | `2026-07-28` (current) | `2025-11-25` and earlier |
+|---|---|---|
+| Opening | Optional `server/discover`; every request stands alone | `initialize`, then `notifications/initialized` |
+| Version, identity, capabilities | In every request's `params._meta` (`io.modelcontextprotocol/protocolVersion` and `…/clientCapabilities` are required) | Negotiated once by `initialize` |
+| Headers | `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name` on `tools/call`, each matching the body | `MCP-Protocol-Version` optional |
+| Errors | Status-coded, see below | `200` with a JSON-RPC error |
+| Results | Carry `resultType`, and `ttlMs` / `cacheScope` on `server/discover` and `tools/list` | As before |
+
+On a `2026-07-28` request the HTTP status follows the error:
+
+| Error | Status | Code |
+|---|---|---|
+| A header missing, or not matching the body | `400` | `-32020` (`HeaderMismatch`) |
+| A protocol version the server does not speak | `400` | `-32022`, with `data.supported` listing those it does |
+| A required `_meta` field missing, or invalid params (an unknown tool) | `400` | `-32602` |
+| An unknown method (`prompts/list`, or `initialize` on this era) | `404` | `-32601` |
+
+Caching hints are always `cacheScope: "private"`: what a manifest compiles to depends on who asks,
+so no cache may be shared across callers. `server/discover` is fresh for five minutes and
+`tools/list` for one, because a stored manifest can change under a client.
+
+### Auth and tenancy
+
+A request to `/mcp` is authenticated like any other route: `AuthMiddleware` reads the bearer token
+for `FELIX_AUTH_MODE` (none under `auth_mode=none`). Then each list and call resolves the manifest
+for the caller's tenant and enforces its `spec.auth.inbound`, exactly as `/chat` and `/v1` do.
+
+| Error | Code | Status |
+|---|---|---|
+| The manifest's inbound auth refuses the caller | `-32001`, with the refusal's message | `200` |
+| The named manifest does not resolve for this tenant | `-32004`, `Unknown manifest: <name>` | `200` |
+| Anything else that fails | `-32603`, a fixed message with the request id; the detail is in the server log | `200` on the legacy era |
+
+`-32001` and `-32004` are the codes Felix answered with before it moved onto the SDK, kept for
+clients that key on them.
+
+### Calling a tool
+
+A `tools/call` runs the manifest's tool the way the agent's own loop does. The arguments are screened
+first, as a user turn is at every HTTP ingress, since a direct call has no turn. A refusal is
+`-32602`, `arguments refused: …`. The call then goes through the governance stack, with the plugin
+`before_tool` / `after_tool` hooks and the manifest's `pre_tool_use` / `post_tool_use` hooks around
+it, and a `tool_call` (or `policy_deny`) audit row. A refusal, a raise, or a tool's own marked error
+each answers with `isError: true`. A tool that raises is named by its error code, never by its
+exception's text.
+
+Tool `inputSchema` is generated from each tool's argument schema. A remote MCP tool that already
+supplies JSON Schema is forwarded verbatim, preserving its descriptions and enums.
+
+A tool that returns images (a browser screenshot, an image tool's result) answers with an `image`
+content block for each, as base64:
+
+- at most four images;
+- each must be an image by its bytes;
+- a stored image is sent only if the same call made it, read back under the caller's tenant, since an
+  MCP client cannot resolve a `felix-file://` reference;
+- a URL is never passed on.
+
+### Connecting an MCP host
+
+Point the host at the manifest's own URL and send the same bearer token any other client would:
+
+```json
+{
+  "mcpServers": {
+    "felix-support": {
+      "type": "http",
+      "url": "https://felix.example.com/mcp/support",
+      "headers": { "Authorization": "Bearer fx_live_…" }
+    }
+  }
+}
+```
+
+The exact shape is the host's. What Felix needs is the URL and the `Authorization` header.
+
+A modern request by hand:
+
+```bash
+curl -s https://felix.example.com/mcp/support \
+  -H "Authorization: Bearer $FELIX_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json' \
+  -H 'MCP-Protocol-Version: 2026-07-28' -H 'Mcp-Method: tools/list' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{
+        "io.modelcontextprotocol/protocolVersion":"2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities":{}}}}'
+```
+
+A legacy client opens with `initialize` instead, and may send `MCP-Protocol-Version: 2025-06-18` on
+what follows:
+
+```bash
+curl -s https://felix.example.com/mcp/support \
+  -H "Authorization: Bearer $FELIX_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18",
+        "capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+## Felix as an MCP client
+
+`spec.mcp_servers` binds each remote server's tools as `{name}__{tool}`. The fields are in the
+[manifest reference](/guide/manifest-reference/#specmcp_servers).
+
+Each discovery and each tool call is a short session of the SDK's client. The SDK probes
+`server/discover` and falls back to the `initialize` handshake for a server on an earlier revision.
+Discovery remembers which era a server speaks, so a legacy server's calls go straight to
+`initialize`. A server's tool list (with its `instructions`) is cached for 60 seconds, per server
+and credential. A failed discovery binds nothing and is not cached.
+
+| Transport | What runs |
+|---|---|
+| `http`, `sse` | Streamable HTTP. Both values mean the same; the deprecated 2024-11-05 HTTP+SSE transport is not spoken. |
+| `stdio` | The SDK's stdio client: the command as a subprocess, newline-delimited JSON-RPC on its stdin and stdout. |
+
+**HTTP egress.** Every request, redirect hops included, goes through Felix's egress guard. The
+SDK's HTTP stack is httpx2, so the guard is installed on its pool: the server's name is resolved
+once, every address validated, and the connection made to an address that was checked. The SDK
+follows a redirect only within the endpoint's origin, and each hop is checked again. `auth` becomes
+the `Authorization` header (`Bearer` unless the value already names a scheme), sent on every request
+of the session. See [Egress](/internals/governance/#egress).
+
+**stdio.** The command must be named exactly in `FELIX_MCP_STDIO_ALLOWED_COMMANDS`; empty, the
+default, disables stdio. It is checked on manifest write, at compile, and at every spawn — discovery
+and each call. The child gets a scrubbed environment: `PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ`, plus
+the SDK's own short list of non-secret variables (`LOGNAME`, `SHELL`, `TERM`, `USER`), plus the keys
+the manifest declares. Its stderr is discarded.
+
+<Aside type="caution">
+stdio speaks the protocol's newline-delimited JSON. A server that only understands LSP-style
+`Content-Length` framing, which Felix's earlier hand-written client sent, no longer works.
+</Aside>
+
+**Timeouts.** `timeout_ms` (default 30 s) bounds each request. A whole session — handshake, listing,
+the call, closing it — is bounded at three times that, so a server answering every page just in
+time, or slow to close the session, cannot hold a compile or a call open.
+
+**Results.**
+
+- A call's `text` blocks become the tool's output, and its `image` blocks tool images. Those are
+  checked by their bytes, capped, and screened as an untrusted tool's are, which quarantines them
+  when `content_screening.image_model` is unset.
+- A call that fails comes back as tool output beginning `[mcp_error]`, not as an exception. That
+  covers a server's error result, its JSON-RPC error (`[mcp_error] MCP error <code>: <message>`), and
+  a connection that failed. The text is usually the server's, and content screening and secret
+  masking read a tool's output, never its exceptions. An `[mcp_error]` result counts as a failed call
+  in audit and eval.
+- A call that times out is a `timeout` error, not output, so retry logic keyed on the code sees it.
+- Before calling, the client lists the server's tools in the same session. The SDK otherwise lists
+  them *after* the call to validate the result, and a failure there would report a call whose side
+  effects had already happened as failed.
+
+**Server instructions.** With `use_instructions: true`, the `instructions` a server sends become one
+line of tool guidance in the system prompt. They are collapsed to one line, capped at 1000
+characters, and dropped whole if the injection markers flag them. Without the flag they are ignored:
+this is the server writing to your agent's system prompt.
+
+Remote MCP tools are untrusted. Content screening covers their output, approval and policy rules
+gate them by `{server}__{tool}` name or glob, and `tools:` on the server entry decides which of its
+tools exist for the agent at all.
+
+## Skills over MCP
+
+The MCP [Skills extension](https://modelcontextprotocol.io/extensions/skills/overview)
+(`io.modelcontextprotocol/skills`) is planned, not served. It would serve a manifest's skill catalog
+through `skills/list`, `skills/get` and `resources/read`, each file with its digest. It needs an SDK
+release that includes the extension. A remote server's skills would arrive through the
+[skill import](/guide/skill-import/) gate, never loaded live into an agent.

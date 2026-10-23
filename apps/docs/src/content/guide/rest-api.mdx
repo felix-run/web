@@ -1209,32 +1209,10 @@ stored and screened as an untrusted tool's are.
 
 ## MCP
 
-| Method | Path | Notes |
-|---|---|---|
-| `POST` | `/mcp` | JSON-RPC: `initialize`, `tools/list`, `tools/call`. `params.manifest` selects the agent. |
-| `GET` | `/mcp` | Human-readable info |
-
-A `tools/call` runs the manifest's tool the way the agent's own loop does: through the governance
-stack, and around it the plugin `before_tool` / `after_tool` hooks and the manifest's
-`pre_tool_use` / `post_tool_use` hooks, with a `tool_call` (or `policy_deny`) audit row. A hook
-that refuses the call answers it with `isError: true` and the hook's message; a tool that raises
-is named by its error code, never by its exception's text.
-
-Tool `inputSchema` is generated from each tool's argument schema. A remote MCP tool that already
-supplies JSON Schema is forwarded verbatim through `raw_input_schema`, preserving its descriptions
-and enums.
-
-**Images.**
-- **Server side.** A tool that returns images (a browser screenshot, an image tool's result)
-  answers `tools/call` with an `image` content block for each, as base64. The limits:
-  - at most four images;
-  - each must be an image by its bytes;
-  - a stored image is sent only if the same call made it, read back under the caller's tenant,
-    since an MCP client cannot resolve a `felix-file://` reference;
-  - a URL is never passed on.
-- **Client side.** Felix reads a remote server's `image` content blocks as tool images. They are
-  stored and capped, and screened as an untrusted tool's are, which means they are quarantined
-  when `content_screening.image_model` is unset.
+`POST /mcp/{manifest_name}` (and `POST /mcp` for the default manifest) is the official MCP Python
+SDK's stateless Streamable HTTP transport, serving a manifest's governed tools on both protocol eras.
+Endpoints, versions, error codes, auth and connecting a host are on the [MCP](/guide/mcp/) page, with
+Felix's own MCP client (`spec.mcp_servers`).
 
 ## `POST /triggers/{id}`
 
