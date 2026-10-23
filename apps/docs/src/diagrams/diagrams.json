@@ -6,7 +6,7 @@
       "page": "internals/architecture",
       "width": 1558,
       "height": 842,
-      "digest": "9a1a1c4a51f96faa",
+      "digest": "f79da31d191d2859",
       "title": "Deployment topology",
       "question": "What runs where in a deployment, and what does each part need?",
       "source": "deploy/docker/compose.yml and its overlays. CI asserts every Felix service waits on `migrate` (scripts/check-compose-render.py)."
@@ -26,7 +26,7 @@
       "page": "guide/rest-api",
       "width": 594,
       "height": 1372,
-      "digest": "c477ddb06429fb69",
+      "digest": "b29bbb98e2ff75ab",
       "title": "POST /chat/stream request path",
       "question": "How does `POST /chat/stream` become server-sent events, durable or not?",
       "source": "apps/api/src/felix_api/routes/chat.py:chat_stream and routes/_streaming.py:durable_run_gen, routes/_sse.py (with_heartbeat, is_resume_point)."
@@ -66,7 +66,7 @@
       "page": "guide/concepts",
       "width": 1433,
       "height": 752,
-      "digest": "d16eed421e080bb1",
+      "digest": "40418e769e81e679",
       "title": "Durable run (fiber) lifecycle",
       "question": "Which states does a durable fiber move through, including the retry ladder?",
       "source": "packages/harness/src/felix/durability/fibers.py — FIBER_TERMINAL_STATUSES, _park, _retry_or_dead, _claim_due, stop_fiber; durability/runs.py."
@@ -103,5 +103,5 @@
       "source": "packages/harness/src/felix/manifests/resolver.py:resolve_manifest"
     }
   ],
-  "harnessCommit": "f757af29f1aea500793ec03c648bb875e4474174"
+  "harnessCommit": "d8e536231dacd708908b36b294dfed6d11906a3f"
 }
