@@ -2049,8 +2049,11 @@ policies, screening and approvals.
 Saving and running are refused in a run no person is in, a scheduled job's or an inbound trigger's
 (`unattended`). They are also refused inside a workflow, so a workflow cannot write or start another
 (`in_workflow`). A job keeps the revision its writer saw. A [trigger](/guide/deploy/#inbound-triggers)
-pinned to no `revision` runs whatever the agent saves next, under the trigger's scopes, so pin
-triggers that target an agent's workflows.
+pinned to no `revision` refuses to start a workflow the agent still holds: otherwise the person's
+approval of a save would decide what an outside sender starts under the trigger's scopes. The
+delivery is `503 trigger_unavailable`, audited as `workflow_run_refused`, until the operator pins
+the revision they read or the person saves over the workflow. A workflow the person has saved over,
+or one a person made, runs unpinned as before.
 
 ### `spec.auth`
 
