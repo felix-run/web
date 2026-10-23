@@ -168,7 +168,7 @@ const WIRE_INK = {
   /** A wire the run carried a value down: the ink a reader follows. */
   taken: 'var(--color-foreground)',
   /** A wire the run went by: a hairline. */
-  passed: 'var(--color-border)',
+  passed: 'var(--wf-wire-passed)',
 } as const;
 const SELECTED_INK = 'var(--color-ring)';
 

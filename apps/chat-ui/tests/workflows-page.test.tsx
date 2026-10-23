@@ -765,6 +765,33 @@ describe('the canvas, full screen and mid-drag', () => {
     expect(canvas()).toBeNull();
   });
 
+  it('makes the page under full screen inert, and gives focus back on the way out', async () => {
+    await page('/harness/workflows?workflow=triage');
+    const open = await screen.findByRole('button', { name: 'Full screen' });
+    open.focus();
+    fireEvent.click(open);
+    const stage = document.querySelector('[data-expanded]') as HTMLElement;
+    expect(open.closest('[inert]')).not.toBeNull();
+    expect(stage.closest('[inert]')).toBeNull();
+    // Step changes are still said: the live region is inside the stage.
+    expect(stage.querySelector('[aria-live="polite"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Exit full screen' }));
+    expect(document.querySelector('[inert]')).toBeNull();
+    expect(document.activeElement).toBe(open);
+  });
+
+  it('leaves Escape to an open sheet or list rather than leaving full screen', async () => {
+    await page('/harness/workflows?workflow=triage');
+    await screen.findByLabelText('Description');
+    fireEvent.keyDown(document.body, { key: 'f' });
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    document.body.appendChild(dialog);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(document.querySelector('[data-expanded]')).not.toBeNull();
+    dialog.remove();
+  });
+
   it('lets a wire be drawn only where the harness could take it', async () => {
     // What a dragged wire's quiet ports are drawn from, and what a drop is refused by.
     const { wireFits } = await import('../src/components/workflows/workflow-canvas');

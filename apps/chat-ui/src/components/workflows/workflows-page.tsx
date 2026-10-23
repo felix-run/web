@@ -414,6 +414,9 @@ function WorkflowDetail({ id }: { id: string }) {
       const target = e.target as HTMLElement | null;
       if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"]'))
         return;
+      // Escape in a sheet, a menu or a list closes that, and only that.
+      if (target?.closest('[role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"]'))
+        return;
       if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         setExpanded((v) => !v);
@@ -424,6 +427,30 @@ function WorkflowDetail({ id }: { id: string }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // Full screen covers the page, so the page goes inert under it: otherwise Tab walked into the
+  // header and the inspector behind the canvas, and focus sat on the button that opened it. Every
+  // sibling on the way up from the stage is made inert, except the toasts, whose Retry still
+  // answers; focus moves to the canvas, and back to where it was on the way out.
+  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!expanded || !stage) return;
+    const back = document.activeElement as HTMLElement | null;
+    const made: HTMLElement[] = [];
+    for (let el: HTMLElement | null = stage; el && el !== document.body; el = el.parentElement) {
+      for (const sib of Array.from(el.parentElement?.children ?? [])) {
+        if (sib === el || !(sib instanceof HTMLElement) || sib.hasAttribute('inert')) continue;
+        if (sib.matches('[data-sonner-toaster], section[aria-live]')) continue;
+        sib.setAttribute('inert', '');
+        made.push(sib);
+      }
+    }
+    stage.querySelector<HTMLElement>('.react-flow__node[tabindex]')?.focus();
+    return () => {
+      for (const sib of made) sib.removeAttribute('inert');
+      back?.focus();
+    };
+  }, [expanded]);
   // Closing the tab on unsaved edits asks first; moving within the app keeps the draft.
   useEffect(() => {
     if (!dirty) return;
@@ -698,7 +725,8 @@ function WorkflowDetail({ id }: { id: string }) {
               // while blocked by problems, it shows them instead of a form that would be refused.
               aria-disabled={runBlocked && !runningNow}
               aria-describedby={runBlocked ? blockedId : undefined}
-              className={cn(runBlocked && !runningNow && 'opacity-50')}
+              // Muted, not faded: it still answers a press, so its label keeps AA contrast.
+              className={cn(runBlocked && !runningNow && 'text-muted-foreground')}
               onClick={() => {
                 if (runBlocked && !runningNow) {
                   if (!dirty) {
@@ -733,9 +761,6 @@ function WorkflowDetail({ id }: { id: string }) {
           />
         </div>
       ) : null}
-      <span className="sr-only" aria-live="polite">
-        {said}
-      </span>
       <div className="flex min-h-0 flex-1 max-lg:flex-col">
         {editing && wide ? (
           <StepPalette
@@ -765,12 +790,17 @@ function WorkflowDetail({ id }: { id: string }) {
           </Sheet>
         ) : null}
         <div
+          ref={stageRef}
           data-expanded={expanded || undefined}
           className={cn(
             'relative min-h-[24rem] flex-1 max-lg:min-h-[70svh]',
             expanded && 'fixed! inset-0 z-50 h-auto! bg-ground',
           )}
         >
+          {/* Inside the stage, so full screen, which makes the rest of the page inert, keeps it. */}
+          <span className="sr-only" aria-live="polite">
+            {said}
+          </span>
           {expanded ? (
             <Button
               variant="outline"
@@ -828,7 +858,12 @@ function WorkflowDetail({ id }: { id: string }) {
           {editing && draft.refusal ? (
             <div
               role="status"
-              className="absolute inset-x-4 bottom-4 max-lg:bottom-16 flex items-start gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm shadow-sheet"
+              // At the top: the bottom corners hold the zoom controls, the overview and, below
+              // 1024, Add step and Inspector. Clear of Exit full screen when that is up.
+              className={cn(
+                'absolute top-4 left-1/2 z-10 flex w-[min(32rem,calc(100%-2rem))] -translate-x-1/2 items-start gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm shadow-sheet',
+                expanded && 'top-16',
+              )}
             >
               <p className="flex-1 text-state-failed">{draft.refusal}</p>
               <Button

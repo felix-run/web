@@ -601,6 +601,9 @@ html [data-sonner-toast] {
   --xy-minimap-mask-background-color: color-mix(in oklch, var(--ground) 70%, transparent);
   --xy-selection-background-color: color-mix(in oklch, var(--ring) 10%, transparent);
   --xy-selection-border: 1px dotted var(--ring);
+  /* A wire the run went by: quieter than one it has not reached, still 3:1 on the ground in
+     both themes (3.2 light, 4.1 dark). At the border colour it measured 1.15. */
+  --wf-wire-passed: color-mix(in oklch, var(--muted-foreground) 72%, var(--ground));
 }
 .react-flow__minimap {
   border: 1px solid var(--border);
@@ -622,7 +625,7 @@ html [data-sonner-toast] {
   stroke-width: 2;
 }
 .react-flow__edge.wf-wire-passed .react-flow__edge-path {
-  stroke: var(--border);
+  stroke: var(--wf-wire-passed);
   stroke-width: 1;
 }
 .react-flow__edge.wf-wire-dashed .react-flow__edge-path {
@@ -632,6 +635,22 @@ html [data-sonner-toast] {
 .react-flow__edge.wf-wire:focus-visible .react-flow__edge-path {
   stroke: var(--ring);
   stroke-width: 3;
+}
+
+/* On a touch screen the canvas's own buttons grow to 44px, and a port a wire can be dragged from
+   takes a 40×24 target: as tall as its row, so two stacked ports never share one. Scoped under
+   `.react-flow`, because React Flow's sheet loads later with the canvas and sets 26px at the
+   weight of a bare class. */
+@media (pointer: coarse) {
+  .react-flow .react-flow__controls-button {
+    width: 44px;
+    height: 44px;
+  }
+  .react-flow .react-flow__handle.connectable::after {
+    content: "";
+    position: absolute;
+    inset: -6px -14px;
+  }
 }
 
 /* Motion in this app is all state feedback (sheet entrances, the tool-metrics bar,
