@@ -424,6 +424,46 @@ sidebar, the docs header's link, the guides and the tab title all call it; it hi
 where the tab names the page. Until Scalar has loaded from its CDN, the page says it is loading. The theme is resolved
 from Starlight's `starlight-theme` before first paint, and Scalar's own toggle is hidden.
 
+### Harness diagram (`src/components/HarnessDiagram.astro`)
+
+The harness's own Mermaid diagrams (felix-run/felix `docs/diagrams/*.mmd`, each held to the code it
+names), drawn in the manual's material: `<HarnessDiagram name="durable-run" />`, under the heading
+whose prose explains the same flow. Ten of them, on Architecture, Governance, Manifest pipeline,
+Patterns, Persistence, Concepts and REST API (2026-10-22). The docs never draw a flow the harness
+already draws; a diagram that is wrong is fixed there, and three were before they came here.
+
+- **Rendered here, not copied.** `pnpm sync:diagrams <harness checkout>`
+  (`scripts/sync-harness-diagrams.mjs`) renders each source with mermaid-cli in Geist at 14px,
+  every colour a sentinel that becomes a theme variable, and **fails on any colour it cannot
+  place**. The harness's exports are drawn for GitHub — a white canvas, blue fills, the system
+  face — and at 1,100–1,700px their labels shrank to 7–10px in the column. The output is
+  generated (`src/diagrams/`, hook-blocked, excluded from Biome) and byte-stable: a fixed render
+  seed, so a sync with no harness change is no diff. `diagrams.json` records each diagram's page,
+  an optional `direction` to restack a left-to-right chart, and the harness commit and source
+  digest it came from.
+- **Neutral roles.** The harness carries roles in outline colour — blue focal, green durable
+  state, orange risk. Here every role is neutral, because green would read as *done* and hue is
+  the state ramp's alone: focal is ink at 3px, state keeps its cylinder, what Felix calls but does
+  not control keeps its dashed border, risk its 2px outline, and everything else is faint text at
+  1px (≥3:1 in both themes). Labels are ink; edge labels sit on an opaque page-colour chip so no
+  line strikes through them; notes take the panel step. Mermaid's unused drop-shadow filters are
+  removed.
+- **Inlined, at its own size.** Inline SVG takes the page's Geist and its theme variables, so a
+  diagram follows the theme switch without a reload. It is never scaled down: wider than the
+  column, it scrolls inside a hairline frame (the One-Edge Rule), the frame becomes a focusable
+  region labelled with the diagram's title, the caption says it scrolls, and it opens centred on
+  the harness's focal node rather than on its left edge. Whether it overflows is decided in the
+  browser, because the column is 48rem, narrower beside a table of contents, and the screen on a
+  phone.
+- **Caption:** the question `DIAGRAMS.md` says the diagram answers, in body text, then where it
+  came from — the `.mmd` at the commit it was rendered from, and the code it follows. Mermaid's
+  `accTitle`/`accDescr` stay as the SVG's `<title>` and `<desc>`.
+
+Where a diagram and older text said the same thing, the text went only when the diagram said all
+of it: the topology box on Architecture and the approvals steps on Governance (which still
+described a call returning `[approval required]` to the model, before the harness waited on the
+decision). Architecture's call tree stays under its diagram, because it names each callable.
+
 ### Browser surfaces
 
 Focus is a **2px outline in ink, offset 2px**, on every interactive element; selection is ink at

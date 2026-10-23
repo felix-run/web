@@ -1,0 +1,172 @@
+---
+/*
+ * One of the harness's own diagrams, as the harness draws it and in the docs'
+ * material: `<HarnessDiagram name="durable-run" />`.
+ *
+ * The source is felix-run/felix `docs/diagrams/<name>.mmd`, held to the code it
+ * names in the same commit. `pnpm sync:diagrams` renders it here with the docs'
+ * face and every colour as a theme variable (`scripts/sync-harness-diagrams.mjs`),
+ * so this page never redraws a flow the harness already draws, and a diagram that
+ * changes there changes here on the next sync.
+ *
+ * The SVG is inlined rather than loaded through <img>, which could neither use the
+ * page's self-hosted Geist nor follow the theme switch. It is shown at its own
+ * size and never scaled down: the labels are set at 14px, and a 1,500px chart
+ * shrunk into the 48rem column put them at 7px. A chart wider than the column
+ * scrolls inside its frame (the One-Edge Rule). Whether it does depends on the
+ * column, which is 48rem, ~38rem beside a table of contents and the screen on a
+ * phone, so the script below decides it in the browser: an overflowing frame
+ * becomes a focusable, labelled region (reachable from the keyboard) and its
+ * caption says it scrolls. It opens centred on the harness's focal node, the one
+ * the diagram exists to point at, rather than on whatever sits at its left edge.
+ */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+interface Props {
+  name: string;
+}
+
+interface Entry {
+  name: string;
+  title: string;
+  question: string;
+  source: string;
+  width: number;
+  height: number;
+}
+
+const { name } = Astro.props;
+const dir = join(process.cwd(), 'src/diagrams');
+const index = JSON.parse(readFileSync(join(dir, 'diagrams.json'), 'utf8')) as {
+  harnessCommit: string;
+  diagrams: Entry[];
+};
+const entry = index.diagrams.find((d) => d.name === name);
+if (!entry) throw new Error(`HarnessDiagram: no "${name}" in src/diagrams/diagrams.json`);
+
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const svg = readFileSync(join(dir, `${name}.svg`), 'utf8').replace(
+  /^<svg([^>]*?) width="100%"/,
+  `<svg$1 width="${entry.width}" height="${entry.height}"`,
+);
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const sourceUrl = `https://github.com/felix-run/felix/blob/${index.harnessCommit}/docs/diagrams/${name}.mmd`;
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const short = index.harnessCommit.slice(0, 8);
+/** `question` is DIAGRAMS.md's Markdown; only its code spans need marking up. */
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const question = entry.question
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  // \x60 is a backtick: Astro's compiler misreads a literal one in a frontmatter regex.
+  .replace(/\x60([^\x60]+)\x60/g, '<code>$1</code>');
+---
+
+<figure class="harness-diagram not-content" id={`diagram-${name}`}>
+  <div class="frame" data-diagram-frame data-label={entry.title} set:html={svg} />
+  <figcaption>
+    <span class="question" set:html={question} />
+    <span class="hint" hidden>Wider than the column here; it scrolls sideways.</span>
+    <span class="from">
+      Drawn by the harness: <a href={sourceUrl}><code>docs/diagrams/{name}.mmd</code></a> at{' '}
+      <code>{short}</code>, which follows <code>{entry.source}</code>.
+    </span>
+  </figcaption>
+</figure>
+
+<style>
+  .harness-diagram {
+    margin-block: 1.5rem 2rem;
+  }
+
+  /*
+   * A hairline frame on the page colour, like the product screenshot: the chart
+   * has no canvas of its own, and the frame is what says where it ends. No
+   * shadow, no fill step — the chart's own notes take the panel step.
+   */
+  .frame {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding: 1rem;
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0.5rem;
+  }
+  .frame :global(svg) {
+    display: block;
+    max-width: none;
+    margin-inline: auto;
+  }
+  /*
+   * Edge labels sit on the page colour, opaque. Mermaid draws their backgrounds
+   * unfilled at half opacity, so a line running through a label struck through its
+   * words. Its rules are scoped by the SVG's id, which no class selector here can
+   * outrank, hence !important on these two declarations only.
+   */
+  .frame :global(svg .edgeLabel rect),
+  .frame :global(svg rect.background) {
+    fill: var(--sl-color-black) !important;
+    opacity: 1 !important;
+  }
+
+  /* The SVG's own title line, which Mermaid draws from the source's front matter. */
+  .frame :global(svg .flowchartTitleText),
+  .frame :global(svg .statediagramTitleText),
+  .frame :global(svg text.titleText) {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  figcaption {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.75rem;
+    max-inline-size: 40rem;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+  .question {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+  figcaption code {
+    font-size: inherit;
+    /* Code in a caption takes the body colour; faint on the code surface sits at the floor. */
+    color: var(--sl-color-gray-2);
+    overflow-wrap: anywhere;
+  }
+  figcaption a {
+    color: inherit;
+    text-underline-offset: 0.2em;
+  }
+</style>
+
+<script>
+  for (const frame of document.querySelectorAll<HTMLElement>('[data-diagram-frame]')) {
+    const hint = frame.parentElement?.querySelector<HTMLElement>('.hint');
+    const check = () => {
+      const scrolls = frame.scrollWidth > frame.clientWidth + 1;
+      if (scrolls) {
+        frame.tabIndex = 0;
+        frame.setAttribute('role', 'region');
+        frame.setAttribute('aria-label', `${frame.dataset.label}, scrolls sideways`);
+      } else {
+        frame.removeAttribute('tabindex');
+        frame.removeAttribute('role');
+        frame.removeAttribute('aria-label');
+      }
+      if (hint) hint.hidden = !scrolls;
+    };
+    check();
+    new ResizeObserver(check).observe(frame);
+    // A wide chart opens on what it is about rather than on its left edge: the
+    // first node the harness marks focal (its heavier outline), centred in view.
+    const focal = frame.querySelector<SVGGraphicsElement>('svg .node.focal');
+    if (focal && frame.scrollWidth > frame.clientWidth + 1) {
+      const box = focal.getBoundingClientRect();
+      const left = box.left - frame.getBoundingClientRect().left + frame.scrollLeft;
+      frame.scrollLeft = Math.max(0, left + box.width / 2 - frame.clientWidth / 2);
+    }
+  }
+</script>

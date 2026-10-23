@@ -9,6 +9,7 @@ import { Steps } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import approvalBanner from '../../assets/approval-banner.webp';
 import approvalCard from '../../assets/approval-card.webp';
+import HarnessDiagram from '../../components/HarnessDiagram.astro';
 
 Felix is a **managed agents harness** you run yourself. You describe an agent declaratively; Felix
 compiles that description into a governed, observable, resumable runtime and serves it over several
@@ -56,6 +57,8 @@ Every field is catalogued in the [Manifest reference](/guide/manifest-reference/
 ### Where manifests come from
 
 The request-path resolver walks four layers and returns the first hit:
+
+<HarnessDiagram name="manifest-resolution" />
 
 1. **Tenant Postgres** — the tenant's active pointer (`source: tenant_postgres`)
 2. **Tenant object store** — `manifests/{tenant_id}/{name}.json` (`source: tenant_object`)
@@ -440,6 +443,8 @@ the worker POSTs the finished run to them, signed.
 
 `POST /chat/stream` on a durable manifest streams the run — `run_accepted`, `run_status`, `final` —
 and a dropped client reattaches with the resume token rather than losing the run.
+
+<HarnessDiagram name="durable-run" />
 
 ## Steering
 

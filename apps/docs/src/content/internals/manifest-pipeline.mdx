@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Steps } from '@astrojs/starlight/components';
+import HarnessDiagram from '../../components/HarnessDiagram.astro';
 
 How `build_agent(manifest, deps)` turns a parsed manifest into a runnable `Agent`. Source: `packages/harness/src/felix/manifests/builder.py` in [felix-run/felix](https://github.com/felix-run/felix).
 
@@ -16,6 +17,8 @@ Manifests use `apiVersion: felix/v1`, `kind: Agent` (Pydantic v2, `extra=forbid`
 `BuildDeps` carries the `ToolProvider`, optional auth, session store/strategy, object store, settings, and sub-agent builder (tests stub children here).
 
 ## Build steps
+
+<HarnessDiagram name="compile-pipeline" />
 
 <Steps>
 

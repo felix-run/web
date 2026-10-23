@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import HarnessDiagram from '../../components/HarnessDiagram.astro';
 
 Patterns are the agent's loop shape. Built-ins self-register via `register_pattern` in `packages/harness/src/felix/patterns/` ([felix-run/felix](https://github.com/felix-run/felix)).
 
@@ -22,6 +23,8 @@ Patterns are the agent's loop shape. Built-ins self-register via `register_patte
 | **plan_execute** | single | Planner decomposes → per-subtask react executor → synthesis; replans the remainder when a subtask ends early |
 
 ## react (default)
+
+<HarnessDiagram name="react-turn" />
 
 1. Open session; `SessionStrategy` renders the working set (`full_replay` / `windowed:N` / `summarizing:N` / `semantic:N` / `compacting`).
 2. Persist new caller turns.

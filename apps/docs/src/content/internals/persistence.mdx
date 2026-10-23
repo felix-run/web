@@ -5,6 +5,8 @@ sidebar:
   order: 5
 ---
 
+import HarnessDiagram from '../../components/HarnessDiagram.astro';
+
 Felix is cloud-agnostic: Postgres, a cache, and an object store behind Protocols — not a single vendor SDK. Repo: [felix-run/felix](https://github.com/felix-run/felix).
 
 ## Data plane
@@ -26,6 +28,8 @@ Every store has an in-memory twin selected by `FELIX_DATABASE_URL=memory://…`,
 ## Session events
 
 `PostgresSessionStore` (`felix.session.store`) appends to `session_events` (monotonic `seq`, kind discriminators, message-shaped payload). Patterns never talk SQL directly — they use `Session` + `SessionStrategy`.
+
+<HarnessDiagram name="session-state" />
 
 Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compacting`, plus any registered with `register_session_strategy`. `memory.checkpointer` chooses where that log lives — `postgres` (default), `none` (no session state), or a registered backend.
 
