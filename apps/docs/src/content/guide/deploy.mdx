@@ -474,6 +474,10 @@ recorded on the run as `untrusted_inputs`, and every agent step of a trigger-sta
 it is given inside a fence made new for each prompt — a convention the model is told to honour, so
 keep inbound screening on the manifests the workflow reaches. Anyone with `workflows:write` can
 change what the trigger's `scopes` reach; pin the workflow with `"revision"` when it grants scopes.
+The API logs a warning at boot for each workflow trigger with no pin. An unpinned trigger refuses
+a workflow an agent [still holds](/guide/manifest-reference/#specworkflow_authoring): `503
+trigger_unavailable`, audited as `workflow_run_refused`, after the rate limit. A redelivery runs once
+the trigger is pinned.
 
 ## Slack
 
