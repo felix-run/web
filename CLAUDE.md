@@ -42,6 +42,7 @@ pnpm check-tailwind-sources # every @source-covered tree still reaches the compi
 pnpm check-payload-shapes   # every required client field is one the harness actually sends
 pnpm check-bundle-budget    # chat-ui's first load (entry + preloads + CSS, gzipped) is within budget; run after build
 pnpm sync:harness [path]    # re-record all three contract files from a harness checkout
+pnpm sync:diagrams [path]   # re-render the harness's docs/diagrams/*.mmd into apps/docs/src/diagrams (docs theme)
 pnpm sync:brand             # re-render favicons, touch/PWA icons, docs logo + social card (needs rsvg-convert, magick)
 pnpm --filter @felix/chat-ui <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive

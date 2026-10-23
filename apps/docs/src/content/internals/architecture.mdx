@@ -5,20 +5,13 @@ sidebar:
   order: 1
 ---
 
+import HarnessDiagram from '../../components/HarnessDiagram.astro';
+
 How a request flows through Felix end-to-end. Source of truth: [felix-run/felix](https://github.com/felix-run/felix).
 
 ## Process topology
 
-```
-Client → Ingress (Caddy / Traefik / nginx / CDN)
-           │
-           ▼
-         felix-api        (CPython 3.14, Granian, FastAPI)  ─┐
-         felix-worker     (Taskiq consumer)                 ─┤  no ingress
-         felix-scheduler  (Taskiq cron enqueue)             ─┤  no ingress
-                                                             ▼
-         Postgres+pgvector · Valkey · object store (fs | s3 | gcs | memory)
-```
+<HarnessDiagram name="deploy-topology" />
 
 In words: requests reach an ingress (Caddy, Traefik, nginx or a CDN), which routes to
 `felix-api` only. `felix-worker` and `felix-scheduler` run alongside it with no ingress of their
@@ -76,6 +69,10 @@ those were three more paths where a credential could be guessed at no cost.
 Self-authenticating mounts (e.g. `/internal`) skip bearer parsing; the router enforces its own credential (`FELIX_CONSUMER_SHARED_SECRET`).
 
 ## Chat request lifecycle
+
+<HarnessDiagram name="request-path" />
+
+The same path as a call tree, to the callable:
 
 ```
 POST /chat or /v1/chat/completions

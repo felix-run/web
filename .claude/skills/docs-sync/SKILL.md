@@ -57,6 +57,7 @@ API, deploy, and internals. The harness itself is a separate repo
    | Manifest fields | `guide/manifest-reference.mdx`, `internals/manifest-pipeline.mdx` |
    | Audit/metrics surfaces | `internals/observability.mdx` |
    | `packages/design/src/tokens.ts` | `pnpm sync:theme` to regenerate `src/styles/theme.css` |
+   | A harness `docs/diagrams/*.mmd` (felix-run/felix) | `pnpm sync:diagrams <checkout>` re-renders `src/diagrams/`; never hand-edit an SVG there. A new one goes in `src/diagrams/diagrams.json` and on its page as `<HarnessDiagram name="…" />` |
    | Repo architecture | `CLAUDE.md` (not a docs page, but keep it true) |
 
 3. **Write in the existing voice**: dense, factual, present tense, identifiers in backticks, no

@@ -5,14 +5,13 @@ sidebar:
   order: 6
 ---
 
+import HarnessDiagram from '../../components/HarnessDiagram.astro';
+
 Every tool call runs through wrappers composed in `build_agent`. Source: `felix.manifests.builder` in [felix-run/felix](https://github.com/felix-run/felix).
 
 ## Stack (call direction)
 
-```
-model → Approvals → LLM Judge → Guardrails → Limits
-      → Content screen → Command screen → Policies → Secret masking → inner tool
-```
+<HarnessDiagram name="governance-stack" />
 
 Applied innermost-first at build time so the runtime order above holds. Secret masking is **always on**.
 
@@ -141,10 +140,11 @@ assets as reaching whatever they resolve to at load time.
 
 ## Approvals
 
-1. Canonicalize args → SHA-256 call signature (optionally bound to principal).
-2. Lookup / insert `pending` row; return `[approval required] …` to the model.
-3. Operator decides via `POST /approvals/{id}/decide`.
-4. Retry with same args finds `approved` / `denied` / still `pending`.
+The call signature is a SHA-256 of the canonicalised arguments, optionally bound to the
+principal. A call with no live grant waits on a `pending` row until a person decides through
+`POST /approvals/{id}/decide`, or the deadline closes the row as `denied` with the note `timeout`.
+
+<HarnessDiagram name="approval-lifecycle" />
 
 Unattended runs (scheduler, eval replay) refuse approval-gated tools unless `allow_unattended: true`. TTL / one-shot options bound standing grants.
 
