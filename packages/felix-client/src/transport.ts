@@ -127,7 +127,7 @@ export interface LeaseStatus {
 interface RawModelEntry {
   id: string;
   felix?: {
-    providerModel?: string | null;
+    wireModel?: string | null;
     contextWindow?: number | null;
     starters?: unknown;
     greeting?: unknown;
@@ -185,11 +185,14 @@ export interface ManifestEntry {
   /** The manifest name — what `/chat/stream` takes as `manifest`. */
   id: string;
   /**
-   * The provider model the manifest runs on (`spec.model.id`), present only
-   * when it differs from the manifest name. `null` on the wire means "same as
-   * the name"; both that and an absent key arrive here as `undefined`.
+   * `felix.wireModel` (`felix-run/felix#675`): the provider's own id for the
+   * model the manifest's route serves, present only when it differs from the
+   * manifest name. Not `felix.providerModel`, which is the route's *name* — an
+   * operator's label that can outlive what it named (`claude-sonnet-4` serving
+   * `claude-sonnet-5`). `undefined` from an older harness, which sends only the
+   * route name, and for a route the deployment does not define.
    */
-  providerModel?: string;
+  wireModel?: string;
   /**
    * `felix.contextWindow`, when sent: the window compaction uses — the
    * manifest's `spec.session.context_window_tokens`, else the provider model's
@@ -307,10 +310,8 @@ export function manifestEntriesFrom(body: unknown): ManifestEntry[] {
 
 function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   const entry: ManifestEntry = { id: raw.id };
-  const provider = raw.felix?.providerModel;
-  if (typeof provider === 'string' && provider && provider !== raw.id) {
-    entry.providerModel = provider;
-  }
+  const wire = raw.felix?.wireModel;
+  if (typeof wire === 'string' && wire && wire !== raw.id) entry.wireModel = wire;
   const tokens = raw.felix?.contextWindow;
   if (typeof tokens === 'number' && tokens > 0) entry.contextWindow = tokens;
   const starters = toStarters(raw.felix?.starters);

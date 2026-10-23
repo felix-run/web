@@ -138,10 +138,10 @@ export function Workbench() {
   const instrumentInline = useMediaQuery(INSTRUMENT_INLINE);
 
   const modelOptions = useMemo(() => {
-    // The provider model is the one thing the harness says about a manifest
+    // The wire model is the one thing the harness says about a manifest
     // that its name does not: `cowork` and `cowork-fast` read the same until
     // one shows it runs on a different model. Order is the harness's, kept.
-    const provider = new Map(manifestEntries.map((m) => [m.id, m.providerModel]));
+    const provider = new Map(manifestEntries.map((m) => [m.id, m.wireModel]));
     return manifestOptions.map((id) => ({ id, label: id, description: provider.get(id) }));
   }, [manifestOptions, manifestEntries]);
 

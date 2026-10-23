@@ -11,7 +11,7 @@ import { useOptionalShell } from '@/shell-context';
  *
  * Both lines are mono: the name is the harness's identifier and the description a quotation of
  * it. `textValue` keeps typeahead on the name. No second line when there is nothing to add:
- * `/v1/models` sends `null` when the model *is* the name, and repeating it would say nothing.
+ * the client drops a wire model that *is* the name, since repeating it would say nothing.
  */
 export function OptionItem({
   value,
@@ -47,11 +47,11 @@ export function OptionItem({
 export const OPTION_LIST_BOUNDS =
   'min-w-72 max-h-[min(var(--radix-select-content-available-height),26rem)]';
 
-/** Provider model by agent name, from `/v1/models`. */
+/** Wire model by agent name, from `/v1/models`. */
 export function modelsById(
-  entries: ReadonlyArray<{ id: string; providerModel?: string }>,
+  entries: ReadonlyArray<{ id: string; wireModel?: string }>,
 ): Map<string, string | undefined> {
-  return new Map(entries.map((e) => [e.id, e.providerModel]));
+  return new Map(entries.map((e) => [e.id, e.wireModel]));
 }
 
 /**
