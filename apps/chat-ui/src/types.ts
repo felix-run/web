@@ -446,6 +446,10 @@ export interface WorkflowRecord {
   created_at: number;
   updated_at: number;
   updated_by: string;
+  /** Who made it: a person's subject, or `<issuer>|<subject>` for one an agent wrote for them. */
+  created_by?: string;
+  /** What made its latest save: `agent:<manifest>`, `owner:agent:<manifest>`, or empty for a person. */
+  authored_via?: string;
   /** Every node, `trigger` included; `null` where a step's ports cannot be known. */
   ports: Record<string, WorkflowNodePorts | null>;
   problems: WorkflowProblem[];
@@ -488,6 +492,10 @@ export interface WorkflowSummary {
   step_count: number;
   updated_at: number;
   updated_by: string;
+  /** Who made it: a person's subject, or `<issuer>|<subject>` for one an agent wrote for them. */
+  created_by?: string;
+  /** What made its latest save: `agent:<manifest>`, `owner:agent:<manifest>`, or empty for a person. */
+  authored_via?: string;
 }
 
 export type WorkflowRunStatus =

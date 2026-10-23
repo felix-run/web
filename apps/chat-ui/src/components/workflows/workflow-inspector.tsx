@@ -6,6 +6,7 @@ import { CutId } from '@/components/cut-id';
 import { ErrorNotice } from '@/components/error-notice';
 import { Fact, Facts, PageSection } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
+import { AuthorshipFact } from '@/components/workflows/authorship';
 import { kindWord, StepStateChip } from '@/components/workflows/step-node';
 import { StepTranscript } from '@/components/workflows/step-transcript';
 import { cn } from '@/lib/utils';
@@ -232,6 +233,7 @@ export function DefinitionInspector({
               <span className="font-mono"> · {workflow.updated_by}</span>
             ) : null}
           </Fact>
+          <AuthorshipFact workflow={workflow} />
         </Facts>
       </PageSection>
       <PageSection

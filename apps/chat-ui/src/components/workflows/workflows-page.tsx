@@ -42,6 +42,7 @@ import {
 } from '@/components/harness/panel';
 import { ReadFailure, relTime, TransientRead, withAge } from '@/components/inspector/primitives';
 import { DRAWER_MOTION } from '@/components/pane/pane-zone';
+import { authorshipOf, TakeoverNote } from '@/components/workflows/authorship';
 import { RunNowForm } from '@/components/workflows/run-now-form';
 import { useWorkflowDraft } from '@/components/workflows/use-workflow-draft';
 import { useWorkflowRun } from '@/components/workflows/use-workflow-run';
@@ -258,6 +259,7 @@ function WorkflowList() {
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {plural(w.step_count, 'step')} · saved {relTime(w.updated_at)}
                   {w.updated_by ? <span className="font-mono"> · {w.updated_by}</span> : null}
+                  <AgentWritten workflow={w} />
                 </p>
               </Link>
             </li>
@@ -265,6 +267,19 @@ function WorkflowList() {
         </ul>
       </PanelBody>
     </Panel>
+  );
+}
+
+/** In a list row: which agent wrote it, so its workflows read apart from a person's. */
+function AgentWritten({ workflow }: { workflow: { created_by?: string; authored_via?: string } }) {
+  const a = authorshipOf(workflow);
+  if (!a) return null;
+  return (
+    <span>
+      {' '}
+      · by agent <span className="font-mono">{a.agent}</span>
+      {a.ownerEdited ? ', edited since' : null}
+    </span>
   );
 }
 
@@ -546,6 +561,7 @@ function WorkflowDetail({ id }: { id: string }) {
               onLeave={() => set({ workflow: null, view: null, run: null })}
             />
           ) : null}
+          {dirty ? <TakeoverNote workflow={wf} /> : null}
           {draft.saveError ? (
             <div className="mb-4">
               <ErrorNotice error={draft.saveError} doing="save the workflow" />

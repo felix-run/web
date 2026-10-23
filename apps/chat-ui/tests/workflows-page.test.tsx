@@ -150,6 +150,7 @@ async function page(
     saveWorkflow?: (...a: unknown[]) => Promise<unknown>;
     listWorkflowTools?: (...a: unknown[]) => Promise<unknown>;
     runs?: unknown[];
+    summaries?: unknown[];
   } = {},
 ) {
   const decideApproval = vi.fn().mockResolvedValue({});
@@ -157,18 +158,20 @@ async function page(
   const api = await vi.importActual<typeof import('../src/api')>('../src/api');
   vi.doMock('../src/api', () => ({
     WorkflowRouteError: api.WorkflowRouteError,
-    listWorkflows: vi.fn().mockResolvedValue([
-      {
-        id: 'triage',
-        name: 'Triage issue',
-        description: 'Label and route new issues',
-        version: 3,
-        revision: 'g1.3',
-        step_count: 2,
-        updated_at: Date.now(),
-        updated_by: 'ops',
-      },
-    ]),
+    listWorkflows: vi.fn().mockResolvedValue(
+      opts.summaries ?? [
+        {
+          id: 'triage',
+          name: 'Triage issue',
+          description: 'Label and route new issues',
+          version: 3,
+          revision: 'g1.3',
+          step_count: 2,
+          updated_at: Date.now(),
+          updated_by: 'ops',
+        },
+      ],
+    ),
     getWorkflow: vi.fn().mockResolvedValue(opts.workflow ?? WORKFLOW),
     listWorkflowRuns: vi
       .fn()
@@ -234,6 +237,57 @@ describe('the list', () => {
     expect(link.getAttribute('href')).toContain('workflow=triage');
     expect(link.textContent).toContain('2 steps');
     expect(screen.getByText('1 workflow')).toBeTruthy();
+  });
+});
+
+describe('a workflow an agent wrote', () => {
+  const SUMMARY = {
+    id: 'wf-0123456789ab',
+    name: 'Route labels',
+    description: '',
+    version: 1,
+    revision: 'g2.1',
+    step_count: 2,
+    updated_at: Date.now(),
+    updated_by: 'ada',
+  };
+
+  it('says in the list which agent wrote it, and that its person has edited it since', async () => {
+    await page('/harness/workflows', {
+      summaries: [
+        { ...SUMMARY, created_by: 'https://iss.example|ada', authored_via: 'agent:quick' },
+        {
+          ...SUMMARY,
+          id: 'wf-ba9876543210',
+          name: 'Edited labels',
+          created_by: 'https://iss.example|ada',
+          authored_via: 'owner:agent:quick',
+        },
+        { ...SUMMARY, id: 'ops', name: 'By hand', created_by: 'ops', authored_via: '' },
+      ],
+    });
+    const agents = await screen.findByRole('link', { name: /Route labels/ });
+    expect(agents.textContent).toContain('by agent quick');
+    expect(agents.textContent).not.toContain('edited since');
+    const edited = screen.getByRole('link', { name: /Edited labels/ });
+    expect(edited.textContent).toContain('by agent quick, edited since');
+    expect(screen.getByRole('link', { name: /By hand/ }).textContent).not.toContain('by agent');
+  });
+
+  it('names the agent and its person, and says before a save that saving here takes it over', async () => {
+    const written = {
+      ...WORKFLOW,
+      created_by: 'https://iss.example|ada',
+      authored_via: 'agent:quick',
+    };
+    await page('/harness/workflows?workflow=triage', { workflow: written });
+    expect(await screen.findByText('Written by')).toBeTruthy();
+    expect(screen.queryByText(/Saving it here takes it over/)).toBeNull();
+    // An edit: the draft is now something a save would write over the agent's.
+    fireEvent.click(await screen.findByRole('button', { name: 'Approval gate' }));
+    expect(
+      await screen.findByText(/Agent quick wrote this for ada\. Saving it here takes it over/),
+    ).toBeTruthy();
   });
 });
 
