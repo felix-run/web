@@ -374,6 +374,41 @@ ready, draws its files as a tree opened onto what git reports changed, re-read w
 settles. Files there do not open: no route serves a checkout file's contents. `/harness/github`
 shows your connection and what it reaches.
 
+## Person keys
+
+Long-term memory keeps one pool per person ([`spec.memory.scope`](/guide/manifest-reference/#memoryscope)).
+The person is `AuthContext.person`, an `issuer|subject` key worked out once by the auth middleware
+from the verified credential, while the issuer is still known. It has the same form as a personal
+skill library's owner, because a subject is unique only within its issuer: an API key's `sub` and a
+JWT's can be the same string and must not share a memory.
+
+| Caller | Person key |
+|---|---|
+| A token Felix minted (GitHub or Google sign-in) | `felix-self\|<sub>`, e.g. `felix-self\|github:70701` |
+| API key with its own `sub` | `api_key\|<sub>` |
+| Another IdP's JWT | `<iss>\|<sub>`, the token's `iss` |
+| Anonymous, `FELIX_AUTH_MODE=none`, an API key with no `sub`, an inbound trigger's run, a machine actor working for no one, a GitHub Actions workflow (`github-actions:…`) | none |
+| A Slack message (`felix-channels`) | none; the Slack user is not a verified sign-in |
+| An eval item | none |
+
+- **Carried into later work.** `record_caller` stores the key with a durable run, a job and a
+  workflow run. `replay_caller` restores it only when its subject is the one the run acts for and its
+  issuer is the one the recorded scheme produces, so an edited record cannot move a run between two
+  sign-ins sharing a subject string. Durable runs, job firings, workflow steps, A2A and MCP therefore
+  resolve the same pool as the live request.
+- **Passed, not read from context.** `build_tenant_agent(person=…)` takes it from the same `auth` it
+  compiles for and resolves the pool once (`memory/scope.py:memory_pool`) for the prelude, the memory
+  tools and capture.
+- **Aliased for memory only.** `FELIX_PRINCIPAL_ALIASES` (`auth/persons.py`) maps one key to another,
+  one hop; see [One person, two sign-ins](/guide/deploy/#one-person-two-sign-ins). Approvals,
+  `bind_principal`, jobs and push keep the raw principal.
+
+Two things the key trusts. A **plugin authenticator** chooses its principals' issuer, so one that
+claims `felix-self` or `api_key` would share those people's pools and personal skill libraries; a
+plugin must issue under its own issuer. A **JWT without `sub`** takes its subject from `email`,
+which some identity providers let users edit, so point a verifier only at an issuer whose tokens
+carry `sub`.
+
 ## Manifest gates
 
 Routes call `enforce_inbound_auth` (via `prepare_tenant_invoke`):
